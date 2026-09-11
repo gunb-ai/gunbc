@@ -232,6 +232,28 @@ test fn a_negative_usage_count_reads_as_unavailable_rather_than_as_its_magnitude
   )
 }
 
+// A DUPLICATED MEMBER IS NOT AN ABSENT ONE, and this is the sharpest red in the file because its
+// pre-repair behaviour was a SUCCESSFUL TURN. `json_object_unique_member` already distinguished
+// found / absent / duplicated / not-an-object; the decoder mapped the last three onto one `none`,
+// so a response carrying `tool_calls` twice decoded to zero tool calls -- which harness_turn_round
+// reads as "the model stopped talking", writes turn.completed for, returns TurnProviderStopped
+// from, and exits ZERO on. The model's commands were dropped and the run reported success.
+test fn a_duplicated_tool_calls_member_refuses_rather_than_reading_as_no_tool_calls() -> Bool {
+  let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"content\":\"x\",\"tool_calls\":[{\"id\":\"c1\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"}}],\"tool_calls\":[]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
+  c.contains("more than once")
+}
+
+test fn a_duplicated_content_member_refuses_rather_than_dropping_the_message() -> Bool {
+  let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"first\",\"content\":\"second\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
+  c.contains("content") && c.contains("more than once")
+}
+
+// A MESSAGE THAT IS NOT AN OBJECT REFUSES. The lookup reports not-an-object as its own outcome and
+// the decoder must not read it as "this message has no content and no calls".
+test fn a_message_that_is_not_an_object_refuses() -> Bool {
+  chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":\"just a string\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") != ""
+}
+
 // THE MESSAGES SHAPE CARRIES THE SAME REPAIR, because it carried the same fabrication: a tool_use
 // block with no input member decoded to an empty object there too.
 fn messages_decode_cause(body: String) -> String {
@@ -276,4 +298,10 @@ test fn an_unmodelled_block_kind_is_skipped_not_refused() -> Bool {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } => list_length(items: blocks) == 1
   }
+}
+
+// AND THE MESSAGES SHAPE TOO: a duplicated tool_use input is not an absent one.
+test fn a_duplicated_messages_tool_use_input_refuses() -> Bool {
+  let c = messages_decode_cause(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"run_command\",\"input\":{},\"input\":{}}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
+  c.contains("run_command") && c.contains("twice")
 }

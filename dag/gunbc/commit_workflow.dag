@@ -1376,7 +1376,16 @@ data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
 // went on calling it with one argument -- an arity error the floor has a blocking wall for -- and
 // nothing went red for months. A witness nothing runs is absent, not green.
 //
-// This row is that module's standing consumer, on the surface a non-floor witness belongs to.
+// THIS ROW IS AUTHORED ON THAT SURFACE AND IS NOT YET AN EXECUTING CONSUMER, which is stated here
+// rather than discovered later. `v2.workflow.required_floor` `required_floor_site_disposition`
+// decides membership from module-path prefixes alone and consults no roster, and
+// `ci_floor_commit_witness_claim_schedule` below -- with its `gunbc.ci_spec` projection
+// `gunbc_ci_floor_witness_entries` -- has no consumer on the required-CI path. Measured on the
+// `required-floor-disposition` artifact of run 34564416008, where every
+// `test.claim.harness_chat_shape` identity reads `planned_as_changed_witness`: selected because the
+// diff touched the file, not because of this row. The row is the enrollment declaration; the join
+// that would execute it does not exist, and manufacturing one here to make the claim true would be
+// machinery built to satisfy a sentence.
 // DESIGN section 4b(4) is the requirement it discharges: a climb deletes the lower-rung production
 // machinery it obsoletes, but the discriminating RED and its positive control REMAIN ENROLLED as
 // the executing evidence that the higher rung stays real. The eleven fabrication reds here each
@@ -2096,7 +2105,11 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "a_messages_tool_use_block_without_input_refuses",
         "a_messages_tool_use_block_without_an_id_refuses",
         "a_well_formed_messages_response_still_decodes_with_its_input_and_counts",
-        "an_unmodelled_block_kind_is_skipped_not_refused"
+        "an_unmodelled_block_kind_is_skipped_not_refused",
+        "a_duplicated_tool_calls_member_refuses_rather_than_reading_as_no_tool_calls",
+        "a_duplicated_content_member_refuses_rather_than_dropping_the_message",
+        "a_message_that_is_not_an_object_refuses",
+        "a_duplicated_messages_tool_use_input_refuses"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared

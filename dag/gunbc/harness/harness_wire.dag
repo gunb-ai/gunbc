@@ -140,14 +140,34 @@ type HarnessResponseRead
     }
   | HarnessResponseUnreadable { cause: String }
 
-fn harness_member_string(doc: JsonValue, key: String) -> String? {
+// A STRING MEMBER IS READ, GENUINELY ABSENT, OR MALFORMED -- THREE ANSWERS, because two collapsed
+// the second and third and that is this file's own failure class read one level up (review from the
+// operator's side chat, 2026-09-11).
+//
+// `json_object_unique_member` already distinguishes four outcomes: found, absent, DUPLICATED, and
+// not-an-object. The predecessor of this function mapped the last three onto one `none`, so a
+// response carrying a member TWICE was indistinguishable from one carrying it not at all. That is
+// not a hypothetical shape: `tool_calls` arriving twice made the decoder report zero tool calls,
+// which `harness_turn_round` reads as "the model finished talking", writes `turn.completed` for,
+// and exits zero on -- a duplicated member becoming a successful completion. Absence is the only
+// outcome that may take a no-op arm; a member this codec cannot read uniquely is a refusal.
+type HarnessStringRead
+  = StringRead { value: String }
+  | StringAbsent
+  | StringMalformed { cause: String }
+
+fn harness_member_string(doc: JsonValue, key: String) -> HarnessStringRead {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: s } => Present { value: s }
-        _ => none
+        JsonString { value: s } => StringRead { value: s }
+        _ => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
       }
-    _ => none
+    JsonMemberAbsent => StringAbsent
+    JsonMemberDuplicated =>
+      StringMalformed { cause: join(["member '", key, "' appears more than once; which one the sender meant is unknowable"], "") }
+    JsonMemberNotAnObject =>
+      StringMalformed { cause: join(["the value that should carry member '", key, "' is not a JSON object"], "") }
   }
 }
 
@@ -274,35 +294,46 @@ fn harness_block_member_gap(kind: String, key: String) -> String {
 
 fn harness_decode_block(v: JsonValue) -> HarnessBlockRead {
   match harness_member_string(doc: v, key: "type") {
-    Absent => BlockUnreadable { cause: "a content block carries no string type member; its kind is unknown" }
-    Present { value: kind } =>
+    StringAbsent => BlockUnreadable { cause: "a content block carries no string type member; its kind is unknown" }
+    StringMalformed { cause: c } => BlockUnreadable { cause: join(["a content block's type is unreadable: ", c], "") }
+    StringRead { value: kind } =>
       if kind == "text" {
         match harness_member_string(doc: v, key: "text") {
-          Present { value: t } => BlockRead { block: WireTextBlock { text: t } }
-          Absent => BlockUnreadable { cause: harness_block_member_gap(kind: "text", key: "text") }
+          StringRead { value: t } => BlockRead { block: WireTextBlock { text: t } }
+          StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "text", key: "text") }
+          StringMalformed { cause: c } => BlockUnreadable { cause: join(["a text block is unreadable: ", c], "") }
         }
       } else if kind == "thinking" {
         match harness_member_string(doc: v, key: "thinking") {
-          Present { value: t } => BlockRead { block: WireThinkingBlock { thinking: t } }
-          Absent => BlockUnreadable { cause: harness_block_member_gap(kind: "thinking", key: "thinking") }
+          StringRead { value: t } => BlockRead { block: WireThinkingBlock { thinking: t } }
+          StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "thinking", key: "thinking") }
+          StringMalformed { cause: c } => BlockUnreadable { cause: join(["a thinking block is unreadable: ", c], "") }
         }
       } else if kind == "tool_use" {
         match harness_member_string(doc: v, key: "id") {
-          Absent => BlockUnreadable {
+          StringAbsent => BlockUnreadable {
             cause: "a tool_use block carries no string id member; its result could not be addressed back to the call",
           }
-          Present { value: id } =>
+          StringMalformed { cause: c } => BlockUnreadable { cause: join(["a tool_use block's id is unreadable: ", c], "") }
+          StringRead { value: id } =>
             match harness_member_string(doc: v, key: "name") {
-              Absent => BlockUnreadable { cause: harness_block_member_gap(kind: "tool_use", key: "name") }
-              Present { value: name } =>
+              StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "tool_use", key: "name") }
+              StringMalformed { cause: c } => BlockUnreadable { cause: join(["a tool_use block's name is unreadable: ", c], "") }
+              StringRead { value: name } =>
                 match json_object_unique_member(v: v, key: "input") {
                   JsonMemberFound { value: iv } =>
                     BlockRead { block: WireToolUseBlock { id: id, name: name, input: iv } }
-                  _ => BlockUnreadable {
+                  JsonMemberAbsent => BlockUnreadable {
                     cause: join([
                       "the tool_use block calling '", name, "' carries no input member; refusing rather than ",
                       "dispatching that tool with its arguments removed",
                     ], ""),
+                  }
+                  JsonMemberDuplicated => BlockUnreadable {
+                    cause: join(["the tool_use block calling '", name, "' carries input twice; which arguments the model meant is unknowable"], ""),
+                  }
+                  JsonMemberNotAnObject => BlockUnreadable {
+                    cause: join(["the tool_use block calling '", name, "' is not a JSON object"], ""),
                   }
                 }
             }
@@ -358,11 +389,13 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
       }
     JsonDocumentParsed { value: doc } =>
       match harness_member_string(doc: doc, key: "stop_reason") {
-        Absent =>
+        StringAbsent =>
           HarnessResponseUnreadable {
             cause: "response carries no string stop_reason member; the turn's terminal state is unknown",
           }
-        Present { value: wire } =>
+        StringMalformed { cause: c } =>
+          HarnessResponseUnreadable { cause: join(["the response stop_reason is unreadable: ", c], "") }
+        StringRead { value: wire } =>
           match harness_decode_stop_reason(wire: wire) {
             StopReasonUnrecognized { wire: w } =>
               HarnessResponseUnreadable {
@@ -653,24 +686,29 @@ fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
   match json_object_unique_member(v: v, key: "function") {
     JsonMemberFound { value: f } =>
       match harness_member_string(doc: f, key: "name") {
-        Absent => BlockUnreadable { cause: "a chat tool_call carries no string function.name member" }
-        Present { value: name } =>
+        StringAbsent => BlockUnreadable { cause: "a chat tool_call carries no string function.name member" }
+        StringMalformed { cause: c } => BlockUnreadable { cause: join(["a chat tool_call's function.name is unreadable: ", c], "") }
+        StringRead { value: name } =>
           match harness_member_string(doc: v, key: "id") {
-            Absent => BlockUnreadable {
+            StringAbsent => BlockUnreadable {
               cause: join([
                 "the chat tool_call for '", name, "' carries no string id member; its result could not ",
                 "be addressed back to the call",
               ], ""),
             }
-            Present { value: id } =>
+            StringMalformed { cause: c } =>
+              BlockUnreadable { cause: join(["the chat tool_call for '", name, "' has an unreadable id: ", c], "") }
+            StringRead { value: id } =>
               match harness_member_string(doc: f, key: "arguments") {
-                Absent => BlockUnreadable {
+                StringAbsent => BlockUnreadable {
                   cause: join([
                     "the chat tool_call for '", name, "' carries no arguments member; refusing rather ",
                     "than dispatching that tool with its arguments removed",
                   ], ""),
                 }
-                Present { value: args } =>
+                StringMalformed { cause: c } =>
+                  BlockUnreadable { cause: join(["the chat tool_call for '", name, "' has unreadable arguments: ", c], "") }
+                StringRead { value: args } =>
                   match parse_json_document(s: args) {
                     JsonDocumentParsed { value: a } =>
                       BlockRead { block: WireToolUseBlock { id: id, name: name, input: a } }
@@ -688,30 +726,68 @@ fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
   }
 }
 
+// THE THREE PARTS OF A CHAT MESSAGE ARE READ INDEPENDENTLY AND ANY ONE OF THEM CAN REFUSE.
+//
+// Reasoning and content are legitimately ABSENT -- a round may be all tool calls, or all prose --
+// so absence takes the empty arm. Neither may be MALFORMED silently: a duplicated content member
+// would drop the assistant's message, and a duplicated tool_calls member would drop the model's
+// commands and leave a response that reads as a completed turn with nothing in it. That last one
+// is the sharpest arm in this function and the reason it is written out rather than closed with a
+// wildcard: zero tool calls is what `harness_turn_round` reads as "the model stopped talking", so
+// it writes `turn.completed`, returns TurnProviderStopped, and the process exits ZERO. A member
+// this codec cannot read uniquely must never reach that arm.
 fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
-  let reasoning = match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
-    Present { value: r } => [WireThinkingBlock { thinking: r }]
-    Absent =>
-      match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
-        Present { value: r } => if r == "" { [] } else { [WireThinkingBlock { thinking: r }] }
-        Absent => []
-      }
-  }
-  let text = match harness_member_string(doc: msg, key: "content") {
-    Present { value: c } => if c == "" { [] } else { [WireTextBlock { text: c }] }
-    Absent => []
-  }
-  match json_object_unique_member(v: msg, key: "tool_calls") {
-    JsonMemberFound { value: tc } =>
-      match tc {
-        JsonArray { elements: es } =>
-          match harness_chat_tool_calls_from(els: es) {
+  match harness_chat_message_reasoning(unit: unit, msg: msg) {
+    BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+    BlocksRead { blocks: reasoning } =>
+      match harness_chat_message_text(msg: msg) {
+        BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+        BlocksRead { blocks: text } =>
+          match harness_chat_message_calls(msg: msg) {
             BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
             BlocksRead { blocks: calls } => BlocksRead { blocks: concat(concat(reasoning, text), calls) }
           }
+      }
+  }
+}
+
+fn harness_chat_message_reasoning(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
+  match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
+    StringRead { value: r } => BlocksRead { blocks: [WireThinkingBlock { thinking: r }] }
+    StringMalformed { cause: c } =>
+      BlocksUnreadable { cause: join(["the chat message's reasoning field is unreadable: ", c], "") }
+    StringAbsent =>
+      match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
+        StringRead { value: r } =>
+          BlocksRead { blocks: if r == "" { [] } else { [WireThinkingBlock { thinking: r }] } }
+        StringMalformed { cause: c } =>
+          BlocksUnreadable { cause: join(["the chat message's reasoning alias is unreadable: ", c], "") }
+        StringAbsent => BlocksRead { blocks: [] }
+      }
+  }
+}
+
+fn harness_chat_message_text(msg: JsonValue) -> HarnessBlocksRead {
+  match harness_member_string(doc: msg, key: "content") {
+    StringRead { value: c } => BlocksRead { blocks: if c == "" { [] } else { [WireTextBlock { text: c }] } }
+    StringAbsent => BlocksRead { blocks: [] }
+    StringMalformed { cause: c } =>
+      BlocksUnreadable { cause: join(["the chat message's content is unreadable: ", c], "") }
+  }
+}
+
+fn harness_chat_message_calls(msg: JsonValue) -> HarnessBlocksRead {
+  match json_object_unique_member(v: msg, key: "tool_calls") {
+    JsonMemberFound { value: tc } =>
+      match tc {
+        JsonArray { elements: es } => harness_chat_tool_calls_from(els: es)
         _ => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
       }
-    _ => BlocksRead { blocks: concat(reasoning, text) }
+    JsonMemberAbsent => BlocksRead { blocks: [] }
+    JsonMemberDuplicated => BlocksUnreadable {
+      cause: "the chat message carries tool_calls more than once; refusing rather than reporting a round with no tool calls, which reads as a completed turn",
+    }
+    JsonMemberNotAnObject => BlocksUnreadable { cause: "the chat completion message is not a JSON object" }
   }
 }
 
@@ -742,8 +818,10 @@ fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> Har
             Absent => HarnessResponseUnreadable { cause: "chat completion carries no choices" }
             Present { value: choice } =>
               match harness_member_string(doc: choice, key: "finish_reason") {
-                Absent => HarnessResponseUnreadable { cause: "chat completion choice carries no finish_reason" }
-                Present { value: fr } =>
+                StringAbsent => HarnessResponseUnreadable { cause: "chat completion choice carries no finish_reason" }
+                StringMalformed { cause: c } =>
+                  HarnessResponseUnreadable { cause: join(["the chat completion finish_reason is unreadable: ", c], "") }
+                StringRead { value: fr } =>
                   match harness_chat_finish_reason(wire: fr) {
                     StopReasonUnrecognized { wire: w } =>
                       HarnessResponseUnreadable { cause: join(["chat completion carries an unrecognized finish_reason '", w, "'"], "") }
@@ -780,13 +858,14 @@ fn harness_decode_for_shape(unit: HarnessServingUnit, shape: HarnessWireShape, b
 // "reasoning" beside the guide's reasoning_content -- and a unit may expose none. Folding a LIST
 // rather than branching on an empty sentinel keeps "this unit has no alias" as an empty list, which
 // is the state itself rather than a string standing in for it.
-fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> String? {
+fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> HarnessStringRead {
   match keys.first() {
-    Absent => none
+    Absent => StringAbsent
     Present { value: k } =>
       match harness_member_string(doc: doc, key: k as String) {
-        Present { value: v } => Present { value: v }
-        Absent => harness_first_member_string(doc: doc, keys: keys.skip(n: 1))
+        StringRead { value: v } => StringRead { value: v }
+        StringMalformed { cause: c } => StringMalformed { cause: c }
+        StringAbsent => harness_first_member_string(doc: doc, keys: keys.skip(n: 1))
       }
   }
 }
