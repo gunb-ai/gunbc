@@ -596,6 +596,10 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_npm_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_sshpass_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.password_session_enrollment_walks_wet_without_crashing", operation: "Check", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.interpreter_dispatch_bijection_real_roster_witness_test.interpreter_dispatch_bijection_real_roster_red_holds", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_largest_protocol_schema_only", operation: "Check", ground: NoMockResponse {} },
@@ -634,6 +638,8 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_reaches_path_derived_verdict", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Empty {}
+  }
+  }
   }
   }
   }
@@ -909,6 +915,25 @@ fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// THE SEAT-LEDGER APPEND'S WET EVIDENCE, the third member of its enrollment triple beside the
+// WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule and the
+// LocalRepoWetLane row in gunbc.ci_layer_roots witness_exclusion_frontier. Each identity's first
+// host effect is shell.Mktemp.Dir, which declares no mock_response, so the hermetic route refuses
+// at Dir. That is READ FROM THE SOURCE, not yet from a floor run; floor_route_gap_expectation_mismatch
+// refuses a wrong operation or ground for an enrolled identity, so the first floor run checks it.
+fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric_event_log_append_real_execution.an_append_publishes_its_own_bytes_when_the_scratch_path_is_clobbered_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric_event_log_append_real_execution.a_path_routed_hash_under_the_same_clobber_publishes_the_empty_blob_red_control_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric_event_log_append_real_execution.two_appends_chain_oldest_first_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+}
+
 // The eight test.claim.materialization_store_local_wet_witness identities: the provider spine's
 // executed controls against a real filesystem (commit and read-back, corruption, wrong kind,
 // incomplete, a converging and a conflicting second writer, an unavailable store, a batch). Their
@@ -917,7 +942,7 @@ fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
 // v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // witness_exclusion_frontier row classifying the file LocalRepoWetLane. Each was executed wet and
 // held before these rows were written.
-fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
+fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.commit_then_read_back_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
@@ -946,7 +971,7 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Empty {} } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Empty {} } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

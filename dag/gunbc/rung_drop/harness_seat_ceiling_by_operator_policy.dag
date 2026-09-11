@@ -45,6 +45,16 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // a seat lease is granted only against a resolved layout read back from the incarnation that will
 // serve it, with the request's block cost computed from the whole group layout.
 //
+// AMENDED 2026-09-11 (manager ruling, bright-boar-435). The seat pool split into two pools, one per
+// co-tenancy class: a quality-sensitive pool whose ceiling is unchanged at one, and a quality-tolerant
+// pool whose ceiling is a declared per-route allocation. The population below grows by the tolerant
+// ceiling rather than the row being re-declared, because the subject is the same one -- a chosen count
+// standing where a derivation from the engine's resolved KV layout belongs -- and the SAME trigger
+// retires both. What the amendment deliberately does NOT do is lower the rung again: the tolerant
+// ceiling is never the only thing between an arrival and the engine, since admission takes the minimum
+// of it and the route's own present-tense capacity signal, and the quality ceiling it sits beside is
+// untouched.
+//
 // DECLARED 2026-09-06 under the operator's M5 ruling: remove max_num_seqs as the denominator now,
 // and do not replace it with a derived figure until that receipt exists.
 
@@ -63,7 +73,9 @@ data harness_seat_ceiling_by_operator_policy: RungDrop = RungDrop {
     reason: DeletedWithoutReplacement,
     population: [
     "gunbc.harness.harness_seat harness_interactive_quality_seats (the ceiling standing where a derived one belongs. It was the operator's interim count 3 when this row was declared; on 2026-09-07 it became 1 and changed KIND, from a guess at capacity to a product decision about interactive quality following the measured co-tenancy degradation. The drop is unchanged by that: capacity is still underived, and a quality ceiling that happens to sit below any real capacity is not a derivation of it)",
-    "gunbc.harness.harness_seat harness_seat_capacity (the SeatCeilingByQualityPolicy arm, which is the only arm that currently yields a pool for a serving group)",
+    "gunbc.harness.harness_seat harness_seat_capacity (the SeatCeilingByDeclaredPolicy arm, which is the only arm that currently yields a pool for a serving route)",
+    "gunbc.serving.serving_enrollment serving_pair_route_turn_ceiling (added 2026-09-11 with the co-tenancy class split: the quality-tolerant pool's ceiling on the pair route, a manager-attributed allocation of 4 standing where a derivation belongs. It is a SECOND underived ceiling and is declared here rather than beside the first, because the same restoration discharges both -- a resolved-layout receipt bound to a live incarnation sizes every class's pool. It is NOT the whole wall for that class: admission takes the minimum of this ceiling and the route's own capacity-reason queue, so the route can refuse under it at any moment, which is why the temporary rung is unchanged rather than lowered again)",
+    "gunbc.serving.serving_enrollment serving_canary_route_ceiling (the canary route's arm of the same question, which delegates to gunbc.spark.glm_canary_converge glm_canary_arm max_num_seqs -- itself an operator experimental bound carrying its own basis, so the underivation is inherited rather than introduced)",
     ],
     restoration_trigger: "a seat lease is granted only against a resolved KV layout read back from the engine incarnation that will serve the request: the layout receipt names allocator inventory, per-group block sizes, windows and the engine's own startup projections, it is bound to a live incarnation identity so a restart invalidates every prior grant, and the amount leased is the block cost of the admitted sequence envelope computed from the whole group layout rather than any single field. A layout observation that is not incarnation-bound does not discharge this row, because an unbound receipt lets a grant taken against one launch authorize a request against another",
   }

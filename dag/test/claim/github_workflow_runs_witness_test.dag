@@ -3,14 +3,22 @@ module test.claim.github_workflow_runs_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// event AND run_attempt ARE THE TWO REQUIRED FIELDS gunbc#10966 ADDED, answered rather than
+// stubbed: this sample carries an empty pull_requests embedding, so it is a push-event run, and
+// it carries one created_at and one updated_at with no re-run, so it is attempt 1. The three
+// optional fields gunbc#10966 added -- head_branch, actor, triggering_actor -- are omitted here
+// exactly as `path` already is, because this witness asks only about status and conclusion wire
+// labels and an invented login would be a fabricated observation rather than an absent one.
 data sample_run: WorkflowRun = WorkflowRun {
   id: 12345678
   name: "CI"
   head_sha: "abc123def456abc123def456abc123def456abc123"
+  event: "push"
   status: Completed
   conclusion: Present { value: extdeps.github.workflow_runs.Success }
   workflow_id: 987
   run_number: 42
+  run_attempt: 1
   html_url: "https://github.com/owner/repo/actions/runs/12345678"
   created_at: "2026-06-23T10:00:00Z"
   updated_at: "2026-06-23T10:15:00Z"

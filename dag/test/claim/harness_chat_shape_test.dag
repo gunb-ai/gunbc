@@ -4,15 +4,19 @@ import std.types { list_length, Bool, String, Int, List }
 import std.measure { TokenCount, token_count_value }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.llm.anthropic_messages_api { ToolUse, EndTurn, MaxTokens }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_wire {
   HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
   HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
   HarnessUsageRead, UsageRead, UsageUnreadable,
   harness_decode_response,
-  harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_address, harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, DeepseekV4FlashOnVllm }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+  harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_endpoint }
+import gunbc.serving.serving_enrollment {
+  serving_enrolled_groups, serving_enrolled_routes, serving_route_head,
+  ServingRouteResolved, ServingRouteUnresolved, serving_route_endpoint_wire,
+}
+import v2.std.optional { Present, Absent }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.harness.harness_turn {
   HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
@@ -111,40 +115,65 @@ test fn each_shape_posts_to_its_own_path() -> Bool {
     && harness_backend_path(shape: AnthropicMessagesShape) == "/v1/messages"
 }
 
-// The roster is DERIVED from the pair heads through the fleet topology: one address per serving
-// pair, every head carrying a LAN endpoint row, and the backend URL rendering on the engine port.
-// RED if a head loses its endpoint row (Unresolved) or the derivation drops a pair.
+// THE ROSTER IS DERIVED, NOT TRANSCRIBED -- MAIN'S REPAIR -- AND IT NOW DERIVES FROM THE RIGHT
+// AUTHORITY, WHICH IS THIS BRANCH'S. Two fixes met here and both are kept.
 //
-// THE TWO TRANSCRIBED ADDRESSES THAT USED TO BE HERE ARE DELETED, and their rot is the reason this
-// witness is worth reading. It asserted `count == 2` with the literals ".225" and ".236" against a
-// roster whose authority -- `gunbc.spark.pair_serving_desired` `spark_pair_serving_groups` -- now
-// carries ONE group. The assertion had been false for as long as that row has been a singleton and
-// nothing said so, because this module had no standing consumer to say it in (review 63385). IT
-// STILL HAS NONE, and saying otherwise here would read as coverage (review 63629): the
-// `gunbc.commit_workflow` `commit_gate_roster` row written for it was deleted once measured -- that
-// roster has no consumer on the required-CI path -- so this module runs only when a change touches
-// it, under the declared drop `gunbc.rung_drop` `required_gate_bankruptcy`. The receipt is
-// `gunbc.recurring_failure_mode` `unread_member_defaults_to_a_legal_value_of_its_domain`.
-// DESIGN section 6: name the
-// instrument, never transcribe its output. The count is read from the groups roster and each
-// address is joined against the head's own endpoint row, so a fleet move moves the witness with it.
+// MAIN'S HALF: the row used to assert `count == 2` against the literals ".225" and ".236", and those
+// literals rotted -- they had been false for as long as the convergence roster has been a singleton,
+// and nothing said so. The repair is to read the count from the roster and JOIN each address against
+// the head's own endpoint row, so a fleet move moves the witness with it (DESIGN section 6: name the
+// instrument, never transcribe its output).
+//
+// THIS BRANCH'S HALF: the roster it derived from was gunbc.spark.pair_serving_desired
+// spark_pair_serving_groups -- which answers "whose hosts do we claim", not "who may a turn be
+// offered to". Deriving honestly from the wrong authority is still the wrong answer, so the join is
+// against gunbc.serving.serving_enrollment, where both routes are enrolled.
+//
+// AND THE PORT IS PART OF THE JOIN RATHER THAN A CONSTANT. Main's version asserted ":30000" for every
+// address, which is true of the pair route and false of the canary; each route now renders its own
+// declared front door, so a regression back to one global port fails here.
+fn t_endpoints() -> List<String> {
+  flat_map(serving_enrolled_routes(), r => match r {
+    ServingRouteUnresolved { group: _, obligation: _ } => []
+    ServingRouteResolved { endpoint: e, ceiling: _ } => [serving_route_endpoint_wire(e: e) as String]
+  })
+}
+
+// EACH ENROLLED ROUTE'S HEAD, RESOLVED THROUGH THE FLEET TOPOLOGY. The join below is between these
+// and the addresses the routes actually carry, which is what makes the assertion a derivation rather
+// than a pair of literals: move a head's endpoint row and both sides move together.
+fn t_head_addresses() -> List<String> {
+  flat_map(serving_enrolled_groups, g => match host_lan_address(host: serving_route_head(group: g)) {
+    Present { value: h } => [h as String]
+    Absent => []
+  })
+}
+
+fn t_addresses() -> List<String> {
+  flat_map(serving_enrolled_routes(), r => match r {
+    ServingRouteUnresolved { group: _, obligation: _ } => []
+    ServingRouteResolved { endpoint: e, ceiling: _ } => [e.address as String]
+  })
+}
+
+// THE NAME IS KEPT DELIBERATELY. gunbc.roadmap.roadmap_authority cites this function BY NAME as the
+// execution contract and red control of a signed deliverable, so renaming it would break a citation
+// on a signed row -- and what it asserts is still what its name says: the routes a turn may be
+// offered to derive from the serving heads through the fleet topology, rather than being spelled.
+// What changed underneath is WHICH authority supplies the heads.
 test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
-  match harness_engine_replica_roster() {
-    HarnessReplicasUnresolved { hosts: _ } => false
-    HarnessReplicasResolved { addresses } =>
-      count(addresses) == count(spark_pair_serving_groups)
-        && count(addresses) > 0
-        && all(map(spark_pair_serving_groups, g => spark_pair_serving_head(group: g)), h =>
-             match host_lan_address(host: h) {
-               Present { value: a } => any(addresses, x => x == (a as String))
-               Absent => false
-             })
-        && all(addresses, a =>
-             string_contains(
-               s: harness_backend_url_for_address(shape: OpenAiChatCompletionsShape, address: a),
-               pattern: join(["http://", a, ":30000/v1/chat/completions"], ""),
-             ))
-  }
+  count(t_endpoints()) == count(serving_enrolled_groups)
+    && count(t_endpoints()) > 0
+    && all(t_addresses(), a => any(t_head_addresses(), h => h == a))
+    && all(t_endpoints(), e => any(serving_enrolled_routes(), r => match r {
+         ServingRouteUnresolved { group: _, obligation: _ } => false
+         ServingRouteResolved { endpoint: ep, ceiling: _ } =>
+           (serving_route_endpoint_wire(e: ep) as String) == e
+             && string_contains(
+                  s: harness_backend_url_for_endpoint(shape: OpenAiChatCompletionsShape, endpoint: ep),
+                  pattern: join(["http://", e, "/v1/chat/completions"], ""),
+                )
+       }))
 }
 
 

@@ -175,6 +175,14 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // too-small host produces an OOM kill and not a verdict -- which is `SelectedButNotExecuted`,
 // carrying no evidence in either direction.
 //
+// THREE SEAT-LEDGER APPEND MEMBERS (test.claim.fabric_event_log_append_real_execution). Their
+// effects are the local-repo kind this lane admits: a temp directory, two bare repositories inside
+// it, a symlink planted there, and git hash-object / push / fetch / cat-file between them, with no
+// network and nothing outside the directory. They are the enrolled evidence that the append hashes
+// the bytes it serialized rather than a shared scratch path. Measured wet through `gunbc run` over
+// this tree before scheduling: all three held against the repaired writer, and against the
+// pre-repair writer the claim went false while both controls held.
+//
 // THE ROWS NOW CARRY `WitnessIdentity` RATHER THAN A QUALIFIED STRING, and that removed a duplicated
 // fact rather than adding a field: every row's `identity` ended with "." plus its own `function`, so
 // the qualified name was authored twice per row and could disagree with itself. It is derived from
@@ -387,6 +395,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "observe_sshpass_wet_posix_command_v_check_does_not_crash" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "observe_sshpass_wet_posix_command_v_check_does_not_crash",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "password_session_enrollment_walks_wet_without_crashing" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "password_session_enrollment_walks_wet_without_crashing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_check_fixture", function: "clean_directory_passes_v1_rt_check" },
       entry: "dag/test/claim/self_host_logic_seed_unavailable_check_fixture_test.dag",
       function: "clean_directory_passes_v1_rt_check",
@@ -444,6 +464,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_with_true_left_removes_file" },
       entry: "dag/test/claim/eval_model_probe_test.dag",
       function: "and_with_true_left_removes_file",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_event_log_append_real_execution", function: "an_append_publishes_its_own_bytes_when_the_scratch_path_is_clobbered_by_real_execution" },
+      entry: "dag/test/claim/fabric_event_log_append_real_execution_witness_test.dag",
+      function: "an_append_publishes_its_own_bytes_when_the_scratch_path_is_clobbered_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_event_log_append_real_execution", function: "a_path_routed_hash_under_the_same_clobber_publishes_the_empty_blob_red_control_by_real_execution" },
+      entry: "dag/test/claim/fabric_event_log_append_real_execution_witness_test.dag",
+      function: "a_path_routed_hash_under_the_same_clobber_publishes_the_empty_blob_red_control_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_event_log_append_real_execution", function: "two_appends_chain_oldest_first_by_real_execution" },
+      entry: "dag/test/claim/fabric_event_log_append_real_execution_witness_test.dag",
+      function: "two_appends_chain_oldest_first_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
