@@ -1,0 +1,48 @@
+module gunbc.rung_drop.publication_subject_unobserved_privacy_placeholder
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// DECLARED 2026-09-11. A destination slug observes owner and name. Privacy and default branch
+// are GitHub facts. DestinationIdentity carries DestinationPrivacyUnobserved /
+// DestinationDefaultBranchUnobserved for a named destination, and destination_is_known_public
+// reads Unobserved as not known to be public. Spawn JSON writes privacy:unobserved. That
+// standing is the honest record.
+//
+// WHAT FELL. RoadmapPublicationSubject.repository is still extdeps.github.github.Repository,
+// whose private and default_branch fields are Bool and String with no unobserved arm. The
+// transport projection therefore materialises private:true and an empty default_branch into
+// a Repository a publication receipt will encode. That value is not an observation. A later
+// fold or a human reading the receipt will treat it as established. Destination standing holds
+// the guarantee; the projection re-opens a writable fabricated Bool in the one carrier receipts
+// already serialize.
+//
+// WHY THIS IS A DROP AND NOT AN ANNOTATION. An annotation on the fill function is readable only
+// by someone already there. DESIGN 4b(3) records a confined loss of a guarantee we otherwise
+// now hold: previous rung, temporary rung, reason, bounded population, restoration trigger.
+//
+// FILLING THE PLACEHOLDER WITH A DIFFERENT CONSTANT DOES NOT RETIRE THIS ROW.
+
+data publication_subject_unobserved_privacy_placeholder: RungDrop = RungDrop {
+  identity: "publication_subject_unobserved_privacy_placeholder" as NonEmptyStr,
+
+  subject: "RoadmapPublicationSubject.repository privacy and default_branch for a destination whose standing is Unobserved",
+
+  declared: "2026-09-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the publication subject representing unobserved privacy and default branch"
+    },
+    population: [
+      "gunbc.roadmap_dispatch_destination destination_github_repository_unobserved_fields",
+      "gunbc.roadmap_dispatch_destination destination_github_repository (the DestinationPrivacyUnobserved arm and the DestinationDefaultBranchUnobserved arm, which call that fill)",
+    ],
+    restoration_trigger: "THE PUBLICATION SUBJECT CAN REPRESENT AN UNOBSERVED PRIVACY STANDING AND AN UNOBSERVED DEFAULT BRANCH. Either this path observes those fields via the GitHub repository API, or RoadmapPublicationSubject and the receipt JSON that encodes it carry privacy and default-branch as observed coproducts, so a receipt cannot present Unobserved as private:true or as a concrete default_branch. WHAT THIS IS SUFFICIENT FOR: a publication receipt about a named destination whose DestinationIdentity standing is Unobserved does not encode those fields as established GitHub Repository facts. Filling destination_github_repository_unobserved_fields with a different constant — including private:false or a copied default branch — does not satisfy this trigger. Changing the GitHub Repository type in extdeps without the publication subject and its receipt JSON carrying the coproduct (or an observation on this path) does not satisfy it either",
+  }
+}

@@ -68,20 +68,12 @@ fn destination_is_known_public(identity: DestinationIdentity) -> Bool {
   }
 }
 
-// RoadmapPublicationSubject.repository is still extdeps.github.github.Repository, whose
-// private and default_branch fields are Bool and String with no unobserved arm. Owner and
-// name on a named destination ARE observed from the slug. Privacy and default branch are not.
-// destination_is_known_public reads Unobserved as not known to be public — the safety
-// decision — and must not be confused with minting private:true as a world fact.
-//
-// THIS PROJECTION STILL FILLS Repository.private = true AND default_branch = "" when those
-// standings are Unobserved, because the publication receipt JSON requires those members
-// today. That fill is a transport placeholder, not an observation. Do not flip the Bool to
-// false: an unobserved private:false would treat the destination as publishable-in-the-open.
-// TRIGGER: this path observes the destination via the GitHub repository API, OR
-// RoadmapPublicationSubject (and publication_repository_json / publication_repository_decode)
-// carry privacy and default_branch as observed coproducts so a receipt cannot say
-// private:true / default_branch:"" when the standing is Unobserved.
+// DECLARED DROP: gunbc.rung_drop publication_subject_unobserved_privacy_placeholder.
+// Owner and name on a named destination ARE observed from the slug. Privacy and default
+// branch are not. destination_is_known_public reads Unobserved as not known to be public.
+// This projection still fills Repository.private = true and default_branch = "" because
+// RoadmapPublicationSubject.repository cannot represent Unobserved. That fill is not an
+// observation. Do not flip the Bool to false. The drop, not this comment, is the record.
 
 fn destination_github_repository(identity: DestinationIdentity) -> Repository {
   match identity.privacy {
