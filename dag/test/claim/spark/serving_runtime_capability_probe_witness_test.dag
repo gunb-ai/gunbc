@@ -13,9 +13,11 @@ import gunbc.spark.runtime_architecture_registry_reading {
 }
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
 import gunbc.spark.serving_runtime_capability_probe {
-  RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4KvCacheKernels,
+  RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, MlaKvCacheLayoutAdmitted,
   Csa2CompressorKernels, DSparkSpeculator,
   KernelProbeOutcome, KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused,
+  KernelProbeSymbolUngrounded, CapabilityProbeSymbol, ProbeSymbolGrounded, ProbeSymbolAwaitingRoster,
+  v41_unprobed_capabilities, v41_missing_capabilities,
   runtime_kernel_capability_label,
   V41RuntimeVerdict, V41RuntimeAdmissible, V41RuntimeMissing, V41RuntimeIncompletelyProbed,
   RuntimeCandidateDisposition, CandidateProbed, CandidateNotProbed,
@@ -74,16 +76,56 @@ test fn no_probed_image_admits_deepseek_v41_on_this_compute_capability() -> Bool
   length(v41_admissible_images(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates)) == 0
 }
 
-// THE VERDICT FOR THE PRODUCTION IMAGE NAMES EVERY REQUIRED CAPABILITY AS MISSING, which is a
-// different claim from "not admissible" and is the one that says what a replacement must supply.
-test fn the_production_image_is_missing_every_capability_v41_requires() -> Bool {
-  match v41_runtime_verdict(
-    rows: v41_sm121_capability_probe_rows(),
-    image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
-  ) {
+// THE VERDICT FOR THE PRODUCTION IMAGE NAMES THE CAPABILITIES THAT WERE MEASURED MISSING, and it is
+// deliberately NOT all five. Four were asked with symbols that exist upstream and came back absent;
+// the FP4 KV-cache question was asked with names that are not registered ops, so it measured nothing
+// and is unprobed. An earlier revision of this witness asserted all five were missing and passed,
+// which is what a blind instrument buys you: a confident count over one reading that was never taken.
+test fn the_production_image_is_missing_the_four_capabilities_that_were_actually_asked() -> Bool {
+  let rows = v41_sm121_capability_probe_rows()
+  let image = sparkrun_vllm_ds4_gb10_pinned_reference()
+  let missing = v41_missing_capabilities(rows: rows, image_reference: image)
+  let unprobed = v41_unprobed_capabilities(rows: rows, image_reference: image)
+  match v41_runtime_verdict(rows: rows, image_reference: image) {
     V41RuntimeAdmissible { image_reference: _ } => false
     V41RuntimeIncompletelyProbed { image_reference: _, unprobed: _ } => false
-    V41RuntimeMissing { image_reference: _, missing: m } => length(m) == length(v41_required_capabilities)
+    V41RuntimeMissing { image_reference: _, missing: m } =>
+      length(m) == 4
+        && length(missing) + length(unprobed) == length(v41_required_capabilities)
+        && any(unprobed, u => u as String == "mla-kv-cache-layout-admitted")
+        && !any(missing, x => x as String == "mla-kv-cache-layout-admitted")
+  }
+}
+
+// AN UNGROUNDED SYMBOL MUST NEVER READ AS A MEASURED ABSENCE. This is the wall over the defect that
+// produced this revision: the fold that answers "what is missing" and the fold that answers "what
+// was never really asked" must disagree about this capability, on every image where it was asked
+// with a name that cannot exist. If someone re-types those rows back to KernelObservedAbsent to make
+// a count tidy, this goes red.
+test fn a_capability_asked_with_an_unauthored_symbol_is_unprobed_and_never_missing() -> Bool {
+  all(v41_sm121_capability_probe_rows(), r =>
+    match r.outcome {
+      KernelProbeSymbolUngrounded { roster: ro, defect: d } =>
+        length(ro as String) != 0
+          && length(d as String) != 0
+          && any(v41_unprobed_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: r.image.image_reference),
+                 u => u as String == runtime_kernel_capability_label(c: r.capability))
+          && !any(v41_missing_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: r.image.image_reference),
+                  x => x as String == runtime_kernel_capability_label(c: r.capability))
+      KernelObservedPresent { symbol: _ } => true
+      KernelObservedAbsent { symbol: _ } => true
+      KernelProbeRefused { reason: _ } => true
+    })
+}
+
+// AND THE OBLIGATION MUST NOT HAND THE BUILD LANE A SYMBOL WE INVENTED. The capability whose roster
+// has not landed carries a frontier naming that roster, not a corrected spelling of our own: one
+// upstream name, one home.
+test fn the_capability_without_a_landed_roster_carries_a_frontier_not_a_spelling() -> Bool {
+  match v41_capability_probe_symbol(c: MlaKvCacheLayoutAdmitted) {
+    ProbeSymbolGrounded { symbol: _ } => false
+    ProbeSymbolAwaitingRoster { roster: ro, trigger: t } =>
+      ro as String == "extdeps.vllm.deepseek_v4_1_sm12" && length(t as String) != 0
   }
 }
 
@@ -102,6 +144,7 @@ test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> B
         KernelProbeRefused { reason: _ } => true
         KernelObservedPresent { symbol: _ } => false
         KernelObservedAbsent { symbol: _ } => false
+        KernelProbeSymbolUngrounded { roster: _, defect: _ } => false
       }
   }
 }
@@ -116,7 +159,10 @@ test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool 
          any(v41_sm121_build_obligation.required, r =>
            runtime_kernel_capability_label(c: r) == runtime_kernel_capability_label(c: c)))
     && all(v41_sm121_build_obligation.required, r =>
-         length(v41_capability_probe_symbol(c: r) as String) != 0)
+         match v41_capability_probe_symbol(c: r) {
+           ProbeSymbolGrounded { symbol: sym } => length(sym as String) != 0
+           ProbeSymbolAwaitingRoster { roster: ro, trigger: _ } => length(ro as String) != 0
+         })
 }
 
 // EVERY IMAGE THE ROSTER CALLS PROBED HAS A READING WITH A HOST AND A DATE ON IT. This is the join
