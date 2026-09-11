@@ -1,0 +1,149 @@
+module test.claim.realization_cost_fidelity_witness
+
+// EVERY ARM OF THE JOIN, EXERCISED. The authority's whole point is that both directions of a
+// cost divergence become sayable, so a witness that only proved the preserved arm would certify
+// the silence the authority exists to break.
+import std.realization_cost_fidelity {
+  CostShapePreserved,
+  RealizationCostFact,
+  RealizationCostFactHasNoModeledCost,
+  RealizationCostUnknown,
+  RealizationFasterThanModeled,
+  RealizationSlowerThanModeled,
+  compare_cost_shapes,
+  count_cost_fidelity_findings,
+  count_cost_fidelity_unmeasured,
+  realization_cost_fact_violation,
+  realization_cost_fidelity_rows,
+}
+import std.algebra { ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody }
+import std.primitive_identity {
+  EmitRust,
+  InterpreterHost,
+  PrimitiveCostFact,
+  primitive_fold_list,
+  primitive_index_by,
+  primitive_map_keys,
+}
+import std.optional { Absent, Present }
+import std.types { Bool, List }
+
+data modeled_linear: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_map_keys,
+  cost: ShapeLinearScan,
+}
+
+data modeled_iterate: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_fold_list,
+  cost: ShapeIterateBody,
+}
+
+test fn cost_fidelity_slower_direction_is_reported() -> Bool {
+  match compare_cost_shapes(modeled: ShapeLinearScan, realized: ShapeSortBody) {
+    RealizationSlowerThanModeled => true
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationCostUnknown => false
+  }
+}
+
+// THE FAST DIRECTION IS A FINDING TOO: a realization faster than its model means the model is
+// stale, and every consumer that planned against the declared shape planned against a dead fact.
+test fn cost_fidelity_faster_direction_is_reported() -> Bool {
+  match compare_cost_shapes(modeled: ShapeSortBody, realized: ShapeConstant) {
+    RealizationFasterThanModeled => true
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationCostUnknown => false
+  }
+}
+
+// Equal growth rank across two different shapes is PRESERVED and says so, because the difference
+// between a linear scan and a linear iterate-body is the per-element body, which CostShape does
+// not quantify. The row still carries both shapes, so nothing is destroyed by the verdict.
+test fn cost_fidelity_equal_rank_across_shapes_is_preserved() -> Bool {
+  match compare_cost_shapes(modeled: ShapeLinearScan, realized: ShapeIterateBody) {
+    CostShapePreserved => true
+    RealizationSlowerThanModeled => false
+    RealizationFasterThanModeled => false
+    RealizationCostUnknown => false
+  }
+}
+
+// A MISSING REALIZATION FACT IS THE ONLY DOOR INTO Unknown. A comparison never lands there, so an
+// unmeasured operation can never be read as a measured-and-clean one.
+test fn unmeasured_realization_is_unknown_and_counted() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [modeled_linear, modeled_iterate],
+    target: EmitRust,
+    facts: [],
+  )
+  count_cost_fidelity_unmeasured(rows: rows) == 2
+    && count_cost_fidelity_findings(rows: rows) == 0
+}
+
+test fn measured_rows_carry_both_shapes_and_their_verdict() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [modeled_linear, modeled_iterate],
+    target: InterpreterHost,
+    facts: [
+      RealizationCostFact {
+        primitive: primitive_map_keys,
+        target: InterpreterHost,
+        cost: ShapeSortBody,
+      },
+    ],
+  )
+  count_cost_fidelity_findings(rows: rows) == 1 && count_cost_fidelity_unmeasured(rows: rows) == 1
+}
+
+// A realization fact for a target is not a fact about another target: keying on the pair is what
+// lets one target regress without silently restating another's answer.
+test fn realization_fact_does_not_cross_targets() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [modeled_linear],
+    target: EmitRust,
+    facts: [
+      RealizationCostFact {
+        primitive: primitive_map_keys,
+        target: InterpreterHost,
+        cost: ShapeSortBody,
+      },
+    ],
+  )
+  count_cost_fidelity_unmeasured(rows: rows) == 1 && count_cost_fidelity_findings(rows: rows) == 0
+}
+
+// The other direction of the join: a realized fact naming an operation no model prices refuses by
+// name rather than being dropped from the population.
+test fn realization_fact_without_a_modeled_cost_refuses() -> Bool {
+  match realization_cost_fact_violation(
+    fact: RealizationCostFact {
+      primitive: primitive_index_by,
+      target: EmitRust,
+      cost: ShapeConstant,
+    },
+    modeled: [modeled_linear],
+  ) {
+    Present { value: v } =>
+      match v {
+        RealizationCostFactHasNoModeledCost { target: _ } => true
+        RealizationCostFactDuplicated { target: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn realization_fact_with_a_modeled_cost_does_not_refuse() -> Bool {
+  match realization_cost_fact_violation(
+    fact: RealizationCostFact {
+      primitive: primitive_map_keys,
+      target: EmitRust,
+      cost: ShapeConstant,
+    },
+    modeled: [modeled_linear],
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

@@ -1,0 +1,246 @@
+module std.realization_cost_fidelity
+
+import std.algebra {
+  CostShape,
+  ShapeConstant,
+  ShapeIterateBody,
+  ShapeLinearScan,
+  ShapeSortBody,
+}
+import std.primitive_identity {
+  PrimitiveCostFact,
+  RealizationTarget,
+  primitive_identity_eq,
+}
+import std.primitive_projection { PrimitiveIdentity }
+import std.types { Bool, Int, List, String }
+import std.optional { Optional, Present, Absent }
+import std.algebra { Cons, Empty, fold_list, list_reverse }
+
+// THE MODELED COST AND THE REALIZED COST ARE TWO FACTS, AND NOTHING JOINED THEM.
+//
+// std.primitive_identity already carries one half: PrimitiveCostFact says what growth shape the
+// MODEL claims for an operation. The other half is a fact about a chosen realization, and the
+// place a realization is chosen is PrimitiveRealization — primitive, target, handler. Between them
+// sat nothing, so a declared O(n) could be realized O(n^2), or a declared O(n) realized O(1), and
+// neither direction had a carrier able to state it. That gap is the compile-obligation census's
+// one row WITHOUT A HOME, and this module is its home.
+//
+// WHY IT IS HERE AND NOT IN THE LENS. A lens reads a tree and judges the SOURCE. Whether an
+// emitted or interpreted realization preserves the cost shape its model declares is a fact about
+// the realization, joined at the identity the realization was selected under; putting it in the
+// complexity lens would make the lens the authority on a fact it cannot see, and would fork
+// PrimitiveRealization's own join (DESIGN sections 3, 3b).
+//
+// WHY IT IS NOT ProjectionFidelity. std.primitive_projection already carries a fidelity axis —
+// HostRealizedSeam | ModeledProjection | DivergentProjection — and it answers a different
+// question: WHETHER the host realizes the modeled operation at all. This axis answers, given that
+// it does, whether the realization's growth shape is the one the model declared. Two axes over one
+// identity, deliberately not collapsed: a faithfully projected operation can be realized at the
+// wrong cost, and an unprojected one has no cost fidelity to speak of.
+
+// BOTH DIRECTIONS ARE FINDINGS, and the fast direction is the one that would otherwise go
+// unreported. A realization FASTER than its model is not good news to be discarded: it means the
+// model is stale, and every consumer that planned against the declared shape planned against a
+// fact that is no longer true — which is how a cost authority rots without anyone editing it.
+type CostFidelity
+  = CostShapePreserved
+  | RealizationSlowerThanModeled
+  | RealizationFasterThanModeled
+  | RealizationCostUnknown
+
+// The realized half of the join: what growth shape a NAMED target's realization of this primitive
+// actually has. It is a separate carrier from PrimitiveCostFact rather than a field on it because
+// one model has N realizations, and a row per (primitive, target) is what lets one target regress
+// without silently restating another's fact.
+type RealizationCostFact {
+  primitive: PrimitiveIdentity
+  target: RealizationTarget
+  cost: CostShape
+}
+
+// THE COMPARISON IS OVER THE GROWTH RANK THE SHAPE DENOTES, and the row carries BOTH shapes so the
+// rank never stands in for them. ShapeLinearScan and ShapeIterateBody are both linear in the
+// collection and differ in the per-element body, which is a factor CostShape does not quantify at
+// all; ranking them equal states exactly that, and a reader who needs the distinction reads the two
+// shapes the row still carries. Inventing a third verdict for a difference the vocabulary cannot
+// express would be a fact the carrier does not have.
+fn cost_shape_rank(shape: CostShape) -> Int {
+  match shape {
+    ShapeConstant => 0
+    ShapeLinearScan => 1
+    ShapeIterateBody => 1
+    ShapeSortBody => 2
+  }
+}
+
+// RealizationCostUnknown IS IGNORANCE AND NOTHING ELSE. It is reachable only from a MISSING
+// realization fact — never as the answer to a comparison the ranks could not decide. Resolving an
+// undecided comparison to Unknown is the absorbing fallback DESIGN section 5 forbids: it would read
+// as "measured, nothing to report" while meaning "not measured", and the deficit would stop being
+// countable. Every pair of ranks is decided, so the only door into Unknown is absence.
+fn compare_cost_shapes(modeled: CostShape, realized: CostShape) -> CostFidelity {
+  let modeled_rank = cost_shape_rank(shape: modeled)
+  let realized_rank = cost_shape_rank(shape: realized)
+  if realized_rank > modeled_rank {
+    RealizationSlowerThanModeled
+  } else {
+    if realized_rank < modeled_rank {
+      RealizationFasterThanModeled
+    } else {
+      CostShapePreserved
+    }
+  }
+}
+
+type RealizationCostFidelityRow {
+  primitive: PrimitiveIdentity
+  target: RealizationTarget
+  modeled: CostShape
+  realized: Optional<CostShape>
+  fidelity: CostFidelity
+}
+
+// A realization fact naming a primitive no model declares is not a row and not a skip: it is the
+// other direction of the same join failing, and it refuses by name. Dropping it would shrink the
+// denominator by exactly the rows most likely to be mis-homed.
+type RealizationCostJoinViolation
+  = RealizationCostFactHasNoModeledCost { target: RealizationTarget }
+  | RealizationCostFactDuplicated { target: RealizationTarget }
+
+fn realization_target_eq(left: RealizationTarget, right: RealizationTarget) -> Bool {
+  cost_realization_target_slug(target: left) == cost_realization_target_slug(target: right)
+}
+
+fn cost_realization_target_slug(target: RealizationTarget) -> String {
+  match target {
+    InterpreterHost => "interpreter_host"
+    EmitRust => "emit_rust"
+    EmitTypeScript => "emit_typescript"
+  }
+}
+
+fn realization_cost_for(
+  facts: List<RealizationCostFact>,
+  primitive: PrimitiveIdentity,
+  target: RealizationTarget,
+) -> Optional<CostShape> {
+  fold_list(
+    xs: facts,
+    empty: Absent,
+    cons: fn(acc, fact) {
+      match acc {
+        Present { value: c } => Present { value: c }
+        Absent =>
+          if primitive_identity_eq(left: fact.primitive, right: primitive)
+            && realization_target_eq(left: fact.target, right: target) {
+            Present { value: fact.cost }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn realization_cost_fidelity_row(
+  modeled: PrimitiveCostFact,
+  target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+) -> RealizationCostFidelityRow {
+  let realized = realization_cost_for(facts: facts, primitive: modeled.primitive, target: target)
+  RealizationCostFidelityRow {
+    primitive: modeled.primitive,
+    target: target,
+    modeled: modeled.cost,
+    realized: realized,
+    fidelity: match realized {
+      Absent => RealizationCostUnknown
+      Present { value: r } => compare_cost_shapes(modeled: modeled.cost, realized: r)
+    },
+  }
+}
+
+// ONE ROW PER MODELED COST AT THE NAMED TARGET, INCLUDING THE UNMEASURED ONES. An operation whose
+// realization has never been measured is carried as RealizationCostUnknown rather than omitted,
+// because an omitted row and a preserved row are indistinguishable in a count, and the unmeasured
+// set IS the coverage obligation this authority exists to make countable.
+fn realization_cost_fidelity_rows(
+  modeled: List<PrimitiveCostFact>,
+  target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+) -> List<RealizationCostFidelityRow> {
+  list_reverse(xs: fold_list(
+    xs: modeled,
+    empty: Empty,
+    cons: fn(acc, m) {
+      Cons { head: realization_cost_fidelity_row(modeled: m, target: target, facts: facts), tail: acc }
+    }
+  ))
+}
+
+fn modeled_cost_for(
+  modeled: List<PrimitiveCostFact>,
+  primitive: PrimitiveIdentity,
+) -> Optional<CostShape> {
+  fold_list(
+    xs: modeled,
+    empty: Absent,
+    cons: fn(acc, m) {
+      match acc {
+        Present { value: c } => Present { value: c }
+        Absent =>
+          if primitive_identity_eq(left: m.primitive, right: primitive) {
+            Present { value: m.cost }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn realization_cost_fact_violation(
+  fact: RealizationCostFact,
+  modeled: List<PrimitiveCostFact>,
+) -> Optional<RealizationCostJoinViolation> {
+  match modeled_cost_for(modeled: modeled, primitive: fact.primitive) {
+    Present { value: _ } => Absent
+    Absent =>
+      Present {
+        value: RealizationCostFactHasNoModeledCost { target: fact.target }
+      }
+  }
+}
+
+fn cost_fidelity_is_finding(fidelity: CostFidelity) -> Bool {
+  match fidelity {
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => true
+    RealizationFasterThanModeled => true
+    RealizationCostUnknown => false
+  }
+}
+
+fn count_cost_fidelity_findings(rows: List<RealizationCostFidelityRow>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(acc, row) { if cost_fidelity_is_finding(fidelity: row.fidelity) { acc + 1 } else { acc } }
+  )
+}
+
+fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(acc, row) {
+      match row.fidelity {
+        RealizationCostUnknown => acc + 1
+        CostShapePreserved => acc
+        RealizationSlowerThanModeled => acc
+        RealizationFasterThanModeled => acc
+      }
+    }
+  )
+}

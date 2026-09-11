@@ -266,12 +266,29 @@ data undecidable_verdict_collapse_lens: CompileLens = CompileLens {
   gate: undecidable_verdict_collapse_root_gate
 }
 
-data required_lens_grain_note: String = "Two required-roster grains, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). always_required_lenses runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling — each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). always_required_root_lenses runs ONCE at the tree root — the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). Witness accumulation on the subtree fold uses prepend-then-reverse, not append-in-step. Root-required lenses fire on every validate_then_compile call regardless of caller-supplied lenses, exactly like the subtree roster."
+data required_lens_grain_note: String = "Two registered grains, one roster, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). A CompileLensSubtree registration runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling, lifecycle_carrier -- each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). A CompileLensRoot registration runs ONCE at the tree root -- the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). The grain is a FIELD on the registration and required_lenses_at_grain derives each execution's list from the one roster, so this cost argument is carried by the row rather than by which of two lists a lens was written into. Witness accumulation on the subtree fold uses prepend-then-reverse, not append-in-step. Required registrations at both grains fire on every validate_then_compile call regardless of caller-supplied lenses, and a caller-supplied lens now runs at ITS OWN declared grain rather than at root whatever it declared."
 
 // THE SINGLE REGISTRATION ROSTER. Every lens the compile door is obliged to run is a row here, at
 // the grain it is legitimate at; the two execution sites derive their lists from this one roster
 // through required_lenses_at_grain. Adding a lens is one row, and the row is what the coverage
 // join, the roster digest and (downstream) the obligation census all key on.
+//
+// WHAT IS NOT ELIGIBLE FOR A ROW, carried forward verbatim in force from the two-list form this
+// roster replaced, because the prohibition is about the DOOR and not about which list held it.
+// lens_module_gate was DE-ENROLLED from the root grain (census follow-on to run 29892063728
+// receipts): its compile_gate wrapper discarded the tree argument and ran the nullary corpus scan
+// lens_module_gate_blocking_holds - a live walk of src/v2/lens on every compile, making every
+// compile-importing entry reach a live-read carrier and putting 31 SubstrateInputsOnly witness
+// stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement was NOT reduced: the
+// invariant executes per-PR via its honestly-stamped consumer
+// v2.test.claim.enforcement.lens_module_gate_witness (live_tree_disposition: ReadsLiveTree, never
+// predict-skips), which reds the floor when registry completeness breaks.
+// SO THE ELIGIBILITY RULE, stated because "adding a lens is one row" would otherwise read as an
+// invitation to the exact regression: a row here must be a PURE FOLD OVER THE TREE BEING COMPILED
+// at its declared grain. A nullary gate, a corpus scan, or any gate that reads the live tree rather
+// than its InferredTree argument is not eligible at either grain - a corpus-grain invariant enrolls
+// on the corpus cadence with a ReadsLiveTree stamp, never in the per-tree door, and re-registering
+// one here re-opens the census class.
 fn required_compile_lens_roster() -> List<CompileLens> {
   [
     fact_density_lens,
