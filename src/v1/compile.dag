@@ -1178,8 +1178,12 @@ type CensusFillParse {
 // consumer. Fusing the tokenize into the fold frees each module's tokens before the next is read,
 // which is DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape:
 // the same work, the same order, the same results, held for the interval it is actually used.
-// Measured on `--entry src/v2/workflow/floor2_prepared_subject.dag --source-root dag
-// --source-root src/v2`: VmHWM 10,006,804 KiB -> 8,986,140 KiB and wall ~230s -> 153s.
+// The instrument that re-derives the size of this term, rather than a number copied out of it
+// (DESIGN §6): `gunbc compile --source-root dag --source-root src/v2 --entry
+// src/v2/workflow/floor2_prepared_subject.dag --output-dir <dir> --target dag`, reading VmHWM
+// from /proc/<pid>/status while it runs. The entry is chosen because its reference-derived
+// closure is a handful of files while the census population is the whole pool, so peak RSS there
+// is dominated by this fold rather than by the closure being compiled.
 //
 // THE PRE-INTERN PASS DISSOLVES WITH `prepared`, and that is a consequence rather than a
 // separate decision: it existed only because the token lists were already all in hand. Interning
