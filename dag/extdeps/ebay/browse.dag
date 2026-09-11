@@ -1,6 +1,8 @@
 module extdeps.ebay.browse
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.measure { MoneyAmountMicro, money_amount_micro_count }
+import std.decimal { fixed_point_wire }
 import v2.std.algebra { filter, fold_list }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -101,13 +103,14 @@ data browse_search_limit_max: Int = 200
 
 data browse_search_result_window: Int = 10000
 
-// upstream schema ConvertedAmount. `value` is the decimal string the API returns; `currency` is
-// the ISO 4217 alphabetic code, decoded by extdeps.currency.currency.
+// upstream schema ConvertedAmount: the Sell scope's Amount (extdeps.ebay.inventory EbayAmount,
+// the same decimal-string value and CurrencyCode currency) plus the pre-conversion pair Buy adds
+// when it converts a listing's price into the marketplace currency.
 type BrowseConvertedAmount {
   value: String
-  currency: String
+  currency: CurrencyCode
   convertedFromValue: String?
-  convertedFromCurrency: String?
+  convertedFromCurrency: CurrencyCode?
 }
 
 // upstream schema Image.
@@ -408,9 +411,11 @@ fn browse_condition_id(c: ConditionEnum) -> Int? {
 // a multi-valued field is "{a|b}". The price field "must be used with the priceCurrency filter",
 // so the one variant renders both and a price without a currency cannot be written. buyingOptions
 // shares its FIXED_PRICE and AUCTION tokens with FormatTypeEnum's wire; BEST_OFFER and
-// CLASSIFIED_AD have no variant until a consumer filters on them.
+// CLASSIFIED_AD have no variant until a consumer filters on them. The upstream notes buyingOptions
+// "is defined at the leaf category level and should be used with a leaf category ID"; search takes
+// no category_ids input here until a consumer carries a cited leaf category.
 type BrowseSearchFilter
-  = BrowsePriceAtMost { max: NonEmptyStr, currency: CurrencyCode }
+  = BrowsePriceAtMost { max: MoneyAmountMicro, currency: CurrencyCode }
   | BrowseBuyingOptionsAnyOf { formats: List<FormatTypeEnum> }
   | BrowseConditionAnyOf { conditions: List<ConditionEnum> }
   | BrowseDeliveryCountry { country: NonEmptyStr }
@@ -427,7 +432,7 @@ fn browse_filter_value_set(values: List<String>) -> String {
 fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
   match f {
     BrowsePriceAtMost { max: m, currency: c } => BrowseFilterRendered {
-      param: join(["price:[..", m as String, "],priceCurrency:", currency_alphabetic_code(c: c)], "")
+      param: join(["price:[..", fixed_point_wire(value: money_amount_micro_count(m: m), decimals: 6), "],priceCurrency:", currency_alphabetic_code(c: c)], "")
     }
     BrowseBuyingOptionsAnyOf { formats: fs } => if length(fs) == 0 {
       BrowseFilterEmptyValueSet { field: "buyingOptions" }
@@ -508,7 +513,6 @@ service ebay.Browse {
       marketplace_id: NonEmptyStr
       end_user_ctx: String
       q: NonEmptyStr
-      category_ids: String
       filter: String
       limit: Int = browse_search_limit_max
       offset: Int = 0
@@ -521,7 +525,7 @@ service ebay.Browse {
       method: GET,
       path: "/buy/browse/v1/item_summary/search",
       headers: { "X-EBAY-C-MARKETPLACE-ID": marketplace_id, "X-EBAY-C-ENDUSERCTX": end_user_ctx },
-      query: { q: q, category_ids: category_ids, filter: filter, limit: limit, offset: offset }
+      query: { q: q, filter: filter, limit: limit, offset: offset }
     }
     response {
       200 => BrowseSearchPagedCollection

@@ -45,12 +45,6 @@ fn currency_alphabetic_code(c: CurrencyCode) -> String {
   }
 }
 
-fn parse_currency_alphabetic_code(raw: String) -> CurrencyCode? {
-  if raw == "EUR" { Present { value: Eur } }
-  else if raw == "USD" { Present { value: Usd } }
-  else { none }
-}
-
 fn currency_code_eq(a: CurrencyCode, b: CurrencyCode) -> Bool {
   currency_numeric_code(c: a) == currency_numeric_code(c: b)
 }

@@ -17,6 +17,14 @@ fn w_all_limits() -> List<UpstreamRateLimit> {
   concat(concat(concat(github_rate_limits, gcp_rate_limits), ebay_rate_limits), [anthropic_messages_rate_limit, openai_chat_rate_limit])
 }
 
+data w_expected_scope_keys: List<String> = [
+  "github-core",
+  "gcp-iam_credentials", "gcp-iam_admin", "gcp-service_usage", "gcp-secret_manager", "gcp-sts",
+  "ebay-oauth", "ebay-sell_inventory", "ebay-buy_browse",
+  "anthropic-messages",
+  "openai-chat"
+]
+
 fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
   match pool_reading_at(pool: p, at: at) {
     PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } => h.count
@@ -24,14 +32,15 @@ fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
   }
 }
 
-// ELEVEN SCOPES, EACH ITS OWN POOL, EACH NAMED ONCE: the seventeen annotations collapsed to ten typed
-// rows because eight GitHub services drew from one core pool, and eBay's Buy Browse scope added
-// the eleventh. Keys are distinct, the pool
+// EVERY SCOPE ITS OWN POOL, EACH NAMED ONCE: the seventeen annotations collapsed to typed rows
+// because eight GitHub services drew from one core pool. The roster is an IDENTITY join against
+// the scopes each upstream module publishes, in both directions, not a count. Keys are distinct, the pool
 // ceiling is the published count, and the period is the published period in seconds.
 test fn every_upstream_scope_is_one_pool_with_the_published_ceiling_and_period() -> Bool {
   let limits = w_all_limits()
   let keys = map(limits, l => upstream_rate_limit_key(l: l) as String)
-  length(limits) == 11
+  all(w_expected_scope_keys, k => length(filter(keys, x => x == k)) == 1)
+    && all(keys, k => length(filter(w_expected_scope_keys, x => x == k)) == 1)
     && all(keys, k => length(filter(keys, x => x == k)) == 1)
     && all(limits, l =>
          (quota_partition(limit: l) as String) == join(["quota-", upstream_rate_limit_key(l: l) as String], "")
