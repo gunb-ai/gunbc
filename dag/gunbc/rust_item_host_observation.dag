@@ -996,13 +996,8 @@ fn rust_paths_from_nul(raw: String) -> List<String> {
 // population including it would answer a question no roster row can ask. The ADDITION population is
 // not narrowed: the change observation scans whatever the diff names, and an added item under an
 // unclaimed tree REFUSES at the join rather than being skipped here.
-fn live_hand_rust_candidate_paths(tracked_paths: List<String>) -> List<String> {
-  filter(
-    xs: tracked_paths,
-    predicate: fn(path) {
-      length(xs: rust_namespace_row_for_path(repo_path: path)) > 0
-    }
-  )
+fn path_is_on_claimed_hand_rust_surface(path: String) -> Bool {
+  length(xs: rust_namespace_row_for_path(repo_path: path)) > 0
 }
 
 // THE HEAD SOURCES, READ ONCE PER CALLER AND SELECTED BY A CALLER-SUPPLIED PREDICATE. Two live
@@ -1035,32 +1030,49 @@ fn head_rust_sources(select: fn(String) -> Bool) -> HeadRustSources {
               detail
             )
           }
-        GeneratedPopulationObserved { repo_paths: generated_repo_paths } =>
-          HeadRustSourcesRead {
-            generated_repo_paths: generated_repo_paths,
-            sources: list_map(
-              xs: filter(xs: rust_paths_from_nul(raw: tree.paths_nul), predicate: select),
-              f: fn(path) {
-                let show = git.Core.Show(ref: revision as GitRef, path: path, expect: ExpectSuccess)
-                RustFileChangeInput {
-                  repo_path: path,
-                  base_content: "",
-                  head_content: show.content,
-                  present_at_base: false,
-                  present_at_head: show.success,
-                  old_ranges: [],
-                  new_ranges: []
-                }
+        GeneratedPopulationObserved { repo_paths: generated_repo_paths } => {
+          let sources = list_map(
+            xs: filter(xs: rust_paths_from_nul(raw: tree.paths_nul), predicate: select),
+            f: fn(path) {
+              let show = git.Core.Show(ref: revision as GitRef, path: path, expect: ExpectSuccess)
+              RustFileChangeInput {
+                repo_path: path,
+                base_content: "",
+                head_content: show.content,
+                present_at_base: false,
+                present_at_head: show.success,
+                old_ranges: [],
+                new_ranges: []
               }
-            )
-          }
+            }
+          )
+          head_rust_sources_complete(sources: sources, generated_repo_paths: generated_repo_paths)
+        }
       }
     }
   }
 }
 
+// A PATH THE TREE LISTS BUT Show CANNOT READ REFUSES THE WHOLE READ. Every path here came from
+// HEAD's own listing, so `present_at_head: false` can only mean the read failed -- and a consumer
+// that filtered on present_at_head would drop that file silently, making the population a lower
+// bound with nothing to say so. The refusal names the paths.
+fn head_rust_sources_complete(sources: List<RustFileChangeInput>, generated_repo_paths: List<String>) -> HeadRustSources {
+  let unread = filter(xs: sources, predicate: fn(s) { !s.present_at_head })
+  if length(xs: unread) > 0 {
+    HeadRustSourcesRefused {
+      detail: concat(
+        "git.Core.Show refused a path HEAD's tree lists: ",
+        fold_list(xs: list_map(xs: unread, f: fn(s) { s.repo_path }), empty: "", cons: fn(acc, p) { if acc == "" { p } else { concat(acc, concat(", ", p)) } })
+      )
+    }
+  } else {
+    HeadRustSourcesRead { sources: sources, generated_repo_paths: generated_repo_paths }
+  }
+}
+
 fn observe_current_live_hand_rust() -> LiveHandRustObservation {
-  match head_rust_sources(select: fn(path) { length(xs: rust_namespace_row_for_path(repo_path: path)) > 0 }) {
+  match head_rust_sources(select: fn(path) { path_is_on_claimed_hand_rust_surface(path: path) }) {
     HeadRustSourcesRefused { detail: detail } => LiveHandRustHostRefused { detail: detail }
     HeadRustSourcesRead { sources: sources, generated_repo_paths: generated_repo_paths } =>
       observe_live_hand_rust(sources: sources, generated_repo_paths: generated_repo_paths)
