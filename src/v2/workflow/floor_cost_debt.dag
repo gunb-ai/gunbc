@@ -722,6 +722,20 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
   Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
 }
 
+// CENSORED: nine D1 (#10946) where-clause witnesses interrupted_before_verdict on the
+// floor of record — required-floor job 103143369933 on run 34560949186 at main
+// 0267f385 — raised_by=cpu_deadline at cpu_at_least 502-512ms / 500ms (wall inside
+// 8000ms). Own-work cost is UNMEASURED; those figures are interrupt points (a property
+// of the budget), not proven marginals. Restoration: a measured fill-netted
+// marginal under 500ms on the floor of record (shared parsed fixture across repeated
+// tokenize/parse/normalize of the same reproducer, or a real fill-netted measurement).
+// Left off because they were not among the nine interrupts: cause_a_where_control_normalizes_holds,
+// cause_a_empty_where_clause_refuses_holds, where_refinement_empty_clause_is_refused_holds,
+// and the three pre-D1 declaration_structure_preserved interiors.
+fn floor_cost_debt_censored_chunk_03() -> List<String> {
+  Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_reproducer_normalizes_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_refinement_clause_parses_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_survives_normalize_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_parse_tree_carries_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_well_formed_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_holds", tail: Cons { head: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_survives_normalize_graft_holds", tail: Cons { head: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_parses_and_is_carried_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds", tail: Empty {} } } } } } } } } }
+}
+
 // THE THIRD EVIDENCE CLASS: STRADDLING (2026-09-04, gunbc#10366-era main).
 //
 // A STRADDLING ROW REACHES A VERDICT AND PASSES, ITS DETERMINISTIC WORK MEASURE IS INVARIANT
@@ -963,7 +977,7 @@ fn floor_cost_debt_proven_chunks() -> List<List<String>> {
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_censored_chunk_00(), tail: Cons { head: floor_cost_debt_censored_chunk_01(), tail: Cons { head: floor_cost_debt_censored_chunk_02(), tail: Empty {} }}}
+  Cons { head: floor_cost_debt_censored_chunk_00(), tail: Cons { head: floor_cost_debt_censored_chunk_01(), tail: Cons { head: floor_cost_debt_censored_chunk_02(), tail: Cons { head: floor_cost_debt_censored_chunk_03(), tail: Empty {} }}}}
 }
 
 fn floor_cost_debt_proven_roster() -> List<String> {
