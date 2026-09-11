@@ -8,43 +8,43 @@ data receipt_subject_is_the_prose_about_the_mechanism: RecurringFailureMode = Re
   identity: "receipt_subject_is_the_prose_about_the_mechanism" as NonEmptyStr,
 
   receipts: [
-    "**a behavioral receipt is built correctly -- fault injection, positive control, typed refusal -- around a subject that is the DOCUMENTATION of the mechanism rather than the mechanism** (INVALID STATE: a module's equivalence receipt compares a declaration whose content is a description of what the module does, so the receipt is green, discriminating, and would not move if every behavior it purports to cover were deleted. ",
+    "**a behavioral receipt is built correctly -- fault injection, positive control, typed refusal -- around a subject that is the DOCUMENTATION of the mechanism rather than the mechanism** (INVALID STATE: a module's equivalence receipt compares a declaration whose content is a description of what the module does, so the receipt is green, discriminating, and would not move if every behavior it purports to cover were deleted.",
 
-    "HARM: this is worse than an absent receipt and worse than a weak one. ",
+    "HARM: this is worse than an absent receipt and worse than a weak one.",
 
-    "An absent receipt is counted as absent; a weak receipt fails an adversarial read. ",
+    "An absent receipt is counted as absent; a weak receipt fails an adversarial read.",
 
-    "This one passes every structural check a reviewer applies to receipts -- it HAS a discriminating fault arm, it HAS a positive control, it refuses when the arm fires -- so it is enrolled, cited as the module's behavioral coverage, and it satisfies the frontier row that says the module is receipted. ",
+    "This one passes every structural check a reviewer applies to receipts -- it HAS a discriminating fault arm, it HAS a positive control, it refuses when the arm fires -- so it is enrolled, cited as the module's behavioral coverage, and it satisfies the frontier row that says the module is receipted.",
 
-    "The mechanism it covers is exactly nothing. ",
+    "The mechanism it covers is exactly nothing.",
 
-    "DISTINGUISHING FACTS. The tell is not the receipt's shape, which is why shape review misses it: it is the ARITY AND TYPE of the case list. ",
+    "DISTINGUISHING FACTS. The tell is not the receipt's shape, which is why shape review misses it: it is the ARITY AND TYPE of the case list.",
 
-    "One case, of type String, whose name ends in note/law/doc/rationale, is the signature. ",
+    "One case, of type String, whose name ends in note/law/doc/rationale, is the signature.",
 
-    "It is distinct from an inert lens (the receipt executes), from rung inflation in prose (the claim here is machine-checked, it just checks the wrong subject), and from a stale coverage sentence (nothing here is stale -- the comparison is live and correct about a string). ",
+    "It is distinct from an inert lens (the receipt executes), from rung inflation in prose (the claim here is machine-checked, it just checks the wrong subject), and from a stale coverage sentence (nothing here is stale -- the comparison is live and correct about a string).",
 
-    "SPECIMEN, and it is on the compiler's own front door. ",
+    "SPECIMEN, and it is on the compiler's own front door.",
 
-    "The self-host behavioral receipt for `v2.compiler.compile` -- `gunbc/instruments/self_host_00_compile_shims/witness_main.rs` -- carries a case list of exactly one entry, `required_lens_grain_note`, compared between the emitted crate and the seed. ",
+    "The self-host behavioral receipt for `v2.compiler.compile` -- `gunbc/instruments/self_host_00_compile_shims/witness_main.rs` -- carries a case list of exactly one entry, `required_lens_grain_note`, compared between the emitted crate and the seed.",
 
-    "That declaration is the prose describing the two required-lens roster grains. ",
+    "That declaration is the prose describing the two required-lens roster grains.",
 
-    "The seed side of the comparison, `v1_compiler::v2_compiler_compile`, is a nine-line Rust module whose entire content is that same string. ",
+    "The seed side of the comparison, `v1_compiler::v2_compiler_compile`, is a nine-line Rust module whose entire content is that same string.",
 
-    "So the strongest verdict the emitted crate can publish about the compile door is that two copies of a sentence about lenses agree, while the door's eight enrolled gates, its lens fold, its subtree walk and its rejection path are all outside the receipt's subject. ",
+    "So the strongest verdict the emitted crate can publish about the compile door is that two copies of a sentence about lenses agree, while the door's eight enrolled gates, its lens fold, its subtree walk and its rejection path are all outside the receipt's subject.",
 
-    "WHY THE SHAPE IS RIGHT AND THE SUBJECT IS NOT, stated together because the shape is what earns the receipt its standing: the shim takes `--inject-fault`, substitutes a wrong value on case zero, and exits non-zero -- a real discriminating arm over a real positive control. ",
+    "WHY THE SHAPE IS RIGHT AND THE SUBJECT IS NOT, stated together because the shape is what earns the receipt its standing: the shim takes `--inject-fault`, substitutes a wrong value on case zero, and exits non-zero -- a real discriminating arm over a real positive control.",
 
-    "Every one of those properties survives if the subject is a constant. ",
+    "Every one of those properties survives if the subject is a constant.",
 
-    "RUNG FOUND AT: mitigatable, and specifically NOT the mechanically-preventable rung the receipt's enrolment implies. ",
+    "RUNG FOUND AT: mitigatable, and specifically NOT the mechanically-preventable rung the receipt's enrolment implies.",
 
-    "CEILING: mechanically preventable. ",
+    "CEILING: mechanically preventable.",
 
-    "A receipt's subject set is a fact about the shim that a reader can derive -- the declarations it names -- and the property that at least one of them is reached by the module's own behavior is checkable. ",
+    "A receipt's subject set is a fact about the shim that a reader can derive -- the declarations it names -- and the property that at least one of them is reached by the module's own behavior is checkable.",
 
-    "It is not structurally guaranteeable, because whether a declaration is the mechanism or a description of it is not decidable in general. ",
+    "It is not structurally guaranteeable, because whether a declaration is the mechanism or a description of it is not decidable in general.",
 
     "NEXT TRIGGER: the behavioral-receipt frontier requires each module's receipt to name at least one subject that is a function rather than a data declaration, and refuses a receipt whose whole case list is data -- at which point this specimen refuses and the compile door's receipt has to acquire a real subject rather than being counted as covered.)"
   ],
