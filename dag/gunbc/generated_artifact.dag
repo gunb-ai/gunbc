@@ -12,7 +12,6 @@ type GeneratedArtifact
   = WitnessFloorYamlArtifact
   | FleetConvergeYamlArtifact
   | FleetDesiredAdmissionYamlArtifact
-  | BootstrapPrLauncherYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | RoadmapArtifact
@@ -40,7 +39,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, BootstrapPrLauncherYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -165,7 +164,6 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     WitnessFloorYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "witnesses.yml" }
     FleetConvergeYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-converge.yml" }
     FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
-    BootstrapPrLauncherYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "bootstrap-pr-launcher.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
@@ -243,7 +241,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     WitnessFloorYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    BootstrapPrLauncherYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
@@ -297,7 +294,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     WitnessFloorYamlArtifact => match b { WitnessFloorYamlArtifact => true  _ => false }
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
     FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
-    BootstrapPrLauncherYamlArtifact => match b { BootstrapPrLauncherYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
