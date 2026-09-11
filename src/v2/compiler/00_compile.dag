@@ -645,9 +645,16 @@ fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
   []
 }
 
-fn run_required_lens_gates(
+// THE MODE IS A PARAMETER OF THE RUNNER, NOT A SECOND RUNNER. The door runs the roster to DECIDE,
+// and the obligation ledger runs the same roster over the same tree to OBSERVE -- same registrations,
+// same order, same witness stamping. Forking a second traversal for the observing consumer would put
+// two answers behind one question the moment either changed (DESIGN section 3), and the ledger's
+// whole claim is that it reports what the door would do. run_required_lens_gates keeps its name and
+// its enforcing behaviour as the door's entry point; observation passes CompileLensIntrospect.
+fn run_required_lens_gates_in_mode(
   inferred: InferredTree,
-  lenses: List<CompileLens>
+  lenses: List<CompileLens>,
+  mode: CompileLensMode
 ) -> Outcome<List<LensGateWitness>> {
   bind_outcome(
     o: fold(
@@ -660,7 +667,7 @@ fn run_required_lens_gates(
             bind_outcome_accepted(
               od: od,
               inner: bind_outcome(
-                o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
+                o: apply_compile_lens(lens: lens, inferred: inferred, mode: mode),
                 f: fn(w) {
                   outcome_accepted(
                     value: prepend_lens_gate_witness(
@@ -679,18 +686,27 @@ fn run_required_lens_gates(
   )
 }
 
-fn run_required_lens_gates_on_subtree(
+fn run_required_lens_gates(
   inferred: InferredTree,
   lenses: List<CompileLens>
+) -> Outcome<List<LensGateWitness>> {
+  run_required_lens_gates_in_mode(inferred: inferred, lenses: lenses, mode: CompileLensEnforce)
+}
+
+fn run_required_lens_gates_on_subtree_in_mode(
+  inferred: InferredTree,
+  lenses: List<CompileLens>,
+  mode: CompileLensMode
 ) -> Outcome<List<LensGateWitness>> {
   bind_outcome(
     o: fold_node(
       n: inferred.root,
       algebra: NodeFold {
         init: fn(n0) {
-          run_required_lens_gates(
+          run_required_lens_gates_in_mode(
             inferred: InferredTree { root: n0, facts: inferred.facts },
-            lenses: lenses
+            lenses: lenses,
+            mode: mode
           )
         },
         step: fn(acc, _, child) {
@@ -706,6 +722,17 @@ fn run_required_lens_gates_on_subtree(
       }
     ),
     f: fn(collected) { outcome_accepted(value: list_reverse(xs: collected)) }
+  )
+}
+
+fn run_required_lens_gates_on_subtree(
+  inferred: InferredTree,
+  lenses: List<CompileLens>
+) -> Outcome<List<LensGateWitness>> {
+  run_required_lens_gates_on_subtree_in_mode(
+    inferred: inferred,
+    lenses: lenses,
+    mode: CompileLensEnforce
   )
 }
 

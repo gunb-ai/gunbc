@@ -1,0 +1,121 @@
+module v2.test.lens_application.compile_obligation_ledger
+
+// THE LEDGER'S CLAIM IS THAT IT DOES NOT STOP AT THE FIRST NO, so the discriminating control is a
+// tree that the door REFUSES: on such a tree the door reports one refusal and nothing else, while
+// the ledger must report every registration's answer including the ones behind the refusal. A
+// witness that only ran the ledger over a clean tree would prove nothing the door does not already.
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.compile {
+  CompileLensRoot,
+  CompileLensSubtree,
+  required_compile_lens_roster,
+  required_lens_roster_digest,
+  required_lenses_at_grain,
+  run_required_lens_gates,
+}
+import v2.compiler.infer { InferredTree }
+import v2.compiler.self_host.compile_obligation_ledger {
+  ObligationLedgerObserved,
+  ObligationLedgerUnobservable,
+  count_lenses_violating,
+  count_obligation_violations,
+  count_registrations_without_rows,
+  observe_compile_obligations,
+}
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.text { String }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ledger_kernel_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_int } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data ledger_clean_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [Edge { label: Named { name: ^ram_bytes }, target: ledger_kernel_leaf }],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn ledger_clean_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: ledger_clean_root,
+    facts: claim_inferred_facts(
+      type_symbol: ^ledger_clean_type,
+      algebra_symbol: ^ledger_clean_algebra,
+      descent_symbol: ^ledger_clean_descent,
+    )
+  )
+}
+
+// A BARE ATOM IS A HOLLOW ALIAS to the fact-density obligation, so this tree is one the door
+// refuses -- which is exactly what makes it the subject worth observing.
+fn ledger_refused_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: claim_atom_node(s: ^ledger_hollow_alias_root),
+    facts: claim_inferred_facts(
+      type_symbol: ^ledger_hollow_type,
+      algebra_symbol: ^ledger_hollow_algebra,
+      descent_symbol: ^ledger_hollow_descent,
+    )
+  )
+}
+
+// THE PREMISE OF THE DISCRIMINATING CONTROL, executed rather than assumed: the door really does
+// refuse this tree. If this ever goes green the control below stops discriminating and must be
+// re-pointed at a tree that still refuses.
+test fn the_door_refuses_the_ledger_subject_tree() -> Bool {
+  match run_required_lens_gates(
+    inferred: ledger_refused_tree(),
+    lenses: required_lenses_at_grain(grain: CompileLensSubtree)
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE CLAIM ITSELF: on a tree the door refuses, the ledger still reports EVERY registration. No
+// registration may be missing, and at least one must be reported violating -- a ledger that
+// observed everything and found nothing on a tree that refuses would be observing the wrong thing.
+test fn the_ledger_reports_every_registration_on_a_refused_tree() -> Bool {
+  match observe_compile_obligations(inferred: ledger_refused_tree()) {
+    ObligationLedgerUnobservable { at_grain: _ } => false
+    ObligationLedgerObserved { roster_digest: d, rows: rows } =>
+      count_registrations_without_rows(rows: rows) == 0
+        && count_obligation_violations(rows: rows) > 0
+        && d == required_lens_roster_digest()
+  }
+}
+
+// AND IT DOES NOT STOP AT THE FIRST NO: the registrations that hold are reported holding on the
+// same tree, in the same ledger, beside the ones that do not.
+test fn obligations_behind_the_refusal_are_still_reported() -> Bool {
+  match observe_compile_obligations(inferred: ledger_refused_tree()) {
+    ObligationLedgerUnobservable { at_grain: _ } => false
+    ObligationLedgerObserved { roster_digest: _, rows: rows } =>
+      count_lenses_violating(rows: rows) < length(xs: required_compile_lens_roster())
+  }
+}
+
+// The positive control: a tree every node-local obligation admits reports no violation at all, so
+// the violation count above is a property of the SUBJECT rather than of the ledger.
+test fn a_clean_tree_reports_no_violations() -> Bool {
+  match observe_compile_obligations(inferred: ledger_clean_tree()) {
+    ObligationLedgerUnobservable { at_grain: _ } => false
+    ObligationLedgerObserved { roster_digest: _, rows: rows } =>
+      count_obligation_violations(rows: rows) == 0
+        && count_registrations_without_rows(rows: rows) == 0
+  }
+}

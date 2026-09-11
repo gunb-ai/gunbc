@@ -1,0 +1,201 @@
+module v2.compiler.self_host.compile_obligation_ledger
+
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import v2.compiler.compile {
+  CompileLens,
+  CompileLensGrain,
+  CompileLensIntrospect,
+  CompileLensRoot,
+  CompileLensSubtree,
+  LensGateWitness,
+  compile_lens_grain_name,
+  required_compile_lens_roster,
+  required_lens_roster_digest,
+  required_lenses_at_grain,
+  run_required_lens_gates_in_mode,
+  run_required_lens_gates_on_subtree_in_mode,
+}
+import v2.compiler.infer { InferredTree }
+import v2.std.algebra { Cons, Empty, fold_list, list_append, list_reverse }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+
+// WHAT EVERY REQUIRED OBLIGATION SAYS ABOUT ONE TREE, ASKED ONCE, WITHOUT STOPPING AT THE FIRST NO.
+//
+// The compile door answers a DECISION: the first refusing lens rejects and nothing behind it is
+// asked, which is correct for a gate and useless for a census. Knowing that one obligation refuses
+// the compiler's own tree tells you nothing about the other seven, and "fix it and see" is a serial
+// walk of unknown length. This ledger asks all of them over ONE prepared tree and reports every
+// answer, which is what makes complexity-first a RANKING rather than a guess: you cannot prioritise
+// repairs across obligations you have not measured.
+//
+// IT IS NOT A SECOND GATE, AND THE DISTINCTION IS LOAD-BEARING. It decides nothing, admits nothing,
+// and no consumer may read a clean ledger as an accepted compile -- the door remains the single
+// gate authority (v2.compiler.compile validate_then_compile). What it shares with the door is the
+// REGISTRATION and the RUNNER: same required_compile_lens_roster, same
+// run_required_lens_gates_in_mode, same witness stamping, differing only in the mode parameter. A
+// ledger with its own traversal would be a second answer to "what would the door say", and would
+// drift from the door the first time either moved (DESIGN section 3).
+//
+// THE TREE IS PREPARED ONCE, BY THE CALLER. This module never tokenizes, parses or resolves, and it
+// deliberately does not offer a per-file entry point: the corpus roster gate's per-subject path
+// re-tokenizes and re-parses every file and is excluded from CI for exactly that cost, so a census
+// built on it would be a cost defect wearing a census's name. One InferredTree in, one ledger out.
+
+// WHY THE INTROSPECTION MODE EXISTS AND WHY THIS IS ITS CONSUMER. CompileLensIntrospect turns a
+// rejecting gate into a CARRIED Violates plus its diagnostics instead of terminating the fold. Until
+// now it had only witness-level consumers; this is the production one it was built for.
+type ObligationOutcome
+  = ObligationHolds
+  | ObligationViolates { reason: Symbol }
+
+type ObligationLedgerRow {
+  lens: DeclarationRef
+  grain: CompileLensGrain
+  outcome: ObligationOutcome
+  advisory_count: Int
+}
+
+// AN OBSERVATION THAT COULD NOT BE MADE IS NOT AN OBSERVATION THAT PASSED. The introspection runner
+// itself can still refuse -- an infer fact missing, a gate that fails before producing a witness --
+// and that answer is its own arm rather than an absent row, because a row that vanished and a row
+// that held are indistinguishable in a count (DESIGN section 5).
+type ObligationLedger
+  = ObligationLedgerObserved {
+      roster_digest: String
+      rows: List<ObligationLedgerRow>
+    }
+  | ObligationLedgerUnobservable { at_grain: CompileLensGrain }
+
+fn diagnostics_count(d: Diagnostics) -> Int {
+  match d {
+    None => 0
+    Some { diagnostics: nonempty } =>
+      fold_list(xs: nonempty.tail, empty: 1, cons: fn(acc, _) { acc + 1 })
+  }
+}
+
+fn obligation_outcome_of(witness: Witness<Node>) -> ObligationOutcome {
+  match witness {
+    Holds { value: _ } => ObligationHolds
+    Violates { diagnostic: d } => ObligationViolates { reason: d.reason }
+  }
+}
+
+fn ledger_row_of(w: LensGateWitness) -> ObligationLedgerRow {
+  ObligationLedgerRow {
+    lens: w.lens,
+    grain: w.grain,
+    outcome: obligation_outcome_of(witness: w.witness),
+    advisory_count: 0,
+  }
+}
+
+// ONE ROW PER OBSERVATION AT ROOT GRAIN, AND ONE PER (REGISTRATION, NODE) AT SUBTREE GRAIN, folded
+// to one row per registration by the caller's counting functions below. The rows are kept at
+// observation grain here because collapsing them earlier would discard WHERE a subtree obligation
+// refused, which is the fact a repair needs.
+fn ledger_rows_of(witnesses: List<LensGateWitness>) -> List<ObligationLedgerRow> {
+  list_reverse(xs: fold_list(
+    xs: witnesses,
+    empty: Empty,
+    cons: fn(acc, w) { Cons { head: ledger_row_of(w: w), tail: acc } }
+  ))
+}
+
+fn observe_obligations_at_root(inferred: InferredTree) -> Outcome<List<LensGateWitness>> {
+  run_required_lens_gates_in_mode(
+    inferred: inferred,
+    lenses: required_lenses_at_grain(grain: CompileLensRoot),
+    mode: CompileLensIntrospect
+  )
+}
+
+fn observe_obligations_on_subtree(inferred: InferredTree) -> Outcome<List<LensGateWitness>> {
+  run_required_lens_gates_on_subtree_in_mode(
+    inferred: inferred,
+    lenses: required_lenses_at_grain(grain: CompileLensSubtree),
+    mode: CompileLensIntrospect
+  )
+}
+
+// THE LEDGER OVER ONE PREPARED TREE: both grains, every registration, no early stop. The digest is
+// the roster's, so a reader can tell whether two ledgers were taken against the same obligations.
+fn observe_compile_obligations(inferred: InferredTree) -> ObligationLedger {
+  match observe_obligations_at_root(inferred: inferred) {
+    Rejected { diagnostics: _ } => ObligationLedgerUnobservable { at_grain: CompileLensRoot }
+    Accepted { value: root_witnesses, diagnostics: _ } =>
+      match observe_obligations_on_subtree(inferred: inferred) {
+        Rejected { diagnostics: _ } => ObligationLedgerUnobservable { at_grain: CompileLensSubtree }
+        Accepted { value: subtree_witnesses, diagnostics: _ } =>
+          ObligationLedgerObserved {
+            roster_digest: required_lens_roster_digest(),
+            rows: ledger_rows_of(
+              witnesses: list_append(left: subtree_witnesses, right: root_witnesses)
+            ),
+          }
+      }
+  }
+}
+
+fn row_is_violation(row: ObligationLedgerRow) -> Bool {
+  match row.outcome {
+    ObligationHolds => false
+    ObligationViolates { reason: _ } => true
+  }
+}
+
+fn count_obligation_violations(rows: List<ObligationLedgerRow>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, row) {
+    if row_is_violation(row: row) { acc + 1 } else { acc }
+  })
+}
+
+fn rows_for_lens(rows: List<ObligationLedgerRow>, lens: DeclarationRef) -> List<ObligationLedgerRow> {
+  list_reverse(xs: fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      if declaration_ref_display_key(ref: row.lens) == declaration_ref_display_key(ref: lens) {
+        Cons { head: row, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+// A REGISTRATION WITH NO ROW IS THE ONE ANSWER THIS LEDGER MUST NEVER GIVE SILENTLY. Every required
+// registration is expected to appear; if one does not, the ledger observed fewer obligations than
+// the roster declares, and that is a coverage failure of the census rather than a clean result.
+fn count_registrations_without_rows(rows: List<ObligationLedgerRow>) -> Int {
+  fold_list(
+    xs: required_compile_lens_roster(),
+    empty: 0,
+    cons: fn(acc, lens) {
+      match rows_for_lens(rows: rows, lens: lens.identity) {
+        Empty => acc + 1
+        Cons { head: _, tail: _ } => acc
+      }
+    }
+  )
+}
+
+fn count_lenses_violating(rows: List<ObligationLedgerRow>) -> Int {
+  fold_list(
+    xs: required_compile_lens_roster(),
+    empty: 0,
+    cons: fn(acc, lens) {
+      if count_obligation_violations(rows: rows_for_lens(rows: rows, lens: lens.identity)) > 0 {
+        acc + 1
+      } else {
+        acc
+      }
+    }
+  )
+}
