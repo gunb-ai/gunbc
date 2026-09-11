@@ -54,6 +54,7 @@ import gunbc.floor_attempt_standing {
 import gunbc.ci_failure_class {
   FloorFailed,
   Infra,
+  Structural,
   CommandInvokedCannotExecute,
   floor_outcome_wire_infra,
   floor_outcome_wire_structural
@@ -372,9 +373,21 @@ test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool {
     build_receipt: SubjectReceiptUnobserved,
     floor_receipt: SubjectReceiptUnobserved
   )
+  let mixed = floor_rendered_verdict_with_receipts(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneFailed,
+    floor: LaneFailed,
+    build_receipt: SubjectReceiptObserved {
+      outcome: FloorFailed { class: Infra { signature: CommandInvokedCannotExecute } }
+    },
+    floor_receipt: SubjectReceiptObserved {
+      outcome: FloorFailed { class: Structural { reason: "subject" } }
+    }
+  )
   floor_rendered_verdict_name(verdict: env) == floor_rendered_verdict_environment_name
     && floor_rendered_verdict_blocks(verdict: env) == true
     && floor_rendered_verdict_name(verdict: still_red) == floor_rendered_verdict_red_name
+    && floor_rendered_verdict_name(verdict: mixed) == floor_rendered_verdict_red_name
     && class_wire_is_environment(raw: floor_outcome_wire_infra)
     && (class_wire_is_environment(raw: floor_outcome_wire_structural) == false)
     && (class_wire_is_environment(raw: "") == false)

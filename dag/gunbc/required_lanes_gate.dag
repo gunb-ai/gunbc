@@ -6,6 +6,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_exit,
   bash_build_if_from_stmts,
   bash_build_or_else,
+  bash_build_and_then,
+  bash_build_negation,
   bash_build_test_bracket,
   bash_build_with_redir,
   bash_build_word_concat_parts,
@@ -30,7 +32,7 @@ import gunbc.floor_attempt_standing {
   floor_rendered_verdict_unestablished_name,
   floor_rendered_verdict_environment_name
 }
-import gunbc.ci_failure_class { floor_outcome_wire_infra }
+import gunbc.ci_failure_class { floor_outcome_wire_infra, floor_outcome_wire_structural }
 import v2.std.node { Node }
 import std.types { String, List }
 
@@ -125,6 +127,10 @@ fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
 // signature from class alone (`ClassWireOnly`).
 fn required_lane_is_infra_class_test(var_name: String) -> Node {
   required_lane_var_equals_lit_test(var_name: var_name, text: floor_outcome_wire_infra)
+}
+
+fn required_lane_is_structural_class_test(var_name: String) -> Node {
+  required_lane_var_equals_lit_test(var_name: var_name, text: floor_outcome_wire_structural)
 }
 
 // THE ATTEMPT SUBJECT RECEIPT, AND IT IS THE PIECE THAT MAKES THE JOIN POSSIBLE AT ALL.
@@ -325,6 +331,16 @@ fn required_lanes_any_class_test(lanes: FreeSemigroup<RequiredLane>) -> Node {
   )
 }
 
+fn required_lanes_any_structural_class_test(lanes: FreeSemigroup<RequiredLane>) -> Node {
+  fold_list(
+    xs: lanes.tail,
+    empty: required_lane_is_structural_class_test(var_name: lanes.head.class_var_name),
+    cons: fn(acc, lane) {
+      bash_build_or_else(left: acc, right: required_lane_is_structural_class_test(var_name: lane.class_var_name))
+    }
+  )
+}
+
 fn required_lanes_verdict_stmts(
   lanes: FreeSemigroup<RequiredLane>,
   verdict_var: String
@@ -348,7 +364,10 @@ fn required_lanes_verdict_stmts(
       ]
     ),
     bash_build_if_from_stmts(
-      cond: required_lanes_any_class_test(lanes: lanes),
+      cond: bash_build_and_then(
+        left: required_lanes_any_class_test(lanes: lanes),
+        right: bash_build_negation(inner: required_lanes_any_structural_class_test(lanes: lanes))
+      ),
       then_stmts: [
         bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_environment_name)
       ]

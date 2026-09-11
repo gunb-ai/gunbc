@@ -77,6 +77,8 @@ test fn witness_posix_shell_reserved_exits_are_infra_not_subject() -> ProcessExi
     && (floor_outcome_wire(o: classify_floor_exit(e: not_found)) == floor_outcome_wire_infra)
     && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: posix_exit_status_decimal(code: 126))
     && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "title=environment")
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "dissolve-on: wrap_command_with_floor_attempt_receipt")
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: infra_signature_match_substring(sig: SccacheFatalError))
     && (posix_exit_status_decimal(code: 126) == "126")
     && string_contains(s: floor_attempt_receipt_body(exit_code: 126, outcome: classify_floor_exit(e: not_exec)), pattern: "CommandInvokedCannotExecute")
     && class_is_infra(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages"))

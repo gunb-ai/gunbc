@@ -1,7 +1,8 @@
 module gunbc.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.types { String }
+import std.types { String, List }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
@@ -302,31 +303,60 @@ fn floor_attempt_receipt_body(exit_code: Int, outcome: FloorOutcome) -> String {
   }
 }
 
+fn receipt_reason_infra_signatures() -> List<InfraSignature> {
+  fold(verdict_infra_signatures, init: [], f: fn(acc, sig) {
+    match infra_signature_site(sig: sig) {
+      BuildLog => concat(acc, [sig])
+      JobSignal => concat(acc, [sig])
+      ExitStatus => acc
+    }
+  })
+}
+
+fn receipt_log_infra_elif_lines() -> List<String> {
+  fold(receipt_reason_infra_signatures(), init: [], f: fn(acc, sig) {
+    concat(
+      [
+        concat("elif [ -f \"$GUNBC_FLOOR_LOG\" ] && grep -q \"", concat(infra_signature_match_substring(sig: sig), "\" \"$GUNBC_FLOOR_LOG\"; then")),
+        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
+        concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: sig), "\""))
+      ],
+      acc
+    )
+  })
+}
+
+data floor_attempt_receipt_shell_emit_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: wrap_command_with_floor_attempt_receipt -- hand-shell join/concat carrier for the attempt-receipt wrap. Typed env-vs-code classification does not dissolve here. DISSOLVES WHEN this wrap is Nodes through v2.extdeps.languages.bash_build serialized by v2.workflow.bash_command_fold_serialize bash_fold_serialize_program, the same capability gunbc.required_lanes_gate already uses, at which point this row and the join below delete together.")
+
 fn floor_attempt_receipt_write_script() -> String {
   join(
-    [
-      concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"")),
-      concat("GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_structural, "\"")),
-      "GUNBC_FLOOR_SIGNATURE=\"\"",
-      concat("if [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_invoked_cannot_execute), " ]; then")),
-      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
-      concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandInvokedCannotExecute), "\"")),
-      concat("elif [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_not_found), " ]; then")),
-      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
-      concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandNotFound), "\"")),
-      "elif [ \"$GUNBC_FLOOR_EXIT\" -eq 0 ]; then",
-      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_none, "\"")),
-      concat("elif [ -f \"$GUNBC_FLOOR_LOG\" ] && grep -q \"", concat(infra_signature_match_substring(sig: MemoryStallRefusedPageThrash), "\" \"$GUNBC_FLOOR_LOG\"; then")),
-      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
-      concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: MemoryStallRefusedPageThrash), "\"")),
-      "fi",
-      "printf 'class=%s\\nsignature=%s\\nexit=%s\\n' \"$GUNBC_FLOOR_CLASS\" \"$GUNBC_FLOOR_SIGNATURE\" \"$GUNBC_FLOOR_EXIT\" > \"$GUNBC_FLOOR_RECEIPT\"",
-      concat("if [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_infra, "\" ]; then")),
-      "  echo \"::error title=environment::floor_class=$\{GUNBC_FLOOR_CLASS} signature=$\{GUNBC_FLOOR_SIGNATURE} exit=$\{GUNBC_FLOOR_EXIT}; this is not a verdict about the diff. Attempt receipt: $\{GUNBC_FLOOR_RECEIPT}\"",
-      concat("elif [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_structural, "\" ]; then")),
-      "  echo \"::error title=subject::floor_class=$\{GUNBC_FLOOR_CLASS} exit=$\{GUNBC_FLOOR_EXIT}; read the step log for the subject defect\"",
-      "fi"
-    ],
+    concat(
+      [
+        concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"")),
+        concat("GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_structural, "\"")),
+        "GUNBC_FLOOR_SIGNATURE=\"\"",
+        concat("if [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_invoked_cannot_execute), " ]; then")),
+        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
+        concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandInvokedCannotExecute), "\"")),
+        concat("elif [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_not_found), " ]; then")),
+        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
+        concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandNotFound), "\"")),
+        "elif [ \"$GUNBC_FLOOR_EXIT\" -eq 0 ]; then",
+        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_none, "\""))
+      ],
+      concat(
+        receipt_log_infra_elif_lines(),
+        [
+          "fi",
+          "printf 'class=%s\\nsignature=%s\\nexit=%s\\n' \"$GUNBC_FLOOR_CLASS\" \"$GUNBC_FLOOR_SIGNATURE\" \"$GUNBC_FLOOR_EXIT\" > \"$GUNBC_FLOOR_RECEIPT\"",
+          concat("if [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_infra, "\" ]; then")),
+          "  echo \"::error title=environment::floor_class=$\{GUNBC_FLOOR_CLASS} signature=$\{GUNBC_FLOOR_SIGNATURE} exit=$\{GUNBC_FLOOR_EXIT}; this is not a verdict about the diff. Attempt receipt: $\{GUNBC_FLOOR_RECEIPT}\"",
+          concat("elif [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_structural, "\" ]; then")),
+          "  echo \"::error title=subject::floor_class=$\{GUNBC_FLOOR_CLASS} exit=$\{GUNBC_FLOOR_EXIT}; read the step log for the subject defect\"",
+          "fi"
+        ]
+      )
+    ),
     "\n"
   )
 }
@@ -334,6 +364,7 @@ fn floor_attempt_receipt_write_script() -> String {
 fn wrap_command_with_floor_attempt_receipt(command: String) -> String {
   join(
     [
+      concat("# ", dissolution_description(condition: floor_attempt_receipt_shell_emit_dissolution_condition)),
       concat("GUNBC_FLOOR_LOG=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_command_log_filename, "\"")),
       "set +e",
       "(",

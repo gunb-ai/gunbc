@@ -433,6 +433,19 @@ fn lane_subject_receipt_is_environment(receipt: LaneSubjectReceipt) -> Bool {
   }
 }
 
+fn lane_subject_receipt_is_structural(receipt: LaneSubjectReceipt) -> Bool {
+  match receipt {
+    SubjectReceiptUnobserved => false
+    SubjectReceiptObserved { outcome: o } => match o {
+      NoFailure => false
+      FloorFailed { class: c } => match c {
+        Infra { signature: _ } => false
+        Structural { reason: _ } => true
+      }
+    }
+  }
+}
+
 fn floor_environment_interruption() -> EvaluationInterruption {
   EvaluationInterruption {
     mechanism: MechanismEstablished { kind: ToolchainIdentityLost },
@@ -453,7 +466,9 @@ fn floor_rendered_verdict_with_receipts(
       AttemptSuperseded { measured: measured, current: current }
     AttemptStandsGreen { standing: s } => AttemptStandsGreen { standing: s }
     AttemptStandsRed { standing: s, build: b, floor: f, interruption: i } =>
-      if lane_subject_receipt_is_environment(receipt: build_receipt) || lane_subject_receipt_is_environment(receipt: floor_receipt) {
+      if (lane_subject_receipt_is_environment(receipt: build_receipt) || lane_subject_receipt_is_environment(receipt: floor_receipt))
+        && (lane_subject_receipt_is_structural(receipt: build_receipt) == false)
+        && (lane_subject_receipt_is_structural(receipt: floor_receipt) == false) {
         AttemptStandsEnvironment {
           standing: s,
           build: b,
