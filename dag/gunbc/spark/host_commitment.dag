@@ -20,14 +20,21 @@ import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 // WHAT EACH DGX SPARK UNIT IS CURRENTLY SPOKEN FOR BY, AS A SET OF IDENTITIES WITH THEIR CAUSES.
 //
 // WHY THIS EXISTS, AND WHY IT IS A SAFETY REPAIR RATHER THAN A REFINEMENT.
-// gunbc.spark.serving_deployment_selection carried the fleet as `host_count: 8` and screened a
-// candidate with `hosts_consumed(c) <= fleet.host_count`. A scalar cannot tell eight free hosts from
-// eight of which four are spoken for -- and four of these eight ARE spoken for, by the deployment
-// that is serving right now -- so the one screen whose whole job is to rule shapes OUT was generous
-// in exactly the direction DESIGN section 5 forbids, and generous silently, because nothing in a
-// count can carry the fact that it was wrong. The repair is not a check placed beside the count: it
-// is to delete the count and derive the SET, so that a shape too wide for the hosts that actually
-// exist has no admitting arm to reach.
+// gunbc.spark.serving_deployment_selection CARRIES, PRESENT TENSE AND STILL TODAY, the fleet as
+// `host_count: 8`, and screens a candidate with `hosts_consumed(c) <= fleet.host_count`. A scalar
+// cannot tell eight free hosts from eight of which four are spoken for -- and four of these eight
+// ARE spoken for, by the deployment that is serving right now -- so the one screen whose whole job
+// is to rule shapes OUT is generous in exactly the direction DESIGN section 5 forbids, and generous
+// silently, because nothing in a count can carry the fact that it was wrong. The repair is not a
+// check placed beside the count: it is to delete the count and derive the SET, so that a shape too
+// wide for the hosts that actually exist has no admitting arm to reach.
+//
+// THIS MODULE IS THE SET. IT IS NOT YET THAT REPAIR, and the distinction is stated here rather than
+// left for a reader to discover, because a note that describes an intended end state in the past
+// tense is how a live fail-open comes to look closed. The selection screen does not consume this
+// module yet; its cutover waits on gunbc#11013, which rewrites that module. Until that lands the
+// scalar still admits unplaceable shapes, and the honest reading of this file is "the authority the
+// repair needs, with its second consumer still to arrive".
 //
 // THE SET IS DERIVED, NEVER AUTHORED. Every host list this module could have written already exists
 // somewhere that owns it, and restating one here would be the second authority DESIGN section 3
