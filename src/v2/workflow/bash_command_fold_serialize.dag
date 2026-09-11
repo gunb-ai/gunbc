@@ -21,6 +21,10 @@ import v2.extdeps.languages.bash {
   bash_word_cmdsubst_emitted,
   bash_word_cmdsubst_target_model
 }
+import v2.extdeps.languages.bash_build {
+  bash_build_stmt_list_single,
+  bash_build_subshell
+}
 import v2.extdeps.languages.bash_command_fold {
   bash_fold_serialize_refused,
   bash_fold_target_model_for_emitted_witness,
@@ -179,6 +183,14 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
                       target: bash_stmt_with_redir_target_model(
                         stmt: stmt_spelling,
                         redir: ">&2"
+                      )
+                    )
+                  } else if redir_binding == ^bash_production_fold_redir_stderr_to_stdout {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_stmt_with_redir_emitted,
+                      target: bash_stmt_with_redir_target_model(
+                        stmt: stmt_spelling,
+                        redir: "2>&1"
                       )
                     )
                   } else if redir_binding == ^bash_production_fold_redir_to_file {
@@ -345,28 +357,54 @@ fn bash_fold_serialize_exit_node(stmt: Node) -> Outcome<String> {
   }
 }
 
+fn bash_fold_serialize_grouped_stmt(stmt: Node) -> Outcome<String> {
+  bash_fold_serialize_node(
+    stmt: bash_build_subshell(body: bash_build_stmt_list_single(stmt: stmt))
+  )
+}
+
+fn bash_fold_serialize_andor_operand(stmt: Node, group_binding: Symbol) -> Outcome<String> {
+  let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
+  if binding == group_binding {
+    bash_fold_serialize_grouped_stmt(stmt: stmt)
+  } else if binding == ^bash_build_stmt_negation {
+    bash_fold_serialize_grouped_stmt(stmt: stmt)
+  } else {
+    bash_fold_serialize_node(stmt: stmt)
+  }
+}
+
+fn bash_fold_serialize_andor_pair(left: Node, right: Node, op: String, group_binding: Symbol) -> Outcome<String> {
+  bind_outcome(
+    o: bash_fold_serialize_andor_operand(stmt: left, group_binding: group_binding),
+    f: fn(left_spelling) {
+      bind_outcome(
+        o: bash_fold_serialize_andor_operand(stmt: right, group_binding: group_binding),
+        f: fn(right_spelling) {
+          bash_fold_serialize_emit_from_node(
+            emitted: bash_stmt_andor_emitted,
+            target: bash_stmt_andor_target_model(
+              left: left_spelling,
+              op: op,
+              right: right_spelling
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
 fn bash_fold_serialize_and_then_node(stmt: Node) -> Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
         Present { value: right } =>
-          bind_outcome(
-            o: bash_fold_serialize_node(stmt: left),
-            f: fn(left_spelling) {
-              bind_outcome(
-                o: bash_fold_serialize_node(stmt: right),
-                f: fn(right_spelling) {
-                  bash_fold_serialize_emit_from_node(
-                    emitted: bash_stmt_andor_emitted,
-                    target: bash_stmt_andor_target_model(
-                      left: left_spelling,
-                      op: "&&",
-                      right: right_spelling
-                    )
-                  )
-                }
-              )
-            }
+          bash_fold_serialize_andor_pair(
+            left: left,
+            right: right,
+            op: "&&",
+            group_binding: ^bash_production_fold_or_else
           )
         Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
@@ -379,23 +417,11 @@ fn bash_fold_serialize_or_else_node(stmt: Node) -> Outcome<String> {
     Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
         Present { value: right } =>
-          bind_outcome(
-            o: bash_fold_serialize_node(stmt: left),
-            f: fn(left_spelling) {
-              bind_outcome(
-                o: bash_fold_serialize_node(stmt: right),
-                f: fn(right_spelling) {
-                  bash_fold_serialize_emit_from_node(
-                    emitted: bash_stmt_andor_emitted,
-                    target: bash_stmt_andor_target_model(
-                      left: left_spelling,
-                      op: "||",
-                      right: right_spelling
-                    )
-                  )
-                }
-              )
-            }
+          bash_fold_serialize_andor_pair(
+            left: left,
+            right: right,
+            op: "||",
+            group_binding: ^bash_production_fold_and_then
           )
         Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
@@ -480,11 +506,26 @@ fn bash_fold_serialize_subshell_node(stmt: Node) -> Outcome<String> {
   }
 }
 
+fn bash_fold_serialize_negation_inner(inner: Node) -> Outcome<String> {
+  let binding = bash_fold_built_stmt_production_binding(stmt: inner)
+  if binding == ^bash_production_fold_or_else {
+    bash_fold_serialize_grouped_stmt(stmt: inner)
+  } else if binding == ^bash_production_fold_and_then {
+    bash_fold_serialize_grouped_stmt(stmt: inner)
+  } else if binding == ^bash_production_fold_pipe {
+    bash_fold_serialize_grouped_stmt(stmt: inner)
+  } else if binding == ^bash_build_stmt_negation {
+    bash_fold_serialize_grouped_stmt(stmt: inner)
+  } else {
+    bash_fold_serialize_node(stmt: inner)
+  }
+}
+
 fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: inner } =>
       bind_outcome(
-        o: bash_fold_serialize_node(stmt: inner),
+        o: bash_fold_serialize_negation_inner(inner: inner),
         f: fn(inner_spelling) {
           bash_fold_serialize_emit_from_node(
             emitted: bash_stmt_negation_emitted,

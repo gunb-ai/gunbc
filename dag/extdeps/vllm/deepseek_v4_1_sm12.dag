@@ -1,0 +1,316 @@
+module extdeps.vllm.deepseek_v4_1_sm12
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/07b75534651a0dd584c6f3be75d8c62fb8426397/vllm/models/deepseek_v4_1/nvidia/flashinfer_sparse.py"
+  },
+}
+
+// WHAT THE DeepSeek V4.1 SM12 PATH ASKS OF A RUNTIME, READ FROM THE CODE THAT ASKS IT.
+//
+// THE DISTINCTION THIS MODULE KEEPS. gunbc.spark.serving_runtime_capability_probe asks five
+// questions of an IMAGE and records what it found; those questions are only as good as the demands
+// they stand in for, and until now those demands lived nowhere -- they were knowledge a probe author
+// had. Here they are declarations read from upstream at one revision, so a probe that stops matching
+// what the code demands is a visible disagreement between two rows rather than a probe quietly
+// asking the wrong thing.
+//
+// A DEMAND IS NOT AN OBSERVATION, and nothing here says any image satisfies any of it. This module
+// is the requirement side alone; the satisfaction side is a receipt in the observing layer.
+
+// ── THE DISPATCH THAT MAKES SM12 A DISTINCT PATH ───────────────────────────────────────────────
+//
+// _select_dsv4_attn_cls in vllm/models/deepseek_v4_1/nvidia/model.py: when the device capability's
+// MAJOR is 12 it returns DeepseekV4FlashInferSM120Attention, both for an explicitly named FlashInfer
+// sparse backend and as the unconfigured default. Every other CUDA major keeps the FlashMLA path. So
+// on a GB10 there is no configuration that routes around the FlashInfer requirements below: they are
+// the path, not one option within it.
+data v41_sm12_attention_class: NonEmptyStr = "DeepseekV4FlashInferSM120Attention" as NonEmptyStr
+data v41_sm12_dispatch_major: NonEmptyStr = "current_platform.get_device_capability().major == 12" as NonEmptyStr
+
+// ── WHAT THAT PATH REQUIRES, ONE ROW PER DEMAND ────────────────────────────────────────────────
+//
+// The symbol is spelled as the importing code spells it, because that spelling is what a probe
+// imports and what a missing build silently leaves absent. `demanded_by` names the function in
+// upstream's tree that performs the check, so a reader can go read the arm that refuses.
+type VllmSm12Demand sole_constructor {
+  symbol: NonEmptyStr
+  demanded_by: NonEmptyStr
+  established_against: VllmSourceRevision
+}
+
+fn v41_sm12_demand(symbol: NonEmptyStr, demanded_by: NonEmptyStr) -> VllmSm12Demand {
+  VllmSm12Demand {
+    symbol: symbol,
+    demanded_by: demanded_by,
+    established_against: vllm_deepseek_v4_1_sm12_revision,
+  }
+}
+
+// has_flashinfer_sparse_mla_sm120 (vllm/utils/flashinfer.py) imports all three and requires each to
+// be callable; DeepseekV4FlashInferMLASparseBackend refuses the SM12 branch outright when it returns
+// false, with the message "FLASHINFER_MLA_SPARSE_DSV4 SM120 requires FlashInfer's sparse MLA decode
+// API".
+data v41_sm12_flashinfer_decode_demands: List<VllmSm12Demand> = [
+  v41_sm12_demand(
+    symbol: "flashinfer.decode.trtllm_batch_decode_sparse_mla_dsv4" as NonEmptyStr,
+    demanded_by: "vllm.utils.flashinfer.has_flashinfer_sparse_mla_sm120" as NonEmptyStr,
+  ),
+  v41_sm12_demand(
+    symbol: "flashinfer.decode.trtllm_batch_decode_with_kv_cache_mla" as NonEmptyStr,
+    demanded_by: "vllm.utils.flashinfer.has_flashinfer_sparse_mla_sm120" as NonEmptyStr,
+  ),
+  v41_sm12_demand(
+    symbol: "flashinfer.autotuner.autotune" as NonEmptyStr,
+    demanded_by: "vllm.utils.flashinfer.has_flashinfer_sparse_mla_sm120" as NonEmptyStr,
+  ),
+]
+
+// THE SECOND CHECK IS NOT THE FIRST ONE REPEATED, and upstream's own docstring says why: the public
+// sparse MLA API predates some DSV4 shapes, so a package where the callable exists can still abort
+// on a valid vLLM configuration. has_flashinfer_sparse_mla_sm120_config therefore reads FlashInfer's
+// dispatch table directly and asks whether THIS model's (num_q_heads, top_k) pair is in it. A probe
+// that asked only the first question would report a capability that a real launch then refuses.
+data v41_sm12_dispatch_table_demand: VllmSm12Demand = v41_sm12_demand(
+  symbol: "flashinfer.mla._sparse_mla_sm120._DECODE_DSV4_DISPATCH" as NonEmptyStr,
+  demanded_by: "vllm.utils.flashinfer.has_flashinfer_sparse_mla_sm120_config" as NonEmptyStr,
+)
+
+fn v41_sm12_demands() -> List<VllmSm12Demand> {
+  append(v41_sm12_flashinfer_decode_demands, v41_sm12_dispatch_table_demand)
+}
+
+fn v41_sm12_demand_symbols() -> List<NonEmptyStr> {
+  map(v41_sm12_demands(), d => d.symbol)
+}
+
+// THE KV-CACHE DTYPES THE SM12 BRANCH ADMITS. Same function, one arm earlier: on major 12 a
+// kv_cache_dtype outside this set is refused with "kv_cache_dtype not supported" before FlashInfer is
+// consulted at all. It is carried here because it is a launch-time constraint that a runtime image
+// cannot fix -- the remedy is a different launch argument, not a different build -- and keeping it
+// beside the build demands is what stops the two being confused.
+data v41_sm12_admitted_kv_cache_dtypes: List<NonEmptyStr> = [
+  "fp8" as NonEmptyStr,
+  "fp8_e4m3" as NonEmptyStr,
+  "fp8_ds_mla" as NonEmptyStr,
+]
+
+fn v41_sm12_kv_cache_dtype_admitted(dtype: NonEmptyStr) -> Bool {
+  fold(v41_sm12_admitted_kv_cache_dtypes, init: false, f: (acc, d) =>
+    if acc { true } else { d as String == dtype as String })
+}
+
+// THE SAME QUESTION ON THE OTHER CAPABILITY, WHICH IS WHAT MAKES THE FIRST ONE A MEASUREMENT. The
+// admitted set is not a property of the backend; it is a property of the (backend, device major)
+// pair, and the two majors disagree in both directions: major 10 admits None, "auto" and "bfloat16"
+// and explicitly REJECTS fp8_ds_mla ("SM10x uses the plain per-tensor FP8 KV layout"), while major 12
+// rejects the first three and requires one of the fp8 spellings. A row that carried one set would
+// read as "vLLM's admitted layouts" and be wrong on half the hardware.
+data v41_sm10_admitted_kv_cache_dtypes: List<NonEmptyStr> = [
+  "auto" as NonEmptyStr,
+  "bfloat16" as NonEmptyStr,
+  "fp8" as NonEmptyStr,
+  "fp8_e4m3" as NonEmptyStr,
+]
+
+// THE DTYPES WORTH ASKING ABOUT, which is the union of what either major admits plus the one this
+// whole thread turned on. nvfp4_ds_mla is in vLLM's CacheDType literal and is admitted by NEITHER
+// major for this backend, so it is in the roster precisely so a probe can measure that rather than a
+// reader assume it.
+data v41_kv_cache_dtype_candidates: List<NonEmptyStr> = [
+  "auto" as NonEmptyStr,
+  "bfloat16" as NonEmptyStr,
+  "fp8" as NonEmptyStr,
+  "fp8_e4m3" as NonEmptyStr,
+  "fp8_ds_mla" as NonEmptyStr,
+  "nvfp4_ds_mla" as NonEmptyStr,
+]
+
+// WHERE THE ADMISSION IS DECIDED, so a probe imports the class that decides rather than a helper
+// that happens to agree with it today.
+data v41_sparse_mla_backend_class: NonEmptyStr = "vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse.DeepseekV4FlashInferMLASparseBackend" as NonEmptyStr
+data v41_device_capability_class: NonEmptyStr = "vllm.platforms.interface.DeviceCapability" as NonEmptyStr
+
+// ── THE COMPILED SURFACE, AND WHICH ARCHITECTURE BLOCK COMPILES IT ─────────────────────────────
+//
+// WHY A MACHINE-READABLE ROSTER AND NOT PROSE. A probe that asks an image what it contains has to
+// spell the operator names and module paths it imports. If those spellings live only in a sentence
+// beside a recorded outcome, nothing connects them to upstream, and a name that upstream never
+// defined asks a question no image can answer yes to -- the probe then reports a measured absence
+// that is really a mis-asked question, and the build obligation it feeds can never discharge. Every
+// name below was read out of the tree at the pinned revision: the torch operators from the
+// ops.impl(...) registrations in csrc/libtorch_stable/torch_bindings.cpp, the modules from the files
+// that exist under vllm/.
+//
+// EACH OPERATOR IS SPELLED WITH ITS TORCH LIBRARY NAMESPACE, because that is how it is reachable:
+// upstream registers these through STABLE_TORCH_LIBRARY_FRAGMENT into two libraries -- `_C` for the
+// quantization and GEMM ops and `_C_cache_ops` for the KV-cache ops -- so `torch.ops._C.<name>` and
+// `torch.ops._C_cache_ops.<name>` are different lookups and a bare name is not a question anything
+// can be asked.
+//
+// TORCH OPERATORS AND PYTHON MODULES ARE DIFFERENT QUESTIONS and are kept in different lists. A
+// module is present whenever the wheel carries the .py file, so it says nothing about which
+// architectures were compiled; an operator is registered by the compiled extension, so its presence
+// is exactly the arch-gated fact. Fusing them would let a pure-python module answer for a kernel.
+type VllmCompiledSurface sole_constructor {
+  torch_operators: List<NonEmptyStr>
+  python_modules: List<NonEmptyStr>
+}
+
+// FP4 WEIGHT PATH. nvfp4_scaled_mm_sm120_kernels.cu is in CMakeLists.txt's SM12x FP4 block, whose
+// arch set is `12.0f` under CUDA 13 -- and `f` is upstream's family suffix, which
+// cuda_archs_loose_intersection matches against any target in the same major family, so a 12.1-only
+// target does select it. scaled_fp4_quant is deliberately NOT in this list: it is the quantiser and
+// is registered from a source shared with the SM10x block, so an image can carry it while carrying
+// no FP4 GEMM at all.
+data v41_fp4_weight_surface: VllmCompiledSurface = VllmCompiledSurface {
+  torch_operators: [
+    "_C.cutlass_scaled_fp4_mm" as NonEmptyStr,
+    "_C.cutlass_scaled_mm_supports_fp4" as NonEmptyStr,
+  ],
+  python_modules: [],
+}
+
+// FP4 KV-CACHE PATH, AND THE ROW WHERE THE ARCH GATE BITES.
+//
+// These are the operator names upstream ACTUALLY REGISTERS at this revision. There is no
+// `concat_and_cache_ds_mla_nvfp4` and no `indexer_k_quant_and_cache_fp4` anywhere in the tree, and
+// `nvfp4_ds_mla_cache` is a C++ header name rather than a registered operator, so none of those three
+// is askable from Python in any image. The DS-MLA nvfp4 layout is reached THROUGH concat_and_cache_mla,
+// whose nvfp4_ds_mla launcher is compiled only when the build defines ENABLE_NVFP4_SM100 -- and
+// CMakeLists.txt lists nvfp4_ds_mla_cache_kernels.cu in the SM10x/11x block alone (10.0f;10.7f;11.0f
+// under CUDA 13), never in the SM12x one. So on a 12.1-only build the operators below are present and
+// the DS-MLA nvfp4 KV LAYOUT behind them is not, and that distinction is upstream's, not this
+// repository's to resolve.
+data v41_fp4_kv_cache_surface: VllmCompiledSurface = VllmCompiledSurface {
+  torch_operators: [
+    "_C_cache_ops.concat_and_cache_mla" as NonEmptyStr,
+    "_C_cache_ops.indexer_k_quant_and_cache" as NonEmptyStr,
+    "_C_cache_ops.cp_gather_and_upconvert_nvfp4_kv_cache" as NonEmptyStr,
+    "_C_cache_ops.cp_gather_indexer_k_quant_cache" as NonEmptyStr,
+  ],
+  python_modules: [
+    "vllm.models.deepseek_v4_1.common.ops.fused_compress_quant_cache" as NonEmptyStr,
+  ],
+}
+
+// ── THE ARCHITECTURE GATE, AS TWO CITED CMAKE BLOCKS ──────────────────────────────────────────
+//
+// WHY THIS IS A ROW AND NOT A REMEMBERED FACT. Upstream's build does not fail when an architecture
+// block finds no compatible target: it prints `Not building ...` and exits zero, so the difference
+// between "these kernels are in the image" and "these kernels were silently skipped" is invisible in
+// a build's exit code. The two blocks below are what decides it, read from CMakeLists.txt at the
+// pinned revision, so a measured absence inside a built image has a named upstream cause rather than
+// a shrug.
+//
+// The `f` suffix is upstream's family form: cuda_archs_loose_intersection falls back to a
+// major-version match for it, so FP4_SM120_ARCHS's `12.0f` DOES select a 12.1 target -- the SM12x
+// NVFP4 kernels are built for GB10 -- while FP4_SM100_ARCHS's 10.x/11.x entries match nothing in a
+// 12.1 target and that whole block, including the DS-MLA nvfp4 cache, is skipped.
+type VllmArchGatedSourceBlock sole_constructor {
+  block: NonEmptyStr
+  arch_set: NonEmptyStr
+  defines: NonEmptyStr
+  sources: List<NonEmptyStr>
+}
+
+data v41_fp4_sm120_block: VllmArchGatedSourceBlock = VllmArchGatedSourceBlock {
+  block: "FP4_SM120_SRCS" as NonEmptyStr,
+  arch_set: "12.0f (CUDA >= 13.0; 12.0a;12.1a below it)" as NonEmptyStr,
+  defines: "ENABLE_NVFP4_SM120=1, ENABLE_CUTLASS_MOE_SM120=1" as NonEmptyStr,
+  sources: [
+    "csrc/libtorch_stable/quantization/fp4/nvfp4_quant_kernels.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/quantization/fp4/activation_nvfp4_quant_fusion_kernels.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/quantization/fp4/nvfp4_experts_quant.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/quantization/fp4/nvfp4_scaled_mm_sm120_kernels.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/quantization/fp4/nvfp4_blockwise_moe_kernel.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/nvfp4_kv_cache_kernels.cu" as NonEmptyStr,
+  ],
+}
+
+// THE BLOCK A 12.1 TARGET DOES NOT SELECT. nvfp4_ds_mla_cache_kernels.cu appears here and nowhere
+// else; nvfp4_ds_mla_cache.h says its launchers are "only defined when the build has an SM100 target
+// (-DENABLE_NVFP4_SM100=1)". So an sm_121 image carries the SM12x NVFP4 quantisation and GEMM and
+// KV-cache kernels, and does not carry the DS-MLA nvfp4 KV LAYOUT.
+data v41_fp4_sm100_block: VllmArchGatedSourceBlock = VllmArchGatedSourceBlock {
+  block: "FP4_SM100_SRCS" as NonEmptyStr,
+  arch_set: "10.0f;10.7f;11.0f (CUDA >= 13.0; 10.0a;10.1a;10.3a below it)" as NonEmptyStr,
+  defines: "ENABLE_NVFP4_SM100=1, ENABLE_CUTLASS_MOE_SM100=1" as NonEmptyStr,
+  sources: [
+    "csrc/libtorch_stable/quantization/fp4/nvfp4_scaled_mm_kernels.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/quantization/fp4/mxfp4_experts_quant.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/quantization/fp4/mxfp4_blockwise_moe_kernel.cu" as NonEmptyStr,
+    "csrc/libtorch_stable/nvfp4_ds_mla_cache_kernels.cu" as NonEmptyStr,
+  ],
+}
+
+// ── WHICH KV LAYOUT V4.1 ACTUALLY RUNS ON SM_12X ──────────────────────────────────────────────
+//
+// THE NVFP4 DS-MLA CACHE IS NOT A DEGRADED SM12X PATH; IT IS AN SM10X OPTION. `nvfp4_ds_mla` is a
+// member of vLLM's CacheDType literal (vllm/config/cache.py), but
+// DeepseekV4FlashInferMLASparseBackend.supports_combination admits, on device capability major 12,
+// exactly fp8, fp8_e4m3 and fp8_ds_mla -- and returns "kv_cache_dtype not supported" for anything
+// else, nvfp4_ds_mla included. So the question "what does V4.1 do on sm_12x when the NVFP4 DS-MLA
+// cache is unavailable" has no fallback arm in it: that layout is never selected on this capability,
+// with or without the kernels, and a launch that names it is refused before the kernels are
+// consulted. What the SM12 path stores is the fp8 DS-MLA layout.
+//
+// AND NOTE WHAT ELSE IS NOT ADMITTED THERE: None, "auto" and "bfloat16" are admitted on major 10 and
+// are NOT admitted on major 12, so a GB10 launch that leaves kv_cache_dtype unset does not get a
+// default -- it gets the backend rejected. That is a launch-argument obligation, not a build one.
+data v41_sm12_kv_layout: NonEmptyStr = "fp8_ds_mla" as NonEmptyStr
+
+// THE BYTES THE LAYOUT COSTS PER STATE, AND THE FORMULA THAT TURNS THAT INTO PER-TOKEN.
+//
+// 584 IS V4.1'S OWN FIGURE AND IT IS NOT 656. An earlier revision of this row carried 656, which is
+// the fp8_ds_mla ENTRY STRIDE documented in vllm/models/kimi_k3/nvidia/ops/... for a different model;
+// V4.1's own attention layer passes state_content_bytes=584 to MLAAttentionSpec (448B NoPE + 128B
+// RoPE + 8B fp8 scale, per the comment beside it), with alignment=576 applied to the whole page
+// rather than to a state. Carrying another model's stride as this model's cost is the fork this
+// repository consolidates later at interest, and it would have been consumed as a capacity figure.
+data v41_sm12_kv_state_content_bytes: ByteSize = byte_size(count: 584)
+data v41_sm12_kv_page_alignment_bytes: ByteSize = byte_size(count: 576)
+
+// A STATE IS NOT A TOKEN, WHICH IS WHY NO BYTES-PER-TOKEN FIGURE IS DECLARED HERE. In
+// vllm/v1/kv_cache_interface.py a page holds num_heads * num_states * state_content_size_bytes, and
+// num_states is block_size // tokens_per_state, where V4.1 passes tokens_per_state = the layer's
+// compress_ratio. So one layer costs state_content_bytes / compress_ratio per token, and a
+// whole-model figure sums that over the layers that OWN a cache -- which for V4.1 is the
+// kv_source_layer_ids subset rather than every layer, plus the indexer and sliding-window caches,
+// which are separate specs with their own head sizes.
+//
+// The derivation belongs to whichever lane owns capacity, and it needs a CHECKPOINT's layer sets to
+// join against these per-layer facts. Publishing a half-derived number here is how a per-layer stride
+// comes to be compared against a whole-model figure and a ratio comes out of two different units --
+// which happened once in this lane already, with a stride that turned out to belong to another model.
+
+// CSA2 -- the V4.1 compressed sparse attention path. Pure python at this revision, so an image built
+// from this tree carries it whatever architectures were compiled, which is exactly why it is a
+// separate capability from the kernel ones: it cannot be lost to an arch gate, and a probe that
+// lumped it in with them would let a python file answer for a cubin.
+data v41_csa2_surface: VllmCompiledSurface = VllmCompiledSurface {
+  torch_operators: [],
+  python_modules: [
+    "vllm.models.deepseek_v4_1.compressor" as NonEmptyStr,
+    "vllm.models.deepseek_v4_1.sparse_mla" as NonEmptyStr,
+  ],
+}
+
+// The DSpark speculator, likewise python: the model-side module and the v1 worker's spec-decode arm.
+// Both are asked, because the model half can exist in a tree whose worker half does not.
+data v41_dspark_surface: VllmCompiledSurface = VllmCompiledSurface {
+  torch_operators: [],
+  python_modules: [
+    "vllm.models.deepseek_v4_1.nvidia.dspark" as NonEmptyStr,
+    "vllm.v1.worker.gpu.spec_decode.dspark" as NonEmptyStr,
+  ],
+}

@@ -10,6 +10,7 @@ import v2.extdeps.languages.bash {
 }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
+  bash_build_negation,
   bash_build_assign_lit,
   bash_build_assign_var,
   bash_build_command_from_lits,
@@ -49,6 +50,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_target_model_for_emitted_witness,
   bash_fold_with_redir_wrong_target_model_witness
 }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.workflow.bash_emit {
   BashEmitStmt,
   bash_emit_env_prefixed,
@@ -76,6 +78,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ci_cargo_eagain_retry_core_golden pattern).
 
 data bash_fold_and_then_golden: String = "'true' && 'false'"
+data bash_fold_and_or_negation_grouped_golden: String = "('true' || 'true') && (! ('false' || 'false'))"
 data bash_fold_assign_foo_golden: String = "FOO='bar'"
 data bash_fold_assign_home_golden: String = "X=\"$HOME\""
 data bash_fold_assign_quote_golden: String = "VAR='a'\\''b'"
@@ -383,6 +386,26 @@ test fn bash_fold_and_then_true_false_holds() -> Bool {
     stmt: bash_fold_and_then_stmt(node: bash_fold_and_then_true_false_emitted),
     golden: bash_fold_and_then_golden
   )
+}
+
+test fn bash_fold_and_or_negation_preserves_posix_grouping_holds() -> Bool {
+  match bash_fold_serialize_node(
+    stmt: bash_build_and_then(
+      left: bash_build_or_else(
+        left: bash_fold_cmd_true_emitted,
+        right: bash_fold_cmd_true_emitted
+      ),
+      right: bash_build_negation(
+        inner: bash_build_or_else(
+          left: bash_build_command_from_lits(lits: ["false"]),
+          right: bash_build_command_from_lits(lits: ["false"])
+        )
+      )
+    )
+  ) {
+    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_and_or_negation_grouped_golden
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn bash_fold_or_else_true_false_holds() -> Bool {
