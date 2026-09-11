@@ -1,6 +1,7 @@
 module gunbc.typed_remote_file_write
 
 import extdeps.tools.chmod { chmod_path_resolved_program }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -100,6 +101,35 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
     RemoteFileModeOwnerReadWrite => "600"
     RemoteFileModeOwnerReadWriteWorldRead => "644"
   }
+}
+
+// WHO RUNS THE FOUR LEGS. A file under a directory the session principal owns needs nothing more; a
+// file under /etc needs root, and the fleet's administrator principals reach root through
+// non-interactive sudo rather than by logging in as root. So privilege is a property of THIS write
+// against THIS target, not of the transport, and it is spelled once here rather than by each consumer
+// prefixing words onto argv it did not build.
+//
+// THE SECOND ARM IS extdeps.sudo.elevation sudo_elevate, which mints only the non-interactive form.
+// sudo without -n prompts for a password on a channel with no
+// terminal, which hangs until the step times out; with it, a missing grant is an immediate nonzero exit
+// carrying sudo's own diagnostic, located at the leg that needed the privilege.
+//
+// The prefix goes on EVERY leg, the read-back included, so the principal that compared the bytes is the
+// principal that wrote them: an unprivileged cmp against a file the writer made unreadable would report
+// a comparison failure that was really a permission boundary.
+type RemoteFilePrivilege
+  = RemoteFileAsSessionPrincipal
+  | RemoteFileViaNonInteractiveSudo
+
+fn remote_file_privileged_argv(privilege: RemoteFilePrivilege, argv: List<String>) -> List<String> {
+  match privilege {
+    RemoteFileAsSessionPrincipal => argv
+    RemoteFileViaNonInteractiveSudo => elevated_invocation_argv(invocation: sudo_elevate(command: argv))
+  }
+}
+
+fn elevated_invocation_argv(invocation: ElevatedInvocation) -> List<String> {
+  concat([invocation.bin_path], invocation.args)
 }
 
 // The converged verdict is SEALED and the refusal is not, and the asymmetry is the whole point --
@@ -501,6 +531,7 @@ func converge_typed_remote_file(
   context: FleetSshExecutionContext,
   admission: TypedRemoteFileWriteAdmission,
   mode: RemoteFileMode,
+  privilege: RemoteFilePrivilege,
 ) -> TypedRemoteFileConvergence {
   match admission {
     TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
@@ -508,28 +539,28 @@ func converge_typed_remote_file(
     TypedRemoteFileWriteAdmitted { write: write } =>
       match typed_remote_file_step_outcome(
         target: target, context: context, step: "stage",
-        raws: typed_remote_file_stage_argv(write: write),
+        raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_stage_argv(write: write)),
         stdin_payload: typed_remote_file_write_stdin_payload(write: write),
       ) {
         Present { value: refusal } => refusal
         Absent =>
           match typed_remote_file_step_outcome(
             target: target, context: context, step: "mode",
-            raws: typed_remote_file_chmod_argv(write: write, mode: mode),
+            raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_chmod_argv(write: write, mode: mode)),
             stdin_payload: "",
           ) {
             Present { value: refusal } => refusal
             Absent =>
               match typed_remote_file_step_outcome(
                 target: target, context: context, step: "rename",
-                raws: typed_remote_file_rename_argv(write: write),
+                raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_rename_argv(write: write)),
                 stdin_payload: "",
               ) {
                 Present { value: refusal } => refusal
                 Absent =>
                   match typed_remote_file_step(
                     target: target, context: context,
-                    raws: typed_remote_file_compare_argv(write: write),
+                    raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_compare_argv(write: write)),
                     stdin_payload: write.content,
                   ) {
                     TypedRemoteFileStepArgvRefused =>
