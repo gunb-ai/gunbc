@@ -20,6 +20,9 @@ import gunbc.review_sheet_projection {
   write_plan_touches_column,
   decide_review_sheet,
   judgement_for_listing,
+  JudgementBlank,
+  JudgementEntered,
+  JudgementUnreadable,
   listing_standing_label,
   read_listing_standing,
   StandingObserved,
@@ -180,12 +183,16 @@ test fn converge_preserves_populated_human_column() -> Bool {
   match decide_review_sheet(observed: observed, projection: projection) {
     Apply { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
-        && judgement_for_listing(
+        && match judgement_for_listing(
           observed: observed,
           identity_column: "listing_id" as NonEmptyStr,
           judgement_column: "judgement" as NonEmptyStr,
           listing_id: "L1" as NonEmptyStr,
-        ) == "buy"
+        ) {
+          JudgementEntered { value: v } => (v as String) == "buy"
+          JudgementBlank => false
+          JudgementUnreadable { reason: _ } => false
+        }
         && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
     Noop => false
     Refuse { reason: _ } => false
@@ -231,18 +238,26 @@ test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
     Noop =>
       match decide_review_sheet(observed: resorted, projection: projection) {
         Noop =>
-          judgement_for_listing(
+          match judgement_for_listing(
             observed: resorted,
             identity_column: "listing_id" as NonEmptyStr,
             judgement_column: "judgement" as NonEmptyStr,
             listing_id: "L1" as NonEmptyStr,
-          ) == "buy"
-            && judgement_for_listing(
+          ) {
+            JudgementEntered { value: v } => (v as String) == "buy"
+            JudgementBlank => false
+            JudgementUnreadable { reason: _ } => false
+          }
+            && match judgement_for_listing(
               observed: resorted,
               identity_column: "listing_id" as NonEmptyStr,
               judgement_column: "judgement" as NonEmptyStr,
               listing_id: "L2" as NonEmptyStr,
-            ) == "skip"
+            ) {
+              JudgementEntered { value: v } => (v as String) == "skip"
+              JudgementBlank => false
+              JudgementUnreadable { reason: _ } => false
+            }
         Apply { plan: _ } => false
         Refuse { reason: _ } => false
       }
@@ -261,12 +276,16 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
     Apply { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && (p.appends |> count) == 0
-        && judgement_for_listing(
+        && match judgement_for_listing(
           observed: observed,
           identity_column: "listing_id" as NonEmptyStr,
           judgement_column: "judgement" as NonEmptyStr,
           listing_id: "L1" as NonEmptyStr,
-        ) == "buy"
+        ) {
+          JudgementEntered { value: v } => (v as String) == "buy"
+          JudgementBlank => false
+          JudgementUnreadable { reason: _ } => false
+        }
         && fold(p.patches, init: false, f: fn(acc, w) {
           acc || (w.listing_id == ("L1" as NonEmptyStr)
             && w.column == ("standing" as NonEmptyStr)
@@ -304,12 +323,16 @@ test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
   let observed = observed_sheet_from_value_range(range: range)
   match review_sheet_from_readback(range: range, projection: projection) {
     Noop =>
-      judgement_for_listing(
+      match judgement_for_listing(
         observed: observed,
         identity_column: "listing_id" as NonEmptyStr,
         judgement_column: "judgement" as NonEmptyStr,
         listing_id: "L1" as NonEmptyStr,
-      ) == "buy"
+      ) {
+        JudgementEntered { value: v } => (v as String) == "buy"
+        JudgementBlank => false
+        JudgementUnreadable { reason: _ } => false
+      }
     Apply { plan: _ } => false
     Refuse { reason: _ } => false
   }
@@ -498,6 +521,26 @@ fn w_discharged_iam() -> HumanIntervention {
   }
 }
 
+fn w_pending_share() -> HumanIntervention {
+  spreadsheet_share_intervention(spreadsheet_id: "sheet-abc" as NonEmptyStr, writer: w_fixture_writer())
+}
+
+fn w_discharged_share() -> HumanIntervention {
+  HumanIntervention {
+    identity: concat("buyer-review-spreadsheet-share-", "sheet-abc") as HumanInterventionIdentity,
+    frequency: DeviceOnce,
+    subject: "sheet-abc" as NonEmptyStr,
+    instruction: "fixture",
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "test.claim.review_sheet_converge_witness",
+        decl_name: "w_discharged_share",
+        field: WholeDeclaration,
+      }
+    },
+  }
+}
+
 fn w_observed_enabled() -> ServiceEnablementObservation {
   ServiceObservedEnabled { project: w_fixture_project(), service_id: sheets_serviceusage_api_id }
 }
@@ -610,6 +653,7 @@ test fn writer_unresolved_is_not_fleet_automation() -> Bool {
     enablement: w_observed_disabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
   ) {
     ReviewSheetEstateUnresolved { subject: s, reason: r } =>
       (s as String) == "review_sheet_writer"
@@ -628,6 +672,7 @@ test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> B
     enablement: w_observed_disabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
   ) {
     ReviewSheetNeedsApiEnable { plan: p } =>
       (p.project as String) == "fixture-api-project"
@@ -646,6 +691,7 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       (i.identity as String) == "buyer-review-spreadsheet-create"
@@ -670,6 +716,7 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       match i.frequency {
@@ -734,4 +781,69 @@ test fn fleet_secrets_wif_binding_is_still_undischarged() -> Bool {
       NoDischargeSiteModeled => true
       DischargedAt { evidence: _ } => false
     }
+}
+
+test fn judgement_failures_are_unreadable_not_blank() -> Bool {
+  let observed = w_observed(headers: w_headers(), rows: [["L1", "alpha", w_standing_observed(), "buy"]])
+  match judgement_for_listing(
+    observed: observed,
+    identity_column: "missing_id" as NonEmptyStr,
+    judgement_column: "judgement" as NonEmptyStr,
+    listing_id: "L1" as NonEmptyStr,
+  ) {
+    JudgementUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "missing identity column")
+        && match judgement_for_listing(
+          observed: observed,
+          identity_column: "listing_id" as NonEmptyStr,
+          judgement_column: "missing_judgement" as NonEmptyStr,
+          listing_id: "L1" as NonEmptyStr,
+        ) {
+          JudgementUnreadable { reason: r2 } =>
+            string_contains(s: r2 as String, pattern: "missing judgement column")
+              && match judgement_for_listing(
+                observed: observed,
+                identity_column: "listing_id" as NonEmptyStr,
+                judgement_column: "judgement" as NonEmptyStr,
+                listing_id: "NOPE" as NonEmptyStr,
+              ) {
+                JudgementUnreadable { reason: r3 } =>
+                  string_contains(s: r3 as String, pattern: "listing not present")
+                    && match judgement_for_listing(
+                      observed: observed,
+                      identity_column: "listing_id" as NonEmptyStr,
+                      judgement_column: "judgement" as NonEmptyStr,
+                      listing_id: "L1" as NonEmptyStr,
+                    ) {
+                      JudgementEntered { value: v } => (v as String) == "buy"
+                      JudgementBlank => false
+                      JudgementUnreadable { reason: _ } => false
+                    }
+                JudgementBlank => false
+                JudgementEntered { value: _ } => false
+              }
+          JudgementBlank => false
+          JudgementEntered { value: _ } => false
+        }
+    JudgementBlank => false
+    JudgementEntered { value: _ } => false
+  }
+}
+
+test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_project_identified(),
+    writer: w_writer_identified(),
+    enablement: w_observed_enabled(),
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+  ) {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: sid } => sid == id
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+  }
 }

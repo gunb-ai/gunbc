@@ -585,16 +585,42 @@ fn decide_review_sheet(observed: ObservedSheet, projection: ReviewSheetProjectio
   classify_to_decision(classified: classify_review_sheet(observed: observed, projection: projection))
 }
 
-fn judgement_for_listing(observed: ObservedSheet, identity_column: NonEmptyStr, judgement_column: NonEmptyStr, listing_id: NonEmptyStr) -> String {
+type JudgementRead
+  = JudgementBlank
+  | JudgementEntered { value: NonEmptyStr }
+  | JudgementUnreadable { reason: NonEmptyStr }
+
+fn judgement_for_listing(
+  observed: ObservedSheet,
+  identity_column: NonEmptyStr,
+  judgement_column: NonEmptyStr,
+  listing_id: NonEmptyStr,
+) -> JudgementRead {
   match header_index(headers: observed.headers, name: identity_column) {
-    Absent => ""
+    Absent =>
+      JudgementUnreadable {
+        reason: concat("missing identity column ", identity_column as String) as NonEmptyStr
+      }
     Present { value: id_idx } =>
       match header_index(headers: observed.headers, name: judgement_column) {
-        Absent => ""
+        Absent =>
+          JudgementUnreadable {
+            reason: concat("missing judgement column ", judgement_column as String) as NonEmptyStr
+          }
         Present { value: j_idx } =>
           match observed.rows |> filter(r => cell_at(cells: r.cells, index: id_idx) == (listing_id as String)) |> first {
-            Absent => ""
-            Present { value: row } => cell_at(cells: row.cells, index: j_idx)
+            Absent =>
+              JudgementUnreadable {
+                reason: concat("listing not present ", listing_id as String) as NonEmptyStr
+              }
+            Present { value: row } => {
+              let raw = cell_at(cells: row.cells, index: j_idx)
+              if raw == "" {
+                JudgementBlank
+              } else {
+                JudgementEntered { value: raw as NonEmptyStr }
+              }
+            }
           }
       }
   }
