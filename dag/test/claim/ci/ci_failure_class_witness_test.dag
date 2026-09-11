@@ -1,5 +1,10 @@
 module test.claim.ci_failure_class_witness
 
+import std.decl_ref { declaration_ref_eq, decl_ref }
+import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
+  command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn class_is_infra(c: FloorFailureClass) -> Bool {
@@ -48,6 +53,16 @@ fn list_has_signature(xs: List<InfraSignature>, target: InfraSignature) -> Bool 
   fold(xs, init: false, f: fn(acc, sig) { acc || (sig == target) })
 }
 
+fn limitation_cites_ref(module_path: String, decl_name: String) -> Bool {
+  fold(
+    command_not_found_exit_cannot_distinguish_eviction_from_misnaming.evidence,
+    init: false,
+    f: fn(acc, r) {
+      acc || declaration_ref_eq(a: r, b: decl_ref(module_path: module_path, decl_name: decl_name))
+    }
+  )
+}
+
 test fn witness_real_infra_reasons_are_non_blocking() -> Bool {
   let eagain = "error: failed to run custom build command\nResource temporarily unavailable (os error 11)"
   let spawn = "error: could not compile; caused by: failed to spawn process"
@@ -67,7 +82,53 @@ test fn witness_real_infra_reasons_are_non_blocking() -> Bool {
     && (floor_failure_blocks_merge(c: classify_failure_reason(reason: sccache_exec)) == false)
 }
 
-test fn witness_structural_not_swallowed_as_infra() -> Bool {
+test fn witness_posix_shell_reserved_exits_are_infra_not_subject() -> ProcessExit {
+  let not_exec = ExitFailure { code: 126, reason: "Process completed with exit code 126." }
+  let not_found = ExitFailure { code: 127, reason: "Process completed with exit code 127." }
+  if class_is_infra(c: classify_failure_exit(code: 126, reason: "Process completed with exit code 126."))
+    && class_is_infra(c: classify_failure_exit(code: 127, reason: "Process completed with exit code 127."))
+    && (floor_failure_blocks_merge(c: classify_failure_exit(code: 126, reason: "x")) == false)
+    && (floor_outcome_wire(o: classify_floor_exit(e: not_exec)) == floor_outcome_wire_infra)
+    && (floor_outcome_wire(o: classify_floor_exit(e: not_found)) == floor_outcome_wire_infra)
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: posix_exit_status_decimal(code: 126))
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "title=environment")
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: infra_signature_match_substring(sig: SccacheFatalError))
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "tee")
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "pipefail")
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "false"), pattern: "'set' '+e'")
+    && wrap_command_is_renderable(command: "false")
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "false"), pattern: "GUNBC_FLOOR_EXIT")
+    && (infra_signature_match_substring(sig: MemoryStallRefusedPageThrash) == memory_stall_refusal_page_thrash_class_name)
+    && wrap_command_is_renderable(command: "cargo build")
+    && wrap_command_is_renderable(command: "cargo build --release -p v1-compiler --bins\ncargo build --release -p v1-stage0-runtime")
+    && (floor_attempt_receipt_class_may_replace(next: floor_outcome_wire_none, prior: floor_outcome_wire_infra) == false)
+    && floor_attempt_receipt_class_may_replace(next: floor_outcome_wire_infra, prior: floor_outcome_wire_none)
+    && floor_attempt_receipt_class_may_replace(next: floor_outcome_wire_structural, prior: floor_outcome_wire_infra)
+    && (floor_attempt_receipt_class_may_replace(next: floor_outcome_wire_infra, prior: floor_outcome_wire_structural) == false)
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "true"), pattern: concat("class=", floor_outcome_wire_infra))
+    && (string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "''\\''") == false)
+    && (string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build --release"), pattern: "sh -e -c cargo") == false)
+    && (posix_exit_status_decimal(code: 126) == "126")
+    && (posix_exit_status_decimal(code: 101) == "101")
+    && string_contains(s: floor_attempt_receipt_body(exit_code: 101, outcome: classify_floor_exit(e: ExitFailure { code: 101, reason: "error[E0599]" })), pattern: "exit=101")
+    && string_contains(s: floor_attempt_receipt_body(exit_code: 126, outcome: classify_floor_exit(e: not_exec)), pattern: "CommandInvokedCannotExecute")
+    && class_is_infra(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages"))
+    && (floor_failure_blocks_merge(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted")) == false)
+    && (command_not_found_exit_cannot_distinguish_eviction_from_misnaming.identity as String) == "command_not_found_exit_cannot_distinguish_eviction_from_misnaming"
+    && string_contains(s: infra_signature_origin(sig: CommandNotFound), pattern: "gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming")
+    && limitation_cites_ref(module_path: "gunbc.ci_failure_class", decl_name: "classify_failure_exit")
+    && limitation_cites_ref(module_path: "gunbc.ci_failure_class", decl_name: "wrap_command_with_floor_attempt_receipt_stmts")
+    && limitation_cites_ref(module_path: "v2.extdeps.languages.bash_build", decl_name: "bash_build_word_lit") {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: "POSIX 126/127 must classify as infra, not subject, and the attempt receipt must wire that class"
+    }
+  }
+}
+
+test fn witness_structural_compile_error_is_still_subject_red() -> Bool {
   let compile_err = "error[E0599]: no method named `frobnicate` found for type `Node`"
   let inference = "type inference failed: cannot unify Int with String at dag/gunbc/foo.dag:42"
   let assertion = "witness cheap_pool_chunk_totality_holds returned false (1 uncovered claim)"
@@ -110,8 +171,9 @@ test fn witness_grep_alternation_is_single_authority() -> Bool {
 test fn witness_build_retry_subset_excludes_job_signals() -> Bool {
   let build = build_retry_infra_signatures()
   (list_len(xs: build) == 5)
-    && (list_len(xs: verdict_infra_signatures) == 6)
+    && (list_len(xs: verdict_infra_signatures) == 7)
     && (list_has_signature(xs: build, target: RunnerLost) == false)
+    && (list_has_signature(xs: build, target: MemoryStallRefusedPageThrash) == false)
     && (string_contains(s: infra_retry_grep_alternation(), pattern: infra_signature_match_substring(sig: RunnerLost)) == false)
 }
 

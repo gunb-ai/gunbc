@@ -5,6 +5,7 @@ import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, 
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_posix_accounts {
+  fleet_bootstrap_principal_login,
   FleetPosixAccountKey,
   FleetAccountOperator,
   FleetAccountAutomation,
@@ -101,7 +102,12 @@ data spark_managed_executor_login: String = "gunbc-automation"
 fn spark_managed_principal_home(login: NonEmptyStr) -> NonEmptyStr {
   join(["/home/", login as String], "") as NonEmptyStr
 }
-data spark_operator_bootstrap_login: String = "briansrls"
+// spark_operator_bootstrap_login stood here as a second literal "briansrls" beside
+// gunbc.fleet_posix_accounts fleet_posix_operator_user. Deleted: the login is
+// fleet_bootstrap_principal_login(), once, at the account model. Raised in review 63721, which
+// read the fork correctly as load-bearing rather than cosmetic -- the session derivation in
+// gunbc.fleet_bootstrap_principal_session compares against that name, so a divergence between two
+// literals would resolve every bootstrap leg to the key session and refuse.
 
 // DERIVING THE STANDING. Absence of an observation is ManagedAccessUnobserved, never
 // BootstrapRequired: "nobody looked" and "we looked and it is not there" have different remedies,
@@ -123,7 +129,7 @@ fn derive_spark_managed_access_standing(
         ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
       }
     Absent =>
-      match observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as NonEmptyStr) {
+      match observation_for(observations: observations, host: host, login: fleet_bootstrap_principal_login()) {
         Present { value: b } =>
           if b.authenticated {
             ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }

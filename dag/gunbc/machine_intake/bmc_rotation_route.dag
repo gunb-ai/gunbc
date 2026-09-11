@@ -1,0 +1,117 @@
+module gunbc.machine_intake_bmc_rotation_route
+
+import std.types { NonEmptyStr, String }
+import std.disposition { Disposition, Terminal }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.bmc_implementation_dispatch {
+  BmcRotationRoute,
+  RotationRouteRedfishAccountService,
+  RotationRouteUnavailable,
+}
+import gunbc.machine_intake_bmc_secure {
+  CredentialRotationApplication,
+  AccountManagementUnavailable,
+}
+
+// THIS ROW WAS A TYPE ERROR AND IT COMPILED ANYWAY (review 63271). It read
+// `Disposition = SingleAuthority`, and SingleAuthority is an arm of ConstructionMechanism, not of
+// Disposition -- which has exactly Terminal and Scaffold. Every other `: Disposition =` site in the
+// corpus uses one of those two.
+//
+// THE REVIEW CALLED THE CONSEQUENCE "the module therefore does not compile". IT DOES COMPILE, and
+// that is the worse finding rather than a lesser one. This session's own run resolved the closure
+// containing this row and failed only on a wrong function name, and gunbc#10952 was green on all
+// four required checks with the row present. The reason is a rostered below-floor defect: a wrong
+// COPRODUCT value is accepted into a declared field with no diagnostic, while the same check fires
+// for primitives and unresolved names. So the ordinary compiler floor -- "values inhabit declared
+// types" (DESIGN §4b) -- did not hold, and a plainly wrong row rode four green checks.
+//
+// The value is Terminal because this module is not scaffolding: it holds one fold that binds a
+// route to the application the adjudication refuses on, and there is no construction it dissolves
+// into.
+data bmc_rotation_route_disposition: Disposition = Terminal {
+  reason: "The route-to-application binding is the terminal form: gunbc.bmc_implementation_dispatch decides the route by firmware family, and this module maps that route to the machine_intake CredentialRotationApplication the adjudication refuses on. Nothing here is staged pending a different construction." as NonEmptyStr,
+}
+
+// BINDING A ROUTE TO THE APPLICATION THE ADJUDICATION REFUSES ON. The family-keyed dispatch that
+// picks the route is NOT here: it is gunbc.bmc_implementation_dispatch rotation_route_for_family,
+// alongside the three other family-keyed folds.
+//
+// THE FIRST VERSION OF THIS MODULE OWNED THAT DISPATCH AND THAT WAS A FORK (review 63250). The
+// block comment argued at length that a realization dispatch belongs peripheral to both extdeps
+// modules rather than inside either -- which is correct DESIGN §3 reasoning and was the wrong
+// conclusion, because the corpus had ALREADY built that peripheral home and the argument never
+// mentioned it. gunbc.bmc_implementation_dispatch says of itself that a third implementation
+// "refuses to compile here and nowhere else; that is the census", and a fourth `match family` over
+// here falsified that sentence the moment it landed -- splitting the third-implementation census
+// across two modules with no cross-reference between them. gunbc#9678 already paid for this exact
+// fork once, in the other direction.
+//
+// SO THE DISPATCH MOVED AND THE SPLIT IS AT THE LAYER BOUNDARY, not at a convenience line. What is
+// keyed on BmcFirmwareFamily and cites only extdeps.bmc facts went to the dispatch home. What
+// remains here is the part that is not family-keyed at all: mapping a route to a machine_intake
+// CredentialRotationApplication. Hoisting that would make the peripheral dispatch module import
+// machine_intake and invert the layering it exists to keep straight.
+//
+// THE ROUTE IS KEYED ON AN OBSERVATION, NEVER ON AN EXPECTATION, and that constraint binds the
+// caller of the dispatch rather than this fold. The family comes from a
+// workflow-layer receipt -- for the held unit, gunbc.machine_intake_mtcollins1_access_observation,
+// which carries family AmiMegaRac with committed raw bytes and a digest, and which established
+// Redfish absence against a discriminating control: five Redfish paths refused over TLS while the
+// same host answered 200 on its web root, so "no Redfish service" is separated from "host
+// unreachable". extdeps.ampere.mt_collins_product_brief.bmc holds only an EXPECTATION and forbids
+// its own promotion; nothing here may read it, and this module never takes a family from it.
+
+// THE REFUSAL IS PRODUCED BEFORE ANY CONTROLLER WRITE, WHICH IS THE WHOLE POINT OF PUTTING THE
+// ROUTE AHEAD OF THE ATTEMPT. An unavailable route yields AccountManagementUnavailable, which
+// gunbc.machine_intake_bmc_secure adjudicates into a typed, located BmcSecure refusal whose owner
+// is derived rather than authored. It does not silently skip, and it is not filed as a hardware
+// defect: bmc_secure_refusal_owner routes an access state to a PartsHold rather than to the return
+// clock, because a firmware we cannot yet drive is not a defect of the unit the seller shipped.
+//
+// THE SENTENCE ABOVE IS ABOUT THE VALUE THIS FOLD RETURNS, NOT ABOUT ANY UNIT'S ARRIVAL PHASE, and
+// the first draft of this block asserted the latter in the PRESENT TENSE (review 63236). It read
+// "a unit whose firmware has no rotation transport FAILS ITS ARRIVAL PHASE and is never certified
+// as secured". That is not true today and nothing here makes it true: BmcCredentialRotationObservation
+// takes `rotation` as a SUPPLIED field, so no unit's arrival phase consults this table. The claim
+// described the terminal architecture and wore the tense of the current one, which is DESIGN §4b(1)
+// rung inflation -- the executed evidence is this module's witness fold and nothing else, and a
+// sentence about arrival phases cited that evidence for a claim it does not support.
+
+// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE (DESIGN §3c). The only executing consumer of
+// rotation_application_for_route is test.claim.machine_intake_bmc_rotation_route_witness_test,
+// which exercises both arms rather than asserting they exist. That is the honest state and it is
+// stated rather than left to be discovered, because a declaration whose consumption is described
+// in a PR body and absent from the diff is exactly §3c's red.
+//
+// THE CLAIM IS A NAMED JOIN AND NOT AN ABSENCE, WHICH IS THE FORM THAT SURVIVES. An earlier draft
+// opened this block with "Today: nobody in production" -- a live open-world negative with no
+// producer that can re-derive it and no consumer whose addition contradicts it, so it would have
+// gone silently false the moment an actuator landed. The sentence that replaced it names the
+// consumer, and a named join is falsified MECHANICALLY when a caller appears, because its identity
+// is reachable through the namespace tree. That is DESIGN §3's cite-the-symbol-rather-than-the-
+// position rule applied to a claim about a population, and §3c asks for exactly this: name the
+// consumer and the route, never assert the absence of consumers.
+//
+// THIS IS THE ADMISSIBLE MIDDLE STATE -- consumed by a NAMED consumer landing in a NAMED later
+// change -- and the trigger is stated here rather than borrowed from
+// gunbc.bmc_implementation_dispatch megarac_rotation_route_frontier, which answers a different
+// question: that row dissolves the UNAVAILABLE ARM and says nothing about whether any caller
+// exists, so citing it for consumption would be one dissolution condition doing two jobs. (It was
+// cited here as "the frontier below" until the arm it guards moved to the dispatch home, which is
+// what DESIGN §3 means by naming the symbol rather than the position -- a positional citation is
+// invalidated by an edit that never touches either end.)
+data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when the effectful rotation actuator named in gunbc.machine_intake_bmc_secure -- the producer of BmcCredentialRotationObservation, gated on the gunbc.bmc_onboarding split -- derives the rotation field by calling rotation_application_for_route on the family read from the controller, rather than receiving it as a supplied argument; at that point a MegaRAC unit's Arrival phase genuinely fails on this table and the present-tense claim becomes authorable. NOT satisfied by this module typechecking, by the witness exercising both arms, or by any caller that passes a route it constructed itself rather than one this table returned" as NonEmptyStr,
+)
+fn rotation_application_for_route(route: BmcRotationRoute) -> CredentialRotationApplication? {
+  match route {
+    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => none
+    RotationRouteUnavailable { family_note: f, detail: d } =>
+      Present {
+        value: AccountManagementUnavailable {
+          detail: join([f as String, ": ", d as String], "") as NonEmptyStr,
+        },
+      }
+  }
+}
