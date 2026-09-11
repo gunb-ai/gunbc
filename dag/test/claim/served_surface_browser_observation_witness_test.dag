@@ -1,5 +1,7 @@
 module test.claim.served_surface_browser_observation_witness
 
+import extdeps.linux.kernel { LinuxKernelRelease }
+
 import std.types { NonEmptyStr, FilePath }
 import std.measure { byte_size }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
@@ -36,7 +38,6 @@ import gunbc.served_surface_browser_observation {
   PlaywrightDefaultChromiumLaunch,
   HeadlessPresentation,
   ContainerVisibleHostKernel,
-  LinuxKernelRelease,
   playwright_chromium_151_linux_arm64_headless_navigation_run,
   local_http_url,
   connection_refused_presentation,

@@ -200,7 +200,6 @@ dag/extdeps/languages/yaml/emit.dag
 dag/extdeps/languages/yaml/gha_workflow.dag
 dag/extdeps/languages/yaml/ingest.dag
 dag/extdeps/languages/yaml/types.dag
-dag/extdeps/linux/edac.dag
 dag/extdeps/linux/proc_meminfo.dag
 dag/extdeps/linux/usb_gadget.dag
 dag/extdeps/llm/anthropic_contracts.dag
