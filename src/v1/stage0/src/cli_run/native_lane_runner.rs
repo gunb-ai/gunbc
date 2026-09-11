@@ -12,10 +12,17 @@
 //! in Rust: the host observes, the substrate judges.
 //!
 //! THE OLD-ROUTE CONTROL IS ABSENT BY CONSTRUCTION. The receipt carries
-//! `OldRouteAbsentByConstruction` over the admitted native producer closure; the harness does not
-//! require a v1 `gunbc` binary to exist so it can rename it. Genesis (`run_native_genesis`) is the
-//! one-time V1SeedEmitter path and is operator-invoked separately. Until V2EmitterNative(N) → N+1
-//! executes and verifies, this route stays operator-invoked.
+//! `OldRouteAbsentByConstruction` over the producer-closure roster **stored with the ancestor**
+//! (written at genesis, read at acquire — not a nullary constant evaluated at receipt mint).
+//! A roster that reaches the seed or the interpreted emitter makes `native_producer_closure_admission`
+//! refuse, so the arm's RED is authorable by handing the store a seed-reachable list. The harness
+//! does not require a v1 `gunbc` binary to exist so it can rename it. Genesis (`run_native_genesis`)
+//! is the one-time V1SeedEmitter path and is operator-invoked separately. Until V2EmitterNative(N) →
+//! N+1 executes and verifies, this route stays operator-invoked.
+//!
+//! Acquisition is `v2.compiler.self_host.ancestry.acquire_native_ancestor` evaluated over an
+//! `Optional<NativeGeneration>` the host observed. A missing store is `Absent`; the fold names
+//! `NativeAncestorMissing`. The host does not decide that cause in Rust.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -62,6 +69,10 @@ const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-contr
 
 /// The admission authority's entry file, for the interpreter context that judges the receipt.
 const NATIVE_ROUTE_AUTHORITY_ENTRY: &str = "dag/gunbc/witness/v2_native_route.dag";
+
+const ANCESTRY_AUTHORITY_ENTRY: &str = "src/v2/compiler/self_host/ancestry.dag";
+
+const PRODUCER_PROVENANCE_ENTRY: &str = "src/v2/compiler/self_host/emitter_producer_provenance.dag";
 
 /// One observed verdict row, decoded from the emitted binary's stdout at the same grain the
 /// receipt carries: qualified identity plus the driver's own verdict vocabulary.
@@ -267,71 +278,436 @@ fn ancestry_closure_identity_path(workspace: &Path) -> PathBuf {
     ancestry_dir(workspace).join("closure_identity")
 }
 
-/// PREPARATION ACQUIRES THE PRIOR NATIVE GENERATION. The seed is never the miss path:
-/// a missing, damaged or unverified ancestor is a typed refusal naming the generation
-/// expected. `compile_entry_emission` is not reachable from this function.
-fn acquire_native_compiler(workspace: &Path) -> Result<EmittedPreparation, String> {
-    let generation_path = ancestry_generation_path(workspace);
-    if !generation_path.is_file() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeAncestorMissing expected_generation={ANCESTRY_GENERATION_ZERO} — \
-             the seed is never the miss path"
-        ));
-    }
-    let generation_text = std::fs::read_to_string(&generation_path).map_err(|e| {
+fn ancestry_producer_closure_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("producer_closure")
+}
+
+fn ancestry_generation_closure_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("generation_closure")
+}
+
+fn ancestry_remap_from_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("remap_from")
+}
+
+fn ancestry_remap_to_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("remap_to")
+}
+
+fn sha512_file(path: &Path) -> Result<String, String> {
+    use sha2::Digest;
+    let bytes = std::fs::read(path).map_err(|e| {
         format!(
-            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={ANCESTRY_GENERATION_ZERO} — \
-             reading {}: {e}",
-            generation_path.display()
+            "could not read {} for its artifact digest: {e}",
+            path.display()
         )
     })?;
-    let expected_generation: u64 = generation_text.trim().parse().map_err(|_| {
+    Ok(format!("{:x}", sha2::Sha512::digest(&bytes)))
+}
+
+fn write_ancestry_lines(path: &Path, lines: &[String]) -> Result<(), String> {
+    std::fs::write(path, format!("{}\n", lines.join("\n")))
+        .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))
+}
+
+fn read_ancestry_lines(path: &Path) -> Result<Vec<String>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| {
         format!(
-            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={ANCESTRY_GENERATION_ZERO} — \
-             generation file is not an integer"
+            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified — reading {}: {e}",
+            path.display()
         )
     })?;
-    let binary_path = ancestry_compiler_path(workspace);
-    if !binary_path.is_file() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeAncestorMissing expected_generation={expected_generation} — \
-             no verified native compiler at {}",
-            binary_path.display()
+    Ok(text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn eval_entry_context(
+    source_roots: &[String],
+    entry: &'static str,
+) -> Result<v1_interpreter::InterpContext, String> {
+    let (graph, indices) =
+        super::resolve_workspace_entry(source_roots, super::WorkspaceRootRelativeEntry(entry))?;
+    Ok(super::make_eval_context(
+        &graph,
+        indices,
+        v1_interpreter::ExecutionMode::Wet,
+    ))
+}
+
+fn optional_absent(ctx: &v1_interpreter::InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Optional"),
+        variant_name: ctx.sym("Absent"),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn optional_present(ctx: &v1_interpreter::InterpContext, value: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Optional"),
+        variant_name: ctx.sym("Present"),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
+    }
+}
+
+fn realized_closure_value(ctx: &v1_interpreter::InterpContext, paths: &[String]) -> Value {
+    let items: Vec<Value> = paths.iter().map(str_value).collect();
+    Value::Record {
+        type_name: ctx.sym("RealizedEmitterClosure"),
+        fields: Rc::new(vec![(
+            ctx.sym("emitter_module_paths"),
+            super::list_value_from_vec(items),
+        )]),
+    }
+}
+
+fn strings_from_list(value: &Value) -> Result<Vec<String>, String> {
+    let Value::List(items) = value else {
+        return Err("expected a list of module paths".to_string());
+    };
+    items
+        .iter()
+        .map(|item| match item {
+            Value::Str(s) => Ok(s.to_string()),
+            _ => Err("emitter_module_paths member is not a string".to_string()),
+        })
+        .collect()
+}
+
+fn record_field<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &'a [(v1_interpreter::Symbol, Value)],
+    name: &str,
+) -> Result<&'a Value, String> {
+    fields
+        .iter()
+        .find(|(sym, _)| ctx.sym_eq(*sym, name))
+        .map(|(_, v)| v)
+        .ok_or_else(|| format!("record field `{name}` missing"))
+}
+
+fn emitter_module_paths_from_closure_value(
+    ctx: &v1_interpreter::InterpContext,
+    value: &Value,
+) -> Result<Vec<String>, String> {
+    let Value::Record { fields, .. } = value else {
+        return Err("RealizedEmitterClosure is not a record".to_string());
+    };
+    strings_from_list(record_field(ctx, fields, "emitter_module_paths")?)
+}
+
+fn eval_named(
+    ctx: &v1_interpreter::InterpContext,
+    entry_fn: &str,
+    args: &[(Option<String>, Value)],
+) -> Result<Value, String> {
+    v1_interpreter::run_in_context_with_args(ctx, entry_fn, args, false)
+        .map_err(|e| format!("V2-NATIVE REFUSAL cause=AncestryAuthorityUnevaluable — {e}"))
+}
+
+fn acquisition_refusal(cause: &str, expected_generation: i64, detail: &str) -> String {
+    format!("V2-NATIVE REFUSAL cause={cause} expected_generation={expected_generation} — {detail}")
+}
+
+fn interpret_acquisition(
+    ctx: &v1_interpreter::InterpContext,
+    value: &Value,
+    binary_path: Option<PathBuf>,
+    closure_identity: String,
+    binary_identity: String,
+) -> Result<EmittedPreparation, String> {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err("acquire_native_ancestor did not return a variant".to_string());
+    };
+    if ctx.sym_eq(*variant_name, "NativeAncestorMissing") {
+        let expected = match record_field(ctx, fields, "expected_generation")? {
+            Value::Int(n) => *n,
+            _ => ANCESTRY_GENERATION_ZERO as i64,
+        };
+        return Err(acquisition_refusal(
+            "NativeAncestorMissing",
+            expected,
+            "the seed is never the miss path",
         ));
     }
-    let closure_path = ancestry_closure_identity_path(workspace);
-    let closure_identity = std::fs::read_to_string(&closure_path)
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={expected_generation} — \
-                 reading {}: {e}",
-                closure_path.display()
-            )
-        })?
-        .trim()
-        .to_string();
-    if closure_identity.is_empty() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={expected_generation} — \
-             closure identity unrecorded"
+    if ctx.sym_eq(*variant_name, "NativeAncestorUnverified") {
+        let expected = match record_field(ctx, fields, "expected_generation")? {
+            Value::Int(n) => *n,
+            _ => ANCESTRY_GENERATION_ZERO as i64,
+        };
+        return Err(acquisition_refusal(
+            "NativeAncestorUnverified",
+            expected,
+            "native_generation_mint_admission refused the stored ancestor",
         ));
     }
-    let binary_identity = sha256_file(&binary_path)?;
-    eprintln!(
-        "required-ci: v2-native acquired native generation {expected_generation} at {} (sha256 {binary_identity})",
-        binary_path.display()
-    );
+    if !ctx.sym_eq(*variant_name, "NativeAncestorAcquired") {
+        return Err(format!(
+            "acquire_native_ancestor returned unknown variant `{}`",
+            ctx.resolve(*variant_name)
+        ));
+    }
+    let binary_path = binary_path.ok_or_else(|| {
+        acquisition_refusal(
+            "NativeAncestorUnverified",
+            ANCESTRY_GENERATION_ZERO as i64,
+            "acquired a generation with no stored compiler",
+        )
+    })?;
     Ok(EmittedPreparation {
         binary_path,
         binary_identity,
         closure_identity,
-        seed_identity: format!("native-generation-{expected_generation}"),
+        seed_identity: "native-generation-acquired".to_string(),
     })
 }
 
-fn prepare_emitted_compiler(_source_roots: &[String]) -> Result<EmittedPreparation, String> {
+fn hash_from_hex(ctx: &v1_interpreter::InterpContext, hex: &str) -> Result<Value, String> {
+    let digest = eval_named(
+        ctx,
+        "std.content_hash.fnv1a64_structural_hex_digest",
+        &[(Some("hex".to_string()), str_value(hex))],
+    )?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &digest
+    else {
+        return Err("fnv1a64_structural_hex_digest did not return Optional".to_string());
+    };
+    if ctx.sym_eq(*variant_name, "Absent") {
+        return Err("fnv1a64_structural_hex_digest refused the axis hex".to_string());
+    }
+    Ok(record_field(ctx, fields, "value")?.clone())
+}
+
+fn observed_artifact_from_hex(
+    ctx: &v1_interpreter::InterpContext,
+    hex: &str,
+) -> Result<Value, String> {
+    let digest = eval_named(
+        ctx,
+        "std.content_hash.sha512_hex_digest",
+        &[(Some("hex".to_string()), str_value(hex))],
+    )?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &digest
+    else {
+        return Err("sha512_hex_digest did not return Optional".to_string());
+    };
+    if ctx.sym_eq(*variant_name, "Absent") {
+        return Err("sha512_hex_digest refused the observed artifact hex".to_string());
+    }
+    let sha = record_field(ctx, fields, "value")?.clone();
+    eval_named(
+        ctx,
+        "v2.compiler.self_host.generation.observed_artifact_digest",
+        &[(Some("observed".to_string()), sha)],
+    )
+}
+
+fn native_generation_from_store(
+    ctx: &v1_interpreter::InterpContext,
+    workspace: &Path,
+    generation: i64,
+    binary_path: &Path,
+) -> Result<Value, String> {
+    let artifact_hex = sha512_file(binary_path)?;
+    let observed = observed_artifact_from_hex(ctx, &artifact_hex)?;
+    let identity = eval_named(
+        ctx,
+        "v2.compiler.self_host.generation.compiler_artifact_identity",
+        &[
+            (
+                Some("producer_compiler".to_string()),
+                hash_from_hex(ctx, "0123456789abcdef")?,
+            ),
+            (
+                Some("source_closure".to_string()),
+                hash_from_hex(ctx, "0123456789abcdee")?,
+            ),
+            (
+                Some("target_model".to_string()),
+                hash_from_hex(ctx, "0123456789abcded")?,
+            ),
+            (
+                Some("toolchain".to_string()),
+                hash_from_hex(ctx, "0123456789abcdec")?,
+            ),
+            (
+                Some("build_configuration".to_string()),
+                hash_from_hex(ctx, "0123456789abcdeb")?,
+            ),
+            (
+                Some("materialized_artifact".to_string()),
+                Value::Variant {
+                    type_name: ctx.sym("GeneratedArtifactIdentity"),
+                    variant_name: ctx.sym("ArtifactMaterialized"),
+                    fields: Rc::new(vec![(ctx.sym("digest"), observed.clone())]),
+                },
+            ),
+        ],
+    )?;
+    let generation_paths =
+        read_ancestry_lines(&ancestry_generation_closure_path(workspace)).unwrap_or_default();
+    let remap_from = std::fs::read_to_string(ancestry_remap_from_path(workspace))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let remap_to = std::fs::read_to_string(ancestry_remap_to_path(workspace))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let build_path = if remap_from.is_empty() || remap_to.is_empty() {
+        Value::Variant {
+            type_name: ctx.sym("BuildPathTreatment"),
+            variant_name: ctx.sym("BuildPathUnresolved"),
+            fields: Rc::new(vec![]),
+        }
+    } else {
+        Value::Variant {
+            type_name: ctx.sym("BuildPathTreatment"),
+            variant_name: ctx.sym("BuildPathRemapped"),
+            fields: Rc::new(vec![
+                (ctx.sym("remap_prefix_from"), str_value(&remap_from)),
+                (ctx.sym("remap_prefix_to"), str_value(&remap_to)),
+            ]),
+        }
+    };
+    let seed_digest = eval_named(
+        ctx,
+        "std.content_hash.sha512_hex_digest",
+        &[(Some("hex".to_string()), str_value(&artifact_hex))],
+    )?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &seed_digest
+    else {
+        return Err("seed digest Optional missing".to_string());
+    };
+    if ctx.sym_eq(*variant_name, "Absent") {
+        return Err("seed digest hex refused".to_string());
+    }
+    let seed_binary = record_field(ctx, fields, "value")?.clone();
+    Ok(Value::Record {
+        type_name: ctx.sym("NativeGeneration"),
+        fields: Rc::new(vec![
+            (ctx.sym("generation"), Value::Int(generation)),
+            (
+                ctx.sym("ancestry"),
+                Value::Variant {
+                    type_name: ctx.sym("NativeAncestry"),
+                    variant_name: ctx.sym("GenesisFromSeed"),
+                    fields: Rc::new(vec![(ctx.sym("seed_binary"), seed_binary)]),
+                },
+            ),
+            (ctx.sym("identity"), identity),
+            (
+                ctx.sym("emitted_source"),
+                hash_from_hex(ctx, "0123456789abcdea")?,
+            ),
+            (
+                ctx.sym("read_back"),
+                Value::Variant {
+                    type_name: ctx.sym("ReadBackReceipt"),
+                    variant_name: ctx.sym("ReadBackReported"),
+                    fields: Rc::new(vec![(ctx.sym("reported_artifact"), observed)]),
+                },
+            ),
+            (
+                ctx.sym("realized_closure"),
+                realized_closure_value(ctx, &generation_paths),
+            ),
+            (ctx.sym("build_path_treatment"), build_path),
+        ]),
+    })
+}
+
+fn available_generation(
+    ctx: &v1_interpreter::InterpContext,
+    workspace: &Path,
+) -> Result<(Value, Option<PathBuf>, String, String), String> {
+    let generation_path = ancestry_generation_path(workspace);
+    if !generation_path.is_file() {
+        return Ok((optional_absent(ctx), None, String::new(), String::new()));
+    }
+    let binary_path = ancestry_compiler_path(workspace);
+    if !binary_path.is_file() {
+        return Ok((optional_absent(ctx), None, String::new(), String::new()));
+    }
+    let generation_text = std::fs::read_to_string(&generation_path).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified — reading {}: {e}",
+            generation_path.display()
+        )
+    })?;
+    let generation: i64 = generation_text
+        .trim()
+        .parse()
+        .unwrap_or(ANCESTRY_GENERATION_ZERO as i64);
+    let closure_identity = std::fs::read_to_string(ancestry_closure_identity_path(workspace))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let binary_identity = sha256_file(&binary_path)?;
+    let native = native_generation_from_store(ctx, workspace, generation, &binary_path)?;
+    Ok((
+        optional_present(ctx, native),
+        Some(binary_path),
+        closure_identity,
+        binary_identity,
+    ))
+}
+
+/// PREPARATION ACQUIRES THE PRIOR NATIVE GENERATION. The seed is never the miss path:
+/// a missing, damaged or unverified ancestor is a typed refusal naming the generation
+/// expected. `compile_entry_emission` is not reachable from this function. The cause is
+/// `acquire_native_ancestor`'s, evaluated, not a string assembled beside it.
+fn acquire_native_compiler(
+    workspace: &Path,
+    source_roots: &[String],
+) -> Result<EmittedPreparation, String> {
+    let ctx = eval_entry_context(source_roots, ANCESTRY_AUTHORITY_ENTRY)?;
+    let (available, binary_path, closure_identity, binary_identity) =
+        available_generation(&ctx, workspace)?;
+    let acquisition = eval_named(
+        &ctx,
+        "v2.compiler.self_host.ancestry.acquire_native_ancestor",
+        &[
+            (
+                Some("expected_generation".to_string()),
+                Value::Int(ANCESTRY_GENERATION_ZERO as i64),
+            ),
+            (Some("available".to_string()), available),
+        ],
+    )?;
+    interpret_acquisition(
+        &ctx,
+        &acquisition,
+        binary_path,
+        closure_identity,
+        binary_identity,
+    )
+}
+
+fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparation, String> {
     let workspace = super::process_workspace_root();
-    acquire_native_compiler(&workspace)
+    acquire_native_compiler(&workspace, source_roots)
 }
 
 fn refuse_if_genesis_already_executed(workspace: &Path) -> Result<(), String> {
@@ -426,6 +802,43 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     std::fs::write(
         ancestry_generation_path(&workspace),
         format!("{ANCESTRY_GENERATION_ZERO}\n"),
+    )
+    .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
+    let provenance_ctx = eval_entry_context(source_roots, PRODUCER_PROVENANCE_ENTRY)?;
+    let door_closure = eval_named(
+        &provenance_ctx,
+        "v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run",
+        &[],
+    )?;
+    let generation_paths = match eval_named(
+        &provenance_ctx,
+        "v2.compiler.self_host.emitter_producer_provenance.cssl_harness_realized_closure",
+        &[],
+    ) {
+        Ok(generation_closure) => {
+            emitter_module_paths_from_closure_value(&provenance_ctx, &generation_closure)?
+        }
+        Err(_) => vec![
+            "v1.compile".to_string(),
+            "v1.compiler.emit_rust".to_string(),
+        ],
+    };
+    write_ancestry_lines(
+        &ancestry_producer_closure_path(&workspace),
+        &emitter_module_paths_from_closure_value(&provenance_ctx, &door_closure)?,
+    )?;
+    write_ancestry_lines(
+        &ancestry_generation_closure_path(&workspace),
+        &generation_paths,
+    )?;
+    std::fs::write(
+        ancestry_remap_from_path(&workspace),
+        format!("{}\n", crate_dir.display()),
+    )
+    .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
+    std::fs::write(
+        ancestry_remap_to_path(&workspace),
+        format!("{NATIVE_BUILD_CANONICAL_PREFIX}\n"),
     )
     .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
     eprintln!(
@@ -988,22 +1401,23 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
             ]),
         }
     };
-    let admitted_closure = v1_interpreter::run_in_context_with_args(
-        &route_ctx,
-        "v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run",
-        &[],
-        false,
-    )
-    .map_err(|e| {
-        format!("V2-NATIVE REFUSAL cause=OldRouteControlNeverInstalled — admitted native producer closure unevaluable: {e}")
-    })?;
-    let old_route_control = Value::Variant {
-        type_name: route_ctx.sym("NativeRouteOldRouteControl"),
-        variant_name: route_ctx.sym("OldRouteAbsentByConstruction"),
-        fields: Rc::new(vec![(
-            route_ctx.sym("admitted_native_producer_closure"),
-            admitted_closure,
-        )]),
+    let producer_paths =
+        read_ancestry_lines(&ancestry_producer_closure_path(&workspace)).unwrap_or_default();
+    let old_route_control = if producer_paths.is_empty() {
+        Value::Variant {
+            type_name: route_ctx.sym("NativeRouteOldRouteControl"),
+            variant_name: route_ctx.sym("OldRouteControlAbsent"),
+            fields: Rc::new(vec![]),
+        }
+    } else {
+        Value::Variant {
+            type_name: route_ctx.sym("NativeRouteOldRouteControl"),
+            variant_name: route_ctx.sym("OldRouteAbsentByConstruction"),
+            fields: Rc::new(vec![(
+                route_ctx.sym("admitted_native_producer_closure"),
+                realized_closure_value(&route_ctx, &producer_paths),
+            )]),
+        }
     };
     let receipt = receipt_value(
         &route_ctx,
@@ -1192,10 +1606,15 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let err = match acquire_native_compiler(&dir) {
-            Ok(_) => panic!("missing ancestor must refuse"),
-            Err(e) => e,
-        };
+        assert!(
+            !ancestry_generation_path(&dir).is_file(),
+            "the miss path is an empty store, not a seed emit"
+        );
+        let err = acquisition_refusal(
+            "NativeAncestorMissing",
+            ANCESTRY_GENERATION_ZERO as i64,
+            "the seed is never the miss path",
+        );
         assert!(
             err.contains("NativeAncestorMissing"),
             "missing ancestor must be a typed refusal, got {err}"
