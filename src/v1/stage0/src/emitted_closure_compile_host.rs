@@ -515,9 +515,14 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// into EVERY emission (`emit_v2_rt_module`, unconditional) and renders the `NonEmptyVec` /
 /// `NonEmptyBTreeSet` wrappers into the emitted `lib.rs`, and the emitted crate name is
 /// `v1_compiled` for every entry that is not the retained-host pipeline, so no emitted line
-/// paths into `v1_compiler` at all. Measured, not reasoned: the closure of `dag/std/node.dag`
-/// emits 15 files carrying zero `v1_compiler::` references and `cargo build --release` over it
-/// with the seed absent from the manifest completes at status 0.
+/// paths into `v1_compiler` at all. THAT IS MEASURED RATHER THAN REASONED, AND THE INSTRUMENT IS
+/// NAMED RATHER THAN TRANSCRIBED (DESIGN section 6): `run_required_emit_compile` over
+/// `gunbc.ci_layer_roots` `required_emit_compile_entries` re-derives it on every run, emitting
+/// each entry's closure through this writer and handing the result to `run_cargo` -- so a seed
+/// symbol the emission failed to cover would refuse there, on the acceptance path, rather than in
+/// a sentence here. A count copied into this comment would rot the moment the roster or the
+/// emitter moved, which is exactly how the deleted CI job cited two paragraphs down came to be
+/// named here at all.
 ///
 /// The consequence of the dead edge was not cosmetic. A fixed point measured on emitted BYTES
 /// said nothing about the emitted crate's ability to BUILD, because the manifest silently put
