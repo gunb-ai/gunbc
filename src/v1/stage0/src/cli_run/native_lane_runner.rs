@@ -26,6 +26,11 @@ use std::rc::Rc;
 
 use crate::v1_interpreter::{self, str_value, Value};
 
+use super::native_lane_phase_cost::{
+    begin, commit_phase, relay_child_stderr, PHASE_CARGO_BUILD, PHASE_MALFORMED_CONTROL_RUN,
+    PHASE_RECEIPT_ADMISSION, PHASE_SEED_EMISSION, PHASE_UNIVERSE_DERIVATION,
+};
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through.
@@ -257,6 +262,7 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     // phase's own root policy in `emitted_closure_compile_host`.
     let probe_root = super::lane_emit_compile_probe_root();
     eprintln!("required-ci: v2-native emitting {NATIVE_COMPILE_ENTRY} (seed, in-process)");
+    let seed_clock = begin(PHASE_SEED_EMISSION);
     let run = super::compile_entry_emission(
         source_roots,
         NATIVE_COMPILE_ENTRY,
@@ -303,10 +309,27 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
          rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
     );
+    commit_phase(
+        seed_clock,
+        serde_json::json!({
+            "written_files": written,
+            "rss_kb_before_trim": rss_before_kb,
+            "trim_reclaimed_kb": trim_reclaimed_kb,
+            "rss_kb_after_trim": rss_after_kb,
+        }),
+    );
+    let cargo_clock = begin(PHASE_CARGO_BUILD);
     let verdict = super::emitted_closure_compile_host::run_cargo(
         &crate_dir,
         &workspace,
         "v2_native_lane_carries_no_mutation_probe",
+    );
+    commit_phase(
+        cargo_clock,
+        serde_json::json!({
+            "compiled": super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict),
+            "summary": super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
+        }),
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(format!(
@@ -571,6 +594,7 @@ fn run_native_binary(
                 binary.display()
             )
         })?;
+    relay_child_stderr(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.status.success() {
         return Err(format!(
@@ -825,11 +849,16 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // to the universe prefix, plus both directions of the module/path relation: the entry join
     // consumed path → module during derivation, and the context reclassification consumes
     // module → path below.
+    let universe_clock = begin(PHASE_UNIVERSE_DERIVATION);
     let derivation = derive_native_universe(source_roots)?;
     let universe = derivation.universe;
     eprintln!(
         "required-ci: v2-native universe derived — {} v2.test.* identities",
         universe.len()
+    );
+    commit_phase(
+        universe_clock,
+        serde_json::json!({ "identities": universe.len() }),
     );
     // THE MODULE-SOURCE INDEX THE RECEIPT CARRIES, restricted to the universe's own modules —
     // the domain the context reclassification can touch and the admission join reasons over.
@@ -893,11 +922,18 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     write_control_universe_file(&control_universe_file)?;
     let control_root = materialize_malformed_specimen(&workspace)?;
     let control_roots = vec![control_root];
+    let malformed_clock = begin(PHASE_MALFORMED_CONTROL_RUN);
     let control_output = run_native_binary(
         &preparation.binary_path,
         &control_universe_file,
         &control_roots,
     )?;
+    commit_phase(
+        malformed_clock,
+        serde_json::json!({
+            "file_refusals": control_output.file_refusals.len(),
+        }),
+    );
     drop(withdrawal);
     eprintln!("required-ci: v2-native old route restored");
 
@@ -938,6 +974,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         None => (String::new(), String::new()),
     };
 
+    let admission_clock = begin(PHASE_RECEIPT_ADMISSION);
     let (graph, indices) = super::resolve_workspace_entry(
         source_roots,
         super::WorkspaceRootRelativeEntry(NATIVE_ROUTE_AUTHORITY_ENTRY),
@@ -1011,6 +1048,10 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         }
     };
     eprintln!("required-ci: v2-native admission {summary_text}");
+    commit_phase(
+        admission_clock,
+        serde_json::json!({ "admitted": admitted, "summary": summary_text }),
+    );
     if admitted {
         Ok(())
     } else {

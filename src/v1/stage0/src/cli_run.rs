@@ -89,6 +89,7 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
+mod native_lane_phase_cost;
 mod native_lane_runner;
 mod required_floor_runner;
 mod required_lane_roster;
