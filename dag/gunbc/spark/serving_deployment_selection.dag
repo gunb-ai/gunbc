@@ -88,8 +88,8 @@ data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
   label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
   footprint: FootprintReportedExternally {
-    bytes: 510296708312,
-    source: "Hugging Face tree API at revision dba1be0a40aa45a94ad051997016db3960a90277: 48 safetensors shards totalling 510296708312 bytes. FILE SIZE on the publisher object store, not serving memory and not a Spark reading. DSV41-0 owns the census; weight-fit cannot treat this as GB10 resident bytes" as NonEmptyStr,
+    bytes: 510286023000,
+    source: "extdeps.deepseek.deepseek_v4_1_flash at pin dba1be0a40aa45a94ad051997016db3960a90277 (DSV41-0 PR 11007): safetensors index metadata.total_size 510286023000 equals the payload partition (backbone 298309535168, Engram 203073076240, vision+aligner 970536960, MTP/draft 7932874632; 48 shards). That is payload bytes on the publisher index, not serving memory and not a Spark reading. Tree-file size 510296708312 is a different quantity. Weight-fit cannot treat either as GB10 resident bytes until FootprintObservedOnFleet" as NonEmptyStr,
   },
   weight_treatment: PublishedNativeWeights,
 }
@@ -700,7 +700,7 @@ type EngramAcceleratorStanding
   | EngramOffloadZeroPoolGainOnUnifiedMemory { how: NonEmptyStr }
 
 data deepseek_v4_1_engram_standing: EngramAcceleratorStanding = EngramOffloadZeroPoolGainOnUnifiedMemory {
-  how: "vLLM Engram offload uses pinned host memory via UVA; GB10 host and GPU memory are one unified pool, so offload does not add capacity on a Spark. File-size Engram bytes from the Hub census are not a serving-memory discount" as NonEmptyStr,
+  how: "DSV41-0: Engram tables are config layers 1 and 14 (payload 203073076240 of 510286023000); config does not declare off-accelerator placement. Even if a runtime offers UVA offload, GB10 host and GPU are one unified pool, so offload cannot add capacity. Engram payload bytes are not a serving-memory discount and are not a TP width" as NonEmptyStr,
 }
 
 fn engram_standing(art: ModelArtifact) -> EngramAcceleratorStanding {
@@ -1499,9 +1499,10 @@ fn admit_shape(s: ServingDeploymentSelection) -> ShapeAdmission {
 data eight_host_topologies: List<TopologyShape> = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
 
 // THE WORKLOAD IS A SCENARIO AND SAYS SO. 300,000 tokens was authored as a working window with no
-// derived population behind it, and the checkpoint's own 1,048,576-token ceiling is a LIMIT rather
-// than a requirement -- using a limit as a requirement is what makes an over-provisioned shape look
-// free. This standing puts the scenario value where it cannot be mistaken for the demand.
+// derived population behind it. V4.1's 1,048,576-token window (DSV41-0) is yarn-scaled over a
+// native 65,536, not 1M native, and even that scaled ceiling is a LIMIT rather than a requirement --
+// using a limit as a requirement is what makes an over-provisioned shape look free. This standing
+// puts the scenario value where it cannot be mistaken for the demand.
 data serving_workload_standing: WorkloadDemandStanding = WorkloadDemandUnestablished {
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_workload_standing"),
   scenario_value: token_count(count: 300000),
