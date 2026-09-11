@@ -128,6 +128,7 @@ fn review_sheet_get_value_render_option() -> SheetsValueRenderOption {
 type SheetA1End
   = A1EndOpen { column: A1Column }
   | A1EndClosed { cell: A1Cell }
+  | A1EndWholeTab
 
 type SheetA1Range {
   tab: NonEmptyStr
@@ -139,14 +140,24 @@ fn sheet_a1_end_wire(end: SheetA1End) -> String {
   match end {
     A1EndOpen { column: c } => c.letter as String
     A1EndClosed { cell: c } => a1_cell_wire(cell: c)
+    A1EndWholeTab => ""
   }
 }
 
 fn sheet_a1_range_wire(range: SheetA1Range) -> String {
-  concat(
-    range.tab as String,
-    concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", sheet_a1_end_wire(end: range.end)))),
-  )
+  match range.end {
+    A1EndWholeTab => range.tab as String
+    A1EndOpen { column: _ } =>
+      concat(
+        range.tab as String,
+        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", sheet_a1_end_wire(end: range.end)))),
+      )
+    A1EndClosed { cell: _ } =>
+      concat(
+        range.tab as String,
+        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", sheet_a1_end_wire(end: range.end)))),
+      )
+  }
 }
 
 fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> String {
@@ -161,11 +172,11 @@ type A1ReadbackStanding
   = A1ReadbackAnchored { range: SheetA1Range }
   | A1ReadbackUnreadable { reason: NonEmptyStr }
 
-fn review_sheet_get_values_request(tab: NonEmptyStr, last_column: A1Column) -> SheetA1Range {
+fn review_sheet_get_values_request(tab: NonEmptyStr) -> SheetA1Range {
   SheetA1Range {
     tab: tab,
     origin: a1_origin_cell(),
-    end: A1EndOpen { column: last_column },
+    end: A1EndWholeTab,
   }
 }
 
@@ -366,6 +377,13 @@ fn review_sheet_ensure(
         ) as NonEmptyStr
       }
     A1EndOpen { column: _ } =>
+      Refuse {
+        reason: concat(
+          "column-bounded GetValues request; append would write past unobserved columns: ",
+          sheet_a1_range_wire(range: requested),
+        ) as NonEmptyStr
+      }
+    A1EndWholeTab =>
       match observed_sheet_from_value_range(range: range) {
         ReadbackUnreadable { reason: r } => Refuse { reason: r }
         ReadbackObserved { observed: observed, tab: tab } =>

@@ -56,6 +56,7 @@ import gunbc.review_sheet_sheets {
   SheetA1Range,
   A1EndOpen,
   A1EndClosed,
+  A1EndWholeTab,
   review_sheet_live_access,
   review_sheet_live_access_from,
   ReviewSheetLiveOpen,
@@ -195,13 +196,7 @@ fn w_value_range(rows: List<List<String>>) -> ValueRange {
 }
 
 fn w_open_request(tab: NonEmptyStr) -> SheetA1Range {
-  match a1_column(index: 3) {
-    Present { value: d } => review_sheet_get_values_request(tab: tab, last_column: d)
-    Absent => review_sheet_get_values_request(
-      tab: tab,
-      last_column: A1Column { letter: "D" as NonEmptyStr },
-    )
-  }
+  review_sheet_get_values_request(tab: tab)
 }
 
 test fn converge_twice_unchanged_is_noop() -> Bool {
@@ -526,6 +521,29 @@ test fn bounded_get_values_request_refuses() -> Bool {
   }
 }
 
+test fn column_bounded_get_values_request_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), ""]])
+  match review_sheet_ensure(
+    policy: EnsureMayApply,
+    requested: SheetA1Range {
+      tab: "Review" as NonEmptyStr,
+      origin: a1_origin_cell(),
+      end: A1EndOpen {
+        column: A1Column { letter: "D" as NonEmptyStr },
+      },
+    },
+    range: range,
+    projection: projection,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "column-bounded GetValues request")
+        && string_contains(s: r as String, pattern: "unobserved columns")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
 test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = ValueRange {
@@ -537,7 +555,6 @@ test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
     policy: EnsureMayApply,
     requested: review_sheet_get_values_request(
       tab: "Review" as NonEmptyStr,
-      last_column: A1Column { letter: "D" as NonEmptyStr },
     ),
     range: range,
     projection: projection,
@@ -795,9 +812,8 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
     && sheet_a1_range_wire(
       range: review_sheet_get_values_request(
         tab: "Review" as NonEmptyStr,
-        last_column: A1Column { letter: "D" as NonEmptyStr },
       ),
-    ) == "Review!A1:D"
+    ) == "Review"
     && match review_sheet_get_values_last_column(schema: w_schema()) {
       Present { value: col } => (col.letter as String) == "D"
       Absent => false
