@@ -46,7 +46,7 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.spark.fabric_reach { ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
-import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
+import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe, spark_build_host_admissible, admissible_spark_build_hosts }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
 //
@@ -505,8 +505,10 @@ fn v41_probe_body(o: V41ProbeOutcome) -> String {
 // EXECUTED, NOT PREDICTED. Every row below was produced by the generated script above running inside
 // the digest named beside it, through `docker run --rm --entrypoint python3 --gpus all`, on a GB10
 // whose interpreter reported compute capability 12.1 and whose vLLM reported 0.1.dev1+g07b755346 --
-// the version string carries the commit, so the image identifies its own source rather than being
-// taken on this module's word.
+// the version string CONTAINS the commit -- which is what the packager stamped, not proof that these
+// bytes were compiled from it. It is recorded because a self-report is still evidence about the
+// artifact; it is not recorded as provenance, for the same reason extdeps.vllm.server declines to read
+// a server's version prefix as runtime provenance.
 //
 // A RECEIPT IS NOT A TRANSCRIPTION, AND THE DIFFERENCE IS WHETHER ANYTHING CAN CHECK IT. An earlier
 // revision carried each reading as a sentence in an `evidence: NonEmptyStr` field, and the witness
@@ -736,12 +738,18 @@ func v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmpty
 
 // ── THE ROUTE-A ENTRY, RUN WHERE THE CREDENTIAL LIVES ─────────────────────────────────────────
 //
-// NOT `--arg host=`, AND THE DIFFERENCE IS NOT ERGONOMIC. This entry runs as a fleet-converge MODE on
-// the pinned runner, where the Spark administrator credential is materialized inside the boundary --
-// so the host comes from the same SPARK_CONVERGE_TARGET the other spark_* modes read, resolved
-// against gunbc.spark.credential_workflow's administrator roster rather than against a spelled pair.
-// That roster is an identity join with procurement, which is why it is the one place enrollment is
-// decided and why a target it does not carry REFUSES instead of fanning out.
+// THE HOST COMES FROM SPARK_CONVERGE_TARGET, because this entry runs as a fleet-converge MODE on the
+// pinned runner, where the Spark administrator credential is materialized inside the boundary. That is
+// the same input every other spark_* mode reads, resolved against
+// gunbc.spark.credential_workflow's administrator roster rather than against a spelled pair -- the
+// roster is an identity join with procurement, which is why a target it does not carry REFUSES
+// instead of fanning out.
+//
+// AND ENROLMENT IS NOT ADMISSIBILITY. That roster answers "does this Spark have an administrator
+// credential", which srv5 and srv6 do -- and they are the serving pair. An earlier revision stopped at
+// the roster, so a dispatch naming a serving host would have pulled 9.6 GB and started a container on
+// it. The entry now applies the same subtraction the build does, so a rostered host that is serving or
+// reserved refuses here too.
 //
 // OBSERVE-ONLY IS A REFUSAL HERE. spark_converge_target_selection admits an absent target as
 // "every enrolled Spark, observing only" for readers that legitimately sweep; this entry PULLS a 9.6
@@ -765,6 +773,9 @@ func v41_published_image_probe_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode pulls an image and starts a container on ONE host, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
+      if !spark_build_host_admissible(host: target_host) {
+        exit_failure(reason: join([target_host as String, " is a rostered Spark but not an admissible target for this lane: ", join(map(admissible_spark_build_hosts(), h => h as String), ", "), " are the non-serving, non-reserved members. Pulling a 9.6 GB image and starting a container on a serving host is exactly what the roster excludes"], ""))
+      } else {
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_published_image_probe_ci: ", c], ""))
         ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -816,6 +827,7 @@ func v41_published_image_probe_ci_wet() -> ProcessExit
                 }
               }
           }
+      }
       }
   }
 }

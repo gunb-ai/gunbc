@@ -719,6 +719,81 @@ func vllm_runtime_image_build_ci_wet() -> ProcessExit
   }
 }
 
+// ── ACQUIRING THE SOURCE ON ITS OWN ──────────────────────────────────────────────────────────
+//
+// THE FIRST PHASE OF THE BUILD, ENTERED SEPARATELY, because it is the phase that had never executed:
+// every modeled run so far found the tree already present and returned without cloning anything, so
+// the clone leg was correct by reading and not by execution -- and it was not correct, since the
+// repository IDENTITY it was handed is not a locator git can resolve. Exercising it costs a shallow
+// clone rather than the hours a full build costs, and it is the same `converge_vllm_source` the build
+// entry calls: this is not a second path, it is the first one entered at its own door.
+data vllm_source_acquire_attempt_raw: String = "vllm-source-acquire"
+data vllm_source_acquire_receipt_path: String = "target/vllm-source-acquire-receipt.txt"
+
+fn vllm_source_state_line(s: VllmSourceState) -> String {
+  match s {
+    VllmSourceAtRevision { revision: rev, already_present: p } =>
+      join(["source revision=", rev as String, " already_present=", if p { "true" } else { "false" }, " clean=true\n"], "")
+    VllmSourceRefused { step: st, cause: why } =>
+      join(["source REFUSED step=", st as String, " cause=", why, "\n"], "")
+  }
+}
+
+fn vllm_source_acquired(s: VllmSourceState) -> Bool {
+  match s {
+    VllmSourceAtRevision { revision: _, already_present: _ } => true
+    VllmSourceRefused { step: _, cause: _ } => false
+  }
+}
+
+func vllm_source_acquire_wet(host: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match admit_spark_build_host(raw: host) {
+    SparkBuildHostRefused { cause: why } => exit_failure(reason: why)
+    SparkBuildHostAdmitted { host: build_host } =>
+      match fleet_ssh_attempt_identity(raw: vllm_source_acquire_attempt_raw) {
+        Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+        Present { value: attempt } =>
+          match probe_agent_credential_verification(attempt: attempt) {
+            FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+              exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+            FleetSshCredentialDerivationRefused { cause: cause } =>
+              exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+            FleetSshCredentialVerified { binding: binding } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+                Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                Present { value: context } =>
+                  match spark_reach_endpoint(host: build_host, path: ReachManagementLan) {
+                    Absent => exit_failure(reason: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", build_host as String], ""))
+                    Present { value: endpoint } => {
+                      let target = SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_managed_executor_login as NonEmptyStr }
+                      let state = converge_vllm_source(target: target, context: context, r: v41_gb10_recipe())
+                      let body = join([
+                        join(["vllm source acquire probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint, " principal=", spark_managed_executor_login, "\n"], ""),
+                        join(["root=", vllm_build_root() as String, " source=", vllm_source_dir() as String, " clone_url=", vllm_clone_url(source: v41_gb10_recipe().source), "\n"], ""),
+                        known_hosts_materialization_receipt(outcome: materialization),
+                        vllm_source_state_line(s: state),
+                      ], "")
+                      let w = Filesystem.Write(path: vllm_source_acquire_receipt_path, content: body)
+                      if !w.success {
+                        exit_failure(reason: join(["vllm source acquire receipt write failed: ", w.error], ""))
+                      } else if vllm_source_acquired(s: state) {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: join(["the source was not acquired at the pinned revision:\n", body], ""))
+                      }
+                    }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
 // ── WHO INVOKES THE ENTRIES IN THIS MODULE (DESIGN §3c) ───────────────────────────────────────
 //
 // NONE OF THEM HAS AN IN-TREE CALLER, AND THAT IS THE SHAPE OF AN ACTUATOR RATHER THAN A GAP -- but
