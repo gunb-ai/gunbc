@@ -15,6 +15,9 @@ import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
   DispositionStanding, DispositionNotEngaged, admit_provider_use,
 }
+import extdeps.docker { DockerEnvAssignment }
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations }
+import gunbc.spark.pair_serving_realization { spark_pair_container_env }
 import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread, VllmUsageStatsContentClass,
@@ -154,15 +157,26 @@ fn spark_first_party_route() -> ProviderRoute {
 // per posture revision by construction, and product.fabric.provider_admission refuses a sanction
 // evaluated under a superseded revision as PostureRevisionStale. Serving anybody else is a
 // materially different contract subject, so it is a NEW posture revision that makes every sanction
-// under this one stale -- not an extra profile quietly added to the roster below. That is why the
-// staleness_condition field is a field of the posture rather than a sentence in an annotation: no
-// Accepted program reads an annotation (DESIGN 4c), and every consumer of this row reads this.
+// under this one stale -- not an extra profile quietly added to the roster below.
+//
+// AND THE ENFORCEMENT IS THE REVISION, NOT A FIELD DESCRIBING IT. This type carried a
+// staleness_condition field, and the sentence here claimed "every consumer of this row reads this",
+// which was false: nothing folded it (review 64033). It was a comment moved into a NonEmptyStr slot
+// so that it could be described as executed, which is the §4c shape exactly -- and worse than an
+// annotation, because an annotation does not claim to be read. The field is deleted; what enforces
+// "for now" is spark_first_party_posture's revision, the roster row bound to it, and the RED in
+// test.claim.spark.spark_first_party_serving_witness_test that drives a superseded revision through
+// admit_provider_use and requires PostureRevisionStale.
+//
+// THE REMAINING FIELDS ARE NOT IN THAT CLASS AND ARE KEPT. They are the evidence an auditor reaches
+// by following a DeclarationRef out of the permit -- what the route serves, whose material it
+// carries, and under what custody -- which is the job of a cited row. The distinction is whether the
+// module claims a machine reads it.
 type FirstPartySelfUsePosture {
   assertion: OperatorAllocation
   serves: NonEmptyStr
   data_subject: NonEmptyStr
   hardware_custody: NonEmptyStr
-  staleness_condition: NonEmptyStr
 }
 
 data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
@@ -174,13 +188,13 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
   serves: "gunbc itself. Every turn placed on this route originates inside this repository's own harness and control plane; no turn is served to any party outside gunbc and none crosses an organisational or national boundary.",
   data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it. ROUTE MATERIAL STAYS ON SITE AND EXACTLY ONE PATH LEAVES IT: vLLM reports host, build and engine-configuration metadata to https://stats.vllm.ai by upstream default, carrying no request content (extdeps.vllm.usage_stats, and gunbc.spark.first_party_serving spark_serving_usage_stats_standing for this fleet's launch). The remedy for zero egress is VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch, which is the operator's to set on his own box.",
   hardware_custody: "operator-owned and operator-held. There is no third-party agreement governing this route because there is no third party: no hosting contract, no processor, and no service terms stand between us and the hardware.",
-  staleness_condition: "SERVING ANYONE ELSE ENDS THIS POSTURE. A turn served to a party outside gunbc, or any third-party material processed on this route, is a materially different contract subject and requires a NEW CompliancePostureRevision; every RouteScopeSanction below is bound to THIS revision, so it goes stale through product.fabric.provider_admission PostureRevisionStale rather than silently carrying over. Nothing here may be widened to cover another customer profile by adding a roster row under this revision.",
 }
 
 // The revision is the hash of the statement's identity as a named revision, not of the row's bytes.
-// A statement change that does not move this tag is the hazard, and it is the reason the posture's
-// own staleness_condition names re-posturing rather than editing: the authority reference below
-// points at the row, so an auditor re-derives what was evaluated by reading it.
+// A statement change that does not move this tag is the hazard, which is why serving anyone else is
+// a RE-POSTURING and not an edit to the row above: the authority reference below points at that row,
+// so an auditor re-derives what was evaluated by reading it, and a new posture leaves every sanction
+// bound to this revision stale.
 data spark_first_party_posture: CompliancePostureRevision = CompliancePostureRevision {
   authority: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
   revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.spark.first-party-self-use.2026-09-11" as NonEmptyStr)),
@@ -280,8 +294,9 @@ fn spark_export_disposition() -> DispositionStanding {
 // A roster row admits a (route, posture, customer profile, data class) tuple. There is exactly one,
 // so any other customer profile or data class on this route has no matching row and refuses as
 // CustomerScopeUnsupported or DataHandlingUnsupported -- which is how "it is just serving us for
-// now" is enforced by execution rather than by this sentence. Adding a second row to widen it is
-// the move the posture's staleness_condition forbids.
+// now" is enforced by execution rather than by this sentence. Widening it with a second row under
+// this same revision is the move that would silently carry the posture over to a use nobody
+// sanctioned; serving anyone else is a new revision, and this roster goes stale against it.
 fn spark_first_party_sanction_roster() -> List<RouteScopeSanction> {
   [
     RouteScopeSanction {
@@ -352,39 +367,55 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // THE REMEDY IF ZERO EGRESS IS EVER WANTED is one environment variable on the launch --
 // VLLM_NO_USAGE_STATS=1, or DO_NOT_TRACK=1, or the marker file -- on a box the operator owns. It is
 // named here rather than blocked on, because it is the operator's to set.
-data spark_serving_usage_stats_standing: VllmUsageStatsLaunchStanding = UsageStatsEnabledByDefault {
-  basis: "gunbc.spark.pair_serving_realization's container environment sets neither VLLM_NO_USAGE_STATS nor DO_NOT_TRACK, and no launch step writes the do_not_track marker, so usage reporting is on by upstream default on every Spark serving group. This is read from OUR OWN launch declaration, which is what a launch standing is about; it does not claim that a running host's environment was inspected.",
-}
-
-// THE TWO TYPED CARRIERS ARE FOLDED, NOT CITED. Review 63995's second finding is the first review's
-// finding one level over: the content class was declared, named as "the whole reason a consumer can
-// admit this path", and then never matched -- so a later revision flipping upstream's payload to
-// CarriesRequestMaterial would have left every admission green. It is matched here, and so is the
-// launch standing, which means the path's arm is DERIVED from those two facts rather than chosen
-// beside them.
 //
-// EACH ARM IS THE HONEST ANSWER TO A DIFFERENT WORLD. A launch that disables reporting has no
-// telemetry egress at all, which is what ProviderPathAbsent means. A launch nobody read is an
-// obligation and refuses. And a reporter that ever carries request material is not a metadata path
-// to be admitted with a caveat: it becomes route material leaving the site, so it refuses until
-// somebody re-assesses the route -- the arm that makes the operator's ruling conditional on the
-// fact it was made about.
-// THE OBLIGATION THE REQUEST-MATERIAL ARM NAMES. It is a declared row rather than a sentence at the
-// arm because it is what a reader is sent to when the refusal fires, and what it asks for is a
-// re-assessment of the route rather than a smaller repair: a reporter carrying request material is
-// route material leaving the site, which is the premise the first-party posture rests on.
-type UsageStatsEscalationObligation {
-  trigger: NonEmptyStr
-  remedy: NonEmptyStr
+// AND THE STANDING IS DERIVED FROM THAT LAUNCH RATHER THAN TRANSCRIBED FROM IT. The first spelling
+// wrote "the container environment sets neither variable" into a basis string, which review 64033 is
+// right to call the same defect this module fixes one function below for the content class: the
+// environment is a MODELED value in this repository, so a sentence about it is a second authority
+// that rots the moment somebody edits the first. It is folded now -- the observed lanes' container
+// environments against extdeps.vllm.usage_stats' own disable_env_vars -- so adding
+// VLLM_NO_USAGE_STATS=1 to the launch flips this standing, flips the telemetry path to
+// ProviderPathAbsent, and takes the rung drop's population out from under it, with no edit here.
+//
+// EVERY LANE MUST DISABLE IT, NOT ANY. A group serves from several hosts and a reporter on one of
+// them is an egress for the route, so the fold is over the lanes that do NOT disable it and the
+// disabled arm is reached only when that set is empty. AN EMPTY LANE ROSTER IS UNREAD, not disabled:
+// with no observed lane there is no environment to read, and the vacuous "all of nothing" would be
+// the check reading cleanest exactly where it knows least -- the same trap the host-coverage fold
+// avoids above.
+//
+// A NAME SET TO "0" IS NOT A DISABLE. Upstream reads these as booleans, so a present-but-false
+// assignment leaves reporting on; matching on the name alone would have read it as off.
+fn spark_lane_disables_usage_stats(lane: FabricLaneObserved) -> Bool {
+  any(
+    vllm_usage_stats_reporting.disable_env_vars,
+    v => any(
+      spark_pair_container_env(lane: lane),
+      e => (e.name as String) == (v as String) && e.value != "0",
+    ),
+  )
 }
 
-data spark_usage_stats_carrying_request_material_obligation: UsageStatsEscalationObligation = UsageStatsEscalationObligation {
-  trigger: "extdeps.vllm.usage_stats vllm_usage_stats_reporting reports CarriesRequestMaterial at the cited source revision, so the usage-stats reporter no longer carries only host, build and engine configuration.",
-  remedy: "The first-party posture rests on route material staying on site, and this would be route material leaving it. Set VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch, or re-assess the posture with the operator. Until one of those happens the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete.",
+data spark_serving_usage_stats_unread_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: no fabric lane is observed, so no serving container environment exists to read and whether vLLM's usage-stats reporter is disabled on this fleet is unknown. Read the lanes (gunbc.spark.fabric_switch_observed fabric_lane_observations) before this route's telemetry path can be resolved."
+
+fn spark_serving_usage_stats_standing() -> VllmUsageStatsLaunchStanding {
+  if count(fabric_lane_observations) == 0 {
+    UsageStatsLaunchUnread { obligation: spark_serving_usage_stats_unread_obligation }
+  } else {
+    if count(filter(fabric_lane_observations, l => !spark_lane_disables_usage_stats(lane: l))) == 0 {
+      UsageStatsDisabledByLaunch {
+        mechanism: "every observed fabric lane's serving container environment carries one of extdeps.vllm.usage_stats disable_env_vars with a value other than 0, so no lane reports usage statistics",
+      }
+    } else {
+      UsageStatsEnabledByDefault {
+        basis: "at least one observed fabric lane's serving container environment (gunbc.spark.pair_serving_realization spark_pair_container_env) carries none of extdeps.vllm.usage_stats disable_env_vars, so usage reporting is on by upstream default for this route. Derived from the launch declaration, not from a reading of any running host's environment.",
+      }
+    }
+  }
 }
 
 fn spark_usage_stats_telemetry_path() -> ProviderPathStanding {
-  match spark_serving_usage_stats_standing {
+  match spark_serving_usage_stats_standing() {
     UsageStatsDisabledByLaunch { mechanism: _ } =>
       ProviderPathAbsent {
         evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),

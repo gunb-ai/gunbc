@@ -11,7 +11,12 @@ import product.fabric.provider_admission {
   DispositionRefused, DispositionUnresolved,
   refusal_reason, admit_provider_use,
 }
+import extdeps.vllm.usage_stats {
+  VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
+  UsageStatsLaunchUnread,
+}
 import gunbc.spark.first_party_serving {
+  spark_serving_usage_stats_standing,
   spark_first_party_use_scope, spark_first_party_admission,
   spark_first_party_sanction_roster, spark_first_party_route_facts, spark_first_party_posture,
   spark_sanctions_disposition, spark_export_disposition, spark_prohibited_use_disposition,
@@ -139,5 +144,25 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
   ) {
     ProviderUseAdmitted { permit: _ } => false
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "posture stale"
+  }
+}
+
+
+// THE DROP'S POPULATION AND THE CODE MOVE TOGETHER, WHICH IS WHAT THIS ROW IS FOR. The rung drop
+// gunbc.rung_drop.provider_path_jurisdiction_unread_admits is declared against a telemetry path that
+// exists only while the serving launch leaves usage reporting on. That standing is now DERIVED from
+// gunbc.spark.pair_serving_realization's container environment, so the day somebody adds
+// VLLM_NO_USAGE_STATS=1 the path becomes ProviderPathAbsent and the drop is declared against nothing
+// -- and this row goes red and says so, rather than leaving a rostered drop describing a path that
+// no longer exists.
+//
+// IT IS NOT A CHANGE DETECTOR: it asserts the arm the fold selects, and the fold reads a declaration
+// in another module, so what goes red is a real divergence between the launch and the drop roster
+// rather than a number someone has to keep in step by hand.
+test fn the_launch_leaves_usage_reporting_on_which_is_what_the_drop_is_declared_against() -> Bool {
+  match spark_serving_usage_stats_standing() {
+    UsageStatsEnabledByDefault { basis: _ } => true
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
   }
 }
