@@ -77,8 +77,50 @@ type ReviewSheetClassification
   | ReviewSheetConflict { conflict: LocatedDerivedConflict }
   | ReviewSheetUnreadable { reason: NonEmptyStr }
 
-data listing_standing_observed: String = "Observed"
-data listing_standing_gone: String = "ListingGone"
+type ListingStandingState
+  = StandingObserved
+  | StandingGone
+
+type ListingStandingRead
+  = StandingKnown { state: ListingStandingState }
+  | StandingBlank
+  | StandingForeign { raw: String }
+
+fn listing_standing_label(state: ListingStandingState) -> String {
+  match state {
+    StandingObserved => "Observed"
+    StandingGone => "ListingGone"
+  }
+}
+
+fn listing_standing_eq(a: ListingStandingState, b: ListingStandingState) -> Bool {
+  match a {
+    StandingObserved => match b {
+      StandingObserved => true
+      StandingGone => false
+    }
+    StandingGone => match b {
+      StandingGone => true
+      StandingObserved => false
+    }
+  }
+}
+
+fn read_listing_standing(cell: String) -> ListingStandingRead {
+  if cell == "" {
+    StandingBlank
+  } else {
+    if cell == listing_standing_label(state: StandingObserved) {
+      StandingKnown { state: StandingObserved }
+    } else {
+      if cell == listing_standing_label(state: StandingGone) {
+        StandingKnown { state: StandingGone }
+      } else {
+        StandingForeign { raw: cell }
+      }
+    }
+  }
+}
 
 data a1_column_letters: List<String> = [
   "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
@@ -151,12 +193,8 @@ fn schema_column(schema: ReviewSheetSchema, name: NonEmptyStr) -> ReviewColumn? 
   schema.columns |> filter(c => c.name == name) |> first
 }
 
-fn standing_desired(in_projection: Bool) -> String {
-  if in_projection { listing_standing_observed } else { listing_standing_gone }
-}
-
-fn is_standing_token(value: String) -> Bool {
-  value == listing_standing_observed || value == listing_standing_gone || value == ""
+fn standing_desired(in_projection: Bool) -> ListingStandingState {
+  if in_projection { StandingObserved } else { StandingGone }
 }
 
 fn missing_schema_header(schema: ReviewSheetSchema, headers: List<String>) -> NonEmptyStr? {
@@ -200,25 +238,61 @@ type CellDecision
   | CellWrite { value: String }
   | CellConflict
 
-fn decide_derived_cell(kind: ReviewColumnKind, observed: String, desired: String) -> CellDecision {
+fn decide_standing_cell(observed: String, desired: ListingStandingState) -> CellDecision {
+  match read_listing_standing(cell: observed) {
+    StandingBlank => CellWrite { value: listing_standing_label(state: desired) }
+    StandingForeign { raw: _ } => CellConflict
+    StandingKnown { state: observed_state } =>
+      if listing_standing_eq(a: observed_state, b: desired) {
+        CellSkip
+      } else {
+        CellWrite { value: listing_standing_label(state: desired) }
+      }
+  }
+}
+
+fn decide_derived_field_cell(observed: String, desired: String) -> CellDecision {
   if observed == desired {
     CellSkip
   } else {
-    match kind {
-      OperatorEntered => CellSkip
-      ListingStanding =>
-        if is_standing_token(value: observed) && is_standing_token(value: desired) {
-          CellWrite { value: desired }
-        } else {
-          CellConflict
-        }
-      DerivedField { source_field: _ } =>
-        if observed == "" {
-          CellWrite { value: desired }
-        } else {
-          CellConflict
-        }
+    if observed == "" {
+      CellWrite { value: desired }
+    } else {
+      CellConflict
     }
+  }
+}
+
+fn classification_from_cell_decision(
+  plan: ReviewSheetWritePlan,
+  listing_id: NonEmptyStr,
+  column: NonEmptyStr,
+  column_index: Int,
+  data_index: Int,
+  decision: CellDecision,
+) -> ReviewSheetClassification {
+  match decision {
+    CellSkip => ReviewSheetNeedsWrite { plan: plan }
+    CellWrite { value: v } =>
+      ReviewSheetNeedsWrite {
+        plan: plan_plus_patch(
+          plan: plan,
+          write: DerivedCellWrite {
+            listing_id: listing_id,
+            column: column,
+            a1: a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)),
+            value: v,
+          },
+        )
+      }
+    CellConflict =>
+      ReviewSheetConflict {
+        conflict: LocatedDerivedConflict {
+          listing_id: listing_id,
+          column: column,
+          a1: a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)),
+        }
+      }
   }
 }
 
@@ -279,11 +353,22 @@ fn fold_columns_for_row(
           Absent => ReviewSheetUnreadable { reason: concat("missing column ", col.name as String) as NonEmptyStr }
           Present { value: idx } => {
             let observed = cell_at(cells: row.cells, index: idx)
-            let desired = match col.kind {
-              ListingStanding => standing_desired(in_projection: in_projection)
-              OperatorEntered => observed
-              DerivedField { source_field: _ } =>
-                if in_projection {
+            match col.kind {
+              ListingStanding =>
+                classification_from_cell_decision(
+                  plan: p,
+                  listing_id: listing_id,
+                  column: col.name,
+                  column_index: idx,
+                  data_index: row.data_index,
+                  decision: decide_standing_cell(
+                    observed: observed,
+                    desired: standing_desired(in_projection: in_projection),
+                  ),
+                )
+              OperatorEntered => ReviewSheetNeedsWrite { plan: p }
+              DerivedField { source_field: _ } => {
+                let desired = if in_projection {
                   match prow {
                     Present { value: pr } => derived_value_for(row: pr, column: col.name)
                     Absent => observed
@@ -291,29 +376,15 @@ fn fold_columns_for_row(
                 } else {
                   observed
                 }
-            }
-            match decide_derived_cell(kind: col.kind, observed: observed, desired: desired) {
-              CellSkip => ReviewSheetNeedsWrite { plan: p }
-              CellWrite { value: v } =>
-                ReviewSheetNeedsWrite {
-                  plan: plan_plus_patch(
-                    plan: p,
-                    write: DerivedCellWrite {
-                      listing_id: listing_id,
-                      column: col.name,
-                      a1: a1_cell(column_index: idx, sheet_row: sheet_row_number(data_index: row.data_index)),
-                      value: v,
-                    },
-                  )
-                }
-              CellConflict =>
-                ReviewSheetConflict {
-                  conflict: LocatedDerivedConflict {
-                    listing_id: listing_id,
-                    column: col.name,
-                    a1: a1_cell(column_index: idx, sheet_row: sheet_row_number(data_index: row.data_index)),
-                  }
-                }
+                classification_from_cell_decision(
+                  plan: p,
+                  listing_id: listing_id,
+                  column: col.name,
+                  column_index: idx,
+                  data_index: row.data_index,
+                  decision: decide_derived_field_cell(observed: observed, desired: desired),
+                )
+              }
             }
           }
         }
@@ -333,7 +404,7 @@ fn append_row_for(projection_row: ProjectionRow, schema: ReviewSheetSchema) -> A
       c => DerivedCell {
         column: c.name,
         value: match c.kind {
-          ListingStanding => listing_standing_observed
+          ListingStanding => listing_standing_label(state: StandingObserved)
           OperatorEntered => ""
           DerivedField { source_field: _ } => derived_value_for(row: projection_row, column: c.name)
         },
