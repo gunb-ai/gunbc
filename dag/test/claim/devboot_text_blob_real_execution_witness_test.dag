@@ -1,0 +1,66 @@
+module test.claim.devboot_text_blob_real_execution
+
+import std.logic { Bool }
+import std.types { String, FilePath }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.git
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitWorktreeAt, GitRepositoryAddress }
+import gunbc.devboot.transport { devboot_store_address, devboot_hash_text_blob, GitOidPresent, GitOidCommandFailed }
+import gunbc.devboot.build { stage_text_blob }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DEVBOOT'S TEXT OBJECTS ARE THE BYTES DEVBOOT HELD, by real execution through both of its
+// repository addresses: the bare store (the lease claim, subject record and artifact digest) and the
+// worktree repository (the request and produced entries). These are CONSUMPTION controls for the
+// stdin route, not the mechanism's RED: the path-routed form no longer exists here, so nothing is
+// left to clobber. The RED for the mechanism is
+// test.claim.fabric_event_log_append_real_execution's red control, which asserts that a
+// path-routed hash under a clobbered path yields git's empty blob.
+
+data empty_blob_oid: String = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
+fn with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+// The object at `oid` holds exactly `text`, judged by TWO facts because neither alone is exact: the
+// shell transport returns stdout TRIMMED, so the read-back content can only be compared with the
+// trimmed text, and git's own object size is what proves no trailing byte was lost on the way in.
+// The texts are ASCII, so their character length is their byte length.
+fn holds_exactly(address: GitRepositoryAddress, oid: String, text: String) -> Bool {
+  let read = git.Plumbing.CatFileBlob(address: address, object: oid)
+  let size = git.Plumbing.CatFileSize(address: address, object: oid)
+  read.exit_code == 0 && size.exit_code == 0
+    && read.content == trim(s: text)
+    && trim(s: size.size) == to_string(text.length())
+    && oid != empty_blob_oid
+}
+
+test fn a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let store = join([dir as String, "/store.git"], "")
+    let ready = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: store as FilePath).exit_code == 0
+    let address = devboot_store_address(store_root: store, repo_root: dir as String)
+    ready && (match devboot_hash_text_blob(address: address, text: "producer=witness") {
+      GitOidCommandFailed { exit_code: _, stderr: _ } => false
+      GitOidPresent { oid: oid } => holds_exactly(address: address, oid: oid, text: "producer=witness")
+    })
+  })
+}
+
+test fn a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let ready = git.Core.InitInRepo(repo: dir).success
+    ready && (match stage_text_blob(repo_root: dir as String, text: "subject\nwith two lines\n") {
+      GitOidCommandFailed { exit_code: _, stderr: _ } => false
+      GitOidPresent { oid: oid } => holds_exactly(address: GitWorktreeAt { path: dir }, oid: oid, text: "subject\nwith two lines\n")
+    })
+  })
+}
