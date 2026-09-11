@@ -36,11 +36,7 @@ pub struct ParsedDagFile {
 /// means either routing these callers through the typed helper or recording, per
 /// caller, why absence is the correct reading of a parse failure there.
 pub fn parse_dag_content(content: &str, filename: &str) -> Option<ParsedDagFile> {
-    let tokens = tokenize(
-        content.to_string(),
-        filename.to_string(),
-        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
+    let tokens = tokenize(content.to_string(), filename.to_string());
     let source_index = build_newline_index(filename.to_string(), content.to_string());
     let mut indices = HashMap::new();
     indices.insert(filename.to_string(), source_index);

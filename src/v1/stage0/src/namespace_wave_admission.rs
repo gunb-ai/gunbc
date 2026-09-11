@@ -1675,62 +1675,94 @@ pub struct TransitionAdmission {
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
 ///
-/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
-/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
-/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
-/// mutation_status_is_commit_ambiguous stranded caller (2026-09-10, gunbc#10945). main was RED on
-/// the declarations check: `gunbc.cloudflare.r2_token_mint_run` imported that spelling from
-/// `gunbc.secret_provision_actuator`, which declares no such name, so the base bound it to NOTHING.
-/// NEITHER CONTRIBUTING CHANGE IS WRONG IN ISOLATION and the row says so because a wrong attribution
-/// here would outlive the defect: #10925 wrote that import line at 23598caecca when the fn WAS
-/// declared in `secret_provision_actuator`, and #10923 then deleted the fn at 4024a3a5bdb, rehoming
-/// it to `extdeps.transports.rest` (rest.dag:111) and leaving one edge pointing at the old address.
-/// The defect exists only in their composition — a stranded caller. #10923's floor concluded
-/// 09:50:11Z, four hours before #10925 landed at 13:48:36Z, so the verdict that would have caught the
-/// stranding was computed against a base that did not yet contain the importer it was about to
-/// strand. Not a race: a concluded verdict, correct about the world it measured, and that world no
-/// longer existed at merge time.
+/// STRUCTURAL-TEXT AND LOGIC AUTHORITY REQUALIFICATION (2026-09-09, gunbc#10692). No ordinal is
+/// claimed, for the reason the entries above give. Five binding sites on the v2 self-host branch
+/// stop spelling two type names into the ambient kernel set and name the authority module
+/// instead, which is `TargetChanged` and is not auto-admitted: `EmitSpellingEscape.from/to`,
+/// `apply_emit_spelling_escapes.spelling` and `integer_string_to_decimal_digits_step.s` requalify
+/// `String` to `v2.std.text`; `py_bool_grounding` and `ts_bool_grounding` requalify their
+/// `BooleanAlgebra` parameter `Bool` to `v2.std.logic`.
 ///
-/// The repair points the import at the one module that declares the name, which this module already
-/// imported. Required floor run 34497494076 measured parse 0 and declarations 0 — the break is gone —
-/// and refused adjudication on exactly this one binding delta, `base {} -> head
-/// {extdeps.transports.rest}`, classified `NewPoolCoincidenceResolution`.
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check. The three
+/// `String` sites carry STRUCTURAL text — `v2.std.text.String` is `FreeMonoid<Char>`, and the
+/// chars(String) <- Variant cluster repair (this branch) restored structural reads end-to-end, so
+/// the carriers' types name the structural authority rather than the kernel homonym; the
+/// qualification is also load-bearing for native emission, whose host-String arm keys on
+/// declaration provenance (this branch, `is_host_text_carrier_type`), so an unqualified spelling
+/// would render the host carrier while value-position consumers render the structure. The two
+/// `Bool` sites bind a value whose own declaration already carries the qualified parameter:
+/// `v2.std.logic` declares `type Bool = True | False` and `bool_boolean_algebra:
+/// BooleanAlgebra<Bool>` resolves that spelling to its OWN module's declaration, so a grounding
+/// row annotated `BooleanAlgebra<Bool>` with the kernel reading stated a type its value does not
+/// inhabit. This is the gunbc#9907 namespace-lane requalification reaching five sites the XL-N
+/// closure repair touched.
 ///
-/// THE CLASSIFICATION IS WRONG AND THIS ROW ADMITS IT ANYWAY. By the 2026-08-27 operator ruling in
-/// `gunbc.compiler_frontend_program_interlock`, an author writing the import that resolves a name the
-/// module was ALREADY SPELLING is `AuthoredReferenceResolution`, which auto-admits; that ruling was
-/// made after the wall refused gunbc#9485, a one-line import repair. This is that case exactly. It
-/// lands in the coincidence arm because `locally_authored_claim_added` decides authorship with
-/// `names_leaf`, which reads `c.members` and never `c.target`: base names the leaf (wrong module),
-/// head names it (right module), so `names_leaf(head) && !names_leaf(base)` is false. The predicate
-/// sees a name appearing where it was ABSENT, never a name whose SOURCE changed. The incentive
-/// inversion is what makes this a defect rather than a rough edge: a REDUNDANT blanket import would
-/// have tripped the `blanket_targets` branch and auto-admitted, so the wall is easier to satisfy by
-/// writing worse code. Escalated rather than worked around; admit was ruled, with the predicate fix
-/// to land separately against a green main — repairing a wall in the same motion that asks it for an
-/// exception would make the exception look bought by the fix.
+/// ONE CHANGE CLASS. Nothing is requalified at the leaf: every spelling is identical on both
+/// sides, and what moved is the declaration behind it — from the ambient kernel type set
+/// (`<kernel>`) to the explicitly named authority module. No membership edge is added or removed
+/// by these five sites (the requalification is by qualified path or an import the module already
+/// carried), which is why the run reports exactly five binding rows and nothing else.
 ///
-/// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
-/// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
-/// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
-/// by this sentence.
-///
-/// TWENTIETH DISSOLUTION (2026-09-10). That trigger fired and the wall said so rather than this
-/// paragraph: #10945 merged, and the required floor on gunbc#10951 (run 34517633122) reported the
-/// row as `CONSUMED ADMISSION ... already satisfied at the base — consumed by its own merge` and
-/// then refused adjudication with `1 consumed admission(s) due for deletion on this roster-touching
-/// change`. This change edits `evaluate_wave_admission`, so it is the toucher the rule charges, and
-/// the deletion is paid here rather than deferred to a follow-up nobody owes.
-///
-/// THE RECEIPT IS THE DISPOSITION, NOT THE SIDE — which is the correction the eighteenth and
-/// nineteenth dissolutions above were both written to record. This row arrived from main through a
-/// merge and was never authored on this branch; that is not evidence of anything, and the reason it
-/// goes is that the wall computed its transition as merged and printed it.
-///
-/// The resting state is empty again as of this change. Empty is not permissive: a run with a real
-/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
-/// admission.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10692 merges. Main then binds
+/// each spelling to the named target, base and head agree, no run can produce these deltas, and
+/// all five report CONSUMED rather than stale — coming due on this roster's next touch.
+/// Adjudicate that deletion by joining each row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
+/// a trigger sentence is not evidence that the trigger fired.
+const V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL: &str =
+    "gunbc#10692 structural-text/logic authority requalification 2026-09-09";
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.python",
+            in_declaration: "py_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.typescript",
+            in_declaration: "ts_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "EmitSpellingEscape",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "apply_emit_spelling_escapes",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.integer",
+            in_declaration: "integer_string_to_decimal_digits_step",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2627,12 +2659,6 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
-///
-/// Annotation-grain refusals are the exception named by
-/// `fail_closed_gate_refuses_its_own_repair`: the parser still produced the module (annotation
-/// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
-/// unreadable base sealed the transition that only moves `//` onto the declaration the grain
-/// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -2641,15 +2667,7 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         })]
         .into(),
     ));
-    let annotation_erased_readable = !fill.modules.is_empty()
-        && !fill.diagnostics.is_empty()
-        && fill.diagnostics.iter().all(|d| {
-            matches!(
-                *d.diagnostic,
-                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
-            )
-        });
-    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
+    if !fill.diagnostics.is_empty() {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
@@ -2765,15 +2783,6 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            // A BASE THIS PARSER CANNOT READ IS UNEVALUATED, FULL STOP. The annotation case that
-            // used to be repaired here is now answered truthfully upstream: `base_records` reads
-            // the real base declarations out of an annotation-refused parse via
-            // `annotation_erased_readable`, so the only reason left to reach this arm is a base
-            // carrying NON-annotation diagnostics. Substituting head records there is exactly the
-            // fabricated parse the readable path exists to avoid -- the remainders would still
-            // compare equal whenever the head touched only comments, so the old discriminator
-            // would happily certify a baseline for a file that failed to parse for an unrelated
-            // reason. The residual case argues for deletion, not for retention.
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         }
     }

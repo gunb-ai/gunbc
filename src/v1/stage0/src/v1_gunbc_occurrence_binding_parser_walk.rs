@@ -2,7 +2,6 @@
 // Source module: v1.gunbc.occurrence_binding_parser_walk
 
 use self::ParsedOccurrenceBindingSource::*;
-pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_occurrence_binding_candidates::declaration_exposure_from_containment;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
@@ -68,11 +67,7 @@ pub fn parse_authored_occurrence_binding_source(
     {
         let index = crate::v1_std_core::build_newline_index(file.clone(), source.clone());
         let parsed = crate::v1_compiler_parse::parse_with_table(
-            crate::v1_compiler_tokenize::tokenize(
-                source.clone(),
-                file.clone(),
-                dag_parse_environment(),
-            ),
+            crate::v1_compiler_tokenize::tokenize(source.clone(), file.clone()),
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 file.clone(),

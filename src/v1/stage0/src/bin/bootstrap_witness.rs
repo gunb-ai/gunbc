@@ -54,11 +54,7 @@ where
 }
 
 fn tokenize_for_parse(source: &str) -> Rc<im::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
-    v1_compiler::v1_compiler_tokenize::tokenize(
-        source.to_string(),
-        "test.dag".to_string(),
-        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
-    )
+    v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
 fn parse_source(source: &str) -> Rc<v1_compiler::v1_compiler_parse::ParseResult> {

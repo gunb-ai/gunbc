@@ -4401,9 +4401,6 @@ fn run_built_seed_regen(
         })?;
     }
     let on_disk = current_exe_on_disk()?;
-    // The admitted side carries the executable-digest spelling (`current_exe_digest`,
-    // `next_pass_executable_digest`); the tagged file digest (`path_digest`) spells the same
-    // bytes differently, and this gate compared them verbatim -- unpassable since #9771.
     let observed_executable_digest = current_exe_digest()?;
     if observed_executable_digest != admitted_executable_digest {
         return Err(format!(

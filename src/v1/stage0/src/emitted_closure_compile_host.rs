@@ -88,9 +88,7 @@ const PROBE_ROOT_DIR_NAME: &str = "gunbc-emit-compile";
 ///
 /// Deriving the name per entry makes each probe crate its own package, so fingerprints cannot
 /// alias; dependencies are separate packages and stay warm.
-/// `pub(crate)` so the v2-native lane's harness names the built binary by the same package name
-/// the manifest writer gave the crate — one derivation, never a second slug beside it.
-pub(crate) fn probe_package_name(entry: &str) -> String {
+fn probe_package_name(entry: &str) -> String {
     let slug: String = entry
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
@@ -169,32 +167,11 @@ pub fn cargo_verdict_compiled(verdict: &CargoVerdict) -> bool {
     matches!(verdict, CargoVerdict::Completed { status: 0, .. })
 }
 
-/// THE SUMMARY IS THE REFUSAL'S DIAGNOSTIC SURFACE. Callers that cannot compile print this string
-/// and stop (`EmittedCompilerBuildFailed`, restore-failed mutation, a red baseline). Rendering
-/// only `status` swallows the rustc header and stderr the verdict already holds — a completed
-/// non-zero cargo then looks like a bare exit code, which is how a native-lane build refusal
-/// reached the log with no error class. A zero-status run stays compact: there is nothing to
-/// attribute. A non-zero run names the attributed diagnostic and line when the scan found them,
-/// and always carries `stderr_tail` so an unattributed refusal (the native lane's dummy
-/// attribution symbol, a kill-adjacent cargo, a fault in another module) still prints WHAT rustc
-/// said.
 pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
     match verdict {
         CargoVerdict::NotAttempted { reason } => format!("NotAttempted reason={reason}"),
         CargoVerdict::DidNotComplete { detail } => format!("DidNotComplete detail={detail}"),
-        CargoVerdict::Completed { status, .. } if *status == 0 => {
-            format!("Completed status={status}")
-        }
-        CargoVerdict::Completed {
-            status,
-            stderr_tail,
-            probe_line,
-            probe_diagnostic,
-        } => format!(
-            "Completed status={status} diagnostic={} line={} stderr_tail={stderr_tail}",
-            probe_diagnostic.as_deref().unwrap_or("unattributed"),
-            probe_line.as_deref().unwrap_or("unattributed"),
-        ),
+        CargoVerdict::Completed { status, .. } => format!("Completed status={status}"),
     }
 }
 
@@ -506,18 +483,8 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// Package header from `extdeps.rust.version` `render_cargo_package_header_prefix`; dependency
 /// rows from `v1.compiler.stage0_crates` `stage0_foundation_runtime_dependencies` (the seed's
 /// runtime dependency set, which emitted code links against), each rendered by that module's
-/// `render_stage0_crate_dep`.
-///
-/// THE `[lib]` NAME IS THE EMITTER'S CONTRACT, NOT A SPELLING OF THE PATH. `src/lib.rs` stays
-/// cargo's default path; what must be named is the LIB TARGET's crate name, because the emitted
-/// `main.rs` reaches the closure through it: `v1.compiler.emit_rust` `emit_rust_selected` binds
-/// the self-emitted crate's name (`v1_compiled` for every non-retained-host pipeline entry), and
-/// the SourceRootEvalDriver and DirectIngestDriver mains both `use v1_compiled::…`. The package
-/// name is per-entry (one slug per probe, sharing one target dir), so without this section the
-/// lib takes the package's name and the driver main's self-references fail E0433 — measured on
-/// the required-v2-native lane's first preparation. Pipeline-free probe entries never named
-/// their crate in a `use`, so the gap was unreachable until a pipeline entry became a probe
-/// subject.
+/// `render_stage0_crate_dep`. No `[lib]` section: `src/lib.rs` is cargo's own default, so naming
+/// it would be a second spelling.
 ///
 /// The corpus's hand-authored TOML string (`tools.self_host_curated_seed_linked_harness`
 /// `cssl_v1_compiled_probe_lib_cargo_toml`) is deliberately not used: it is marked scaffold debt
@@ -561,11 +528,8 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
     let features = render_stage0_crate_features_section(stage0_features_for_crate_kind(
         GeneratedPartitionCrateKind::GeneratedFoundationCrate,
     ));
-    // `v1_compiled` is the emitter's own literal (`emit_rust_selected`), mirrored here the way
-    // every seed mirror in this file is: the host cannot reach into the emission for it, and the
-    // emitted main.rs's self-references fail to link under any other lib name.
     format!(
-        "{}\nedition = \"2021\"\n\n[lib]\nname = \"v1_compiled\"\n{features}\n[dependencies]\n{rendered}",
+        "{}\nedition = \"2021\"\n{features}\n[dependencies]\n{rendered}",
         render_cargo_package_header_prefix(probe_package_name(entry))
     )
 }
@@ -574,13 +538,6 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
 /// root is inferred into the workspace and would need its own `[workspace]` to escape — a manifest
 /// fact invented to work around its location.
 ///
-/// The per-job temp a CI executor declares, when it declares one — the ONE read of that
-/// declaration, so the required phase's refusal and the lane's selection cannot drift into two
-/// spellings of the same fact.
-fn declared_runner_temp() -> Option<std::ffi::OsString> {
-    std::env::var_os("RUNNER_TEMP").filter(|value| !value.is_empty())
-}
-
 /// RUNNER-SCOPED, NOT HOST-SHARED, AND THIS WAS MEASURED THE HARD WAY. A fixed path in the host's
 /// `/tmp` is shared by every tenant of a SELF-HOSTED runner and persists across runs, slots and
 /// jobs. On the first required run the directory existed owned by another uid, so creating the
@@ -611,32 +568,11 @@ fn required_ci_probe_root_from_runner_temp(
 }
 
 pub fn required_ci_emit_compile_probe_root() -> Result<PathBuf, String> {
-    required_ci_probe_root_from_runner_temp(declared_runner_temp().as_deref())
+    required_ci_probe_root_from_runner_temp(std::env::var_os("RUNNER_TEMP").as_deref())
 }
 
 pub fn local_emit_compile_probe_root() -> PathBuf {
     std::env::temp_dir().join(PROBE_ROOT_DIR_NAME)
-}
-
-fn lane_probe_root_from_runner_temp(runner_temp: Option<&std::ffi::OsStr>) -> PathBuf {
-    match runner_temp.filter(|value| !value.is_empty()) {
-        Some(base) => PathBuf::from(base).join(PROBE_ROOT_DIR_NAME),
-        None => local_emit_compile_probe_root(),
-    }
-}
-
-/// THE V2-NATIVE LANE'S PROBE ROOT FOLLOWS THE DECLARED EXECUTION ENVIRONMENT, SELECTED ONCE.
-///
-/// The lane runs in two environments and each has its own root authority. In required CI the
-/// executor declares a per-job temp: the self-hosted fleet's host-shared temp persists across
-/// jobs, runs and euids, and a stale or concurrent `gunbc-emit-compile` there is an EACCES at
-/// best and two runs writing one crate dir at worst (receipt: run 34471447387,
-/// `EmittedCrateNotWritten — … Permission denied`). Locally no runner temp exists and the host
-/// temp is the local route's authority. This is environment SELECTION, not a failure arm: both
-/// roots are declared, nothing is widened, and the required phase's own stricter policy
-/// (refuse without the declaration) is untouched beside it.
-pub fn lane_emit_compile_probe_root() -> PathBuf {
-    lane_probe_root_from_runner_temp(declared_runner_temp().as_deref())
 }
 
 fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
@@ -648,11 +584,7 @@ fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
 }
 
 /// Write the emitted Rust files plus a manifest, and return the crate directory.
-///
-/// `pub(crate)` for the required-v2-native lane's harness (cli_run::native_lane_runner), which
-/// prepares the emitted-native compiler through this same writer rather than growing a second
-/// one beside it (DESIGN §2 — the note on `write_probe_crate_files` is the argument).
-pub(crate) fn write_probe_crate(
+fn write_probe_crate(
     run: &CompileRun,
     probe_root: &Path,
     entry: &str,
@@ -765,13 +697,7 @@ fn attributed_diagnostic(
 ///
 /// Phases within one required run are sequential in one process, so nothing else holds cargo's
 /// lock on that directory.
-/// `pub(crate)` for the same consumer as `write_probe_crate`: the v2-native lane builds the
-/// emitted compiler crate through this same cargo invocation.
-pub(crate) fn run_cargo(
-    crate_dir: &Path,
-    workspace: &Path,
-    attribution_symbol: &str,
-) -> CargoVerdict {
+fn run_cargo(crate_dir: &Path, workspace: &Path, attribution_symbol: &str) -> CargoVerdict {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let mut command = std::process::Command::new(&cargo);
     command
@@ -1991,47 +1917,6 @@ pub fn run_required_emit_compile(
 mod tests {
     use super::*;
 
-    /// A NON-ZERO COMPLETED VERDICT MUST NAME WHAT RUSTC SAID. The native lane's refusal
-    /// interpolates only this summary; a status-only render is how a cargo failure reached CI
-    /// as `Completed status=101` with the diagnostic sitting unread in the same verdict.
-    #[test]
-    fn cargo_verdict_summary_renders_the_diagnostic_a_non_zero_run_already_holds() {
-        let attributed = CargoVerdict::Completed {
-            status: 101,
-            stderr_tail: "error: could not compile `probe`".to_string(),
-            probe_line: Some("--> src/fixture.rs:1:1".to_string()),
-            probe_diagnostic: Some("error[E0308]: mismatched types".to_string()),
-        };
-        let summary = cargo_verdict_summary(&attributed);
-        assert!(
-            summary.contains("error[E0308]: mismatched types"),
-            "attributed header is the class the caller is adjudicating: {summary}"
-        );
-        assert!(
-            summary.contains("--> src/fixture.rs:1:1"),
-            "attributed location rides with the header: {summary}"
-        );
-        let unattributed = CargoVerdict::Completed {
-            status: 101,
-            stderr_tail: "error[E0433]: failed to resolve".to_string(),
-            probe_line: None,
-            probe_diagnostic: None,
-        };
-        let summary = cargo_verdict_summary(&unattributed);
-        assert!(
-            summary.contains("error[E0433]: failed to resolve"),
-            "an unattributed refusal still prints stderr_tail, which is the native lane's case: \
-             {summary}"
-        );
-        let green = CargoVerdict::Completed {
-            status: 0,
-            stderr_tail: String::new(),
-            probe_line: None,
-            probe_diagnostic: None,
-        };
-        assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
-    }
-
     /// The manifest is DERIVED, so this asserts the derivation reached the modeled rows, not a
     /// golden string: version-authority package header, the seed's runtime dependency set, and
     /// the path dependency the emitted closure links against.
@@ -2054,12 +1939,8 @@ mod tests {
             assert!(manifest.contains(name), "missing dependency row {name}");
         }
         assert!(manifest.contains("/repo/src/v1/stage0"));
-        // THE LIB NAME IS THE EMITTER'S SELF-NAME CONTRACT: the emitted driver mains reach the
-        // closure through `use v1_compiled::…` (`v1.compiler.emit_rust` `emit_rust_selected`
-        // binds the name), so the probe crate's lib target must carry it even though the package
-        // name is per-entry. The PATH stays cargo's default and is not restated.
-        assert!(manifest.contains("[lib]\nname = \"v1_compiled\"\n"));
-        assert!(!manifest.contains("path = \"src/lib.rs\""));
+        // `src/lib.rs` is cargo's own default, so restating it would be a second spelling.
+        assert!(!manifest.contains("[lib]"));
     }
 
     /// One emitted crate on disk, authored by the caller, so each test states the shape it means.
@@ -2237,31 +2118,6 @@ mod tests {
                 .expect("a declared runner temp owns the probe root"),
             PathBuf::from("/runner/job/gunbc-emit-compile")
         );
-    }
-
-    /// THE LANE SELECTS THE DECLARED PER-JOB ROOT WHEN ONE EXISTS, the host temp otherwise.
-    ///
-    /// Both arms are pinned because both are load-bearing: the first keeps a required-CI lane
-    /// off the self-hosted fleet's host-shared temp (the EACCES of run 34471447387), the second
-    /// keeps the local route runnable where no executor declares a temp. The expected values
-    /// name the authorities, never the spelled dir name — the single-spelling test above owns
-    /// that needle.
-    #[test]
-    fn the_lane_probe_root_follows_the_declared_environment() {
-        assert_eq!(
-            lane_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job"))),
-            required_ci_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job")))
-                .expect("the same declared temp"),
-            "a declared per-job runner temp owns the lane's probe root, exactly as it owns the \
-             required phase's"
-        );
-        for absent in [None, Some(std::ffi::OsStr::new(""))] {
-            assert_eq!(
-                lane_probe_root_from_runner_temp(absent),
-                local_emit_compile_probe_root(),
-                "with no declared runner temp the lane takes the local route's root"
-            );
-        }
     }
 
     /// A FAILED RESTORE MUST WIN OVER EVERY NON-TERMINAL FAULT VERDICT.
