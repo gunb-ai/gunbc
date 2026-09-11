@@ -6,7 +6,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, de
 import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import std.decision { HardConstraint }
-import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
+import gunbc.spark.v41_published_image_observation {
+  v41_published_arm64_reference,
+  v41_published_distribution_name,
+  v41_published_stamped_identifier_lookup,
+  PublicCommitAbsent, PublicCommitPresent, PublicCommitUnasked,
+}
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
@@ -533,8 +538,13 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
         && (v4_1_runtime_published_arm64.image as String) == (v41_published_arm64_reference() as String)
         && match v4_1_runtime_published_arm64.vllm_source {
           VllmSourceRevisionUnestablished { reported_version: v, obligation: _ } =>
-            (v as String) == "vllm-0.1.dev20904+g179dd0fa9"
+            (v as String) == (v41_published_distribution_name as String)
           VllmSourceRevisionEstablished { git: _ } => false
+        }
+        && match v41_published_stamped_identifier_lookup {
+          PublicCommitAbsent => true
+          PublicCommitPresent => false
+          PublicCommitUnasked => false
         }
         && match v4_1_runtime_vllm_gb10_lead.vllm_source {
           VllmSourceRevisionEstablished { git: g } =>

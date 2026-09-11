@@ -35,8 +35,9 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 }
 import gunbc.spark.v41_published_image_observation {
   v41_published_arm64_reference,
-  v41_published_distribution_observation,
-  v41_published_revision_public_standing,
+  v41_published_distribution_name,
+  v41_published_stamped_identifier_lookup,
+  public_commit_lookup_wire,
 }
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
 
@@ -336,7 +337,7 @@ data v4_1_gb10_kv_layout: KvLayoutPolicy = KvFp8DsMlaLayout
 
 data v4_1_gb10_kv_layout_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173 #11022) v41_sm12_admitted_kv_cache_dtypes / v41_sm12_kv_cache_dtype_admitted, which record DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for DeviceCapability(12,1). Until that module is importable here, this row names the serving KV layout as a frontier rather than copying the admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout. Unset/auto kv_cache_dtype is a launch refusal on this backend, not a default. nvfp4_ds_mla is not reachable on sm_12x. SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr)
 
-data v4_1_publisher_fit_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_flash_recipe (clever-bat-173) for recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash publisher figures. Do not copy vram_minimum_gb or the component table into this module. That page's vram_minimum_gb is schema headroom on verified GB200/H200/MI350x runs, not a GB10 floor and not a Spark reading. SUFFICIENT FOR: any publisher-fit citation in this module is a declaration ref into that recipe, never a transcribed number." as NonEmptyStr)
+data v4_1_publisher_fit_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_flash_recipe (clever-bat-173) for recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash publisher figures. Do not copy v41_flash_vram_minimum or the component table into this module. That page's v41_flash_vram_minimum is schema headroom on verified GB200/H200/MI350x runs, not a GB10 floor and not a Spark reading. SUFFICIENT FOR: any publisher-fit citation in this module is a declaration ref into that recipe, never a transcribed number." as NonEmptyStr)
 
 // V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
 // extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, cited to the SM12
@@ -361,13 +362,11 @@ data v4_1_runtime_supported_tp_widths_frontier: DissolutionCondition = unbound_d
 data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
   image: v41_published_arm64_reference(),
   vllm_source: VllmSourceRevisionUnestablished {
-    reported_version: "vllm-0.1.dev20904+g179dd0fa9" as NonEmptyStr,
+    reported_version: v41_published_distribution_name,
     obligation: join([
-      "source revision stays unestablished: gunbc.spark.v41_published_image_observation v41_published_distribution_observation reading=",
-      v41_published_distribution_observation.reading as String,
-      "; v41_published_revision_public_standing reading=",
-      v41_published_revision_public_standing.reading as String,
-      ". 07b75534651a0dd584c6f3be75d8c62fb8426397 is this fleet's public-source fallback (#11022 route B), not this image",
+      "source revision unestablished: v41_published_stamped_identifier_lookup=",
+      public_commit_lookup_wire(l: v41_published_stamped_identifier_lookup) as String,
+      "; 07b75534651a0dd584c6f3be75d8c62fb8426397 is this fleet's public-source fallback (#11022 route B), not this image",
     ], "") as NonEmptyStr,
   },
 }
