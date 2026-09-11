@@ -219,7 +219,6 @@ dag/extdeps/llm/openai_errors.dag
 dag/extdeps/llm/openai_rest.dag
 dag/extdeps/memory.dag
 dag/extdeps/memory/jedec.dag
-dag/extdeps/memory/sk_hynix.dag
 dag/extdeps/memory/types.dag
 dag/extdeps/mercurial.dag
 dag/extdeps/netplan/netplan.dag
