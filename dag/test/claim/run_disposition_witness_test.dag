@@ -651,6 +651,7 @@ test fn w_running_cancel_four_cell_through_the_producer() -> Bool {
     && supersession_available_under(policy: unproven, event: "pull_request") == false
     && supersession_available_under(policy: unproven, event: "merge_group") == false
     && supersession_available_under(policy: safe, event: "pull_request") == true
+    && supersession_available_under(policy: safe, event: "push") == true
     && supersession_available_under(policy: safe, event: "merge_group") == false
     && unproven_cancel
     && safe_cancel

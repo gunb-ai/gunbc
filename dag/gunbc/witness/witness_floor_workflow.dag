@@ -529,17 +529,35 @@ fn supersession_event_expression(event: String) -> String {
   concat(concat("${{ github.event_name == '", event), "' }}")
 }
 
+// THE MUTABLE-HEAD EVENT SET IS ONE ROSTER, same as the queue axis below: classifier membership
+// and the OR'd cancel Expression both fold this list, so they cannot disagree by a second edit.
+data mutable_ci_head_event_names: List<String> = [
+  github_event_name_pull_request,
+  github_event_name_push,
+]
+
 fn is_mutable_ci_head_event(event: String) -> Bool {
-  event == github_event_name_pull_request || event == github_event_name_push
+  fold_list(
+    xs: mutable_ci_head_event_names,
+    empty: false,
+    cons: fn(acc, e) { acc || e == event }
+  )
+}
+
+fn mutable_head_runs_cancel_ast() -> Expression {
+  match list_head(xs: mutable_ci_head_event_names) {
+    HeadAbsent => github_event_name_equals(event: "")
+    HeadFound { value: first } =>
+      fold_list(
+        xs: skip(xs: mutable_ci_head_event_names, n: 1),
+        empty: github_event_name_equals(event: first),
+        cons: fn(acc, e) { gha_or(left: acc, right: github_event_name_equals(event: e)) }
+      )
+  }
 }
 
 fn mutable_head_runs_cancel_expression() -> String {
-  interpolate(
-    expression: gha_or(
-      left: github_event_name_equals(event: github_event_name_pull_request),
-      right: github_event_name_equals(event: github_event_name_push)
-    )
-  )
+  interpolate(expression: mutable_head_runs_cancel_ast())
 }
 
 fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
