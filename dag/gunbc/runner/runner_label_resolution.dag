@@ -1,0 +1,415 @@
+module gunbc.runner_label_resolution
+
+import std.types { Bool, List, NonEmptyStr, String }
+
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import extdeps.toolchain.types { Aarch64, Architecture }
+import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelCatalog, RunnerLabelRow }
+import extdeps.time.rfc3339 {
+  Rfc3339Timestamp,
+  Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
+  rfc3339_compare,
+}
+import gunbc.runner_provider_survey { runs_on_label_catalogs }
+import extdeps.github.actions { github_actions_runs_on_surface }
+
+// WHAT A `runs-on` LABEL IS, ANSWERED FROM THE VENDOR CATALOGS RATHER THAN FROM ITS SPELLING.
+//
+// The question this module answers is the one every CI-workload census asks first: given the
+// label a workflow job selects, which provider runs it and on which architecture. The obvious
+// implementation is a string grammar - split on "-", look for an "arm" segment, read a provider
+// from the prefix - and that is exactly what DESIGN section 4 says is never necessary in a closed
+// system: "a heuristic is never necessary: the richer source always exists or can be written."
+// It exists here. Depot, Blacksmith, WarpBuild, CircleCI, GitHub and Ubicloud each publish a
+// runner catalog, this repository already models all six under extdeps, and every one of those
+// catalogs states the architecture of every label it publishes. So the answer is a LOOKUP in a
+// cited authority, not an inference from characters.
+//
+// THE PAYOFF IS NOT TIDINESS, IT IS THE SHAPE OF THE FAILURE. A string grammar answers every
+// input, including inputs it has never seen: an unknown provider's label reads as whichever
+// prefix arm was written last, and any label without an "arm" segment reads as x64 - so
+// blacksmith-16vcpu-ubuntu-2404-arm, warp-ubuntu-latest-arm64-8x and a self-hosted label all
+// receive confident wrong answers, and nothing anywhere goes red. A lookup cannot do that. A
+// label the catalogs do not carry produces no row, so the unresolved arms below arrive BY
+// CONSTRUCTION rather than as defensive arms an author has to remember to widen when a new
+// provider shows up. The arm that depends on being remembered is the one that is not there when
+// it matters.
+//
+// WHAT THIS MODULE DOES NOT DECIDE. A `runs-on` value is not always a label: it can be a
+// sequence of self-hosted labels, or a GitHub Actions expression resolved at dispatch. Those are
+// facts about workflow SYNTAX and they are extdeps.github.actions RunnerSpec's to hold; a caller
+// that has one of those has not got a label to look up and must say so in its own vocabulary.
+// This module takes the label and the time it was observed, and nothing else.
+
+// -------------------------------------------------------------------------------------
+// A CATALOG MISS IS TWO DIFFERENT FACTS, AND FUSING THEM IS AN ABSORBING FALLBACK IN MINIATURE.
+//
+//   (a) the vendor does not publish that label - a finding about the repository we scanned.
+//   (b) OUR SNAPSHOT does not know it - a coverage obligation about us: the vendor shipped a
+//       size after we last read the page, or the page has families we never modelled.
+//
+// Both produce an empty lookup. They point at opposite remedies - report it, versus go and
+// re-fetch - so a single Unresolved arm covering both is a deficit in our own data wearing the
+// costume of a property of somebody else's repository, and it never ranks for fixing because
+// nothing distinguishes it from the ordinary case. DESIGN section 5 names the pattern: a failure
+// arm must refuse, never widen.
+//
+// THE SPLIT IS DECIDED BY CONSTRUCTION, from data the catalogs carry. If ANY surveyed snapshot
+// was fetched BEFORE the observation, then some catalog could have gained the label in between
+// and the miss is ours to close by re-fetching. Only when EVERY snapshot post-dates the
+// observation has this repository actually looked, at a time later than the thing it is looking
+// at, and found nothing - which is a finding about the observed repository. The residual, named
+// rather than hidden: a snapshot that post-dates the observation still cannot distinguish a
+// label the vendor never published from one it RETIRED in between, and it cannot see a family
+// this repository never modelled at all. The snapshot's declared_scope is what a reader consults
+// for the second; separating them mechanically needs a vendor-side family recognizer homed in
+// each provider's own module, which is this class's next-rung trigger and is not built here.
+// THREE WAYS TO REFUSE A MULTIPLICITY, AND THEY HAVE THREE OWNERS. A label appearing twice in ONE
+// catalog is a defect in that provider module's projection of its own published surface. A label
+// claimed by TWO catalogs is a defect in gunbc.runner_provider_survey's roster. A match on another
+// CI system's selection surface is neither - it is a caller asking a resource_class value as a
+// runs-on question, and the repair is at the call site.
+//
+// All three were once one arm. AcrossCatalogs was the name, which was simply false for the
+// same-catalog case, and the owner and the repair lived in the cause prose - so a consumer could
+// not route them and the witnesses had to read English to tell them apart. That is the meaning
+// fork DESIGN section 3 names: one name, two materially different contracts.
+//
+// A CALLER CATEGORY ERROR IS NOT A ROSTER DEFECT, which is why the last arm below exists. A match
+// on the wrong selection surface means somebody asked a resource_class value as a runs-on question
+// and the repair is at the CALL SITE; ambiguity means two surveyed catalogs both carry a label and
+// the repair is in gunbc.runner_provider_survey's ROSTER. An earlier revision reported the first as
+// the second, leaving the English cause as the only discriminator - the exact shape this module
+// declares a defect in its own SnapshotStanding note below. A materially different contract needs a
+// materially different name (DESIGN section 3's meaning fork).
+type RunnerLabelResolution
+  = RunnerLabelResolved {
+      row: RunnerLabelRow
+      snapshot: CatalogSnapshot
+    }
+  | RunnerLabelSnapshotStale {
+      label: String
+      observed_at: Rfc3339Timestamp
+      untrusted_snapshots: List<SnapshotAssessment>
+      cause: NonEmptyStr
+    }
+  | RunnerLabelAbsentFromSurvey {
+      label: String
+      observed_at: Rfc3339Timestamp
+      snapshots_consulted: List<CatalogSnapshot>
+      cause: NonEmptyStr
+    }
+  | RunnerLabelDuplicatedWithinCatalog {
+      label: String
+      matches: List<LabelMatch>
+      cause: NonEmptyStr
+    }
+  | RunnerLabelClaimedByTwoCatalogs {
+      label: String
+      matches: List<LabelMatch>
+      cause: NonEmptyStr
+    }
+  | RunnerLabelWrongSelectionSurface {
+      label: String
+      matches: List<LabelMatch>
+      cause: NonEmptyStr
+    }
+
+// A match carries the snapshot it came from, so the provenance of an answer is produced by the
+// same pass that produced the answer. Looking the snapshot up again afterwards would be a second
+// traversal that could disagree with the first.
+// A MATCH CARRIES WHICH CATALOG IT CAME FROM, not only that catalog's snapshot. Two matches sharing
+// one snapshot value are indistinguishable from two matches out of one catalog, so without the
+// catalog identity the multiplicity arm cannot say WHICH defect it found - a catalog that lists a
+// label twice is a defect in that catalog's own projection, and two catalogs that both claim a
+// label is a defect in the roster. They have different owners and different repairs.
+// A MATCH CARRIES THE SURFACE IT WAS FOUND ON, not only which catalog found it. resolve_from_matches
+// is reachable by any caller - it is split out precisely so a claim can hand it constructed matches -
+// and a seam that trusts its inputs is a wall with a door beside it. Without the surface on the match
+// there is nothing for that function to check, so a bare CircleCI row handed to it resolved happily
+// even though surveyed_matches would never have produced one.
+type LabelMatch {
+  row: RunnerLabelRow
+  catalog: DeclarationRef
+  selection_surface: DeclarationRef
+  snapshot: CatalogSnapshot
+}
+
+fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatch> {
+  map(filter(catalog.rows, r => r.label == label),
+      r => LabelMatch {
+        row: r, catalog: catalog.catalog,
+        selection_surface: catalog.selection_surface, snapshot: catalog.snapshot,
+      })
+}
+
+// KEYED ON THE CATALOG, NOT ON THE PROVIDER, and the difference is not hypothetical: the two
+// catalogs this module names as its live growth surface - GitHub's sized larger-runner families and
+// its standard runners - BOTH carry github_actions_provider_identity. Keyed on provider, an overlap
+// between them would still have refused, but the refusal would have said the duplicate lives in one
+// provider's projection when the join is in the survey: the right destination reached by a false
+// statement, sending the reader to the wrong module to repair it.
+fn matches_share_one_catalog(matches: List<LabelMatch>) -> Bool {
+  let first_catalog = first(matches).catalog
+  count(filter(matches, m => declaration_ref_eq(a: m.catalog, b: first_catalog) == false)) == 0
+}
+
+fn surveyed_matches(label: String) -> List<LabelMatch> {
+  fold(runs_on_label_catalogs(), init: [], f: (acc, c) => concat(acc, catalog_matches(catalog: c, label: label)))
+}
+
+// TWO CATALOGS ANSWERING FOR ONE LABEL IS A REFUSAL, NOT A RACE BETWEEN THEM.
+//
+// An earlier revision took the head of the match list. That is the same fail-open this module's
+// header argues against, relocated from the label's spelling to the survey's ORDER: a label two
+// catalogs carry got whichever answer happened to be enrolled first, and if the two disagreed
+// about provider or architecture the disagreement resolved silently, in favour of a line's
+// position in a list nobody thinks of as ordered.
+//
+// It is a live growth surface rather than a hypothetical. gunbc.runner_provider_survey says in so
+// many words that adding a provider is one line in each list, and two of the catalogs already
+// enrolled - the larger-runner families and the standard hosted labels - share one provider
+// identity and one label namespace. They are disjoint TODAY. Nothing structural keeps them
+// disjoint, and the day they overlap the resolver should say so rather than pick.
+//
+// THE ARM REFUSES ON MULTIPLICITY, NOT ON DISAGREEMENT, and that is deliberate. Refusing only
+// when the rows contradict each other would widen on the agreeing case, which is the same
+// absorbing fallback one step quieter: two authorities claiming one label is a single-authority
+// defect (DESIGN section 3) whether or not they happen to agree this week, and a resolver that
+// tolerated agreeing duplicates would hide the fork until the day one of them changed.
+//
+// THE SPLIT IS OVER A MATCH LIST RATHER THAN OVER THE LIVE SURVEY, so the arm has an authorable
+// red: a claim can hand this function two competing rows directly. A wall reachable only by
+// corrupting the enrolled catalogs would be a wall nothing could test.
+// THE SEAM CHECKS ITS OWN INPUTS. A match whose surface is not the one this resolver answers for is
+// refused here rather than resolved, so the wall holds for a constructed call exactly as it does for
+// the survey path - a caller cannot get a CircleCI resource class answered as a runs-on label by
+// reaching past surveyed_matches.
+fn resolve_from_matches(
+  label: String,
+  observed_at: Rfc3339Timestamp,
+  matches: List<LabelMatch>,
+) -> RunnerLabelResolution {
+  let foreign = filter(matches, m => declaration_ref_eq(a: m.selection_surface, b: github_actions_runs_on_surface) == false)
+  if count(foreign) > 0 {
+    RunnerLabelWrongSelectionSurface {
+      label: label,
+      matches: foreign,
+      cause: join(["the label '", label, "' was matched on a selection surface this resolver does not answer for. ",
+        to_string(count(foreign)), " of ", to_string(count(matches)),
+        " matches come from a catalog whose labels are written in a different CI system's configuration key, so they are not runs-on values and cannot answer a runs-on question."], ""),
+    }
+  } else if count(matches) > 1 {
+    if matches_share_one_catalog(matches: matches) {
+      RunnerLabelDuplicatedWithinCatalog {
+        label: label,
+        matches: matches,
+        cause: join(["the label '", label, "' appears ", to_string(count(matches)),
+          " times in the rows of ONE catalog. That is a defect in that provider module's projection of its own published surface - the page was read into duplicate rows - and the repair belongs to that module rather than to the roster."], ""),
+      }
+    } else {
+      RunnerLabelClaimedByTwoCatalogs {
+        label: label,
+        matches: matches,
+        cause: join(["the label '", label, "' is carried by ", to_string(count(matches)),
+          " DIFFERENT surveyed catalogs. One label on one selection surface is one authority's fact, so there is no answer to give: taking either row would make the result depend on which catalog is enrolled first. The repair is to gunbc.runner_provider_survey's roster, not to any provider module."], ""),
+      }
+    }
+  } else if count(matches) > 0 {
+    let hit = first(matches)
+    RunnerLabelResolved { row: hit.row, snapshot: hit.snapshot }
+  } else {
+    unmatched_resolution(label: label, observed_at: observed_at)
+  }
+}
+
+// A snapshot is STALE RELATIVE TO AN OBSERVATION when it was fetched before it. An undecidable
+// comparison counts as stale, and that direction is deliberate: it routes the miss to "go and
+// look again", which is work on our side, rather than to "the vendor does not publish this",
+// which is a claim about someone else. When the instrument cannot say, the arm that costs us
+// effort is the honest one.
+// WHY A SNAPSHOT IS NOT TRUSTED FOR THIS OBSERVATION, AND THE TWO REASONS ARE NOT THE SAME FACT.
+// Both route to "go and re-fetch", which is the right POLICY for either; what they may not do is
+// share a sentence. An earlier revision collapsed them to a Bool and the refusal then reported
+// "fetched BEFORE the observation" for both — including the arm where rfc3339_compare explicitly
+// REFUSED to order them and nothing of the kind was established. That is a fabricated plausible
+// output on a failure path: the right destination reached by a stated reason that is not true.
+type SnapshotStanding
+  = SnapshotPredatesObservation
+  | SnapshotOrderUndecidable { cause: NonEmptyStr }
+  | SnapshotPostdatesObservation
+
+fn snapshot_standing_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> SnapshotStanding {
+  match rfc3339_compare(left: snapshot.fetched_at, right: observed_at) {
+    Rfc3339Precedes => SnapshotPredatesObservation
+    Rfc3339Follows => SnapshotPostdatesObservation
+    Rfc3339Simultaneous => SnapshotPostdatesObservation
+    Rfc3339OrderUndecidable { cause } => SnapshotOrderUndecidable { cause: cause }
+  }
+}
+
+// THE ASSESSMENT IS THE CARRIER, AND THE CAUSE TEXT IS A PROJECTION OF IT. An earlier revision
+// split the standing into three arms to stop two different facts sharing one sentence, and then
+// stored only List<CatalogSnapshot> in the refusal - so the distinction survived in the English
+// and nowhere a consumer could match on it. The sentence was fixed and the carrier left fused,
+// which is section 4c's rule read backwards: a count that lives only in a String.
+type SnapshotAssessment {
+  snapshot: CatalogSnapshot
+  standing: SnapshotStanding
+}
+
+fn assessment_is_untrusted(a: SnapshotAssessment) -> Bool {
+  match a.standing {
+    SnapshotPredatesObservation => true
+    SnapshotOrderUndecidable { cause } => true
+    SnapshotPostdatesObservation => false
+  }
+}
+
+fn assessment_is_undecidable(a: SnapshotAssessment) -> Bool {
+  match a.standing {
+    SnapshotOrderUndecidable { cause } => true
+    SnapshotPredatesObservation => false
+    SnapshotPostdatesObservation => false
+  }
+}
+
+fn surveyed_snapshots() -> List<CatalogSnapshot> {
+  fold(runs_on_label_catalogs(), init: [], f: (acc, c) => concat(acc, [c.snapshot]))
+}
+
+// ONE COMPARISON PER SNAPSHOT, COMPUTED AT THE ANCESTOR BOTH READERS SHARE. An earlier revision
+// re-derived the standing three times for every snapshot in the survey - once to filter, twice
+// more to count the two kinds for the message - which is section 2's authored duplication with
+// unmatched_resolution as the least common ancestor. The assessments are computed once and folded.
+fn assess_snapshots(observed_at: Rfc3339Timestamp) -> List<SnapshotAssessment> {
+  map(surveyed_snapshots(), s => SnapshotAssessment {
+    snapshot: s,
+    standing: snapshot_standing_for(snapshot: s, observed_at: observed_at),
+  })
+}
+
+fn untrusted_assessments(assessments: List<SnapshotAssessment>) -> List<SnapshotAssessment> {
+  filter(assessments, a => assessment_is_untrusted(a: a))
+}
+
+data label_miss_next_rung_trigger: NonEmptyStr = "A vendor-side label-family recognizer, homed in each provider's own extdeps module and cited to that vendor's own documented naming scheme, would separate 'this label belongs to a family we never modelled' from 'this vendor does not publish this label'. Until it exists, consult the snapshot's declared_scope."
+
+fn unmatched_resolution(label: String, observed_at: Rfc3339Timestamp) -> RunnerLabelResolution {
+  let assessments = assess_snapshots(observed_at: observed_at)
+  let untrusted = untrusted_assessments(assessments: assessments)
+  if count(untrusted) > 0 {
+    let undecidable = count(filter(untrusted, a => assessment_is_undecidable(a: a)))
+    RunnerLabelSnapshotStale {
+      label: label,
+      observed_at: observed_at,
+      untrusted_snapshots: untrusted,
+      cause: join(["no surveyed runner catalog carries the label '", label,
+        "', and ", to_string(count(untrusted)), " snapshot(s) are not trusted for an observation at ", observed_at, ": ",
+        to_string(count(untrusted) - undecidable), " were fetched BEFORE it, and ",
+        to_string(undecidable),
+        " could not be ORDERED against it at all - RFC 3339 lexical comparison refused, so nothing about their age was established. Both route here because both mean a catalog may have gained the label without us knowing, and the remedy for both is to re-fetch those vendor pages. Neither is a finding about the observed repository. The per-snapshot standings are carried on this arm; this sentence is a projection of them."], ""),
+    }
+  } else {
+    RunnerLabelAbsentFromSurvey {
+      label: label,
+      observed_at: observed_at,
+      snapshots_consulted: surveyed_snapshots(),
+      cause: join(["no surveyed runner catalog carries the label '", label,
+        "', and every snapshot consulted post-dates the observation at ", observed_at,
+        ", so this repository looked later than the thing it was looking at and found nothing. Residual: a snapshot cannot distinguish a label never published from one retired in between, and it cannot see a family this repository never modelled - read the snapshot's declared_scope. ", label_miss_next_rung_trigger], ""),
+    }
+  }
+}
+
+fn resolve_runner_label(label: String, observed_at: Rfc3339Timestamp) -> RunnerLabelResolution {
+  resolve_from_matches(label: label, observed_at: observed_at, matches: surveyed_matches(label: label))
+}
+
+// -------------------------------------------------------------------------------------
+// THE TWO READINGS, DERIVED FROM ONE RESOLUTION AND NEVER FROM A SECOND LOOKUP. Provider and
+// architecture are separate questions with separate answers - an expression-valued runs-on
+// establishes an architecture while leaving the provider open, which is a real row in the
+// existing workload census - so they are separate carriers rather than one qualified reading.
+// Both are derived from the SAME resolution value, so they cannot disagree about whether the
+// label was found.
+// -------------------------------------------------------------------------------------
+
+type ArchitectureReading
+  = ArchitectureFromCatalog {
+      architecture: Architecture
+      label: String
+      provider: DeclarationRef
+      snapshot: CatalogSnapshot
+    }
+  | ArchitectureUnresolved { label: String, cause: NonEmptyStr }
+
+type ProviderReading
+  = ProviderFromCatalog {
+      provider: DeclarationRef
+      label: String
+      snapshot: CatalogSnapshot
+    }
+  | ProviderUnresolved { label: String, cause: NonEmptyStr }
+
+fn resolution_cause(r: RunnerLabelResolution) -> NonEmptyStr {
+  match r {
+    RunnerLabelResolved { row, snapshot } => "resolved"
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => cause
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => cause
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => cause
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => cause
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => cause
+  }
+}
+
+fn resolution_label(r: RunnerLabelResolution) -> String {
+  match r {
+    RunnerLabelResolved { row, snapshot } => row.label
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => label
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => label
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => label
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => label
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => label
+  }
+}
+
+fn architecture_reading(r: RunnerLabelResolution) -> ArchitectureReading {
+  match r {
+    RunnerLabelResolved { row, snapshot } => ArchitectureFromCatalog {
+      architecture: row.architecture, label: row.label, provider: row.provider, snapshot: snapshot,
+    }
+    other => ArchitectureUnresolved { label: resolution_label(r: r), cause: resolution_cause(r: r) }
+  }
+}
+
+fn provider_reading(r: RunnerLabelResolution) -> ProviderReading {
+  match r {
+    RunnerLabelResolved { row, snapshot } => ProviderFromCatalog {
+      provider: row.provider, label: row.label, snapshot: snapshot,
+    }
+    other => ProviderUnresolved { label: resolution_label(r: r), cause: resolution_cause(r: r) }
+  }
+}
+
+// THE ARM QUESTION, ASKED SO THAT UNRESOLVED IS NOT SILENTLY NO. A workload census wants to know
+// whether a job ran on arm64, and the tempting shape is a Bool - which fuses "the catalog says
+// x64" with "we do not know", and a census built on that fusion reports an unresolved label as
+// x64 evidence, which is precisely the promotion this repository's workload census exists to
+// forbid in the other direction.
+type ArmStanding
+  = ArmConfirmed { label: String, snapshot: CatalogSnapshot }
+  | NotArmConfirmed { label: String, architecture: Architecture, snapshot: CatalogSnapshot }
+  | ArmUndetermined { label: String, cause: NonEmptyStr }
+
+fn arm_standing(r: RunnerLabelResolution) -> ArmStanding {
+  match architecture_reading(r: r) {
+    ArchitectureFromCatalog { architecture, label, provider, snapshot } =>
+      if architecture == Aarch64 {
+        ArmConfirmed { label: label, snapshot: snapshot }
+      } else {
+        NotArmConfirmed { label: label, architecture: architecture, snapshot: snapshot }
+      }
+    ArchitectureUnresolved { label, cause } => ArmUndetermined { label: label, cause: cause }
+  }
+}

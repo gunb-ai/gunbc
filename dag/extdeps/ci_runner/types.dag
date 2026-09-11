@@ -2,8 +2,9 @@ module extdeps.ci_runner.types
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import extdeps.toolchain.types { Architecture }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import std.measure {
   ByteSize,
   Gibibyte,
@@ -166,4 +167,99 @@ fn runner_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShap
 
 fn shape_is_architecture(row: RunnerShapeRow, architecture: Architecture) -> Bool {
   row.architecture == architecture
+}
+
+// -------------------------------------------------------------------------------------
+// THE LABEL SIDE OF A CATALOG, AND WHY IT IS A NARROWER ROW THAN A SHAPE.
+//
+// A `runs-on` label answers two questions of very different difficulty. WHICH VENDOR AND
+// WHICH ARCHITECTURE is a fact every vendor's own page states unambiguously and which does
+// not vary with anything else. HOW MANY vCPU AND HOW MUCH MEMORY is not: GitHub publishes
+// ubuntu-24.04-arm at 4 vCPU / 16 GB for a PUBLIC repository and 2 vCPU / 8 GB for a private
+// one, on the same page, under the same label. A RunnerShapeRow has nowhere to put that, so a
+// standard-runner row could only be added to a shape catalog by picking one of the two
+// numbers, which is a fabricated fact rather than a modelled one.
+//
+// So the label roster is its own carrier. Every sized shape yields a label row by projection -
+// the sizes are additional, never contradictory - and a vendor may additionally publish labels
+// whose size this repository cannot state visibility-free. Nothing is duplicated: a label
+// appears here once, either projected from its shape or authored because no shape exists.
+type RunnerLabelRow {
+  provider: DeclarationRef
+  label: NonEmptyStr
+  architecture: Architecture
+}
+
+fn label_row_of_shape(row: RunnerShapeRow) -> RunnerLabelRow {
+  RunnerLabelRow { provider: row.provider, label: row.label, architecture: row.architecture }
+}
+
+// WHEN THIS REPOSITORY LOOKED, AND WHAT IT CLAIMED TO BE LOOKING AT. Both fields exist because
+// a catalog MISS is otherwise two different facts wearing one shape: the vendor does not
+// publish that label, or OUR SNAPSHOT is too old or too narrow to know. Those point at
+// opposite remedies - report the finding, versus go and re-fetch - and a consumer that cannot
+// tell them apart reads a deficit in our own data as a property of somebody else's repository.
+// fetched_at decides the first split by construction; declared_scope carries the second, which
+// is a claim about our own coverage and can only be authored.
+type CatalogSnapshot {
+  fetched_at: Rfc3339Timestamp
+  declared_scope: NonEmptyStr
+}
+
+// WHICH SELECTION SURFACE THESE LABELS ARE WRITTEN IN, AND WHY THE ABSENCE OF THIS FIELD WAS A
+// SOUNDNESS DEFECT RATHER THAN AN OMISSION.
+//
+// A runner label is not a free-floating name: it is a value written in one specific key of one
+// specific CI system's configuration. GitHub Actions labels are written in `runs-on`; CircleCI
+// resource classes are written in `resource_class` in .circleci/config.yml. Those are different
+// ecosystems, and their namespaces OVERLAP on ordinary words - CircleCI publishes small, medium,
+// large, xlarge and arm.medium, all of which are perfectly ordinary things to label a self-hosted
+// GitHub runner.
+//
+// Without this axis a resolver asked what a GitHub Actions `runs-on` label means searched every
+// enrolled catalog and answered from whichever one happened to carry the spelling. Measured before
+// the fix: resolve_runner_label("arm.medium") returned ArmConfirmed, sourced from CircleCI, for a
+// label a GitHub workflow could legitimately carry. That is a CONFIDENT WRONG ANSWER with full
+// provenance attached, and no unresolved arm can catch it, because every unresolved arm in that
+// resolver is a response to a MISS and this is a HIT from the wrong ecosystem.
+//
+// IT IS A DeclarationRef AND NOT A VARIANT, for exactly the reason RunnerShapeRow.provider is: a
+// central enum of surfaces would have to be widened by every CI system anyone ever enrolls, which
+// is the concrete-product enumeration DESIGN section 3 forbids a generic hub. A surface names the
+// declaration that defines it and a consumer compares refs.
+// WHICH CATALOG THIS IS, WHICH IS NOT THE SAME FACT AS WHO PUBLISHED ITS ROWS. One provider can
+// have SEVERAL catalogs in a survey - GitHub's sized larger-runner families and its standard
+// runners are two readings of two different published references, and both carry GitHub as the
+// provider. A consumer that identified a catalog by its provider could not tell "this catalog
+// lists a label twice" from "two catalogs both claim it", which are defects with different owners
+// and different repairs: the first belongs to the module that projected the rows, the second to
+// the roster that enrolled them.
+type RunnerLabelCatalog {
+  catalog: DeclarationRef
+  provider: DeclarationRef
+  selection_surface: DeclarationRef
+  snapshot: CatalogSnapshot
+  rows: List<RunnerLabelRow>
+}
+
+fn catalog_is_on_surface(catalog: RunnerLabelCatalog, surface: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: catalog.selection_surface, b: surface)
+}
+
+// The projection every provider whose published sizes are visibility-free uses, so that
+// enrolling a provider's labels is one line in that provider's own module and no second list.
+fn label_catalog_of_shapes(
+  catalog: DeclarationRef,
+  provider: DeclarationRef,
+  selection_surface: DeclarationRef,
+  snapshot: CatalogSnapshot,
+  availability: RunnerCatalogAvailability,
+) -> RunnerLabelCatalog {
+  RunnerLabelCatalog {
+    catalog: catalog,
+    provider: provider,
+    selection_surface: selection_surface,
+    snapshot: snapshot,
+    rows: map(runner_shape_rows(availability: availability), r => label_row_of_shape(row: r)),
+  }
 }

@@ -11,14 +11,20 @@ import gunbc.v1_consumer_census {
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
   v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
-  v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors
+  v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors,
+  v1_rows_undecided, v1_undecided_row_count, v1_deletion_worklist, v1_worklist_is_a_permutation,
+  v1_worklist_leading_unjudged_count, v1_worklist_leads_with_the_unjudged,
+  v1_blocking_consumers, v1_native_lane_consumers, v1_native_lane_row_count,
+  v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
+import tools.v1_consumer_discovery { v1_discovery_keys_at_name }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
   planted_undisposed_discovered, planted_stale_discovered, planted_same_size_discovered,
   planted_unrealized_rows, planted_unrealized_population,
   planted_lower_bound_population, planted_unmeasured_population,
-  planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population
+  planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population,
+  planted_mixed_disposition_rows, planted_all_judged_rows
 }
 
 // WHAT THIS WITNESS ESTABLISHES, AND WHAT IT DOES NOT.
@@ -183,4 +189,155 @@ test fn consumer_census_same_size_substitution_refuses_in_both_directions() -> B
     && count(planted_same_size_discovered) == count(clean_discovered)
     && !v1_every_discovered_consumer_disposed(discovered: planted_same_size_discovered, rows: clean_rows)
     && !v1_every_row_names_a_live_consumer(discovered: planted_same_size_discovered, rows: clean_rows)
+}
+
+
+// THE UNKNOWN ARM IS COUNTED SEPARATELY FROM THE UNCOVERED ONE, and the two populations differ in
+// exactly one row's disposition. Both halves matter: the mixed population has one undecided row and
+// the judged population has none, while the RETAINED-OPEN row is present in both -- so a predicate
+// that had quietly collapsed unknown into blocking would report the same number twice and this
+// assertion would go red.
+test fn consumer_census_counts_the_unknown_arm_apart_from_the_uncovered_one() -> Bool {
+  v1_undecided_row_count(rows: planted_mixed_disposition_rows) == 1
+    && v1_undecided_row_count(rows: planted_all_judged_rows) == 0
+    && v1_undecided_row_count(rows: clean_rows) == 0
+    && count(v1_blocking_consumers(rows: planted_mixed_disposition_rows)) == 2
+    && count(v1_blocking_consumers(rows: planted_all_judged_rows)) == 1
+}
+
+// THE WORKLIST IS A PERMUTATION AND IT PUTS THE UNJUDGED FIRST. The permutation half is what stops
+// it becoming a second roster: a projection that dropped or added a row would pass an ordering
+// check and fail this one. The ordering half is read off the PRODUCED list, and the judged
+// population is the control -- same three consumers, one disposition changed, leading segment zero.
+test fn consumer_census_worklist_is_a_permutation_that_leads_with_the_unjudged() -> Bool {
+  v1_worklist_is_a_permutation(rows: planted_mixed_disposition_rows)
+    && v1_worklist_is_a_permutation(rows: planted_all_judged_rows)
+    && v1_worklist_is_a_permutation(rows: clean_rows)
+    && count(v1_deletion_worklist(rows: planted_mixed_disposition_rows)) == 3
+    && v1_worklist_leading_unjudged_count(rows: planted_mixed_disposition_rows) == 1
+    && v1_worklist_leading_unjudged_count(rows: planted_all_judged_rows) == 0
+    && v1_worklist_leads_with_the_unjudged(rows: planted_mixed_disposition_rows)
+    && v1_worklist_leads_with_the_unjudged(rows: planted_all_judged_rows)
+}
+
+// THE NATIVE-LANE RELATIONS ARE IN THE POPULATION THE GATE READS, which is the assertion that
+// replaces the disjointness one. While gunbc#10882 was unmerged they were carried in the uncitable
+// shape and deliberately OUTSIDE v1_consumers(), because a row about a tree main did not contain
+// would have made the population a mixture of two observations. The merge dissolved that frontier,
+// so the check inverts: every native-lane relation is now a rostered row, and the live uncitable
+// column is empty. The second conjunct is what stops this passing vacuously -- a frontier list that
+// had simply been deleted rather than promoted would satisfy the first.
+test fn consumer_census_native_lane_rows_joined_the_population() -> Bool {
+  v1_native_lane_row_count() > 0
+    && count(v1_uncitable_consumers()) == 0
+    && (v1_native_lane_consumers()
+        |> all(row => v1_row_keys(rows: v1_consumers()) |> any(k => k == v1_row_key(r: row))))
+}
+
+// THE DISCOVERY PROJECTION RESTORES THE ROOT PREFIX, and the RED half is the one that matters: a
+// declaration under src/v2 whose module path was NOT re-prefixed produces a key that no rostered
+// row can match, so the join would silently report every src/v2 consumer as undisposed.
+test fn discovery_projects_the_module_path_from_the_declaring_root() -> Bool {
+  v1cd_module_path_from(
+      qualified_name: "workflow.rust_crate_partition.stage0_partition_crate_rows",
+      name: "stage0_partition_crate_rows",
+      rel_path: "src/v2/workflow/rust_crate_partition.dag"
+    ) == "v2.workflow.rust_crate_partition"
+  && v1cd_module_path_from(
+      qualified_name: "gunbc.witness_floor_workflow.build_lane_run_step",
+      name: "build_lane_run_step",
+      rel_path: "dag/gunbc/witness/witness_floor_workflow.dag"
+    ) == "gunbc.witness_floor_workflow"
+  && v1cd_module_path_from(
+      qualified_name: "workflow.rust_crate_partition.stage0_partition_crate_rows",
+      name: "stage0_partition_crate_rows",
+      rel_path: "src/v2/workflow/rust_crate_partition.dag"
+    ) != "workflow.rust_crate_partition"
+}
+
+// THE DECLARED EXCLUSION IS EXECUTED, NOT DESCRIBED. The signature table says the bare CLI name is
+// not a signature because it is a homonym of the project name; adding it would flood the blocking
+// column with rows nobody can disposition, and the note alone could not stop that. The positive
+// control is on the same table: the path-qualified spelling IS a signature, so this assertion
+// cannot pass by the lookup answering false for everything.
+test fn discovery_excludes_the_bare_cli_homonym_and_keeps_the_qualified_spelling() -> Bool {
+  !v1cd_lexeme_is_a_signature(lexeme: "gunbc")
+    && v1cd_lexeme_is_a_signature(lexeme: "target/release/gunbc")
+    && v1cd_lexeme_is_a_signature(lexeme: "claim_executor")
+    && !v1cd_lexeme_is_a_signature(lexeme: "a sentence that mentions claim_executor in prose")
+    && count(v1_literal_signatures()) > 0
+}
+
+
+// THE FOLD ITSELF, GREEN BY EXECUTION AND AT PER-PR COST. Review 63173 was right that nothing
+// executed v1cd_rows_in_fact -- the assertions above exercise the signature table and the
+// module-path projection, which are the producer's light half. The first repair enrolled a
+// whole-corpus fold in the long home; the floor MEASURED it and interrupted all four witnesses
+// before verdict, which is the floor saying the subject was too expensive rather than the fold
+// being wrong. So the subject moves and the mechanism does not: decl_facts_at filters host-side, so
+// asking for ONE declaration by name costs the index the resolve already built, and the fold that
+// runs over it is the same fold, over a real declaration node fetched from the real corpus. A
+// fabricated DeclFact would have tested the assertion instead of the producer, since a Node cannot
+// be authored here without inventing one.
+//
+// THE DISCRIMINATING PAIR. gunbc.devboot.program offered_programs really spells "claim_batch" and
+// "claim_executor" as literal atoms in its body, so a fold that stopped descending into declaration
+// bodies, or lost the consumer-half projection, or broke the whole-atom match, returns nothing for
+// it. The RED half asks the same fold about a declaration that names no v1 binary at all and
+// requires zero rows -- a fold that returned everything, or the same rows for every fact, passes
+// the first and fails the second.
+data devboot_offered_programs_name: String = "gunbc.devboot.program.offered_programs"
+
+data devboot_claim_batch_relation: String = "gunbc.devboot.program.offered_programs -> v1_compiler.bin.claim_batch.main"
+
+data devboot_claim_executor_relation: String = "gunbc.devboot.program.offered_programs -> v1_compiler.bin.claim_executor.main"
+
+// The control declaration is this file's own, so it cannot drift out from under the assertion:
+// a String data row naming no v1 binary.
+data discovery_control_name: String = "test.claim.self_host_v1_consumer_census_witness_test.discovery_control_subject"
+
+data discovery_control_subject: String = "a declaration that names no v1 binary, so the fold must return nothing for it"
+
+test fn discovery_fold_executes_over_a_real_declaration_node() -> Bool {
+  let found = v1_discovery_keys_at_name(qualified_name: devboot_offered_programs_name)
+  (found |> any(k => k == devboot_claim_batch_relation))
+    && (found |> any(k => k == devboot_claim_executor_relation))
+    && count(v1_discovery_keys_at_name(qualified_name: discovery_control_name)) == 0
+}
+
+// THE SELF-OBSERVATION CONTROL, EXECUTED. The instrument's first real run reported the census's own
+// signature table as a five-fold consumer of the subjects it exists to describe, and the exclusion
+// that fixed it is one predicate on one qualified name -- exactly the arm a later reader deletes
+// because they cannot see what it was for. Asking the fold for that declaration by name is the
+// cheapest possible statement of it, and the positive control is on the same table: the signatures
+// are non-empty, so this cannot pass by the table having quietly become empty.
+data signature_table_name: String = "gunbc.v1_consumer_census.v1_literal_signatures"
+
+test fn discovery_fold_does_not_count_its_own_signature_table() -> Bool {
+  count(v1_literal_signatures()) > 0
+    && count(v1_discovery_keys_at_name(qualified_name: signature_table_name)) == 0
+}
+
+// THE PRODUCER'S COVERAGE BOUNDARY, MEASURED AND THEN ASSERTED. Review 63229 found relations the
+// roster did not carry, and the cause is a real blind spot rather than a missed row: a declaration
+// whose initializer IS the literal -- `data devboot_program_package: String = "v1-compiler"` --
+// yields a DeclFact whose node does not carry that lexeme through the corpus's own literal reader.
+// Measured, not inferred: the keyed read FINDS the declaration (decl_facts_at returns it), and
+// v2.std.fn_index atom_identities_in_node over its node does not contain "v1-compiler", while the
+// same reader over a list-literal initializer does. So the fold sees list and call positions and is
+// blind to the bare String-initializer position.
+//
+// THIS ASSERTS THE BOUNDARY RATHER THAN HIDING IT, which is the only honest arm available here: the
+// repair is in the declaration-fact projection for data items, not in this instrument, and reaching
+// past it would mean re-deriving a literal reader beside the one the corpus already owns -- the
+// section 3 fork. The assertion is written so it goes RED WHEN THE BLIND SPOT CLOSES, which is
+// exactly what a reader wants: the day the projection carries the lexeme, this witness fails and
+// whoever fixes it deletes the boundary note, widens the producer's claim, and re-runs the gate.
+// The paired positive control is the list position, above, so this cannot pass by the fold having
+// stopped working altogether.
+data devboot_program_package_name: String = "gunbc.devboot.program.devboot_program_package"
+
+test fn discovery_fold_is_blind_to_a_bare_string_initializer() -> Bool {
+  count(v1_discovery_keys_at_name(qualified_name: devboot_program_package_name)) == 0
+    && count(v1_discovery_keys_at_name(qualified_name: devboot_offered_programs_name)) > 0
 }
