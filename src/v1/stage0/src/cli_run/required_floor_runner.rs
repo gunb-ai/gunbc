@@ -6986,20 +6986,28 @@ pub fn run_required_floor(
     // allow-list with extra steps, and the refusal this feeds admits none.
     {
         let mut kind_histogram: BTreeMap<String, usize> = BTreeMap::new();
-        let mut ranked: Vec<(&String, &BTreeSet<(String, &'static str)>)> =
-            ambiguous_claimants.iter().collect();
+        // The union is folded back into the SAME carrier the scope produced, so the census line
+        // and the per-scope rows answer about one type and the kind signature is read off it
+        // rather than recomputed here — the alternative was a second copy of that fold living in
+        // the reporter.
+        let mut ranked: Vec<crate::cli_run::AmbiguousBareName> = ambiguous_claimants
+            .into_iter()
+            .map(|(name, claimants)| crate::cli_run::AmbiguousBareName {
+                name,
+                claimants: claimants.into_iter().collect(),
+            })
+            .collect();
         // Scope count descending, then the name, so the ordering is a function of the census and
         // not of a map's iteration.
         ranked.sort_by(|a, b| {
-            let a_scopes = ambiguous_scope_count.get(a.0).copied().unwrap_or(0);
-            let b_scopes = ambiguous_scope_count.get(b.0).copied().unwrap_or(0);
-            b_scopes.cmp(&a_scopes).then_with(|| a.0.cmp(b.0))
+            let a_scopes = ambiguous_scope_count.get(&a.name).copied().unwrap_or(0);
+            let b_scopes = ambiguous_scope_count.get(&b.name).copied().unwrap_or(0);
+            b_scopes.cmp(&a_scopes).then_with(|| a.name.cmp(&b.name))
         });
-        for (name, claimants) in ranked.iter() {
-            let mut kinds: Vec<&'static str> = claimants.iter().map(|(_, k)| *k).collect();
-            kinds.sort_unstable();
-            kinds.dedup();
-            let signature = kinds.join("+");
+        for row in ranked.iter() {
+            let name = &row.name;
+            let claimants = &row.claimants;
+            let signature = row.kind_signature();
             *kind_histogram.entry(signature.clone()).or_insert(0) += 1;
             let sites = claimants
                 .iter()
@@ -7009,7 +7017,7 @@ pub fn run_required_floor(
             eprintln!(
                 "[floor-bare-name-ambiguity-name] name={name} scopes={} kinds={signature} \
                  claimants={sites}",
-                ambiguous_scope_count.get(*name).copied().unwrap_or(0)
+                ambiguous_scope_count.get(name).copied().unwrap_or(0)
             );
         }
         let mix = kind_histogram
