@@ -909,31 +909,8 @@ fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// THE V1 CONSUMER CENSUS'S LIVE POPULATION. Required-floor run 34579780327 (gunbc#11018) executed
-// each identity and observed the same typed route gap: the population is produced by
-// gunbc.rust_item_host_observation head_rust_sources, which reaches git.Inspect.HeadCommit, and no
-// mock case is published for it. Enrollment records that measured boundary. The loss of these
-// identities from the merge path is the declared drop
-// gunbc.rung_drop v1_consumer_census_live_population_off_the_merge_path; this row is the floor's
-// receipt that it executed them and could not route them, not a second declaration of the drop.
-fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
-  Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.self_host_v1_consumer_census_live_witness_test.consumer_census_live_reference_population_is_produced", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.self_host_v1_consumer_census_live_witness_test.consumer_census_live_transaction_refuses_for_recorded_reasons", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.self_host_v1_consumer_census_live_witness_test.consumer_census_live_gate_refuses_even_with_every_successor_realized", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.self_host_v1_consumer_census_live_witness_test.consumer_census_live_seed_link_join_is_observed_and_the_roster_is_current", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-    tail: Empty {}
-  }
-  }
-  }
-  }
-}
-
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Empty {} } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Empty {} } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

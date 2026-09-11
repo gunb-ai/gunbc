@@ -34,13 +34,15 @@ import test.fixture.v1_consumer_census.specimens {
 
 data planted_observed_tree: RustObservedTree = RustObservedTree { revision: "0000000000000000000000000000000000000001", tree: "0000000000000000000000000000000000000002" }
 
-// THE LIVE HALF LIVES IN self_host_v1_consumer_census_live_witness_test.dag. Since the Rust
-// reference population became a produced observation (gunbc.rust_item_host_observation
-// head_rust_sources reaches git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision
-// and git.Core.Show), v1_consumer_population() is a live read the hermetic discovery envelope
-// REFUSES rather than skips, and a refusing discovery member fails its whole batch. The four
-// witnesses that read the live population moved there under the gunbc.ci_layer_roots exclusion row
-// that names that file; everything here folds planted sources through the same producer.
+// THERE IS NO LIVE HALF ON THE FLOOR ANY MORE. Since the Rust reference population became a
+// produced observation (gunbc.rust_item_host_observation head_rust_sources reaches
+// git.Inspect.HeadCommit, ListTreePathsAtRevision, ShowTree and git.Core.Show),
+// v1_consumer_population() is a live read the hermetic envelope has no route for, and
+// v2.workflow.floor_changed_witness refuses a changed witness that ends in a route gap. The two
+// assertions that read the live population are therefore deleted, the loss is the declared drop
+// gunbc.rung_drop v1_consumer_census_live_population_off_the_merge_path, and the executing consumer
+// of the live census is the operator instrument v1_blocking_consumer_count_report. Everything here
+// folds planted sources through the same producer.
 //
 // WHAT THIS WITNESS ESTABLISHES, AND WHAT IT DOES NOT.
 //
