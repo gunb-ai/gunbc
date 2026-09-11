@@ -1,8 +1,7 @@
 # Mt. Collins unit 1 — memory census, and the boot-delivery defect it uncovered
 
 Session `eager-owl-205`, 2026-09-10T19:00Z to 2026-09-11T01:40Z. Branch
-`session/eager-owl-205`, PR gunb-ai/gunbc#10965 (draft, CHANGES_REQUESTED, correctly
-held).
+`session/eager-owl-205`, PR gunb-ai/gunbc#10965.
 
 This is a probe record, not an authority. Every number in it is either quoted from a
 committed artifact or was re-derived while writing this file; nothing is recalled. Where
@@ -59,11 +58,9 @@ as an upstream fact — `extdeps.bmc.megarac` `megarac_factory_login`, whose fie
 `published_password` because the value is public. The artifact discloses nothing the repo
 does not already state, so redacting it protected nothing and destroyed byte fidelity.
 
-The rule this settles: a credential in a capture is redactable only when it is a **secret**.
 The real defect here is the producer — every ad-hoc call passed `-P` on the command line
-while the modelled route already uses `-f` with a password file. If the unit's credential is
-ever rotated off the published default, that value *is* a secret, must never reach argv, and
-any capture containing it is genuinely unpublishable.
+while the modelled route already uses `-f` with a password file. What publication policy
+should govern credentials in captures generally is not this record's to state.
 
 ---
 
@@ -275,10 +272,10 @@ does not, and the correction came from a reviewer reading my own committed artif
 | **B** — firmware *does* select the CD | GRUB runs, kernel starts, then `EFI stub: ERROR: Failed to load initrd: 0x8000000000000001` → `VFS: Unable to mount root fs` | attempt 3 |
 
 Mode B is a different bug. A medium that had vanished could not have served GRUB and a
-kernel first. Attempt 3's script reset the host while the redirection was still at `100`
-(connecting); GRUB's small reads succeeded and the larger initrd read did not. **Plausible,
-not proven** — the artifact shows the initrd error and the timing, it does not isolate the
-cause. Recorded at that strength deliberately.
+kernel first. Attempt 3's script reset the host while the raw redirection status was still
+`100`; the captures that succeeded had reached raw status `1`. **Whether that difference
+caused the initrd failure is not established** — the artifact shows the initrd error and the
+timing, and nothing here isolates a mechanism. Recorded at that strength deliberately.
 
 ### 7.4 PXE on this segment
 
