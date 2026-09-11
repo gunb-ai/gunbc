@@ -86,8 +86,8 @@ import extdeps.languages.json.parse {
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.harness.harness_backend {
-  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing, HarnessRosterUnresolved,
-  harness_observe_roster, harness_declines_detail, harness_roster_unresolved_detail,
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
+  harness_observe_roster, harness_declines_detail,
 }
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
@@ -1399,14 +1399,12 @@ fn belt_provider_preflight_for_instance(
       }
     GunbcHarnessProvider =>
       match harness_observe_roster() {
-        HarnessRosterServing { model: _, serving: _, declined: _ } => ProviderPreflightOk
-        HarnessRosterNoneServing { model: m, declined } =>
+        HarnessRosterServing { serving: _, declined: _, unresolved: _ } => ProviderPreflightOk
+        HarnessRosterNoneServing { declined, unresolved } =>
           ProviderPreflightRefused {
             step: "harness-backend-roster",
-            detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], ""),
+            detail: join(["no enrolled serving route advertises a model the harness is admitted to ask: ", harness_declines_detail(declined: declined, unresolved: unresolved)], ""),
           }
-        HarnessRosterUnresolved { hosts } =>
-          ProviderPreflightRefused { step: "harness-backend-roster", detail: harness_roster_unresolved_detail(hosts: hosts) }
       }
   }
 }
