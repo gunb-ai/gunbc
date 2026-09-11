@@ -44,6 +44,9 @@ import gunbc.typed_remote_file_write {
   ComparisonUnavailable,
   typed_remote_file_write_seal,
   typed_remote_file_step,
+  TypedRemoteFileStepRan,
+  TypedRemoteFileStepArgvRefused,
+  TypedRemoteFileStepLegRefused,
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
   converge_typed_remote_file,
@@ -577,8 +580,9 @@ func observe_runner_host_file_content(
                 raws: typed_remote_file_compare_argv(write: w),
                 stdin_payload: w.content,
               ) {
-                Absent => HostFileUnobservable { reason: "comparison argv refused as non-portable under the far-side shell re-parse allowlist" }
-                Present { value: back } =>
+                TypedRemoteFileStepArgvRefused => HostFileUnobservable { reason: "comparison argv refused as non-portable under the far-side shell re-parse allowlist" }
+                TypedRemoteFileStepLegRefused { cause: why } => HostFileUnobservable { reason: why as String }
+                TypedRemoteFileStepRan { result: back } =>
                   runner_host_file_standing_of_report(
                     report: classify_typed_remote_file_comparison(write: w, compare_exit_code: back.exit_code, compare_stderr: back.stderr),
                   )
