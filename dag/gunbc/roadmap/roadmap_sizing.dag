@@ -106,10 +106,3 @@ fn volume_label(v: Volume) -> String {
 fn node_sizing_eq(a: NodeSizing, b: NodeSizing) -> Bool {
   a.intricacy == b.intricacy && a.volume == b.volume
 }
-
-fn sizing_derived_cell(d: NodeSizingDerivation) -> NodeSizing? {
-  match d {
-    SizingDerived { subject: _, sizing } => Present { value: sizing }
-    SizingNotDerivable { subject: _, detail: _ } => none
-  }
-}

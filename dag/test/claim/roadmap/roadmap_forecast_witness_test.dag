@@ -15,15 +15,28 @@ import gunbc.roadmap_model {
   RoadmapEdge,
   Dispatchable,
   NotDispatchable,
+  node_sizing_subject_id,
   ManualAcceptance,
 }
+import gunbc.roadmap_authority {
+  accepted_roadmap_node_ids_projection,
+  AcceptedRoadmapNodeIdsProjected,
+  AcceptedRoadmapNodeIdsProjectionRefused,
+  active_roadmap_nodes_for_accepted,
+}
 import gunbc.roadmap_sizing {
+  SizingDerived,
   NodeSizing,
   IntricacyMedium, IntricacyHigh,
   VolumeSmall, VolumeMedium,
 }
 import gunbc.roadmap_forecast {
   NodeSizingAssignment,
+  NodeSizingAdaptation,
+  node_sizing_adaptation,
+  SizingAssignmentRefused,
+  SizingForAnotherSubject,
+  SizingAssignedTwice,
   CycleTimeObservation,
   AcceptedRoadmapNodePullHistory,
   roadmap_cycle_time_observation_builds,
@@ -102,7 +115,7 @@ fn fixture_node(id: String) -> RoadmapNode {
 }
 
 fn sized_at(n: RoadmapNode, cell: NodeSizing) -> NodeSizingAssignment {
-  NodeSizingAssignment { node: n.node, sizing: cell }
+  NodeSizingAssignment { subject: node_sizing_subject_id(rn: n), sizing: cell }
 }
 
 fn fixture_sizings(ns: List<RoadmapNode>) -> List<NodeSizingAssignment> {
@@ -277,6 +290,7 @@ test fn witness_invalid_worker_cap_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
+      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
@@ -305,6 +319,7 @@ test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
+      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
@@ -353,6 +368,7 @@ test fn witness_unsized_node_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
+      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
@@ -385,6 +401,7 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
+      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
@@ -417,6 +434,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
+      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
@@ -451,11 +469,111 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // the moment the live graph produces a ScheduleForecastKnown, whether because the deriver started
 // answering (correct, and the drop retires) or because some later change let an unsized node
 // through (a regression this would otherwise hide).
+// THE COMPLETE LIVE POPULATION IS REFUSED, AND "COMPLETE" IS AN IDENTITY JOIN, NOT A COUNT AND NOT
+// A NON-EMPTY CHECK. The earlier form of this witness asserted only that SOME NodeUnsized refusal
+// carried a non-empty list, which a forecast that dropped every node but one would also satisfy --
+// so it proved "at least one node was reported unsized" while the claim built on it was "the whole
+// graph refused and nothing survived into a shortened schedule". Those are different sentences and
+// the weaker one was being quoted for the stronger.
+//
+// What is asserted now: the refusal names EVERY node of the live active graph and NO node outside
+// it, joined by identity in both directions, and the result is a refusal at all -- so there is no
+// forecast, hence no surviving population to shorten. It goes red the day the deriver answers,
+// which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring.
+fn live_active_node_ids() -> List<RoadmapNodeId> {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      active_roadmap_nodes_for_accepted(accepted: accepted) |> map(n => n.node)
+  }
+}
+
 test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
-  match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
+  let expected = live_active_node_ids()
+  count(expected) > 0
+    && match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
+      ScheduleForecastKnown { forecast: _ } => false
+      ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+        NodeUnsized { nodes } =>
+          count(nodes) == count(expected)
+            && all(expected, id => any(nodes, reported => reported == id))
+            && all(nodes, reported => any(expected, id => id == reported))
+        NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+        ForecastGraphEmpty => false
+        DependencyCycle { nodes: _ } => false
+        DependencyEndpointUnknown { nodes: _ } => false
+        CycleTimeObservationNonPositive { nodes: _ } => false
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+        CalibrationHistoryRefused { refusals: _ } => false
+        ForecastRoadmapAuthorityRefused { detail: _ } => false
+        ForecastBuildRefused { node: _ } => false
+        SizingAssignmentRefused { refusals: _ } => false
+      })
+    }
+}
+
+// A CELL ANSWERED FOR ANOTHER SUBJECT REFUSES RATHER THAN BEING REBOUND. This is the control for
+// the seam that activates when the deriver starts answering: the adapter takes the derivation as a
+// parameter, so a fixture can hand node A a cell that names node B's subject and read what
+// happens. If node_sizing_adaptation ever rebinds positionally, this reds.
+test fn witness_a_cell_answered_for_another_subject_refuses() -> Bool {
+  let a = fixture_node(id: "subject-a")
+  let b = fixture_node(id: "subject-b")
+  let answered_for_b = SizingDerived {
+    subject: node_sizing_subject_id(rn: b),
+    sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall },
+  }
+  let adapted = node_sizing_adaptation(rn: a, d: answered_for_b)
+  count(adapted.assignments) == 0
+    && count(adapted.refusals) == 1
+    && all(adapted.refusals, r => match r {
+      SizingForAnotherSubject { asked, answered } =>
+        asked == node_sizing_subject_id(rn: a) && answered == node_sizing_subject_id(rn: b)
+      SizingAssignedTwice { subject: _ } => false
+    })
+}
+
+test fn witness_a_cell_answered_for_its_own_subject_is_admitted() -> Bool {
+  let a = fixture_node(id: "subject-a")
+  let answered_for_a = SizingDerived {
+    subject: node_sizing_subject_id(rn: a),
+    sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall },
+  }
+  let adapted = node_sizing_adaptation(rn: a, d: answered_for_a)
+  count(adapted.refusals) == 0
+    && count(adapted.assignments) == 1
+    && all(adapted.assignments, assignment =>
+      assignment.subject == node_sizing_subject_id(rn: a)
+        && assignment.sizing.volume == VolumeSmall)
+}
+
+// TWO CELLS FOR ONE SUBJECT REFUSE RATHER THAN LETTING LIST ORDER PICK A WINNER. assigned_sizing
+// takes the first match, which is only correct if a subject appears at most once; nothing in a
+// List enforces that, so the fold refuses on the population before reading it.
+test fn witness_two_cells_for_one_subject_refuse_rather_than_being_ordered() -> Bool {
+  let n = fixture_node(id: "twice-sized")
+  match schedule_forecast(
+    nodes: [n],
+    sizings: [
+      sized_at(n: n, cell: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall }),
+      sized_at(n: n, cell: fixture_cell()),
+    ],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    population_exclusions: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  ) {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-      NodeUnsized { nodes } => count(nodes) > 0
+      SizingAssignmentRefused { refusals: conflicts } =>
+        count(conflicts) == 1
+          && all(conflicts, c => match c {
+            SizingAssignedTwice { subject } => subject == node_sizing_subject_id(rn: n)
+            SizingForAnotherSubject { asked: _, answered: _ } => false
+          })
+      NodeUnsized { nodes: _ } => false
       NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
       ForecastGraphEmpty => false
       DependencyCycle { nodes: _ } => false

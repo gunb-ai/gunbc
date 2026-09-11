@@ -9,9 +9,10 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // admitted as a sample for that cell, and a forecast for an unaccepted node is built by calibrating
 // its own cell against those samples. Every one of those cells was HAND-AUTHORED on the roadmap
 // node, and this change deleted the authored fields rather than leaving them standing beside the
-// deriver that replaces them. Until the deriver returns a cell, sizing_derived_cell answers Absent
-// for every node, so the forecast's NodeUnsized refusal arm fires over the whole graph and
-// schedule_forecast produces no projection at all.
+// deriver that replaces them. Until the deriver returns a cell, every derivation lands on
+// SizingNotDerivable, gunbc.roadmap_forecast derived_node_sizings drops every node, and the
+// forecast's NodeUnsized refusal arm fires over the whole graph, so schedule_forecast produces no
+// projection at all.
 //
 // WHY THIS IS A DROP AND NOT A REPAIR, even though what was lost was a guess. The forecast's
 // refusal was previously discriminating: a node with no authored cell refused and a node with one

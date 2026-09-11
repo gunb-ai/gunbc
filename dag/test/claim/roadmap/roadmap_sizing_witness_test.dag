@@ -13,7 +13,7 @@ import gunbc.roadmap_sizing {
   NodeSizing, Intricacy, IntricacyHigh, Volume, VolumeLarge,
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   sizing_deriver_unbuilt_detail,
-  derive_task_sizing, sizing_derived_cell, intricacy_label, volume_label,
+  derive_task_sizing, intricacy_label, volume_label,
 }
 import gunbc.dispatch_selection {
   SizingProfileExpectation, NoDerivedSizingExpectation, DerivedSizingExpectation,
@@ -101,9 +101,9 @@ test fn witness_stub_deriver_refuses_rather_than_fabricating_a_cell() -> Bool {
 }
 
 test fn witness_refused_derivation_yields_no_cell() -> Bool {
-  match sizing_derived_cell(d: node_sizing_derivation(rn: fixture_node())) {
-    Absent => true
-    Present { value: _ } => false
+  match node_sizing_derivation(rn: fixture_node()) {
+    SizingNotDerivable { subject: _, detail: _ } => true
+    SizingDerived { subject: _, sizing: _ } => false
   }
 }
 
@@ -118,13 +118,13 @@ fn fixture_derived() -> NodeSizingDerivation {
 }
 
 test fn witness_derived_arm_carries_the_cell_through_every_fold() -> Bool {
-  match sizing_derived_cell(d: fixture_derived()) {
-    Present { value: cell } =>
+  match fixture_derived() {
+    SizingDerived { subject: _, sizing: cell } =>
       cell.intricacy == IntricacyHigh
         && cell.volume == VolumeLarge
         && intricacy_label(i: cell.intricacy) == "high"
         && volume_label(v: cell.volume) == "large"
-    Absent => false
+    SizingNotDerivable { subject: _, detail: _ } => false
   }
 }
 

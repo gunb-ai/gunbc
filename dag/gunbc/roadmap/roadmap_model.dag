@@ -70,9 +70,17 @@ type RoadmapNode {
 // keying a sizing derivation to rn.node would join future sizing evidence to a name that can
 // change under it -- the exact rot the law exists to prevent, committed one declaration below the
 // law that forbids it.
+// ONE PROJECTION FROM A NODE TO A SIZING KEY, because a key with two spellings is a join waiting
+// to be made on the weaker one. Everything that needs to name a node TO THE SIZING AUTHORITY --
+// the subject handed to the deriver, and the lookup of an assignment the deriver answered with --
+// goes through this function, so the two can never disagree.
+fn node_sizing_subject_id(rn: RoadmapNode) -> SizingSubjectId {
+  rn.identity as String as SizingSubjectId
+}
+
 fn node_sizing_subject(rn: RoadmapNode) -> SizingSubject {
   SizingSubject {
-    subject: rn.identity as String as SizingSubjectId,
+    subject: node_sizing_subject_id(rn: rn),
     title: node_title(item: rn.line),
     description: item_description(item: rn.line),
     exit_criterion: item_exit_criterion(item: rn.line),
