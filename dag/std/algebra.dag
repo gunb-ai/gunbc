@@ -394,11 +394,20 @@ fn operand_growth_body_disagreement(a: OperandGrowth, b: OperandGrowth) -> Bool 
   a.bodies != b.bodies
 }
 
+// THE BODY SURVIVES A LOSING TERM. A cost is a SUM, so the growth in an operand is the largest any
+// term reaches -- but the presence of a caller-supplied body is a fact about the COST, not about the
+// winning term, and returning the winner whole silently drops it: modeled [n*n] against realized
+// [n*n, body(n)] both collapsed to (2,0,0), compared Same, and answered CostShapePreserved for a
+// realization that runs a body per element where the model runs none. That is the fabricated
+// preserved this module exists to refuse, produced by the function that was supposed to keep the
+// two facts apart. Growth is taken from the ordering; bodies are maxed independently, for the same
+// reason degree and logs are carried separately rather than summed.
 fn operand_growth_max(a: OperandGrowth, b: OperandGrowth) -> OperandGrowth {
+  let bodies = if a.bodies > b.bodies { a.bodies } else { b.bodies }
   match operand_growth_order(a: a, b: b) {
-    Less => b
-    Equal => if b.bodies > a.bodies { b } else { a }
-    Greater => a
+    Less => OperandGrowth { degree: b.degree, logs: b.logs, bodies: bodies }
+    Equal => OperandGrowth { degree: a.degree, logs: a.logs, bodies: bodies }
+    Greater => OperandGrowth { degree: a.degree, logs: a.logs, bodies: bodies }
   }
 }
 

@@ -31,6 +31,7 @@ import std.realization_cost_fidelity {
   RealizationSlowerThanModeled,
   cost_fidelity_of,
   count_cost_fidelity_findings,
+  count_cost_body_dependent,
   count_cost_fidelity_unmeasured,
   count_cost_model_unmigrated,
   realization_cost_fidelity_rows,
@@ -342,4 +343,62 @@ test fn a_body_does_not_outrank_a_real_growth_difference() -> Bool {
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
+}
+
+// THE BODY MUST SURVIVE A LOSING TERM. A cost is a sum, so the growth in an operand comes from the
+// largest term — but a caller-supplied body is a fact about the COST, not about the winning term.
+// Taking the winner whole dropped it: [n*n] against [n*n, body(n)] both read (2,0,0), compared
+// Same, and answered preserved for a realization that runs a body per element where the model runs
+// none. That is the fabricated preserved this module exists to refuse.
+test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
+  match cost_fidelity_of(
+    modeled: StructuredCost {
+      terms: [CostTerm {
+        factors: [LinearInOperand { operand: "n" }, LinearInOperand { operand: "n" }]
+      }]
+    },
+    realized: StructuredCost {
+      terms: [
+        CostTerm { factors: [LinearInOperand { operand: "n" }, LinearInOperand { operand: "n" }] },
+        CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] },
+      ]
+    },
+  ) {
+    RealizationCostBodyDependent => true
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// AN ARM THAT NO REPORTED POPULATION COUNTS IS AN ANSWER NOBODY READS. The undecided arm exists so
+// a measured-but-undecided comparison is not reported as preserved; it would be defeated just as
+// completely by being invisible in every count the consumer reports. It is not a finding, not
+// unmeasured and not unmigrated, so it has its own population and this control asserts all four
+// counts on one ledger at once.
+test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    unstructured: [],
+    target: InterpreterHost,
+    facts: [
+      RealizationCostFact {
+        primitive: probe_primitive_a,
+        target: InterpreterHost,
+        cost: StructuredCost {
+          terms: [
+            CostTerm { factors: [LinearInOperand { operand: "left" }] },
+            CostTerm { factors: [CallerBodyPerElementIn { operand: "right" }] },
+          ]
+        },
+      },
+    ],
+  )
+  count_cost_body_dependent(rows: rows) == 1
+    && count_cost_fidelity_findings(rows: rows) == 0
+    && count_cost_fidelity_unmeasured(rows: rows) == 0
+    && count_cost_model_unmigrated(rows: rows) == 0
 }

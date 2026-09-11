@@ -54,9 +54,10 @@ import std.logic { Bool }
 // THE CONSUMER: the compile-obligation census's realization-cost-fidelity row — the row the census
 // currently reports as having no home — joined per (primitive, target) through
 // `realization_cost_fidelity_rows`, with `count_cost_fidelity_findings`,
-// `count_cost_fidelity_unmeasured` and `count_cost_model_unmigrated` as its three reported
-// populations. THE ROUTE: the census entry point folds `std.primitive_identity`'s modeled costs
-// against `RealizationCostFact` rows measured from the emitted compiler, and reports the rows.
+// `count_cost_fidelity_unmeasured`, `count_cost_model_unmigrated` and `count_cost_body_dependent`
+// as its four reported populations. THE ROUTE: the census entry point folds
+// `std.primitive_identity`'s modeled costs against `RealizationCostFact` rows measured from the
+// emitted compiler, and reports the rows.
 //
 // THE TRIGGER, and it is a capability rather than an artifact: the emitted compiler being
 // measurable per primitive, so a realized cost is an OBSERVATION rather than an assertion. Until
@@ -305,6 +306,25 @@ fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int
       RealizationFasterThanModeled => acc
       RealizationDivergesByOperand => acc
       RealizationCostBodyDependent => acc
+      ModeledCostNotStructured => acc
+    }
+  })
+}
+
+// A MEASURED-BUT-UNDECIDED ROW MUST APPEAR IN A REPORTED POPULATION, or the arm that exists to stop
+// an undecided answer being read as preserved becomes an answer nobody reads at all. It is not a
+// finding (nothing is established about which side is worse), not unmeasured (both costs are known),
+// and not unmigrated (both are structured), so it is its own count -- the fourth population the
+// consumer reports.
+fn count_cost_body_dependent(rows: List<RealizationCostFidelityRow>) -> Int {
+  rows |> fold(init: 0, f: fn(acc, row) {
+    match row.fidelity {
+      RealizationCostBodyDependent => acc + 1
+      RealizationCostUnknown => acc
+      CostShapePreserved => acc
+      RealizationSlowerThanModeled => acc
+      RealizationFasterThanModeled => acc
+      RealizationDivergesByOperand => acc
       ModeledCostNotStructured => acc
     }
   })
