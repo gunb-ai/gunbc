@@ -14,8 +14,11 @@ import v2.compiler.self_host.emitter_producer_provenance {
   V1SeedEmitter,
   V2EmitterInterpreted,
   V2EmitterNative,
+  EmitterProducerMintAdmission,
+  ProducerMintAdmitted,
+  ProducerMintRefused,
   emitter_producer_eq,
-  realized_closure_contains_module,
+  emitter_producer_mint_admission,
   seed_emit_rust_reachable,
   v2_emit_interpreted_qualified_module
 }
@@ -136,36 +139,6 @@ data ancestry_read_back_unperformed: String = "native generation mint refused: R
 
 data ancestry_read_back_diverged: String = "native generation mint refused: the artifact reported an identity that is not the digest observed of the bytes that were built"
 
-data ancestry_successor_closure_reaches_seed: String = "native generation mint refused: a SucceedsNative generation's realized closure reaches v1.compiler.emit_rust, so the seed emitter produced bytes on the recurring path"
-
-// THE SEED INTERPRETER, HOMED HERE AND NOT IN emitter_producer_provenance, deliberately.
-// That module owns which modules are EMITTERS — v1.compiler.emit_rust and v2.compiler.emit —
-// and the v1 interpreter is not one; it executes .dag rather than producing Rust. What forbids
-// it on the recurring path is not a fact about emitters but the ancestry rule itself: C1 says a
-// native generation's producer is the PRIOR NATIVE GENERATION, so any route by which the seed
-// participates in producing the bytes is disqualifying whether it emitted them or interpreted
-// the program that did. That rule is this module's, so the module path it forbids is too.
-data v1_seed_interpreter_qualified_module: String = "v1_compiler.v1_interpreter"
-
-data ancestry_successor_closure_reaches_seed_interpreter: String = "native generation mint refused: a SucceedsNative generation's realized closure reaches the v1 seed interpreter, so the seed executed on the recurring path — interpreting the program that produced the bytes is producing them, and C1 admits only the prior native generation"
-
-// AN EMPTY CLOSURE IS IGNORANCE, NOT INNOCENCE. Every clause of this wall is a NEGATIVE
-// question — is the seed reachable, is an interpreter reachable — and negative questions are
-// all vacuously satisfied by a closure that names nothing. So RealizedEmitterClosure with no
-// module paths passed the entire wall and minted an admitted native generation, which is
-// exactly the ⊥-as-ignorance conflated with ⊤-as-answer that DESIGN section 5 forbids: "we did
-// not observe the seed" rendered as "the seed is absent". It is worse here than in general,
-// because the closure carrier is the ONLY evidence the wall consults, so an empty one is not a
-// weak observation but no observation at all, and the route-level OldRouteAbsentByConstruction
-// control would green on it.
-data ancestry_successor_closure_empty: String = "native generation mint refused: the realized closure names no modules at all, so every reachability clause is vacuously satisfied — an unobserved closure is not an admitted one"
-
-data ancestry_successor_closure_reaches_interpreter: String = "native generation mint refused: a SucceedsNative generation's realized closure reaches v2.compiler.emit, so the interpreted emitter — not the prior native generation — produced bytes on the recurring path"
-
-data ancestry_build_path_unresolved: String = "native generation mint refused: BuildPathUnresolved leaves an input the six generation axes do not name, so the artifact axis cannot falsify anything"
-
-data ancestry_successor_build_path_pinned: String = "native generation mint refused: BuildPathPinned is admissible only for the one-time genesis; a recurring generation's artifact is acquired as an ancestor and must not depend on the directory it was built in"
-
 data ancestry_genesis_closure_omits_seed: String = "native generation mint refused: GenesisFromSeed names the seed as producer, so v1.compiler.emit_rust must be reachable in its realized closure — a genesis that did not run the seed is not a genesis"
 
 type NativeGenerationMintAdmission
@@ -202,43 +175,6 @@ fn read_back_agrees(
 // reach means the migration never happened, an interpreter reach means the wrong v2 route
 // was composed — and collapsing them is the state-space conflation DESIGN section 5 names.
 //
-// This is also the predicate the route-level OldRouteAbsentByConstruction control consumes:
-// "no v1 emitter or interpreter reachable" is decided here, once, over the closure carrier
-// that already exists, rather than re-derived beside the route receipt.
-//
-// WHAT THIS WALL STILL DOES NOT ESTABLISH, named rather than left to be discovered. Refusing
-// the empty closure closes the vacuous case, but the remaining clauses are still NEGATIVE: a
-// closure naming one arbitrary module reaches no seed, no seed interpreter and no v2
-// interpreted emitter, and is admitted. So this wall establishes that no DISQUALIFYING
-// producer is named; it does not establish that the prior native generation IS. The positive
-// half is a different question and is not answered by adding more forbidden names to this
-// fold — it needs the admitted native producer closure to be derived from the acquired
-// ancestor rather than supplied beside it, so that what produced the bytes and what the
-// closure claims cannot disagree. Deliberately NOT implemented here as a roster of required
-// module paths: a hand-authored required-membership list would refuse real closures the moment
-// the native producer's own module set moved, which is a false refusal wearing a wall.
-fn native_producer_closure_admission(
-  closure: RealizedEmitterClosure
-) -> NativeGenerationMintAdmission {
-  if length(xs: closure.emitter_module_paths) == 0 {
-    NativeGenerationRefused { cause: ^ancestry_successor_closure_empty }
-  } else if seed_emit_rust_reachable(closure: closure) {
-    NativeGenerationRefused { cause: ^ancestry_successor_closure_reaches_seed }
-  } else if realized_closure_contains_module(
-    closure: closure,
-    module: v1_seed_interpreter_qualified_module
-  ) {
-    NativeGenerationRefused { cause: ^ancestry_successor_closure_reaches_seed_interpreter }
-  } else if realized_closure_contains_module(
-    closure: closure,
-    module: v2_emit_interpreted_qualified_module
-  ) {
-    NativeGenerationRefused { cause: ^ancestry_successor_closure_reaches_interpreter }
-  } else {
-    NativeGenerationAdmitted
-  }
-}
-
 fn build_path_admission(
   treatment: BuildPathTreatment,
   genesis: Bool
@@ -284,9 +220,12 @@ fn native_generation_mint_admission(
       if g.generation != p + 1 {
         NativeGenerationRefused { cause: ^ancestry_successor_not_parent_plus_one }
       } else {
-        match native_producer_closure_admission(closure: g.realized_closure) {
-          NativeGenerationRefused { cause: c } => NativeGenerationRefused { cause: c }
-          NativeGenerationAdmitted =>
+        match emitter_producer_mint_admission(
+          producer: native_generation_producer(g: g),
+          closure: g.realized_closure
+        ) {
+          ProducerMintRefused { cause: c } => NativeGenerationRefused { cause: c }
+          ProducerMintAdmitted =>
             match build_path_admission(
               treatment: g.build_path_treatment,
               genesis: false
@@ -457,18 +396,61 @@ data successor_ancestor_join_frontier: DissolutionCondition = unbound_dissolutio
   description: "declared frontier for successor_names_its_ancestor: its production consumer is the genesis-and-succession wiring in the v2-native route harness, which holds both the acquired ancestor and the successor being minted; the frontier closes when that wiring joins the two by artifact identity through this fold instead of trusting the generation number. Unbound deliberately: the condition is a call appearing in a host realization, which is neither a declaration appearing nor one retiring." as NonEmptyStr
 )
 
+// A TYPED VERDICT, NOT A Bool, and this module has no standing to argue otherwise. Its own
+// opening note rejects a used_seed Bool on the ground that a Boolean carries the fact while
+// leaving both routes writable on either value; a Bool here has the same defect one layer in.
+// The caller that refuses a mint because succession does not join needs to say WHICH of four
+// different things went wrong — the candidate is a genesis and has no parent at all, the
+// generation numbers disagree, the ancestor was never built, or the successor names bytes the
+// ancestor did not produce — and those have four different remedies. Collapsing them to false
+// is the state-space conflation DESIGN section 5 names, and it would put this fold's caller in
+// the position of re-deriving the cause it just discarded.
+type SuccessionJoin
+  = SuccessionJoined
+  | SuccessionRefused { cause: Symbol }
+
+data ancestry_succession_candidate_is_genesis: String = "succession refused: the candidate's ancestry is GenesisFromSeed, which names no parent generation — a genesis does not succeed anything, and asking whether it joins an ancestor is a category error rather than a failed join"
+
+data ancestry_succession_parent_generation_mismatch: String = "succession refused: the successor names a parent generation number that is not the offered ancestor's own"
+
+data ancestry_succession_ancestor_artifact_not_materialized: String = "succession refused: the offered ancestor's artifact axis is ArtifactNotMaterialized, so there are no bytes for the successor to have been produced by"
+
+data ancestry_succession_parent_artifact_mismatch: String = "succession refused: the successor names a parent artifact digest that is not the offered ancestor's observed artifact, so 'produced by generation N' names bytes generation N did not produce"
+
+// The successor's parent artifact must be the ancestor's OWN observed artifact, so a
+// successor cannot name a generation number it never consumed. This is the identity join
+// that makes "produced by generation N" falsifiable rather than declarative.
+//
+// IT LIVES HERE AND NOT IN THE MINT, and that placement is forced rather than stylistic.
+// native_generation_mint_admission sees ONE generation, so it can read parent_artifact but
+// has nothing to join it against; a mint clause asserting the parent artifact is the real
+// parent's would be a refusal that cannot fire — a wall clause in appearance with the named
+// state still writable, which DESIGN section 5 calls specification-without-execution. An
+// earlier revision carried exactly that as an unread refusal cause and it is deleted. The
+// join is decidable only where both generations are in hand, which is this fold.
 fn successor_names_its_ancestor(
   successor: NativeGeneration,
   ancestor: NativeGeneration
-) -> Bool {
+) -> SuccessionJoin {
   match successor.ancestry {
-    GenesisFromSeed { seed_binary: _ } => false
+    GenesisFromSeed { seed_binary: _ } =>
+      SuccessionRefused { cause: ^ancestry_succession_candidate_is_genesis }
     SucceedsNative { parent_generation: p, parent_artifact: a } =>
-      (p == ancestor.generation)
-        && match ancestor.identity.materialized_artifact {
-          ArtifactNotMaterialized => false
+      if p != ancestor.generation {
+        SuccessionRefused { cause: ^ancestry_succession_parent_generation_mismatch }
+      } else {
+        match ancestor.identity.materialized_artifact {
+          ArtifactNotMaterialized =>
+            SuccessionRefused {
+              cause: ^ancestry_succession_ancestor_artifact_not_materialized
+            }
           ArtifactMaterialized { digest: observed } =>
-            content_hash_eq_sha512(left: a.observed, right: observed.observed)
+            if content_hash_eq_sha512(left: a.observed, right: observed.observed) {
+              SuccessionJoined
+            } else {
+              SuccessionRefused { cause: ^ancestry_succession_parent_artifact_mismatch }
+            }
         }
+      }
   }
 }

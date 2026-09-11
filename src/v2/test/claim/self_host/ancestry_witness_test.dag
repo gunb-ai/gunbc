@@ -17,7 +17,11 @@ import v2.compiler.self_host.emitter_producer_provenance {
   V1SeedEmitter,
   V2EmitterInterpreted,
   V2EmitterNative,
-  emitter_producer_eq
+  emitter_producer_eq,
+  v2_emitter_closure_is_empty,
+  v2_emitter_in_seed_emit_rust_closure,
+  v2_emitter_in_seed_interpreter_closure,
+  v2_native_emitter_in_interpreted_emit_closure
 }
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
@@ -49,6 +53,8 @@ import v2.compiler.self_host.ancestry {
   ReadBackReceipt,
   ReadBackUnperformed,
   SucceedsNative,
+  SuccessionJoined,
+  SuccessionRefused,
   acquire_native_ancestor,
   admit_genesis,
   native_generation_mint_admission,
@@ -321,7 +327,7 @@ test fn successor_whose_closure_reaches_the_seed_is_refused() -> Bool {
       closure: anc_seed_closure,
       build_path: anc_remap
     ),
-    cause: ^ancestry_successor_closure_reaches_seed
+    cause: ^v2_emitter_in_seed_emit_rust_closure
   )
 }
 
@@ -338,7 +344,7 @@ test fn successor_whose_closure_reaches_the_interpreter_is_refused() -> Bool {
       closure: anc_interpreted_closure,
       build_path: anc_remap
     ),
-    cause: ^ancestry_successor_closure_reaches_interpreter
+    cause: ^v2_native_emitter_in_interpreted_emit_closure
   )
 }
 
@@ -357,7 +363,7 @@ test fn successor_whose_closure_reaches_the_seed_interpreter_is_refused() -> Boo
       closure: anc_seed_interpreter_closure,
       build_path: anc_remap
     ),
-    cause: ^ancestry_successor_closure_reaches_seed_interpreter
+    cause: ^v2_emitter_in_seed_interpreter_closure
   )
 }
 
@@ -378,7 +384,7 @@ test fn successor_whose_closure_names_nothing_is_refused() -> Bool {
       closure: anc_empty_closure,
       build_path: anc_remap
     ),
-    cause: ^ancestry_successor_closure_empty
+    cause: ^v2_emitter_closure_is_empty
   )
 }
 
@@ -610,37 +616,96 @@ test fn admissible_ancestor_of_the_expected_generation_is_acquired() -> Bool {
   }
 }
 
-fn anc_joins(
+fn anc_join_verdict(
   successor: Optional<NativeGeneration>,
   ancestor: Optional<NativeGeneration>
-) -> Bool {
+) -> Optional<SuccessionJoin> {
   match successor {
-    Absent => false
+    Absent => optional_absent()
     Present { value: s } =>
       match ancestor {
-        Absent => false
+        Absent => optional_absent()
         Present { value: a } =>
-          successor_names_its_ancestor(successor: s, ancestor: a)
+          optional_present(
+            value: successor_names_its_ancestor(successor: s, ancestor: a)
+          )
       }
   }
 }
 
-// THE IDENTITY JOIN. A successor must name its ancestor's OWN observed artifact, so
-// "produced by generation N" is falsifiable rather than declarative. Positive: the good pair
-// joins. Red: the same successor against a generation-0 whose artifact is the other digest
-// does not — the generation NUMBER still matches, so this clause is discriminating only
-// because the join is on artifact identity.
+fn anc_joined(
+  successor: Optional<NativeGeneration>,
+  ancestor: Optional<NativeGeneration>
+) -> Bool {
+  match anc_join_verdict(successor: successor, ancestor: ancestor) {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        SuccessionJoined => true
+        SuccessionRefused { cause: _ } => false
+      }
+  }
+}
+
+fn anc_join_refused_with(
+  successor: Optional<NativeGeneration>,
+  ancestor: Optional<NativeGeneration>,
+  cause: Symbol
+) -> Bool {
+  match anc_join_verdict(successor: successor, ancestor: ancestor) {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        SuccessionJoined => false
+        SuccessionRefused { cause: c } => c == cause
+      }
+  }
+}
+
+// THE IDENTITY JOIN, and its refusals NAMED rather than collapsed. A successor must name its
+// ancestor's OWN observed artifact, so "produced by generation N" is falsifiable rather than
+// declarative. The three reds are the three different things that can go wrong, each carrying
+// its own cause: the generation NUMBER still matches in the artifact-mismatch case, so that
+// clause is discriminating only because the join is on artifact identity.
 test fn successor_joins_its_ancestor_by_artifact_identity() -> Bool {
-  anc_joins(successor: anc_good_successor(), ancestor: anc_good_genesis())
-    && !anc_joins(
+  anc_joined(successor: anc_good_successor(), ancestor: anc_good_genesis())
+    && anc_join_refused_with(
       successor: anc_good_successor(),
       ancestor: anc_genesis(
         artifact_hex: anc_other_hex,
         read_back: anc_read_back(hex: anc_other_hex),
         closure: anc_seed_closure,
         build_path: BuildPathPinned { directory: "/build/genesis" }
-      )
+      ),
+      cause: ^ancestry_succession_parent_artifact_mismatch
     )
+}
+
+// A GENESIS SUCCEEDS NOTHING, and that is a category error rather than a failed join — the
+// caller's remedy differs, so the cause does.
+test fn a_genesis_offered_as_a_successor_is_refused_by_name() -> Bool {
+  anc_join_refused_with(
+    successor: anc_good_genesis(),
+    ancestor: anc_good_genesis(),
+    cause: ^ancestry_succession_candidate_is_genesis
+  )
+}
+
+// The generation numbers disagreeing is its own cause, distinct from the artifact disagreeing.
+test fn a_successor_naming_a_different_parent_generation_is_refused_by_name() -> Bool {
+  anc_join_refused_with(
+    successor: anc_successor(
+      generation: 4,
+      parent_generation: 3,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_native_closure,
+      build_path: anc_remap
+    ),
+    ancestor: anc_good_genesis(),
+    cause: ^ancestry_succession_parent_generation_mismatch
+  )
 }
 
 // A MOVED IDENTITY AXIS IS A DIFFERENT GENERATION. The ancestor compared against itself is

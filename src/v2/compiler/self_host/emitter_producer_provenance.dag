@@ -223,6 +223,32 @@ fn v2_interpreted_emitter_closure_authority() -> RealizedEmitterClosure {
   realized_closure_for_v2_direct_rust_door_emit_run()
 }
 
+// THE v1 SEED INTERPRETER, owned here beside the seed emitter because it is the same KIND of
+// fact: which upstream module, appearing in a realized closure, disqualifies a producer that
+// claims not to be the seed. It reached this module from
+// v2.compiler.self_host.ancestry, where it was first written — the ancestry rule that forbids
+// it is a consumer of this classification, not a second home for it (review 63949).
+data v1_seed_interpreter_qualified_module: String = "v1_compiler.v1_interpreter"
+
+// AN EMPTY CLOSURE IS IGNORANCE, NOT INNOCENCE, and it is a producer x closure fact rather than
+// an ancestry one, which is why it lives here. Every clause below asks a NEGATIVE question —
+// is the seed emitter reachable, is the seed interpreter reachable — and negative questions are
+// ALL vacuously satisfied by a closure that names nothing. So RealizedEmitterClosure with no
+// module paths passed this entire admission and minted a V2Emitter* receipt on no evidence at
+// all: bottom-as-ignorance rendered as top-as-answer, DESIGN section 5. It bites hardest here
+// because the closure carrier is the ONLY evidence this fold consults, so an empty one is not a
+// weak observation but the absence of one.
+//
+// SCOPED TO THE V2Emitter* ARMS deliberately. V1SeedEmitter admits unconditionally by this
+// module's existing design — the seed's provenance is not the thing in question — and tightening
+// that arm would change what every current caller of mint_producer_emission_receipt may mint,
+// which is a different subject with its own consumers. Named here rather than silently skipped.
+data v2_emitter_closure_is_empty: String = "V2Emitter* producer mint refused: realized_closure names no modules at all, so every reachability clause is vacuously satisfied — an unobserved closure is not an admitted one"
+
+data v2_emitter_in_seed_interpreter_closure: String = "V2Emitter* producer mint refused: realized_closure reaches the v1 seed interpreter, so the seed executed on this route — interpreting the program that produced the bytes is producing them"
+
+data v2_native_emitter_in_interpreted_emit_closure: String = "V2EmitterNative producer mint refused: realized_closure reaches v2.compiler.emit, so the INTERPRETED emitter produced these bytes and the producer axis claims a native one. Refused only for V2EmitterNative: for V2EmitterInterpreted that same module is its own emitter and is exactly what its closure should name."
+
 data v2_emitter_in_seed_emit_rust_closure: String = "V2Emitter* producer mint refused: realized_closure contains v1.compiler.emit_rust (structural construction wall, calm-badger-682 ruling 2026-07-29)"
 
 type EmitterProducerMintAdmission
@@ -234,6 +260,26 @@ type EmitterProducerMintAdmission
 // admissibility — mint_producer_emission_receipt consumes this surface; no parallel hand-rolled
 // Bool admissibility predicates.
 
+// The clauses common to every V2Emitter* producer: the closure must be evidence at all, and it
+// must reach neither half of the v1 seed. Factored so the two arms cannot drift, which is the
+// same reason this module refuses to let a consumer re-derive the verdict.
+fn v2_emitter_closure_admission(
+  closure: RealizedEmitterClosure
+) -> EmitterProducerMintAdmission {
+  if length(xs: closure.emitter_module_paths) == 0 {
+    ProducerMintRefused { cause: ^v2_emitter_closure_is_empty }
+  } else if seed_emit_rust_reachable(closure: closure) {
+    ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
+  } else if realized_closure_contains_module(
+    closure: closure,
+    module: v1_seed_interpreter_qualified_module
+  ) {
+    ProducerMintRefused { cause: ^v2_emitter_in_seed_interpreter_closure }
+  } else {
+    ProducerMintAdmitted
+  }
+}
+
 fn emitter_producer_mint_admission(
   producer: EmitterProducer,
   closure: RealizedEmitterClosure
@@ -241,16 +287,22 @@ fn emitter_producer_mint_admission(
   match producer {
     V1SeedEmitter => ProducerMintAdmitted
     V2EmitterInterpreted =>
-      if seed_emit_rust_reachable(closure: closure) {
-        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
-      } else {
-        ProducerMintAdmitted
+      match v2_emitter_closure_admission(closure: closure) {
+        ProducerMintRefused { cause: c } => ProducerMintRefused { cause: c }
+        ProducerMintAdmitted => ProducerMintAdmitted
       }
     V2EmitterNative { generation: _ } =>
-      if seed_emit_rust_reachable(closure: closure) {
-        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
-      } else {
-        ProducerMintAdmitted
+      match v2_emitter_closure_admission(closure: closure) {
+        ProducerMintRefused { cause: c } => ProducerMintRefused { cause: c }
+        ProducerMintAdmitted =>
+          if realized_closure_contains_module(
+            closure: closure,
+            module: v2_emit_interpreted_qualified_module
+          ) {
+            ProducerMintRefused { cause: ^v2_native_emitter_in_interpreted_emit_closure }
+          } else {
+            ProducerMintAdmitted
+          }
       }
   }
 }
