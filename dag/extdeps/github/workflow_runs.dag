@@ -2,6 +2,7 @@ module extdeps.github.workflow_runs
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome }
 import std.types { CommitSha, NonEmptyStr, Timestamp }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
@@ -63,15 +64,36 @@ type WorkflowRunPullRequest {
   number: Int
 }
 
+// FIVE FIELDS THE RESPONSE CARRIES THAT NO CONSUMER COULD READ. actor, triggering_actor,
+// event, head_branch and run_attempt are all in GitHub's workflow-run response and were absent
+// from this projection, so a .dag consumer asking "which actor triggered this, on what event,
+// and which attempt am I looking at" had to leave the provider model entirely -- gh api, raw
+// JSON, or a status word copied out of the UI.
+//
+// THE RUN_ATTEMPT FIELD IS THE LOAD-BEARING ONE. A run object reports created_at from attempt 1
+// and run_started_at from the LATEST attempt, naming neither, so a consumer that does not know
+// which attempt it holds can compute a start delay that never happened. Without run_attempt the
+// object cannot even say which attempt it describes.
+//
+// ACTOR AND TRIGGERING_ACTOR ARE TWO FACTS. The first is who the run is attributed to; the
+// second is who caused this particular attempt. They diverge exactly when a human releases a
+// withheld run: the actor stays the bot that pushed, and the triggering actor becomes the
+// person who approved. A model carrying only one of them cannot distinguish an ordinary
+// execution from a released one.
 type WorkflowRun {
   id: Int
   name: String?
   path: String?
   head_sha: CommitSha
+  head_branch: String?
+  event: String
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   workflow_id: Int
   run_number: Int
+  run_attempt: Int
+  actor: GitHubUser?
+  triggering_actor: GitHubUser?
   html_url: NonEmptyStr
   created_at: Timestamp
   updated_at: Timestamp
@@ -159,6 +181,18 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
   "closure:consolidate_variant_string_mapping|parse_workflow_run_status/workflow_run_status_wire_label and parse_workflow_run_conclusion/workflow_run_conclusion_wire_label hand-roll the SnakeCase mapping already declared in the wire contracts. Dissolve when the codec-from-contract bridge derives decode and encode from CoproductWireContract rows directly."
 ]
 
+// LISTATTEMPTJOBS EXISTS BECAUSE LISTJOBS PINS filter=latest INTO ITS QUERY, and that default is
+// not a nuance. A withheld run that a human later releases has ZERO jobs on attempt 1 and a full
+// set on attempt 2, so a latest-filtered read reports the release and calls it the original
+// execution. Every question of the form "did this run actually execute when it was created" is a
+// question about ONE attempt, and ListAttemptJobs is the only operation here that can ask it.
+// GitHub documents the attempt-scoped path separately from the run-scoped one because they answer
+// different questions: the attempt number is part of the resource, not a filter.
+//
+// THE ANNOTATION SITS ON THE SERVICE RATHER THAN THE OPERATION because an `operation` lives inside
+// this declaration's body, and section 4c admits annotations only at module-item grain. An
+// operation is not a module item, so per-operation rationale is not expressible; it belongs here
+// or nowhere.
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
@@ -243,6 +277,34 @@ service github.WorkflowRuns {
     }
     response {
       200 => WorkflowRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation ListAttemptJobs {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      attempt_number: Int
+      per_page: Int = max_per_page
+    }
+    output {
+      result: WorkflowJobRunList
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/attempts/\{attempt_number\}/jobs",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => WorkflowJobRunList
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape
