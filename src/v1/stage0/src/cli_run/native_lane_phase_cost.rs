@@ -4,7 +4,9 @@
 //! committed. SCAFFOLD: same dissolution as `cli_run_exclusive_cost_partition_probe`
 //! (`PerformanceReceipt` / `CostAccount` Measured). This module consumes
 //! `exclusive_cost_partition_from_rows` + `render_exclusive_cost_partition_json`;
-//! it does not mint a second JSON schema.
+//! it does not mint a second JSON schema. The emitted binary prints `[native-lane-phase]`
+//! clocks; this host re-renders them as `[cost-partition]` so parent and child share one
+//! record shape on one stream.
 //!
 //! Named phases (operator roster for #10940's next run):
 //! `seed_emission`, `cargo_build`, `malformed_control_run`, `universe_derivation`,
@@ -20,6 +22,7 @@ use super::{
 };
 
 pub const COST_PARTITION_TAG: &str = "[cost-partition]";
+pub const CHILD_PHASE_TAG: &str = "[native-lane-phase]";
 
 pub const PHASE_SEED_EMISSION: &str = "seed_emission";
 pub const PHASE_CARGO_BUILD: &str = "cargo_build";
@@ -29,8 +32,11 @@ pub const PHASE_MODULE_PREPARATION: &str = "module_preparation";
 pub const PHASE_IDENTITY_EVALUATION: &str = "identity_evaluation";
 pub const PHASE_RECEIPT_ADMISSION: &str = "receipt_admission";
 pub const PHASE_MODULE_BUNDLE: &str = "module_bundle";
+pub const PHASE_SOURCE_LOAD: &str = "source_load";
+pub const PHASE_TEST_CONTEXT: &str = "test_context";
 
 const BASIS: &str = "required_v2_native_phase_wall";
+const BINARY_PARENT_BASIS: &str = "source_root_eval_driver_main_wall";
 
 pub struct PhaseClock {
     pub phase: &'static str,
@@ -89,10 +95,134 @@ pub fn relay_child_stderr(stderr: &[u8]) {
         return;
     }
     let text = String::from_utf8_lossy(stderr);
-    eprint!("{text}");
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix(CHILD_PHASE_TAG) {
+            match render_child_phase_as_cost_partition(rest.trim()) {
+                Ok(json) => eprintln!("{COST_PARTITION_TAG} {json}"),
+                Err(cause) => {
+                    eprintln!("{CHILD_PHASE_TAG} refused: {cause}: {line}")
+                }
+            }
+        } else if line.starts_with(COST_PARTITION_TAG) {
+            eprintln!(
+                "{CHILD_PHASE_TAG} refused: child must not mint {COST_PARTITION_TAG}; use {CHILD_PHASE_TAG}: {line}"
+            );
+        } else {
+            eprintln!("{line}");
+        }
+    }
     if !text.ends_with('\n') {
         eprintln!();
     }
+}
+
+fn intern_exclusive_name(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "seed_emission" => PHASE_SEED_EMISSION,
+        "cargo_build" => PHASE_CARGO_BUILD,
+        "malformed_control_run" => PHASE_MALFORMED_CONTROL_RUN,
+        "universe_derivation" => PHASE_UNIVERSE_DERIVATION,
+        "module_preparation" => PHASE_MODULE_PREPARATION,
+        "identity_evaluation" => PHASE_IDENTITY_EVALUATION,
+        "receipt_admission" => PHASE_RECEIPT_ADMISSION,
+        "module_bundle" => PHASE_MODULE_BUNDLE,
+        "source_load" => PHASE_SOURCE_LOAD,
+        "test_context" => PHASE_TEST_CONTEXT,
+        _ => return None,
+    })
+}
+
+fn intern_observation_key(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "identities" => "identities",
+        "modules" => "modules",
+        "source_files" => "source_files",
+        "eval_mean_nanos" => "eval_mean_nanos",
+        "eval_p50_nanos" => "eval_p50_nanos",
+        "eval_p95_nanos" => "eval_p95_nanos",
+        "prepare_mean_nanos" => "prepare_mean_nanos",
+        "prepare_p50_nanos" => "prepare_p50_nanos",
+        "prepare_p95_nanos" => "prepare_p95_nanos",
+        "cpu_nanos" => "cpu_nanos",
+        "children_cpu_nanos" => "children_cpu_nanos",
+        "peak_rss_bytes" => "peak_rss_bytes",
+        "rss_bytes" => "rss_bytes",
+        _ => return None,
+    })
+}
+
+fn json_u128(v: &serde_json::Value) -> Option<u128> {
+    v.as_u64()
+        .map(|n| n as u128)
+        .or_else(|| v.as_i64().and_then(|n| (n >= 0).then_some(n as u128)))
+}
+
+fn render_child_phase_as_cost_partition(json_text: &str) -> Result<String, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(json_text).map_err(|e| format!("json: {e}"))?;
+    let obj = value
+        .as_object()
+        .ok_or_else(|| "native-lane-phase body must be an object".to_string())?;
+    let parent_span_nanos = obj
+        .get("parent_span_nanos")
+        .and_then(json_u128)
+        .ok_or_else(|| "parent_span_nanos required".to_string())?;
+    let exclusive_obj = obj
+        .get("exclusive")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "exclusive object required".to_string())?;
+    let mut exclusive = Vec::new();
+    for (name, nanos_v) in exclusive_obj {
+        let interned =
+            intern_exclusive_name(name).ok_or_else(|| format!("unknown exclusive row {name}"))?;
+        let nanos = json_u128(nanos_v).ok_or_else(|| format!("nanos for {name}"))?;
+        exclusive.push(CostPartitionRow {
+            name: interned,
+            nanos,
+        });
+    }
+    let basis = match obj.get("basis").and_then(|v| v.as_str()) {
+        Some(BINARY_PARENT_BASIS) => BINARY_PARENT_BASIS,
+        Some(BASIS) | None => BASIS,
+        Some(other) => {
+            return Err(format!("unknown basis {other}"));
+        }
+    };
+    let mut partition =
+        exclusive_cost_partition_from_rows(basis, parent_span_nanos, exclusive, Vec::new());
+    let mut labels = Vec::new();
+    let mut observations: Vec<(&str, u128)> = Vec::new();
+    for (k, v) in obj {
+        match k.as_str() {
+            "basis"
+            | "exclusive"
+            | "inclusive"
+            | "parent_span_nanos"
+            | "sum_exclusive_nanos"
+            | "remainder_nanos"
+            | "verdict"
+            | "basis_note"
+            | "accounting_law"
+            | "spans"
+            | "nested_spans"
+            | "producer" => continue,
+            _ => {}
+        }
+        if let Some(s) = v.as_str() {
+            labels.push((k.clone(), s.to_string()));
+            continue;
+        }
+        if let Some(n) = json_u128(v) {
+            let key =
+                intern_observation_key(k).ok_or_else(|| format!("unknown observation {k}"))?;
+            observations.push((key, n));
+        }
+    }
+    partition.labels = labels;
+    Ok(render_exclusive_cost_partition_json(
+        &partition,
+        &observations,
+    ))
 }
 
 fn children_rusage() -> Option<libc::rusage> {
@@ -119,8 +249,8 @@ fn children_cpu_nanos() -> Option<u128> {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        exclusive_cost_partition_from_rows, CostAccountingRefusal, CostAccountingVerdict,
-        CostPartitionRow,
+        exclusive_cost_partition_from_rows, render_exclusive_cost_partition_json,
+        CostAccountingRefusal, CostAccountingVerdict, CostPartitionRow,
     };
     use super::*;
 
@@ -166,5 +296,35 @@ mod tests {
             !line.contains("\"status\":\"committed\""),
             "status was the forked schema; the renderer names the phase as the exclusive row"
         );
+        assert!(
+            line.contains("\"resolve_volume\":\"unmeasured\""),
+            "unobserved resolve volume must not print as measured zeros: {line}"
+        );
+        assert!(
+            !line.contains("edge_index_construction"),
+            "fabricated zeros would look measured: {line}"
+        );
+    }
+
+    #[test]
+    fn child_overattribution_is_rerendered_as_overattributed() {
+        let json = render_child_phase_as_cost_partition(
+            r#"{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{"module_preparation":8,"identity_evaluation":8},"module":"std.x"}"#,
+        )
+        .expect("parse");
+        assert!(
+            json.contains("\"kind\":\"OverAttributed\""),
+            "host must refuse, not clamp: {json}"
+        );
+        assert!(!json.contains("\"remainder_nanos\":0") || json.contains("OverAttributed"));
+    }
+
+    #[test]
+    fn from_rows_omits_unmeasured_resolve_volume() {
+        let p = exclusive_cost_partition_from_rows(BASIS, 5, Vec::new(), Vec::new());
+        let line = render_exclusive_cost_partition_json(&p, &[]);
+        assert!(line.contains("\"resolve_volume\":\"unmeasured\""));
+        assert!(!line.contains("edge_index_construction"));
+        assert!(!line.contains("pool_parse"));
     }
 }

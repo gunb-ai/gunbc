@@ -14225,7 +14225,7 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `exclusive_cost_partition_law` test module, the three `[cost-partition]` emissions
 // (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`),
 // `native_lane_phase_cost` / its `commit_phase` host emissions, and the
-// `emit_source_root_eval_driver_main_rs` `[cost-partition]` eprintln blocks — ~900 LOC incl. tests.
+// `emit_source_root_eval_driver_main_rs` `[native-lane-phase]` eprintln blocks — ~900 LOC incl. tests.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
@@ -14369,6 +14369,11 @@ pub struct ExclusiveCostPartition {
     /// descending by span nanos. Lets a witness entry's split be read apart from the
     /// machinery entries that share the thread's stage totals.
     pub span_rows_by_entry: Vec<(String, u64, u128, ResolveStageNanos)>,
+    /// False when resolve-volume counters were not observed (native-lane phases).
+    /// The renderer omits those objects rather than printing measured-looking zeros.
+    pub volume_measured: bool,
+    pub basis_note: &'static str,
+    pub labels: Vec<(String, String)>,
 }
 
 impl ExclusiveCostPartition {
@@ -14677,6 +14682,11 @@ pub fn exclusive_cost_partition_from(
         pool_parse_modules: st.pool_parse_modules,
         load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
+        volume_measured: true,
+        basis_note: "additive: each top-level resolve span's own duration, thread-sequential. \
+         Elapsed wall is NOT additive over concurrent spans and is carried under \
+         `observations`, never partitioned.",
+        labels: Vec::new(),
     }
 }
 
@@ -14752,6 +14762,10 @@ pub fn exclusive_cost_partition_from_rows(
         pool_parse_modules: 0,
         load_fixpoint_rounds: 0,
         span_rows_by_entry: Vec::new(),
+        volume_measured: false,
+        basis_note: "elapsed wall of this parent; exclusive rows are sequential clocks inside it. \
+         Resolve-volume counters were not observed on this path and are omitted, not zeroed.",
+        labels: Vec::new(),
     }
 }
 
@@ -14768,12 +14782,7 @@ pub fn render_exclusive_cost_partition_json(
     let mut out = String::from("{\"basis\":\"");
     out.push_str(&esc(p.basis.to_string()));
     out.push_str("\",\"basis_note\":\"");
-    out.push_str(&esc(
-        "additive: each top-level resolve span's own duration, thread-sequential. \
-         Elapsed wall is NOT additive over concurrent spans and is carried under \
-         `observations`, never partitioned."
-            .to_string(),
-    ));
+    out.push_str(&esc(p.basis_note.to_string()));
     out.push_str("\",\"parent_span_nanos\":");
     out.push_str(&json_num(p.parent_span_nanos));
     out.push_str(",\"spans\":");
@@ -14813,46 +14822,65 @@ pub fn render_exclusive_cost_partition_json(
     }
     out.push('}');
 
-    // Scan volume, so `load_reference_scan` can be priced per BYTE rather than per module.
-    // The closure-size spread (504 modules down to a median of 2-5) makes a per-module
-    // weighting a different claim from a per-byte one, and only the per-byte one matches
-    // how the scan actually costs.
-    // Edge-index construction receipt. `builds` is the load-bearing number: it separates
-    // "construction is fundamentally slow" (optimize the measured stage) from "construction
-    // is merely repeated" (materialize once and share). It is a COUNT rather than nanos
-    // because a memo HIT still adds its own small elapsed time to `load_bare_edge_index`,
-    // so a zero-nanos assertion is unavailable and "small" is not a claim this partition's
-    // accounting style permits. `closure_expand_calls` is the multiplicity the per-call
-    // BFS cost is paid at — the quantity that decides whether the suspect is a cost SHAPE.
-    out.push_str(",\"edge_index_construction\":{\"builds\":");
-    out.push_str(&json_num(p.edge_index_builds));
-    out.push_str(",\"source_files\":");
-    out.push_str(&json_num(p.edge_index_source_files));
-    out.push_str(",\"bare_eligible\":");
-    out.push_str(&json_num(p.edge_index_bare_eligible));
-    out.push_str(",\"closure_expand_calls\":");
-    out.push_str(&json_num(p.edge_index_closure_expand_calls));
-    out.push_str(",\"tree_census_calls\":");
-    out.push_str(&json_num(p.edge_index_tree_census_calls));
-    out.push_str(",\"tree_census_misses\":");
-    out.push_str(&json_num(p.edge_index_tree_census_misses));
-    out.push_str("}");
+    if p.volume_measured {
+        // Scan volume, so `load_reference_scan` can be priced per BYTE rather than per module.
+        // The closure-size spread (504 modules down to a median of 2-5) makes a per-module
+        // weighting a different claim from a per-byte one, and only the per-byte one matches
+        // how the scan actually costs.
+        // Edge-index construction receipt. `builds` is the load-bearing number: it separates
+        // "construction is fundamentally slow" (optimize the measured stage) from "construction
+        // is merely repeated" (materialize once and share). It is a COUNT rather than nanos
+        // because a memo HIT still adds its own small elapsed time to `load_bare_edge_index`,
+        // so a zero-nanos assertion is unavailable and "small" is not a claim this partition's
+        // accounting style permits. `closure_expand_calls` is the multiplicity the per-call
+        // BFS cost is paid at — the quantity that decides whether the suspect is a cost SHAPE.
+        out.push_str(",\"edge_index_construction\":{\"builds\":");
+        out.push_str(&json_num(p.edge_index_builds));
+        out.push_str(",\"source_files\":");
+        out.push_str(&json_num(p.edge_index_source_files));
+        out.push_str(",\"bare_eligible\":");
+        out.push_str(&json_num(p.edge_index_bare_eligible));
+        out.push_str(",\"closure_expand_calls\":");
+        out.push_str(&json_num(p.edge_index_closure_expand_calls));
+        out.push_str(",\"tree_census_calls\":");
+        out.push_str(&json_num(p.edge_index_tree_census_calls));
+        out.push_str(",\"tree_census_misses\":");
+        out.push_str(&json_num(p.edge_index_tree_census_misses));
+        out.push_str("}");
 
-    // The shared whole-corpus parse, reported beside its own volume so the row can be
-    // priced per module rather than per forcing consumer.
-    out.push_str(",\"pool_parse\":{\"builds\":");
-    out.push_str(&json_num(p.pool_parse_builds));
-    out.push_str(",\"modules\":");
-    out.push_str(&json_num(p.pool_parse_modules));
-    out.push_str("}");
+        // The shared whole-corpus parse, reported beside its own volume so the row can be
+        // priced per module rather than per forcing consumer.
+        out.push_str(",\"pool_parse\":{\"builds\":");
+        out.push_str(&json_num(p.pool_parse_builds));
+        out.push_str(",\"modules\":");
+        out.push_str(&json_num(p.pool_parse_modules));
+        out.push_str("}");
 
-    out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
-    out.push_str(&json_num(p.load_reference_scan_bytes));
-    out.push_str(",\"calls\":");
-    out.push_str(&json_num(p.load_reference_scan_calls));
-    out.push_str(",\"fixpoint_rounds\":");
-    out.push_str(&json_num(p.load_fixpoint_rounds));
-    out.push('}');
+        out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
+        out.push_str(&json_num(p.load_reference_scan_bytes));
+        out.push_str(",\"calls\":");
+        out.push_str(&json_num(p.load_reference_scan_calls));
+        out.push_str(",\"fixpoint_rounds\":");
+        out.push_str(&json_num(p.load_fixpoint_rounds));
+        out.push('}');
+    } else {
+        out.push_str(",\"resolve_volume\":\"unmeasured\"");
+    }
+
+    if !p.labels.is_empty() {
+        out.push_str(",\"labels\":{");
+        for (i, (k, v)) in p.labels.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push('"');
+            out.push_str(&esc(k.clone()));
+            out.push_str("\":\"");
+            out.push_str(&esc(v.clone()));
+            out.push('"');
+        }
+        out.push('}');
+    }
 
     out.push_str(
         ",\"accounting_law\":\"parent_span_nanos == sum_exclusive_nanos + remainder_nanos\"",
