@@ -68,6 +68,7 @@ import gunbc.gcp_estate_observation {
   sheets_home_is_create_purpose_scoped_unminted,
   gunbai_secrets_enabled_service_ids,
   copied_malformed_condition_has_three_instances,
+  copied_malformed_instance_count_in_census,
   gunb_test_has_sts,
   gunbai_auto_provider_condition_is_tight_legacy_repo,
   gunbai_auto_legacy_federation_hygiene,
@@ -118,6 +119,8 @@ import gunbc.gcp_estate_read_instrument {
   MachineObserved,
   every_named_instrument_is_a_gcloud_read,
   hand_observed_becomes_machine_observed_by_executing_the_named_instrument,
+  machine_observed_from_instrument,
+  gcloud_projects_list_instrument,
   estate_readonly_credential_intervention,
   estate_observation_observed_at,
   estate_observation_observed_by,
@@ -282,6 +285,8 @@ test fn editing_an_attribute_condition_changes_the_census_identity() -> Bool {
   let after = census_with_observed_provider(provider: fixture_oidc_wide)
   census_measured_fingerprint_eq(left: before, right: before)
     && !census_measured_fingerprint_eq(left: before, right: after)
+    && copied_malformed_instance_count_in_census(census: operator_audit_census()) == 3
+    && copied_malformed_instance_count_in_census(census: after) == 0
 }
 
 test fn a_gap_and_an_observation_under_one_key_are_different_measurements() -> Bool {
@@ -422,7 +427,11 @@ test fn estate_rows_name_their_producer_and_stay_hand_observed() -> Bool {
         && every_named_instrument_is_a_gcloud_read()
         && hand_observed_becomes_machine_observed_by_executing_the_named_instrument()
         && estate_readonly_credential_intervention().frequency == FleetOnce
-        && (estate_readonly_credential_intervention().instruction as String).contains("MachineObserved")
+        && match machine_observed_from_instrument(instrument: gcloud_projects_list_instrument()) {
+          MachineObserved { producer_identity: id } =>
+            id == gcloud_projects_list_instrument().identity
+          HandObserved { observed_at: _, observed_by: _ } => false
+        }
     MachineObserved { producer_identity: _ } => false
   }
 }

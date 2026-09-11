@@ -140,12 +140,20 @@ fn estate_readonly_credential_intervention() -> HumanIntervention {
   }
 }
 
+fn machine_observed_from_instrument(instrument: EstateReadInstrument) -> EstateObservationStanding {
+  MachineObserved { producer_identity: instrument.identity }
+}
+
 fn hand_observed_becomes_machine_observed_by_executing_the_named_instrument() -> Bool {
   match estate_rows_are_hand_observed() {
     HandObserved { observed_at: at, observed_by: by } =>
       at == estate_observation_observed_at
         && by == estate_observation_observed_by
-        && (estate_readonly_credential_intervention().instruction as String).contains("MachineObserved")
+        && match machine_observed_from_instrument(instrument: gcloud_projects_list_instrument()) {
+          MachineObserved { producer_identity: id } =>
+            id == gcloud_projects_list_instrument().identity
+          HandObserved { observed_at: _, observed_by: _ } => false
+        }
     MachineObserved { producer_identity: _ } => false
   }
 }

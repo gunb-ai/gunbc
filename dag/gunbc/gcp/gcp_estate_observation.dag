@@ -301,7 +301,7 @@ data observed_secrets_github_pool_provider: ObservedWifProvider = ObservedWifPro
   pool_id: github_pool_id,
   provider_id: "github" as NonEmptyStr,
   issuer_uri: "https://token.actions.githubusercontent.com",
-  attribute_condition: "assertion.repository_owner=='https:'",
+  attribute_condition: copied_malformed_github_pool_attribute_condition,
 }
 
 data copied_malformed_github_pool_attribute_condition: String = "assertion.repository_owner=='https:'"
@@ -341,6 +341,24 @@ fn copied_malformed_github_pool_condition() -> CopiedMalformedGithubPoolConditio
   }
 }
 
+fn copied_malformed_instance_count_in_census(census: GcpEstateCensus) -> Int {
+  fold(
+    census.wif_providers,
+    init: 0,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } =>
+          if p.attribute_condition == copied_malformed_github_pool_attribute_condition {
+            acc + 1
+          } else {
+            acc
+          }
+      }
+    },
+  )
+}
+
 fn copied_malformed_condition_has_three_instances() -> Bool {
   match copied_malformed_github_pool_condition() {
     IdenticalWrongStringInThreePools {
@@ -348,12 +366,10 @@ fn copied_malformed_condition_has_three_instances() -> Bool {
       instance_project_numbers: ns,
       escaped_project_number: escaped,
     } =>
-      c == observed_secrets_github_pool_provider.attribute_condition
-        && observed_gunb_ci_github_provider.attribute_condition == c
-        && observed_gunb_test_github_provider.attribute_condition == c
-        && observed_gunbai_auto_github_provider.attribute_condition != c
+      copied_malformed_instance_count_in_census(census: operator_audit_census()) == ns.length()
         && ns.length() == 3
         && escaped == gunbai_auto_project_number
+        && observed_gunbai_auto_github_provider.attribute_condition != c
   }
 }
 
@@ -372,8 +388,9 @@ fn gunbai_auto_legacy_principal_set_member() -> String {
 }
 
 fn gunbai_auto_provider_condition_is_tight_legacy_repo() -> Bool {
-  observed_gunbai_auto_github_provider.attribute_condition == "assertion.repository=='gunb-ai/gunb.ai'"
-    && (observed_gunbai_auto_github_provider.attribute_condition).contains(legacy_federated_repo)
+  (observed_gunbai_auto_github_provider.attribute_condition).contains(legacy_federated_repo)
+    && observed_gunbai_auto_github_provider.attribute_condition
+      != copied_malformed_github_pool_attribute_condition
 }
 
 type LegacyFederationHygiene
@@ -680,7 +697,7 @@ data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAc
   },
 ]
 
-data observed_secrets_github_pool_attribute_condition: String = "assertion.repository_owner=='https:'"
+data observed_secrets_github_pool_attribute_condition: String = copied_malformed_github_pool_attribute_condition
 
 data observed_github_actions_attribute_condition: String = "assertion.repository == 'gunb-ai/gunbc'"
 
@@ -1235,27 +1252,6 @@ fn census_coverage_has_unread<T>(rows: List<GcpEstateCoverage<T>>) -> Bool {
       }
     },
   )
-}
-
-fn accounts_include(accounts: List<ServiceAccountEmail>, email: ServiceAccountEmail) -> Bool {
-  fold(accounts, init: false, f: fn(acc, a) { acc || a == email })
-}
-
-fn unread_project_gap_names_trusting_accounts(gap: EstateCoverageGap) -> Bool {
-  gap.trusting_accounts.length() == 2
-    && accounts_include(accounts: gap.trusting_accounts, email: gunbai_ci_secrets_sa_email)
-    && accounts_include(accounts: gap.trusting_accounts, email: gunbai_ci_iap_sa_email)
-}
-
-fn unread_project_gap_names_role_and_repo(gap: EstateCoverageGap) -> Bool {
-  match gap.trusting_role {
-    Present { value: role } =>
-      role == role_iam_workload_identity_user && match gap.federated_repo {
-        Present { value: repo } => repo == legacy_federated_repo
-        Absent => false
-      }
-    Absent => false
-  }
 }
 
 fn fleet_automation_has_no_principal_set_binding(census: GcpEstateCensus) -> Bool {
