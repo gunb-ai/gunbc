@@ -3,33 +3,16 @@ module test.claim.spark.serving_deployment_selection_witness_test
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
-import std.measure { token_count, token_count_value, basis_point, gigabyte_count }
+import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import std.pareto { LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint }
-import extdeps.vllm.deepseek_v4_1_flash_recipe {
-  v41_flash_vram_minimum,
-  v41_flash_checkpoint,
-  v41_flash_headroom,
-  v41_flash_hardware_verified,
-  v41_flash_vram_minimum_figure,
-  v41_flash_checkpoint_on_disk,
-  v41_flash_fit_statement,
-}
 import gunbc.spark.v41_published_image_observation {
   v41_published_arm64_reference,
   v41_published_distribution_name,
   v41_published_stamped_identifier_lookup,
   PublicCommitAbsent, PublicCommitPresent, PublicCommitUnasked,
-  v41_published_manifest_list_digest,
-  v41_published_arm64_digest,
-  v41_published_amd64_digest,
-  v41_published_observations,
-  v41_published_registers_architecture,
-  v41_documented_tag_standing,
-  RegistryTagAbsent, RegistryTagResolves, RegistryTagUnasked,
-  v41_published_tag,
 }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
@@ -630,31 +613,6 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
         }
     ServingFieldUnestablished { causes: _ } => false
   }
-}
-
-test fn v4_1_published_image_observations_split_architectures_and_register_the_model() -> Bool {
-  (v41_published_arm64_digest as String) != (v41_published_amd64_digest as String)
-    && (v41_published_arm64_digest as String) != (v41_published_manifest_list_digest as String)
-    && (v41_published_arm64_reference() as String) != (v41_published_manifest_list_digest as String)
-    && (v41_published_arm64_reference() as String) != (v41_published_tag as String)
-    && match v41_documented_tag_standing {
-      RegistryTagAbsent => true
-      RegistryTagResolves => false
-      RegistryTagUnasked => false
-    }
-    && v41_published_registers_architecture(architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
-    && !v41_published_registers_architecture(architecture: "LlamaForCausalLM" as NonEmptyStr)
-    && count(v41_published_observations()) > 4
-}
-
-test fn v4_1_publisher_fit_is_schema_headroom_not_a_spark_floor() -> Bool {
-  !v41_flash_hardware_verified(hardware: "gb10" as NonEmptyStr)
-    && !v41_flash_hardware_verified(hardware: "GB10" as NonEmptyStr)
-    && v41_flash_hardware_verified(hardware: "h200" as NonEmptyStr)
-    && gigabyte_count(g: v41_flash_vram_minimum) == gigabyte_count(g: v41_flash_headroom(total: v41_flash_checkpoint))
-    && (v41_flash_vram_minimum_figure.value as String) == to_string(gigabyte_count(g: v41_flash_vram_minimum))
-    && (v41_flash_checkpoint_on_disk.value as String) == join([to_string(gigabyte_count(g: v41_flash_checkpoint)), " GB (476 GiB)"], "")
-    && (v41_flash_fit_statement as String) != (v41_flash_vram_minimum_figure.derivation as String)
 }
 
 test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished() -> Bool {

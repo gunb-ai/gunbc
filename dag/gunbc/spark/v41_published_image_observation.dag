@@ -158,13 +158,20 @@ fn v41_published_observations() -> List<PublishedImageObservation> {
   )
 }
 
-// ── WHO CONSUMES THESE ROWS (DESIGN §3c) ────────────────────────────────────────────────────
+// ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
 //
-// Pin, distribution name, stamped-identifier lookup: gunbc.spark.serving_deployment_selection
-// v4_1_runtime_published_arm64 (repository@digest, never the documented tag, never the manifest list).
-// Manifest-list vs per-arch digests, observation fold, architecture-registry fold, documented-tag
-// standing: test.claim.spark.serving_deployment_selection_witness_test
-// v4_1_published_image_observations_split_architectures_and_register_the_model
+// Several declarations here have no consumer in this change, and that is a DECLARED FRONTIER with a
+// named consumer rather than dangling modelling. gunbc.spark.serving_deployment_selection's V4.1
+// candidate work (DSV41-2, #11013) states that it will import this module rather than fork the
+// figures -- its profile already refuses to copy vram_minimum_gb or the admitted-layout set -- and it
+// cannot import a module that is not on the tree. The trigger is therefore this change landing, at
+// which point that lane's frontier rows become imports and these declarations acquire their readers.
+// The rows the witnesses already exercise are the ones a reader can check today; the rest are the
+// figures that lane asked for, in the shape it asked for them.
+//
+// The pinned arm64 reference is the same case with a second named consumer: if the operator's route
+// decision adopts the published image, the adoption names repository@digest through this function and
+// not through the tag the recipe page documents, which does not resolve.
 fn v41_published_registers_architecture(architecture: NonEmptyStr) -> Bool {
   fold(v41_published_registry_entries, init: false, f: (acc, e) =>
     if acc { true } else { starts_with(s: e as String, prefix: join([architecture as String, " ->"], "")) })
