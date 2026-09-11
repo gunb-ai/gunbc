@@ -22,6 +22,13 @@ data sheets_values_get_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data sheets_value_render_option_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest/v4/ValueRenderOption"
+  }
+}
+
 data sheets_values_batch_update_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -57,6 +64,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [
     sheets_values_get_citation,
     sheets_values_batch_update_citation,
+    sheets_value_render_option_citation,
     sheets_quota_citation,
     sheets_oauth_scope_citation
   ]
@@ -150,6 +158,32 @@ fn sheets_value_input_option_from_wire(raw: String) -> SheetsValueInputOption? {
   }
 }
 
+type SheetsValueRenderOption = RenderFormattedValue | RenderUnformattedValue | RenderFormula
+
+fn sheets_value_render_option_wire(o: SheetsValueRenderOption) -> String {
+  match o {
+    RenderFormattedValue => "FORMATTED_VALUE"
+    RenderUnformattedValue => "UNFORMATTED_VALUE"
+    RenderFormula => "FORMULA"
+  }
+}
+
+fn sheets_value_render_option_from_wire(raw: String) -> SheetsValueRenderOption? {
+  if raw == sheets_value_render_option_wire(o: RenderFormattedValue) {
+    Present { value: RenderFormattedValue }
+  } else {
+    if raw == sheets_value_render_option_wire(o: RenderUnformattedValue) {
+      Present { value: RenderUnformattedValue }
+    } else {
+      if raw == sheets_value_render_option_wire(o: RenderFormula) {
+        Present { value: RenderFormula }
+      } else {
+        none
+      }
+    }
+  }
+}
+
 type SheetsError {
   code: Int
   message: String
@@ -193,6 +227,7 @@ service sheets.Spreadsheets {
       access_token: Secret
       spreadsheet_id: String
       range: String
+      value_render_option: SheetsValueRenderOption
     }
     output {
       value_range: ValueRange
@@ -201,7 +236,8 @@ service sheets.Spreadsheets {
     readonly
     transport rest {
       method: GET,
-      path: "/spreadsheets/\{spreadsheet_id\}/values/\{range\}"
+      path: "/spreadsheets/\{spreadsheet_id\}/values/\{range\}",
+      query: { valueRenderOption: sheets_value_render_option_wire(o: value_render_option) }
     }
     response {
       200 => ValueRange
