@@ -8,7 +8,6 @@ import gunbc.spark.bootstrap_credential {
   CredentialMaterialized,
   CredentialMaterializationPending,
 }
-import std.algebra { trim }
 import std.effect_grant { NamespacePosition, FilesystemPathTree, Write }
 import std.content_hash { content_hash_of_value }
 import std.scoped_authorization {
@@ -18,7 +17,6 @@ import std.scoped_authorization {
   AuthorizationRequest,
 }
 import std.resources { Network }
-import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
@@ -26,7 +24,6 @@ import gunbc.fleet_known_hosts_anchor {
   portable_remote_words,
 }
 import gunbc.fleet_bootstrap_principal_session {
-  fleet_bootstrap_credential_path_env,
   BootstrapCredentialInRunEnvironment,
   read_fleet_bootstrap_credential_path,
   FleetBootstrapCredentialPathReady,

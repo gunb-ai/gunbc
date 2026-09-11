@@ -9,7 +9,6 @@ import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh { ssh_public_key_line }
-import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   BootstrapCredentialFileHeld,
