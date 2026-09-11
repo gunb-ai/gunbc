@@ -1,12 +1,18 @@
 module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
 
 import std.types { Bool, String }
-import std.measure { token_count, token_count_value, byte_size_count }
+import std.measure { token_count, token_count_value, token_count_remaining_in_window, byte_size_count }
+import std.roster_frontier { frontier_rows_well_formed, frontier_rows_keyed_roster_build }
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+import extdeps.huggingface.hub { hub_blob_url, hub_repo_tree_api_url, hub_repo_https_uri }
+import extdeps.uri { uri_wire }
 import extdeps.deepseek.deepseek_v4_1_flash {
-  deepseek_v4_1_flash_revision, deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
-  deepseek_v4_1_flash_encoder_source_url, deepseek_v4_1_flash_config_source_url,
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
+  deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
+  deepseek_v4_1_flash_license_path, deepseek_v4_1_flash_license_spdx,
+  extdeps_external_authority_anchor,
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_yarn_scaled_positions,
-  deepseek_v4_1_flash_output_budget_for_input,
+  deepseek_v4_1_flash_frontier,
   deepseek_v4_1_flash_safetensors_payload_footprint, deepseek_v4_1_flash_safetensors_payload_total,
   deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_tree_file_bytes,
   DeepseekV41EncoderChat, DeepseekV41EncoderThinking,
@@ -20,13 +26,18 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn encoder_and_config_urls_carry_the_pin_and_paths() -> Bool {
-  let enc = deepseek_v4_1_flash_encoder_source_url()
-  let cfg = deepseek_v4_1_flash_config_source_url()
-  string_contains(s: enc, pattern: deepseek_v4_1_flash_revision as String)
-    && string_contains(s: enc, pattern: deepseek_v4_1_flash_encoder_path as String)
-    && string_contains(s: cfg, pattern: deepseek_v4_1_flash_revision as String)
-    && string_contains(s: cfg, pattern: deepseek_v4_1_flash_config_path as String)
+test fn encoder_and_config_blob_urls_are_the_hub_shape_at_this_pin() -> Bool {
+  let enc = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_encoder_path)
+  let cfg = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_config_path)
+  let lic = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_license_path)
+  let tree = hub_repo_tree_api_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision)
+  (enc as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/encoding/encoding.py"
+    && (cfg as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/config.json"
+    && (lic as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/LICENSE"
+    && (deepseek_v4_1_flash_license_spdx as String) == "MIT"
+    && (tree as String) == "https://huggingface.co/api/models/deepseek-ai/DeepSeek-V4.1-Flash/tree/dba1be0a40aa45a94ad051997016db3960a90277?recursive=1"
+    && (uri_wire(uri: hub_repo_https_uri(repo: deepseek_v4_1_flash_hub_repo)) as String)
+      == (uri_wire(uri: extdeps_external_authority_anchor.uri) as String)
 }
 
 test fn yarn_factor_reproduces_the_scaled_window() -> Bool {
@@ -34,11 +45,20 @@ test fn yarn_factor_reproduces_the_scaled_window() -> Bool {
     == token_count_value(t: deepseek_v4_1_flash_context_length)
 }
 
-test fn output_budget_is_the_window_minus_input_and_zero_when_input_fills_it() -> Bool {
+test fn remaining_window_saturates_at_zero() -> Bool {
   let window = token_count(count: 100)
-  token_count_value(t: deepseek_v4_1_flash_output_budget_for_input(window: window, input_tokens: token_count(count: 30))) == 70
-    && token_count_value(t: deepseek_v4_1_flash_output_budget_for_input(window: window, input_tokens: window)) == 0
-    && token_count_value(t: deepseek_v4_1_flash_output_budget_for_input(window: window, input_tokens: token_count(count: 101))) == 0
+  let used_thirty = token_count(count: 30)
+  token_count_value(t: token_count_remaining_in_window(window: window, used: used_thirty)) == 70
+    && token_count_value(t: token_count_remaining_in_window(window: window, used: window)) == 0
+    && token_count_value(t: token_count_remaining_in_window(window: window, used: token_count(count: 101))) == 0
+}
+
+test fn declared_frontier_is_well_formed_and_uniquely_keyed() -> Bool {
+  frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier)
+    && match frontier_rows_keyed_roster_build(rows: deepseek_v4_1_flash_frontier) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
 }
 
 test fn payload_partition_sums_to_the_index_total_and_is_strictly_below_tree_file_size() -> Bool {
