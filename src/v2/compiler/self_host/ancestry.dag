@@ -1,6 +1,8 @@
 module v2.compiler.self_host.ancestry
 
 import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol }
 import v2.std.optional { Absent, Optional, Present }
@@ -321,14 +323,48 @@ fn admit_genesis(
 // are deleted together, native_generation_producer loses its V1SeedEmitter arm, and
 // NativeAncestry becomes a one-constructor relation — at which point "the seed produced this
 // compiler" is unwritable rather than refused.
-data genesis_migration_deletion_trigger: String = "delete GenesisFromSeed and its standing/admission machinery when native_generation_mint_admission returns NativeGenerationAdmitted for a SucceedsNative generation of the production compile entry over the head source closure, executed rather than fixtured"
+data genesis_migration_deletion_trigger: DissolutionCondition = unbound_dissolution(
+  description: "delete GenesisFromSeed, GenesisStanding and admit_genesis when native_generation_mint_admission returns NativeGenerationAdmitted for a SucceedsNative generation of the production compile entry over the head source closure, EXECUTED rather than fixtured. Unbound deliberately: the condition is one execution verifying by read-back, which no declaration appearing or retiring can stand for — binding it to a decl ref would be a checkable trigger impersonating a decision, and would report fired on the day the decl was written." as NonEmptyStr
+)
 
 // ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. This is the surface the emitted-compiler
-// route consumes in place of re-running the seed: it asks for generation N, and the answer
-// is either that generation or a refusal naming N. There is no arm carrying an alternative
-// producer, so a caller cannot pattern-match its way back to the seed, and there is no
-// Optional that a caller could treat as "absent, so do the other thing" — the refusal
-// states WHICH generation was expected and WHY the candidate did not qualify.
+// route WILL consume in place of re-running the seed — see
+// native_route_acquisition_frontier below for the consumer, the route and the trigger; as of
+// this declaration the host route still calls the seed emitter, and saying otherwise here
+// would be the present-tense claim DESIGN section 3c names as a tell.
+//
+// The shape: it asks for generation N, and the answer is either that generation or a refusal
+// naming N. There is no arm carrying an alternative producer, so a caller cannot
+// pattern-match its way back to the seed, and there is no Optional that a caller could treat
+// as "absent, so do the other thing" — the refusal states WHICH generation was expected and
+// WHY the candidate did not qualify.
+// THE DECLARED FRONTIER for acquire_native_ancestor, stated here rather than in a pull
+// request description, because a consumer described outside the diff is exactly the state
+// DESIGN section 3c calls dangling ("consumption described in the PR body but absent from
+// the diff"). As of this declaration acquire_native_ancestor's only executing consumers are
+// the controls in v2.test.claim.self_host.ancestry_witness; the PRODUCTION consumer has not
+// landed, and this row says so rather than letting the surrounding prose imply otherwise.
+//
+// CONSUMER: the emitted-compiler acquisition in the v2-native route harness — the host
+// function that today answers "the emitted compiler is not present" by running the v1 seed
+// in-process to emit it (prepare_emitted_compiler, whose seed call is compile_entry_emission).
+//
+// ROUTE AT EXECUTION: the route harness asks acquire_native_ancestor for the generation it
+// expects; NativeAncestorAcquired supplies the ancestor artifact that is spawned, and
+// NativeAncestorMissing / NativeAncestorUnverified become the harness's typed refusal naming
+// that generation. No arm of that fold reaches an emitter, which is what removes the seed
+// call rather than merely ranking it lower.
+//
+// TRIGGER: this frontier closes when prepare_emitted_compiler's compile_entry_emission call
+// is replaced by acquire_native_ancestor, so that no v1 emitter is reachable from the route's
+// acquisition path at all. That is a DIFFERENT condition from
+// genesis_migration_deletion_trigger below, which retires the GenesisFromSeed CONSTRUCTOR
+// once a successor generation has actually been minted — this one retires the seed CALL, and
+// neither discharges the other.
+data native_route_acquisition_frontier: DissolutionCondition = unbound_dissolution(
+  description: "declared frontier for acquire_native_ancestor: its production consumer is the v2-native route's emitted-compiler acquisition, prepare_emitted_compiler, which today answers a missing compiler by running the v1 seed in-process through compile_entry_emission. The frontier closes when that call is replaced by acquire_native_ancestor, leaving no v1 emitter reachable from the acquisition path at all. Unbound deliberately: the condition is the REMOVAL of a call in a host realization, which is neither a declaration appearing nor one retiring." as NonEmptyStr
+)
+
 type NativeAncestorAcquisition
   = NativeAncestorAcquired { ancestor: NativeGeneration }
   | NativeAncestorMissing { expected_generation: Int }
@@ -361,13 +397,6 @@ fn acquire_native_ancestor(
   }
 }
 
-fn native_ancestor_acquired(acquisition: NativeAncestorAcquisition) -> Bool {
-  match acquisition {
-    NativeAncestorAcquired { ancestor: _ } => true
-    NativeAncestorMissing { expected_generation: _ } => false
-    NativeAncestorUnverified { expected_generation: _, cause: _ } => false
-  }
-}
 
 // The successor's parent artifact must be the ancestor's OWN observed artifact, so a
 // successor cannot name a generation number it never consumed. This is the identity join
