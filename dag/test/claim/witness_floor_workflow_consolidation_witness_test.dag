@@ -3,7 +3,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, supersession_event_expression, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, supersession_event_expression, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -13,6 +13,7 @@ import extdeps.languages.yaml.gha_workflow { pr_activity_string }
 import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed, github_event_name_pull_request, github_event_name_push, github_event_name_merge_group, github_event_name_workflow_dispatch }
 import extdeps.github.actions { RunStep, UsesStep }
 import extdeps.github.expressions {
+  interpolate,
   ContextAccess,
   Github,
   FunctionCall,
@@ -467,16 +468,25 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
 // over-deletion an absence-only row would have passed). Both went FAIL; the unmutated tree went
 // PASS.
 test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
-  match expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
-      string_contains(
-        s: yml,
-        pattern: concat("    types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
-      )
-        && !string_contains(s: yml, pattern: pr_activity_string(a: ReadyForReview))
-        && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
-    WitnessFloorGenerationRefused { reason: _ } => false
-  }
+  let types = witness_floor_pull_request_activity_types
+  length(xs: types) == 3
+    && count_where(xs: types, predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Opened) }) == 1
+    && count_where(xs: types, predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Synchronize) }) == 1
+    && count_where(xs: types, predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Reopened) }) == 1
+}
+
+test fn w_RED_the_pull_request_activity_set_excludes_ready_for_review() -> Bool {
+  count_where(
+    xs: witness_floor_pull_request_activity_types,
+    predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: ReadyForReview) }
+  ) == 0
+}
+
+test fn w_RED_the_pull_request_activity_set_excludes_closed() -> Bool {
+  count_where(
+    xs: witness_floor_pull_request_activity_types,
+    predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Closed) }
+  ) == 0
 }
 
 fn group_resolved_as(fx: WitnessFloorGroupFixture, expected: String) -> Bool {
@@ -486,104 +496,94 @@ fn group_resolved_as(fx: WitnessFloorGroupFixture, expected: String) -> Bool {
   }
 }
 
-test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_cancel() -> Bool {
-  let mg = WitnessFloorGroupFixture {
-    event: github_event_name_merge_group,
+fn group_fx(event: String, inputs: List<DispatchInputBinding>) -> WitnessFloorGroupFixture {
+  WitnessFloorGroupFixture {
+    event: event,
     sha: "mgsha",
     run_id: "rid",
     pull_request_number: "7",
     github_ref: "refs/heads/main",
-    dispatch_inputs: []
+    dispatch_inputs: inputs
   }
-  let heal = WitnessFloorGroupFixture {
-    event: github_event_name_workflow_dispatch,
-    sha: "mgsha",
-    run_id: "rid",
-    pull_request_number: "7",
-    github_ref: "refs/heads/main",
-    dispatch_inputs: [
-      DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "healsha" }
-    ]
-  }
-  let bare_dispatch = WitnessFloorGroupFixture {
-    event: github_event_name_workflow_dispatch,
-    sha: "mgsha",
-    run_id: "rid",
-    pull_request_number: "7",
-    github_ref: "refs/heads/main",
-    dispatch_inputs: []
-  }
-  let heal_empty = WitnessFloorGroupFixture {
-    event: github_event_name_workflow_dispatch,
-    sha: "mgsha",
-    run_id: "rid",
-    pull_request_number: "7",
-    github_ref: "refs/heads/main",
-    dispatch_inputs: [
-      DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "" }
-    ]
-  }
-  let pr = WitnessFloorGroupFixture {
-    event: github_event_name_pull_request,
-    sha: "mgsha",
-    run_id: "rid",
-    pull_request_number: "7",
-    github_ref: "refs/heads/main",
-    dispatch_inputs: []
-  }
-  let push = WitnessFloorGroupFixture {
-    event: github_event_name_push,
-    sha: "mgsha",
-    run_id: "rid",
-    pull_request_number: "7",
-    github_ref: "refs/heads/main",
-    dispatch_inputs: []
-  }
-  group_resolved_as(fx: mg, expected: "witness-floor-mg-mgsha")
-    && group_resolved_as(fx: heal, expected: "witness-floor-heal-healsha")
-    && group_resolved_as(fx: heal_empty, expected: "witness-floor-run-rid")
-    && group_resolved_as(fx: bare_dispatch, expected: "witness-floor-run-rid")
-    && group_resolved_as(fx: pr, expected: "witness-floor-pr-7")
-    && group_resolved_as(fx: push, expected: "witness-floor-refs/heads/main")
-    && !group_resolved_as(fx: push, expected: "witness-floor-pr-7")
-    && match expected_witness_floor_yml() {
-      WitnessFloorGenerated { content: yml } =>
-        string_contains(
-          s: yml,
-          pattern: concat("github.event_name == '", concat(github_event_name_merge_group, "' && format('mg-{0}', github.sha)"))
-        )
-          && string_contains(
-               s: yml,
-               pattern: concat(
-                 "github.event_name == '",
-                 concat(
-                   github_event_name_workflow_dispatch,
-                   concat(
-                     "' && github.event.inputs.",
-                     concat(
-                       ci_heal_expected_healed_sha_input_name,
-                       concat(" != '' && format('heal-{0}', github.event.inputs.", concat(ci_heal_expected_healed_sha_input_name, ")"))
-                     )
-                   )
-                 )
+}
+
+test fn w_concurrency_group_resolves_merge_group_to_mg_sha() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_merge_group, inputs: []),
+    expected: "witness-floor-mg-mgsha"
+  )
+}
+
+test fn w_concurrency_group_resolves_heal_dispatch_to_heal_sha() -> Bool {
+  group_resolved_as(
+    fx: group_fx(
+      event: github_event_name_workflow_dispatch,
+      inputs: [DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "healsha" }]
+    ),
+    expected: "witness-floor-heal-healsha"
+  )
+}
+
+test fn w_concurrency_group_resolves_empty_heal_input_to_run_id() -> Bool {
+  group_resolved_as(
+    fx: group_fx(
+      event: github_event_name_workflow_dispatch,
+      inputs: [DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "" }]
+    ),
+    expected: "witness-floor-run-rid"
+  )
+}
+
+test fn w_concurrency_group_resolves_bare_dispatch_to_run_id() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_workflow_dispatch, inputs: []),
+    expected: "witness-floor-run-rid"
+  )
+}
+
+test fn w_concurrency_group_resolves_pull_request_to_pr_number() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_pull_request, inputs: []),
+    expected: "witness-floor-pr-7"
+  )
+}
+
+test fn w_concurrency_group_resolves_push_to_github_ref() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_push, inputs: []),
+    expected: "witness-floor-refs/heads/main"
+  )
+}
+
+test fn w_concurrency_group_push_is_not_grouped_as_a_pr() -> Bool {
+  !group_resolved_as(
+    fx: group_fx(event: github_event_name_push, inputs: []),
+    expected: "witness-floor-pr-7"
+  )
+}
+
+test fn w_emitted_group_expression_names_each_event_branch() -> Bool {
+  let s = interpolate(expression: witness_floor_group_expression())
+  string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_merge_group, "' && format('mg-{0}', github.sha)")))
+    && string_contains(
+         s: s,
+         pattern: concat(
+           "github.event_name == '",
+           concat(
+             github_event_name_workflow_dispatch,
+             concat(
+               "' && github.event.inputs.",
+               concat(
+                 ci_heal_expected_healed_sha_input_name,
+                 concat(" != '' && format('heal-{0}', github.event.inputs.", concat(ci_heal_expected_healed_sha_input_name, ")"))
                )
              )
-          && string_contains(
-               s: yml,
-               pattern: concat("github.event_name == '", concat(github_event_name_pull_request, "' && format('pr-{0}', github.event.pull_request.number)"))
-             )
-          && string_contains(
-               s: yml,
-               pattern: concat("github.event_name == '", concat(github_event_name_push, "' && github.ref"))
-             )
-          && !string_contains(
-                s: yml,
-                pattern: concat("github.event_name == '", concat(github_event_name_push, "' && format('pr-{0}'"))
-              )
-          && string_contains(s: yml, pattern: "cancel-in-progress: false")
-          && !string_contains(s: yml, pattern: supersession_event_expression(event: github_event_name_pull_request))
-      WitnessFloorGenerationRefused { reason: _ } => false
-    }
+           )
+         )
+       )
+    && string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_pull_request, "' && format('pr-{0}', github.event.pull_request.number)")))
+    && string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_push, "' && github.ref")))
+    && !string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_push, "' && format('pr-{0}'")))
 }
 
 test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool {

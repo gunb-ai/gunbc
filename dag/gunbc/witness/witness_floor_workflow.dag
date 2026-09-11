@@ -2686,6 +2686,12 @@ fn required_lanes_aggregate_job() -> Job {
 // from exactly these, so a lane added here is a lane in the emitted yaml, and a reader folding
 // `witness_floor_lane_jobs` covers every witness-bearing lane by construction rather than by a
 // hand-listed roster that could fall behind.
+data witness_floor_pull_request_activity_types: List<PullRequestActivity> = [
+  Opened,
+  Synchronize,
+  Reopened,
+]
+
 fn witness_floor_triggers() -> List<WorkflowTrigger> {
   [
     WorkflowDispatch { inputs: [ci_heal_expected_healed_sha_input] },
@@ -2693,7 +2699,7 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened]
+      types: witness_floor_pull_request_activity_types
     }
   ]
 }
