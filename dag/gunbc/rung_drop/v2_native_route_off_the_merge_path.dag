@@ -1,0 +1,54 @@
+module gunbc.rung_drop.v2_native_route_off_the_merge_path
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-11 (operator ruling, session fierce-lark-661). The required `v2-native` job
+// was authorized 2026-09-09 as one additional required lane and landed with #10882 (main at
+// 0006e0aabd): the emitted-native v2 compiler executes the derived v2.test.* universe plus four
+// controls, and gunbc.witness_v2_native_route admits or refuses the minted receipt. It ran on
+// every push and pull request until this change deleted it.
+//
+// WHY THE JOB IS DELETED RATHER THAN RETUNED. Its declared envelope was 180 minutes citing a
+// ~70-minute native run; the first full run on srv2 (2fb67b411a) took 4h06m wall at 14.8 GB
+// peak RSS, and the shared arm64 runners are slower still. The workflow's concurrency group is
+// keyed per pull-request number or per run id with cancel-in-progress false, so no push ever
+// superseded a RUNNING native job and every push to main added another ~4h claimant. The
+// measured harm on 2026-09-11: 31 concurrent required-v2-native jobs, and the two lanes that
+// gate (build, floor) failing under memory stalls and changed-witness budget interruptions on
+// main itself. A required check whose wall exceeds its envelope on every head is not a weak
+// wall; it is a check that never concludes, and it was displacing the checks that do.
+//
+// WHAT IS NOT DROPPED. The route model (gunbc.witness_v2_native_route), its harness
+// (v1_compiler.cli_run.native_lane_runner) and the admission contract are unchanged and remain
+// reachable as `claim_executor --v2-native-route` — an operator-invoked instrument, the same
+// producer the lane ran, so a receipt minted by hand and one the lane would have minted cannot
+// be two facts. What is lost is EXECUTION ON THE ACCEPTANCE PATH: nothing runs the native route
+// on a merge candidate unless a person chooses to.
+
+data v2_native_route_off_the_merge_path_population: List<String> = [
+  "gunbc.witness_v2_native_route native_route_admission — every receipt clause, on every merge candidate",
+  "the derived v2.test.* universe executed by the emitted-native compiler (positive population)",
+  "v2.native_lane_fixture.control native_lane_false_control / native_lane_true_control (live-verdict controls)",
+  "fixtures/native_lane_malformed/poison.dag.poisoned (malformed-specimen control)",
+  "the old-route-withdrawn (no-fallback) control",
+]
+
+data v2_native_route_off_the_merge_path: RungDrop = RungDrop {
+  identity: "v2_native_route_off_the_merge_path" as NonEmptyStr,
+
+  subject: "The v2 native route (emitted-native compiler over the derived v2.test.* universe) as a required CI lane",
+
+  declared: "2026-09-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: v2_native_route_off_the_merge_path_population,
+    restoration_trigger: "A REQUIRED NATIVE-ROUTE JOB WHOSE WALL FITS THE ACCEPTANCE PATH, designed from the ground up against an operator-agreed contract and not re-added into the same envelope: the job must conclude on every merge candidate inside its declared timeout on the real runner class (a measured wall, not a cited one), a newer head of the same subject must supersede the older run so no head holds more than one native claimant, and its red must still discriminate every clause of native_route_admission — universe join, positive population, classified refusals, per-identity agreement with the floor reference, and all four controls. Whether that is reached by affected-set admission that runs only the universe a change touches, by a native run cheap enough to fit whole, or by a job that runs on a different cadence with its own row, is the design decision this drop waits on; the first two retire this row, the third replaces it with a differently-named drop. Re-adding `required-v2-native` with its 2026-09-10 shape does not retire this row and is refused by test.claim.witness_floor_workflow_consolidation_witness_test w_RED_the_deleted_lanes_do_not_return",
+  }
+}
