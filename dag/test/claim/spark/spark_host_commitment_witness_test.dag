@@ -189,6 +189,20 @@ test fn each_commitment_cause_renders_distinctly() -> Bool {
 // holding the wrong hosts is exactly the failure the scalar this replaces could not detect. A host
 // outside the Spark unit population is not in the set either -- absence from the universe is not
 // membership.
+//
+// AND THE COUNT THAT USED TO SIT AT THE END OF THIS CLAIM IS DELETED (claude review 64144 on #11107).
+// `length(spark_uncommitted_hosts) == 4` compared a LIVE repository population, derived from four
+// authorities, to a number read off the tree it was measuring -- which DESIGN section 5 forbids in
+// exactly these words: completeness is an identity join, not a count equality, and a measurement
+// copied from the same current tree is not an oracle. It added no content the join above does not
+// already carry, and it added a change detector that would go red the next time a role is assigned
+// or a group withdrawn -- the very edit this derivation exists to absorb without anyone touching
+// this file. Writing it three lines under a note saying "never a count" is the tell that a count
+// feels like completeness even where the join is already complete.
+//
+// WHAT IS NOT A TRANSCRIBED MEASUREMENT, so it stays: the vacuity check on the reservation arm
+// asserts ZERO, which is the arm's own emptiness stated as such rather than a population size, and
+// the partition claim below is a structural identity between two derived sets and their universe.
 test fn the_production_uncommitted_set_is_the_four_unclaimed_units_by_identity() -> Bool {
   contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv9)
     && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv10)
@@ -201,7 +215,6 @@ test fn the_production_uncommitted_set_is_the_four_unclaimed_units_by_identity()
     && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv2)
     && !spark_host_is_uncommitted(host: operator_host_srv5)
     && spark_host_is_uncommitted(host: operator_host_srv9)
-    && length(spark_uncommitted_hosts) == 4
 }
 
 // THE SERVING GROUP IS WHERE THE COMMITMENT OF srv7 AND srv8 ACTUALLY COMES FROM, and that is worth
