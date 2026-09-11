@@ -482,6 +482,7 @@ test fn unchanged_cost_debt_identity_takes_no_verdict_only_policy() -> Bool {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: false,
+      module_path: "v2.test.manual.bootstrap_footprint_anchor",
       identity: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
     )
   ) == "ordinary"
@@ -494,6 +495,7 @@ test fn changed_cost_debt_identity_takes_the_verdict_only_policy() -> Bool {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
+      module_path: "v2.test.manual.bootstrap_footprint_anchor",
       identity: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
     )
   ) == "verdict-only"
@@ -505,6 +507,7 @@ test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
+      module_path: "v2.test.floor_changed_witness",
       identity: "v2.test.floor_changed_witness.changed_ordinary_identity_keeps_the_ordinary_policy",
     )
   ) == "ordinary"
@@ -805,4 +808,68 @@ test fn a_route_gap_with_no_wet_facts_at_all_still_blocks() -> Bool {
       PlannedWithoutTerminalVerdict => true
       _ => false
     }
+}
+
+
+// ---- THE LONG-HOME ARM (operator ruling A, 2026-09-11) ----
+
+// THE DISCRIMINATING RED. A changed witness in a long module runs FOR ITS VERDICT, because the
+// long home is the same declaration as a cost-debt row -- "not run on an ordinary floor, the
+// 500ms line cannot carry it" -- said per module instead of per identity. Before this arm the
+// identity fell through to the armed line: measured on gunbc#11004 at 6b153bf8, where touching
+// one long module planned three witnesses that were budget-refused at 503, 505 and 525ms BEFORE
+// reaching a verdict, none of which is planned on any ordinary floor. This control is red on the
+// code that shipped that run.
+test fn changed_long_module_witness_takes_the_verdict_only_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: true,
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+    )
+  ) == "verdict-only"
+}
+
+// THE MIRROR CONTROL, and it is the reason the arm is an arm rather than a widening: a changed
+// witness that is NOT in a long module and NOT rostered still takes the ordinary policy, so the
+// CPU line still converts its crossing into a red. An arm that cannot be shown to STOP somewhere
+// is indistinguishable from raising the ceiling, which docs/plans/floor-cost-distribution-near-
+// the-ceiling.md refuses for this class.
+test fn changed_short_module_witness_still_takes_the_ordinary_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: true,
+      module_path: "v2.test.claim.lens_application.some_ordinary_module",
+      identity: "v2.test.claim.lens_application.some_ordinary_module.some_ordinary_witness",
+    )
+  ) == "ordinary"
+}
+
+// THE ARM IS KEYED ON THE MODULE, NOT ON SELECTION: an UNCHANGED witness in a long module reaches
+// no policy here at all. It is declined at build by required_floor_site_disposition as
+// DeclinedLongModule and never becomes a claim, so answering verdict-only for it would be a
+// policy over a population that does not execute.
+test fn unchanged_long_module_witness_takes_no_verdict_only_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: false,
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+    )
+  ) == "ordinary"
+}
+
+// ALL THREE AUTHORED LONG PREFIXES SELECT THE ARM, because the long home is not one namespace:
+// the roster carries test.claim.long., v2.test.long. and v2.test.claim.long., and a one-prefix
+// reading excluded 42 rows of an expected ~310 when it was last tried. An arm keyed on one of
+// the three would be narrower than the class it claims.
+test fn every_long_prefix_selects_the_verdict_only_policy() -> Bool {
+  !any(["test.claim.long.x", "v2.test.long.x", "v2.test.claim.long.x"], m =>
+    cost_policy_kind(
+      policy: changed_witness_cost_policy(
+        selected_as_changed_witness: true,
+        module_path: m,
+        identity: "irrelevant.identity",
+      )
+    ) != "verdict-only")
 }

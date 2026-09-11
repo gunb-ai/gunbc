@@ -5054,8 +5054,23 @@ pub fn run_required_floor(
                 // deadline stays armed. A changed identity the roster does not enroll takes the
                 // ordinary policy and still reds when it crosses that line, so this is one
                 // intersection rather than a widening of the floor.
+                // THE LONG HOME IS THE SAME DECLARATION AS A COST-DEBT ROW (operator ruling A,
+                // 2026-09-11). Both say this identity is not run on an ordinary floor because the
+                // CPU line cannot carry it -- the roster per identity after measuring, the long
+                // home per module structurally. Reading only the roster left a changed witness in
+                // a long module on the armed line: measured on gunbc#11004 at 6b153bf8, three such
+                // witnesses were budget-refused at 503, 505 and 525ms before reaching a verdict,
+                // none of them planned on any ordinary floor. `long_home` above is the same
+                // authored-name prefix match `required_floor_site_disposition` folds to reach
+                // `DeclinedLongModule`, so this is one classification read twice, not a second one.
+                //
+                // ONLY A ROSTERED IDENTITY ENTERS THE COST-DEBT SEEN SET. A long-module witness is
+                // not a roster member, and inserting it would make a row look exercised that no
+                // roster line names -- which is precisely how a stale roster line hides.
                 let cost_policy = if cost_debt_roster.contains(&identity) {
                     cost_debt_verdict_only.insert(identity.clone());
+                    ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
+                } else if long_home {
                     ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
                 } else {
                     ChangedWitnessCostPolicy::Ordinary

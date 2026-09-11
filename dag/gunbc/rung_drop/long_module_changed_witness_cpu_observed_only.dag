@@ -1,0 +1,63 @@
+module gunbc.rung_drop.long_module_changed_witness_cpu_observed_only
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the CPU line over a changed witness in a long module (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHAT THE ARM DOES AND WHY IT IS A DROP AND NOT A FIX. A changed witness in a test/claim/long
+// module now runs under CpuDeadlineObservedOnly: its CPU is measured and published and decides
+// nothing, while the verdict still gates and the wall safety deadline stays armed. That is the
+// same treatment a cost-debt row already receives, and the operator ruled it the right one -- but
+// it REMOVES a wall that was standing, so it is declared here rather than landed silently. What is
+// lost is exactly one thing: the CPU ceiling's power to turn a reached verdict into a floor red,
+// for witnesses in the long home.
+//
+// WHY THE WALL WAS NOT DOING THE WORK IT LOOKED LIKE IT WAS DOING. These witnesses are never
+// planned on an ordinary floor -- the long home exists because their rows exceed the per-PR budget,
+// and that cadence has been declared-unrealized since falsifier.yml was deleted. No green run has
+// ever paid their cost. The line applied only when a PR TOUCHED their file, which made them changed
+// witnesses. So the wall did not protect the floor from an expensive witness; it converted "this PR
+// touched a long module" into three reds that say nothing about the change. Measured on gunbc#11004
+// at 6b153bf8: 503 ms, 505 ms and 525 ms against the 500 ms line, all budget-refused BEFORE reaching
+// a verdict, with no row for the module in any green floor's claim-cost artifact.
+//
+// WHAT THE DROP IS NOT. It is not a raised ceiling and not a new lane: both are refused for this
+// class at docs/plans/floor-cost-distribution-near-the-ceiling.md, which says reducing the shared
+// fixed cost is the only lever. It is not a widening either -- a changed witness outside the long
+// home and off the cost-debt roster still reds at the line, and
+// v2.test.floor_changed_witness.changed_short_module_witness_still_takes_the_ordinary_policy is the
+// control that keeps that true.
+//
+// THE RESTORATION TRIGGER NAMES A CAPABILITY, NOT AN ARTIFACT, and the capability is the one that
+// makes the line honest rather than the one that makes these three rows pass. The ~500 ms is a
+// FIXED per-frame front end -- language model plus tokenize, parse and normalize, rebuilt in every
+// claim's own evaluation frame -- and it is fixed in the literal sense: three snippets differing by
+// 32% in size cost 503, 505 and 525 ms, with the SHORTEST the slowest. Shrinking sources cannot
+// reach it because there is no size term to shrink. Netting it across claims is what would, and the
+// one attempt that netted it (a WARM shared producer) then failed at consumption, which is the
+// serve-boundary defect this trigger also names.
+data long_module_changed_witness_cpu_observed_only: RungDrop = RungDrop {
+  identity: "long_module_changed_witness_cpu_observed_only" as NonEmptyStr,
+
+  subject: "the 500ms per-claim CPU ceiling over a CHANGED witness in a test/claim/long module: a wall removed for a population whose cost is a shared fixed front end rather than the witness's own work",
+
+  declared: "2026-09-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "shared-producer netting of the front end that survives consumption" },
+    population: [
+    "v2.workflow.required_floor changed_witness_expensiveness_is_declared (the long-home arm: a changed witness whose module matches long_home_prefixes runs for its verdict, exactly as a cost-debt row does)",
+    "v2.workflow.required_floor changed_witness_cost_policy (the join that selects it, and the only place the two conditions meet)",
+    "src/v1/stage0/src/cli_run/required_floor_runner.rs (the seed realization of the same arm, keyed on the long_home prefix match the runner already computes)",
+    ],
+    restoration_trigger: "the per-frame front end is paid once per run rather than once per claim, so a claim's measured CPU is its own work: a shared producer whose value SURVIVES CONSUMPTION in the claim frame that reads it. Both halves are required and the second is why this row exists rather than a narrower one. The netting half is already demonstrated -- a WARM enrolment of three normalized-tree producers stored at preparation and moved 868ms, 496ms and 571ms out of the per-claim budget -- and the consumption half failed on the same run: every claim reading a served normalized tree errored with no field 'kind' on type 'NormalizedTree', the same error an instrument reports for that module under its own preparation. Until a served tree answers field access the deriving frame answered, netting cannot be turned on, and until netting is on the 500ms line measures a fixed cost no witness in this population causes. Retirement is observed and not asserted: when the front end is closure-scoped and the three v2.test.long.accumulator_copy_compile_gate witnesses complete under the armed line, this arm and this row retire together. A run in which they merely pass under the OBSERVED-ONLY policy does not discharge it, because that is the state this row declares",
+  }
+}

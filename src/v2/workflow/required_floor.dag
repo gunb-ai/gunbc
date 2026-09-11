@@ -183,12 +183,48 @@ type ChangedWitnessCostPolicy =
 // from the roster module's own `floor_cost_debt_holds`. A witness that is rostered but unchanged
 // takes no policy here at all -- it never becomes a claim, and its disposition remains
 // `DeclinedCostDebt` through `required_floor_site_disposition` above.
+// WHAT "ALREADY DECLARED TOO EXPENSIVE FOR THE ARMED LINE" MEANS, AND WHY IT WAS TWO NAMES.
+// The cost-debt roster and the long home are ONE declaration class wearing two names: both say
+// this identity is not run on an ordinary floor because the 500ms CPU line cannot carry it. The
+// roster says it per identity, after measuring; the long home says it per module, structurally,
+// which is why test/claim/long/ exists at all. This function consulted only the first, so a
+// changed witness in a long module fell through to the armed line -- and DESIGN section 3 is the
+// reason that reads as a defect rather than as a gap: minimization holds only if each fact lives
+// in one place, and "declared too expensive" was living in two with only one of them wired here.
+//
+// MEASURED, on gunbc#11004 at 6b153bf8: touching one long module planned its three witnesses as
+// changed witnesses, and all three were budget-refused BEFORE reaching a verdict -- 503ms, 505ms
+// and 525ms against the 500ms line. None of them is planned on any ordinary floor, so no green
+// run has ever paid that cost; the line applied only because a PR touched the file. The floor
+// therefore reported three reds that say nothing about the change, which is the FLOOR-CHANGED-
+// COST-0 failure exactly: a green context that never looked, inverted into a red context that
+// looked and could not finish.
+//
+// THE LONG TEST READS THE CLASSIFICATION THE FLOOR ALREADY COMPUTES. It matches the module's
+// AUTHORED NAME against long_home_prefixes(), the same roster required_floor_site_disposition
+// folds to reach DeclinedLongModule -- not a second list of paths, and not the file path, for
+// the reason stated at that roster: a directory is not the admission authority.
+fn changed_witness_expensiveness_is_declared(
+  module_path: String,
+  identity: String,
+) -> Bool {
+  if floor_cost_debt_holds(name: identity) {
+    true
+  } else {
+    match first_module_prefix_match(module_path: module_path, prefixes: long_home_prefixes()) {
+      ModulePrefixMatched { prefix: _ } => true
+      ModulePrefixUnmatched => false
+    }
+  }
+}
+
 fn changed_witness_cost_policy(
   selected_as_changed_witness: Bool,
+  module_path: String,
   identity: String,
 ) -> ChangedWitnessCostPolicy {
   if selected_as_changed_witness {
-    if floor_cost_debt_holds(name: identity) {
+    if changed_witness_expensiveness_is_declared(module_path: module_path, identity: identity) {
       ChangedCostDebtVerdictOnly {}
     } else {
       OrdinaryChangedWitnessCostPolicy {}
