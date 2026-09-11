@@ -2821,103 +2821,109 @@ pub fn run_required_wave_admission(
 //
 // `ParseEnvironment` (`std.syntax`) is threaded through the tokenizer and parser so that reading a
 // revision's source does not mean reading it under whatever grammar this binary was built with.
-// That thread is useless until something can PRODUCE an environment other than the compiled-in
-// `dag_parse_environment`, and this module is that producer: it reads the environment's declaring
-// closure at a git revision and evaluates it, so a base revision is read under the base
-// revision's own grammar.
+// That thread is inert until something can PRODUCE an environment other than the compiled-in
+// `dag_parse_environment`. This is that producer, and the revision SELECTS THE SOURCE: the bytes
+// evaluated are the bytes git holds at that revision, not the worktree's.
 //
-// WHY THIS EXISTS: the class is
-// `gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change`. A gate that
-// compares base-side declarations against head-side ones parses both with one compiler, and has
-// no representable arm for "the base is well formed under its OWN grammar and unreadable only
-// under the head's" -- so a change that edits the grammar itself is refused in proportion to how
-// thoroughly it succeeded.
+// WHY: `gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change`. A gate that
+// compares base-side declarations against head-side ones parses both with one compiler, and has no
+// representable arm for "the base is well formed under its OWN grammar and unreadable only under
+// the head's" -- so a change that edits the grammar is refused in proportion to how thoroughly it
+// succeeded.
 //
-// DECODE ROUTE, AND WHY IT IS NOT A HAND-WRITTEN DECODER. An evaluated data item is an
-// interpreter `Value`; the tokenizer needs a typed `ParseEnvironment`. The route taken is
-// `Value` -> `value_to_wire_json` -> `serde_json::from_value`, because the wire encoder resolves
-// its tag policy from `v1_compiler_emit_rust` -- the same policy that emitted the `#[serde(...)]`
-// attributes on the mirror struct. Encoder and decoder therefore cannot disagree about shape
-// unless the emitter disagrees with itself. A hand-written `Value` -> `ParseEnvironment` decoder
-// would be a second authority for the type's shape (section 3) across nine types, and would drift
-// silently the first time a field was added to `SyntaxSpec`.
+// ONE MATERIALIZATION, THEN THE REPOSITORY'S OWN INDEX. An earlier revision of this code listed the
+// whole `.dag` tree and ran one `git show` per file -- 5,306 subprocesses on every required run --
+// and recognized `module` and `import` with its own line-prefix scanner, which is a second grammar
+// for declarations the module index already recognizes (section 3). Both are gone: one
+// `git archive` writes the revision's `dag/` tree into a caller-owned directory, and the real
+// module index and entry resolver read it from there. The loader therefore cannot disagree with the
+// compiler about what a module is, because it does not decide.
 //
-// WHAT IT DOES NOT COVER, stated because the boundary is the value of the type. This reproduces
-// the DECLARATIVE environment of the base revision: which words are keywords, which item forms
-// exist, which operators bind how. It does NOT reproduce the base revision's PARSER. Body parsers
-// are dispatched on `body_kind` to hand-written code compiled into this binary, so a base whose
-// body parser behaved differently is not reproduced by supplying its environment, and must not be
+// DECODE IS NOT HAND-WRITTEN. `Value` -> `value_to_wire_json` -> `serde_json::from_value`: the wire
+// encoder resolves its tag policy from the same emitter that wrote the `#[serde(...)]` attributes
+// on the mirror struct, so encoder and decoder cannot disagree about shape unless the emitter
+// disagrees with itself. A hand-written decoder would fork the type's shape across nine types and
+// drift the first time a field was added to `SyntaxSpec`.
+//
+// WHAT IT DOES NOT COVER. This reproduces the DECLARATIVE environment: which words are keywords,
+// which item forms exist, which operators bind how. It does NOT reproduce the revision's PARSER --
+// body parsers are dispatched on `body_kind` to code compiled into this binary, so a revision whose
+// body parser behaved differently is not reproduced by supplying its environment and must not be
 // claimed to be. That population stays outside the covered set.
 
 /// The module whose declarations ARE the dag realization's parse environment.
 const ENVIRONMENT_MODULE: &str = "extdeps.languages.dag.syntax";
 /// The data item within it that carries the environment value.
 const ENVIRONMENT_ITEM: &str = "dag_parse_environment";
+/// The path, relative to the repository root, of the file declaring `ENVIRONMENT_MODULE`.
+const ENVIRONMENT_MODULE_PATH: &str = "dag/extdeps/languages/dag/syntax.dag";
 /// Where the corpus of `.dag` declarations lives, relative to the repository root.
 const DAG_SOURCE_ROOT: &str = "dag";
 
 /// Why an environment could not be produced for a revision.
 ///
-/// EVERY ARM IS A REFUSAL, NEVER A SUBSTITUTION. The tempting arm when a base environment cannot
-/// be read is to fall back to the head's -- which is precisely the assumption this module exists to
-/// remove, and would fail open exactly on the changes that alter the grammar. Section 5's absorbing
-/// fallback in its purest form: nothing is missed, so the arm reads as safe, while the only signal
-/// that the base was unreadable is destroyed. So the failure is typed and located, and the caller
-/// decides what an unreadable base means for its own verdict.
+/// EVERY ARM IS A REFUSAL, NEVER A SUBSTITUTION. The tempting arm when a base environment cannot be
+/// read is to fall back to the head's -- precisely the assumption this code exists to remove, and it
+/// would fail open on exactly the changes that alter the grammar. Section 5's absorbing fallback in
+/// its purest form: nothing is missed, so the arm reads as safe, while the only signal that the base
+/// was unreadable is destroyed. So the failure is typed and located and the caller decides what an
+/// unreadable base means for its own verdict.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnvironmentLoadRefusal {
-    /// A module in the closure has no file at this revision.
-    ModuleMissing { module: String, revision: String },
-    /// Two files at this revision declare the same module.
-    ModuleDuplicated {
-        module: String,
-        paths: Vec<String>,
+    /// `git` could not be run, or answered non-zero, while reading this revision.
+    RevisionUnreadable {
         revision: String,
-    },
-    /// A file in the closure could not be read out of the object store.
-    BlobUnreadable {
-        path: String,
-        revision: String,
+        step: String,
         cause: String,
     },
-    /// The closure was read, but the corpus did not resolve or evaluate.
+    /// The revision's materialized tree has no file at the environment module's path.
+    EnvironmentModuleMissing { revision: String, path: String },
+    /// The materialized corpus did not resolve, or the item did not evaluate.
     ClosureNotEvaluable { revision: String, cause: String },
+    /// `ENVIRONMENT_ITEM` is not declared by `ENVIRONMENT_MODULE` at this revision.
+    ///
+    /// Separate from `ClosureNotEvaluable` because it is the HOMONYM refusal: the interpreter
+    /// resolves a data item by bare name across the whole closure, so without this check a
+    /// `dag_parse_environment` declared anywhere else could silently supply the grammar. The
+    /// environment must come from the declaration that owns it.
+    EnvironmentItemNotOwned {
+        revision: String,
+        item: String,
+        module: String,
+    },
     /// The item evaluated, but its value did not decode into the typed environment.
     ///
-    /// This is the arm that fires on emitted-schema drift -- a field the wire encoder omits that
-    /// the mirror struct requires. It is separated from `ClosureNotEvaluable` because the two have
-    /// different owners: that one is a defect in the revision being read, this one is a defect in
-    /// THIS binary's schema agreement with its own emitter.
+    /// The arm that fires on emitted-schema drift -- a field the wire encoder omits that the mirror
+    /// struct requires. Separate from `ClosureNotEvaluable` because the owners differ: that one is a
+    /// defect in the revision being read, this one is THIS binary disagreeing with its own emitter.
     ValueNotDecodable { revision: String, cause: String },
 }
 
 impl std::fmt::Display for EnvironmentLoadRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ModuleMissing { module, revision } => write!(
+            Self::RevisionUnreadable {
+                revision,
+                step,
+                cause,
+            } => write!(f, "reading revision {revision} failed at {step}: {cause}"),
+            Self::EnvironmentModuleMissing { revision, path } => write!(
                 f,
-                "module `{module}` has no file at revision {revision}, so that revision's parse \
+                "{path} does not exist at revision {revision}, so that revision's parse \
                  environment cannot be read"
             ),
-            Self::ModuleDuplicated {
-                module,
-                paths,
-                revision,
-            } => write!(
-                f,
-                "module `{module}` is declared by {} files at revision {revision} ({}), so which \
-                 one carries the parse environment is undecided",
-                paths.len(),
-                paths.join(", ")
-            ),
-            Self::BlobUnreadable {
-                path,
-                revision,
-                cause,
-            } => write!(f, "{path} is unreadable at revision {revision}: {cause}"),
             Self::ClosureNotEvaluable { revision, cause } => write!(
                 f,
                 "the parse environment closure at revision {revision} did not evaluate: {cause}"
+            ),
+            Self::EnvironmentItemNotOwned {
+                revision,
+                item,
+                module,
+            } => write!(
+                f,
+                "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
+                 bare-name lookup would return is not the grammar authority"
             ),
             Self::ValueNotDecodable { revision, cause } => write!(
                 f,
@@ -2928,168 +2934,118 @@ impl std::fmt::Display for EnvironmentLoadRefusal {
     }
 }
 
-/// One `.dag` source read out of the object store.
-#[derive(Debug, Clone)]
-pub struct RevisionSource {
-    pub path: String,
-    pub module: String,
-    pub content: String,
-}
-
-/// The module name a `.dag` source declares, if its first non-empty line is a module header.
-///
-/// Deliberately the same shape the module index uses: a file whose header cannot be read is not
-/// silently skipped, it simply does not enter the closure under any name, and the module that
-/// imported it then refuses as `ModuleMissing` -- a located refusal rather than a quiet absence.
-fn declared_module(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        return line.strip_prefix("module ").map(|m| m.trim().to_string());
-    }
-    None
-}
-
-/// The module names a `.dag` source imports.
-fn imported_modules(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .filter_map(|line| {
-            let rest = line.strip_prefix("import ")?;
-            let name: String = rest
-                .trim()
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
-                .collect();
-            if name.is_empty() {
-                None
-            } else {
-                Some(name)
-            }
-        })
-        .collect()
-}
-
-/// Every `.dag` path under the source root at a revision, with its declared module.
-///
-/// Read from the object store rather than the worktree: the point of this module is to read a
-/// revision that is NOT checked out, and a worktree read would silently answer about the head.
-fn revision_module_map(
+/// Run one `git` invocation to completion, or refuse with what it said.
+fn git_capture(
     revision: &str,
-) -> Result<BTreeMap<String, Vec<String>>, EnvironmentLoadRefusal> {
-    let listing = std::process::Command::new("git")
-        .args(["ls-tree", "-r", "--name-only", revision, DAG_SOURCE_ROOT])
-        .output()
-        .map_err(|e| EnvironmentLoadRefusal::BlobUnreadable {
-            path: DAG_SOURCE_ROOT.to_string(),
-            revision: revision.to_string(),
-            cause: format!("git ls-tree failed to start: {e}"),
-        })?;
-    if !listing.status.success() {
-        return Err(EnvironmentLoadRefusal::BlobUnreadable {
-            path: DAG_SOURCE_ROOT.to_string(),
-            revision: revision.to_string(),
-            cause: String::from_utf8_lossy(&listing.stderr).trim().to_string(),
-        });
-    }
-    let mut by_module: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for path in String::from_utf8_lossy(&listing.stdout).lines() {
-        if !path.ends_with(".dag") {
-            continue;
-        }
-        let content = read_blob(revision, path)?;
-        if let Some(module) = declared_module(&content) {
-            by_module.entry(module).or_default().push(path.to_string());
-        }
-    }
-    Ok(by_module)
-}
-
-/// One file's bytes at a revision.
-fn read_blob(revision: &str, path: &str) -> Result<String, EnvironmentLoadRefusal> {
+    step: &str,
+    args: &[&str],
+) -> Result<Vec<u8>, EnvironmentLoadRefusal> {
     let out = std::process::Command::new("git")
-        .arg("show")
-        .arg(format!("{revision}:{path}"))
+        .args(args)
         .output()
-        .map_err(|e| EnvironmentLoadRefusal::BlobUnreadable {
-            path: path.to_string(),
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
             revision: revision.to_string(),
-            cause: format!("git show failed to start: {e}"),
+            step: step.to_string(),
+            cause: format!("git failed to start: {e}"),
         })?;
     if !out.status.success() {
-        return Err(EnvironmentLoadRefusal::BlobUnreadable {
-            path: path.to_string(),
+        return Err(EnvironmentLoadRefusal::RevisionUnreadable {
             revision: revision.to_string(),
+            step: step.to_string(),
             cause: String::from_utf8_lossy(&out.stderr).trim().to_string(),
         });
     }
-    String::from_utf8(out.stdout).map_err(|e| EnvironmentLoadRefusal::BlobUnreadable {
-        path: path.to_string(),
-        revision: revision.to_string(),
-        cause: format!("not valid UTF-8: {e}"),
-    })
+    Ok(out.stdout)
 }
 
-/// The transitive import closure of the environment module at a revision.
+/// The object id git holds for one path at one revision, or `None` if the path is absent.
 ///
-/// WALKED, NOT LISTED. A hardcoded roster of the closure's members would be a second authority for
-/// what the environment depends on, and would go stale the first time `std.syntax` gained an
-/// import -- silently, because a stale roster still resolves. The walk reads each module's own
-/// `import` lines, so the closure is whatever the revision says it is.
-pub fn environment_closure_at(
+/// Used to decide whether two revisions share a parse environment WITHOUT materializing either:
+/// object identity is content identity, so equal ids over the environment's declaring files mean the
+/// environments are equal by construction rather than by comparison.
+pub fn blob_id_at(revision: &str, path: &str) -> Result<Option<String>, EnvironmentLoadRefusal> {
+    let spec = format!("{revision}:{path}");
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "--verify", "--quiet", &spec])
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: format!("rev-parse {spec}"),
+            cause: format!("git failed to start: {e}"),
+        })?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if id.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(id))
+    }
+}
+
+/// Materialize one revision's `dag/` tree under `dest`, in a single git invocation.
+///
+/// `git archive | tar -x` rather than a read per file: the cost of acquiring a revision's corpus
+/// must not scale with the corpus, and section 6's bare-minimum-cost rule does not wait for the
+/// realized n to hurt. `dest` is the caller's to create and remove.
+fn materialize_dag_tree_at(
     revision: &str,
-) -> Result<Vec<RevisionSource>, EnvironmentLoadRefusal> {
-    let by_module = revision_module_map(revision)?;
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    let mut queue = vec![ENVIRONMENT_MODULE.to_string()];
-    let mut sources = Vec::new();
-    while let Some(module) = queue.pop() {
-        if !seen.insert(module.clone()) {
-            continue;
+    dest: &std::path::Path,
+) -> Result<(), EnvironmentLoadRefusal> {
+    std::fs::create_dir_all(dest).map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+        revision: revision.to_string(),
+        step: "create materialization directory".to_string(),
+        cause: e.to_string(),
+    })?;
+    let archive = git_capture(
+        revision,
+        "archive",
+        &["archive", "--format=tar", revision, DAG_SOURCE_ROOT],
+    )?;
+    let tar_path = dest.join("dag-tree.tar");
+    std::fs::write(&tar_path, &archive).map_err(|e| {
+        EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "write archive".to_string(),
+            cause: e.to_string(),
         }
-        let paths =
-            by_module
-                .get(&module)
-                .ok_or_else(|| EnvironmentLoadRefusal::ModuleMissing {
-                    module: module.clone(),
-                    revision: revision.to_string(),
-                })?;
-        if paths.len() > 1 {
-            return Err(EnvironmentLoadRefusal::ModuleDuplicated {
-                module: module.clone(),
-                paths: paths.clone(),
-                revision: revision.to_string(),
-            });
-        }
-        let path = &paths[0];
-        let content = read_blob(revision, path)?;
-        for imported in imported_modules(&content) {
-            if !seen.contains(&imported) {
-                queue.push(imported);
-            }
-        }
-        sources.push(RevisionSource {
-            path: path.clone(),
-            module,
-            content,
+    })?;
+    let extract = std::process::Command::new("tar")
+        .arg("-xf")
+        .arg(&tar_path)
+        .arg("-C")
+        .arg(dest)
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "tar -xf".to_string(),
+            cause: format!("tar failed to start: {e}"),
+        })?;
+    if !extract.status.success() {
+        return Err(EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "tar -xf".to_string(),
+            cause: String::from_utf8_lossy(&extract.stderr).trim().to_string(),
         });
     }
-    Ok(sources)
+    let _ = std::fs::remove_file(&tar_path);
+    if !dest.join(ENVIRONMENT_MODULE_PATH).exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: ENVIRONMENT_MODULE_PATH.to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Decode an evaluated environment value into this binary's `ParseEnvironment`.
-///
-/// Split out from the revision path so the decode seam can be exercised against an independent
-/// oracle -- the compiled-in `dag_parse_environment()` -- without a git revision in the way. A
-/// failure here is a schema disagreement inside this binary, not a fact about any revision.
 pub fn decode_environment_value(
     value: &crate::v1_interpreter::Value,
     ctx: &crate::v1_interpreter::InterpContext,
     revision: &str,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
-    let wire = crate::cli_run::value_to_wire_json(value, ctx).map_err(|e| {
+    let wire = super::value_to_wire_json(value, ctx).map_err(|e| {
         EnvironmentLoadRefusal::ValueNotDecodable {
             revision: revision.to_string(),
             cause: format!("wire-encode: {e}"),
@@ -3103,32 +3059,51 @@ pub fn decode_environment_value(
         })
 }
 
-/// Evaluate `dag_parse_environment` out of a materialized corpus rooted at `root`.
+/// Evaluate the parse environment out of an already-materialized corpus rooted at `root`.
 ///
-/// `root` is a directory containing a `dag/` tree; the caller owns its lifetime. Materializing to a
-/// directory rather than feeding sources in memory is deliberate: the module index and entry
-/// resolver are the SAME ones the compiler uses on the live tree, so the base corpus goes through
-/// the identical route rather than a second, base-only ingestion path that could diverge.
+/// Split from acquisition so the decode seam can be exercised against an independent oracle -- the
+/// compiled-in `dag_parse_environment()` over the live tree -- without a revision in the way. The
+/// revision string here is diagnostic ONLY; callers that mean "the environment AT a revision" must
+/// use `load_parse_environment_at`, which selects the source.
 pub fn evaluate_environment_in(
     root: &std::path::Path,
     revision: &str,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    if !entry.exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: entry.display().to_string(),
+        });
+    }
     let dag_root = root.join(DAG_SOURCE_ROOT);
-    let entry = dag_root.join("extdeps/languages/dag/syntax.dag");
-    let index = crate::cli_run::build_multi_entry_index(&[dag_root.display().to_string()]);
-    let (graph, indices) = crate::cli_run::resolve_entry_with_index_for_discovery_corpus(
-        &index,
-        &entry.display().to_string(),
-    )
-    .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
-        revision: revision.to_string(),
-        cause: e,
-    })?;
-    let ctx = crate::cli_run::make_eval_context(
+    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
+    let entry_display = entry.display().to_string();
+    let (graph, indices) =
+        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry_display).map_err(
+            |e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: revision.to_string(),
+                cause: e,
+            },
+        )?;
+    // HERMETIC, NOT WET. A static grammar declaration has no business acquiring permission to
+    // perform host effects while it is being decoded; `Wet` here would let a corpus under
+    // examination act during examination.
+    let ctx = super::make_eval_context(
         &graph,
         indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
+        crate::v1_interpreter::ExecutionMode::Hermetic,
     );
+    // EXACT OWNERSHIP, NOT A BARE NAME. `eval_data_item_value` resolves by bare name across the
+    // closure, so a homonymous `dag_parse_environment` elsewhere in the corpus would silently
+    // supply the grammar. The environment must come from the declaration that owns it.
+    if !super::data_item_declared_in_file(&ctx, ENVIRONMENT_ITEM, &entry_display) {
+        return Err(EnvironmentLoadRefusal::EnvironmentItemNotOwned {
+            revision: revision.to_string(),
+            item: ENVIRONMENT_ITEM.to_string(),
+            module: ENVIRONMENT_MODULE.to_string(),
+        });
+    }
     let value = crate::v1_interpreter::with_active_context(&ctx, || {
         crate::v1_interpreter::eval_data_item_value(&ctx, ENVIRONMENT_ITEM)
     })
@@ -3141,4 +3116,30 @@ pub fn evaluate_environment_in(
         cause: format!("{ENVIRONMENT_ITEM} is not a data item in `{ENVIRONMENT_MODULE}`"),
     })?;
     decode_environment_value(&value, &ctx, revision)
+}
+
+/// THE LOADER: the parse environment git holds at `revision`.
+///
+/// The revision selects the bytes. Materialization happens into a temporary directory this function
+/// owns and removes, so nothing about the caller's worktree is read or written.
+pub fn load_parse_environment_at(
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dest =
+        // UNDER THE WORKSPACE, NOT /tmp. The module index and entry resolver refuse any path outside
+        // the workspace root (`repo_relative_path_normalized`), so a corpus materialized into the
+        // system temp directory cannot be read by the repository's own machinery -- the loader would
+        // refuse every call, in production as much as in test. `target/` is where generated and
+        // scratch trees already live (`target/stage0-regen-candidate` is the precedent).
+        super::workspace_root()
+            .join("target")
+            .join(format!("gunbc-parse-env-{}-{}", std::process::id(), stamp));
+    let outcome = materialize_dag_tree_at(revision, &dest)
+        .and_then(|()| evaluate_environment_in(&dest, revision));
+    let _ = std::fs::remove_dir_all(&dest);
+    outcome
 }
