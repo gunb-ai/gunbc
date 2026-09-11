@@ -302,45 +302,13 @@ type BelowFloorCause
   | PositiveControlRefused
   | ObservationDiverged
 
-fn probe_is_not_runnable(o: ProbeObservation) -> Bool {
-  match o {
-    ProbeNotRunnable { cause: _ } => true
-    RefusedTyped { diagnostic_class: _, count: _ } => false
-    AcceptedClean => false
-    AcceptedCounted { diagnostic_class: _, count: _ } => false
-    ExecutionDiverged { description: _ } => false
-  }
-}
-
-fn probe_diverged(o: ProbeObservation) -> Bool {
-  match o {
-    ExecutionDiverged { description: _ } => true
-    ProbeNotRunnable { cause: _ } => false
-    RefusedTyped { diagnostic_class: _, count: _ } => false
-    AcceptedClean => false
-    AcceptedCounted { diagnostic_class: _, count: _ } => false
-  }
-}
-
-fn probe_refused(o: ProbeObservation) -> Bool {
-  match o {
-    RefusedTyped { diagnostic_class: _, count: _ } => true
-    AcceptedClean => false
-    AcceptedCounted { diagnostic_class: _, count: _ } => false
-    ExecutionDiverged { description: _ } => false
-    ProbeNotRunnable { cause: _ } => false
-  }
-}
-
-fn probe_accepted_with_counted_residue(o: ProbeObservation) -> Bool {
-  match o {
-    AcceptedCounted { diagnostic_class: _, count: _ } => true
-    AcceptedClean => false
-    RefusedTyped { diagnostic_class: _, count: _ } => false
-    ExecutionDiverged { description: _ } => false
-    ProbeNotRunnable { cause: _ } => false
-  }
-}
+// THE SUM'S CANONICAL ELIMINATION IS probe_observation_fold, AND THIS MODULE SAID SO BEFORE I
+// IGNORED IT. Its own header states that the fold "owns the ONLY match over `ProbeObservation`…
+// a per-query hand-match has no form to accumulate - a new query is a `ProbeObservationFold` row",
+// and it names this very work as the consumer: "the carrier's disposition derivation consumes the
+// same fold when it lands." A first revision of this section forked four hand-matches instead. They
+// are gone: the derivation folds the red observation, and folds the green one inside the arm where
+// the red was refused, so no match over ProbeObservation exists outside the fold.
 
 // PROBE EVIDENCE CAPS AT MechanicallyPreventable, AND SAYING SO IS THE WHOLE HONESTY OF THIS FOLD.
 // A pair of probes can establish that a gate EXECUTES and DISCRIMINATES, which is exactly DESIGN's
@@ -354,41 +322,60 @@ fn probe_pair_rung() -> GuaranteeRung {
   MechanicallyPreventable
 }
 
-fn disposition_for_path(evidence: PathEvidence) -> GuaranteeDisposition {
-  if probe_is_not_runnable(o: evidence.red_probe)
-    || probe_is_not_runnable(o: evidence.green_probe) {
-    Unmeasured
-  } else {
-    if probe_diverged(o: evidence.red_probe) || probe_diverged(o: evidence.green_probe) {
-      BelowFloor
-    } else {
-      if !probe_refused(o: evidence.red_probe) {
-        BelowFloor
-      } else {
-        if probe_refused(o: evidence.green_probe) {
-          BelowFloor
-        } else {
-          if probe_accepted_with_counted_residue(o: evidence.green_probe) {
-            FrontierAccepted
-          } else {
-            OnLadder { rung: probe_pair_rung() }
-          }
-        }
-      }
-    }
+// THE GREEN OBSERVATION IS FOLDED INSIDE THE ARM WHERE THE RED WAS REFUSED, which is the pair
+// requirement expressed as nesting rather than as a conjunction of predicates: the green only
+// decides anything once the red has established that the wall fires at all.
+fn green_disposition_fold() -> ProbeObservationFold<GuaranteeDisposition> {
+  ProbeObservationFold {
+    refused: fn(_d, _c) { BelowFloor }
+    accepted_clean: OnLadder { rung: probe_pair_rung() }
+    accepted_counted: fn(_d, _c) { FrontierAccepted }
+    diverged: fn(_reason) { BelowFloor }
+    not_runnable: fn(_cause) { Unmeasured }
   }
+}
+
+fn disposition_for_path(evidence: PathEvidence) -> GuaranteeDisposition {
+  probe_observation_fold(
+    o: evidence.red_probe,
+    fold: ProbeObservationFold {
+      refused: fn(_d, _c) {
+        probe_observation_fold(o: evidence.green_probe, fold: green_disposition_fold())
+      }
+      accepted_clean: BelowFloor
+      accepted_counted: fn(_d, _c) { BelowFloor }
+      diverged: fn(_reason) { BelowFloor }
+      not_runnable: fn(_cause) { Unmeasured }
+    }
+  )
 }
 
 // WHY A BELOW-FLOOR PATH IS NAMED RATHER THAN ONLY COUNTED: the two directions send a repair to
 // different places. A RED that was accepted means the wall is missing or misaimed; a GREEN that was
 // refused means the wall is wrong about correct programs, which is the more expensive defect
-// because it stops honest work.
+// because it stops honest work. Folded the same way, for the same reason.
 fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause {
-  if probe_diverged(o: evidence.red_probe) || probe_diverged(o: evidence.green_probe) {
-    ObservationDiverged
-  } else {
-    if !probe_refused(o: evidence.red_probe) { PlantedRedAccepted } else { PositiveControlRefused }
-  }
+  probe_observation_fold(
+    o: evidence.red_probe,
+    fold: ProbeObservationFold {
+      refused: fn(_d, _c) {
+        probe_observation_fold(
+          o: evidence.green_probe,
+          fold: ProbeObservationFold {
+            refused: fn(_d2, _c2) { PositiveControlRefused }
+            accepted_clean: PositiveControlRefused
+            accepted_counted: fn(_d2, _c2) { PositiveControlRefused }
+            diverged: fn(_r) { ObservationDiverged }
+            not_runnable: fn(_c2) { PositiveControlRefused }
+          }
+        )
+      }
+      accepted_clean: PlantedRedAccepted
+      accepted_counted: fn(_d, _c) { PlantedRedAccepted }
+      diverged: fn(_reason) { ObservationDiverged }
+      not_runnable: fn(_cause) { PlantedRedAccepted }
+    }
+  )
 }
 
 // THE FOLD ACROSS PATHS, IN THE ORDER THE ROADMAP FIXES: below-floor dominance, then frontier, then
@@ -404,44 +391,67 @@ fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause {
 //     across its in-scope paths: citing the strongest path while another stays silent is inflation.
 // OutsideModeledGuarantee contributes no rung: a path outside the modeled guarantee is not a weak
 // rung, so it is skipped in the minimum, and a class ALL of whose paths are outside is outside.
-fn disposition_is_below_floor(d: GuaranteeDisposition) -> Bool {
+// ONE ELIMINATOR FOR THIS COPRODUCT, for the same reason the module refuses hand-matches on
+// ProbeObservation: four predicates and an index function that each re-spell the same five arms are
+// five places an added arm can be silently dropped into a default, and adding an arm is not finished
+// until every fold over the type has been revisited. So the arms are named once, here, and every
+// question below is a choice of carrier rather than a new match.
+type GuaranteeDispositionFold<T> {
+  unmeasured: T
+  below_floor: T
+  frontier_accepted: T
+  on_ladder: fn(GuaranteeRung) -> T
+  outside_modeled: T
+}
+
+fn guarantee_disposition_fold<T>(d: GuaranteeDisposition, fold: GuaranteeDispositionFold<T>) -> T {
   match d {
-    BelowFloor => true
-    Unmeasured => false
-    FrontierAccepted => false
-    OnLadder { rung: _ } => false
-    OutsideModeledGuarantee => false
+    Unmeasured => fold.unmeasured
+    BelowFloor => fold.below_floor
+    FrontierAccepted => fold.frontier_accepted
+    OnLadder { rung: r } => fold.on_ladder(r)
+    OutsideModeledGuarantee => fold.outside_modeled
   }
+}
+
+fn disposition_is_below_floor(d: GuaranteeDisposition) -> Bool {
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: false
+    below_floor: true
+    frontier_accepted: false
+    on_ladder: fn(_r) { false }
+    outside_modeled: false
+  })
 }
 
 fn disposition_is_frontier(d: GuaranteeDisposition) -> Bool {
-  match d {
-    FrontierAccepted => true
-    BelowFloor => false
-    Unmeasured => false
-    OnLadder { rung: _ } => false
-    OutsideModeledGuarantee => false
-  }
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: false
+    below_floor: false
+    frontier_accepted: true
+    on_ladder: fn(_r) { false }
+    outside_modeled: false
+  })
 }
 
 fn disposition_is_unmeasured(d: GuaranteeDisposition) -> Bool {
-  match d {
-    Unmeasured => true
-    BelowFloor => false
-    FrontierAccepted => false
-    OnLadder { rung: _ } => false
-    OutsideModeledGuarantee => false
-  }
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: true
+    below_floor: false
+    frontier_accepted: false
+    on_ladder: fn(_r) { false }
+    outside_modeled: false
+  })
 }
 
 fn disposition_rung_index(d: GuaranteeDisposition) -> Int {
-  match d {
-    OnLadder { rung: r } => guarantee_rung_index(r: r)
-    BelowFloor => guarantee_rung_index(r: OutsideTheLadder)
-    Unmeasured => guarantee_rung_index(r: OutsideTheLadder)
-    FrontierAccepted => guarantee_rung_index(r: OutsideTheLadder)
-    OutsideModeledGuarantee => guarantee_rung_index(r: OutsideTheLadder)
-  }
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: guarantee_rung_index(r: OutsideTheLadder)
+    below_floor: guarantee_rung_index(r: OutsideTheLadder)
+    frontier_accepted: guarantee_rung_index(r: OutsideTheLadder)
+    on_ladder: fn(r) { guarantee_rung_index(r: r) }
+    outside_modeled: guarantee_rung_index(r: OutsideTheLadder)
+  })
 }
 
 fn minimum_on_ladder(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
@@ -485,6 +495,19 @@ fn class_disposition(evidence: List<PathEvidence>) -> GuaranteeDisposition {
 // A CLASS AT ITS CEILING IS DONE; A CLASS BELOW IT OWES ITS TRIGGER. This is the one place the
 // requirement and the disposition meet, and it is a comparison rather than a stored state: below
 // the ceiling is a correctness gap, never optional elegance (DESIGN section 4b).
+// AN INDEX COMPARISON ALONE IS NOT THE QUESTION, because OutsideTheLadder is index 0 and the four
+// non-rung dispositions all report index 0: over a requirement whose ceiling is OutsideTheLadder -
+// which is exactly the class DESIGN puts in the column beside the ladder - a BelowFloor class would
+// read as AT its ceiling, and a class that has reached its ceiling is a class that stops owing its
+// trigger. So at-ceiling is decided per arm: a rung reaches a ceiling by index, an outside-the-
+// modeled-guarantee class reaches an outside-the-ladder ceiling by being that same fact, and the
+// three evidence-shortfall arms reach nothing - ignorance and a failing wall are never done.
 fn disposition_is_at_ceiling(r: GuaranteeRequirement, d: GuaranteeDisposition) -> Bool {
-  disposition_rung_index(d: d) >= guarantee_rung_index(r: r.ceiling)
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: false
+    below_floor: false
+    frontier_accepted: false
+    on_ladder: fn(rung) { guarantee_rung_index(r: rung) >= guarantee_rung_index(r: r.ceiling) }
+    outside_modeled: guarantee_rung_index(r: r.ceiling) == guarantee_rung_index(r: OutsideTheLadder)
+  })
 }
