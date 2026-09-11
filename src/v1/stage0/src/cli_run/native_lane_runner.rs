@@ -495,6 +495,35 @@ fn write_host_facts(
     std::fs::write(path, text).map_err(|e| format!("writing {}: {e}", path.display()))
 }
 
+/// THE COMPOSITION OF THE REFUSALS, BY THE CAUSE THAT ACTUALLY REFUSED. The terminal marker
+/// carries a COUNT, and a count cannot answer the question the count provokes: a reader who sees
+/// `file_refusals=998` wants to know which frontier classes those are and whether any is new.
+/// Nothing tallied them, so the answer lived only in a hand-run analysis whose numbers rot the
+/// moment the frontier moves (DESIGN section 6: name the instrument, never transcribe its output).
+///
+/// This is a PRESENTATION of rows the authority already judged, not a second verdict. The emitted
+/// binary's admission has already refused over any refusal whose `fatal_reason` is unowned
+/// (`gunbc.witness_v2_native_route` `native_route_file_refusals_attributed`, joined against
+/// `v2.workflow.compile_door_cause_ownership` at `FatalGrain`), so by the time this prints, every
+/// cause below is a rostered frontier class. The tally therefore adds no check and can mint no
+/// green — it says WHICH owned classes, and how many of each, so the roster's `flip_trigger` rows
+/// can be ranked by what they would actually retire.
+///
+/// Ordered by descending count, then by cause, so two runs over the same frontier print the same
+/// lines and a diff of two logs is readable.
+fn refusal_composition(refusals: &[NativeFileRefusalObserved]) -> Vec<(String, usize)> {
+    let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for refusal in refusals {
+        *counts.entry(refusal.fatal_reason.as_str()).or_insert(0) += 1;
+    }
+    let mut rows: Vec<(String, usize)> = counts
+        .into_iter()
+        .map(|(cause, count)| (cause.to_string(), count))
+        .collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    rows
+}
+
 /// The lane's one phase. Green exactly when the emitted binary's own admission admitted the
 /// receipt it minted; every earlier failure is a located refusal that stops the line.
 pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
@@ -575,6 +604,9 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         "v2-native-route: universe={} population={} file_refusals={}",
         run.terminal.universe, run.terminal.rows, run.terminal.file_refusals
     );
+    for (cause, count) in refusal_composition(&run.file_refusals) {
+        eprintln!("[refusal-composition] {cause} {count}");
+    }
 
     // 6. THE VERDICT IS THE AUTHORITY'S, REPORTED AS GIVEN. The summary and the admission are one
     // value inside the binary (`native_lane_run` derives the summary from the admission it
@@ -593,6 +625,43 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// THE ORDER IS THE DISCRIMINATING PART, not the arithmetic. A tally that merely counted would
+    /// pass with the map's own key order, which would make two runs over the same frontier print
+    /// their classes in an order that has nothing to do with size — so the test fixes a case where
+    /// insertion order, alphabetical order and count order are all DIFFERENT, and asserts the
+    /// count order. `parse_g0_tokens_remain` is inserted last and sorts last alphabetically, and
+    /// must come first; the two ties must break alphabetically, so `a_cause` precedes `z_cause`
+    /// despite arriving after it.
+    #[test]
+    fn composition_orders_by_count_then_cause() {
+        let observed = |path: &str, cause: &str| NativeFileRefusalObserved {
+            path: path.to_string(),
+            fatal_reason: cause.to_string(),
+        };
+        let rows = refusal_composition(&[
+            observed("z1.dag", "z_cause"),
+            observed("a1.dag", "a_cause"),
+            observed("g1.dag", "parse_g0_tokens_remain"),
+            observed("g2.dag", "parse_g0_tokens_remain"),
+            observed("g3.dag", "parse_g0_tokens_remain"),
+        ]);
+        assert_eq!(
+            rows,
+            vec![
+                ("parse_g0_tokens_remain".to_string(), 3),
+                ("a_cause".to_string(), 1),
+                ("z_cause".to_string(), 1),
+            ]
+        );
+    }
+
+    /// An empty population prints nothing rather than a zero row: a frontier that closed is an
+    /// absent section, not a section full of zeroes.
+    #[test]
+    fn composition_of_no_refusals_is_empty() {
+        assert!(refusal_composition(&[]).is_empty());
+    }
 
     /// THE MARKER IS THE VERDICT SURFACE, AND A REFUSED ADMISSION MUST SURVIVE THE PARSE. The
     /// binary exits non-zero on a refused admission after printing its summary, so the host must
