@@ -1,0 +1,152 @@
+module gunbc.review_sheet_operator
+
+import std.types { NonEmptyStr, String }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  DeviceOnce,
+  NoDischargeSiteModeled,
+  DischargedAt,
+}
+import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet_ssh_access { fleet_automation_sa_email }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.google.sheets { sheets_serviceusage_api_id }
+
+// Operator path for the buyer-review sheet. Convergence over a ValueRange stays in
+// gunbc.review_sheet_projection; this module is the gate that must pass BEFORE a live write is
+// attempted. A 403 from Sheets is not this decision.
+
+type SheetsApiEnablementObservation
+  = SheetsApiEnabled { project: GcpProjectId }
+  | SheetsApiDisabled { project: GcpProjectId }
+  | SheetsApiEnablementUnobserved
+
+data fleet_secrets_sheets_api_enablement: SheetsApiEnablementObservation = SheetsApiEnablementUnobserved
+
+fn sheets_api_enablement_from_service_state(project: GcpProjectId, state_wire: String) -> SheetsApiEnablementObservation {
+  if state_wire == "ENABLED" {
+    SheetsApiEnabled { project: project }
+  } else {
+    if state_wire == "DISABLED" {
+      SheetsApiDisabled { project: project }
+    } else {
+      SheetsApiEnablementUnobserved
+    }
+  }
+}
+
+type BuyerReviewSpreadsheet
+  = SpreadsheetAwaitingCreation
+  | SpreadsheetIdentified { spreadsheet_id: NonEmptyStr, owner: NonEmptyStr }
+
+data buyer_review_spreadsheet: BuyerReviewSpreadsheet = SpreadsheetAwaitingCreation
+
+type WorkspaceDomainSharingPolicy
+  = DomainSharingPolicyUnobserved
+  | DomainSharingForbidsExternalPrincipals
+  | DomainSharingAllowsServiceAccountShare
+
+data buyer_review_workspace_domain_sharing: WorkspaceDomainSharingPolicy = DomainSharingPolicyUnobserved
+
+fn intervention_is_discharged(intervention: HumanIntervention) -> Bool {
+  match intervention.completion_evidence {
+    DischargedAt { evidence: _ } => true
+    NoDischargeSiteModeled => false
+  }
+}
+
+fn spreadsheet_create_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "buyer-review-spreadsheet-create" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "buyer review spreadsheet",
+    instruction: "Create the buyer review Google Sheet, then replace buyer_review_spreadsheet with SpreadsheetIdentified carrying its spreadsheet_id and the operator who owns it. The id is a declared fact, not a caller string.",
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn spreadsheet_share_intervention(spreadsheet_id: NonEmptyStr) -> HumanIntervention {
+  HumanIntervention {
+    identity: concat("buyer-review-spreadsheet-share-", spreadsheet_id as String) as HumanInterventionIdentity,
+    frequency: DeviceOnce,
+    subject: spreadsheet_id,
+    instruction: join(
+      [
+        "Share spreadsheet ",
+        spreadsheet_id as String,
+        " with ",
+        fleet_automation_sa_email as String,
+        " as Editor. A service account is a distinct principal and cannot see the sheet until this share exists; being in the owner's Workspace is not enough. Recurs for every new sheet.",
+      ],
+      "",
+    ),
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+type ReviewSheetOperatorAdmission
+  = ReviewSheetOperatorAdmitted { spreadsheet_id: NonEmptyStr }
+  | ReviewSheetAwaitingHuman { intervention: HumanIntervention }
+  | ReviewSheetOperatorRefused { reason: NonEmptyStr }
+
+fn admit_review_sheet_operator(
+  enablement: SheetsApiEnablementObservation,
+  spreadsheet: BuyerReviewSpreadsheet,
+  wif_binding: HumanIntervention,
+) -> ReviewSheetOperatorAdmission {
+  match enablement {
+    SheetsApiEnablementUnobserved =>
+      ReviewSheetOperatorRefused {
+        reason: join(
+          [
+            "sheets.googleapis.com enablement unobserved on ",
+            fleet_secrets_gcp_project as String,
+            " (serviceusage GetService; do not treat a Sheets HTTP refusal as this fact)",
+          ],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetsApiDisabled { project: p } =>
+      ReviewSheetOperatorRefused {
+        reason: join(
+          [
+            "sheets.googleapis.com is DISABLED on ",
+            p as String,
+            "; enable it with gcp.ServiceUsage.BatchEnableServices on service ",
+            sheets_serviceusage_api_id as String,
+          ],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetsApiEnabled { project: _ } =>
+      if intervention_is_discharged(intervention: wif_binding) {
+        match spreadsheet {
+          SpreadsheetAwaitingCreation =>
+            ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
+          SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
+            ReviewSheetAwaitingHuman { intervention: spreadsheet_share_intervention(spreadsheet_id: id) }
+        }
+      } else {
+        ReviewSheetAwaitingHuman { intervention: wif_binding }
+      }
+  }
+}
+
+fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
+  admit_review_sheet_operator(
+    enablement: fleet_secrets_sheets_api_enablement,
+    spreadsheet: buyer_review_spreadsheet,
+    wif_binding: gcp_fleet_secrets_wif_binding_intervention(),
+  )
+}
+
+fn review_sheet_uses_fleet_secrets_project() -> GcpProjectId {
+  fleet_secrets_gcp_project
+}
+
+fn review_sheet_writer_service_account() -> ServiceAccountEmail {
+  fleet_automation_sa_email
+}

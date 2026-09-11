@@ -36,6 +36,9 @@ import gunbc.review_sheet_sheets {
   review_sheet_from_readback,
   sheets_workspace_suite,
   sheets_access,
+  review_sheet_live_access,
+  ReviewSheetLiveOpen,
+  ReviewSheetLiveNotAdmitted,
   sheets_value_input_raw,
   sheets_projection_oauth_scope,
   sheets_api_edition,
@@ -55,10 +58,45 @@ import extdeps.google.sheets {
   sheets_major_dimension_from_wire,
   DimensionRows,
   DimensionColumns,
+  sheets_serviceusage_api_id,
 }
 import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import std.disposition { Terminal, Scaffold }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  DeviceOnce,
+  EveryProvision,
+  BreakGlassOnly,
+  NoDischargeSiteModeled,
+  DischargedAt,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.review_sheet_operator {
+  admit_review_sheet_operator,
+  fleet_review_sheet_operator_admission,
+  fleet_secrets_sheets_api_enablement,
+  buyer_review_spreadsheet,
+  buyer_review_workspace_domain_sharing,
+  spreadsheet_share_intervention,
+  sheets_api_enablement_from_service_state,
+  review_sheet_uses_fleet_secrets_project,
+  review_sheet_writer_service_account,
+  SheetsApiEnabled,
+  SheetsApiDisabled,
+  SheetsApiEnablementUnobserved,
+  SpreadsheetAwaitingCreation,
+  SpreadsheetIdentified,
+  DomainSharingPolicyUnobserved,
+  DomainSharingForbidsExternalPrincipals,
+  DomainSharingAllowsServiceAccountShare,
+  ReviewSheetOperatorAdmitted,
+  ReviewSheetAwaitingHuman,
+  ReviewSheetOperatorRefused,
+}
+import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
 
 fn w_schema() -> ReviewSheetSchema {
   ReviewSheetSchema {
@@ -375,6 +413,7 @@ test fn sheets_cited_facts_have_executing_readers() -> Bool {
     && (sheets_projection_oauth_scope() as String) == (sheets_spreadsheets_oauth_scope as String)
     && sheets_value_input_raw() == "RAW"
     && (sheets_api_edition() as String) == (sheets_api_version as String)
+    && (sheets_serviceusage_api_id as String) == "sheets.googleapis.com"
     && match live_sheets_transport_frontier {
       Terminal { reason: r } => string_contains(s: r as String, pattern: "sunny-carp-475")
       Scaffold { dissolves_to: _, bind: _ } => false
@@ -388,4 +427,156 @@ test fn sheets_cited_facts_have_executing_readers() -> Bool {
         hash_state: HashPending,
       },
     ).spreadsheet_id == ("sheet" as NonEmptyStr)
+}
+
+fn w_discharged_wif() -> HumanIntervention {
+  HumanIntervention {
+    identity: "gcp-fleet-secrets-wif-binding" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "test-only discharged wif",
+    instruction: "fixture",
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "test.claim.review_sheet_converge_witness",
+        decl_name: "w_discharged_wif",
+        field: WholeDeclaration,
+      }
+    },
+  }
+}
+
+test fn committed_operator_path_refuses_unobserved_sheets_enablement() -> Bool {
+  match fleet_review_sheet_operator_admission() {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "sheets.googleapis.com enablement unobserved")
+        && string_contains(s: r as String, pattern: "gunbai-secrets")
+        && !string_contains(s: r as String, pattern: "HTTP 403")
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+    && match fleet_secrets_sheets_api_enablement {
+      SheetsApiEnablementUnobserved => true
+      SheetsApiEnabled { project: _ } => false
+      SheetsApiDisabled { project: _ } => false
+    }
+    && match buyer_review_spreadsheet {
+      SpreadsheetAwaitingCreation => true
+      SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
+    }
+    && match buyer_review_workspace_domain_sharing {
+      DomainSharingPolicyUnobserved => true
+      DomainSharingForbidsExternalPrincipals => false
+      DomainSharingAllowsServiceAccountShare => false
+    }
+    && (review_sheet_uses_fleet_secrets_project() as String) == "gunbai-secrets"
+    && string_contains(s: review_sheet_writer_service_account() as String, pattern: "fleet-automation@gunbai-secrets")
+    && match review_sheet_live_access(
+      credential: SecretRef {
+        project: "gunbai-secrets",
+        secret: "unused" as NonEmptyStr,
+        version: "pending",
+        hash_state: HashPending,
+      },
+    ) {
+      ReviewSheetLiveNotAdmitted { admission: a } =>
+        match a {
+          ReviewSheetOperatorRefused { reason: r } =>
+            string_contains(s: r as String, pattern: "enablement unobserved")
+          ReviewSheetAwaitingHuman { intervention: _ } => false
+          ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+        }
+      ReviewSheetLiveOpen { access: _ } => false
+    }
+}
+
+test fn disabled_sheets_api_refuses_without_calling_sheets() -> Bool {
+  match admit_review_sheet_operator(
+    enablement: SheetsApiDisabled { project: "gunbai-secrets" },
+    spreadsheet: SpreadsheetAwaitingCreation,
+    wif_binding: gcp_fleet_secrets_wif_binding_intervention(),
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "DISABLED")
+        && string_contains(s: r as String, pattern: "BatchEnableServices")
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn unverified_wif_is_awaiting_human_not_assumed_live() -> Bool {
+  match admit_review_sheet_operator(
+    enablement: SheetsApiEnabled { project: "gunbai-secrets" },
+    spreadsheet: SpreadsheetAwaitingCreation,
+    wif_binding: gcp_fleet_secrets_wif_binding_intervention(),
+  ) {
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      (i.identity as String) == "gcp-fleet-secrets-wif-binding"
+        && match i.completion_evidence {
+          NoDischargeSiteModeled => true
+          DischargedAt { evidence: _ } => false
+        }
+        && match i.frequency {
+          FleetOnce => true
+          DeviceOnce => false
+          EveryProvision => false
+          BreakGlassOnly => false
+        }
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Bool {
+  match admit_review_sheet_operator(
+    enablement: SheetsApiEnabled { project: "gunbai-secrets" },
+    spreadsheet: SpreadsheetAwaitingCreation,
+    wif_binding: w_discharged_wif(),
+  ) {
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      (i.identity as String) == "buyer-review-spreadsheet-create"
+        && match i.frequency {
+          FleetOnce => true
+          DeviceOnce => false
+          EveryProvision => false
+          BreakGlassOnly => false
+        }
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn sharing_is_device_once_editor_with_the_fleet_sa() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    enablement: SheetsApiEnabled { project: "gunbai-secrets" },
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    wif_binding: w_discharged_wif(),
+  ) {
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      match i.frequency {
+        DeviceOnce =>
+          string_contains(s: i.instruction as String, pattern: "fleet-automation@gunbai-secrets")
+            && string_contains(s: i.instruction as String, pattern: "Editor")
+            && string_contains(s: i.identity as String, pattern: "sheet-abc")
+            && match spreadsheet_share_intervention(spreadsheet_id: id).frequency {
+              DeviceOnce => true
+              FleetOnce => false
+              EveryProvision => false
+              BreakGlassOnly => false
+            }
+        FleetOnce => false
+        EveryProvision => false
+        BreakGlassOnly => false
+      }
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
+  match sheets_api_enablement_from_service_state(project: "gunbai-secrets", state_wire: "ENABLED") {
+    SheetsApiEnabled { project: p } => (p as String) == "gunbai-secrets"
+    SheetsApiDisabled { project: _ } => false
+    SheetsApiEnablementUnobserved => false
+  }
 }

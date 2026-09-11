@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import std.types { List, Secret, String }
-import v2.std.network { POST }
+import v2.std.network { POST, GET }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -43,4 +43,34 @@ service gcp.ServiceUsage {
       5xx => GcpErrorShape
     }
   }
+
+  operation GetService {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      service_id: String
+    }
+    output {
+      name: String from "name"
+      state: String from "state"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/services/\{service_id\}"
+    }
+    response {
+      200 => GcpServiceUsageService
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}
+
+type GcpServiceUsageService {
+  name: String
+  state: String
 }

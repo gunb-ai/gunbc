@@ -34,6 +34,13 @@ import extdeps.google.sheets {
 import extdeps.cloud.gcp.gcp { GcpOAuth2AccessTokenStrategy, AdcRefresh }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.google.workspace { google_workspace_product }
+import gunbc.review_sheet_operator {
+  fleet_review_sheet_operator_admission,
+  ReviewSheetOperatorAdmission,
+  ReviewSheetOperatorAdmitted,
+  ReviewSheetAwaitingHuman,
+  ReviewSheetOperatorRefused,
+}
 
 // ONE realization of the review-sheet projection: Google Sheets values.get as independent
 // readback, values.batchUpdate only for the derived write plan. Auth is ADC / a SecretRef under
@@ -50,6 +57,21 @@ fn sheets_access(spreadsheet_id: NonEmptyStr, credential: SecretRef) -> SheetsAc
     spreadsheet_id: spreadsheet_id,
     credential: credential,
     token_strategy: AdcRefresh { adc_path: none },
+  }
+}
+
+type ReviewSheetLiveAccess
+  = ReviewSheetLiveOpen { access: SheetsAccess }
+  | ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorAdmission }
+
+fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
+  match fleet_review_sheet_operator_admission() {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: id } =>
+      ReviewSheetLiveOpen { access: sheets_access(spreadsheet_id: id, credential: credential) }
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      ReviewSheetLiveNotAdmitted { admission: ReviewSheetAwaitingHuman { intervention: i } }
+    ReviewSheetOperatorRefused { reason: r } =>
+      ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorRefused { reason: r } }
   }
 }
 
