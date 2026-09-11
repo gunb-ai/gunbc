@@ -1,6 +1,6 @@
 module gunbc.spark.serving_offer
 
-import std.types { String, NonEmptyStr, Int, Timestamp }
+import std.types { String, NonEmptyStr, Int, Timestamp, List }
 import product.fabric.identity { FabricIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
@@ -10,9 +10,12 @@ import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, Obser
 import product.fabric.provider_route { ProviderRoute }
 import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
-import gunbc.spark.first_party_serving { spark_first_party_route, spark_fleet_site_allocation }
+import gunbc.spark.first_party_serving {
+  spark_first_party_route, spark_fleet_site_allocation, spark_site_uncovered_units,
+}
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
 }
@@ -139,13 +142,41 @@ data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_o
 // withdrawal was right: what it refused was a region nobody had established. What changed is not
 // that somebody measured one -- for self-hosted units nobody ever can -- but that the operator
 // stated where the units are, dated and attributable, and gunbc.spark.first_party_serving carries
-// that statement as an OperatorAllocation over every Spark unit. The standing therefore selects the
-// asserted arm, and the route it carries is the first-party one: provider us, service the pair
-// serving deployment, region the allocation itself.
-fn spark_serving_route_standing() -> SparkServingRoute {
-  ServingRouteOperatorAsserted {
-    route: spark_first_party_route(),
-    allocation: spark_fleet_site_allocation.allocation,
+// that statement as an OperatorAllocation over the Spark units it names.
+//
+// THE STANDING IS PER GROUP, NOT GLOBAL, BECAUSE THE ASSERTION IS PER UNIT. It takes the hosts the
+// offer would run on and refuses unless the allocation covers every one of them. The first spelling
+// took no argument at all, which made an eight-unit roster decorative and would have let a group on
+// a machine the operator never placed at his home carry a region citing an assertion about other
+// machines (review 63995).
+//
+// AN EMPTY HOST LIST REFUSES, and that arm is the reason this is a fold over the UNCOVERED set
+// rather than an all() over the covered one: all() of nothing is true, so a group whose membership
+// could not be read would have passed the check vacuously -- the check reading cleanest exactly
+// where it knows least.
+data spark_serving_route_hosts_unreadable_obligation: NonEmptyStr = "gunbc.spark.serving_offer: the serving group's host membership could not be read, so there is nothing to compare against the operator's site allocation and the offer's region rests on nothing"
+
+fn spark_serving_route_uncovered_obligation(uncovered: List<HostIdentity>) -> NonEmptyStr {
+  join([
+    "gunbc.spark.serving_offer: the operator's site allocation (gunbc.spark.first_party_serving spark_fleet_site_allocation, 2026-09-11) does not cover this serving group's host(s) ",
+    join(map(uncovered, h => h as String), ", "),
+    ", so no assertion places them anywhere and the offer's region cannot be constructed. A unit that has moved needs a NEW allocation row, never an edit to the standing one",
+  ], "") as NonEmptyStr
+}
+
+fn spark_serving_route_standing(hosts: List<HostIdentity>) -> SparkServingRoute {
+  if count(hosts) == 0 {
+    ServingRouteRegionUnobserved { obligation: spark_serving_route_hosts_unreadable_obligation }
+  } else {
+    let uncovered = spark_site_uncovered_units(hosts: hosts)
+    if count(uncovered) > 0 {
+      ServingRouteRegionUnobserved { obligation: spark_serving_route_uncovered_obligation(uncovered: uncovered) }
+    } else {
+      ServingRouteOperatorAsserted {
+        route: spark_first_party_route(),
+        allocation: spark_fleet_site_allocation.allocation,
+      }
+    }
   }
 }
 

@@ -1,12 +1,14 @@
 module test.claim.spark.spark_serving_offer_route_witness_test
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, List }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import product.fabric.provider_route { ProviderRoute }
 import product.fabric.identity { FabricIdentity }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
@@ -16,6 +18,7 @@ import gunbc.spark.serving_offer {
   SparkServingReadiness, ServingObserved,
   SparkServingRoute, ServingRouteObserved, ServingRouteOperatorAsserted, ServingRouteRegionUnobserved,
   spark_serving_route_standing, spark_serving_route_region_obligation,
+  spark_serving_route_hosts_unreadable_obligation,
   bind_spark_serving_offer,
 }
 
@@ -99,12 +102,40 @@ test fn an_unobserved_region_refuses_naming_its_obligation() -> Bool {
 // region it carries must be the allocation, because a region citing the bare site row would name a
 // place while dropping who said the units are there and when.
 test fn the_standing_the_harness_passes_is_operator_asserted_with_its_allocation() -> Bool {
-  match spark_serving_route_standing() {
+  match spark_serving_route_standing(hosts: [operator_host_srv5, operator_host_srv6]) {
     ServingRouteRegionUnobserved { obligation: _ } => false
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: r, allocation: a } =>
       declaration_ref_eq(a: r.region, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation"))
         && declaration_ref_eq(a: r.provider, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "gunbc_first_party_serving_provider"))
         && (a.decided_on as String) == "2026-09-11"
+  }
+}
+
+
+// RED -- THE ROSTER GATES THE STANDING. srv1 is a real fleet host and is NOT one of the units the
+// operator placed at his home, so a group containing it has no assertion behind its region and the
+// standing refuses. Without this row the eight-unit roster in the allocation would be decorative:
+// nothing else in the corpus compares a host to it (review 63995).
+test fn a_host_outside_the_allocation_refuses_and_names_it() -> Bool {
+  match spark_serving_route_standing(hosts: [operator_host_srv5, operator_host_srv1]) {
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _ } => false
+    ServingRouteRegionUnobserved { obligation: o } =>
+      string_contains(s: o as String, pattern: "srv1")
+        && !string_contains(s: o as String, pattern: "srv5")
+  }
+}
+
+// RED -- AN UNREADABLE GROUP REFUSES RATHER THAN PASSING VACUOUSLY. This is the arm that decides
+// whether the membership check is a wall or a decoration: written as all(hosts, covered) it would
+// be TRUE for the empty list, so a group whose membership could not be read would have been
+// admitted by the check that exists to constrain it -- cleanest exactly where it knows least.
+test fn an_unreadable_group_membership_refuses() -> Bool {
+  match spark_serving_route_standing(hosts: [] as List<HostIdentity>) {
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _ } => false
+    ServingRouteRegionUnobserved { obligation: o } =>
+      (o as String) == (spark_serving_route_hosts_unreadable_obligation as String)
   }
 }

@@ -3,11 +3,12 @@ module gunbc.spark.first_party_serving
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
-import product.placement_supply { SiteIdentity, HostIdentity }
+import product.placement_supply { SiteIdentity, HostIdentity, host_identity_eq }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
+  ProviderPathAbsent, ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders,
 }
 import product.fabric.provider_admission {
@@ -15,7 +16,10 @@ import product.fabric.provider_admission {
   DispositionStanding, DispositionNotEngaged, admit_provider_use,
 }
 import extdeps.vllm.usage_stats {
-  VllmUsageStatsLaunchStanding, UsageStatsEnabledByDefault,
+  VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
+  UsageStatsLaunchUnread, VllmUsageStatsContentClass,
+  ConfigurationAndHardwareMetadataOnly, CarriesRequestMaterial,
+  vllm_usage_stats_reporting,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.fleet_physical_inventory { operator_site }
@@ -76,6 +80,22 @@ data spark_fleet_site_allocation: SparkFleetSiteAllocation = SparkFleetSiteAlloc
     decided_on: "2026-09-11",
     basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. It names the site the corpus already carries as gunbc.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale already records as America/New_York, rather than introducing a second name for one place. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
   },
+}
+
+// ── THE ROSTER GATES THE STANDING, OR IT IS PROSE IN A LIST FIELD ─────────────────────────────
+//
+// Review 63995 is right that the first spelling of this module enumerated eight units and then
+// never compared anything to them: the route standing took no host, so a serving group on a machine
+// the operator never placed at his home would have bound an offer whose region cites an assertion
+// that does not cover it. An enumerated roster nothing folds is the §3c dangling row in its most
+// expensive form, because it reads as a scope while enforcing none.
+//
+// THE ANSWER IS THE UNCOVERED SET, NOT A Bool. A predicate discards exactly the payload the refusal
+// needs -- WHICH host is outside the assertion -- forcing the refusal builder to walk the value
+// again, and that second walk is where an invented name gets to live. The uncovered hosts come back
+// and the caller names them.
+fn spark_site_uncovered_units(hosts: List<HostIdentity>) -> List<HostIdentity> {
+  filter(hosts, h => !any(spark_fleet_site_allocation.units, u => host_identity_eq(a: u, b: h)))
 }
 
 // ── THE PROVIDER IS US, WHICH IS THE ONE MODELING CALL THIS MODULE MAKES ──────────────────────
@@ -336,11 +356,56 @@ data spark_serving_usage_stats_standing: VllmUsageStatsLaunchStanding = UsageSta
   basis: "gunbc.spark.pair_serving_realization's container environment sets neither VLLM_NO_USAGE_STATS nor DO_NOT_TRACK, and no launch step writes the do_not_track marker, so usage reporting is on by upstream default on every Spark serving group. This is read from OUR OWN launch declaration, which is what a launch standing is about; it does not claim that a running host's environment was inspected.",
 }
 
+// THE TWO TYPED CARRIERS ARE FOLDED, NOT CITED. Review 63995's second finding is the first review's
+// finding one level over: the content class was declared, named as "the whole reason a consumer can
+// admit this path", and then never matched -- so a later revision flipping upstream's payload to
+// CarriesRequestMaterial would have left every admission green. It is matched here, and so is the
+// launch standing, which means the path's arm is DERIVED from those two facts rather than chosen
+// beside them.
+//
+// EACH ARM IS THE HONEST ANSWER TO A DIFFERENT WORLD. A launch that disables reporting has no
+// telemetry egress at all, which is what ProviderPathAbsent means. A launch nobody read is an
+// obligation and refuses. And a reporter that ever carries request material is not a metadata path
+// to be admitted with a caveat: it becomes route material leaving the site, so it refuses until
+// somebody re-assesses the route -- the arm that makes the operator's ruling conditional on the
+// fact it was made about.
+// THE OBLIGATION THE REQUEST-MATERIAL ARM NAMES. It is a declared row rather than a sentence at the
+// arm because it is what a reader is sent to when the refusal fires, and what it asks for is a
+// re-assessment of the route rather than a smaller repair: a reporter carrying request material is
+// route material leaving the site, which is the premise the first-party posture rests on.
+type UsageStatsEscalationObligation {
+  trigger: NonEmptyStr
+  remedy: NonEmptyStr
+}
+
+data spark_usage_stats_carrying_request_material_obligation: UsageStatsEscalationObligation = UsageStatsEscalationObligation {
+  trigger: "extdeps.vllm.usage_stats vllm_usage_stats_reporting reports CarriesRequestMaterial at the cited source revision, so the usage-stats reporter no longer carries only host, build and engine configuration.",
+  remedy: "The first-party posture rests on route material staying on site, and this would be route material leaving it. Set VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch, or re-assess the posture with the operator. Until one of those happens the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete.",
+}
+
 fn spark_usage_stats_telemetry_path() -> ProviderPathStanding {
-  ProviderPathLocated {
-    operator: decl_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting"),
-    jurisdiction: decl_field_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting", field_name: "service_jurisdiction"),
-    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+  match spark_serving_usage_stats_standing {
+    UsageStatsDisabledByLaunch { mechanism: _ } =>
+      ProviderPathAbsent {
+        evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+      }
+    UsageStatsLaunchUnread { obligation: _ } =>
+      ProviderPathUnread {
+        obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+      }
+    UsageStatsEnabledByDefault { basis: _ } =>
+      match vllm_usage_stats_reporting.content_class {
+        CarriesRequestMaterial =>
+          ProviderPathUnread {
+            obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_usage_stats_carrying_request_material_obligation"),
+          }
+        ConfigurationAndHardwareMetadataOnly =>
+          ProviderPathLocated {
+            operator: decl_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting"),
+            jurisdiction: decl_field_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting", field_name: "service_jurisdiction"),
+            evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+          }
+      }
   }
 }
 
