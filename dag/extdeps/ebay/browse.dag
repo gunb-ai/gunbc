@@ -4,7 +4,9 @@ import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.measure { MoneyAmountMicro, money_amount_micro_count }
 import std.decimal { fixed_point_wire }
 import v2.std.algebra { filter, fold_list }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
@@ -97,6 +99,33 @@ data browse_production_access: BrowseProductionAccess = BrowseProductionAccess {
   sandbox_open_to_any_developer_account: true,
   authority: browse_buy_requirements_citation
 }
+
+// WHAT THIS CHANGE DOES NOT YET EXECUTE, declared rather than implied. The folds (condition IDs,
+// filter grammar, page admission, contextual header) are executed by test.claim.ebay_browse_witness;
+// the rows below have no executing reader in this closure.
+data ebay_browse_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "browse_production_access"),
+    reason: "the production-access fact has no executing reader in the public closure; its reader is a buyer pipeline's access standing, which may not be named from this tree",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry derives whether a Browse read may be attempted from browse_production_access, refusing while the Partner Network application is not approved; a witness that the row exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "BrowseItem"),
+    reason: "getItem is not performed by any executing entry: production Browse access is not granted, and no response body has been observed",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry performs ebay.Browse.GetItem with approved production access and folds an OBSERVED response body into a consumer; approval alone, or a fixture body authored here, does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "BrowseSearchPagedCollection"),
+    reason: "search is not performed by any executing entry, for the same reason as getItem",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry performs ebay.Browse.SearchItemSummaries under browse_search_page_admission with approved production access and folds an OBSERVED response body; approval alone, or a fixture body, does not fire this"
+    )
+  ),
+]
 
 // search: "Max: 200, Default: 50", and "This method can return a maximum of 10,000 items in one
 // results set"; offset must be zero or a multiple of limit ("An error is returned for invalid offset
