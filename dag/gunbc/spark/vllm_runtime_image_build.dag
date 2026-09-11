@@ -469,6 +469,21 @@ type VllmImageIdentity sole_constructor {
   provenance: VllmImageProvenance
 }
 
+// THE MINT FOR AN IMAGE THIS LANE DID NOT BUILD. The identity record is sole_constructor precisely so
+// provenance cannot be assembled beside the wall rather than through it -- so adopting a published
+// image is an explicit, named act with its arm fixed at AdoptedUnderExpectedTag, not a caller filling
+// in a field. The digest is the one the daemon reported for the reference, which is why the caller
+// must have read it back before it can call this at all.
+fn vllm_adopted_image_identity(reference: NonEmptyStr, digest: NonEmptyStr, r: VllmContainerBuildRecipe) -> VllmImageIdentity {
+  VllmImageIdentity {
+    tag: reference,
+    local_config_digest: digest,
+    requested_from: r.source,
+    build_key: vllm_image_build_key(r: r),
+    provenance: AdoptedUnderExpectedTag,
+  }
+}
+
 type VllmImageBuild
   = VllmImageBuilt { identity: VllmImageIdentity, already_present: Bool }
   | VllmImageBuildRefused { step: NonEmptyStr, cause: String }

@@ -83,6 +83,42 @@ data v41_published_arm64_config_observations: List<PublishedImageObservation> = 
 // a failed lookup into source provenance. What is established is the two readings; the equality
 // between the image and any revision stays UNESTABLISHED, which is exactly what
 // extdeps.vllm.runtime_defaults ImageSourceEquivalence exists to say.
+// THE DISCRIMINATING FACTS ARE FIELDS, AND THE SENTENCE IS FOR A HUMAN. The two rows below carry
+// prose so a reader learns what was found and why it does not establish more; a WITNESS asserting a
+// substring of that prose would be checking this change against itself, which is the change detector
+// the capability receipts in this lane already retired. So the facts a consumer joins on are typed
+// beside the sentence: the distribution name as published, the identifier the packager stamped into
+// it, and what a lookup of that identifier answered.
+data v41_published_distribution_name: NonEmptyStr = "vllm-0.1.dev20904+g179dd0fa9" as NonEmptyStr
+data v41_published_stamped_identifier: NonEmptyStr = "179dd0fa9" as NonEmptyStr
+
+// A LOOKUP HAS THREE ANSWERS AND ONLY ONE OF THEM IS "NO". Present means the public repository has a
+// commit with this id; Absent means it answered that it does not; Unasked would mean nobody looked.
+// None of the three says which source produced the image's bytes.
+type PublicCommitLookup
+  = PublicCommitPresent
+  | PublicCommitAbsent
+  | PublicCommitUnasked
+
+fn public_commit_lookup_wire(l: PublicCommitLookup) -> NonEmptyStr {
+  match l {
+    PublicCommitPresent => "present" as NonEmptyStr
+    PublicCommitAbsent => "absent" as NonEmptyStr
+    PublicCommitUnasked => "unasked" as NonEmptyStr
+  }
+}
+
+data v41_published_stamped_identifier_lookup: PublicCommitLookup = PublicCommitAbsent
+
+// THE DOCUMENTED TAG'S STANDING, likewise typed: it resolved, or the registry answered that it does
+// not exist, or nobody asked.
+type RegistryTagStanding
+  = RegistryTagResolves
+  | RegistryTagAbsent
+  | RegistryTagUnasked
+
+data v41_documented_tag_standing: RegistryTagStanding = RegistryTagAbsent
+
 data v41_published_distribution_observation: PublishedImageObservation = v41_published_observation(
   subject: "installed vLLM distribution name in the arm64 image" as NonEmptyStr,
   reading: "the site-packages layer of sha256:d84a1232... carries vllm-0.1.dev20904+g179dd0fa9.dist-info, so the packager stamped the identifier 179dd0fa9 into the version" as NonEmptyStr,

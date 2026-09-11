@@ -9,7 +9,7 @@ import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker { DockerMount, BindMount }
-import extdeps.docker.cli { docker_run_ephemeral_command }
+import extdeps.docker.cli { docker_run_ephemeral_command, docker_image_pull_command, docker_image_digest_command }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   VllmCompiledSurface,
   v41_fp4_weight_surface, v41_csa2_surface, v41_dspark_surface,
@@ -40,10 +40,13 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal, converge_typed_remote_file,
 }
 import gunbc.file_access { FileTreeScope }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
+}
 import gunbc.spark.vllm_runtime_image_build {
   VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
   SparkBuildHostAdmitted, SparkBuildHostRefused, admit_spark_build_host,
-  vllm_build_root, v41_gb10_recipe, vllm_image_tag,
+  vllm_build_root, v41_gb10_recipe, vllm_image_tag, vllm_adopted_image_identity,
   converge_vllm_runtime_image,
 }
 
@@ -210,9 +213,14 @@ fn v41_py_kv_layout_block() -> String {
 // absent, or ERRORED, and an errored check suppresses the capability's VERDICT line entirely, which
 // the reader reads as UNREAD.
 //
-// THE ABSENCE ARM IS NARROW ON PURPOSE. ModuleNotFoundError and AttributeError are what a genuinely
-// missing module or attribute raises; everything else is the instrument failing, and widening the
-// absence arm to cover it is the §5 failure-arm widen in miniature.
+// THE ABSENCE ARM IS NARROW ON PURPOSE, AND "ModuleNotFoundError" ALONE IS NOT NARROW ENOUGH. A module
+// that EXISTS raises ModuleNotFoundError when its own import of an unrelated dependency fails, so
+// catching the exception type and reporting MISSING turns "this image is missing a dependency of the
+// thing I asked about" into "this image does not have the thing I asked about" -- an absence
+// manufactured by the instrument, which is the defect this arm was already corrected for once and
+// still had at a finer grain. `ModuleNotFoundError.name` carries WHICH module was not found: the
+// reading is MISSING only when that name is the target or one of its ancestors, and ERRORED otherwise,
+// which suppresses the verdict and reads UNREAD.
 fn v41_probe_script() -> String {
   join([
     "import importlib\n",
@@ -235,11 +243,19 @@ fn v41_probe_script() -> String {
     "    except Exception as error:\n",
     "        return (ERRORED, repr(error))\n",
     "\n",
+    "def missing_name_is_target(error, target):\n",
+    "    name = getattr(error, \"name\", None)\n",
+    "    if not name:\n",
+    "        return False\n",
+    "    return target == name or target.startswith(name + \".\")\n",
+    "\n",
     "def has_module(path):\n",
     "    try:\n",
     "        return (FOUND, \"\") if importlib.util.find_spec(path) is not None else (MISSING, \"\")\n",
     "    except ModuleNotFoundError as error:\n",
-    "        return (MISSING, repr(error))\n",
+    "        if missing_name_is_target(error, path):\n",
+    "            return (MISSING, repr(error))\n",
+    "        return (ERRORED, repr(error))\n",
     "    except Exception as error:\n",
     "        return (ERRORED, repr(error))\n",
     "\n",
@@ -248,7 +264,9 @@ fn v41_probe_script() -> String {
     "    try:\n",
     "        module = importlib.import_module(module_path)\n",
     "    except ModuleNotFoundError as error:\n",
-    "        return (MISSING, repr(error))\n",
+    "        if missing_name_is_target(error, module_path):\n",
+    "            return (MISSING, repr(error))\n",
+    "        return (ERRORED, repr(error))\n",
     "    except Exception as error:\n",
     "        return (ERRORED, repr(error))\n",
     "    try:\n",
@@ -665,10 +683,15 @@ fn v41_probed_layout_admitted(dtype: NonEmptyStr) -> Bool {
 // WHAT THE RECORDED RUN ASKED, AND WHAT IT DID NOT.
 //
 // THE ONE MEASURED ABSENCE IS THE ONE THE LANE EXISTED TO SETTLE. The image built from the lead commit
-// does not register the V4.1 architecture. That is not a build failure and not an arch gate: the CLASS
-// is in the tree at vllm/models/deepseek_v4_1/nvidia/vl_model.py, and vLLM's registry at that revision
-// maps no name to vllm.models.deepseek_v4_1 while DeepseekV4ForCausalLM maps to vllm.models.deepseek_v4.
-// The implementation exists and is unreachable by the architecture name the checkpoint declares.
+// did not answer for the V4.1 architecture when its own registry was asked. Two SOURCE facts sit
+// beside that reading and are joined to it in the witness rather than folded into it: the class is in
+// the tree at vllm/models/deepseek_v4_1/nvidia/vl_model.py, and registry.py at that revision maps no
+// name to vllm.models.deepseek_v4_1 while DeepseekV4ForCausalLM maps to vllm.models.deepseek_v4.
+//
+// WHAT THAT DOES NOT SAY. It does not say the build failed, and it does not say an architecture gate
+// dropped anything -- the reading is about a registry lookup, and the source rows are about a file.
+// The five presences are likewise symbol and admission readings: what resolved, and what the backend
+// answered when asked. None of them is a statement that a kernel is correct, fast, or exercised.
 //
 // ONE CAPABILITY IS UNREAD BECAUSE THE RUN THAT PRODUCED THESE ROWS NEVER ASKED IT. The probe has
 // since been corrected to CALL cutlass_scaled_mm_supports_fp4 rather than merely find it -- symbol
@@ -724,4 +747,95 @@ fn v41_image_unread_capabilities() -> List<NonEmptyStr> {
       V41CapabilityPresent { capability: _ } => acc
       V41CapabilityAbsent { capability: _ } => acc
     })
+}
+
+// ── THE SAME QUESTIONS, OVER THE PRIVILEGED ROUTE THE FLEET ALREADY MODELS ─────────────────────
+//
+// WHY A SECOND EXECUTION SHAPE AND NOT A SECOND DOCKER ROUTE. Docker's socket on a Spark is
+// root-owned, and gunbc-automation -- the account the modeled bootstrap converges and the one every
+// key-authenticated leg in this lane uses -- is in no docker group on any of them. The corpus already
+// has exactly one route that drives docker on these hosts:
+// gunbc.spark.model_snapshot_materialize spark_remote_run, briansrls over a password session with
+// `sudo -S`, whose own header records this very finding as the reason it exists. So the docker legs
+// bind to THAT, rather than this lane inventing a second way to reach the same daemon (operator
+// ruling, 2026-09-11). The credential never enters an authoring session: it is resolved inside the
+// boundary where the entry runs.
+//
+// AND THE SCRIPT STOPS BEING A FILE. spark_remote_run shell-quotes every argv element, so the whole
+// probe program crosses as ONE argument to `python3 -c` -- which deletes the staged file, the bind
+// mount, the chmod and the three-step write-readback-rename that carrying it as a file required. The
+// program is the same generated text; what is gone is everything that existed only to get it there.
+fn v41_probe_privileged_argv(image_reference: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_run_ephemeral_command(
+    image: image_reference,
+    gpus_all: true,
+    mounts: [],
+    entrypoint: v41_probe_interpreter,
+    argv: ["-c", v41_probe_script()],
+  ))
+}
+
+fn v41_probe_pull_argv(image_reference: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_pull_command(image: image_reference))
+}
+
+fn v41_probe_digest_argv(image_reference: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_digest_command(image: image_reference))
+}
+
+// A REMOTE RUN THAT DID NOT LAND AND ONE THAT RAN AND FAILED ARE DIFFERENT FACTS, and spark_remote_run
+// already keeps them apart; this preserves that rather than folding both into "the probe failed".
+fn v41_privileged_outcome(step: NonEmptyStr, run: SparkRemoteRun) -> V41ProbeOutcome? {
+  match run {
+    RemoteUnreachable { cause: why } => Present { value: V41ProbeRefused { step: step, cause: why } }
+    RemoteRan { exit_code: code, stdout: _, stderr: err } =>
+      if code != 0 {
+        Present { value: V41ProbeRefused { step: step, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") } }
+      } else {
+        none
+      }
+  }
+}
+
+fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
+  match run {
+    RemoteUnreachable { cause: _ } => ""
+    RemoteRan { exit_code: _, stdout: out, stderr: _ } => out
+  }
+}
+
+// PULL, READ THE DIGEST BACK, THEN ASK INSIDE IT. The readback is what makes the reading's subject
+// the bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
+// content per architecture, and what the probe must name is the image the daemon actually holds.
+func v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
+  uses net: Network
+{
+  match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
+    Present { value: refusal } => refusal
+    Absent => {
+      let digest_run = spark_remote_run(ctx: ctx, argv: v41_probe_digest_argv(image_reference: reference))
+      match v41_privileged_outcome(step: "image-digest" as NonEmptyStr, run: digest_run) {
+        Present { value: refusal } => refusal
+        Absent => {
+          let digest = trim(s: v41_privileged_stdout(run: digest_run))
+          if digest == "" {
+            V41ProbeRefused { step: "image-digest" as NonEmptyStr, cause: "the pull reported success and no image carries the reference it was asked to fetch" }
+          } else {
+            let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: digest as NonEmptyStr))
+            match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
+              Present { value: refusal } => refusal
+              Absent => {
+                let out = v41_privileged_stdout(run: probe_run)
+                V41ProbeRead {
+                  image: vllm_adopted_image_identity(reference: reference, digest: digest as NonEmptyStr, r: v41_gb10_recipe()),
+                  stdout: out,
+                  readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: c)),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

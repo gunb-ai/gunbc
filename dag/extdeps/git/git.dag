@@ -836,8 +836,16 @@ fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
 // happily build a modified context and stamp it with an unmodified revision. `--porcelain` prints one
 // line per difference and NOTHING when the tree is clean, so cleanliness is an empty answer rather
 // than a parse.
+//
+// `--ignored` IS NOT OPTIONAL FOR A BUILD CONTEXT, AND THE TWO IGNORE FILES DISAGREE. Plain
+// `--porcelain` omits ignored files entirely, while a docker build context contains everything the
+// DOCKERIGNORE does not exclude -- and those are different sets. Measured at vLLM
+// 07b75534651a0dd584c6f3be75d8c62fb8426397: `.gitignore` carries `**/generated/**` and `.dockerignore`
+// does not, so a file under any `generated/` directory is invisible to a plain status AND shipped to
+// the daemon. A provenance claim about what was built cannot rest on a status that cannot see part of
+// the context, so the ignored set is included and any output at all refuses.
 fn git_status_porcelain_args(repository_dir: String) -> List<String> {
-  ["-C", repository_dir, "status", "--porcelain"]
+  ["-C", repository_dir, "status", "--porcelain", "--ignored"]
 }
 
 fn git_status_porcelain_command(repository_dir: String) -> ArgvCommand {

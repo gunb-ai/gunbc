@@ -1,9 +1,11 @@
 module test.claim.spark.v41_runtime_image_build_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { gigabyte_count }
 import product.placement_supply { HostIdentity }
 import std.content_hash { serialize_content_hash }
 import extdeps.exec.command { argv_words }
+import extdeps.git { git_status_porcelain_command }
 import extdeps.docker.cli { docker_build_spec_command }
 import extdeps.vllm.source_build {
   vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
@@ -18,12 +20,16 @@ import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_fp4_sm120_block, v41_fp4_sm100_block,
 }
 import extdeps.vllm.deepseek_v4_1_flash_recipe {
-  v41_flash_hardware_verified, v41_flash_vram_minimum_gb, v41_flash_checkpoint_gb, v41_flash_headroom_gb,
+  v41_flash_hardware_verified, v41_flash_vram_minimum, v41_flash_checkpoint, v41_flash_headroom,
 }
 import gunbc.spark.v41_published_image_observation {
   v41_published_revision_public_standing,
   v41_published_distribution_observation, v41_published_arm64_config_observations,
   v41_published_tag_absent, v41_published_registers_architecture, v41_published_observations,
+  v41_published_stamped_identifier, v41_published_distribution_name,
+  v41_published_stamped_identifier_lookup, v41_documented_tag_standing,
+  PublicCommitAbsent, PublicCommitPresent, PublicCommitUnasked,
+  RegistryTagAbsent, RegistryTagResolves, RegistryTagUnasked,
 }
 import gunbc.spark.vllm_runtime_image_build {
   vllm_source_is_clean, vllm_image_provenance_wire, BuiltByThisRun, AdoptedUnderExpectedTag,
@@ -291,15 +297,23 @@ test fn the_built_image_has_one_measured_absence_and_one_unasked_question() -> B
 // ARE ASSERTED TOGETHER: it carries a registry entry for the architecture, and it is built from a
 // revision that is not in the public repository. Either alone would be a curiosity; together they say
 // the gap is wiring held outside public main rather than anything about this fleet's build.
-test fn the_published_image_registers_the_architecture_from_a_revision_public_main_does_not_have() -> Bool {
+test fn the_published_image_registers_the_architecture_and_its_stamp_is_not_a_public_commit() -> Bool {
   v41_published_registers_architecture(architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
     && !v41_published_registers_architecture(architecture: "DeepseekV4ForCausalLM" as NonEmptyStr)
-    && string_contains(s: v41_published_revision_public_standing.reading as String, pattern: "No commit found for SHA: 179dd0fa9")
-    && string_contains(s: v41_published_distribution_observation.reading as String, pattern: "g179dd0fa9")
-    && string_contains(s: v41_published_tag_absent.reading as String, pattern: "404")
+    && (match v41_published_stamped_identifier_lookup {
+      PublicCommitAbsent => true
+      PublicCommitPresent => false
+      PublicCommitUnasked => false
+    })
+    && (match v41_documented_tag_standing {
+      RegistryTagAbsent => true
+      RegistryTagResolves => false
+      RegistryTagUnasked => false
+    })
+    && string_contains(s: v41_published_distribution_name as String, pattern: v41_published_stamped_identifier as String)
     && !v41_flash_hardware_verified(hardware: "gb10" as NonEmptyStr)
     && v41_flash_hardware_verified(hardware: "gb200" as NonEmptyStr)
-    && v41_flash_vram_minimum_gb == v41_flash_headroom_gb(total_gb: v41_flash_checkpoint_gb)
+    && gigabyte_count(g: v41_flash_vram_minimum) == gigabyte_count(g: v41_flash_headroom(total: v41_flash_checkpoint))
 }
 
 // EVERY OBSERVATION NAMES AN INSTRUMENT AND A DATE, which is the property that separates a reading
@@ -407,6 +421,17 @@ test fn an_unasked_question_is_not_a_measured_absence() -> Bool {
   fold(v41_image_absent_capabilities(), init: true, f: (acc, c) => acc && (c as String) != (v41_capability_fp4_support as String))
     && fold(v41_image_unread_capabilities(), init: true, f: (acc, c) => acc && (c as String) != (v41_capability_architecture as String))
     && fold(v41_image_unread_capabilities(), init: false, f: (acc, c) => acc || (c as String) == (v41_capability_fp4_support as String))
+}
+
+// THE DIRTY CHECK MUST SEE THE IGNORED SET, because a docker build context is not the tracked set. At
+// the pinned revision `.gitignore` carries `**/generated/**` and `.dockerignore` does not, so a file
+// under any `generated/` directory is invisible to a plain `git status --porcelain` and is shipped to
+// the daemon anyway. The argv is asserted rather than the behaviour because the behaviour is git's.
+test fn the_dirty_check_asks_for_the_ignored_set_too() -> Bool {
+  let words = argv_words(command: git_status_porcelain_command(repository_dir: "/tmp/x"))
+  let line = join(words, " ")
+  string_contains(s: line, pattern: "status --porcelain --ignored")
+    && string_contains(s: line, pattern: "-C /tmp/x")
 }
 
 // A CLEAN TREE IS AN EMPTY ANSWER, AND ANYTHING ELSE REFUSES. `git status --porcelain` prints one line

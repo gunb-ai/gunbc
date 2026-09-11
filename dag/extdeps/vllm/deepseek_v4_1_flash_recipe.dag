@@ -2,6 +2,7 @@ module extdeps.vllm.deepseek_v4_1_flash_recipe
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { Gigabyte, gigabyte, gigabyte_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -30,7 +31,7 @@ type VllmPublishedFigure sole_constructor {
 
 data v41_flash_checkpoint_on_disk: VllmPublishedFigure = VllmPublishedFigure {
   subject: "checkpoint size on disk" as NonEmptyStr,
-  value: "511 GB (476 GiB)" as NonEmptyStr,
+  value: join([to_string(gigabyte_count(g: v41_flash_checkpoint)), " GB (476 GiB)"], "") as NonEmptyStr,
   derivation: "stated by the recipe, with a component table: routed + DSpark experts MXFP4 557.2B params 259.5 GiB; Engram tables MXFP8 196.6B 188.8 GiB; attention, norms, routers MXFP8 6.0B 5.6 GiB; embedding + LM head + misc 3.0B 5.8 GiB; quantization scales 23.6B 21.9 GiB" as NonEmptyStr,
 }
 
@@ -43,20 +44,28 @@ data v41_flash_checkpoint_on_disk: VllmPublishedFigure = VllmPublishedFigure {
 // headroom factor. Carrying both plus the relation is what lets a reader check the transcription --
 // if either number were copied wrong, the derivation disagrees. Carrying only the minimum leaves a
 // literal that can only be compared to itself.
-data v41_flash_checkpoint_gb: Nat = 511
+// THE UNIT IS THE PUBLISHER'S AND IT IS DECIMAL. The page writes `vram_minimum_gb`, and std.measure
+// already records that vendors publishing "GB" mean 10^9 -- so these are Gigabyte, not bare counts.
+// A scalar named `_gb` is a unit living in an identifier, which is the place a conversion goes wrong
+// silently; carrying the Measure makes any comparison against a binary figure a conversion someone
+// has to write.
+data v41_flash_checkpoint: Gigabyte = gigabyte(count: 511)
 data v41_flash_headroom_factor_tenths: Nat = 12
 
 // Integer ceiling of total * 1.2, because the published figure is rounded up: 511 * 1.2 = 613.2 and
 // the page states 614.
-fn v41_flash_headroom_gb(total_gb: Nat) -> Nat {
-  (total_gb * v41_flash_headroom_factor_tenths + 9) / 10
+fn v41_flash_headroom(total: Gigabyte) -> Gigabyte {
+  gigabyte(count: (gigabyte_count(g: total) * v41_flash_headroom_factor_tenths + 9) / 10)
 }
 
-data v41_flash_vram_minimum_gb: Nat = 614
+data v41_flash_vram_minimum: Gigabyte = gigabyte(count: 614)
 
-data v41_flash_vram_minimum: VllmPublishedFigure = VllmPublishedFigure {
+// THE FIGURE ROW CARRIES THE PAGE'S SENTENCE, AND ITS VALUE IS RENDERED FROM THE MEASURE rather than
+// spelled again. An earlier revision wrote "614" here beside the typed 614 above, so the two could
+// drift apart and nothing would notice.
+data v41_flash_vram_minimum_figure: VllmPublishedFigure = VllmPublishedFigure {
   subject: "vram_minimum_gb" as NonEmptyStr,
-  value: "614" as NonEmptyStr,
+  value: to_string(gigabyte_count(g: v41_flash_vram_minimum)) as NonEmptyStr,
   derivation: "the checkpoint total times the recipe schema's 1.2 headroom factor, stated verbatim on the page as `vram_minimum_gb: 614 is that total times the schema's 1.2 headroom factor`" as NonEmptyStr,
 }
 
@@ -65,10 +74,15 @@ data v41_flash_vram_minimum: VllmPublishedFigure = VllmPublishedFigure {
 data v41_flash_fit_statement: NonEmptyStr = "It fits one GB200 NVL4 tray (768 GB) at TP4, or one 8-GPU H200 node (1128 GB) with room for KV cache, but 1M context will need the context or batch capped -- measure before assuming" as NonEmptyStr
 
 // THE VERIFIED-HARDWARE ROSTER THE PAGE CARRIES IN ITS OWN METADATA, and what is NOT in it matters as
-// much as what is: there is no GB10 / DGX Spark entry. The published image nonetheless compiles for
-// sm_121 (its TORCH_CUDA_ARCH_LIST is `8.7 8.9 9.0 10.0+PTX 12.0 12.1`), so "kernels exist for this
-// architecture" and "this architecture is a verified platform" are separate facts here, and only the
-// first is established.
+// much as what is: there is no GB10 / DGX Spark entry, so the publisher makes no claim about this
+// fleet's accelerator.
+//
+// WHAT IS NOT ESTABLISHED BESIDE IT. The published image's environment names 12.1 in its
+// TORCH_CUDA_ARCH_LIST, which is what the BUILD WAS TOLD TO TARGET -- an argument recorded in the
+// image's config, not a reading of which kernels the extension actually carries. Upstream's own build
+// prints `Not building ...` and exits zero when an architecture block finds no compatible target, so
+// a requested architecture and a compiled one are different facts and neither this row nor that env
+// var establishes the second. Only a probe inside the image can, and this lane has not run one there.
 data v41_flash_verified_hardware: List<NonEmptyStr> = [
   "h200" as NonEmptyStr,
   "gb200" as NonEmptyStr,
