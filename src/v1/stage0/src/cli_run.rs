@@ -39859,6 +39859,11 @@ pub struct PreparedClaimScope {
     /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
     /// the two whose members are defects rather than declarations.
     pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
+    /// THE POSITIVE HALF: a reference to an otherwise-ambiguous name that does NOT fall through,
+    /// with the module that answered it. A pair leaving `ambiguous_bare_reads` proves only that
+    /// the list moved; this says what the reference resolves TO, which is the whole content of a
+    /// qualification. `(name, referring module, resolved module)`.
+    pub qualified_bare_reads: Vec<(String, String, String)>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
     /// grain the terminal correction has to choose between. The floor already reports what a
     /// scope COSTS in resident bytes (`[floor-scope-cost]`) and how many it built, and neither
@@ -40568,6 +40573,7 @@ fn claim_scope_for_with_memos(
     // names and variant constructors into one set and a wall keyed on that union would refuse a
     // TYPE collision at a site where the shared value slot is never consulted.
     let mut ambiguous_reads: Vec<AmbiguousBareRead> = Vec::new();
+    let mut qualified_reads: Vec<(String, String, String)> = Vec::new();
     if !ambiguous.is_empty() {
         for module in scoped_graph.modules.iter() {
             let referring = module.func_env.name.as_str();
@@ -40580,6 +40586,12 @@ fn claim_scope_for_with_memos(
                     continue;
                 };
                 if !indexes.falls_through_to_shared_slot(site_file, name) {
+                    // Not a defect — and worth publishing anyway, because "this site no longer
+                    // appears in the ambiguous list" and "this site now reads the declaration its
+                    // author named" are different claims and only the second is the fix.
+                    if let Some(resolved) = indexes.site_resolved_module(site_file, name) {
+                        qualified_reads.push((name.clone(), referring.to_string(), resolved));
+                    }
                     continue;
                 }
                 ambiguous_reads.push(AmbiguousBareRead {
@@ -40595,12 +40607,15 @@ fn claim_scope_for_with_memos(
                 .cmp(&b.name)
                 .then_with(|| a.referring_module.cmp(&b.referring_module))
         });
+        qualified_reads.sort();
+        qualified_reads.dedup();
     }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
         scope_identity,
         ambiguous_bare_reads: ambiguous_reads,
+        qualified_bare_reads: qualified_reads,
         ambiguous_bare_names: ambiguous
             .into_iter()
             .map(|(name, claimants)| AmbiguousBareName {

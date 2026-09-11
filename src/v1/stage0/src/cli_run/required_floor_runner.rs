@@ -6126,6 +6126,9 @@ pub fn run_required_floor(
     // convention, and the corpus carries whole families of those.
     let mut ambiguous_read_sites: BTreeMap<(String, String), BTreeSet<(String, &'static str)>> =
         BTreeMap::new();
+    // The positive half: (name, referring module) -> the module that answered it, for names that
+    // ARE ambiguous in the shared slot but are not read through it at this site.
+    let mut qualified_read_sites: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
@@ -6163,6 +6166,12 @@ pub fn run_required_floor(
                 scopes_with_ambiguity += 1;
                 ambiguous_total += built.ambiguous_bare_names.len();
                 ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names.len());
+                for (name, referring, resolved) in built.qualified_bare_reads.iter() {
+                    qualified_read_sites
+                        .entry((name.clone(), referring.clone()))
+                        .or_default()
+                        .insert(resolved.clone());
+                }
                 for row in built.ambiguous_bare_reads.iter() {
                     ambiguous_read_sites
                         .entry((row.name.clone(), row.referring_module.clone()))
@@ -7081,6 +7090,21 @@ pub fn run_required_floor(
         // and its `v2.std.*` self-host copy. That double is owned by the v2 self-host
         // replacement migration, which ends it by ending the double, and is not a rename this
         // wall could ask for.
+        // WHAT THE QUALIFIED SITES RESOLVE TO. A site that has left the ambiguous list above
+        // has either been qualified or has stopped being read; these lines say which, and name
+        // the declaration the reference now reaches. Without them the only evidence a
+        // qualification worked is a row disappearing from a census this same process produces.
+        for ((name, referring_module), resolved) in qualified_read_sites.iter() {
+            eprintln!(
+                "[floor-bare-name-ambiguity-bound] name={name} referring_module={referring_module} \
+                 resolves_to={}",
+                resolved.iter().cloned().collect::<Vec<String>>().join(",")
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] qualified_name_module_pairs={}",
+            qualified_read_sites.len()
+        );
         eprintln!(
             "[floor-bare-name-ambiguity-reads] channel=value_position_only \
              not_covered=type_position_name_collisions \

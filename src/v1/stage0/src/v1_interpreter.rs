@@ -4238,6 +4238,16 @@ impl PreparedScopeIndexes {
         self.site_resolved_fn(site_file, name).is_none()
     }
 
+    /// AND WHICH MODULE ANSWERED, when one did. The census's negative — a pair that has left the
+    /// ambiguous-read list — proves only that the list moved; this says what the reference now
+    /// resolves TO, which is what a qualification is actually for. Derived from the resolved
+    /// declaration's own source file through the same `file_module_paths` the first tier reads,
+    /// so it names the module that answered rather than the module the census hoped would.
+    pub fn site_resolved_module(&self, site_file: &str, name: &str) -> Option<String> {
+        let node = self.site_resolved_fn(site_file, name)?;
+        self.file_module_paths.get(node.span.file.as_str()).cloned()
+    }
+
     /// EVERY RESOLUTION THIS INDEX SET CAN ANSWER, rendered at identity grain and sorted, so
     /// two index sets can be compared for equality of ANSWERS rather than of construction path.
     /// Items are identified by `Rc` address: the same declaration node, not merely an equal
