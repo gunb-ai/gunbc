@@ -15,7 +15,6 @@ import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
   DispositionStanding, DispositionNotEngaged, admit_provider_use,
 }
-import extdeps.docker { DockerEnvAssignment }
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations }
 import gunbc.spark.pair_serving_realization { spark_pair_container_env }
 import extdeps.vllm.usage_stats {
