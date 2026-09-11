@@ -1696,14 +1696,12 @@ pub struct TransitionAdmission {
 /// goes is that the wall computed its transition as merged and printed it.
 ///
 /// UNION, THEN A CONSUMPTION (2026-09-11 merge). Both sides carried LIVE rows: `main` admitted the
-/// gunbc#10956 runner-roster rehome and this branch admits the gunbc#10994 sizing relocations, so
-/// the rosters were appended rather than one side taken whole -- an unadjudicated delta is what
-/// this wall exists to refuse. #10956 then merged, and the wall said so rather than this paragraph
-/// guessing: the required floor on gunbc#10994 reported `CONSUMED ADMISSION gunbc#10956 runner
-/// provider roster rehome ... already satisfied at the base -- consumed by its own merge`, and
-/// refused adjudication because a roster-touching change owes that deletion. This change is the
-/// toucher, so the deletion is paid here rather than deferred, and main's account of that subject
-/// goes with its row. The sizing rows below retire the same way, by their own merge.
+/// gunbc#11071 LinuxKernelRelease rehome and this branch admits the gunbc#10994 sizing relocations,
+/// so the rosters were appended rather than one side taken whole -- an unadjudicated delta is what
+/// this wall exists to refuse. #11071 then merged, and the wall said so rather than this paragraph
+/// guessing: those three rows are already satisfied at the base -- consumed by their own merge --
+/// and a roster-touching change owes that deletion. This change is the toucher, so the deletion is
+/// paid here rather than deferred. The sizing rows below retire the same way, by their own merge.
 
 /// The resting state was empty again as of THAT change, and this one authors rows back into it,
 /// which is the ordinary motion rather than a regression: empty is not permissive and non-empty is
