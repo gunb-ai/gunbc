@@ -10,30 +10,42 @@ import gunbc.spark.remote_execution {
 }
 import gunbc.spark.serving_arm_launch { ArmNode }
 
-// ── ACQUIRING WEIGHTS LEAVES THE HOST UNABLE TO LAUNCH, AND THAT IS AN ACQUISITION FACT ─────────
+// ── THIS RELEASES MEMORY THE HOST DID NOT NEED TO RELEASE, AND THAT IS THE HONEST NAME FOR IT ──
 //
-// MEASURED, NOT SUPPOSED (srv10, 2026-09-11). After the 328 GB native snapshot transfer, the host held about
-// 106 GB of page cache. The kernel reported 11 GB free and 117 GB AVAILABLE. The device reading taken inside
-// the launch image -- `torch.cuda.mem_get_info`, the function the engine itself calls -- reported 10.82 GiB
-// free of 121.69 GiB. After `sync; echo 3 > /proc/sys/vm/drop_caches` the same reading returned 117.08 GiB.
+// IT IS A WORKAROUND FOR AN UPSTREAM CHECK, NOT A REPAIR OF A SHORTAGE. An earlier revision of this module
+// argued that a host holding the acquisition's page cache "cannot admit a substantial engine at all" and
+// that releasing the cache was therefore an acquisition obligation. That was measured only half way and the
+// conclusion was wrong.
 //
-// SO CUDA'S FREE FIGURE TRACKS THE KERNEL'S FREE FIGURE AND NOT ITS AVAILABLE FIGURE, essentially one for
-// one on this unified-memory hardware. Reclaimable page cache is invisible to the allocator that admits a
-// launch. The consequence is not a tuning inconvenience: a host that has just received a large file
-// population cannot admit a substantial engine at all until the cache is released, and the host-level
-// reading that says otherwise is the one an operator naturally reaches for. That class is rostered as
-// gunbc.recurring_failure_mode.host_available_memory_read_as_device_admission.
+// THE MEASUREMENT THAT SETTLED IT (2026-09-11, a Group B host holding 53 GB of page cache). Inside the pinned
+// launch image, `torch.cuda.mem_get_info` reported 62.29 GiB free of 119.69 GiB. A single allocation of 90
+// GiB -- deliberately chosen ABOVE the free figure and BELOW the kernel's available figure -- SUCCEEDED,
+// leaving 1.04 GiB free. The kernel reclaimed the clean page cache on demand, exactly as it would for any
+// other consumer. The memory was never unavailable.
 //
-// WHICH MAKES THIS AN ACQUISITION OBLIGATION RATHER THAN A LAUNCH WORKAROUND. A transfer that leaves the
-// target unable to serve has not finished; it has moved bytes and left a condition behind. Naming the
-// remedy here, as the completing step of acquisition, keeps the launch path free of a repair for damage it
-// did not cause -- and keeps the next acquisition from rediscovering this at the cost of an endpoint.
+// SO WHAT REFUSES IS THE ENGINE'S STARTUP ADMISSION CHECK, which reads `mem_get_info` free. On unified
+// memory that figure is the kernel's MemFree and excludes reclaimable cache, so the check compares a budget
+// against a number materially smaller than what the host would actually have given it. A launch that would
+// have worked is refused. This function does not add memory; it makes the host LOOK idle so an
+// over-conservative comparison passes.
 //
-// THE ACTION IS SCOPED, BOUNDED AND NOT GLOBAL POLICY. `drop_caches` writes to a system-wide knob, so it is
-// performed on a NAMED host as a declared remedy with a receipt, never as a background convenience and never
-// on a host outside the acquisition's own population. It is also SAFE in the specific sense that matters
-// here: it discards only clean reclaimable pages, and the `sync` that precedes it is what makes the
-// distinction hold for a host that has just written 328 GB.
+// IT IS KEPT BECAUSE IT IS THE ONLY LEVER ON OUR SIDE OF THAT CHECK, and it is kept under its real name
+// rather than a flattering one (operator ruling, 2026-09-11). The alternatives are worse: an environment
+// variable that skips the check would be the escape hatch DESIGN section 5 forbids, and lowering the
+// requested fraction until it fits the unreclaimed remainder would starve the model to satisfy an
+// instrument.
+//
+// IT DROPS PAGE CACHE ONLY. `echo 3` also discards dentries and inodes, which nothing here measured and
+// nothing here needs; `echo 1` is the narrowest write that moves the number the check reads.
+//
+// AND IT HAS A REAL COST, STATED RATHER THAN LEFT TO BE DISCOVERED: the cache being discarded holds the very
+// snapshot files each rank is about to read, so every rank then loads its 76 GiB of weights from NVMe
+// instead of from RAM. The launch is slower in exchange for passing a check that should not have failed.
+//
+// DISSOLUTION TRIGGER, AND IT IS A CAPABILITY RATHER THAN A PROMISE: an upstream admission check that
+// consults reclaimable memory on unified-memory devices, or a supported way to supply the true available
+// figure to it. When a launch on a cache-warm host is admitted without this call, this module deletes --
+// and the acquisition keeps its cache, which is where it was doing good.
 type MemoryRemedyOutcome
   = CacheReleased { host: HostIdentity, detail: String }
   | CacheReleaseFailed { host: HostIdentity, cause: String }
@@ -62,7 +74,7 @@ fn memory_remedy_succeeded(o: MemoryRemedyOutcome) -> Bool {
 // just written hundreds of gigabytes the flush is what makes the release actually release -- and omitting it
 // would produce a remedy that reports success and frees a fraction of what it claimed.
 fn cache_release_argv() -> List<String> {
-  ["sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches; echo RELEASED"]
+  ["sh", "-c", "sync; echo 1 > /proc/sys/vm/drop_caches; echo RELEASED"]
 }
 
 func release_host_page_cache(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> MemoryRemedyOutcome
