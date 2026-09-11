@@ -98,6 +98,15 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // ONE LEG, and every option it carries derived from the sealed context rather than assembled here.
 // The words go through portable_remote_words, so a command this probe cannot transport safely
 // refuses before the leg rather than being quoted into something the remote shell may re-split.
+//
+// THE ONE PLACE THAT NAMES THE KEY SHAPER ON PURPOSE, and it is a declared exemption from
+// gunbc.fleet_bootstrap_principal_session rather than an unmigrated caller. Every other consumer
+// derives its session from the principal, because every other consumer wants to REACH the principal.
+// This one wants to MEASURE whether the fleet key reaches it, per principal, including the bootstrap
+// account -- which is exactly the measurement that established briansrls holds no key on a host this
+// repository provisioned. Deriving the session here would silently swap the question: the briansrls
+// row would become a password-session probe and report reach that says nothing about the key. So the
+// key shaper is the subject of this probe, not its transport choice, and it stays named.
 fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> SshSessionExecResult? {
   match portable_remote_words(raws: raw_words) {
     Absent => none
