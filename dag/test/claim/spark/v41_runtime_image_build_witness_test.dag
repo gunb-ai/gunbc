@@ -1,7 +1,7 @@
 module test.claim.spark.v41_runtime_image_build_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.measure { gigabyte_count }
+import std.measure { gigabyte_count, hardware_thread_count_value }
 import product.placement_supply { HostIdentity }
 import std.content_hash { serialize_content_hash }
 import extdeps.exec.command { argv_words }
@@ -98,7 +98,7 @@ test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bo
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: ["12.0" as NonEmptyStr],
     max_jobs: v41_build_max_jobs,
-    nvcc_threads: v41_build_nvcc_threads,
+    nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
   let other_jobs = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
