@@ -1,0 +1,17 @@
+module test.fixture.grounded_shared_carrier
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+
+// THE ONE SHAPE THIS FIXTURE EXISTS FOR: a Cons whose tail is the grounded FreeMonoid empty. The
+// emitter renders `Empty {}` as the already-shared carrier value, and the record-literal sites used
+// to share it a second time; the test beside this fixture asserts the single share and refuses the
+// double one by name.
+//
+// IT LIVES UNDER THE REPO-ROOT `fixtures/` TREE, beside the native lane's malformed specimen, and
+// not under src/v1 or dag/: the seed's own regeneration seeds every `.dag` under src/v1 into the
+// stage0 emitted surface, so a probe there would demand a committed seed mirror for a module that
+// exists only to be read as emitted text, and floor discovery walks dag/ and src/v2.
+fn one_row() -> List<String> {
+  Cons { head: "a", tail: Empty {} }
+}
