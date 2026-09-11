@@ -1057,25 +1057,28 @@ pub(crate) struct ChangedWitnessProjectionRow {
     pub cost: Option<ChangedWitnessCostObservation>,
 }
 
-/// THE CHANGED IDENTITIES, at the disposition receipt's own grain. The diff attribution is the
-/// floor's existing authority (`floor_diff_edits_from_line_ranges` over the resolved comparison
-/// baseline — the same observation every other diff consumer here makes), so "which test
-/// declarations did this change touch" has one producer; this function only spells the result
-/// as the qualified `module.function` identity the disposition receipt is keyed by. A wholly
-/// added `.dag` file contributes every test declaration it carries; a modified file contributes
-/// the declarations whose lines the diff reached. An observation or attribution failure
-/// REFUSES — it never widens to "no changed witnesses".
-pub(crate) fn changed_witness_identities(source_roots: &[String]) -> Result<Vec<String>, String> {
-    let index = process_shared_index(source_roots);
-    changed_witness_identities_with_index(&index)
-}
-
-/// The changed set and the NEWLY ENROLLED subset, from ONE diff observation.
+/// THE CHANGED IDENTITIES AND THE NEWLY ENROLLED SUBSET, at the disposition receipt's own grain,
+/// FROM ONE DIFF OBSERVATION.
 ///
-/// They are returned together rather than derived by two calls because each call re-runs
-/// `floor_observe_git_diff_unified_for_ci` — a wet observation over the whole diff — and the two
-/// answers are projections of one reading. Two calls would also let the two sets disagree about
-/// which diff they describe, which is the join defect this floor keeps refusing elsewhere.
+/// The diff attribution is the floor's existing authority (`floor_diff_edits_from_line_ranges` over
+/// the resolved comparison baseline — the same observation every other diff consumer here makes),
+/// so "which test declarations did this change touch" has ONE producer; this function only spells
+/// the result as the qualified `module.function` identity the disposition receipt is keyed by. A
+/// wholly added `.dag` file contributes every test declaration it carries; a modified file
+/// contributes the declarations whose lines the diff reached. An observation or attribution failure
+/// REFUSES — it never widens to "no changed witnesses".
+///
+/// THE TWO PROJECTIONS COME BACK TOGETHER rather than from two calls. Each call re-runs
+/// `floor_observe_git_diff_unified_for_ci` — a wet observation over the whole diff — and two calls
+/// would let the two sets disagree about WHICH DIFF they describe, which is the join defect this
+/// floor keeps refusing elsewhere.
+///
+/// THIS FUNCTION EXTENDS THE ORIGINAL DERIVATION RATHER THAN STANDING BESIDE IT (review 64039).
+/// The enrolment gate first landed as a near-verbatim second copy of this body with one extra
+/// projection, which left two functions independently answering one question — the §3 fork that
+/// "always gets consolidated later", so a correctness concern rather than a style one. The copy and
+/// the `changed_witness_identities` wrapper above it (already callerless on `main`) are deleted
+/// here rather than left for that later consolidation.
 fn changed_and_enrolled_witness_identities_with_index(
     index: &MultiEntryIndex,
 ) -> Result<(Vec<String>, Vec<String>), String> {
@@ -1107,29 +1110,6 @@ fn changed_and_enrolled_witness_identities_with_index(
         &quarantined,
     )?;
     Ok((changed, enrolled))
-}
-
-fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<String>, String> {
-    let diff_text = floor_git_diff_range()?;
-    let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
-    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
-    for path in &changed_paths {
-        line_ranges_by_file.entry(path.clone()).or_default();
-    }
-    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
-    let added_paths = parse_unified_diff_added_paths(&diff_text);
-    let edits = floor_diff_edits_from_line_ranges(
-        index,
-        &line_ranges_by_file,
-        &changed_new_lines_by_file,
-        &departed_paths,
-        &added_paths,
-    )?;
-    changed_witness_identities_from_edited_test_fns(
-        &process_workspace_root(),
-        &edits.edited_test_fns,
-        &quarantine_probe_admitted_pairs(),
-    )
 }
 
 /// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
