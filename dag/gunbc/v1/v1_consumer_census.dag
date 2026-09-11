@@ -665,11 +665,12 @@ data v1_interpreter_authority: DeclarationRef = decl_ref(module_path: "v1_compil
 // authority it names) and where the deletion set begins (a reference inside src/v1 is v1 consuming
 // v1 -- hole two, not a consumer).
 //
-// WHAT THE PRODUCER ANSWERS TODAY, read rather than transcribed: four rows, one per shim crate, and
-// three of them at a finer grain than the hand list carried -- `pub mod v1_rt;` is an item the scan
-// mints, so the consumer is that module declaration rather than the crate root that encloses it.
-// A host refusal is carried as PopulationUnmeasured, never as an empty shim list; an unattributed
-// token line lands in the uncitable column with its path and line, never dropped.
+// WHAT THE PRODUCER ANSWERS is read from the instrument, never written here:
+// v1_blocking_consumer_count_report re-derives the rows from HEAD on every run. One grain fact is
+// structural rather than a count: `pub mod v1_rt;` is an item the scan mints, so such a consumer is
+// that module declaration rather than the crate root that encloses it. A host refusal is carried
+// as PopulationUnmeasured, never as an empty shim list; an unattributed token line lands in the
+// uncitable column with its path and line, never dropped.
 type V1ReferenceAuthority {
   token: String
   authority: DeclarationRef
