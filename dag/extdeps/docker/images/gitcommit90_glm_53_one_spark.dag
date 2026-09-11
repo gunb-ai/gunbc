@@ -1,7 +1,8 @@
 module extdeps.docker.images.gitcommit90_glm_53_one_spark
 
 import std.types { String, List, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -9,6 +10,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "ghcr.io/gitcommit90/glm-5.3-one-spark"
   },
+}
+
+// THE SUBJECT THIS MODULE SPEAKS FOR IS THE PUBLISHED IMAGE, named by the repository the publisher
+// owns. Everything else here -- the digest, the tag, the version the image declares -- is that
+// publisher's statement about that subject. What this repository OBSERVED inside the image is not
+// in this module at all; readings live in gunbc.spark.runtime_architecture_registry_reading.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.docker.images.gitcommit90_glm_53_one_spark",
+      decl_name: "gitcommit90_glm_53_one_spark_repository",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
 }
 
 // THE COMMUNITY SM121 IMAGE THE GLM-5.3 ARM RUNS, PINNED BY REGISTRY DIGEST. It had no module of its
@@ -20,16 +37,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data gitcommit90_glm_53_one_spark_repository: NonEmptyStr = "ghcr.io/gitcommit90/glm-5.3-one-spark" as NonEmptyStr
 data gitcommit90_glm_53_one_spark_digest_sha256_hex: NonEmptyStr = "ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr
 data gitcommit90_glm_53_one_spark_vllm_version: NonEmptyStr = "0.1.dev20051+g487ecf187" as NonEmptyStr
-data gitcommit90_glm_53_one_spark_python: NonEmptyStr = "python3" as NonEmptyStr
 
-// THE IMAGE IS BUILT FOR ONE COMPUTE CAPABILITY AND SAYS SO IN ITS OWN ENVIRONMENT.
-// `docker image inspect` on this digest reports TORCH_CUDA_ARCH_LIST=12.1a and
-// FLASHINFER_CUDA_ARCH_LIST=12.1a, read on spark-a3ee 2026-09-11. Torch inside it reports a compiled
-// arch list of sm_80, sm_90, sm_100, sm_110, sm_120 -- sm_121 runs the sm_120 binaries, so the
-// declared 12.1a build target and the absence of a literal sm_121 entry are consistent rather than
-// in conflict, and neither is evidence about any particular kernel.
-data gitcommit90_glm_53_one_spark_torch_cuda_arch_list: NonEmptyStr = "12.1a" as NonEmptyStr
-
+// The pinned reference every probe and every create names: repository@sha256:digest, never the tag.
 fn gitcommit90_glm_53_one_spark_pinned_reference() -> NonEmptyStr {
   join([gitcommit90_glm_53_one_spark_repository as String, "@sha256:", gitcommit90_glm_53_one_spark_digest_sha256_hex as String], "") as NonEmptyStr
 }

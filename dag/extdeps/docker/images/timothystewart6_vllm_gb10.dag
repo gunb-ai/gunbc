@@ -1,7 +1,8 @@
 module extdeps.docker.images.timothystewart6_vllm_gb10
 
 import std.types { String, List, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -9,6 +10,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "hub.docker.com/r/timothystewart6/vllm-gb10"
   },
+}
+
+// THE SUBJECT THIS MODULE SPEAKS FOR IS THE PUBLISHED IMAGE, named by the repository the publisher
+// owns. Everything else here -- the digest, the tag, the version the image declares -- is that
+// publisher's statement about that subject. What this repository OBSERVED inside the image is not
+// in this module at all; readings live in gunbc.spark.runtime_architecture_registry_reading.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.docker.images.timothystewart6_vllm_gb10",
+      decl_name: "timothystewart6_vllm_gb10_repository",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
 }
 
 // THE NEWEST PUBLISHED GB10-TARGETED vLLM IMAGE FOUND ON 2026-09-11, pinned by registry digest.

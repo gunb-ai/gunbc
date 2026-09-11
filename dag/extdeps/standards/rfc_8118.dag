@@ -88,6 +88,15 @@ data rfc_8118_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [iso_32000_2_authority],
 }
 
+// THE COVER CHECK READS BYTES, AND IT READS FOR ONE NAME. gunbc.extdeps_scope_frontier
+// carrier_content_declares_scope asks whether a carrier file contains `data extdeps_model_scope:`,
+// so this module -- which declares its scope under a module-prefixed name, exactly as it does for
+// its authority anchor two declarations above -- was a carrier that the check could not see. It has
+// been on scope_carrier_paths and failing carriers_declare_scope_on_disk since 2026-09-04. The alias
+// is the same move the anchor already makes, and it is deliberately an alias rather than a second
+// ExternalModelScope: one scope, two names, and the module-scoped one stays the authority.
+data extdeps_model_scope: ExternalModelScope = rfc_8118_model_scope
+
 type PdfOpenPage {
   page: PositiveInt
 }
