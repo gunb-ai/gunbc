@@ -2,7 +2,7 @@ module test.claim.realization_selection_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
   AxisGap,
@@ -311,7 +311,10 @@ test fn a_sole_hard_constraint_failure_is_no_feasible_not_needs_evidence() -> Bo
     policy: UniqueSurvivorRequired { identity: id_policy_unique },
     evidence_snapshot: id_evidence,
   ) {
-    NoFeasibleRealization { causes: _ } => true
+    NoFeasibleRealization { causes: cs } =>
+      any(cs, s =>
+        string_contains(s: s as String, pattern: declaration_ref_display_key(ref: id_a))
+          && string_contains(s: s as String, pattern: declaration_ref_display_key(ref: ax_power)))
     _ => false
   }
 }

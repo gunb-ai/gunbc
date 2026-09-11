@@ -896,7 +896,8 @@ test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool {
     ServingFieldEstablished =>
       count(glm_candidate_field.candidates)
         == count(glm_domain.artifacts) * count(glm_domain.topologies) * count(glm_domain.profiles)
-        && topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 1)
+        && topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 2)
+        && !topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 1)
     ServingFieldUnestablished { causes: _ } => false
   } && match establish_serving_candidate_field(field: deepseek_candidate_field) {
     ServingFieldEstablished =>

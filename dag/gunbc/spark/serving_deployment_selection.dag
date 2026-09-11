@@ -888,6 +888,16 @@ fn weight_treatment_key(t: WeightTreatment) -> String {
   }
 }
 
+// COVERING PARTITIONS (tp * replicas == n) ARE ONE SLICE OF WHAT THE FLEET ADMITS. GLM and
+// V4-Flash stay on that authored cartesian. V4.1's domain is fleet_admitted_topologies; its
+// frontier row on that function is V4.1-only (DSV41-1), not a license to widen the other subjects.
+fn full_fleet_covering_topologies(host_count: Nat) -> List<TopologyShape> {
+  map(
+    filter(nat_range_inclusive(lo: 1, hi: host_count), d => host_count % d == 0),
+    d => topology_shape(tensor_parallel_degree: d, replica_count: host_count / d),
+  )
+}
+
 fn fleet_admitted_topologies(fleet: FleetSnapshot) -> List<TopologyShape> {
   flat_map(nat_range_inclusive(lo: 1, hi: fleet.host_count), tp =>
     map(
@@ -1856,9 +1866,11 @@ data serving_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evide
   fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot"),
 )
 
+data eight_host_topologies: List<TopologyShape> = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
+
 data glm_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_glm_53_flash_native, artifact_glm_53_flash_2bit],
-  topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+  topologies: eight_host_topologies,
   parameters: serving_parameters_current,
 )
 
@@ -1920,7 +1932,7 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
 // recommendation is withdrawn rather than restated more carefully.
 data deepseek_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_deepseek_v4_flash_native],
-  topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+  topologies: eight_host_topologies,
   parameters: serving_parameters_current,
 )
 
