@@ -1,0 +1,50 @@
+module extdeps.docker.images.timothystewart6_vllm_gb10
+
+import std.types { String, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "hub.docker.com/r/timothystewart6/vllm-gb10"
+  },
+}
+
+// THE SUBJECT THIS MODULE SPEAKS FOR IS THE PUBLISHED IMAGE, named by the repository the publisher
+// owns. Everything else here -- the digest, the tag, the version the image declares -- is that
+// publisher's statement about that subject. What this repository OBSERVED inside the image is not
+// in this module at all; readings live in gunbc.spark.runtime_architecture_registry_reading.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.docker.images.timothystewart6_vllm_gb10",
+      decl_name: "timothystewart6_vllm_gb10_repository",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE NEWEST PUBLISHED GB10-TARGETED vLLM IMAGE FOUND ON 2026-09-11, pinned by registry digest.
+// It has no role in any serving arm: it exists in the corpus because the DeepSeek V4.1 runtime
+// search had to probe SOMETHING newer than the two images the fleet already runs, and a candidate
+// that was probed and ruled out is worth exactly as much as one that was probed and admitted --
+// without it, "no image admits V4.1" would be a statement about the fleet's own two images.
+//
+// What this repository has OBSERVED inside the image is not recorded here. The publisher declares a
+// repository, a digest and a tag; the architectures its registry answers for are a reading WE took,
+// and readings live in gunbc.spark.runtime_architecture_registry_reading keyed by this digest.
+
+data timothystewart6_vllm_gb10_repository: NonEmptyStr = "timothystewart6/vllm-gb10" as NonEmptyStr
+data timothystewart6_vllm_gb10_digest_sha256_hex: NonEmptyStr = "60994dfa59451aabde6091d0391ac89fc7843a6a66f35c9d9535ad27477357f2" as NonEmptyStr
+data timothystewart6_vllm_gb10_framework_version: NonEmptyStr = "0.28.1.dev0+g2cf0a6915.d20260828" as NonEmptyStr
+data timothystewart6_vllm_gb10_tag: NonEmptyStr = "v0.28.0-cu13.2-torch2.13-gb10.2" as NonEmptyStr
+
+// The pinned reference every probe and every create names: repository@sha256:digest, never the tag.
+fn timothystewart6_vllm_gb10_pinned_reference() -> NonEmptyStr {
+  join([timothystewart6_vllm_gb10_repository as String, "@sha256:", timothystewart6_vllm_gb10_digest_sha256_hex as String], "") as NonEmptyStr
+}
+

@@ -15,3 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data exit_code_success: Int = 0
 
 data exit_code_general_error: Int = 1
+
+data exit_code_command_invoked_cannot_execute: Int = 126
+
+data exit_code_command_not_found: Int = 127
