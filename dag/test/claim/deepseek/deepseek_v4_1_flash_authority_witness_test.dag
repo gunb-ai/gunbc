@@ -1,16 +1,19 @@
 module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.measure { token_count, token_count_value, parameter_count_value, byte_size_count }
+import std.measure { token_count_value, byte_size_count }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision, deepseek_v4_1_flash_encoder_path,
   deepseek_v4_1_flash_config_path, deepseek_v4_1_flash_encoder_source_url, deepseek_v4_1_flash_config_source_url,
-  deepseek_v4_1_flash_model_type, deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_native_context_length,
+  deepseek_v4_1_flash_architecture_class, deepseek_v4_1_flash_model_type,
+  deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_native_context_length,
   deepseek_v4_1_flash_yarn_factor, deepseek_v4_1_flash_kv_source_layers,
-  deepseek_v4_1_flash_backbone_parameters, deepseek_v4_1_flash_activated_parameters_prefill,
-  deepseek_v4_1_flash_activated_parameters_decode, deepseek_v4_1_flash_engram_parameters,
-  deepseek_v4_1_flash_prefill_activates_half_of_decode, deepseek_v4_1_flash_global_kv_bytes_per_token,
-  deepseek_v4_1_flash_global_kv_bytes_for_tokens,
+  deepseek_v4_1_flash_safetensors_payload_footprint, deepseek_v4_1_flash_safetensors_payload_total,
+  deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_shard_count,
+  deepseek_v4_1_flash_footprint_unread_on_fleet, deepseek_v4_1_flash_config_declares_kv_cache_dtype,
+  deepseek_v4_1_flash_config_declares_engram_off_accelerator,
+  deepseek_v4_1_flash_config_declares_encoder_decoder_split,
+  deepseek_v4_1_flash_engram, deepseek_v4_1_flash_accepts_image_input,
   DeepseekV41EncoderChat, DeepseekV41EncoderThinking,
   DeepseekV41EffortLow, DeepseekV41EffortHigh, DeepseekV41EffortMax,
   deepseek_v4_1_flash_encoder_prefill, deepseek_v4_1_flash_thinking_start_token, deepseek_v4_1_flash_thinking_end_token,
@@ -20,8 +23,8 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_effort_is_rendered, deepseek_v4_1_flash_dsml_tool_calls_open,
   deepseek_v4_1_flash_standalone_tool_role, deepseek_v4_1_flash_vllm_tokenizer_mode,
   deepseek_v4_1_flash_vllm_tool_call_parser, deepseek_v4_1_flash_vllm_reasoning_parser,
-  deepseek_v4_1_flash_num_hidden_layers, deepseek_v4_1_flash_causal_encoder_layers,
-  deepseek_v4_1_flash_decoder_layers, deepseek_v4_1_flash_hosted_api_model_id,
+  deepseek_v4_1_flash_num_hidden_layers, deepseek_v4_1_flash_hosted_api_model_id,
+  deepseek_v4_1_flash_dspark_target_layers, deepseek_v4_1_flash_num_nextn_predict_layers,
 }
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
@@ -36,6 +39,7 @@ test fn the_pin_names_the_hub_commit_and_both_source_files() -> Bool {
     && string_contains(s: cfg, pattern: deepseek_v4_1_flash_config_path as String)
     && (deepseek_v4_1_flash_hub_repo as String) == "deepseek-ai/DeepSeek-V4.1-Flash"
     && (deepseek_v4_1_flash_hosted_api_model_id as String) == "deepseek-flash"
+    && (deepseek_v4_1_flash_architecture_class as String) == "DeepseekV41ForCausalLM"
 }
 
 test fn config_window_is_scaled_one_million_over_sixty_four_k() -> Bool {
@@ -44,20 +48,29 @@ test fn config_window_is_scaled_one_million_over_sixty_four_k() -> Bool {
     && deepseek_v4_1_flash_yarn_factor == 16
     && (deepseek_v4_1_flash_model_type as String) == "deepseek_v41"
     && deepseek_v4_1_flash_num_hidden_layers == 40
-    && deepseek_v4_1_flash_causal_encoder_layers + deepseek_v4_1_flash_decoder_layers
-      == deepseek_v4_1_flash_num_hidden_layers
+    && !deepseek_v4_1_flash_config_declares_encoder_decoder_split
     && deepseek_v4_1_flash_kv_source_layers.layer_a == 2
     && deepseek_v4_1_flash_kv_source_layers.layer_d == 20
+    && deepseek_v4_1_flash_dspark_target_layers.layer_a == 37
+    && deepseek_v4_1_flash_num_nextn_predict_layers == 3
+    && deepseek_v4_1_flash_accepts_image_input
+    && deepseek_v4_1_flash_engram.layer_a == 1
+    && deepseek_v4_1_flash_engram.layer_b == 14
+    && !deepseek_v4_1_flash_config_declares_kv_cache_dtype
+    && !deepseek_v4_1_flash_config_declares_engram_off_accelerator
 }
 
-test fn publisher_footprint_is_backbone_activation_split_and_kv_bytes() -> Bool {
-  parameter_count_value(p: deepseek_v4_1_flash_backbone_parameters) == 552000
-    && parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_prefill) == 8000
-    && parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_decode) == 16000
-    && parameter_count_value(p: deepseek_v4_1_flash_engram_parameters) == 196000
-    && deepseek_v4_1_flash_prefill_activates_half_of_decode()
-    && byte_size_count(b: deepseek_v4_1_flash_global_kv_bytes_per_token) == 890
-    && byte_size_count(b: deepseek_v4_1_flash_global_kv_bytes_for_tokens(tokens: token_count(count: 2))) == 1780
+test fn safetensors_payload_footprint_partitions_the_index_total() -> Bool {
+  let f = deepseek_v4_1_flash_safetensors_payload_footprint
+  byte_size_count(b: f.backbone_bytes) == 298309535168
+    && byte_size_count(b: f.engram_bytes) == 203073076240
+    && byte_size_count(b: f.vision_bytes) == 970536960
+    && byte_size_count(b: f.draft_bytes) == 7932874632
+    && byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_total(f: f))
+      == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
+    && byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size) == 510286023000
+    && deepseek_v4_1_flash_safetensors_shard_count == 48
+    && deepseek_v4_1_flash_footprint_unread_on_fleet
 }
 
 test fn encoder_effort_is_numeric_and_defaults_to_high() -> Bool {

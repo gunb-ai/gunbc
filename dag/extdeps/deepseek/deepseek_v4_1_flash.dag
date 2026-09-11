@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
 import std.measure {
   TokenCount, token_count, token_count_value,
-  ParameterCount, parameter_count, parameter_count_value,
   ByteSize, byte_size, byte_size_count,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -54,6 +53,8 @@ data deepseek_v4_1_flash_revision_committed: NonEmptyStr = "2026-09-10T08:18:10Z
 
 data deepseek_v4_1_flash_config_path: NonEmptyStr = "config.json" as NonEmptyStr
 data deepseek_v4_1_flash_encoder_path: NonEmptyStr = "encoding/encoding.py" as NonEmptyStr
+data deepseek_v4_1_flash_safetensors_index_path: NonEmptyStr = "model.safetensors.index.json" as NonEmptyStr
+data deepseek_v4_1_flash_inference_model_path: NonEmptyStr = "inference/model.py" as NonEmptyStr
 
 fn deepseek_v4_1_flash_config_source_url() -> String {
   join(["https://huggingface.co/", deepseek_v4_1_flash_hub_repo, "/blob/", deepseek_v4_1_flash_revision, "/", deepseek_v4_1_flash_config_path], "")
@@ -67,10 +68,23 @@ fn deepseek_v4_1_flash_encoder_source_url() -> String {
 // CONFIG, transcribed from config.json at the pinned revision.
 // ===========================================================================================
 
-data deepseek_v4_1_flash_architectures: List<NonEmptyStr> = ["DeepseekV41ForCausalLM" as NonEmptyStr]
+// ARCHITECTURE CLASS NAME, the string DSV41-1's registry probe must look for. Cited from
+// config.json `architectures[0]`. Declared frontier: DSV41-1 (loyal-ram-346).
+data deepseek_v4_1_flash_architecture_class: NonEmptyStr = "DeepseekV41ForCausalLM" as NonEmptyStr
 data deepseek_v4_1_flash_model_type: NonEmptyStr = "deepseek_v41" as NonEmptyStr
 data deepseek_v4_1_flash_quant_method: NonEmptyStr = "fp8" as NonEmptyStr
+data deepseek_v4_1_flash_quant_activation_scheme: NonEmptyStr = "dynamic" as NonEmptyStr
+data deepseek_v4_1_flash_quant_scale_fmt: NonEmptyStr = "ue8m0" as NonEmptyStr
 data deepseek_v4_1_flash_expert_dtype: NonEmptyStr = "fp4" as NonEmptyStr
+data deepseek_v4_1_flash_weight_block_size: Nat = 32
+
+// KV CACHE DTYPE IS NOT A CONFIG.JSON KEY. The card's "FP4 main KV / E2M1 / 890 bytes per token"
+// is prose; this module does not transcribe it. The reference inference at the same revision
+// quantizes compressed KV with fp4_act_quant(..., scale_dtype=float8_e4m3fn) in
+// inference/model.py; window KV has no dtype key in config.json. Declared frontier: DSV41-1 may
+// observe what a given engine actually selects.
+data deepseek_v4_1_flash_config_declares_kv_cache_dtype: Bool = false
+data deepseek_v4_1_flash_inference_compresses_kv_as_fp4: Bool = true
 
 data deepseek_v4_1_flash_hidden_size: Nat = 5120
 data deepseek_v4_1_flash_num_hidden_layers: Nat = 40
@@ -85,6 +99,22 @@ data deepseek_v4_1_flash_candidate_topk_blocks: Nat = 2048
 data deepseek_v4_1_flash_candidate_block_size: Nat = 8
 data deepseek_v4_1_flash_num_nextn_predict_layers: Nat = 3
 data deepseek_v4_1_flash_dspark_block_size: Nat = 5
+data deepseek_v4_1_flash_dspark_n_routed_experts: Nat = 128
+data deepseek_v4_1_flash_dspark_num_experts_per_tok: Nat = 3
+data deepseek_v4_1_flash_dspark_markov_rank: Nat = 256
+data deepseek_v4_1_flash_dspark_noise_token_id: Nat = 128799
+
+type DeepseekV41DsparkTargetLayers {
+  layer_a: Nat
+  layer_b: Nat
+  layer_c: Nat
+}
+
+data deepseek_v4_1_flash_dspark_target_layers: DeepseekV41DsparkTargetLayers = DeepseekV41DsparkTargetLayers {
+  layer_a: 37,
+  layer_b: 38,
+  layer_c: 39,
+}
 
 // THE FOUR LAYERS THAT COMPRESS THEIR OWN KV. config.json `kv_source_layer_ids` is exactly these
 // four; the rest of the stack reads that cache. Carried as a record rather than a comment so a
@@ -103,34 +133,59 @@ data deepseek_v4_1_flash_kv_source_layers: DeepseekV41KvSourceLayers = DeepseekV
   layer_d: 20,
 }
 
-// CED IS TWENTY-AND-TWENTY, cited to the model card, not inferred from the layer count alone. The
-// config says 40 hidden layers; the card states they are organized as a 20-layer causal encoder
-// followed by a 20-layer decoder. A reader who treated 40 as a uniform stack would miss the
-// prefill/decode activation split below.
-data deepseek_v4_1_flash_causal_encoder_layers: Nat = 20
-data deepseek_v4_1_flash_decoder_layers: Nat = 20
+// THE CONFIG DOES NOT SPLIT THE 40 LAYERS INTO ENCODER AND DECODER. The card's CED 20+20 is
+// prose; `text_config.num_hidden_layers` is 40 and there is no encoder_layers / decoder_layers key.
+data deepseek_v4_1_flash_config_declares_encoder_decoder_split: Bool = false
 
 data deepseek_v4_1_flash_vision_num_hidden_layers: Nat = 32
 data deepseek_v4_1_flash_vision_hidden_size: Nat = 1024
 data deepseek_v4_1_flash_vision_patch_size: Nat = 14
 data deepseek_v4_1_flash_vision_max_image_tokens: Nat = 1024
 data deepseek_v4_1_flash_image_token_id: Nat = 129264
+data deepseek_v4_1_flash_accepts_image_input: Bool = true
 
-// THE CONTEXT CEILING AND THE NATIVE WINDOW ARE TWO FACTS, as on V4, because they are two keys in
-// the same config. `text_config.max_position_embeddings` is 1048576; `rope_scaling` is yarn with
-// `original_max_position_embeddings` 65536 and `factor` 16. The 1M figure is therefore a SCALED
-// ceiling over a 64K native window, and the model card agrees: sparse attention trained at 64K,
-// extended to 1M at 34T tokens. A consumer that treats 1M as "designed for" has read the ceiling
-// as a capability.
+type DeepseekV41EngramTables {
+  layer_a: Nat
+  layer_b: Nat
+  unpadded_embeddings_a: Nat
+  unpadded_embeddings_b: Nat
+  max_ngram_size: Nat
+  vocab_size: Nat
+  n_heads: Nat
+  head_dim: Nat
+  compressed_vocab_size: Nat
+}
+
+data deepseek_v4_1_flash_engram: DeepseekV41EngramTables = DeepseekV41EngramTables {
+  layer_a: 1,
+  layer_b: 14,
+  unpadded_embeddings_a: 384006168,
+  unpadded_embeddings_b: 384016682,
+  max_ngram_size: 4,
+  vocab_size: 16000000,
+  n_heads: 8,
+  head_dim: 256,
+  compressed_vocab_size: 99092,
+}
+
+// ENGRAM OFF-ACCELERATOR PLACEMENT IS NOT A PUBLISHER CONFIG KEY. config.json carries table sizes
+// and layer ids; it does not declare host/UVA offload. The reference inference allocates the
+// tables as parameters. Whether a serving runtime can park them in host memory is a runtime fact
+// (DSV41-1 / DSV41-2). On GB10, host and GPU are one unified pool, so offload cannot add capacity
+// there even if a runtime offers it — that evaluation belongs to DSV41-2, not this module.
+data deepseek_v4_1_flash_config_declares_engram_off_accelerator: Bool = false
+
+// THE CONTEXT CEILING AND THE NATIVE WINDOW ARE TWO KEYS IN THE SAME CONFIG. The card's "up to
+// one million tokens" and its 64K sparse-attn training sentence contradict each other if read as
+// one native length. `text_config.max_position_embeddings` is 1048576; `rope_scaling` is yarn with
+// `original_max_position_embeddings` 65536 and `factor` 16. The 1M figure is a SCALED ceiling
+// over a 64K native window. Declared frontier for the working-window constraint: DSV41-2.
 data deepseek_v4_1_flash_context_length: TokenCount = token_count(count: 1048576)
 data deepseek_v4_1_flash_native_context_length: TokenCount = token_count(count: 65536)
 data deepseek_v4_1_flash_yarn_factor: Nat = 16
+data deepseek_v4_1_flash_rope_type: NonEmptyStr = "yarn" as NonEmptyStr
 
-// THE ONLY DOCUMENTED OUTPUT FIGURE IS A RECOMMENDED FLOOR, not a model-side ceiling. The model
-// card's sampling table says `max_tokens` ≥ 256K. No primary source at this revision states a
-// maximum output token count, so the absence is the fact, and what bounds a completion is the
-// serving engine's input-plus-output admission against the window.
-data deepseek_v4_1_flash_recommended_max_tokens_floor: TokenCount = token_count(count: 262144)
+// NO OUTPUT CEILING IN CONFIG.JSON. The card's sampling table is not this module's authority.
 data deepseek_v4_1_flash_declares_no_output_ceiling: Bool = true
 
 fn deepseek_v4_1_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
@@ -139,39 +194,50 @@ fn deepseek_v4_1_flash_output_budget_for_input(window: TokenCount, input_tokens:
   if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
 }
 
-data deepseek_v4_1_flash_recommended_temperature: NonEmptyStr = "1.0" as NonEmptyStr
-data deepseek_v4_1_flash_recommended_top_p: NonEmptyStr = "0.95" as NonEmptyStr
-
 // ===========================================================================================
-// FOOTPRINT, cited to the model card at the pinned revision. These are publisher figures, not
-// measurements of a serving unit.
+// FOOTPRINT FROM THE SAFETENSORS INDEX, not from the card. The card self-contradicts (552B
+// backbone + 196B Engram, also "763B total"); this module does not transcribe those figures.
+// Component bytes are the sum of each tensor's data_offsets span in the 48-shard headers at this
+// revision, partitioned by name: `vision.`/`aligner.`/`image_*` = vision; `.engram.` = Engram;
+// `mtp.` = DSpark/MTP draft; everything else = backbone. The index metadata.total_size equals
+// that sum. This is an upstream-reported payload size until someone reads the bytes on the fleet
+// (ArtifactFootprint FootprintReportedExternally). Declared frontier: DSV41-2
+// (crisp-crane-661) gunbc.spark.serving_deployment_selection ArtifactFootprint.
 // ===========================================================================================
 
-// BACKBONE VERSUS ACTIVATED VERSUS ENGRAM ARE THREE FACTS, because stuffing them into one total
-// would hide the quantity a consumer actually needs. The card: 552B backbone parameters; 8B
-// active per token during prefill and 16B during decode (the CED split); Engram conditional memory
-// of 196B parameters, sparsely accessed. A vLLM recipe page at the same date writes "522B total"
-// — that is a different page, it disagrees with the card and with this config's expert counts, and
-// copying it here would be authority substitution. The recipe's serving flags are cited below; its
-// parameter total is not.
-data deepseek_v4_1_flash_backbone_parameters: ParameterCount = parameter_count(millions: 552000)
-data deepseek_v4_1_flash_activated_parameters_prefill: ParameterCount = parameter_count(millions: 8000)
-data deepseek_v4_1_flash_activated_parameters_decode: ParameterCount = parameter_count(millions: 16000)
-data deepseek_v4_1_flash_engram_parameters: ParameterCount = parameter_count(millions: 196000)
+data deepseek_v4_1_flash_safetensors_shard_count: Nat = 48
 
-fn deepseek_v4_1_flash_prefill_activates_half_of_decode() -> Bool {
-  parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_prefill) * 2
-    == parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_decode)
+type DeepseekV41SafetensorsPayloadFootprint {
+  backbone_bytes: ByteSize
+  engram_bytes: ByteSize
+  vision_bytes: ByteSize
+  draft_bytes: ByteSize
 }
 
-// GLOBAL KV CACHE BYTES PER TOKEN, cited to the card's CSA2 + FP4 main-KV paragraph: 890 bytes
-// per token, roughly 1/4 of DeepSeek-V4-Flash. This is a publisher architecture figure, not a
-// measured vLLM kv_cache_bytes on some host.
-data deepseek_v4_1_flash_global_kv_bytes_per_token: ByteSize = byte_size(count: 890)
-
-fn deepseek_v4_1_flash_global_kv_bytes_for_tokens(tokens: TokenCount) -> ByteSize {
-  byte_size(count: byte_size_count(b: deepseek_v4_1_flash_global_kv_bytes_per_token) * token_count_value(t: tokens))
+data deepseek_v4_1_flash_safetensors_payload_footprint: DeepseekV41SafetensorsPayloadFootprint = DeepseekV41SafetensorsPayloadFootprint {
+  backbone_bytes: byte_size(count: 298309535168),
+  engram_bytes: byte_size(count: 203073076240),
+  vision_bytes: byte_size(count: 970536960),
+  draft_bytes: byte_size(count: 7932874632),
 }
+
+data deepseek_v4_1_flash_safetensors_index_total_size: ByteSize = byte_size(count: 510286023000)
+
+fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloadFootprint) -> ByteSize {
+  byte_size(count:
+    byte_size_count(b: f.backbone_bytes)
+      + byte_size_count(b: f.engram_bytes)
+      + byte_size_count(b: f.vision_bytes)
+      + byte_size_count(b: f.draft_bytes))
+}
+
+data deepseek_v4_1_flash_footprint_unread_on_fleet: Bool = true
+
+data deepseek_v4_1_flash_declared_frontier_dsv41_1: NonEmptyStr =
+  "DSV41-1 loyal-ram-346: architecture class DeepseekV41ForCausalLM for the registry probe; kv dtype absence; vLLM tokenizer/parser names" as NonEmptyStr
+
+data deepseek_v4_1_flash_declared_frontier_dsv41_2: NonEmptyStr =
+  "DSV41-2 crisp-crane-661: DeepseekV41SafetensorsPayloadFootprint as ArtifactFootprint FootprintReportedExternally; native vs scaled context; Engram off-accelerator is not a publisher config and cannot add GB10 pool" as NonEmptyStr
 
 // ===========================================================================================
 // ENCODER, transcribed from encoding/encoding.py at the pinned revision. The release ships no
@@ -195,8 +261,7 @@ fn deepseek_v4_1_flash_encoder_thinking_mode_wire(m: DeepseekV41EncoderThinkingM
   }
 }
 
-data deepseek_v4_1_flash_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
-data deepseek_v4_1_flash_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+data deepseek_v4_1_flash_image_placeholder: NonEmptyStr = "<｜deepseek_image｜>" as NonEmptyStr
 
 fn deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinkingMode) -> NonEmptyStr {
   match m {
