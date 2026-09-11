@@ -3,7 +3,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs, mutable_head_runs_cancel_expression, ci_heal_expected_healed_sha_input_name, github_event_name_equals_expr, WitnessFloorGroupFixture, resolve_witness_floor_concurrency_group }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs, mutable_head_runs_cancel_expression, ci_heal_expected_healed_sha_input_name, github_event_name_equals_expr, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group }
 import gunbc.witness_v2_native_route { required_v2_native_job_name }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
@@ -476,40 +476,42 @@ test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_canc
     sha: "mgsha",
     run_id: "rid",
     pull_request_number: "7",
-    expected_healed_sha: "",
-    github_ref: "refs/heads/main"
+    github_ref: "refs/heads/main",
+    dispatch_inputs: []
   }
   let heal = WitnessFloorGroupFixture {
     event: github_event_name_workflow_dispatch,
     sha: "mgsha",
     run_id: "rid",
     pull_request_number: "7",
-    expected_healed_sha: "healsha",
-    github_ref: "refs/heads/main"
+    github_ref: "refs/heads/main",
+    dispatch_inputs: [
+      DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "healsha" }
+    ]
   }
   let bare_dispatch = WitnessFloorGroupFixture {
     event: github_event_name_workflow_dispatch,
     sha: "mgsha",
     run_id: "rid",
     pull_request_number: "7",
-    expected_healed_sha: "",
-    github_ref: "refs/heads/main"
+    github_ref: "refs/heads/main",
+    dispatch_inputs: []
   }
   let pr = WitnessFloorGroupFixture {
     event: github_event_name_pull_request,
     sha: "mgsha",
     run_id: "rid",
     pull_request_number: "7",
-    expected_healed_sha: "",
-    github_ref: "refs/heads/main"
+    github_ref: "refs/heads/main",
+    dispatch_inputs: []
   }
   let push = WitnessFloorGroupFixture {
     event: github_event_name_push,
     sha: "mgsha",
     run_id: "rid",
     pull_request_number: "7",
-    expected_healed_sha: "",
-    github_ref: "refs/heads/main"
+    github_ref: "refs/heads/main",
+    dispatch_inputs: []
   }
   resolve_witness_floor_concurrency_group(fx: mg) == "witness-floor-mg-mgsha"
     && resolve_witness_floor_concurrency_group(fx: heal) == "witness-floor-heal-healsha"

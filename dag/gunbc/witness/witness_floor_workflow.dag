@@ -297,23 +297,47 @@ fn witness_floor_concurrency_group() -> String {
   )
 }
 
+type DispatchInputBinding {
+  name: String
+  value: String
+}
+
 type WitnessFloorGroupFixture {
   event: String
   sha: String
   run_id: String
   pull_request_number: String
-  expected_healed_sha: String
   github_ref: String
+  dispatch_inputs: List<DispatchInputBinding>
 }
 
 type ChosenGroupSuffix
   = UnchosenGroupSuffix
   | ChosenGroupSuffix { value: String }
 
+fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> String {
+  fold_list(
+    xs: bindings,
+    empty: "",
+    cons: fn(acc, b) {
+      if acc != "" {
+        acc
+      } else {
+        if b.name == name {
+          b.value
+        } else {
+          ""
+        }
+      }
+    }
+  )
+}
+
 fn group_branch_matches(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> Bool {
   match branch {
     ShaAfterEvent { event: e, prefix: _ } => fx.event == e
-    NonemptyInputAfterEvent { event: e, input: _, prefix: _ } => fx.event == e && fx.expected_healed_sha != ""
+    NonemptyInputAfterEvent { event: e, input: i, prefix: _ } =>
+      fx.event == e && dispatch_input_value(bindings: fx.dispatch_inputs, name: i) != ""
     PrNumberAfterEvent { event: e, prefix: _ } => fx.event == e
     RefAfterEvent { event: e } => fx.event == e
     RunIdFallback { prefix: _ } => true
@@ -323,7 +347,8 @@ fn group_branch_matches(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFi
 fn group_branch_suffix(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> String {
   match branch {
     ShaAfterEvent { event: _, prefix: p } => concat(p, fx.sha)
-    NonemptyInputAfterEvent { event: _, input: _, prefix: p } => concat(p, fx.expected_healed_sha)
+    NonemptyInputAfterEvent { event: _, input: i, prefix: p } =>
+      concat(p, dispatch_input_value(bindings: fx.dispatch_inputs, name: i))
     PrNumberAfterEvent { event: _, prefix: p } => concat(p, fx.pull_request_number)
     RefAfterEvent { event: _ } => fx.github_ref
     RunIdFallback { prefix: p } => concat(p, fx.run_id)
