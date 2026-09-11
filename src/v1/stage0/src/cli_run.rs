@@ -41148,7 +41148,7 @@ fn heartbeat_measured_bytes(v: Option<u64>, cause: &str) -> String {
 /// `test.claim.observation_seed_heartbeat_witness_test`. The stall clause is computed by the
 /// `memory_governor` mirrors of `gunbc.memory_stall_refusal` -- the same two functions the stall
 /// refusal consumes -- exactly as the `.dag` renderer calls the authority's own.
-pub fn render_heartbeat_line_mirror(
+pub(crate) fn render_heartbeat_line_mirror(
     elapsed_ms: u64,
     seam: &str,
     sample: &required_floor_runner::FloorResourceSample,
