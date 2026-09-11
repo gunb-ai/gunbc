@@ -8,6 +8,7 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.gcp_estate_observation { operator_audit_observed_at }
 
 // Named instruments that re-derive estate observation rows. These are not facts in
 // extdeps.cloud.gcp (DESIGN §3: observations and their refresh live in the observing layer).
@@ -40,13 +41,11 @@ type EstateReadInstrument {
   refreshes: NonEmptyStr
 }
 
-data estate_observation_observed_at: NonEmptyStr = "2026-09-11"
-
 data estate_observation_observed_by: NonEmptyStr = "operator-run"
 
 fn estate_rows_are_hand_observed() -> EstateObservationStanding {
   HandObserved {
-    observed_at: estate_observation_observed_at,
+    observed_at: operator_audit_observed_at,
     observed_by: estate_observation_observed_by,
   }
 }

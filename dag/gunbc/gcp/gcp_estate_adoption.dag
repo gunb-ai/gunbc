@@ -23,14 +23,10 @@ import gunbc.auth.github_gcp_federation {
 }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.gcp_estate_observation {
-  GcpEstateSubjectKind,
-  KindProject,
-  KindEnabledService,
-  KindServiceAccount,
-  KindWifPool,
-  KindWifProvider,
-  KindIamBindingCell,
   GcpEstateSubject,
+  EstateProject,
+  EstateEnabledService,
+  EstateServiceAccount,
   EstateWifPool,
   EstateWifProvider,
   EstateIamBindingCell,
@@ -95,22 +91,22 @@ type GcpEstateDesiredRoster {
   principal_set_bindings: List<DesiredPrincipalSetBinding>
 }
 
-fn drift_policy_for(kind: GcpEstateSubjectKind) -> DriftPolicy {
-  match kind {
-    KindProject => DriftRefuse {
+fn drift_policy_for(subject: GcpEstateSubject) -> DriftPolicy {
+  match subject {
+    EstateProject { project_id: _, project_number: _ } => DriftRefuse {
       reason: "project identity drift is not a create/update this fold may apply" as NonEmptyStr,
     }
-    KindEnabledService => DriftRefuse {
+    EstateEnabledService { project_id: _, service_id: _ } => DriftRefuse {
       reason: "enabling is Apply on absence; disabling an already-enabled service is refused because Google documents resource destruction" as NonEmptyStr,
     }
-    KindServiceAccount => DriftRefuse {
+    EstateServiceAccount { email: _ } => DriftRefuse {
       reason: "service-account disable/delete is refused; only create on absence is Apply" as NonEmptyStr,
     }
-    KindWifPool => DriftRefuse {
+    EstateWifPool { project_number: _, pool_id: _ } => DriftRefuse {
       reason: "updating a pool by deleting or disabling it invalidates every federation through it" as NonEmptyStr,
     }
-    KindWifProvider => DriftApplyUpdate
-    KindIamBindingCell => DriftRefuse {
+    EstateWifProvider { project_number: _, pool_id: _, provider_id: _ } => DriftApplyUpdate
+    EstateIamBindingCell { account: _, role: _, member: _ } => DriftRefuse {
       reason: "IAM cell removal can lock the operator out; missing desired cells Apply, extra cells are undeclared findings, not deletes" as NonEmptyStr,
     }
   }
@@ -208,7 +204,7 @@ fn classify_desired_wif_provider(
               && p.issuer_uri == desired.issuer_uri {
               Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
             } else {
-              match drift_policy_for(kind: KindWifProvider) {
+              match drift_policy_for(subject: observed_provider_subject(p: p)) {
                 DriftApplyUpdate => Present {
                   value: UpsertClassification {
                     verdict: Drifted,
@@ -275,6 +271,14 @@ fn observed_member_eq(b: ObservedPrincipalSetBinding, member: String) -> Bool {
   match b.member {
     Present { value: m } => m == member
     _ => false
+  }
+}
+
+fn observed_provider_subject(p: ObservedWifProvider) -> GcpEstateSubject {
+  EstateWifProvider {
+    project_number: p.project_number,
+    pool_id: p.pool_id,
+    provider_id: p.provider_id,
   }
 }
 

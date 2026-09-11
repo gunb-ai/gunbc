@@ -33,6 +33,8 @@ import gunbc.gcp_estate_observation {
   census_with_refused_pool_gap,
   census_measured_fingerprint_eq,
   ObservedWifProvider,
+  EstateWifProvider,
+  EstateEnabledService,
   observed_github_pool,
   sheets_calling_home_is_unresolved,
   secrets_project_is_refused_as_sheets_api_surface,
@@ -122,8 +124,6 @@ import gunbc.gcp_estate_adoption {
   undeclared_decision_never_applies,
   inaccessible_desired_subject,
   drift_policy_for,
-  KindWifProvider,
-  KindEnabledService,
   DriftApplyUpdate,
   DriftRefuse,
 }
@@ -390,10 +390,17 @@ test fn github_pool_and_cross_project_bindings_are_undeclared_and_refused() -> B
     )
 }
 
-test fn drift_policy_is_explicit_per_kind() -> Bool {
-  match drift_policy_for(kind: KindWifProvider) {
+test fn drift_policy_is_derived_from_the_subject() -> Bool {
+  match drift_policy_for(subject: EstateWifProvider {
+    project_number: observed_github_oidc_provider.project_number,
+    pool_id: observed_github_oidc_provider.pool_id,
+    provider_id: observed_github_oidc_provider.provider_id,
+  }) {
     DriftApplyUpdate =>
-      match drift_policy_for(kind: KindEnabledService) {
+      match drift_policy_for(subject: EstateEnabledService {
+        project_id: gunb_ci_project_id,
+        service_id: "compute.googleapis.com" as NonEmptyStr,
+      }) {
         DriftRefuse { reason: r } => (r as String).contains("disabling")
         DriftApplyUpdate => false
       }

@@ -55,14 +55,6 @@ data role_iam_workload_identity_user: String = "roles/iam.workloadIdentityUser"
 
 data legacy_federated_repo: String = "gunb-ai/gunb.ai"
 
-type GcpEstateSubjectKind
-  = KindProject
-  | KindEnabledService
-  | KindServiceAccount
-  | KindWifPool
-  | KindWifProvider
-  | KindIamBindingCell
-
 type GcpEstateSubject
   = EstateProject { project_id: GcpProjectId, project_number: String }
   | EstateEnabledService { project_id: GcpProjectId, service_id: NonEmptyStr }
