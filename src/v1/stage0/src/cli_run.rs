@@ -39751,6 +39751,33 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
     }
 }
 
+/// ONE BARE-NAME REFERENCE SITE THAT RESOLVES THROUGH THE AMBIGUOUS SHARED SLOT.
+///
+/// The declaration census ([`AmbiguousBareName`]) says which names two transitively-reached
+/// modules both spell; it does NOT say that anything reads one. A name nothing references bare
+/// harms nothing, and the corpus deliberately carries whole families of per-module convention
+/// rows that every extdeps module declares — so a refusal keyed on the DECLARATION population
+/// would refuse a convention rather than a defect.
+///
+/// The refusal's real population is the READ. This row is one of them: a module in the scope
+/// that references `name` bare, declares it nowhere itself, and has nothing in its own authored
+/// import closure that declares it either — so the reference falls through to the shared slot,
+/// and the slot holds one of several declarations that nothing the author wrote ranks.
+///
+/// COUNTED STATICALLY, over every reference site in the scope's closure, not over the lookups a
+/// fold happens to EXECUTE. An execution-keyed census omits a reference on a path no witness
+/// runs, which is precisely the site that would be refused later — or, if the wall were placed
+/// at runtime lookup, never refused at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbiguousBareRead {
+    pub name: String,
+    /// The module whose body carries the reference — the site a rename or a qualification has
+    /// to be written at, or whose declaring side has to move.
+    pub referring_module: String,
+    /// The out-of-region declarations the shared slot is choosing between for this read.
+    pub claimants: Vec<(String, &'static str)>,
+}
+
 pub struct PreparedClaimScope {
     /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
     /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
@@ -39790,6 +39817,10 @@ pub struct PreparedClaimScope {
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
     pub ambiguous_bare_names: Vec<AmbiguousBareName>,
+    /// THE READS, which is the population a refusal is affordable against — see
+    /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
+    /// the two whose members are defects rather than declarations.
+    pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
     /// grain the terminal correction has to choose between. The floor already reports what a
     /// scope COSTS in resident bytes (`[floor-scope-cost]`) and how many it built, and neither
@@ -40448,6 +40479,63 @@ fn claim_scope_for_with_memos(
             }
         }
     }
+    // WHICH OF THOSE AMBIGUOUS NAMES IS ACTUALLY READ THROUGH THE SHARED SLOT, decided
+    // statically over every reference site in the scope rather than over executed lookups.
+    //
+    // `reference_closure_index` already classified every `ExprVar` occurrence in the corpus into
+    // bindings and free references and published the free ones per module, so the reference
+    // sites are read off that index rather than re-derived by a second walk — the same index
+    // this function already consulted to build the scope's order.
+    //
+    // The three-step resolution the interpreter performs is the filter, in its order: the
+    // referring module's OWN declarations win first, then what its author's import closure
+    // declares (ordinary shadowing the language sanctions — the same authored-region rule the
+    // declaration census applies), and only what survives both reaches the shared slot.
+    let mut ambiguous_reads: Vec<AmbiguousBareRead> = Vec::new();
+    if !ambiguous.is_empty() {
+        for module in modules.iter() {
+            let referring = module.func_env.name.as_str();
+            let Some(refs) = ref_index.refs_by_module.get(referring) else {
+                continue;
+            };
+            for name in refs.iter() {
+                // Qualified chains are carried in the same set behind a unit separator, and a
+                // qualified path never reaches the bare shared slot at all.
+                if name.starts_with('\u{1f}') {
+                    continue;
+                }
+                let Some(claimants) = ambiguous.get(name) else {
+                    continue;
+                };
+                let declared_by = ref_index.decl_index.get(name);
+                let declares_itself = declared_by.is_some_and(|d| d.contains(referring));
+                if declares_itself {
+                    continue;
+                }
+                let ranked_by_own_imports = declared_by.is_some_and(|d| {
+                    module
+                        .func_env
+                        .parents
+                        .iter()
+                        .any(|parent| d.contains(&parent.name))
+                });
+                if ranked_by_own_imports {
+                    continue;
+                }
+                ambiguous_reads.push(AmbiguousBareRead {
+                    name: name.clone(),
+                    referring_module: referring.to_string(),
+                    claimants: claimants.iter().cloned().collect(),
+                });
+            }
+        }
+        // A function of the scope's data, not of the module vector's order.
+        ambiguous_reads.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.referring_module.cmp(&b.referring_module))
+        });
+    }
     // Folded left over the ORDERED identities with `hash_combine`, which is not commutative —
     // so two scopes holding the same modules in different orders get different identities. A
     // set digest would call them equal, and order is exactly what decides which declaration
@@ -40476,6 +40564,7 @@ fn claim_scope_for_with_memos(
         indexes,
         module_count,
         scope_identity,
+        ambiguous_bare_reads: ambiguous_reads,
         ambiguous_bare_names: ambiguous
             .into_iter()
             .map(|(name, claimants)| AmbiguousBareName {

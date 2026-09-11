@@ -6121,6 +6121,11 @@ pub fn run_required_floor(
     let mut ambiguous_claimants: BTreeMap<String, BTreeSet<(String, &'static str)>> =
         BTreeMap::new();
     let mut ambiguous_scope_count: BTreeMap<String, usize> = BTreeMap::new();
+    // AND THE READS: (name, referring module) sites, unioned across scopes. This is the
+    // population a refusal is affordable against — a declared name nothing reads bare is a
+    // convention, and the corpus carries whole families of those.
+    let mut ambiguous_read_sites: BTreeMap<(String, String), BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
     let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
@@ -6158,6 +6163,12 @@ pub fn run_required_floor(
                 scopes_with_ambiguity += 1;
                 ambiguous_total += built.ambiguous_bare_names.len();
                 ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names.len());
+                for row in built.ambiguous_bare_reads.iter() {
+                    ambiguous_read_sites
+                        .entry((row.name.clone(), row.referring_module.clone()))
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
                 for row in built.ambiguous_bare_names.iter() {
                     *ambiguous_scope_count.entry(row.name.clone()).or_insert(0) += 1;
                     ambiguous_claimants
@@ -6978,6 +6989,7 @@ pub fn run_required_floor(
         ambiguous_max,
         ambiguous_claimants.len()
     );
+    let ambiguous_claimants_len = ambiguous_claimants.len();
     // AND THE NAMES THEMSELVES. `names_total` sizes the population and names nothing in it, so
     // it can size a campaign and cannot be the campaign's input. Layer 2 of this class is a
     // refusal landed together with the rename or qualification of every site it would refuse;
@@ -7029,6 +7041,36 @@ pub fn run_required_floor(
         // mixing `data` with `fn` is the dangerous shape — it crosses the evaluator's kind
         // dispatch — and one that is `fn+fn` is the common shape that merely picks a body.
         eprintln!("[floor-bare-name-ambiguity-kinds] {mix}");
+    }
+    // THE READS, WHICH ARE THE DEFECTS. Everything above is a DECLARATION census: it says which
+    // names two transitively-reached modules both spell. A name nothing references bare is
+    // harmless, and the corpus deliberately carries per-module convention rows that hundreds of
+    // modules each declare — so the population a refusal has to dissolve is not that one, it is
+    // the set of reference SITES that actually fall through to the ambiguous shared slot.
+    // Counted statically over every reference site in each scope's closure, never over the
+    // lookups this fold happened to execute: a reference on a path no witness runs is exactly
+    // the site a later refusal would surprise.
+    {
+        let mut read_names: BTreeMap<String, usize> = BTreeMap::new();
+        for ((name, referring_module), claimants) in ambiguous_read_sites.iter() {
+            *read_names.entry(name.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-read] name={name} referring_module={referring_module} \
+                 claimants={sites}"
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] read_sites={} read_names_distinct={} \
+             declared_names_distinct={}",
+            ambiguous_read_sites.len(),
+            read_names.len(),
+            ambiguous_claimants_len
+        );
     }
     // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
     // the mean cost of a scope that cost anything; a scope whose modules were all resident from
@@ -8189,6 +8231,10 @@ mod scope_fragment_memo_equivalence {
             assert_eq!(
                 memoized.ambiguous_bare_names, control.ambiguous_bare_names,
                 "{entry}: ambiguity population diverged"
+            );
+            assert_eq!(
+                memoized.ambiguous_bare_reads, control.ambiguous_bare_reads,
+                "{entry}: ambiguous READ sites diverged"
             );
             assert_eq!(
                 memoized.resolution_fingerprint(),
