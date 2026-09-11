@@ -15,10 +15,23 @@ import gunbc.guarantee_measurement {
   ExecutionDiverged,
   FrontierAccepted,
   GuaranteeCeilingReason,
+  GuaranteeMeasurementReceipt,
+  GuaranteeProbeId,
   GuaranteeRequirement,
+  GitRevision,
+  HarnessRevisionsDisagree,
+  MeasurementAnchor,
+  MeasurementRevision,
+  OneProbeUsedForBothDirections,
   OnLadder,
   OutsideModeledGuarantee,
   PathEvidence,
+  PathEvidenceJoined,
+  PathEvidenceRefused,
+  ProbeSetsDisagree,
+  ReceiptClassesDisagree,
+  ReceiptPathsDisagree,
+  SubjectRevisionsDisagree,
   PlantedRedAccepted,
   PositiveControlRefused,
   ObservationDiverged,
@@ -30,7 +43,11 @@ import gunbc.guarantee_measurement {
   class_disposition,
   disposition_for_path,
   disposition_is_at_ceiling,
+  disposition_is_below_floor,
   fold_dispositions,
+  measurement_revision_eq,
+  path_evidence_from_receipts,
+  probe_set_digest,
 }
 import gunbc.guarantee_rung {
   GuaranteeRung,
@@ -38,7 +55,7 @@ import gunbc.guarantee_rung {
   Mitigatable,
   StructurallyGuaranteed,
 }
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, CommitSha, NonEmptyStr, String }
 
 fn path_id() -> NonEmptyStr {
   "guarantee-disposition-probe-path" as NonEmptyStr
@@ -52,8 +69,62 @@ fn accepted_with_residue() -> ProbeObservation {
   AcceptedCounted { diagnostic_class: "Advisory" as NonEmptyStr, count: 2 }
 }
 
+// EVERY FIXTURE NOW COMES THROUGH THE JOIN, so the controls below exercise the shape the carrier
+// will actually be handed rather than a hand-assembled pair the join would have refused. A helper
+// that built PathEvidence directly would leave the join witnessed only by its own tests while every
+// disposition control ran on evidence no receipt produced.
+fn anchor() -> MeasurementAnchor {
+  MeasurementAnchor {
+    class: "probe-class" as GuaranteeClassId,
+    path: path_id() as GuaranteePathId,
+    subject_revision: GitRevision { commit: "0123456789abcdef0123456789abcdef01234567" as CommitSha },
+    harness_revision: GitRevision { commit: "89abcdef0123456789abcdef0123456789abcdef" as CommitSha },
+    probe_set_digest: probe_set_digest(probe_ids: ["red-probe" as GuaranteeProbeId, "green-probe" as GuaranteeProbeId]),
+  }
+}
+
+fn receipt(probe: String, observed: ProbeObservation) -> GuaranteeMeasurementReceipt {
+  let a = anchor()
+  GuaranteeMeasurementReceipt {
+    class: a.class,
+    path: a.path,
+    probe: probe as GuaranteeProbeId,
+    subject_revision: a.subject_revision,
+    harness_revision: a.harness_revision,
+    probe_set_digest: a.probe_set_digest,
+    observed: observed,
+  }
+}
+
 fn evidence(red: ProbeObservation, green: ProbeObservation) -> PathEvidence {
-  PathEvidence { path: path_id() as GuaranteePathId, red_probe: red, green_probe: green }
+  match path_evidence_from_receipts(
+    red: receipt(probe: "red-probe", observed: red),
+    green: receipt(probe: "green-probe", observed: green),
+  ) {
+    PathEvidenceJoined { evidence: e } => e
+    // THE REFUSAL ARM IS DELIBERATELY LOUD, NOT A SUBSTITUTE. Handing back the pair the join just
+    // refused would be the absorbing fallback in miniature: every control below would keep passing
+    // on evidence the carrier rejected, and the join defect would be invisible. Returning two
+    // unrunnable probes instead makes EVERY disposition control fail at once, which is the only
+    // honest thing an unreachable arm in a fixture can do. the_fixture_pair_actually_joins is what
+    // proves this arm is unreachable rather than merely unvisited.
+    PathEvidenceRefused { cause: _ } =>
+      PathEvidence {
+        anchor: anchor(),
+        red_probe: ProbeNotRunnable { cause: "fixture receipts did not join" as NonEmptyStr },
+        green_probe: ProbeNotRunnable { cause: "fixture receipts did not join" as NonEmptyStr },
+      }
+  }
+}
+
+test fn the_fixture_pair_actually_joins() -> Bool {
+  match path_evidence_from_receipts(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt(probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceJoined { evidence: _ } => true
+    PathEvidenceRefused { cause: _ } => false
+  }
 }
 
 // THE POSITIVE CONTROL: the pair that DESIGN §4b(1) names — a discriminating RED refused and a
@@ -313,4 +384,118 @@ test fn below_floor_cause_agrees_with_the_disposition() -> Bool {
       let e = evidence(red: r, green: g)
       cause_is_present(evidence: e) != disposition_is_below_floor(d: disposition_for_path(evidence: e))
     }))
+}
+
+// ---- ONE RED PER REFUSAL ARM OF THE RECEIPT JOIN ----
+
+// A rung is a claim about a measured thing. Two receipts that disagree on WHAT was measured are not
+// a pair, and folding them anyway is how a strong path comes to speak for a silent one -- so each
+// disagreement is its own named refusal rather than a shared "invalid" answer, because the repair
+// differs: a class mismatch is a wiring error, a revision mismatch is a stale measurement, and a
+// probe-set mismatch means the two ran different probes under the same name.
+fn joined_with(red: GuaranteeMeasurementReceipt, green: GuaranteeMeasurementReceipt) -> PathEvidenceJoin {
+  path_evidence_from_receipts(red: red, green: green)
+}
+
+fn other_revision() -> MeasurementRevision {
+  GitRevision { commit: "fedcba9876543210fedcba9876543210fedcba98" as CommitSha }
+}
+
+test fn receipts_from_different_classes_do_not_join() -> Bool {
+  let red = receipt(probe: "red-probe", observed: refused())
+  let green = receipt(probe: "green-probe", observed: AcceptedClean)
+  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
+    class: "other-class" as GuaranteeClassId,
+    path: green.path, probe: green.probe,
+    subject_revision: green.subject_revision, harness_revision: green.harness_revision,
+    probe_set_digest: green.probe_set_digest, observed: green.observed,
+  }) {
+    PathEvidenceRefused { cause: ReceiptClassesDisagree } => true
+    _ => false
+  }
+}
+
+test fn receipts_from_different_paths_do_not_join() -> Bool {
+  let red = receipt(probe: "red-probe", observed: refused())
+  let green = receipt(probe: "green-probe", observed: AcceptedClean)
+  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
+    class: green.class,
+    path: "other-path" as GuaranteePathId, probe: green.probe,
+    subject_revision: green.subject_revision, harness_revision: green.harness_revision,
+    probe_set_digest: green.probe_set_digest, observed: green.observed,
+  }) {
+    PathEvidenceRefused { cause: ReceiptPathsDisagree } => true
+    _ => false
+  }
+}
+
+// THE SUBJECT REVISION IS THE ONE THAT LOOKS HARMLESS AND IS NOT: a red refused on yesterday's
+// compiler and a green accepted on today's is the pair that reports a wall which may no longer fire.
+test fn receipts_at_different_subject_revisions_do_not_join() -> Bool {
+  let red = receipt(probe: "red-probe", observed: refused())
+  let green = receipt(probe: "green-probe", observed: AcceptedClean)
+  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
+    class: green.class, path: green.path, probe: green.probe,
+    subject_revision: other_revision(), harness_revision: green.harness_revision,
+    probe_set_digest: green.probe_set_digest, observed: green.observed,
+  }) {
+    PathEvidenceRefused { cause: SubjectRevisionsDisagree } => true
+    _ => false
+  }
+}
+
+test fn receipts_from_different_harnesses_do_not_join() -> Bool {
+  let red = receipt(probe: "red-probe", observed: refused())
+  let green = receipt(probe: "green-probe", observed: AcceptedClean)
+  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
+    class: green.class, path: green.path, probe: green.probe,
+    subject_revision: green.subject_revision, harness_revision: other_revision(),
+    probe_set_digest: green.probe_set_digest, observed: green.observed,
+  }) {
+    PathEvidenceRefused { cause: HarnessRevisionsDisagree } => true
+    _ => false
+  }
+}
+
+test fn receipts_over_different_probe_sets_do_not_join() -> Bool {
+  let red = receipt(probe: "red-probe", observed: refused())
+  let green = receipt(probe: "green-probe", observed: AcceptedClean)
+  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
+    class: green.class, path: green.path, probe: green.probe,
+    subject_revision: green.subject_revision, harness_revision: green.harness_revision,
+    probe_set_digest: probe_set_digest(probe_ids: ["only-one" as GuaranteeProbeId]),
+    observed: green.observed,
+  }) {
+    PathEvidenceRefused { cause: ProbeSetsDisagree } => true
+    _ => false
+  }
+}
+
+// ONE PROBE CANNOT BE BOTH DIRECTIONS. DESIGN §4b(1) requires a discriminating RED *and* an accepted
+// positive control; one probe playing both parts is half the evidence reported as a whole pair, and
+// it is the arm a caller reaches by accident rather than by wiring error.
+test fn one_probe_cannot_serve_as_both_directions() -> Bool {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt(probe: "red-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceRefused { cause: OneProbeUsedForBothDirections } => true
+    _ => false
+  }
+}
+
+// THE ANCHOR SURVIVES THE JOIN: a derived rung has to be traceable to what was measured, so the
+// class, path and all three revisions come through rather than being consumed by the comparison.
+test fn the_join_carries_the_anchor_through() -> Bool {
+  match path_evidence_from_receipts(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt(probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceJoined { evidence: e } =>
+      (e.anchor.class as String) == "probe-class"
+        && (e.anchor.path as String) == path_id()
+        && measurement_revision_eq(left: e.anchor.subject_revision, right: anchor().subject_revision)
+        && measurement_revision_eq(left: e.anchor.harness_revision, right: anchor().harness_revision)
+    PathEvidenceRefused { cause: _ } => false
+  }
 }

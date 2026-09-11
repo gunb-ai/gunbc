@@ -263,6 +263,18 @@ type GuaranteeCeilingReason
 // unstated cannot be prioritised, and a ceiling without its reason is an assertion. next_rung_trigger
 // carries section 4b(2)'s "no untracked stall" - a class below its ceiling must name what would move
 // it, separating cannot-climb from can-climb-after-one-grounding from can-climb-now-but-unbuilt.
+//
+// A DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). Inside this module the requirement is
+// consumed by disposition_is_at_ceiling and by nothing else, which is honest but partial: the
+// comparison exists to be ASKED by something that owes an answer.
+//   CONSUMER: the compile-obligation activation authority, which states per required compile lens
+//   what is owed and reads class_disposition to decide whether the obligation is met.
+//   ROUTE: that authority folds one requirement per class against the dispositions derived from the
+//   receipts this module already carries; it does not re-derive either half.
+//   TRIGGER: the activation authority consuming class_disposition against a requirement roster --
+//   sufficient that a class below its ceiling is REFUSED by name rather than reported.
+// If that consumer does not land, this type is redundant work: the honest move is then to delete it
+// rather than leave a requirement nobody requires.
 type GuaranteeRequirement {
   class: GuaranteeClassId
   domain: NonEmptyStr
@@ -291,10 +303,105 @@ type GuaranteeDisposition
 //   - the RED was ACCEPTED  => the wall did not fire on the state it exists for.
 //   - the GREEN was REFUSED => the wall refuses a correct program.
 // Both are BelowFloor, and both are worth distinguishing to a reader, which is what the cause is for.
-type PathEvidence {
+// WHAT A PAIR OF OBSERVATIONS IS ANCHORED TO, carried as one value because the five fields travel
+// together or the anchor means nothing. This is the receipt's identity half: the class and path the
+// pair speaks for, and the three revisions that answer the ambiguity receipt_identity_note names --
+// without all three, "the baseline at commit X" names three different measurements.
+type MeasurementAnchor {
+  class: GuaranteeClassId
   path: GuaranteePathId
+  subject_revision: MeasurementRevision
+  harness_revision: MeasurementRevision
+  probe_set_digest: Fnv1a64Structural
+}
+
+type PathEvidence {
+  anchor: MeasurementAnchor
   red_probe: ProbeObservation
   green_probe: ProbeObservation
+}
+
+// THE PAIR IS JOINED FROM RECEIPTS, NOT ASSEMBLED BY HAND, and the join is what makes a derived
+// rung mean anything. A PathEvidence built from two bare observations says "something was refused
+// and something was accepted" and names no revision, no harness and no probe set -- so a rung
+// derived from it is a claim about nothing in particular, which is precisely the inflation this
+// carrier exists to prevent (DESIGN section 4b(1): the rung must be measured against a DECLARED
+// boundary). The earlier shape carried a lone path field that nothing in the module ever read,
+// which is the tell: the identity was decorative because no join was producing it.
+//
+// THE REFUSALS ARE THE POINT. Two receipts that disagree on class, path, harness revision, subject
+// revision or probe set are not a pair -- they are two measurements of different things, and
+// folding them into one rung is how a strong path comes to speak for a silent one. Answering a
+// disposition there would be the fabricated plausible output DESIGN section 5 forbids, so the join
+// refuses with the disagreement named. Using ONE receipt for both directions is its own arm: a
+// single probe cannot be both the discriminating red and the positive control, and a pair built
+// that way would report a rung established by half the evidence it claims.
+type PathEvidenceJoinCause
+  = ReceiptClassesDisagree
+  | ReceiptPathsDisagree
+  | SubjectRevisionsDisagree
+  | HarnessRevisionsDisagree
+  | ProbeSetsDisagree
+  | OneProbeUsedForBothDirections
+
+type PathEvidenceJoin
+  = PathEvidenceJoined { evidence: PathEvidence }
+  | PathEvidenceRefused { cause: PathEvidenceJoinCause }
+
+fn measurement_revision_eq(left: MeasurementRevision, right: MeasurementRevision) -> Bool {
+  match left {
+    GitRevision { commit: lc } =>
+      match right {
+        GitRevision { commit: rc } => (lc as String) == (rc as String)
+        ContentFingerprint { digest: _ } => false
+      }
+    ContentFingerprint { digest: ld } =>
+      match right {
+        GitRevision { commit: _ } => false
+        ContentFingerprint { digest: rd } => (ld.digest as String) == (rd.digest as String)
+      }
+  }
+}
+
+fn path_evidence_from_receipts(
+  red: GuaranteeMeasurementReceipt,
+  green: GuaranteeMeasurementReceipt,
+) -> PathEvidenceJoin {
+  if (red.class as String) != (green.class as String) {
+    PathEvidenceRefused { cause: ReceiptClassesDisagree }
+  } else {
+    if (red.path as String) != (green.path as String) {
+      PathEvidenceRefused { cause: ReceiptPathsDisagree }
+    } else {
+      if (red.probe as String) == (green.probe as String) {
+        PathEvidenceRefused { cause: OneProbeUsedForBothDirections }
+      } else {
+        if !measurement_revision_eq(left: red.subject_revision, right: green.subject_revision) {
+          PathEvidenceRefused { cause: SubjectRevisionsDisagree }
+        } else {
+          if !measurement_revision_eq(left: red.harness_revision, right: green.harness_revision) {
+            PathEvidenceRefused { cause: HarnessRevisionsDisagree }
+          } else {
+            if (red.probe_set_digest.digest as String) != (green.probe_set_digest.digest as String) {
+              PathEvidenceRefused { cause: ProbeSetsDisagree }
+            } else {
+              PathEvidenceJoined { evidence: PathEvidence {
+                anchor: MeasurementAnchor {
+                  class: red.class,
+                  path: red.path,
+                  subject_revision: red.subject_revision,
+                  harness_revision: red.harness_revision,
+                  probe_set_digest: red.probe_set_digest,
+                },
+                red_probe: red.observed,
+                green_probe: green.observed,
+              } }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 type BelowFloorCause
@@ -451,16 +558,6 @@ fn disposition_is_unmeasured(d: GuaranteeDisposition) -> Bool {
     frontier_accepted: false
     on_ladder: fn(_r) { false }
     outside_modeled: false
-  })
-}
-
-fn disposition_rung_index(d: GuaranteeDisposition) -> Int {
-  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
-    unmeasured: guarantee_rung_index(r: OutsideTheLadder)
-    below_floor: guarantee_rung_index(r: OutsideTheLadder)
-    frontier_accepted: guarantee_rung_index(r: OutsideTheLadder)
-    on_ladder: fn(r) { guarantee_rung_index(r: r) }
-    outside_modeled: guarantee_rung_index(r: OutsideTheLadder)
   })
 }
 
