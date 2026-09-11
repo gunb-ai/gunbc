@@ -491,7 +491,7 @@ fn capability_outcome(rows: List<RuntimeCapabilityProbeRow>, image_reference: No
 }
 
 // THE CAPABILITIES A RUNTIME MUST CARRY DEPEND ON WHAT YOU INTEND TO RUN, and an earlier revision
-// of this module made all five mandatory for everyone. That overstated the requirement in a specific
+// of this module made every capability mandatory for everyone. That overstated the requirement in a specific
 // way: DSpark is the speculative-decode path, and an image without it cannot speculate but can serve
 // perfectly well without speculating. A requirement list that does not name the profile it belongs
 // to converts a deployment CHOICE into a hardware VERDICT, and rules out images that would have
@@ -582,9 +582,11 @@ fn v41_runtime_verdict(rows: List<RuntimeCapabilityProbeRow>, image_reference: N
   }
 }
 
-// THE STANDING OF THE SWEEP AS A WHOLE, so the answer a reader gets is "none of THESE four, for this
-// profile, on this device" rather than "none", and the roster that produced that denominator is one
-// declaration away.
+// THE STANDING OF THE SWEEP AS A WHOLE, so the answer a reader gets is "none of THE CANDIDATES THIS
+// ROSTER CARRIES, for this profile, on this device" rather than "none", and the roster that produced
+// that denominator is one declaration away. The denominator is named by shape rather than by count on
+// purpose: a sentence carrying the number of candidates goes stale the next time one is added, and a
+// stale denominator is how a sweep reports a clean result over half its subjects.
 fn v41_images_with_prerequisites(rows: List<RuntimeCapabilityProbeRow>, candidates: List<RuntimeCandidateRow>, device: GpuComputeCapability, profile: V41ServingProfile) -> List<NonEmptyStr> {
   fold(candidates, init: [], f: (acc, c) =>
     match c.disposition {
@@ -598,11 +600,17 @@ fn v41_images_with_prerequisites(rows: List<RuntimeCapabilityProbeRow>, candidat
     })
 }
 
-// THE SGLANG CANDIDATE ANSWERS ONE OF THE FIVE QUESTIONS AND REFUSES THE OTHER FOUR, which is the
+// THE SGLANG CANDIDATE ANSWERS THE REGISTRY QUESTION AND REFUSES THE KERNEL ONES, which is the
 // distinction the outcome type exists to carry. Its architecture registry is its own and was read
 // the same way -- 247 entries, DeepseekV4ForCausalLM and even DeepseekV4ForCausalLMDSpark among
-// them, DeepseekV41ForCausalLM not. The remaining four probes are asked in vLLM's vocabulary and
-// that vocabulary does not exist in this image, so they refuse rather than answer.
+// them, DeepseekV41ForCausalLM not. The kernel probes are asked in vLLM's vocabulary and that
+// vocabulary does not exist in this image, so they refuse rather than answer.
+//
+// AND CAPABILITIES ADDED AFTER THIS RUN ARE NOT AMONG THE REFUSALS. The rows below are the questions
+// that were put to this image; a question the vocabulary gained later was never asked of it, and it
+// reads UNRECORDED rather than refused -- a refusal is something a run did, and a run cannot have
+// refused a question that did not exist when it happened. The lookup keeps the two apart, which is
+// why nothing here needs a row saying "not asked".
 data dgx_spark_sglang_probe: ProbedRuntimeImage = ProbedRuntimeImage {
   image_reference: xomoxcc_dgx_spark_sglang_registry_reading.image_reference,
   framework: "sglang" as NonEmptyStr,
@@ -624,7 +632,7 @@ data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: Fp4WeightKernels,
-    outcome: KernelProbeRefused { reason: "the four kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same four questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
   },
   RuntimeCapabilityProbeRow {
     image: dgx_spark_sglang_probe,
@@ -632,7 +640,7 @@ data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: MlaKvCacheLayoutAdmitted,
-    outcome: KernelProbeRefused { reason: "the four kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same four questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
   },
   RuntimeCapabilityProbeRow {
     image: dgx_spark_sglang_probe,
@@ -640,7 +648,7 @@ data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: Csa2CompressorKernels,
-    outcome: KernelProbeRefused { reason: "the four kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same four questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
   },
   RuntimeCapabilityProbeRow {
     image: dgx_spark_sglang_probe,
@@ -648,7 +656,7 @@ data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: DSparkSpeculator,
-    outcome: KernelProbeRefused { reason: "the four kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same four questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
   },
 ]
 
@@ -749,7 +757,7 @@ fn v41_sm121_capability_probe_rows() -> List<RuntimeCapabilityProbeRow> {
 // ── THE BUILD OBLIGATION THIS SWEEP PRODUCED ───────────────────────────────────────────────────
 //
 // The sweep's result is not merely "no image works": it is a specification for the image that would.
-// Every published candidate was measured against the five capabilities, and the only candidate whose
+// Every published candidate was measured against the capabilities this profile requires, and the only candidate whose
 // SOURCE is known to contain the V4.1 path at all is a GB10 build of vLLM at
 // 07b75534651a0dd584c6f3be75d8c62fb8426397. What that build must satisfy is exactly what the probe
 // asked, so the obligation is stated in the probe's own symbols rather than in prose about "V4.1
@@ -774,15 +782,21 @@ data v41_sm121_build_obligation: RuntimeBuildObligation = RuntimeBuildObligation
   profile: V41SpeculativeDecode,
   device: gb10_observed_compute_capability,
   required: v41_required_capabilities(profile: V41SpeculativeDecode),
-  discharge: "run the same capability probe inside the built image's exact digest on a GB10 and append its rows here. The build's PREREQUISITE half is discharged only when every capability this profile requires reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree. That half is inventory; the build is FIT for service only once an engine has started from this image with the V4.1 checkpoint at a declared context and answered a request, which is a RuntimeFeasibility receipt in gunbc.spark.serving_deployment_selection and is not observed here. THIS OBLIGATION IS NOT DISCHARGED, and the rows for the built image say why: extdeps.vllm.deepseek_v4_1_sm12 has landed, so the KV question is asked as the layout the backend admits rather than by ungrounded operator names, and the image built from that revision answered PRESENT to every kernel question and ABSENT to the registry one -- the architecture the profile needs is not registered in it. A build carrying the kernels and not the entry point is ruled out by the same list that would have ruled it in" as NonEmptyStr,
+  discharge: "run the same capability probe inside the built image's exact digest on a GB10 and append its rows here. The build's PREREQUISITE half is discharged only when every capability this profile requires reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree. That half is inventory; the build is FIT for service only once an engine has started from this image with the V4.1 checkpoint at a declared context and answered a request, which is a RuntimeFeasibility receipt in gunbc.spark.serving_deployment_selection and is not observed here. THIS OBLIGATION IS NOT DISCHARGED, AND FOR TWO REASONS RATHER THAN ONE. extdeps.vllm.deepseek_v4_1_sm12 has landed, so the KV question is asked as the layout the backend admits rather than by ungrounded operator names, and the image built from that revision answered PRESENT to every kernel question that was PUT to it. The registry question came back ABSENT: the architecture this profile needs is not registered in it, and a build carrying the kernels and not the entry point is ruled out by the same list that would have ruled it in. The FP4 runtime predicate is the second reason and it is a different kind of gap -- the run FOUND cutlass_scaled_mm_supports_fp4 and never CALLED it, so that capability stands at KernelProbeRefused and its answer for this device is unknown. Discharge needs both settled: re-probe for the predicate, and an image whose registry answers for the architecture. Reading the absence as the only thing outstanding would leave a required capability unasked behind a discharge that named a different defect" as NonEmptyStr,
 }
 
 // WHAT EACH CAPABILITY MEANS IS THE SYMBOL THE PROBE ASKED FOR, carried beside the obligation so the
 // lane that takes the build does not have to reconstruct the questions from the rows -- and carried
-// as a TYPE rather than a string, because one of the five has no symbol this repository is entitled
-// to write yet. A plain string field would have forced either a corrected spelling of our own or an
-// empty value that reads as "no symbol needed"; neither is true of a question whose vocabulary is
+// as a TYPE rather than a string, because a capability can arrive before the upstream roster that
+// names what to look for. A plain string field would force either a corrected spelling of our own or
+// an empty value that reads as "no symbol needed"; neither is true of a question whose vocabulary is
 // still being read from upstream.
+//
+// NO CAPABILITY IS IN THAT STATE TODAY, AND THE VARIANT STAYS. The one that was --
+// MlaKvCacheLayoutAdmitted, while extdeps.vllm.deepseek_v4_1_sm12 was unlanded -- is grounded in that
+// roster's own value now that it is on the tree. The frontier arm is not scaffolding that has served
+// its purpose: it is what a capability added ahead of its roster must land as, and deleting it would
+// make the next one land as a spelling instead.
 type CapabilityProbeSymbol
   = ProbeSymbolGrounded { symbol: NonEmptyStr }
   | ProbeSymbolAwaitingRoster { roster: NonEmptyStr, trigger: NonEmptyStr }

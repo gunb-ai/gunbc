@@ -88,12 +88,15 @@ test fn no_probed_image_admits_deepseek_v41_on_this_compute_capability() -> Bool
   length(v41_images_with_prerequisites(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)) == 0
 }
 
-// THE VERDICT FOR THE PRODUCTION IMAGE NAMES THE CAPABILITIES THAT WERE MEASURED MISSING, and it is
-// deliberately NOT all five. Four were asked with symbols that exist upstream and came back absent;
-// the FP4 KV-cache question was asked with names that are not registered ops, so it measured nothing
-// and is unprobed. An earlier revision of this witness asserted all five were missing and passed,
-// which is what a blind instrument buys you: a confident count over one reading that was never taken.
-test fn the_production_image_is_missing_the_four_capabilities_that_were_actually_asked() -> Bool {
+// THE VERDICT FOR THE PRODUCTION IMAGE NAMES ONLY THE CAPABILITIES THAT WERE MEASURED MISSING, which
+// is deliberately not everything this profile requires. Some were asked with symbols that exist
+// upstream and came back absent; the KV question was asked, at the time, with names that are not
+// registered ops, so it measured nothing and is unprobed -- and questions the vocabulary gained after
+// this run were never put to this image at all. An earlier revision asserted that every required
+// capability was missing and passed, which is what a blind instrument buys you: a confident count over
+// a reading that was never taken. The clause that carries the weight is the PARTITION -- missing plus
+// unprobed covers the requirement exactly -- which stays true however the requirement grows.
+test fn the_production_image_is_missing_only_the_capabilities_that_were_actually_asked() -> Bool {
   let rows = v41_sm121_capability_probe_rows()
   let image = sparkrun_vllm_ds4_gb10_pinned_reference()
   let missing = v41_missing_capabilities(rows: rows, image_reference: image, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)
@@ -143,7 +146,7 @@ test fn the_landed_roster_grounds_the_kv_symbol_in_the_rosters_own_value() -> Bo
 }
 
 // A REFUSED PROBE IS NOT A MISSING CAPABILITY. The SGLang image answers the registry question and
-// refuses the other four, so its four vLLM-vocabulary questions must read as unprobed while its one
+// refuses the kernel ones, so a vLLM-vocabulary question must read as unprobed for it while its one
 // measured negative reads as missing -- the distinction the outcome type exists for.
 test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> Bool {
   match capability_outcome(
@@ -166,8 +169,8 @@ test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> B
 
 // THE BUILD OBLIGATION ASKS FOR EXACTLY WHAT THE PROBE ASKED, which is the property that makes it a
 // specification rather than a wish: if a capability were added to the probe and not to the
-// obligation, a build could be declared discharged while one of the five questions was never put to
-// it. Asserted as an identity join over the required list, not a count.
+// obligation, a build could be declared discharged while one of the probe's questions was never put
+// to it. Asserted as an identity join over the required list, not a count.
 test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool {
   length(v41_sm121_build_obligation.required) == length(v41_required_capabilities(profile: V41SpeculativeDecode))
     && all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
