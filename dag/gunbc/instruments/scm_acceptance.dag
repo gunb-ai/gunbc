@@ -55,10 +55,14 @@ import tools.scm_acceptance_binary {
   ScmAcceptanceBinaryDigestRefused,
   ScmAcceptanceBinaryRetentionRefused,
   ScmAcceptanceBinaryNotRunnableHere,
-  scm_acceptance_binary_still_holds,
+  scm_acceptance_binary_standing,
+  ScmBinaryHolds,
+  ScmBinaryMoved,
+  ScmBinaryUnobservable,
   release_scm_acceptance_binary,
   acquire_scm_acceptance_binary,
   scm_acceptance_binary_executable,
+  cargo_selection_detail,
 }
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -91,7 +95,7 @@ type ScmAcceptanceOutcome
       exit_code: Int
     }
   | ScmAcceptanceWorkspaceRefused { scenario: String, detail: String }
-  | ScmAcceptanceBinaryRefused { scenario: String, bin_name: String, path: String }
+  | ScmAcceptanceBinaryUnusable { scenario: String, detail: String }
 
 // THE PASSING ARM IS SEALED, BECAUSE .dag HAS NO MODULE PRIVACY. Every function here is a live
 // entry point, so a generic runner that accepted a caller-supplied step list and returned a
@@ -864,17 +868,24 @@ fn scm_scenario_in_fresh_workspace(
         detail: "a temporary workspace could not be created",
       }
     ScmScenarioPrepared { prepared: prepared } =>
-      if !scm_acceptance_binary_still_holds(binary: binary) {
-        let cleaned = shell.Remove.RecursiveForce(path: prepared.workspace)
-        ScmAcceptanceWorkspaceRefused {
-          scenario: scm_scenario_name(scenario: scenario),
-          detail: concat(
-            "the retained acceptance binary no longer digests to the artifact it was minted over -- ",
-            "something replaced it between acquisition and this scenario",
-          ),
-        }
-      } else {
-        finalize_scm_scenario(execution: execute_prepared_scenario(prepared: prepared))
+      match scm_acceptance_binary_standing(binary: binary) {
+        ScmBinaryMoved { expected_hex: e, observed_hex: o } =>
+          let cleaned = shell.Remove.RecursiveForce(path: prepared.workspace)
+          ScmAcceptanceBinaryUnusable {
+            scenario: scm_scenario_name(scenario: scenario),
+            detail: concat(
+              concat("the retained acceptance binary was REPLACED between acquisition and this scenario -- minted over ", e),
+              concat(", now ", o),
+            ),
+          }
+        ScmBinaryUnobservable { cause: c } =>
+          let cleaned = shell.Remove.RecursiveForce(path: prepared.workspace)
+          ScmAcceptanceBinaryUnusable {
+            scenario: scm_scenario_name(scenario: scenario),
+            detail: concat("the retained acceptance binary could not be observed before this scenario: ", c),
+          }
+        ScmBinaryHolds =>
+          finalize_scm_scenario(execution: execute_prepared_scenario(prepared: prepared))
       }
   }
 }
@@ -896,13 +907,8 @@ fn scm_acceptance_exit(outcome: ScmAcceptanceOutcome) -> ProcessExit {
       )
     ScmAcceptanceWorkspaceRefused { scenario: s, detail: detail } =>
       exit_failure(reason: concat(concat(concat("scenario ", s), " workspace refused: "), detail))
-    ScmAcceptanceBinaryRefused { scenario: s, bin_name: b, path: p } =>
-      exit_failure(
-        reason: concat(
-          concat(concat(concat("scenario ", s), " refused: the witness binary "), b),
-          concat(" was not ready at ", p),
-        ),
-      )
+    ScmAcceptanceBinaryUnusable { scenario: s, detail: d } =>
+      exit_failure(reason: concat(concat("scenario ", s), concat(": ", d)))
   }
 }
 
@@ -917,15 +923,70 @@ fn scm_acceptance_exit(outcome: ScmAcceptanceOutcome) -> ProcessExit {
 // INDISTINGUISHABLE from the fresh-artifact one while proving strictly less. They remain callable
 // for decomposition and diagnosis, but a caller cannot reach one without first holding a carrier
 // that only `acquire_scm_acceptance_binary` can mint.
-fn scm_acceptance_population(binary: ScmAcceptanceBinary) -> ScmAcceptanceOutcome {
+// THE POPULATION IS ITS OWN SEALED FACT, because a scenario receipt is not one. This is the bypass
+// external review found, and it needed no forge at all: `scm_acceptance_population` used to RETURN
+// the same scenario-grained `ScmAcceptanceOutcome` a single scenario returns, and the terminal
+// promotion took that outcome beside a caller-supplied `released: Bool`. So a caller could acquire
+// the REAL sealed binary exactly as intended, run ONLY the conflict scenario, obtain a perfectly
+// legitimate scenario receipt, hand it to the function named `..._population_exit` with
+// `released: true`, and get `ExitSuccess` -- having executed one third of the population and
+// released nothing. Entirely authorable inside one `.dag` execution, so the CLI's inability to spell
+// a sealed carrier never came into it.
+//
+// The missing fact was POPULATION-GRAINED. `ScmAcceptanceReceipt` proves one scenario passed; it was
+// being read as though it proved three did. So there is now a distinct sole-constructed
+// `ScmPopulationReceipt` minted at exactly ONE site -- the three-success branch below -- and a
+// scenario receipt can no longer be promoted into it because they are different types.
+type ScmPopulationReceipt sole_constructor { scenarios: Int }
+
+type ScmPopulationOutcome
+  = ScmPopulationPassed { receipt: ScmPopulationReceipt }
+  | ScmPopulationScenarioFailed { outcome: ScmAcceptanceOutcome }
+
+fn run_scm_population(binary: ScmAcceptanceBinary) -> ScmPopulationOutcome {
   match scm_scenario_in_fresh_workspace(scenario: PublicationScenario, binary: binary) {
     ScmAcceptancePassed { receipt: _ } =>
       match scm_scenario_in_fresh_workspace(scenario: MergeScenario, binary: binary) {
         ScmAcceptancePassed { receipt: _ } =>
-          scm_scenario_in_fresh_workspace(scenario: ConflictScenario, binary: binary)
-        other => other
+          match scm_scenario_in_fresh_workspace(scenario: ConflictScenario, binary: binary) {
+            ScmAcceptancePassed { receipt: _ } =>
+              ScmPopulationPassed { receipt: ScmPopulationReceipt { scenarios: 3 } }
+            other => ScmPopulationScenarioFailed { outcome: other }
+          }
+        other => ScmPopulationScenarioFailed { outcome: other }
       }
-    other => other
+    other => ScmPopulationScenarioFailed { outcome: other }
+  }
+}
+
+// THE LIFETIME CARRIER BINDS THE POPULATION TO THE BINARY IT SPENT, so finalization can release the
+// artifact ITSELF rather than being told by a caller whether that happened. The previous shape took
+// `released: Bool`, which is the same forgeable-input defect one level out: a caller could assert
+// `true` having released nothing, and the seal on everything below it bought nothing at the top.
+type ScmPopulationExecution sole_constructor {
+  binary: ScmAcceptanceBinary,
+  result: ScmPopulationOutcome
+}
+
+fn execute_scm_population(binary: ScmAcceptanceBinary) -> ScmPopulationExecution {
+  ScmPopulationExecution { binary: binary, result: run_scm_population(binary: binary) }
+}
+
+// RELEASE HAPPENS HERE, ONCE, AND ITS FAILURE IS THE VERDICT ONLY WHEN NOTHING ELSE FAILED -- the
+// rule the per-scenario finalizer already follows. The artifact is released on BOTH paths: a failed
+// population leaks nothing either.
+fn finalize_scm_population(execution: ScmPopulationExecution) -> ProcessExit {
+  let released = release_scm_acceptance_binary(binary: execution.binary)
+  match execution.result {
+    ScmPopulationScenarioFailed { outcome: outcome } => scm_acceptance_exit(outcome: outcome)
+    ScmPopulationPassed { receipt: _ } =>
+      if released {
+        ExitSuccess
+      } else {
+        exit_failure(
+          reason: "the acceptance population passed but its retained artifact directory could not be removed",
+        )
+      }
   }
 }
 
@@ -938,8 +999,10 @@ fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) 
           concat("): ", e),
         )
       )
-    ScmAcceptanceBinarySelectionRefused { detail: d } =>
-      exit_failure(reason: concat("acceptance refused: ", d))
+    ScmAcceptanceBinarySelectionRefused { selection: sel } =>
+      exit_failure(
+        reason: concat("acceptance refused: ", cargo_selection_detail(selection: sel))
+      )
     ScmAcceptanceBinaryDigestRefused { detail: d } =>
       exit_failure(reason: concat("acceptance refused: ", d))
     ScmAcceptanceBinaryRetentionRefused { detail: d } =>
@@ -947,10 +1010,7 @@ fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) 
     ScmAcceptanceBinaryNotRunnableHere { detail: d } =>
       exit_failure(reason: concat("acceptance refused: ", d))
     ScmAcceptanceBinaryReady { binary: binary } =>
-      scm_acceptance_population_exit(
-        outcome: scm_acceptance_population(binary: binary),
-        released: release_scm_acceptance_binary(binary: binary),
-      )
+      finalize_scm_population(execution: execute_scm_population(binary: binary))
   }
 }
 
@@ -958,19 +1018,6 @@ fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) 
 // nothing else failed -- the same rule the per-scenario finalizer follows. Reporting "the artifact
 // directory could not be removed" in place of a real scenario failure would replace the answer with
 // an unrelated one; silently dropping it would leak a release binary with no signal.
-fn scm_acceptance_population_exit(outcome: ScmAcceptanceOutcome, released: Bool) -> ProcessExit {
-  match scm_acceptance_exit(outcome: outcome) {
-    ExitSuccess =>
-      if released {
-        ExitSuccess
-      } else {
-        exit_failure(
-          reason: "the acceptance population passed but its retained artifact directory could not be removed",
-        )
-      }
-    other => other
-  }
-}
 
 func scm_acceptance() -> ProcessExit {
   scm_acceptance_acquisition_exit(acquisition: acquire_scm_acceptance_binary())

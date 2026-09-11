@@ -138,7 +138,7 @@ fn scm_acceptance_binary_digest_hex(binary: ScmAcceptanceBinary) -> String {
 type ScmAcceptanceBinaryAcquisition
   = ScmAcceptanceBinaryReady { binary: ScmAcceptanceBinary }
   | ScmAcceptanceBinaryBuildRefused { target_name: String, stderr: String }
-  | ScmAcceptanceBinarySelectionRefused { detail: String }
+  | ScmAcceptanceBinarySelectionRefused { selection: CargoArtifactSelection }
   | ScmAcceptanceBinaryDigestRefused { detail: String }
   | ScmAcceptanceBinaryRetentionRefused { detail: String }
   | ScmAcceptanceBinaryNotRunnableHere { detail: String }
@@ -232,6 +232,11 @@ fn retain_observed_artifact(source: String, source_digest: Sha512Digest, hold: S
   }
 }
 
+// THE TYPED SELECTION VALUE TRAVELS; ONLY THE FINAL RENDERING FLATTENS IT. An earlier revision read
+// all fifteen arms and immediately projected them to a `String`, which exhausts the match while
+// discarding the value -- a consumer downstream could no longer ask WHICH refusal happened, only
+// read a sentence about it. Reading every arm is not the same as carrying the fact.
+//
 // THE TYPED SELECTION CAUSE IS CARRIED, NOT COLLAPSED. An earlier revision answered every selection
 // failure with "no single executable", which merges four different diagnoses: malformed JSON on the
 // message stream, a target absent from the build, duplicate artifact messages, and a target that
@@ -300,7 +305,7 @@ fn acquire_scm_acceptance_binary() -> ScmAcceptanceBinaryAcquisition {
     ArtifactPathBuildFailed { target_name: t } =>
       ScmAcceptanceBinaryBuildRefused { target_name: t, stderr: build.stderr }
     ArtifactPathRefused { selection: sel } =>
-      ScmAcceptanceBinarySelectionRefused { detail: cargo_selection_detail(selection: sel) }
+      ScmAcceptanceBinarySelectionRefused { selection: sel }
     ArtifactPathReported { executable: exe } =>
       match sha512sum_observe_file(path: exe) {
         Sha512FileObservationRefused { cause: c } =>
@@ -346,9 +351,29 @@ fn acquire_scm_acceptance_binary() -> ScmAcceptanceBinaryAcquisition {
 // can be false at spend, and without this the population would run replaced bytes while its receipt
 // still named the original. So every scenario re-observes the retained file and refuses if it has
 // moved underneath the carrier.
-fn scm_acceptance_binary_still_holds(binary: ScmAcceptanceBinary) -> Bool {
+// THE SPEND CHECK ANSWERS A TYPED STANDING, NOT A BOOL. "false" collapsed two different facts with
+// two different remedies: the file MOVED underneath the carrier (something replaced it, and the
+// receipt would name bytes nobody ran), and the file could not be OBSERVED at all (a permission or
+// device fault, where nothing is known either way). Reporting the second as the first sends a reader
+// to hunt a replacement that never happened -- the state-space conflation on the diagnostic that
+// DESIGN section 5 refuses.
+type ScmBinaryStanding
+  = ScmBinaryHolds
+  | ScmBinaryMoved { expected_hex: String, observed_hex: String }
+  | ScmBinaryUnobservable { cause: String }
+
+fn scm_acceptance_binary_standing(binary: ScmAcceptanceBinary) -> ScmBinaryStanding {
   match sha512sum_observe_file(path: binary.executable as FilePath) {
-    Sha512FileObservationRefused { cause: _ } => false
-    Sha512FileObserved { digest: now } => (now.hex as String) == (binary.digest.hex as String)
+    Sha512FileObservationRefused { cause: c } =>
+      ScmBinaryUnobservable { cause: c as String }
+    Sha512FileObserved { digest: now } =>
+      if (now.hex as String) == (binary.digest.hex as String) {
+        ScmBinaryHolds
+      } else {
+        ScmBinaryMoved {
+          expected_hex: binary.digest.hex as String,
+          observed_hex: now.hex as String,
+        }
+      }
   }
 }
