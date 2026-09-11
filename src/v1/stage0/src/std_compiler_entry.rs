@@ -134,9 +134,7 @@ pub fn native_driver_cost_row_standing(
             Rc::new(NativeDriverCostRowStanding::NativeDriverCostRowsPending)
         }
         NativeDriverChildStanding::NativeDriverChildExited { stderr } => {
-            if v1_rt::string_contains(stderr, "[native-cost-partition] ".to_string())
-                && v1_rt::string_contains(stderr, "[native-cost-shared] ".to_string())
-            {
+            if v1_rt::string_contains(stderr, "[native-cost-partition] ".to_string()) {
                 Rc::new(NativeDriverCostRowStanding::NativeDriverCostRowsObserved)
             } else {
                 Rc::new(NativeDriverCostRowStanding::NativeDriverCostRowsUnobserved)
