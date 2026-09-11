@@ -427,6 +427,21 @@ test fn standing_is_a_sum_projected_at_emit() -> Bool {
   }
 }
 
+test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: ["listing_id", "title", "standing", "judgement", "title"],
+    rows: [["L1", "alpha", w_standing_observed(), "", "hand-edit"]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "duplicate header title")
+        && !string_contains(s: r as String, pattern: "derived cell conflict")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
 test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
