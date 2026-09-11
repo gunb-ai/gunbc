@@ -1,5 +1,8 @@
 module test.claim.dispatch_selection_witness
 
+import gunbc.roadmap_sizing {
+  NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
+}
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.roadmap_model {
   PrsMerged,
@@ -109,6 +112,7 @@ import gunbc.dispatch_selection {
   ClaudeStateRootRef,
   dispatch_claude_default_workflow_mode,
   NoDerivedSizingExpectation,
+  DerivedSizingExpectation,
 }
 
 fn fixture_multibucket_codex_standing_inventory(
@@ -176,10 +180,16 @@ test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
   let high = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
+    sizing_expectation: DerivedSizingExpectation {
+      sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeLarge },
+    },
   )
   let low = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
+    sizing_expectation: DerivedSizingExpectation {
+      sizing: NodeSizing { intricacy: IntricacyLow, volume: VolumeSmall },
+    },
   )
   match high {
     DispatchSelectionResolved { receipt: high_receipt } =>

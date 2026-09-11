@@ -1,5 +1,8 @@
 module test.claim.roadmap_dispatch_actuator
 
+import gunbc.roadmap_sizing {
+  NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
+}
 import v2.std.optional { Present }
 import std.types { NonEmptyStr, GitRef, FilePath }
 import std.disposition { Scaffold, Terminal }
@@ -125,6 +128,8 @@ import gunbc.dispatch_selection {
   SelectCodex,
   dispatch_codex_default_model,
   resolved_process_fingerprint,
+  NoDerivedSizingExpectation,
+  DerivedSizingExpectation,
 }
 import gunbc.provider_standing {
   provider_standing_from_observed_bundle,
@@ -203,10 +208,16 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
   let high = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
+    sizing_expectation: DerivedSizingExpectation {
+      sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeLarge },
+    },
   )
   let low = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
+    sizing_expectation: DerivedSizingExpectation {
+      sizing: NodeSizing { intricacy: IntricacyLow, volume: VolumeSmall },
+    },
   )
   match high {
     DispatchSelectionResolved { receipt: high_receipt } =>

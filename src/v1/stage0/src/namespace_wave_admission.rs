@@ -1730,7 +1730,189 @@ pub struct TransitionAdmission {
 /// The resting state is empty again as of this change. Empty is not permissive: a run with a real
 /// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
 /// admission.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// THE SIZING UNBUNDLING (gunbc#10994) RELOCATES TWO GROUPS OF SPELLINGS, AND EVERY ROW BELOW IS
+/// ONE OF THEM AT EXACT IDENTITY. `Intricacy*` and `Volume*` were declared by
+/// `gunbc.roadmap_model` inside the `NodeSizing` coproduct; that coproduct fused a size with the
+/// repository and acceptance route, and the unbundling moves the size vocabulary to its own
+/// authority `gunbc.roadmap_sizing` while `repo`/`acceptance` stay behind as
+/// `WorkItemDispatch`. `node_title` folds `RoadmapItem`, so it moved from the consumer that
+/// happened to host it (`gunbc.roadmap_spawner`) to the module that declares the coproduct
+/// (`gunbc.roadmap_status`), because `gunbc.roadmap_sizing` needed the same fold and two folds of
+/// one coproduct answering one question is the DESIGN section 3 fork.
+///
+/// NONE OF THESE CHANGES WHICH DECLARATION A SPELLING DENOTES. `IntricacyHigh` is the same variant
+/// of the same three-arm coproduct before and after; `node_title` is the same function body moved
+/// between files. The membership half of each motion is reported separately as
+/// `SameDeclarationIdentityRebind` and auto-admits, and a binding whose MEANING had moved would
+/// refuse on its own row rather than be covered here. Rows are enumerated by exact identity rather
+/// than by a pattern over the module pair, so a genuine rebind landing in the same pair still
+/// refuses.
+///
+/// TRIGGER: these rows are consumed by their own merge. Once gunbc#10994 is on main the base binds
+/// each spelling to the module named in `target`, the delta stops being producible, and the wall
+/// reports them CONSUMED on the next roster-touching change, which is what deletes them.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.dispatch_selection",
+            in_declaration: "automatic_codex_behavior_preservation_holds",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.dispatch_selection",
+            in_declaration: "automatic_codex_behavior_preservation_holds",
+            spelling: "VolumeMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_belt_actuate",
+            in_declaration: "belt_audit_spawn",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_belt_actuate",
+            in_declaration: "belt_review_plan_for_head",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dispatch_actuator",
+            in_declaration: "dispatch_slot_fields",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "node_json_value",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "roadmap_dispatch_json_value",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "upcoming_array_json",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "upcoming_node_json",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "fixture_cell",
+            spelling: "IntricacyMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "fixture_cell",
+            spelling: "VolumeMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
+            spelling: "IntricacyLow",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
+            spelling: "IntricacyMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
+            spelling: "VolumeMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeSmall` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
+            spelling: "VolumeSmall",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
