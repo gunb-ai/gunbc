@@ -7,7 +7,7 @@ import v2.std.algebra { filter, fold_list }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.coverage { CoverageClosureEntry }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.currency.currency { CurrencyCode, currency_alphabetic_code }
 import extdeps.ebay.ebay { production_api_base }
 import extdeps.ebay.errors { EbayErrorShape }
@@ -82,7 +82,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // Partner Network ... There is no guarantee that your application for production use of the APIs
 // will be approved." The sandbox is open to any developer account and carries no real listings.
 // A consumer that reads production listings therefore owes an application whose outcome may be a
-// refusal, not only a credential.
+// refusal, not only a credential. Its consumer is the buyer pipeline's access standing, which
+// derives "awaiting the application" from this row and names its application route.
 type BrowseProductionAccess {
   application_route: NonEmptyStr
   approval_guaranteed: Bool
@@ -98,10 +99,30 @@ data browse_production_access: BrowseProductionAccess = BrowseProductionAccess {
 }
 
 // search: "Max: 200, Default: 50", and "This method can return a maximum of 10,000 items in one
-// results set"; offset must be zero or a multiple of limit.
+// results set"; offset must be zero or a multiple of limit ("An error is returned for invalid offset
+// values"). The page a caller asks for is admitted against all three before a request is formed,
+// so an upstream 400 is never the first place a bad page is noticed.
 data browse_search_limit_max: Int = 200
 
 data browse_search_result_window: Int = 10000
+
+type BrowseSearchPageAdmission
+  = BrowseSearchPageAdmitted { limit: Int, offset: Int }
+  | BrowseSearchLimitOutOfRange { limit: Int }
+  | BrowseSearchOffsetNotAPageBoundary { limit: Int, offset: Int }
+  | BrowseSearchBeyondResultWindow { limit: Int, offset: Int }
+
+fn browse_search_page_admission(limit: Int, offset: Int) -> BrowseSearchPageAdmission {
+  if limit < 1 || limit > browse_search_limit_max {
+    BrowseSearchLimitOutOfRange { limit: limit }
+  } else if offset < 0 || offset % limit != 0 {
+    BrowseSearchOffsetNotAPageBoundary { limit: limit, offset: offset }
+  } else if offset + limit > browse_search_result_window {
+    BrowseSearchBeyondResultWindow { limit: limit, offset: offset }
+  } else {
+    BrowseSearchPageAdmitted { limit: limit, offset: offset }
+  }
+}
 
 // upstream schema ConvertedAmount: the Sell scope's Amount (extdeps.ebay.inventory EbayAmount,
 // the same decimal-string value and CurrencyCode currency) plus the pre-conversion pair Buy adds
