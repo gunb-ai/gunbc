@@ -243,6 +243,12 @@ type EventAppend
   | EventAppendStale { expected: HeadExpectation, observed: HeadExpectation }
   | EventAppendRefused { step: String, reason: String }
 
+// THE BYTES GO TO GIT ON STDIN, NEVER THROUGH A PATH. Every writer on a host shares one scratch
+// root, and a path is re-read by git after the writer's write: a concurrent writer's O_TRUNC
+// published git's empty blob as a partition head (the harness's "event e69de29... undecodable"),
+// and a completed foreign write published another writer's event under this writer's admitted
+// append. The lease guards the head, not the object's content. The enrolled evidence is
+// test.claim.fabric_event_log_append_real_execution.
 fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
   if !head_expectation_eq(a: event_parent_expectation(e: event), b: expected) {
     EventAppendRefused { step: "parent", reason: "the event's parent is not the head the append expects" }
@@ -253,12 +259,6 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
         match event_log_remote_word(remote: layout.remote) {
           Absent => EventAppendRefused { step: "remote", reason: "the event log is unplaced" }
           Present { value: remote } => {
-            // THE BYTES GO TO GIT ON STDIN, NEVER THROUGH A PATH. Every writer on a host shares one
-            // scratch root, and a path is re-read by git after this writer's write: a concurrent
-            // writer's O_TRUNC published git's empty blob as a partition head (the harness's
-            // "event e69de29... undecodable"), and a completed foreign write published another
-            // writer's event under this writer's admitted append. The enrolled evidence is
-            // test.claim.fabric_event_log_append_real_execution.
             let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: pool_event_wire_text(event: event))
             if h.exit_code != 0 {
               EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
