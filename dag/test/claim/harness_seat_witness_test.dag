@@ -48,8 +48,8 @@ fn w_engine_max_num_seqs(group: FabricGroup) -> Int {
 }
 
 test fn each_group_has_its_own_partition() -> Bool {
-  (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive) as String) == "group-group-a-quality-seat-v1"
-    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive) as String) == "group-group-b-quality-seat-v1"
+  (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-a-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-b-quality-seat-v1"
 }
 
 // THE DISCRIMINATING ROW: THE SEAT CEILING IS NOT THE ENGINE'S SEQUENCE LIMIT.

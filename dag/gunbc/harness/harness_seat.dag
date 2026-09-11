@@ -82,12 +82,27 @@ import gunbc.serving.turn_demand { serving_turn_requirements }
 // THE QUALITY PARTITION KEEPS ITS EXACT NAME, deliberately: its ceiling has not changed, its history
 // is still the history of that pool, and renaming it would silently start an empty pool while seats
 // were held in the old one.
-fn harness_seat_partition(group: FabricGroup, class: ServingCoTenancyClass) -> PartitionId {
+//
+// AND THE TOLERANT PARTITION CARRIES ITS CEILING IN ITS NAME, WHICH THE QUALITY ONE DOES NOT NEED.
+// The invariant above -- a new ceiling is a new pool -- is enforced by the version suffix, and a
+// suffix bumped BY HAND is sufficient only while the ceiling is a row in this repository that an
+// author must edit to move. That is true of the quality seat and false of the tolerant one: group
+// A's ceiling is declared here and is advertised as cheap to supersede, and group B's is
+// glm_canary_arm max_num_seqs, which moves whenever the canary is relaunched under a different bound
+// -- WITHOUT ANY EDIT TO THIS REPOSITORY AT ALL. A hand-bumped suffix cannot be bumped by an author
+// who never runs, so the events written under the old ceiling would be replayed against the new root
+// and REINTERPRETED rather than continued, which is the exact state the version exists to prevent.
+//
+// So the ceiling is part of the tolerant partition's identity: changing it names a different pool,
+// which starts empty, and the old pool's events stay under the name that describes them. The
+// asymmetry is not tidiness -- it is that only one of the two ceilings can move while nobody is
+// looking.
+fn harness_seat_partition(group: FabricGroup, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
   match class {
     InteractiveQualitySensitive =>
       join(["group-", fabric_group_wire(g: group) as String, "-quality-seat-v1"], "") as PartitionId
     BatchQualityTolerant =>
-      join(["group-", fabric_group_wire(g: group) as String, "-tolerant-seat-v1"], "") as PartitionId
+      join(["group-", fabric_group_wire(g: group) as String, "-tolerant-seat-c", to_string(ceiling), "-v1"], "") as PartitionId
   }
 }
 
@@ -162,7 +177,7 @@ fn harness_seat_capacity_for(route: ServingRoute, class: ServingCoTenancyClass) 
       let seats = harness_class_ceiling(class: class, route_ceiling: c)
       SeatCeilingByDeclaredPolicy {
         class: class,
-        pool: harness_seat_pool_root(partition: harness_seat_partition(group: e.group, class: class), ceiling: seats),
+        pool: harness_seat_pool_root(partition: harness_seat_partition(group: e.group, class: class, ceiling: seats), ceiling: seats),
         seats: seats,
       }
     }
@@ -264,7 +279,7 @@ fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, layout:
         ServingRouteUnresolved { group: g, obligation: why } =>
           ClassHeldUnread { obligation: join([fabric_group_wire(g: g) as String, ": ", why as String], "") as NonEmptyStr }
         ServingRouteResolved { endpoint: e, ceiling: _ } =>
-          match fabric_seat_observe(layout: layout, partition: harness_seat_partition(group: e.group, class: class), root: root, at: now, budget: 4096) {
+          match fabric_seat_observe(layout: layout, partition: harness_seat_partition(group: e.group, class: class, ceiling: ceiling), root: root, at: now, budget: 4096) {
             SeatStandingUnobserved { step: st, reason: why } =>
               ClassHeldUnread {
                 obligation: join([
@@ -691,7 +706,7 @@ fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass,
     AdmissionCeilingUnestablished { group: _, cause: why } =>
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why as String) }
     SeatCeilingByDeclaredPolicy { class: _, pool: root, seats: _ } => {
-      let partition = harness_seat_partition(group: candidate.group, class: class)
+      let partition = harness_seat_partition(group: candidate.group, class: class, ceiling: candidate.ceiling)
       match event_log_observe_head(layout: layout, partition: partition) {
         HeadObservationRefused { step: st, reason: why } =>
           AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the partition head could not be read at ", st, ", so no unique acquisition reference exists: ", why], "")) }

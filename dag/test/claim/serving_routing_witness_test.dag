@@ -286,11 +286,32 @@ test fn an_occupant_the_seat_ledger_did_not_admit_blocks_both_classes() -> Bool 
 // and the quality ceiling is still one. A branch that widened the reader's protection would fail
 // here, which is the control the ruling asked for.
 test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Bool {
-  (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive) as String) == "group-group-a-quality-seat-v1"
-    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive) as String) == "group-group-b-quality-seat-v1"
-    && (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant) as String) == "group-group-a-tolerant-seat-v1"
-    && (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive) as String) != (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant) as String)
+  (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-a-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-b-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant, ceiling: 4) as String) == "group-group-a-tolerant-seat-c4-v1"
+    && (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: 1) as String) != (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant, ceiling: 4) as String)
     && harness_interactive_quality_seats == 1
+}
+
+// ── A CEILING THAT MOVES NAMES A DIFFERENT POOL, WHICH IS THE POINT OF PUTTING IT IN THE NAME ──
+//
+// THE FAILURE THIS FORBIDS, and it is reachable without anyone editing this repository: group B's
+// tolerant ceiling is the canary arm's declared bound, so relaunching that engine under a different
+// bound moves it. If the partition name did not carry the ceiling, acquire events written under the
+// old one would be replayed against the new root and reinterpreted rather than continued -- the
+// module's own invariant, violated by a change nobody here makes.
+//
+// The quality partition is asserted UNCHANGED under the same reading, because its ceiling is a row
+// in this repository that an author must edit to move, and its history must continue rather than
+// restart. Both halves together are what discriminate: a build that versioned everything would break
+// the quality pool's continuity, and one that versioned nothing would reinterpret the tolerant
+// pool's history.
+test fn the_tolerant_partition_is_keyed_by_its_ceiling_and_the_quality_partition_is_not() -> Bool {
+  (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 1) as String)
+      != (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 2) as String)
+    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String)
+      == (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 2) as String)
+    && (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 1) as String) == "group-group-b-tolerant-seat-c1-v1"
 }
 
 // ── 7. A MODEL-INDIFFERENT DEMAND AND AN EXACT ONE ARE DIFFERENT DEMANDS ──────────────────────
