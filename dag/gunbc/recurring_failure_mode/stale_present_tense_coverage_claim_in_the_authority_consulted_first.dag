@@ -22,7 +22,7 @@ data stale_present_tense_coverage_claim_in_the_authority_consulted_first: Recurr
 
     "SPECIMEN ONE, and it is the one this class was filed from. ",
 
-    "`v2.compiler.compile`'s annotation above `always_required_root_lenses` records the de-enrolment of `lens_module_gate` from the root roster and adds that \"Enforcement is NOT reduced: the invariant executes per-PR via its honestly-stamped consumer v2.test.claim.enforcement.lens_module_gate_witness\". ",
+    "`v2.compiler.compile`'s annotation beside `required_compile_lens_roster` (the single registration roster that replaced the two grain-specific lists, gunbc#11004) records the de-enrolment of `lens_module_gate` from the root roster and adds that \"Enforcement is NOT reduced: the invariant executes per-PR via its honestly-stamped consumer v2.test.claim.enforcement.lens_module_gate_witness\". ",
 
     "That is false on two independent grounds, either sufficient alone: the entry is enrolled in `gunbc.witness_deferral_freeze`, which means DECLARED NEVER-EXECUTED, and `test/claim/enforcement/` is a pattern in `gunbc.ci_layer_roots` `witness_exclusion_frontier`, which carves the whole directory out of per-PR discovery. ",
 
@@ -44,7 +44,7 @@ data stale_present_tense_coverage_claim_in_the_authority_consulted_first: Recurr
   ],
 
   evidence: [
-    decl_ref(module_path: "v2.compiler.compile", decl_name: "always_required_root_lenses"),
+    decl_ref(module_path: "v2.compiler.compile", decl_name: "required_compile_lens_roster"),
     decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "excl_bin_wet_reason"),
     decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
     decl_ref(module_path: "gunbc.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),

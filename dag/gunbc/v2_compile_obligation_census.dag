@@ -26,9 +26,12 @@ import gunbc.witness_v2_native_route { native_route_universe_member }
 // WHAT THE ROSTER IS, AND WHAT IT IS NOT: IT IS NOT PROVEN COMPLETE. The rows were enumerated by
 // hand from v2.compiler.compile's two enrolled lens rosters, std.primitive_identity's declared
 // traversal facts, and two classes surfaced by measurement — and nothing here joins that set to
-// those authorities at identity grain, because the enrolled rosters are the CONTENTS of two list
-// literals and no reader available to this module can walk them. So a lens de-enrolled from
-// always_required_root_lenses, or one added to it, leaves this roster stale and silent.
+// those authorities at identity grain, because the enrolled roster is the CONTENTS of a list
+// literal and no reader available to this module can walk it. So a lens de-enrolled from
+// required_compile_lens_roster, or one added to it, leaves this roster stale and silent. (Since
+// gunbc#11004 that is ONE roster carrying a grain per row, where it was two grain-specific lists
+// when this was written; the staleness argument is unchanged and the count of lists is not what it
+// turned on.)
 //
 // THE CENSUS THEREFORE CLAIMS COVERAGE OF ITS OWN ROWS AND NOT OF v2's OBLIGATIONS AS A WHOLE, and
 // every count below is denominated in obligations_claimed rather than in a population anyone has
@@ -619,7 +622,8 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
 
 // MEASURED, NOT READ. hollow_alias_blocked_via_always_required_lenses_holds was executed directly
 // against this tree and returned true — the hollow-alias tree is rejected with reason
-// fact_density_hollow_alias_locus through the always_required_lenses roster. That establishes the
+// fact_density_hollow_alias_locus through the subtree-grain partition of
+// required_compile_lens_roster. That establishes the
 // assertion HOLDS. It establishes nothing about coverage, and the interpreted column below is why.
 data fact_density_obligation: V2CompileObligation = V2CompileObligation {
   identity: "fact_density_subtree_lens" as NonEmptyStr,
