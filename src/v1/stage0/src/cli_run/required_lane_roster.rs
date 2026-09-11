@@ -5,11 +5,10 @@
 //! is not a declaration. Lane ownership leaves the authority only by evaluation, through
 //! `gunbc.required_ci_phase_roster` `required_ci_lane_phase_rows`.
 //!
-//! Why this half exists: the required workflow is three independently selected lanes, and the
-//! v2-native lane's isolation is load-bearing. A host edit that mapped `V2NativePhase` to another
-//! lane while the authority still rosters it in `v2-native` would leave the native job selecting
-//! zero phases — `phases_run=0`, no phase failure, a green required job that executed no native
-//! test. Joining (phase, lane) pairs in both directions makes that edit red at run start in
+//! Why this half exists: the required workflow is independently selected lane jobs. A host edit
+//! that mapped a phase to another lane while the authority still rosters it in its own would
+//! leave that job selecting zero phases — `phases_run=0`, no phase failure, a green required job
+//! that executed nothing. Joining (phase, lane) pairs in both directions makes that edit red at run start in
 //! every lane; the empty-expectation refusal and the exact ran-set check (both in the bin, over
 //! the rows this module decodes) make a zero-phase selected lane refuse rather than report
 //! success over nothing.
