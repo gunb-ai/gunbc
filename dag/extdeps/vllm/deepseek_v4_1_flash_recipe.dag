@@ -2,7 +2,8 @@ module extdeps.vllm.deepseek_v4_1_flash_recipe
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Gigabyte, gigabyte, gigabyte_count }
+import std.measure { Gigabyte, gigabyte, gigabyte_count, Percent, percent, percent_count }
+import extdeps.units.dimensionless { percent_unity_hundred_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -50,12 +51,21 @@ data v41_flash_checkpoint_on_disk: VllmPublishedFigure = VllmPublishedFigure {
 // silently; carrying the Measure makes any comparison against a binary figure a conversion someone
 // has to write.
 data v41_flash_checkpoint: Gigabyte = gigabyte(count: 511)
-data v41_flash_headroom_factor_tenths: Nat = 12
+// AND THE FACTOR IS A DIMENSIONLESS RATIO, WHICH std.measure ALREADY OWNS. It stood here as a bare
+// `Nat = 12` whose unit lived in the identifier (`_tenths`) with the scale open-coded beside it --
+// the same defect the annotation four lines up condemns for `_gb`, committed in the same file that
+// condemns it. Percent is the carrier for this concept, so 1.2 is percent(count: 120) and the scale
+// the division undoes is percent_unity_hundred_count(), the authority for what "per cent" means,
+// rather than a literal 10 chosen to match a name.
+data v41_flash_headroom_factor: Percent = percent(count: 120)
 
-// Integer ceiling of total * 1.2, because the published figure is rounded up: 511 * 1.2 = 613.2 and
-// the page states 614.
+// Integer ceiling of the total scaled by that factor, because the published figure is rounded up:
+// 511 * 1.2 = 613.2 and the page states 614. The +(scale - 1) is the ceiling, written against the
+// scale rather than against a hard-coded 9, so it stays correct if the factor is ever restated at a
+// different precision.
 fn v41_flash_headroom(total: Gigabyte) -> Gigabyte {
-  gigabyte(count: (gigabyte_count(g: total) * v41_flash_headroom_factor_tenths + 9) / 10)
+  let scale = percent_unity_hundred_count()
+  gigabyte(count: (gigabyte_count(g: total) * percent_count(p: v41_flash_headroom_factor) + (scale - 1)) / scale)
 }
 
 // READ THIS AS THE PUBLISHER'S ARITHMETIC, NOT AS A FLOOR ANYONE MEASURED. The page's own sentence

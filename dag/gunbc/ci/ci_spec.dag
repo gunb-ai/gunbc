@@ -14,7 +14,7 @@ import gunbc.spark.credential_workflow {
   spark_administrator_credential_roster,
   spark_administrator_password_secret_ref_at_version,
 }
-import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host_reset_return { host_reset_return_receipt_path }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
@@ -823,6 +823,15 @@ data gunbc_ci_spark_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarge
   function: "spark_pair_serving_apply_wet",
 }
 
+// THE ROUTE-A PROBE. It asks a published image what it contains, inside that image, on the selected
+// Spark -- and it needs this job's prelude for a reason that is not incidental: docker's socket on a
+// Spark is root-owned and the managed executor is in no docker group, so the only modeled way to
+// drive docker there is the administrator credential this job materializes.
+data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_runtime_image_probe.dag",
+  function: "v41_published_image_probe_ci_wet",
+}
+
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
   function: "collect_fleet_convergence_wet",
@@ -1331,7 +1340,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
     },
     Do {
       run: ci_retry_body_run(
-        command: join(["export ", spark_grant_credential_path_env as String, "=\"$CRED_FILE\""], "")
+        command: join(["export ", fleet_bootstrap_credential_path_env as String, "=\"$CRED_FILE\""], "")
       )
     },
     Do {
@@ -1764,6 +1773,20 @@ fn gunbc_ci_spark_bootstrap_invoke() -> String {
     function: gunbc_ci_spark_bootstrap_target.function,
     claim_run: false,
     receipt_rel: spark_apply_receipt_path
+  )
+}
+
+// The runtime-image probe shares the same prelude as the bootstrap, the grant install and the
+// serving apply: one fleet-key agent from the job and one per-target administrator credential
+// materialized to one file, so four steps cannot drift on how a Spark is reached or authenticated.
+fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_runtime_image_probe_target.entry,
+    function: gunbc_ci_spark_runtime_image_probe_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-published-image-probe-receipt.txt"
   )
 }
 

@@ -1,0 +1,637 @@
+module test.claim.runner_label_resolution_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelRow }
+import extdeps.ci_runner.depot { depot_provider_identity }
+import extdeps.ci_runner.github_actions { github_actions_provider_identity }
+import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.ci_runner.circleci { circleci_resource_class_surface, circleci_provider_identity }
+import extdeps.time.rfc3339 {
+  Rfc3339Timestamp, Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows,
+  Rfc3339Simultaneous, Rfc3339OrderUndecidable, rfc3339_compare,
+}
+import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow, github_hosted_ubuntu_catalog }
+import gunbc.runner_provider_survey { runs_on_label_rows }
+import gunbc.runner_label_resolution {
+  SnapshotStanding, SnapshotPredatesObservation, SnapshotOrderUndecidable, SnapshotPostdatesObservation,
+  SnapshotAssessment, snapshot_standing_for, assessment_is_untrusted, assessment_is_undecidable,
+  RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
+  RunnerLabelDuplicatedWithinCatalog, RunnerLabelClaimedByTwoCatalogs,
+  LabelMatch, resolve_from_matches,
+  resolve_runner_label,
+  ArchitectureReading, ArchitectureFromCatalog, ArchitectureUnresolved, architecture_reading,
+  ProviderReading, ProviderFromCatalog, ProviderUnresolved, provider_reading,
+  ArmStanding, ArmConfirmed, NotArmConfirmed, ArmUndetermined, arm_standing,
+}
+
+// THE FROZEN ACCEPTANCE FIXTURE. biomejs/biome at 47d7383d, .github/workflows/main.yml, job
+// `test`, runner label depot-ubuntu-24.04-arm-16 - the row the private workload census already
+// carries, restated here as the label question alone so this repository's resolver is checked
+// against it without the census being in scope.
+data biome_selected_label: String = "depot-ubuntu-24.04-arm-16"
+
+// The mutation the brief names, and the one the whole catalog design exists to get right: the
+// SAME provider, the SAME family, one segment removed, and the answer must flip to x64.
+data biome_x64_mutation_label: String = "depot-ubuntu-24.04-16"
+
+// The observation time of the Biome run the census admitted as its baseline (run 33892992396,
+// job 101088906536, 2026-09-04).
+data biome_observed_at: Rfc3339Timestamp = "2026-09-04T16:04:06Z"
+
+fn resolved_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => true
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+fn resolved_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => false
+    NotArmConfirmed { label, architecture, snapshot } => architecture == X86_64
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+fn arm_undetermined(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => false
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => true
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE FIXTURE, AND ITS MUTATION. Both directions, because a resolver that answered Arm to
+// everything would pass the first claim alone.
+// -------------------------------------------------------------------------------------
+
+test fn witness_biome_selected_label_resolves_arm_from_depots_catalog() -> Bool {
+  let arm = resolved_arm(label: biome_selected_label, observed_at: biome_observed_at)
+  let from_depot = match provider_reading(r: resolve_runner_label(label: biome_selected_label, observed_at: biome_observed_at)) {
+    ProviderFromCatalog { provider, label, snapshot } => declaration_ref_eq(a: provider, b: depot_provider_identity)
+    ProviderUnresolved { label, cause } => false
+  }
+  arm && from_depot
+}
+
+test fn witness_the_unsuffixed_depot_label_derives_x64() -> Bool {
+  resolved_not_arm(label: biome_x64_mutation_label, observed_at: biome_observed_at)
+    && resolved_arm(label: biome_x64_mutation_label, observed_at: biome_observed_at) == false
+}
+
+// EVERY OTHER PROVIDER'S ARM LABEL, IN BOTH DIRECTIONS. These are the labels a string grammar
+// answers confidently and wrongly - blacksmith and warp put their architecture segment in a
+// different position, and GitHub's standard arm label has no provider prefix at all.
+test fn witness_each_surveyed_providers_arm_and_x64_labels_resolve() -> Bool {
+  let arm_labels = [
+    "depot-ubuntu-24.04-arm",
+    "depot-ubuntu-24.04-arm-64",
+    "blacksmith-16vcpu-ubuntu-2404-arm",
+    "warp-ubuntu-latest-arm64-8x",
+    "ubicloud-standard-16-arm",
+    "ubuntu-24.04-arm",
+    "ubuntu-latest-arm-64core",
+  ]
+  let x64_labels = [
+    "depot-ubuntu-24.04",
+    "depot-ubuntu-24.04-64",
+    "blacksmith-16vcpu-ubuntu-2404",
+    "warp-ubuntu-latest-x64-8x",
+    "ubicloud-standard-16",
+    "ubuntu-24.04",
+    "ubuntu-slim",
+    "ubuntu-latest-64core",
+  ]
+  count(filter(arm_labels, l => resolved_arm(label: l, observed_at: biome_observed_at) == false)) == 0
+    && count(filter(x64_labels, l => resolved_not_arm(label: l, observed_at: biome_observed_at) == false)) == 0
+}
+
+// -------------------------------------------------------------------------------------
+// THE UNRESOLVED ARMS, WHICH ARE THE POINT. A label no vendor catalog carries must not receive
+// an architecture, and the two shapes below are exactly the ones a string grammar answers with
+// confident nonsense: a self-hosted label, and a label from a provider family this repository
+// has never modelled.
+// -------------------------------------------------------------------------------------
+
+test fn witness_a_label_outside_every_catalog_yields_no_architecture() -> Bool {
+  let unknown_labels = [
+    "self-hosted",
+    "srv1",
+    "namespace-profile-default-arm64",
+    "depot-ubuntu-24.04-arm-small",
+    "ubicloud-standard-8-ubuntu-2404",
+    "ubuntu-latest",
+  ]
+  count(filter(unknown_labels, l => arm_undetermined(label: l, observed_at: biome_observed_at) == false)) == 0
+    && count(filter(unknown_labels, l => resolved_arm(label: l, observed_at: biome_observed_at))) == 0
+    && count(filter(unknown_labels, l => resolved_not_arm(label: l, observed_at: biome_observed_at))) == 0
+}
+
+test fn witness_an_unresolved_label_carries_both_readings_unresolved() -> Bool {
+  let r = resolve_runner_label(label: "namespace-profile-default-arm64", observed_at: biome_observed_at)
+  let arch_unresolved = match architecture_reading(r: r) {
+    ArchitectureFromCatalog { architecture, label, provider, snapshot } => false
+    ArchitectureUnresolved { label, cause } => label == "namespace-profile-default-arm64"
+  }
+  let provider_unresolved = match provider_reading(r: r) {
+    ProviderFromCatalog { provider, label, snapshot } => false
+    ProviderUnresolved { label, cause } => true
+  }
+  arch_unresolved && provider_unresolved
+}
+
+// -------------------------------------------------------------------------------------
+// THE TWO-ARM MISS. A catalog miss must say whether it is a finding about the scanned
+// repository or a coverage obligation on us, and the split is decided by snapshot time.
+//
+// Both arms are exercised with the SAME label, so what is being measured is the observation
+// time and nothing else. 2026-09-04 post-dates four of the six snapshots, so the miss is ours to
+// close by re-fetching; 2026-06-01 pre-dates all six, so the survey looked later than the thing
+// it was looking at.
+// -------------------------------------------------------------------------------------
+
+data observation_before_every_snapshot: Rfc3339Timestamp = "2026-06-01T00:00:00Z"
+
+test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() -> Bool {
+  match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => count(untrusted_snapshots) > 0
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => false
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
+  }
+}
+
+// ubuntu-latest IS IN THE UNRESOLVED SET ABOVE ON PURPOSE, and it is the claim most likely to be
+// read as a defect. extdeps.github.hosted_runners declines to carry it because it is a
+// vendor-floating alias of whichever x64 row is current, and pinning by alias lets the vendor move
+// the fact underneath a pinned reading. So an unresolved answer here is the CORRECT one: the label
+// does not fix an architecture, and a resolver that returned x64 would be reporting today's
+// aliasing as though it were the label's meaning.
+
+// EVERY STANDARD HOSTED LABEL AGREES ON ARCHITECTURE ACROSS REPOSITORY VISIBILITY, which is what
+// makes reading the public rows sound. The vCPU and memory figures genuinely differ between the
+// two; if an architecture ever differed too, the label roster would be silently reporting one
+// visibility's answer for both, so the agreement is asserted over the whole catalog rather than
+// trusted.
+test fn witness_hosted_label_architecture_does_not_vary_with_repository_visibility() -> Bool {
+  let rows = github_hosted_ubuntu_catalog()
+  let disagreements = filter(rows, r =>
+    count(filter(rows, other =>
+      other.runs_on_label == r.runs_on_label && other.cpu_architecture != r.cpu_architecture)) > 0)
+  count(rows) > 0 && count(disagreements) == 0
+}
+
+// THE ORACLE IS THE ARM AND THE PROPERTY THAT DEFINES IT, NOT THE SIZE OF THE ROSTER. An earlier
+// revision asserted count(snapshots_consulted) == 7, which is a measurement of how many catalogs
+// happen to be enrolled today compared against a numeral copied from the same tree - DESIGN
+// section 5's change detector, green by construction until someone adds a provider and then
+// "fixed" by editing the numeral. What actually distinguishes this arm from its neighbour is a
+// property of the SNAPSHOTS: the arm claims every consulted snapshot post-dates the observation,
+// and that claim is checkable against the same comparator the resolver used. If the split ever
+// put a stale snapshot in the Absent arm, this goes red whatever the roster size is.
+fn snapshot_postdates(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> Bool {
+  match rfc3339_compare(left: snapshot.fetched_at, right: observed_at) {
+    Rfc3339Follows => true
+    Rfc3339Simultaneous => true
+    Rfc3339Precedes => false
+    Rfc3339OrderUndecidable { cause } => false
+  }
+}
+
+test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> Bool {
+  match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: observation_before_every_snapshot) {
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => false
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } =>
+      count(snapshots_consulted) > 0
+        && count(filter(snapshots_consulted, s => snapshot_postdates(snapshot: s, observed_at: observed_at) == false)) == 0
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => false
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
+  }
+}
+
+// AND THE NEIGHBOURING ARM CARRIES THE COMPLEMENTARY PROPERTY, for the same reason: every
+// snapshot it reports as stale must actually pre-date the observation. Between them the two
+// claims say the split is sound without either one naming a population size.
+test fn witness_every_snapshot_the_stale_arm_reports_predates_the_observation() -> Bool {
+  match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } =>
+      count(untrusted_snapshots) > 0
+        && count(filter(untrusted_snapshots, a => snapshot_postdates(snapshot: a.snapshot, observed_at: observed_at))) == 0
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => false
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE COMPARATOR THE SPLIT RESTS ON, AND ITS REFUSAL. RFC 3339 section 5.1 admits string sorting
+// only at one timezone spelling and one fractional precision; a comparator that answered anyway
+// would silently mis-order the very case the RFC warns about, and mis-ordering here flips a
+// coverage obligation into a finding about somebody else's repository.
+// -------------------------------------------------------------------------------------
+
+test fn witness_rfc3339_comparison_orders_utc_values_of_equal_precision() -> Bool {
+  let precedes = match rfc3339_compare(left: "2026-07-11T00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Precedes => true
+    other => false
+  }
+  let follows = match rfc3339_compare(left: "2026-09-10T00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Follows => true
+    other => false
+  }
+  let same = match rfc3339_compare(left: "2026-09-04T16:04:06Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Simultaneous => true
+    other => false
+  }
+  precedes && follows && same
+}
+
+// The mixed-precision pair is the exact one the rfc3339 row names: a fractional component sorts
+// BELOW the Z designator, so lexical order would put the later instant first.
+test fn witness_rfc3339_comparison_refuses_mixed_precision_and_offsets() -> Bool {
+  let mixed_precision = match rfc3339_compare(left: "2026-09-04T16:04:06.1Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339OrderUndecidable { cause } => true
+    other => false
+  }
+  let numeric_offset = match rfc3339_compare(left: "2026-09-04T16:04:06+01:00", right: "2026-09-04T16:04:06Z") {
+    Rfc3339OrderUndecidable { cause } => true
+    other => false
+  }
+  mixed_precision && numeric_offset
+}
+
+// -------------------------------------------------------------------------------------
+// THE SNAPSHOT IS NOT DECORATION. A resolved label carries the catalog reading that produced it,
+// so a consumer can say WHEN the answer was true and what the snapshot claimed to cover. A
+// resolver that returned an architecture with no provenance would be indistinguishable from one
+// that guessed.
+// -------------------------------------------------------------------------------------
+
+test fn witness_a_resolved_label_carries_its_snapshot_provenance() -> Bool {
+  match resolve_runner_label(label: biome_selected_label, observed_at: biome_observed_at) {
+    RunnerLabelResolved { row, snapshot } =>
+      row.label == biome_selected_label
+        && row.architecture == Aarch64
+        && snapshot.fetched_at == "2026-09-10T00:00:00Z"
+        && string_length(s: snapshot.declared_scope) > 0
+    other => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// TWO CATALOGS ANSWERING FOR ONE LABEL IS A REFUSAL. An earlier revision took the head of the
+// match list, so a label two catalogs carried got whichever answer was enrolled first - a
+// fail-open relocated from the label's spelling to the survey's ORDER, and one that resolves a
+// genuine disagreement about provider or architecture silently in favour of a line's position.
+//
+// The claims drive resolve_from_matches with constructed match lists rather than the live survey,
+// which is what makes the wall testable at all: a wall reachable only by corrupting the enrolled
+// catalogs is a wall nothing can exercise. Both directions are here - two rows refuse, one row
+// resolves - so the arm cannot be green by refusing everything.
+//
+// THE DISAGREEING PAIR IS THE INTERESTING ONE and the AGREEING pair is the one that must refuse
+// too: two authorities claiming one label is a single-authority defect whether or not they happen
+// to agree this week, and tolerating agreeing duplicates would hide the fork until one changed.
+// -------------------------------------------------------------------------------------
+
+data competing_row_depot: RunnerLabelRow = RunnerLabelRow {
+  provider: depot_provider_identity,
+  label: "contested-label-8",
+  architecture: Aarch64,
+}
+
+data competing_row_github: RunnerLabelRow = RunnerLabelRow {
+  provider: github_actions_provider_identity,
+  label: "contested-label-8",
+  architecture: X86_64,
+}
+
+data agreeing_row_depot_copy: RunnerLabelRow = RunnerLabelRow {
+  provider: depot_provider_identity,
+  label: "contested-label-8",
+  architecture: Aarch64,
+}
+
+data control_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-10T00:00:00Z",
+  declared_scope: "constructed for this claim; not a vendor reading",
+}
+
+// TWO CONTROL CATALOGS, NOT ONE. An earlier revision built both competing matches with one
+// snapshot and no catalog identity, so the pair was indistinguishable from one catalog listing a
+// label twice — it never tested two CATALOGS at all. The provider is now part of the match, and
+// the claims below drive both shapes separately.
+fn control_match_from(row: RunnerLabelRow, catalog: DeclarationRef) -> LabelMatch {
+  LabelMatch {
+    row: row, catalog: catalog,
+    selection_surface: github_actions_runs_on_surface, snapshot: control_snapshot,
+  }
+}
+
+// TWO CONTROL CATALOGS THAT SHARE A PROVIDER, which is the case the old key could not see. GitHub's
+// sized larger-runner catalog and its standard-runner catalog both carry
+// github_actions_provider_identity, so a pair keyed on provider reads as ONE catalog listing a
+// label twice - and the refusal would then name the wrong module as the place to repair it.
+data control_catalog_one: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.github_actions", decl_name: "github_actions_label_catalog")
+
+data control_catalog_two: DeclarationRef = decl_ref(
+  module_path: "gunbc.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog")
+
+fn control_match(row: RunnerLabelRow) -> LabelMatch {
+  control_match_from(row: row, catalog: control_catalog_one)
+}
+
+fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
+  match resolve_from_matches(label: "contested-label-8", observed_at: biome_observed_at, matches: matches) {
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => count(matches) == 2
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => count(matches) == 2
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => false
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
+  }
+}
+
+// TWO CATALOGS SHARING ONE PROVIDER MUST READ AS TWO CATALOGS. Both rows below carry GitHub as
+// their provider and differ only in which catalog matched, which is exactly the pair the old
+// provider-keyed check collapsed. The claim asserts the refusal names the ROSTER rather than a
+// provider's own projection - the difference between "gunbc.runner_provider_survey enrolled it
+// twice" and "extdeps.ci_runner.github_actions listed it twice", which are different repairs.
+data github_row_larger: RunnerLabelRow = RunnerLabelRow {
+  provider: github_actions_provider_identity,
+  label: "contested-label-8",
+  architecture: X86_64,
+}
+
+data github_row_standard: RunnerLabelRow = RunnerLabelRow {
+  provider: github_actions_provider_identity,
+  label: "contested-label-8",
+  architecture: Aarch64,
+}
+
+test fn witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs() -> Bool {
+  match resolve_from_matches(
+    label: "contested-label-8",
+    observed_at: biome_observed_at,
+    matches: [
+      control_match_from(row: github_row_larger, catalog: control_catalog_one),
+      control_match_from(row: github_row_standard, catalog: control_catalog_two),
+    ],
+  ) {
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } =>
+      count(matches) == 2
+        && declaration_ref_eq(a: first(matches).row.provider, b: github_actions_provider_identity)
+    other => false
+  }
+}
+
+// AND ONE CATALOG LISTING A LABEL TWICE MUST READ AS THAT, so the two causes are not
+// interchangeable and the claim above is not satisfied by a refusal that always says "roster".
+test fn witness_one_catalog_listing_a_label_twice_names_that_catalog() -> Bool {
+  match resolve_from_matches(
+    label: "contested-label-8",
+    observed_at: biome_observed_at,
+    matches: [
+      control_match_from(row: github_row_larger, catalog: control_catalog_one),
+      control_match_from(row: github_row_standard, catalog: control_catalog_one),
+    ],
+  ) {
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => count(matches) == 2
+    other => false
+  }
+}
+
+test fn witness_two_catalogs_carrying_one_label_refuse_rather_than_race() -> Bool {
+  let disagreeing_refused = resolution_is_ambiguous(matches: [
+    control_match(row: competing_row_depot), control_match(row: competing_row_github)])
+  let agreeing_refused = resolution_is_ambiguous(matches: [
+    control_match(row: competing_row_depot), control_match(row: agreeing_row_depot_copy)])
+  let order_does_not_decide = resolution_is_ambiguous(matches: [
+    control_match(row: competing_row_github), control_match(row: competing_row_depot)])
+  let single_match_still_resolves = match resolve_from_matches(
+    label: "contested-label-8", observed_at: biome_observed_at,
+    matches: [control_match(row: competing_row_depot)],
+  ) {
+    RunnerLabelResolved { row, snapshot } => row.architecture == Aarch64
+    other => false
+  }
+  disagreeing_refused && agreeing_refused && order_does_not_decide && single_match_still_resolves
+}
+
+// AND THE ARM MUST NOT FIRE ON THE LIVE SURVEY TODAY — ASSERTED OVER THE ACTUAL POPULATION.
+//
+// An earlier revision folded ten labels typed by hand while looking at the catalogs. That is the
+// copied-population defect: the sample was chosen after the answer was known, so it passed by
+// construction, and it would have gone on passing when a provider was enrolled that the sample
+// never named. This folds every row runs_on_label_rows() produces, so the claim's denominator is
+// the corpus rather than a reader's memory of it.
+//
+// If this ever fires, two enrolled catalogs carry one label and that is a corpus defect to repair
+// rather than a claim to relax — which is why the refusal above must exist even while this holds.
+test fn witness_no_surveyed_label_is_carried_by_two_catalogs() -> Bool {
+  let rows = runs_on_label_rows()
+  let colliding = filter(rows, r =>
+    match resolve_runner_label(label: r.label, observed_at: biome_observed_at) {
+      RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => true
+      RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => true
+      RunnerLabelWrongSelectionSurface { label, matches, cause } => false
+      other => false
+    })
+  count(rows) > 0 && count(colliding) == 0
+}
+
+// AND EVERY ROW IN THE POPULATION RESOLVES TO SOMETHING, which is the positive control the
+// collision claim needs beside it: a resolver that refused every label would satisfy "no
+// collisions" trivially. Each row's own label must come back resolved, since by construction it is
+// carried by a catalog on the surface being asked about.
+test fn witness_every_surveyed_runs_on_label_resolves() -> Bool {
+  let rows = runs_on_label_rows()
+  let unresolved = filter(rows, r =>
+    match resolve_runner_label(label: r.label, observed_at: biome_observed_at) {
+      RunnerLabelResolved { row, snapshot } => false
+      other => true
+    })
+  count(rows) > 0 && count(unresolved) == 0
+}
+
+// -------------------------------------------------------------------------------------
+// A LABEL FROM ANOTHER CI SYSTEM'S SELECTION SURFACE IS NOT AN ANSWER TO A runs-on QUESTION.
+//
+// This is the claim whose absence let a soundness defect reach two approvals. Every unresolved arm
+// in this module answers a MISS; this is a HIT from the wrong ecosystem, and no miss-shaped wall
+// can see it. CircleCI publishes small, medium, large, xlarge and arm.medium as `resource_class`
+// values in .circleci/config.yml — ordinary words, and exactly what a self-hosted GitHub runner
+// gets labelled.
+//
+// MEASURED BEFORE THE SURFACE AXIS EXISTED: "small" and "large" returned NotArmConfirmed x86_64 and
+// "arm.medium" returned ArmConfirmed — a GitHub Actions job reported as CONFIRMED ARM on the
+// authority of a catalog that has nothing to do with GitHub Actions. arm.medium is the load-bearing
+// case because it fabricates Arm evidence; small and large are the ones a fleet actually writes.
+test fn witness_another_ci_systems_label_namespace_is_not_consulted() -> Bool {
+  let circleci_resource_classes = ["small", "medium", "large", "xlarge", "2xlarge", "arm.medium", "arm.large"]
+  count(filter(circleci_resource_classes, l => arm_undetermined(label: l, observed_at: biome_observed_at) == false)) == 0
+    && count(filter(circleci_resource_classes, l => resolved_arm(label: l, observed_at: biome_observed_at))) == 0
+    && count(filter(circleci_resource_classes, l => resolved_not_arm(label: l, observed_at: biome_observed_at))) == 0
+}
+
+// -------------------------------------------------------------------------------------
+// AN UNORDERABLE SNAPSHOT IS NOT AN OLD SNAPSHOT, even though both route to "re-fetch".
+//
+// snapshot_is_stale_for sends the undecidable arm to the same destination as the pre-dating one,
+// which is the right POLICY — when the instrument cannot say, the arm that costs us effort is the
+// honest one. What it may not do is report the same REASON. An earlier revision's refusal said
+// "fetched BEFORE the observation" for both, including the arm where rfc3339_compare had explicitly
+// refused to order them and nothing about their age was established: the right destination reached
+// by a stated reason that is not true, which is a fabricated plausible output on a failure path.
+//
+// The standing is now three-valued and the two are separable by a caller. The timestamps below are
+// the exact pair rfc3339_compare refuses: a fractional second against a whole one, which the RFC's
+// section 5.1 preconditions exclude from lexical ordering.
+data undecidable_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-04T16:04:06.5Z",
+  declared_scope: "constructed for this claim; a fractional-second stamp that cannot be lexically ordered against a whole-second one",
+}
+
+data plainly_older_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-07-11T00:00:00Z",
+  declared_scope: "constructed for this claim; unambiguously earlier than the observation",
+}
+
+test fn witness_an_unorderable_snapshot_is_not_reported_as_an_old_one() -> Bool {
+  let undecidable_is_named = match snapshot_standing_for(snapshot: undecidable_snapshot, observed_at: biome_observed_at) {
+    SnapshotOrderUndecidable { cause } => string_length(s: cause) > 0
+    SnapshotPredatesObservation => false
+    SnapshotPostdatesObservation => false
+  }
+  let older_is_named_as_older = match snapshot_standing_for(snapshot: plainly_older_snapshot, observed_at: biome_observed_at) {
+    SnapshotPredatesObservation => true
+    SnapshotOrderUndecidable { cause } => false
+    SnapshotPostdatesObservation => false
+  }
+  let undecidable_assessment = SnapshotAssessment {
+    snapshot: undecidable_snapshot,
+    standing: snapshot_standing_for(snapshot: undecidable_snapshot, observed_at: biome_observed_at),
+  }
+  let older_assessment = SnapshotAssessment {
+    snapshot: plainly_older_snapshot,
+    standing: snapshot_standing_for(snapshot: plainly_older_snapshot, observed_at: biome_observed_at),
+  }
+  let both_route_to_refetch = assessment_is_untrusted(a: undecidable_assessment)
+    && assessment_is_untrusted(a: older_assessment)
+  let only_one_is_undecidable = assessment_is_undecidable(a: undecidable_assessment)
+    && assessment_is_undecidable(a: older_assessment) == false
+  undecidable_is_named && older_is_named_as_older && both_route_to_refetch && only_one_is_undecidable
+}
+
+// THE DISTINCTION MUST BE AVAILABLE TO A CONSUMER MATCHING ON THE VALUE, not only to a human
+// reading the cause. That is the whole point of carrying assessments rather than bare snapshots:
+// an earlier revision split the standing into three arms and then stored List<CatalogSnapshot> on
+// the refusal, so the split survived in the English and nowhere a program could reach it.
+//
+// This claim partitions the arm's OWN payload and asserts the partition is total: every untrusted
+// snapshot is either pre-dating or unorderable, the two counts sum to the whole, and today's live
+// survey is entirely the pre-dating kind. That last conjunct is the actionable reading a consumer
+// wants - it says the remedy is "re-fetch four stale catalogs", not "our clocks are unreadable" -
+// and it is derived from the value rather than parsed out of a sentence.
+test fn witness_the_untrusted_partition_is_readable_from_the_value() -> Bool {
+  match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => {
+      let undecidable = filter(untrusted_snapshots, a => assessment_is_undecidable(a: a))
+      let predating = filter(untrusted_snapshots, a => assessment_is_undecidable(a: a) == false)
+      count(untrusted_snapshots) > 0
+        && count(undecidable) + count(predating) == count(untrusted_snapshots)
+        && count(filter(untrusted_snapshots, a => assessment_is_untrusted(a: a) == false)) == 0
+        && count(undecidable) == 0
+    }
+    other => false
+  }
+}
+
+// THE SEAM IS A DOOR UNLESS IT CHECKS ITS OWN INPUTS. resolve_from_matches exists so a claim can
+// hand it constructed matches - which means any caller can, and a wall enforced only in
+// surveyed_matches is enforced only on the path that was already safe. A bare CircleCI row handed
+// straight to the seam used to resolve.
+data circleci_row: RunnerLabelRow = RunnerLabelRow {
+  provider: circleci_provider_identity,
+  label: "arm.medium",
+  architecture: Aarch64,
+}
+
+test fn witness_the_seam_refuses_a_row_from_another_surface() -> Bool {
+  match resolve_from_matches(
+    label: "arm.medium",
+    observed_at: biome_observed_at,
+    matches: [LabelMatch {
+      row: circleci_row,
+      catalog: decl_ref(module_path: "extdeps.ci_runner.circleci", decl_name: "circleci_label_catalog"),
+      selection_surface: circleci_resource_class_surface,
+      snapshot: control_snapshot,
+    }],
+  ) {
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => count(matches) == 1
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => false
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => false
+    other => false
+  }
+}
+
+// AND THE COMPARATOR REFUSES A LOWERCASE SEPARATOR, which RFC 3339 permits and which sorts AFTER
+// every uppercase form: 't' is 0x74 against 'T' at 0x54, so an OLDER lowercase stamp compares as
+// NEWER. Left unrefused, that reverses a snapshot's standing and turns our own coverage obligation
+// into a finding about somebody else's repository.
+test fn witness_a_lowercase_separator_is_refused_rather_than_misordered() -> Bool {
+  let lowercase_t = match rfc3339_compare(left: "2026-07-11t00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339OrderUndecidable { cause } => true
+    other => false
+  }
+  let canonical_still_orders = match rfc3339_compare(left: "2026-07-11T00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Precedes => true
+    other => false
+  }
+  lowercase_t && canonical_still_orders
+}
+
+fn all_claims_hold() -> Bool {
+  witness_the_seam_refuses_a_row_from_another_surface()
+    && witness_a_lowercase_separator_is_refused_rather_than_misordered()
+    &&
+  witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs()
+    && witness_one_catalog_listing_a_label_twice_names_that_catalog()
+    && witness_the_untrusted_partition_is_readable_from_the_value()
+    &&
+  witness_an_unorderable_snapshot_is_not_reported_as_an_old_one()
+    &&
+  witness_every_surveyed_runs_on_label_resolves()
+    && witness_another_ci_systems_label_namespace_is_not_consulted()
+    && witness_two_catalogs_carrying_one_label_refuse_rather_than_race()
+    && witness_no_surveyed_label_is_carried_by_two_catalogs()
+    && witness_biome_selected_label_resolves_arm_from_depots_catalog()
+    && witness_the_unsuffixed_depot_label_derives_x64()
+    && witness_each_surveyed_providers_arm_and_x64_labels_resolve()
+    && witness_a_label_outside_every_catalog_yields_no_architecture()
+    && witness_an_unresolved_label_carries_both_readings_unresolved()
+    && witness_hosted_label_architecture_does_not_vary_with_repository_visibility()
+    && witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation()
+    && witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding()
+    && witness_every_snapshot_the_stale_arm_reports_predates_the_observation()
+    && witness_rfc3339_comparison_orders_utc_values_of_equal_precision()
+    && witness_rfc3339_comparison_refuses_mixed_precision_and_offsets()
+    && witness_a_resolved_label_carries_its_snapshot_provenance()
+}
+
+fn runner_label_resolution_witness_main() -> ProcessExit {
+  if all_claims_hold() { ExitSuccess } else { ExitFailure { code: 1, reason: "one or more runner-label resolution claims did not hold" } }
+}
