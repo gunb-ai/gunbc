@@ -5,6 +5,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.algebra { list_find_first }
 import std.types { String }
 
 // THE CAUSE-OWNERSHIP AUTHORITY FOR THE v2 FRONT-END FRONTIER, HOMED BELOW ITS CONSUMERS.
@@ -176,25 +177,6 @@ data known_frontier_causes: List<CauseOwnership> = [
   }
 ]
 
-// list_find_first is a short-circuiting element-returning find — the std/algebra gap beside
-// any/filter/contains (which return Bool or the whole filtered list, never the first match with
-// early-exit). Homed beside its ONE consumer (cause_ownership_lookup) per the
-// facts-before-abstraction discipline: promote to v2.std.algebra when a second consumer inhabits
-// it, not before. Short-circuit matters by the standing bare-minimum-cost ruling (2026-07-10): 'n
-// is small here' is not time-stable — known_frontier_causes grows as causes are modeled — so the
-// find returns on the first hit rather than folding the whole table.
-
-fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
-  match xs {
-    Empty => optional_absent()
-    Cons { head: h, tail: t } =>
-      if predicate(h) {
-        optional_present(value: h)
-      } else {
-        list_find_first(xs: t, predicate: predicate)
-      }
-  }
-}
 
 fn cause_ownership_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<CauseOwnership> {
   list_find_first(

@@ -2,6 +2,7 @@ module v2.std.algebra
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.optional { Optional, optional_absent, optional_present }
 import std.algebra {
   AbelianGroup,
   BooleanAlgebra,
@@ -700,6 +701,31 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
 // the self-hosted parser (2026-09-09, required-v2-native lane work).
 fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   xs |> list_push(item)
+}
+
+// FIRST MATCH, WITH THE EARLY EXIT. The closed vocabulary has any/filter/contains -- Bool, or the
+// whole filtered list -- and none of them answers "the first element satisfying p, or nothing"
+// without walking the rest. Expressing that as a fold over Optional is the shape this function
+// exists to stop: the accumulator is already Present and the fold keeps walking, so every hit
+// still pays the full length. Recursion on the cons cell RETURNS at the first hit.
+//
+// PROMOTED HERE FROM v2.workflow.compile_door_cause_ownership (review 64135). It was homed beside
+// its single consumer under the facts-before-abstraction discipline, with the promotion rule
+// written on it: "promote to v2.std.algebra when a second consumer inhabits it, not before". The
+// required-v2-native route's per-module file-refusal lookup is that second consumer, and it had
+// re-expressed the shape as a non-short-circuiting fold -- net concepts growing by re-invention
+// (DESIGN section 2) in a per-module x per-refusal position (section 6, bare minimum cost, which
+// is fixed regardless of the realized n because n is not time-stable).
+fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
+  match xs {
+    Empty => optional_absent()
+    Cons { head: h, tail: t } =>
+      if predicate(h) {
+        optional_present(value: h)
+      } else {
+        list_find_first(xs: t, predicate: predicate)
+      }
+  }
 }
 
 type ListPrefixState<T> {

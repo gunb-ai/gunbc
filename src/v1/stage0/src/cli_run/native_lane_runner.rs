@@ -502,12 +502,22 @@ fn run_native_binary(binary: &Path, args: &[String]) -> Result<NativeRunOutput, 
         )
     })?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    // THE CHILD'S STDERR IS RELAYED, NOT SWALLOWED. The spawned binary commits its per-phase
-    // `[cost-partition]` receipt lines to stderr as each phase finishes, precisely so a cancelled
-    // run keeps the phases it already paid for; `Command::output` buffers them, so without this
-    // relay the route's own cost receipt would exist inside the child and reach nobody. Written
-    // through before the verdict is decided, so a refusal path still carries the phases that led
-    // to it.
+    // THE CHILD'S STDERR IS RELAYED, NOT SWALLOWED. The spawned binary writes its cost receipt
+    // (`[native-cost-partition]`, `[native-prepare]`) to its own stderr, and `Command::output`
+    // buffers it, so without this relay those rows would exist inside the child and reach nobody
+    // — which is what they do on the pre-#10940 host, where `output.stderr` is read only on the
+    // error path. Written through before the verdict is decided, so a refusal path still carries
+    // the rows that led to it.
+    //
+    // WHAT THIS RELAY DOES NOT DO, corrected rather than left overclaiming: it does not preserve a
+    // CANCELLED run's rows. `Command::output()` collects to completion, so nothing is forwarded
+    // until the child exits — on a multi-hour run the host stays silent throughout and a cancel or
+    // a killed parent loses every row the child had already printed. The earlier wording here said
+    // the relay existed "so a cancelled run keeps the phases it already paid for", which the
+    // mechanism does not deliver. Streaming is the close: `Stdio::piped` with a reader draining the
+    // child as it runs, which is also what would let a watcher see progress rather than a silence
+    // indistinguishable from "no rows". Reported to the #11060 lane (smart-eagle-506), whose
+    // zero-rows observation on srv2 is the pre-relay host, not a missing emission.
     for line in String::from_utf8_lossy(&output.stderr).lines() {
         eprintln!("{line}");
     }

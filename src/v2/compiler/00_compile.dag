@@ -95,7 +95,7 @@ import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.algebra { Cons, Empty, FreeMonoid, trim }
-import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_reverse, list_snoc_item }
+import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_find_first, list_reverse, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -1525,17 +1525,20 @@ fn native_lane_ingest_matches_closure(
 // carrying the resolver's own fatal reason. Every declaration gets exactly one row either way,
 // so the population has no silent remainder to explain.
 
+// THE LOOKUP CONSUMES THE ONE FIRST-MATCH FOLD, AND THE NEXT STEP IS NAMED (review 64135). This
+// was authored as a fold over Optional that kept walking after the accumulator was Present, which
+// is the re-invention DESIGN section 2 forbids -- v2.std.algebra list_find_first already existed,
+// carrying the promotion rule this consumer fired -- and the missing early exit sat in a
+// per-module x per-refusal position, so it is fixed regardless of the realized n (section 6).
+//
+// WHAT THIS IS STILL NOT, stated so it is not read as finished: a first-match scan is O(refusals)
+// per module and the caller runs it once per universe module, so the join remains O(modules x
+// refusals) with the early exit only improving the constant. The structural fix is a path-keyed
+// index over context.file_refusals built ONCE per run and probed per module -- the same keyed-set
+// realization the closure walk and the ingest join need for their `contains` over List<String>.
+// It lands with that realization rather than as a third helper here.
 fn native_lane_file_refusal_for_path(refusals: FreeMonoid<NativeTestFileRefusal>, path: Symbol) -> Optional<NativeTestFileRefusal> {
-  fold_list(
-    xs: refusals,
-    empty: optional_absent(),
-    cons: fn(acc, fr) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => if fr.path == path { optional_present(value: fr) } else { optional_absent() }
-      }
-    }
-  )
+  list_find_first(xs: refusals, predicate: fn(fr) { fr.path == path })
 }
 
 fn native_lane_member_row(module: String, declaration: String, verdict: NativeTestVerdict) -> NativeRouteMemberRow {
