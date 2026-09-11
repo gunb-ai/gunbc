@@ -1,6 +1,6 @@
 module gunbc.ci_workflow_source_read
 
-import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Secret }
 import std.resources { Network }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -106,8 +106,32 @@ func perform_code_search_page(
 // through the success path with no error anywhere.
 // -------------------------------------------------------------------------------------
 
+// WHAT WAS ASKED FOR, CARRIED BESIDE WHAT CAME BACK, AND THE DEFECT THAT MADE IT NECESSARY.
+//
+// RepositoryFileContent carries name, path, sha, size, encoding and content - and NO repository.
+// So a file record cannot say which repository it came from, and a consumer holding one has no way
+// to check that it is the file it asked for. An earlier revision of canonicalize_hit took the hit
+// and the read as INDEPENDENT arguments and combined them without comparison, which admitted a
+// fabricated hybrid: LLVM's repository identity carrying Biome's path and blob, asserted as one
+// observation of a file that has never existed. The positive witness EXPECTED that combination,
+// so the guard did not merely miss the defect - it required it, and fixing the code would have
+// turned the witness red.
+//
+// The read now returns the REQUEST beside the response. An identity is then a join of two things
+// that agree rather than a concatenation of two things that happen to be in scope.
+type WorkflowSourceRequest {
+  owner: String
+  repo: String
+  path: String
+  ref: CommitSha
+}
+
+fn request_repository_full_name(r: WorkflowSourceRequest) -> String {
+  join([r.owner, "/", r.repo], "")
+}
+
 type WorkflowSourceRead
-  = WorkflowSourceObserved { file: RepositoryFileContent }
+  = WorkflowSourceObserved { request: WorkflowSourceRequest, file: RepositoryFileContent }
   | WorkflowSourceTooLargeForContentsApi { file: RepositoryFileContent, cause: NonEmptyStr }
   | WorkflowSourceEncodingUnrecognized { file: RepositoryFileContent, cause: NonEmptyStr }
   | WorkflowSourceRefused { performance: RestExchangePerformance }
@@ -126,9 +150,9 @@ data workflow_source_unknown_encoding_cause: NonEmptyStr = "the contents endpoin
 // for are precisely the ones the single published mock cannot reach, so fusing them into the
 // effectful function put them permanently beyond execution. This is the classifier both the
 // production read and the claims call.
-fn classify_workflow_source(file: RepositoryFileContent) -> WorkflowSourceRead {
+fn classify_workflow_source(request: WorkflowSourceRequest, file: RepositoryFileContent) -> WorkflowSourceRead {
   if file.encoding == contents_base64_encoding {
-    WorkflowSourceObserved { file: file }
+    WorkflowSourceObserved { request: request, file: file }
   } else if file.encoding == contents_absent_encoding {
     WorkflowSourceTooLargeForContentsApi { file: file, cause: workflow_source_too_large_cause() }
   } else {
@@ -141,12 +165,13 @@ func perform_workflow_source_read(
   owner: String,
   repo: String,
   path: String,
-  ref: String,
+  ref: CommitSha,
 ) -> WorkflowSourceRead uses net: Network {
+  let request = WorkflowSourceRequest { owner: owner, repo: repo, path: path, ref: ref }
   let got = github.RepositoryContents.GetContent(
     auth_token: auth_token, owner: owner, repo: repo, path: path, ref: ref)
   match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
-    RestExchangeSucceeded => classify_workflow_source(file: got.file)
+    RestExchangeSucceeded => classify_workflow_source(request: request, file: got.file)
     other => WorkflowSourceRefused { performance: other }
   }
 }
@@ -163,7 +188,7 @@ type WorkflowSourceIdentity {
   repository_full_name: String
   repository_id: Int
   repository_is_fork: Bool
-  ref: String
+  ref: CommitSha
   workflow_path: String
   blob_sha: String
 }
@@ -186,18 +211,42 @@ type HitCanonicalization
   | HitNotCanonicalized { repository_full_name: String, path: String, cause: NonEmptyStr }
   | HitReadRefused { repository_full_name: String, path: String, performance: RestExchangePerformance }
 
-fn canonicalize_hit(hit: CodeSearchHit, ref: String, read: WorkflowSourceRead) -> HitCanonicalization {
+// THE JOIN, AND IT REFUSES. The hit says which repository and path the index pointed at; the read
+// says which repository and path were actually fetched. An identity may only be minted when those
+// AGREE - otherwise the row asserts that a repository contains a blob nobody read from it.
+//
+// THE REF IS NO LONGER A CALLER ARGUMENT. It comes from the request the read was made with, so
+// there is no way to label an identity with a ref the fetch did not use. It is a CommitSha rather
+// than a String because "main" is not an exact ref: a branch name names whatever it points at
+// today, and an observation keyed by one cannot be returned to.
+fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonicalization {
   match read {
-    WorkflowSourceObserved { file } => HitCanonicalized {
-      identity: WorkflowSourceIdentity {
-        repository_full_name: hit.repository.full_name,
-        repository_id: hit.repository.id,
-        repository_is_fork: hit.repository.fork,
-        ref: ref,
-        workflow_path: file.path,
-        blob_sha: file.sha,
-      },
-    }
+    WorkflowSourceObserved { request, file } =>
+      if request_repository_full_name(r: request) != hit.repository.full_name {
+        HitNotCanonicalized {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          cause: join(["the search hit is in ", hit.repository.full_name,
+            " and the file was read from ", request_repository_full_name(r: request),
+            ". Minting an identity from these would assert that one repository contains a blob read out of another."], ""),
+        }
+      } else if request.path != hit.path {
+        HitNotCanonicalized {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          cause: join(["the search hit names ", hit.path, " and the file was read from ", request.path,
+            " in the same repository; the identity would carry a blob from a different file than the one the hit found"], ""),
+        }
+      } else {
+        HitCanonicalized {
+          identity: WorkflowSourceIdentity {
+            repository_full_name: hit.repository.full_name,
+            repository_id: hit.repository.id,
+            repository_is_fork: hit.repository.fork,
+            ref: request.ref,
+            workflow_path: file.path,
+            blob_sha: file.sha,
+          },
+        }
+      }
     WorkflowSourceTooLargeForContentsApi { file, cause } => HitNotCanonicalized {
       repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
     }

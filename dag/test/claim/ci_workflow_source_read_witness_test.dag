@@ -19,6 +19,7 @@ import gunbc.ci_workflow_source_read {
   WorkflowSourceEncodingUnrecognized, WorkflowSourceRefused,
   perform_workflow_source_read, classify_workflow_source, classify_code_search_page,
   HitCanonicalization, HitCanonicalized, HitNotCanonicalized, HitReadRefused, canonicalize_hit,
+  WorkflowSourceRequest, request_repository_full_name,
   WorkflowSourceIdentity,
 }
 import extdeps.transports.rest {
@@ -121,11 +122,37 @@ data fixture_hit: CodeSearchHit = CodeSearchHit {
   repository: hermetic_code_search_repository,
 }
 
-data fixture_ref: String = "47d7383d049b36ff8eaba50912176928143dd9e9"
+data fixture_ref: CommitSha = "47d7383d049b36ff8eaba50912176928143dd9e9"
+
+// THE REQUEST THAT AGREES WITH THE HIT. fixture_hit is llvm/llvm-project at
+// .github/workflows/premerge.yaml, so a coherent read is one made against THAT repository and THAT
+// path. An earlier revision of this witness paired the LLVM hit with a read of Biome's main.yml and
+// asserted the resulting hybrid was correct - a positive claim that REQUIRED the defect, so
+// repairing the code would have turned this witness red. That is worse than having no witness.
+data coherent_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "llvm",
+  repo: "llvm-project",
+  path: ".github/workflows/premerge.yaml",
+  ref: fixture_ref,
+}
+
+data foreign_repo_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "biomejs",
+  repo: "biome",
+  path: ".github/workflows/premerge.yaml",
+  ref: fixture_ref,
+}
+
+data foreign_path_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "llvm",
+  repo: "llvm-project",
+  path: ".github/workflows/main.yml",
+  ref: fixture_ref,
+}
 
 data observed_file: RepositoryFileContent = RepositoryFileContent {
-  name: "main.yml",
-  path: ".github/workflows/main.yml",
+  name: "premerge.yaml",
+  path: ".github/workflows/premerge.yaml",
   sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   size: 5172,
   encoding: "base64",
@@ -133,12 +160,14 @@ data observed_file: RepositoryFileContent = RepositoryFileContent {
 }
 
 test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> Bool {
-  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: observed_file)) {
+  match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
     HitCanonicalized { identity } =>
       identity.ref == fixture_ref
         && identity.blob_sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
-        && identity.workflow_path == ".github/workflows/main.yml"
+        && identity.workflow_path == ".github/workflows/premerge.yaml"
         && identity.repository_full_name == "llvm/llvm-project"
+        && identity.repository_full_name == request_repository_full_name(r: coherent_request)
+        && identity.workflow_path == coherent_request.path
         && identity.repository_is_fork == false
     HitNotCanonicalized { repository_full_name, path, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
@@ -149,12 +178,12 @@ test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> 
 // complete the hit that pointed at it was. Both non-reading arms are exercised, because a scan
 // that refused only the oversized one would still fabricate on an unrecognized encoding.
 test fn an_unread_file_never_becomes_an_identity() -> Bool {
-  let oversized_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: oversized_response)) {
+  let oversized_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: oversized_response)) {
     HitCanonicalized { identity } => false
     HitNotCanonicalized { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
     HitReadRefused { repository_full_name, path, performance } => false
   }
-  let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: unknown_encoding_response)) {
+  let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: unknown_encoding_response)) {
     HitCanonicalized { identity } => false
     HitNotCanonicalized { repository_full_name, path, cause } => true
     HitReadRefused { repository_full_name, path, performance } => false
@@ -174,7 +203,7 @@ test fn an_unread_file_never_becomes_an_identity() -> Bool {
 // -------------------------------------------------------------------------------------
 
 test fn the_oversized_response_is_refused_by_the_production_classifier() -> Bool {
-  match classify_workflow_source(file: oversized_response) {
+  match classify_workflow_source(request: coherent_request, file: oversized_response) {
     WorkflowSourceTooLargeForContentsApi { file, cause } =>
       file.encoding == contents_absent_encoding && string_contains(s: cause as String, pattern: "was NOT read")
     WorkflowSourceObserved { file } => false
@@ -184,7 +213,7 @@ test fn the_oversized_response_is_refused_by_the_production_classifier() -> Bool
 }
 
 test fn an_unrecognized_encoding_is_refused_by_the_production_classifier() -> Bool {
-  match classify_workflow_source(file: unknown_encoding_response) {
+  match classify_workflow_source(request: coherent_request, file: unknown_encoding_response) {
     WorkflowSourceEncodingUnrecognized { file, cause } => file.encoding == "utf-16"
     WorkflowSourceObserved { file } => false
     WorkflowSourceTooLargeForContentsApi { file, cause } => false
@@ -195,7 +224,7 @@ test fn an_unrecognized_encoding_is_refused_by_the_production_classifier() -> Bo
 // The positive control on the same function, so the two claims above are not green because the
 // classifier refuses everything.
 test fn a_base64_response_is_observed_by_the_production_classifier() -> Bool {
-  match classify_workflow_source(file: observed_file) {
+  match classify_workflow_source(request: coherent_request, file: observed_file) {
     WorkflowSourceObserved { file } => file.sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
     other => false
   }
@@ -251,7 +280,7 @@ fn refusal_of(status: Int, body: String) -> WorkflowSourceRead {
 }
 
 fn refused_status(read: WorkflowSourceRead) -> Int {
-  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read) {
+  match canonicalize_hit(hit: fixture_hit, read: read) {
     HitReadRefused { repository_full_name, path, performance } =>
       match performance {
         RestExchangeStatusRefused { status, body } => status
@@ -276,7 +305,7 @@ test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
       rest: RestTransportRefused { cause: "timeout" },
     }),
   }
-  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read) {
+  match canonicalize_hit(hit: fixture_hit, read: read) {
     HitReadRefused { repository_full_name, path, performance } =>
       match performance {
         RestExchangeUnreached { cause } => repository_full_name == "llvm/llvm-project"
@@ -284,5 +313,60 @@ test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
       }
     HitCanonicalized { identity } => false
     HitNotCanonicalized { repository_full_name, path, cause } => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// AN IDENTITY MAY NOT BE ASSEMBLED FROM TWO DIFFERENT SUBJECTS.
+//
+// This is the claim whose ABSENCE was worse than a gap: the positive witness above used to pair the
+// LLVM hit with a read of Biome's main.yml and assert the hybrid was correct. It did not merely
+// fail to catch the defect - it REQUIRED it, so repairing canonicalize_hit would have turned the
+// witness red and the repair would have looked like a regression.
+//
+// Both directions of the mismatch are claimed, because refusing only the repository case would
+// still admit a blob from a different FILE in the right repository - which is the subtler of the
+// two and the one a scan would actually hit, since one repository holds many workflows.
+test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
+  let foreign_repo_refused = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: foreign_repo_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => false
+    HitNotCanonicalized { repository_full_name, path, cause } =>
+      string_contains(s: cause as String, pattern: "read from")
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  let foreign_path_refused = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: foreign_path_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => false
+    HitNotCanonicalized { repository_full_name, path, cause } => true
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  let coherent_admitted = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: coherent_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => identity.repository_full_name == "llvm/llvm-project"
+    other => false
+  }
+  foreign_repo_refused && foreign_path_refused && coherent_admitted
+}
+
+// THE REF COMES FROM THE READ, NOT FROM THE CALLER, so an identity cannot be labelled with a ref
+// the fetch did not use. It is a CommitSha because "main" is not an exact ref - a branch name names
+// whatever it points at today, and an observation keyed by one cannot be returned to.
+test fn the_identitys_ref_is_the_one_the_read_was_made_with() -> Bool {
+  let other_ref_request = WorkflowSourceRequest {
+    owner: "llvm", repo: "llvm-project",
+    path: ".github/workflows/premerge.yaml",
+    ref: "1111111111111111111111111111111111111111",
+  }
+  match canonicalize_hit(hit: fixture_hit, read: WorkflowSourceObserved { request: other_ref_request, file: observed_file }) {
+    HitCanonicalized { identity } =>
+      identity.ref == "1111111111111111111111111111111111111111" && identity.ref != fixture_ref
+    other => false
   }
 }
