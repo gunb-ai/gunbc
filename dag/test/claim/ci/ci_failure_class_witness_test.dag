@@ -1,5 +1,10 @@
 module test.claim.ci_failure_class_witness
 
+import std.decl_ref { declaration_ref_eq, decl_ref }
+import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
+  command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn class_is_infra(c: FloorFailureClass) -> Bool {
@@ -48,6 +53,16 @@ fn list_has_signature(xs: List<InfraSignature>, target: InfraSignature) -> Bool 
   fold(xs, init: false, f: fn(acc, sig) { acc || (sig == target) })
 }
 
+fn limitation_cites_ref(module_path: String, decl_name: String) -> Bool {
+  fold(
+    command_not_found_exit_cannot_distinguish_eviction_from_misnaming.evidence,
+    init: false,
+    f: fn(acc, r) {
+      acc || declaration_ref_eq(a: r, b: decl_ref(module_path: module_path, decl_name: decl_name))
+    }
+  )
+}
+
 test fn witness_real_infra_reasons_are_non_blocking() -> Bool {
   let eagain = "error: failed to run custom build command\nResource temporarily unavailable (os error 11)"
   let spawn = "error: could not compile; caused by: failed to spawn process"
@@ -92,11 +107,11 @@ test fn witness_posix_shell_reserved_exits_are_infra_not_subject() -> ProcessExi
     && string_contains(s: floor_attempt_receipt_body(exit_code: 126, outcome: classify_floor_exit(e: not_exec)), pattern: "CommandInvokedCannotExecute")
     && class_is_infra(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages"))
     && (floor_failure_blocks_merge(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted")) == false)
-    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "cannot distinguish")
-    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "toolchain_filesystem_probe")
-    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "review 63442")
-    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "mangled in transit")
-    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "serialized wrap argument") {
+    && (command_not_found_exit_cannot_distinguish_eviction_from_misnaming.identity as String) == "command_not_found_exit_cannot_distinguish_eviction_from_misnaming"
+    && string_contains(s: infra_signature_origin(sig: CommandNotFound), pattern: "gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming")
+    && limitation_cites_ref(module_path: "gunbc.ci_failure_class", decl_name: "classify_failure_exit")
+    && limitation_cites_ref(module_path: "gunbc.ci_failure_class", decl_name: "wrap_command_with_floor_attempt_receipt_stmts")
+    && limitation_cites_ref(module_path: "v2.extdeps.languages.bash_build", decl_name: "bash_build_word_lit") {
     ExitSuccess
   } else {
     ExitFailure {

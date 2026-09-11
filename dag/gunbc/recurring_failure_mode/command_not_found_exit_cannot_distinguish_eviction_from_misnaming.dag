@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data command_not_found_exit_cannot_distinguish_eviction_from_misnaming: RecurringFailureMode = RecurringFailureMode {
+  identity: "command_not_found_exit_cannot_distinguish_eviction_from_misnaming" as NonEmptyStr,
+  receipts: [
+    "**POSIX 127 (CommandNotFound) is classified Infra because the exit code cannot distinguish shared-FS eviction of a modelled binary, a misspelled emitted command, or a well-formed command mangled in transit by the wrapper** (INVALID STATE: a subject defect and an environmental miss both present as the same reserved shell status, so gunbc.ci_failure_class classify_failure_exit renders stands-environment for a typo or a wrap mangle as readily as for eviction. ",
+    "SPECIMEN, review 63442: this PR's wrap ran POSIX quoting and then bash_token_lit quoted again, so sh -c received `'cargo build'` as the command name, would have exited 127, and classify_failure_exit would have called it infra. The modelled command identity at wrap start was present and well-formed; the wrapper mangled it in transit. Caught by review, not by the classifier. ",
+    "HARM: the instrument built to stop environmental and code failures rendering identically contained a code failure that would have rendered as environmental. A 127 on the wrapped required-lane commands would have silenced the merge floor as stands-environment. ",
+    "RUNG FOUND AT: mitigatable — the wrap defect was writable, the classifier had no join, and review was the wall. ",
+    "CEILING: structurally guaranteed once a 127 can be joined to independent observations that discriminate the three states; the exit code alone cannot, so the class cannot reach structural impossibility from POSIX 127. ",
+    "NEXT-RUNG TRIGGER, A CAPABILITY AND NOT AN ARTIFACT: join a 127 to (1) an independent observation that the modelled command identity was present at wrap start (toolchain_filesystem_probe) or that the emitted argv inhabits a closed command roster, AND (2) that the serialized wrap argument equals the modelled command bytes. The wrap-start identity join alone would not have caught review 63442. Until those joins exist, 127 stays Infra as an honest-wide arm. 126 is not this class.)",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.ci_failure_class", decl_name: "classify_failure_exit", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci_failure_class", decl_name: "wrap_command_with_floor_attempt_receipt_stmts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.languages.bash_build", decl_name: "bash_build_word_lit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.languages.bash", decl_name: "bash_posix_single_quote_transform", field: WholeDeclaration },
+  ],
+}
