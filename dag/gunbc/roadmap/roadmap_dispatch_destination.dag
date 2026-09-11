@@ -3,6 +3,15 @@ module gunbc.roadmap_dispatch_destination
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.algebra { trim }
 import extdeps.github.github { Repository }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  json_kv,
+  json_string,
+  json_bool,
+  json_object,
+  serialize_json,
+}
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
 
@@ -220,51 +229,54 @@ type DispatchSpawnOrigin {
   base_sha: NonEmptyStr
 }
 
-fn destination_privacy_json_member(privacy: DestinationPrivacyStanding) -> String {
-  match privacy {
-    DestinationPrivacyObserved { private } =>
-      join(
-        [
-          "\"privacy\":\"observed\"",
-          join(["\"private\":", if private { "true" } else { "false" }], ""),
-        ],
-        ",",
-      )
-    DestinationPrivacyUnobserved => "\"privacy\":\"unobserved\""
-  }
-}
-
-fn destination_default_branch_json_member(standing: DestinationDefaultBranchStanding) -> String {
-  match standing {
-    DestinationDefaultBranchObserved { branch } =>
-      join(["\"default_branch\":\"", branch, "\""], "")
-    DestinationDefaultBranchUnobserved => "\"default_branch\":\"unobserved\""
-  }
-}
-
 fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
   destination_is_this_spawn_tree(identity: origin.identity)
 }
 
-fn dispatch_spawn_origin_json_members(origin: DispatchSpawnOrigin) -> List<String> {
-  [
-    join(["\"repository\":\"", origin.identity.full_name, "\""], ""),
-    destination_privacy_json_member(privacy: origin.identity.privacy),
-    destination_default_branch_json_member(standing: origin.identity.default_branch),
-    join(
+fn destination_privacy_json_members(privacy: DestinationPrivacyStanding) -> List<JsonKeyValue> {
+  match privacy {
+    DestinationPrivacyObserved { private } =>
       [
-        "\"known_public_gunbc\":",
-        if spawn_origin_is_public_gunbc(origin: origin) { "true" } else { "false" },
-      ],
-      "",
+        json_kv(key: "privacy", value: json_string(s: "observed")),
+        json_kv(key: "private", value: json_bool(b: private)),
+      ]
+    DestinationPrivacyUnobserved =>
+      [json_kv(key: "privacy", value: json_string(s: "unobserved"))]
+  }
+}
+
+fn destination_default_branch_json_value(standing: DestinationDefaultBranchStanding) -> JsonValue {
+  match standing {
+    DestinationDefaultBranchObserved { branch } => json_string(s: branch)
+    DestinationDefaultBranchUnobserved => json_string(s: "unobserved")
+  }
+}
+
+fn dispatch_spawn_origin_json_value(origin: DispatchSpawnOrigin) -> JsonValue {
+  json_object(
+    members: concat(
+      [json_kv(key: "repository", value: json_string(s: origin.identity.full_name))],
+      concat(
+        destination_privacy_json_members(privacy: origin.identity.privacy),
+        [
+          json_kv(
+            key: "default_branch",
+            value: destination_default_branch_json_value(standing: origin.identity.default_branch),
+          ),
+          json_kv(
+            key: "known_public_gunbc",
+            value: json_bool(b: spawn_origin_is_public_gunbc(origin: origin)),
+          ),
+          json_kv(key: "base_ref", value: json_string(s: origin.base_ref as String)),
+          json_kv(key: "base_sha", value: json_string(s: origin.base_sha as String)),
+        ],
+      ),
     ),
-    join(["\"base_ref\":\"", origin.base_ref as String, "\""], ""),
-    join(["\"base_sha\":\"", origin.base_sha as String, "\""], ""),
-  ]
+  )
 }
 
 fn dispatch_spawn_origin_json(origin: DispatchSpawnOrigin) -> String {
-  join(["{", join(dispatch_spawn_origin_json_members(origin: origin), ","), "}"], "")
+  serialize_json(v: dispatch_spawn_origin_json_value(origin: origin))
 }
 
 data dispatch_spawn_origin_basename: String = "spawn-destination.json"

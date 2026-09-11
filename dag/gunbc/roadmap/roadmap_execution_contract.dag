@@ -368,17 +368,6 @@ fn contract_source_roots(contract: WorkItemExecutionContract) -> ClaimSourceRoot
   }
 }
 
-fn contract_path_scope(contract: WorkItemExecutionContract) -> AttemptPathScope {
-  match contract {
-    ExecutionContract { validations: _, extra_capabilities: _, path_scope, source_roots: _ } =>
-      path_scope
-    ExecutionContractUnspecified => PathsUnrestricted
-    OperatorExclusive => PathsUnrestricted
-    ExternalLead => PathsUnrestricted
-    CalendarObservation => PathsUnrestricted
-  }
-}
-
 fn allowed_prefix_boundary(prefix: String) -> String {
   if ends_with(s: prefix, suffix: "/") {
     prefix

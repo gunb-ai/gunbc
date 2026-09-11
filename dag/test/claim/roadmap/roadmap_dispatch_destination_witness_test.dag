@@ -28,7 +28,7 @@ import gunbc.roadmap_dispatch_destination {
   DestinationDefaultBranchObserved, DestinationDefaultBranchUnobserved,
   destination_is_known_public, DispatchSpawnOrigin, dispatch_spawn_origin_json,
   spawn_origin_is_public_gunbc, destination_is_this_spawn_tree,
-  destination_not_this_spawn_tree_reason,
+  destination_not_this_spawn_tree_reason, DestinationIdentity,
 }
 import gunbc.roadmap_belt_actuate {
   belt_publication_subject_for_node,
@@ -122,7 +122,7 @@ test fn spawn_origin_json_records_known_public_gunbc_from_the_standing() -> Bool
       }
       spawn_origin_is_public_gunbc(origin: origin)
         && destination_is_known_public(identity: identity)
-        && (dispatch_spawn_origin_json(origin: origin)).contains("\"known_public_gunbc\":true")
+        && (dispatch_spawn_origin_json(origin: origin)).contains("\"known_public_gunbc\": true")
     }
   }
 }
@@ -138,8 +138,25 @@ test fn spawn_origin_json_records_a_named_destination_as_not_known_public_gunbc(
           base_ref: "main" as NonEmptyStr,
           base_sha: dest_head as NonEmptyStr,
         },
-      )).contains("\"known_public_gunbc\":false")
+      )).contains("\"known_public_gunbc\": false")
   }
+}
+
+test fn spawn_origin_json_escapes_a_quote_in_the_repository_name() -> Bool {
+  let origin = DispatchSpawnOrigin {
+    identity: DestinationIdentity {
+      owner: "example",
+      name: "o\"ther",
+      full_name: "example/o\"ther",
+      privacy: DestinationPrivacyUnobserved,
+      default_branch: DestinationDefaultBranchUnobserved,
+    },
+    base_ref: "main" as NonEmptyStr,
+    base_sha: dest_head as NonEmptyStr,
+  }
+  let wire = dispatch_spawn_origin_json(origin: origin)
+  wire.contains("\\\"")
+    && !wire.contains("\"repository\":\"example/o\"ther\"")
 }
 
 test fn a_named_destination_does_not_claim_privacy_or_default_branch_from_a_slug() -> Bool {
