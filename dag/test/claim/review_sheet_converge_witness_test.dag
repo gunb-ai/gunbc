@@ -64,7 +64,9 @@ import extdeps.google.sheets {
   RenderFormula,
   InputRaw,
   InputUserEntered,
+  BatchUpdateValuesResponse,
 }
+import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import std.disposition { Terminal, Scaffold, RealizationDispatch, SingleAuthority, SubstrateMandatoryTag }
 import std.human_intervention {
@@ -753,6 +755,34 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
       Present { value: DimensionColumns } => false
       Absent => false
     }
+}
+
+test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool {
+  match sheets_published_mock_corpus |> first {
+    Present { value: get } =>
+      get.operation_key == "sheets.Spreadsheets.GetValues"
+        && match sheets_published_mock_corpus.skip(n: 1).first() {
+          Present { value: upd } =>
+            upd.operation_key == "sheets.Spreadsheets.BatchUpdateValues"
+              && match sheets_published_mock_corpus.skip(n: 2).first() {
+                Absent =>
+                  match BatchUpdateValuesResponse {
+                    spreadsheetId: "s",
+                    totalUpdatedRows: none,
+                    totalUpdatedColumns: none,
+                    totalUpdatedCells: none,
+                    totalUpdatedSheets: none,
+                    responses: none,
+                  }.totalUpdatedCells {
+                    Absent => true
+                    Present { value: _ } => false
+                  }
+                Present { value: _ } => false
+              }
+          Absent => false
+        }
+    Absent => false
+  }
 }
 
 fn w_fixture_project() -> GcpProjectId {
