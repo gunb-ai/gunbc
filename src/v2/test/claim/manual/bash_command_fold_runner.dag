@@ -110,6 +110,11 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
+        function: "bash_fold_and_or_negation_preserves_posix_grouping_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
         function: "bash_fold_or_else_true_false_holds",
         profile: runnable_resource_profile_negligible()
       },

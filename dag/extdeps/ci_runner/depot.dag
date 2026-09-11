@@ -5,10 +5,14 @@ import std.nat { Nat }
 import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.ci_runner.types {
+  CatalogSnapshot,
   EntitlementUnstated,
+  label_catalog_of_shapes,
   RunnerCatalogAvailability,
   QuotedWithoutBasis,
+  RunnerLabelCatalog,
   RunnerShapeRow,
   RunnerShapesCited,
 }
@@ -80,3 +84,28 @@ data depot_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
     depot_shape(label: "depot-ubuntu-24.04-64", architecture: X86_64, vcpus: 64, quoted_numeral: 256),
   ],
 }
+
+// THE LABEL ROSTER, AND THE SNAPSHOT THAT SAYS WHEN WE LOOKED AND AT WHAT.
+//
+// Re-fetched 2026-09-10 from the runner-types page cited above and compared row by row against
+// the twelve sizes below: the Intel and Arm Ubuntu 24.04 tables still publish 2/8, 4/16, 8/32,
+// 16/64, 32/128 and 64/256, unchanged from the 2026-08-18 read. The date moves because the
+// comparison was made, not because the rows did.
+//
+// THE SCOPE IS DECLARED BECAUSE THE PAGE IS WIDER THAN THIS MODULE. The same page publishes
+// Ubuntu 22.04 Linux, Windows Server 2022/2025 and macOS families, and a depot-ubuntu-latest
+// alias, none of which are modelled here. A consumer that meets depot-windows-2022 therefore
+// gets a MISS, and the scope sentence is what tells it the miss is this repository's coverage
+// gap rather than a label Depot does not publish. Nothing infers that from the label text.
+data depot_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-10T00:00:00Z",
+  declared_scope: "Ubuntu 24.04 Linux runner families only, both architectures, from depot.dev/docs/github-actions/runner-types. The Ubuntu 22.04, Windows Server 2022, Windows Server 2025 and macOS families on the same page, and the depot-ubuntu-latest alias, are NOT modelled here: a label from any of them is absent from this catalog because this repository has not read it, not because Depot does not publish it.",
+}
+
+data depot_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.depot", decl_name: "depot_label_catalog"),
+  provider: depot_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
+  snapshot: depot_catalog_snapshot,
+  availability: depot_runner_catalog,
+)

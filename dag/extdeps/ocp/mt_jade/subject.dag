@@ -32,6 +32,18 @@ data mt_jade_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// A DATED MIRROR OF THE PUBLISHER LOCATOR, CITED BESIDE IT AND NEVER INSTEAD OF IT. The publisher
+// locator answers 403 to an unauthenticated fetch, so a second artifact is what makes the document
+// readable at all; it is a capture of a particular day and may not be what the publisher serves
+// now, which is exactly why it is a separate authority rather than a substituted locator. WHICH
+// ARTIFACT THIS REPOSITORY ACTUALLY DECODED IS A GUNBC RECEIPT, not a field here.
+data internet_archive_mt_jade_capture_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "web.archive.org/web/20220603132323id_/https://www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1",
+  }
+}
+
 // MT. JADE AS AN OCP-ACCEPTED REFERENCE PLATFORM, NOT AS A PACKAGE FACT.
 // extdeps.cpu.ampere_altra_package separates the public Altra package datasheet from the NDA
 // reference-board collateral listing Mt. Jade among four Ampere boards. This module is the third
@@ -96,7 +108,7 @@ data mt_jade_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: mt_jade_subject_authority_anchor,
-  further_citations: [],
+  further_citations: [internet_archive_mt_jade_capture_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
