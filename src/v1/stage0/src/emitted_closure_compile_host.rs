@@ -1009,7 +1009,7 @@ pub(crate) fn probe_cargo_invocation(
 /// `pub(crate)` for the same consumer as `write_probe_crate`: the v2-native lane builds the
 /// emitted compiler crate through this same cargo invocation.
 fn finish_cargo_command(
-    command: std::process::Command,
+    mut command: std::process::Command,
     cargo: &str,
     attribution_symbol: &str,
 ) -> CargoVerdict {

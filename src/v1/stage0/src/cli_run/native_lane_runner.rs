@@ -474,6 +474,7 @@ fn acquisition_refusal(cause: &str, expected_generation: i64, detail: &str) -> S
 
 fn interpret_acquisition(
     ctx: &v1_interpreter::InterpContext,
+    workspace: &Path,
     value: &Value,
     binary_path: Option<PathBuf>,
     closure_identity: String,
@@ -765,6 +766,7 @@ fn acquire_native_compiler(
     )?;
     interpret_acquisition(
         &ctx,
+        workspace,
         &acquisition,
         binary_path,
         closure_identity,
