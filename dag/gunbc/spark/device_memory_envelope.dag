@@ -61,11 +61,30 @@ type DeviceMemoryEnvelopePolicy sole_constructor {
 // honest arm: DERIVATION TRIGGER for replacing this margin with a measurement is the first startup memory
 // profile captured from a rank that actually serves.
 //
-// THE RESERVE SITS BETWEEN THE BUDGET AND THE SUPPLY, and it is not slack for the model. The engine's own
-// allocator budget is what the fraction names; the CUDA context, the NCCL communicator buffers and the
-// loader's transient allocations live outside it and are drawn from the same free pool. 4 GiB exceeds the
-// 2.70 GiB shortfall observed on 2026-09-10, which is a lower bound on the gap and not a measurement of
-// this requirement -- DERIVATION TRIGGER: the same startup profile.
+// THE RESERVE COVERS THE DRIFT BETWEEN THIS OBSERVATION AND THE ENGINE'S OWN ADMISSION, and it is now
+// MEASURED rather than guessed. That is the whole of its job: the supply is read here, the engine reads it
+// again moments later, and the launch itself changes the number in between.
+//
+// 4 GiB WAS BELOW THE DRIFT IT EXISTS TO ABSORB, and attempt 5 on 2026-09-11 is the receipt. Per host:
+// releasing page cache gave 117 GiB free; this module's probe container reported 113.5 GiB; a 4 GiB reserve
+// resolved (113.5 - 4) / 121.69 = 0.9002, which caps to the ceiling and renders 0.90 for a budget of 109.52
+// GiB; and the engine then refused at 106.7 GiB free. The arithmetic was exact and the answer was 2.8 GiB too
+// high, because between the two readings the container's own startup -- vLLM's modules, the model config, the
+// safetensors index -- refilled page cache and took the device figure back down.
+//
+// THE DRIFT MEASURED DIRECTLY IS 6.8 GiB (113.5 observed here, 106.7 at the engine's check), taken on an idle
+// host with caches released. 12 GiB carries that with margin, and margin is required rather than tidy: the
+// drift is page cache refill, so its size depends on what the container happens to read and is not a
+// constant. At 12 GiB the same population resolves (113.5 - 12) / 121.69 = 0.834, a 101.0 GiB budget against
+// 106.7 GiB of real supply.
+//
+// IT IS NOT SLACK FOR THE MODEL, and the two must not be confused. The CUDA context, the NCCL communicator
+// buffers and the loader's transient allocations also live outside the fraction and draw on the same pool;
+// what makes this figure large is the observation-to-admission drift, not those.
+//
+// NEXT DERIVATION: the drift is re-measurable on demand -- release, probe, start a container, read the
+// engine's reported figure -- so this row's trigger is an observed drift per attempt rather than a standing
+// number, at which point the reserve becomes another produced reading and this constant deletes.
 //
 // THE GRANULARITY IS A PROPERTY OF THE WIRE. `--gpu-memory-utilization` is rendered as a two-digit decimal
 // fraction, so a resolution of 8449 basis points cannot be expressed and must floor to 8400. Flooring is
@@ -74,7 +93,7 @@ type DeviceMemoryEnvelopePolicy sole_constructor {
 data glm_native_device_memory_policy: DeviceMemoryEnvelopePolicy = DeviceMemoryEnvelopePolicy {
   maximum_fraction_basis_points: 9000,
   minimum_fraction_basis_points: 8000,
-  startup_reserve_bytes: byte_size(count: 4294967296),
+  startup_reserve_bytes: byte_size(count: 12884901888),
   granularity_basis_points: 100,
 }
 

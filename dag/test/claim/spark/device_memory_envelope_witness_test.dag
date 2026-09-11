@@ -2,7 +2,7 @@ module test.claim.spark.device_memory_envelope_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat, parse_nat }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
@@ -22,15 +22,30 @@ import gunbc.spark.device_memory_envelope {
   resolve_device_memory_envelope, glm_native_tp4_launch_plan,
 }
 
-// ── THE FIXTURE IS THE 2026-09-10 READING, WHICH IS WHY THESE ROWS ARE DISCRIMINATING ──────────
+// ── THE FIXTURES ARE MEASURED READINGS AND WHICH INSTRUMENT TOOK THEM MATTERS ──────────────────
 //
-// THE NUMBERS ARE THE ONES THE ENGINE REPORTED WHEN IT REFUSED. 106.82 GiB free of 121.69 GiB total on the
-// peers; the head, whose incumbent had just been stopped, had its memory back. A control written against
-// invented numbers would pass against a policy that had learned nothing, so these are transcribed from the
-// refusal and this is the one place in the corpus that is the right thing to do: they are a FIXTURE, an
-// input the test owns, not a measurement cited as a fact about the fleet.
+// A FIRST VERSION OF THIS FILE CONFLATED TWO MEASUREMENT POINTS AND THE CONFLATION WAS INVISIBLE. It fed the
+// ENGINE's at-check figure from 2026-09-10 (106.82 GiB) into the resolution as though it were a PROBE
+// reading. Those are readings of the same host at different moments, separated by the container startup that
+// refills page cache, and the reserve exists precisely to span that gap -- so using one where the other
+// belongs double-counts the drift and makes every derived expectation wrong by about 7 GiB. It passed
+// against a 4 GiB reserve by coincidence.
+//
+// SO EACH FIXTURE NOW NAMES ITS INSTRUMENT. A probe reading is what this module's own observation produces
+// and is what the resolution consumes; an engine figure is what the admission check sees later and is what
+// the resolved budget must fit inside. Rows that assert a relation between the two say which is which.
+//
+// THE 2026-09-10 ENGINE FIGURE IS NOT CARRIED HERE, because a fixture no row consumes is a declaration with
+// no consumer whatever its provenance. That reading is a receipt and its home is the failure-mode row at
+// gunbc.recurring_failure_mode.host_available_memory_read_as_device_admission.
 data total_bytes_gb10: ByteSize = byte_size(count: 130662273024)
-data peer_free_bytes_after_transfer: ByteSize = byte_size(count: 114691373793)
+
+// PROBE READING, taken by this module's own observation on an idle Group B host immediately after releasing
+// page cache (2026-09-11): 113.5 GiB of 121.69 GiB. This is the input shape the resolution is designed for.
+data peer_probe_free_after_release: ByteSize = byte_size(count: 121857081344)
+
+// THE HEAD READS HIGHER THAN THE PEERS in this fixture, which is what makes the binding-rank row below
+// discriminating rather than accidental.
 data head_free_bytes_when_idle: ByteSize = byte_size(count: 128000000000)
 
 data expected_image: NonEmptyStr = "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
@@ -78,7 +93,7 @@ fn standing_of(r: RankDeviceMemoryReading) -> RankEnvelopeStanding {
 }
 
 fn peer_reading(host: HostIdentity, rank: Nat) -> RankDeviceMemoryReading {
-  observation(host: host, rank: rank, free: peer_free_bytes_after_transfer, image: expected_image, attempt: expected_attempt)
+  observation(host: host, rank: rank, free: peer_probe_free_after_release, image: expected_image, attempt: expected_attempt)
 }
 
 fn head_reading() -> RankDeviceMemoryReading {
@@ -110,12 +125,13 @@ fn resolved_basis_points(e: ResolvedDeviceMemoryEnvelope) -> Nat? {
   }
 }
 
-// ── THE ROW THE OUTAGE WROTE ──────────────────────────────────────────────────────────────────
+// ── THE ROW THE OUTAGES WROTE ─────────────────────────────────────────────────────────────────
 //
-// THE POPULATION THAT REFUSED A 0.90 LAUNCH RESOLVES BELOW 0.90, AND THAT IS THE WHOLE CLAIM. If this
-// returned 9000 the policy would have learned nothing from the failure; the number it does return is
-// whatever the weakest rank supplies, and the assertion is the INEQUALITY rather than a target value,
-// because a target value here would be this witness quietly re-authoring the constant it deleted.
+// A REAL POST-RELEASE PROBE POPULATION RESOLVES BELOW THE CEILING, AND THAT IS THE WHOLE CLAIM. Attempt 5
+// resolved this exact population TO the ceiling, because a 4 GiB reserve left (113.5 - 4) / 121.69 = 0.9002,
+// and the engine then refused at 106.7 GiB. If this returns 9000 again the policy has learned nothing. The
+// assertion is the INEQUALITY rather than a target value, because naming a target here would be this witness
+// quietly re-authoring the constant the model exists to derive.
 test fn the_population_that_refused_zero_point_nine_resolves_below_it() -> Bool {
   match resolved_basis_points(e: resolve_over(readings: four_readings())) {
     Absent => false
@@ -190,7 +206,7 @@ test fn four_readings_of_one_rank_refuses_rather_than_counting_to_four() -> Bool
 // evidence about the one the launch will use.
 test fn a_reading_from_another_image_is_refused_as_foreign() -> Bool {
   match standing_of(r: observation(
-    host: operator_host_srv10, rank: 1, free: peer_free_bytes_after_transfer,
+    host: operator_host_srv10, rank: 1, free: peer_probe_free_after_release,
     image: "vllm/vllm-openai@sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
     attempt: expected_attempt,
   )) {
@@ -206,7 +222,7 @@ test fn a_reading_from_another_image_is_refused_as_foreign() -> Bool {
 // holding the memory it measured.
 test fn a_reading_from_a_previous_attempt_is_refused_as_stale() -> Bool {
   match standing_of(r: observation(
-    host: operator_host_srv10, rank: 1, free: peer_free_bytes_after_transfer,
+    host: operator_host_srv10, rank: 1, free: peer_probe_free_after_release,
     image: expected_image, attempt: "glm-native-tp4-cutover-3" as NonEmptyStr,
   )) {
     RankEnvelopeStaleAttempt { node_rank: _, host: _, observed_attempt: _, expected_attempt: _ } => true
@@ -257,16 +273,66 @@ test fn a_cache_warm_rank_is_refused_and_that_is_correct() -> Bool {
   }
 }
 
-// AND THE SAME HOST AFTER ITS CACHE IS RELEASED SUPPLIES THE CEILING. The pair is the point: one rank, two
+// AND THE SAME HOST AFTER ITS CACHE IS RELEASED ADMITS A LAUNCH. The pair is the point: one rank, two
 // readings, and the difference is entirely whether the release ran first. A preflight that takes the first
 // reading and calls it a prediction of the launch has measured the wrong moment.
+//
+// THE ASSERTION IS ADMISSION AND NOT A NUMBER, because a number here binds this row to a reserve it does not
+// own. A first version required the released reading to reach the CEILING, which held at a 4 GiB reserve --
+// (117.08 - 4) / 121.69 = 0.93, capped to 0.90 -- and went red the moment the reserve became the measured 12
+// GiB, where the same reading resolves 0.863. The code was right and the expectation was over-specified;
+// execution caught it, which is what these rows are for. What this pair must establish is the DIRECTION of
+// the difference, so the floor is the right threshold and the reserve stays free to move on its own evidence.
 test fn the_same_rank_supplies_once_its_cache_is_released() -> Bool {
   match standing_of(r: observation(
     host: operator_host_srv12, rank: 2, free: byte_size(count: 125718261760),
     image: expected_image, attempt: expected_attempt,
   )) {
     RankEnvelopeSupplies { node_rank: _, host: _, cap_basis_points: c, free_bytes: _ } =>
-      c >= glm_native_device_memory_policy.maximum_fraction_basis_points
+      c >= glm_native_device_memory_policy.minimum_fraction_basis_points
+    RankEnvelopeBelowFloor { node_rank: _, host: _, cap_basis_points: _, floor_basis_points: _ } => false
+    RankEnvelopeUnread { node_rank: _, host: _, cause: _ } => false
+    RankEnvelopeForeignImage { node_rank: _, host: _, observed_image: _, expected_image: _ } => false
+    RankEnvelopeStaleAttempt { node_rank: _, host: _, observed_attempt: _, expected_attempt: _ } => false
+  }
+}
+
+// ── THE RESERVE MUST COVER THE DRIFT, AND THIS IS THE ROW THAT SAYS SO ────────────────────────
+//
+// BOTH NUMBERS ARE MEASURED AND THE ASSERTION IS THE RELATION BETWEEN THEM. On 2026-09-11, after releasing
+// page cache, this module's probe reported 113.5 GiB free on an idle Group B host and the engine's own
+// startup check -- moments later, same host, nothing else running -- reported 106.7 GiB. The gap is the
+// container's own startup refilling page cache, and the reserve exists to absorb exactly it.
+//
+// SO A RESOLUTION FROM THE PROBE'S FIGURE MUST PRODUCE A BUDGET THE ENGINE'S FIGURE COVERS. With a 4 GiB
+// reserve it did not: it resolved to the ceiling and demanded 109.52 GiB against 106.7 GiB of real supply,
+// which is attempt 5's failure in one line. This control is the wall that would have caught it before a
+// displacement window was spent, and it goes red again if the reserve is ever lowered below the drift.
+data engine_admitted_free_2026_09_11: ByteSize = byte_size(count: 114556764160)
+
+test fn a_resolution_from_the_probe_figure_fits_the_engine_figure() -> Bool {
+  match standing_of(r: observation(
+    host: operator_host_srv10, rank: 1, free: peer_probe_free_after_release,
+    image: expected_image, attempt: expected_attempt,
+  )) {
+    RankEnvelopeSupplies { node_rank: _, host: _, cap_basis_points: c, free_bytes: _ } =>
+      (byte_size_count(b: total_bytes_gb10) / 10000) * c
+        <= byte_size_count(b: engine_admitted_free_2026_09_11)
+    RankEnvelopeBelowFloor { node_rank: _, host: _, cap_basis_points: _, floor_basis_points: _ } => false
+    RankEnvelopeUnread { node_rank: _, host: _, cause: _ } => false
+    RankEnvelopeForeignImage { node_rank: _, host: _, observed_image: _, expected_image: _ } => false
+    RankEnvelopeStaleAttempt { node_rank: _, host: _, observed_attempt: _, expected_attempt: _ } => false
+  }
+}
+
+// AND IT STILL ADMITS A LAUNCH, which the row above cannot establish alone: a reserve large enough to fail
+// the floor would satisfy the inequality by refusing everything. The pair is the check.
+test fn the_probe_figure_still_admits_a_launch() -> Bool {
+  match standing_of(r: observation(
+    host: operator_host_srv10, rank: 1, free: peer_probe_free_after_release,
+    image: expected_image, attempt: expected_attempt,
+  )) {
+    RankEnvelopeSupplies { node_rank: _, host: _, cap_basis_points: _, free_bytes: _ } => true
     RankEnvelopeBelowFloor { node_rank: _, host: _, cap_basis_points: _, floor_basis_points: _ } => false
     RankEnvelopeUnread { node_rank: _, host: _, cause: _ } => false
     RankEnvelopeForeignImage { node_rank: _, host: _, observed_image: _, expected_image: _ } => false

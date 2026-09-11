@@ -39,8 +39,13 @@ import gunbc.spark.native_launch_fold {
   rank_startup_text, first_failed_rank_startup,
 }
 import gunbc.spark.native_rank_observer { observe_native_population, observe_rank_utilization_basis_points }
-import gunbc.spark.post_acquisition_memory_remedy {
-  MemoryRemedyOutcome, memory_remedy_text, release_population_page_cache,
+import gunbc.spark.serving_group_exclusivity {
+  ServingGroupMutationStanding, ServingGroupExclusivelyHeld, CompetingServingAuthorityObserved,
+  ServingGroupOwnershipUnread, hold_group_b_for, mutation_standing_text,
+}
+import gunbc.spark.snapshot_serving_handoff {
+  SnapshotServingHandoff, SnapshotReadyForNativeServing, SnapshotMaterializedButNotReady,
+  hand_off_snapshot_for_native_serving, handoff_text,
 }
 import gunbc.spark.native_deployment_readback {
   DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
@@ -50,8 +55,6 @@ import gunbc.spark.native_incumbent {
   IncumbentObservation, IncumbentRunning, IncumbentStoppedPresent, IncumbentAbsent, IncumbentUnreadable,
   observe_incumbent, incumbent_is_retainable,
   IncumbentStopOutcome, IncumbentStopped, IncumbentStopFailed, stop_incumbent_retaining_it,
-  IncumbentRestoration, IncumbentRestored, IncumbentRestorationFailed, IncumbentRestoredReceipt,
-  restore_incumbent,
 }
 
 // ── ONE OPERATOR-REACHABLE ROOT THAT OWNS THE WHOLE TRANSACTION ────────────────────────────────
@@ -94,15 +97,9 @@ type NativeCutoverTerminal
   = NativeAlreadyConverged { receipt: NonEmptyStr }
   | NativeCutoverWithheld { reasons: List<NonEmptyStr> }
   | NativeServing { receipt: NonEmptyStr, probe: NonEmptyStr }
-  | NativeFailedAndIncumbentRestored {
+  | NativeNormalDeploymentFailed {
       failure: NonEmptyStr,
       cleanup: List<RankRollbackOutcome>,
-      incumbent: IncumbentRestoredReceipt,
-    }
-  | NativeFailedAndIncumbentLost {
-      failure: NonEmptyStr,
-      cleanup: List<RankRollbackOutcome>,
-      restoration_failure: NonEmptyStr,
     }
 
 fn terminal_text(t: NativeCutoverTerminal) -> String {
@@ -113,17 +110,10 @@ fn terminal_text(t: NativeCutoverTerminal) -> String {
       join(["WITHHELD before acting: ", join(map(rs, x => x as String), "; ")], "")
     NativeServing { receipt: r, probe: p } =>
       join(["SERVING and accepted: ", r as String, " -- probe: ", p as String], "")
-    NativeFailedAndIncumbentRestored { failure: f, cleanup: cs, incumbent: inc } =>
+    NativeNormalDeploymentFailed { failure: f, cleanup: cs } =>
       join([
-        "FAILED and the incumbent is back: ", f as String,
+        "FAILED, group B is clean and NOT SERVING: ", f as String,
         " -- cleanup: ", join(map(cs, c => rank_rollback_text(o: c)), "; "),
-        " -- incumbent ", inc.container_id as String, " answers ", inc.endpoint_status as String,
-      ], "")
-    NativeFailedAndIncumbentLost { failure: f, cleanup: cs, restoration_failure: rf } =>
-      join([
-        "FAILED AND THE INCUMBENT IS DOWN -- this is an outage needing a person: ", f as String,
-        " -- cleanup: ", join(map(cs, c => rank_rollback_text(o: c)), "; "),
-        " -- restoration: ", rf as String,
       ], "")
   }
 }
@@ -133,8 +123,7 @@ fn terminal_is_success(t: NativeCutoverTerminal) -> Bool {
     NativeServing { receipt: _, probe: _ } => true
     NativeAlreadyConverged { receipt: _ } => true
     NativeCutoverWithheld { reasons: _ } => false
-    NativeFailedAndIncumbentRestored { failure: _, cleanup: _, incumbent: _ } => false
-    NativeFailedAndIncumbentLost { failure: _, cleanup: _, restoration_failure: _ } => false
+    NativeNormalDeploymentFailed { failure: _, cleanup: _ } => false
   }
 }
 
@@ -235,9 +224,26 @@ func run_semantic_probe(ctx: SparkRemoteExecutionContext, host: HostIdentity) ->
 
 // ── THE ROLLBACK PATH, SHARED BY EVERY POST-STOP FAILURE ──────────────────────────────────────
 //
-// ONE PATH, SO NO FAILURE ARM CAN FORGET A STEP. Every post-stop failure cleans up the started ranks,
-// restarts the retained incumbent, observes its endpoint, and settles the claim as aborted -- in that order,
-// because cleaning up after restoring would leave four engines contending for memory on the same hosts.
+// ONE PATH, SO NO FAILURE ARM CAN FORGET A STEP: clean the ranks that actually started, then settle the
+// claim aborted, leaving group B clean and not serving.
+//
+// THERE IS NO RESTORATION BRANCH, AND THAT IS AN OPERATOR POLICY DECISION RATHER THAN A SIMPLIFICATION
+// (2026-09-11). The EXL3 canary is RETIRED as a product requirement: the objective is normal native GLM
+// serving, redundancy is not wanted, and the operator authorised stopping or deleting the canary. Modelling
+// the transaction as "replace EXL3, restore it on every failure" made the canary a protected incumbent it
+// no longer is, and that cost more than it bought -- three attempts each spent up to twenty minutes in a
+// restoration poll for an engine nobody wants back, which is time the endpoint was down FOR THE ROLLBACK
+// rather than for the launch.
+//
+// SO A FAILED DEPLOYMENT LEAVES GROUP B CLEAN AND NOT SERVING, and that terminal is acceptable under the
+// stated policy rather than being an outage requiring a person. What it must still do exactly is remove
+// every rank that started and settle the claim, because a half-cleaned group and an unsettled claim are
+// what block the NEXT attempt.
+//
+// WHAT IS DELETED WITH THE BRANCH: the incumbent restoration poll, its budget, the endpoint revalidation,
+// the lost-versus-restored distinction, and the reason this transaction needed to know how to reconstruct a
+// container it did not create. gunbc.spark.native_incumbent still owns STOPPING the canary, which is a real
+// destructive step this transaction performs; it no longer owns putting it back.
 func roll_back(
   ctx: SparkRemoteExecutionContext,
   head: HostIdentity,
@@ -247,16 +253,8 @@ func roll_back(
   uses net: Network
 {
   let cleanup = rollback_started_ranks(ctx: ctx, started: started)
-  match restore_incumbent(ctx: ctx, host: head) {
-    IncumbentRestored { receipt: rec } => {
-      let settled = settle_claim(ctx: ctx, host: head, status: "aborted")
-      NativeFailedAndIncumbentRestored { failure: failure, cleanup: cleanup, incumbent: rec }
-    }
-    IncumbentRestorationFailed { cause: c, start_attempted: _ } => {
-      let settled = settle_claim(ctx: ctx, host: head, status: "aborted-incumbent-lost")
-      NativeFailedAndIncumbentLost { failure: failure, cleanup: cleanup, restoration_failure: c }
-    }
-  }
+  let settled = settle_claim(ctx: ctx, host: head, status: "aborted")
+  NativeNormalDeploymentFailed { failure: failure, cleanup: cleanup }
 }
 
 // ── THE ENVELOPE IS RESOLVED TWICE AND THE TWO STAGES ASK DIFFERENT QUESTIONS ──────────────────
@@ -302,7 +300,7 @@ func stage_one_peer_envelope(
   uses net: Network
 {
   let peers = plan_peer_nodes(nodes: nodes, head: head)
-  let prepared = release_population_page_cache(ctx: ctx, nodes: peers)
+  let handoff = hand_off_snapshot_for_native_serving(ctx: ctx, ranks: peers)
   glm_native_tp4_resolve_envelope(
     ctx: ctx,
     nodes: peers,
@@ -330,6 +328,18 @@ func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -
       match ns.first() {
         Absent => NativeCutoverWithheld { reasons: ["the roster names no head rank" as NonEmptyStr] }
         Present { value: head } =>
+          match hold_group_b_for(ctx: ctx, holder: attempt as NonEmptyStr) {
+            ServingGroupOwnershipUnread { group: _, cause: c } => NativeCutoverWithheld {
+              reasons: [join(["group B ownership could not be established, so nothing was stopped: ",
+                              c as String], "") as NonEmptyStr],
+            }
+            CompetingServingAuthorityObserved { group: _, actor: a, receipts: rs } => NativeCutoverWithheld {
+              reasons: concat(
+                [join(["a competing serving authority can still mutate group B, so nothing was stopped: ",
+                       a as String], "") as NonEmptyStr],
+                rs),
+            }
+            ServingGroupExclusivelyHeld { group: _, holder: _, receipts: _ } =>
           match stage_one_peer_envelope(ctx: ctx, nodes: ns, head: head.host, attempt: attempt) {
             NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss } => NativeCutoverWithheld {
               reasons: concat(
@@ -339,6 +349,7 @@ func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -
             }
             ResolvedForAttempt { basis_points: _, binding_node_rank: _, policy: _, attempt: _, standings: _ } =>
               cutover_after_peer_preflight(ctx: ctx, nodes: ns, head: head, attempt: attempt)
+          }
           }
       }
   }
@@ -447,14 +458,13 @@ func launch_after_stop(
 ) -> NativeCutoverTerminal
   uses net: Network
 {
-  let remedies = release_population_page_cache(ctx: ctx, nodes: nodes)
+  let handoff = hand_off_snapshot_for_native_serving(ctx: ctx, ranks: nodes)
   let envelope = glm_native_tp4_resolve_envelope(ctx: ctx, nodes: nodes, attempt: attempt as NonEmptyStr)
   let plan = glm_native_tp4_launch_plan(envelope: envelope)
   match plan {
     ArmLaunchRefused { cause: c } =>
       roll_back(ctx: ctx, head: head, started: [], failure: join([
-        c as String, " -- page cache remedy: ",
-        join(map(remedies, x => memory_remedy_text(o: x)), "; "),
+        c as String, " -- snapshot handoff: ", handoff_text(h: handoff),
       ], "") as NonEmptyStr)
     ArmLaunchPlanned { lines: _, master: _ } =>
       match launch_native_population(ctx: ctx, plan: plan) {
