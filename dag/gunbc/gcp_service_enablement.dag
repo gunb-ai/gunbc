@@ -1,0 +1,133 @@
+module gunbc.gcp_service_enablement
+
+import std.types { NonEmptyStr, String, Bool }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure {
+  EnsureMayApply,
+  EnsureObserved,
+  EnsureInaccessible,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+  ensure_decide,
+}
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+
+// A GCP API enablement is a declared desired state with Service Usage readback, not a console
+// click. The converge ENABLES. It must never disable: Google's own disable dialog warns that
+// resources created by the API may be deleted soon after, so a drift-driven disable is an
+// outage with no undo. DesiredDisabled is representable so that Refuse is authorable; do not
+// "complete" this module with a DisableService plan.
+
+type ServiceEnablementDesire
+  = ServiceDesiredEnabled { project: GcpProjectId, service_id: NonEmptyStr }
+  | ServiceDesiredDisabled { project: GcpProjectId, service_id: NonEmptyStr }
+
+type ServiceEnablementObservation
+  = ServiceObservedEnabled { project: GcpProjectId, service_id: NonEmptyStr }
+  | ServiceObservedDisabled { project: GcpProjectId, service_id: NonEmptyStr }
+  | ServiceEnablementUnobserved { project: GcpProjectId, service_id: NonEmptyStr }
+
+type EnableApiPlan {
+  project: GcpProjectId
+  service_id: NonEmptyStr
+}
+
+fn service_enablement_subject_eq(
+  project: GcpProjectId,
+  service_id: NonEmptyStr,
+  other_project: GcpProjectId,
+  other_service_id: NonEmptyStr,
+) -> Bool {
+  (project as String) == (other_project as String) && (service_id as String) == (other_service_id as String)
+}
+
+fn disable_refused_reason(project: GcpProjectId, service_id: NonEmptyStr) -> NonEmptyStr {
+  join(
+    [
+      "refusing disable of ",
+      service_id as String,
+      " on ",
+      project as String,
+      "; enablement converge never disables (destructive, not undoable)",
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+fn service_enablement_from_state_wire(
+  project: GcpProjectId,
+  service_id: NonEmptyStr,
+  state_wire: String,
+) -> ServiceEnablementObservation {
+  if state_wire == "ENABLED" {
+    ServiceObservedEnabled { project: project, service_id: service_id }
+  } else {
+    if state_wire == "DISABLED" {
+      ServiceObservedDisabled { project: project, service_id: service_id }
+    } else {
+      ServiceEnablementUnobserved { project: project, service_id: service_id }
+    }
+  }
+}
+
+fn decide_service_enablement(
+  desired: ServiceEnablementDesire,
+  observed: ServiceEnablementObservation,
+) -> UpsertDecision<EnableApiPlan> {
+  match desired {
+    ServiceDesiredDisabled { project: p, service_id: s } =>
+      Refuse { reason: disable_refused_reason(project: p, service_id: s) }
+    ServiceDesiredEnabled { project: p, service_id: s } =>
+      match observed {
+        ServiceEnablementUnobserved { project: op, service_id: os } =>
+          ensure_decide(
+            policy: EnsureMayApply,
+            observation: EnsureInaccessible {
+              reason: join(
+                [
+                  "serviceusage GetService unobserved for ",
+                  os as String,
+                  " on ",
+                  op as String,
+                  " (do not treat a Sheets HTTP refusal as this fact)",
+                ],
+                "",
+              )
+            },
+            observation_satisfies: false,
+            mismatch_reason: "unobserved",
+            plan: EnsurePlanUnavailable { reason: "unobserved" },
+          )
+        ServiceObservedEnabled { project: op, service_id: os } =>
+          if service_enablement_subject_eq(project: p, service_id: s, other_project: op, other_service_id: os) {
+            ensure_decide(
+              policy: EnsureMayApply,
+              observation: EnsureObserved { evidence: observed },
+              observation_satisfies: true,
+              mismatch_reason: "already enabled",
+              plan: EnsurePlanUnavailable { reason: "already enabled" },
+            )
+          } else {
+            Refuse {
+              reason: concat("enablement observation subject mismatch for ", s as String) as NonEmptyStr
+            }
+          }
+        ServiceObservedDisabled { project: op, service_id: os } =>
+          if service_enablement_subject_eq(project: p, service_id: s, other_project: op, other_service_id: os) {
+            ensure_decide(
+              policy: EnsureMayApply,
+              observation: EnsureObserved { evidence: observed },
+              observation_satisfies: false,
+              mismatch_reason: "desired enabled, observed disabled",
+              plan: EnsurePlanAvailable {
+                plan: EnableApiPlan { project: p, service_id: s },
+              },
+            )
+          } else {
+            Refuse {
+              reason: concat("enablement observation subject mismatch for ", s as String) as NonEmptyStr
+            }
+          }
+      }
+  }
+}
