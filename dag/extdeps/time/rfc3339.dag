@@ -18,6 +18,23 @@ type Rfc3339Timestamp = NonEmptyStr where brand("Rfc3339Timestamp")
 
 data rfc3339_utc_designator: String = "Z"
 
+// RFC 3339 PERMITS LOWERCASE, AND LOWERCASE REVERSES LEXICAL ORDER. The grammar's own note says the
+// "T" and "Z" characters may alternatively be lower case "t" or "z". So 2026-09-04t16:04:06Z and
+// 2026-09-04T16:04:06Z are the SAME INSTANT spelled two admissible ways - and 't' is code point
+// 0x74 against 'T' at 0x54, so lexical comparison puts the lowercase one AFTER every uppercase one
+// regardless of its date.
+//
+// That is not a rounding error, it is a reversal: an older lowercase stamp sorts as newer. A
+// consumer using this to decide whether a snapshot pre-dates an observation would flip a coverage
+// obligation into a finding about somebody else's repository - precisely the confusion the
+// three-valued standing in gunbc.runner_label_resolution exists to prevent.
+//
+// SECTION 5.1's PRECONDITION IS "expressed using the same string", AND CASE IS PART OF THE STRING.
+// The comparator requires the canonical uppercase spelling of BOTH designators and refuses anything
+// else - including a pair that is internally consistent but lowercase, because admitting that would
+// mean admitting the mixed pair.
+data rfc3339_date_time_separator: String = "T"
+
 // THE COMPARATOR THE ROW ABOVE ALREADY DESCRIBES, WITH ITS PRECONDITIONS CHECKED RATHER THAN
 // ASSUMED. RFC 3339 section 5.1 states the property and its conditions in one sentence:
 // "Assuming that the time zones of the dates and times are the same (e.g., all in UTC),
@@ -45,21 +62,23 @@ type Rfc3339Comparison
   | Rfc3339Simultaneous
   | Rfc3339OrderUndecidable { cause: NonEmptyStr }
 
-fn rfc3339_is_utc_designated(value: Rfc3339Timestamp) -> Bool {
+fn rfc3339_is_canonically_spelled(value: Rfc3339Timestamp) -> Bool {
   let len = string_length(s: value)
-  len > 0 && substring(s: value, start: len - 1, end: len) == rfc3339_utc_designator
+  len > 11
+    && substring(s: value, start: len - 1, end: len) == rfc3339_utc_designator
+    && substring(s: value, start: 10, end: 11) == rfc3339_date_time_separator
 }
 
 fn rfc3339_lexically_comparable(left: Rfc3339Timestamp, right: Rfc3339Timestamp) -> Bool {
-  rfc3339_is_utc_designated(value: left)
-    && rfc3339_is_utc_designated(value: right)
+  rfc3339_is_canonically_spelled(value: left)
+    && rfc3339_is_canonically_spelled(value: right)
     && string_length(s: left) == string_length(s: right)
 }
 
 fn rfc3339_compare(left: Rfc3339Timestamp, right: Rfc3339Timestamp) -> Rfc3339Comparison {
   if rfc3339_lexically_comparable(left: left, right: right) == false {
     Rfc3339OrderUndecidable {
-      cause: join(["RFC 3339 section 5.1 admits string sorting only for values at the same time zone spelling with the same number of fractional second digits; '",
+      cause: join(["RFC 3339 section 5.1 admits string sorting only at one time-zone spelling and one fractional precision, and CASE IS PART OF THAT SPELLING - the grammar permits lowercase t and z, which sort AFTER every uppercase form and reverse chronology; '",
         left, "' and '", right,
         "' do not both carry the Z designator at the same total length, so ordering them lexically would be reading the format's coincidence rather than its stated property. A caller that must order these needs a real parse."], "")
     }

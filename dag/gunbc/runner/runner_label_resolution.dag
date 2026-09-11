@@ -11,6 +11,7 @@ import extdeps.time.rfc3339 {
   rfc3339_compare,
 }
 import gunbc.runner_provider_survey { runs_on_label_catalogs }
+import extdeps.github.actions { github_actions_runs_on_surface }
 
 // WHAT A `runs-on` LABEL IS, ANSWERED FROM THE VENDOR CATALOGS RATHER THAN FROM ITS SPELLING.
 //
@@ -94,15 +95,24 @@ type RunnerLabelResolution
 // catalog identity the multiplicity arm cannot say WHICH defect it found - a catalog that lists a
 // label twice is a defect in that catalog's own projection, and two catalogs that both claim a
 // label is a defect in the roster. They have different owners and different repairs.
+// A MATCH CARRIES THE SURFACE IT WAS FOUND ON, not only which catalog found it. resolve_from_matches
+// is reachable by any caller - it is split out precisely so a claim can hand it constructed matches -
+// and a seam that trusts its inputs is a wall with a door beside it. Without the surface on the match
+// there is nothing for that function to check, so a bare CircleCI row handed to it resolved happily
+// even though surveyed_matches would never have produced one.
 type LabelMatch {
   row: RunnerLabelRow
   catalog: DeclarationRef
+  selection_surface: DeclarationRef
   snapshot: CatalogSnapshot
 }
 
 fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatch> {
   map(filter(catalog.rows, r => r.label == label),
-      r => LabelMatch { row: r, catalog: catalog.catalog, snapshot: catalog.snapshot })
+      r => LabelMatch {
+        row: r, catalog: catalog.catalog,
+        selection_surface: catalog.selection_surface, snapshot: catalog.snapshot,
+      })
 }
 
 // KEYED ON THE CATALOG, NOT ON THE PROVIDER, and the difference is not hypothetical: the two
@@ -143,12 +153,25 @@ fn surveyed_matches(label: String) -> List<LabelMatch> {
 // THE SPLIT IS OVER A MATCH LIST RATHER THAN OVER THE LIVE SURVEY, so the arm has an authorable
 // red: a claim can hand this function two competing rows directly. A wall reachable only by
 // corrupting the enrolled catalogs would be a wall nothing could test.
+// THE SEAM CHECKS ITS OWN INPUTS. A match whose surface is not the one this resolver answers for is
+// refused here rather than resolved, so the wall holds for a constructed call exactly as it does for
+// the survey path - a caller cannot get a CircleCI resource class answered as a runs-on label by
+// reaching past surveyed_matches.
 fn resolve_from_matches(
   label: String,
   observed_at: Rfc3339Timestamp,
   matches: List<LabelMatch>,
 ) -> RunnerLabelResolution {
-  if count(matches) > 1 {
+  let foreign = filter(matches, m => declaration_ref_eq(a: m.selection_surface, b: github_actions_runs_on_surface) == false)
+  if count(foreign) > 0 {
+    RunnerLabelAmbiguousAcrossCatalogs {
+      label: label,
+      matches: foreign,
+      cause: join(["the label '", label, "' was matched on a selection surface this resolver does not answer for. ",
+        to_string(count(foreign)), " of ", to_string(count(matches)),
+        " matches come from a catalog whose labels are written in a different CI system's configuration key, so they are not runs-on values and cannot answer a runs-on question."], ""),
+    }
+  } else if count(matches) > 1 {
     RunnerLabelAmbiguousAcrossCatalogs {
       label: label,
       matches: matches,

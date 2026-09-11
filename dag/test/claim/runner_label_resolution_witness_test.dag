@@ -7,6 +7,8 @@ import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelRow }
 import extdeps.ci_runner.depot { depot_provider_identity }
 import extdeps.ci_runner.github_actions { github_actions_provider_identity }
+import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.ci_runner.circleci { circleci_resource_class_surface, circleci_provider_identity }
 import extdeps.time.rfc3339 {
   Rfc3339Timestamp, Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows,
   Rfc3339Simultaneous, Rfc3339OrderUndecidable, rfc3339_compare,
@@ -325,7 +327,10 @@ data control_snapshot: CatalogSnapshot = CatalogSnapshot {
 // label twice — it never tested two CATALOGS at all. The provider is now part of the match, and
 // the claims below drive both shapes separately.
 fn control_match_from(row: RunnerLabelRow, catalog: DeclarationRef) -> LabelMatch {
-  LabelMatch { row: row, catalog: catalog, snapshot: control_snapshot }
+  LabelMatch {
+    row: row, catalog: catalog,
+    selection_surface: github_actions_runs_on_surface, snapshot: control_snapshot,
+  }
 }
 
 // TWO CONTROL CATALOGS THAT SHARE A PROVIDER, which is the case the old key could not see. GitHub's
@@ -549,7 +554,55 @@ test fn witness_the_untrusted_partition_is_readable_from_the_value() -> Bool {
   }
 }
 
+// THE SEAM IS A DOOR UNLESS IT CHECKS ITS OWN INPUTS. resolve_from_matches exists so a claim can
+// hand it constructed matches - which means any caller can, and a wall enforced only in
+// surveyed_matches is enforced only on the path that was already safe. A bare CircleCI row handed
+// straight to the seam used to resolve.
+data circleci_row: RunnerLabelRow = RunnerLabelRow {
+  provider: circleci_provider_identity,
+  label: "arm.medium",
+  architecture: Aarch64,
+}
+
+test fn witness_the_seam_refuses_a_row_from_another_surface() -> Bool {
+  match resolve_from_matches(
+    label: "arm.medium",
+    observed_at: biome_observed_at,
+    matches: [LabelMatch {
+      row: circleci_row,
+      catalog: decl_ref(module_path: "extdeps.ci_runner.circleci", decl_name: "circleci_label_catalog"),
+      selection_surface: circleci_resource_class_surface,
+      snapshot: control_snapshot,
+    }],
+  ) {
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } =>
+      string_contains(s: cause as String, pattern: "does not answer for")
+    other => false
+  }
+}
+
+// AND THE COMPARATOR REFUSES A LOWERCASE SEPARATOR, which RFC 3339 permits and which sorts AFTER
+// every uppercase form: 't' is 0x74 against 'T' at 0x54, so an OLDER lowercase stamp compares as
+// NEWER. Left unrefused, that reverses a snapshot's standing and turns our own coverage obligation
+// into a finding about somebody else's repository.
+test fn witness_a_lowercase_separator_is_refused_rather_than_misordered() -> Bool {
+  let lowercase_t = match rfc3339_compare(left: "2026-07-11t00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339OrderUndecidable { cause } => true
+    other => false
+  }
+  // the same instants in canonical spelling still order correctly, so the refusal is not blanket
+  let canonical_still_orders = match rfc3339_compare(left: "2026-07-11T00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Precedes => true
+    other => false
+  }
+  lowercase_t && canonical_still_orders
+}
+
 fn all_claims_hold() -> Bool {
+  witness_the_seam_refuses_a_row_from_another_surface()
+    && witness_a_lowercase_separator_is_refused_rather_than_misordered()
+    &&
   witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs()
     && witness_one_catalog_listing_a_label_twice_names_that_catalog()
     && witness_the_untrusted_partition_is_readable_from_the_value()
