@@ -251,29 +251,28 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
         match event_log_remote_word(remote: layout.remote) {
           Absent => EventAppendRefused { step: "remote", reason: "the event log is unplaced" }
           Present { value: remote } => {
-            let file = join([layout.scratch as String, "/event-", partition as String, ".json"], "")
-            let w = Filesystem.Write(path: file, content: pool_event_wire_text(event: event))
-            if !w.success {
-              EventAppendRefused { step: "write", reason: w.error }
+            // THE BYTES GO TO GIT ON STDIN, NEVER THROUGH A PATH. Every writer on a host shares one
+            // scratch root, and a path is re-read by git after this writer's write: a concurrent
+            // writer's O_TRUNC published git's empty blob as a partition head (the harness's
+            // "event e69de29... undecodable"), and a completed foreign write published another
+            // writer's event under this writer's admitted append. Probe step 10 is the executed RED.
+            let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: pool_event_wire_text(event: event))
+            if h.exit_code != 0 {
+              EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
             } else {
-              let h = git.Plumbing.HashObjectWrite(address: mirror_address(layout: layout), path: file as FilePath)
-              if h.exit_code != 0 {
-                EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
+              let oid = trim(s: h.oid)
+              let p = git.Core.PushRefWithLeaseInRepo(repo: layout.mirror, remote: remote, refspec: partition_push_refspec(oid: oid, partition: partition), lease: partition_push_lease(partition: partition, expected: expected))
+              if p.exit_code == 0 {
+                EventAppended { id: oid as EventId }
               } else {
-                let oid = trim(s: h.oid)
-                let p = git.Core.PushRefWithLeaseInRepo(repo: layout.mirror, remote: remote, refspec: partition_push_refspec(oid: oid, partition: partition), lease: partition_push_lease(partition: partition, expected: expected))
-                if p.exit_code == 0 {
-                  EventAppended { id: oid as EventId }
-                } else {
-                  match event_log_observe_head(layout: layout, partition: partition) {
-                    HeadObservationRefused { step: s, reason: why } => EventAppendRefused { step: join(["push/", s], ""), reason: join(["push exit ", to_string(p.exit_code), ": ", trim(s: p.stderr), "; then ", why], "") }
-                    HeadObserved { head: observed } =>
-                      if head_expectation_eq(a: observed, b: expected) {
-                        EventAppendRefused { step: "push", reason: join(["exit ", to_string(p.exit_code), ": ", trim(s: p.stderr)], "") }
-                      } else {
-                        EventAppendStale { expected: expected, observed: observed }
-                      }
-                  }
+                match event_log_observe_head(layout: layout, partition: partition) {
+                  HeadObservationRefused { step: s, reason: why } => EventAppendRefused { step: join(["push/", s], ""), reason: join(["push exit ", to_string(p.exit_code), ": ", trim(s: p.stderr), "; then ", why], "") }
+                  HeadObserved { head: observed } =>
+                    if head_expectation_eq(a: observed, b: expected) {
+                      EventAppendRefused { step: "push", reason: join(["exit ", to_string(p.exit_code), ": ", trim(s: p.stderr)], "") }
+                    } else {
+                      EventAppendStale { expected: expected, observed: observed }
+                    }
                 }
               }
             }

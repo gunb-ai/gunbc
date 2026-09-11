@@ -139,6 +139,22 @@ service git.Plumbing {
     transport shell { argv: ["git", git_repository_address_argv(address: address), "hash-object", "-w", "--", "{path}"] }
   }
 
+  // git hash-object's --stdin mode (git-hash-object(1)): the object is exactly the bytes handed to
+  // the process, so the returned oid is bound to the caller's content. The path form above names a
+  // file whose bytes can change between the caller's write and git's read.
+  operation HashObjectWriteStdin {
+    input { address: GitRepositoryAddress, content: String }
+    output {
+      oid: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["git", git_repository_address_argv(address: address), "hash-object", "-w", "--stdin"]
+      stdin: content
+    }
+  }
+
   operation CatFileBlob {
     input { address: GitRepositoryAddress, object: String }
     output {
