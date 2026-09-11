@@ -1,4 +1,4 @@
-module v2.test.manual.list_append_paired_timing
+module gunbc.instruments.list_append_concat_paired_timing
 
 import v2.std.algebra {
   Cons,
@@ -9,20 +9,13 @@ import v2.std.algebra {
   list_append,
   zip_eq
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-// PAIRED ONE-BINARY TIMING ARM for the list_append concat routing.
-// Both arms are linear, so a two-point doubling-ratio witness cannot go red and is not enrolled.
-// Times production list_append against the pre-repair body reconstructed from the same emitted
-// fold_list_right, in one process of one vintage. Invoke natively on a HostBudget-capable host:
-// gunbc run --source-root dag --source-root src/v2 --entry src/v2/test/manual/list_append_paired_timing.dag --function paired_timing
-// Depth is pow2_ones(k: 8) = 256, not 2^18: the reconstructed arm is non-tail fold_list_right
-// at left-length depth, and this entry has not yet been shown green by a native run.
-// The emitted dag grammar has no `func` keyword (only `fn`); a `func` item is an ident in
-// expression position and is the ingest refusal parse_g0_tokens_remain /
-// parse_grammar_choice_overlap_residue. No generic params: `<T>` overlaps the `<` operator.
+// Consumer: gunbc.recurring_failure_mode.lens_prices_the_authority_while_the_lane_runs_the_realization.
+// Re-derives the one-binary list_append concat vs reconstructed fold_list_right timing. Both arms
+// are linear, so this is not a doubling-ratio enrollment. Native HostBudget:
+// gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/list_append_concat_paired_timing.dag --function paired_timing
+// Depth is pow2_ones(k: 8) = 256: the reconstructed arm is non-tail fold_list_right at left-length
+// depth. No generic params: `<T>` overlaps the `<` operator in the emitted dag grammar.
 fn list_append_from_fold_list_right(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> {
   fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
     Cons { head: item, tail: acc }
