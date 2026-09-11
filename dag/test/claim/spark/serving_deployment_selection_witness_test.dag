@@ -58,7 +58,7 @@ import gunbc.spark.serving_deployment_selection {
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token, ax_sm12_kv_admitted,
-  kv_layout_from_sm12_admit, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
+  kv_layout_from_sm12_admit, kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -708,31 +708,50 @@ fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List
 test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> Bool {
   let empty_admit: List<NonEmptyStr> = []
   let unadmitted = kv_layout_wire(k: KvAutoLayout)
-  let nomatch = "nvfp4_ds_mla" as NonEmptyStr
-  planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
-    && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-    && planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
-    && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
-    && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-    && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
-    && match kv_layout_from_sm12_admit(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-      Absent => true
-      Present { value: k } =>
-        match k { KvAutoLayout => false, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-    }
-    && match kv_layout_from_sm12_admit(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
+    match kv_layout_policy_matching_wire(wire: d) {
       Absent => true
       Present { value: _ } => false
-    }
-    && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
-      ServingFieldEstablished => true
-      ServingFieldUnestablished { causes: _ } => false
-    }
-    && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-      Sm12KvLayoutAdmitted { policy: k } =>
-        match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
-    }
+    })).first()
+  match nomatch_opt {
+    Absent => false
+    Present { value: nomatch } =>
+      v41_sm12_kv_cache_dtype_admitted(dtype: nomatch)
+        && !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
+        && match kv_layout_policy_matching_wire(wire: unadmitted) {
+          Present { value: k } =>
+            match k { KvAutoLayout => true, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+          Absent => false
+        }
+        && match kv_layout_policy_matching_wire(wire: nomatch) {
+          Absent => true
+          Present { value: _ } => false
+        }
+        && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
+        && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
+        && match kv_layout_from_sm12_admit(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+          Absent => true
+          Present { value: k } =>
+            match k { KvAutoLayout => false, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+        }
+        && match kv_layout_from_sm12_admit(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+          Absent => true
+          Present { value: _ } => false
+        }
+        && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
+          ServingFieldEstablished => true
+          ServingFieldUnestablished { causes: _ } => false
+        }
+        && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+          Sm12KvLayoutAdmitted { policy: k } =>
+            match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+        }
+  }
 }
 
 fn v4_1_frontier_keys_contain(decl_name: String) -> Bool {
