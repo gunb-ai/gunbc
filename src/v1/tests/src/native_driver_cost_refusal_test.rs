@@ -11,7 +11,7 @@
 
 use v1_compiler::std_compiler_entry::{
     native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,
-    NativeDriverCostAccounting, NativeDriverExclusiveRows,
+    native_driver_cost_rows_observed, NativeDriverCostAccounting, NativeDriverExclusiveRows,
 };
 use v1_compiler::std_measure::nanosecond;
 use v1_compiler::v1_compiler_emit_rust::emit_source_root_eval_driver_main_rs;
@@ -97,5 +97,24 @@ fn emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_pro
     assert!(
         main_rs.contains("[native-prepare-split]") && main_rs.contains("decls={}"),
         "the split line must carry decls=; emitted:\n{main_rs}"
+    );
+}
+
+#[test]
+fn a_completed_capture_with_no_cost_rows_is_unobserved() {
+    assert!(
+        !native_driver_cost_rows_observed(String::new()),
+        "empty stderr after a completed spawn is unobserved, not a green partition"
+    );
+}
+
+#[test]
+fn a_planted_shared_and_partition_line_is_observed() {
+    let stderr =
+        "[native-cost-shared] {\"producer\":\"std.compiler_entry.SourceRootEvalDriver\"}\n\
+         [native-cost-partition] {\"verdict\":\"NativeDriverCostReconciled\"}\n";
+    assert!(
+        native_driver_cost_rows_observed(stderr.to_string()),
+        "a planted completed capture must be observed"
     );
 }

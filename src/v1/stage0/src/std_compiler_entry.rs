@@ -107,6 +107,11 @@ pub fn native_driver_cost_account(
     }
 }
 
+pub fn native_driver_cost_rows_observed(stderr: String) -> bool {
+    (v1_rt::string_contains(&stderr, "[native-cost-partition] ".to_string())
+        && v1_rt::string_contains(&stderr, "[native-cost-shared] ".to_string()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RetainedHostCliKernel;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

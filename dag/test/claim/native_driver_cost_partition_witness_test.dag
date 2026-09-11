@@ -8,6 +8,7 @@ import std.compiler_entry {
   NativeDriverCostRemainderExceedsTolerance,
   native_driver_cost_account,
   native_driver_cost_remainder_tolerance_nanos,
+  native_driver_cost_rows_observed,
   native_driver_exclusive_sum
 }
 
@@ -74,4 +75,14 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
     NativeDriverCostReconciled { residual: _, tolerance: _ } => false
     NativeDriverCostOverAttributed { sum_exclusive: _, parent_span: _ } => false
   }
+}
+
+test fn a_completed_capture_with_no_cost_rows_is_unobserved() -> Bool {
+  !native_driver_cost_rows_observed(stderr: "")
+}
+
+test fn a_planted_shared_and_partition_line_is_observed() -> Bool {
+  native_driver_cost_rows_observed(
+    stderr: "[native-cost-shared] {\"producer\":\"std.compiler_entry.SourceRootEvalDriver\"}\n[native-cost-partition] {\"verdict\":\"NativeDriverCostReconciled\"}\n"
+  )
 }

@@ -120,3 +120,17 @@ fn native_driver_cost_account(
     }
   }
 }
+
+// A COMPLETE --v2-native-route RUN WITH NO COST LINES IS UN-OBSERVED, NOT GREEN.
+// The driver eprints [native-cost-shared] and [native-cost-partition] on ITS stderr. On main
+// the host spawn (native_lane_runner run_native_binary) captures that pipe via Command::output
+// and drops it on the success path — measured: srv2 15508s admitted run, 3536 verdict rows,
+// zero cost tags in host-captured stderr (eager-raven-113 universe receipt on #11060).
+// #10940 relays child stderr on success; this predicate is the control a completed capture
+// must satisfy. Empty stderr is the discriminating RED. The live spawn bind is that harness,
+// not a second copy of the reconcile law.
+
+fn native_driver_cost_rows_observed(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "[native-cost-partition] ")
+    && string_contains(s: stderr, pattern: "[native-cost-shared] ")
+}
