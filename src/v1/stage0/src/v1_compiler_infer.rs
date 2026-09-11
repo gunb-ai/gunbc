@@ -1198,6 +1198,52 @@ pub fn bare_variant_reference_missing_field_diagnostics(
     }
 }
 
+pub fn bare_product_reference_missing_field_diagnostics(
+    scope: Rc<InferScope>,
+    name: String,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), name.clone()) {
+        Some(decl) => {
+            if ((decl.connective.clone() == Connective::Conj)
+                && ((decl.params.clone().len() as i64) == 0))
+            {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for sf in Rc::new({
+                        let mut __result = Vec::new();
+                        for sf in decl.children.clone().iter().cloned() {
+                            if declared_field_is_required(sf.clone()) {
+                                __result.push(sf);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::MissingField {
+                                field: crate::v1_std_core::authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    sf.clone(),
+                                ),
+                                type_name: name.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        ));
+                    }
+                    __result
+                })
+            } else {
+                Rc::new(vec![])
+            }
+        }
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
 pub fn variant_value_reference_diagnostics(
     scope: Rc<InferScope>,
     name: String,
@@ -9842,11 +9888,14 @@ match scope_parent.clone() {
 }),
     std::option::Option::None => {
                 let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
-ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
+Rc::new(InferResult {
+    typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: gbinding.resolved.clone(),
-})), span.clone(), span.clone()))
+})), span.clone(), span.clone()),
+    diagnostics: bare_product_reference_missing_field_diagnostics(scope.clone(), name.clone(), span.clone()),
+})
 },
 },
 }

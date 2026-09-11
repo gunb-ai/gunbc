@@ -815,6 +815,31 @@ fn bare_variant_reference_missing_field_diagnostics(scope: InferScope, name: Str
   }
 }
 
+// A BARE PRODUCT-TYPE NAME IN EXPRESSION POSITION IS THE SAME ZERO-FIELD CONSTRUCTION for the
+// other declaration kind: `Pair` where `type Pair { a: Int, b: Int }` owes both fields exactly
+// as `Pair { }` does, and the literal path already refuses that spelling. The declaration is
+// looked up the way infer_record_lit_structural looks it up for `Pair { }`, so the two
+// spellings judge one field list. A name that resolves to no product declaration owes nothing
+// here -- it is a value binding, a function, or a type this arm does not judge.
+fn bare_product_reference_missing_field_diagnostics(scope: InferScope, name: String, span: SourceSpan) -> List<ErrorNode> {
+  match lookup_type_by_name(env: scope.type_env, name: name) {
+    Present { value: decl } =>
+      if decl.connective == Conj && (decl.params |> count) == 0 {
+        decl.children
+          |> filter(sf => declared_field_is_required(sf: sf))
+          |> map(sf => make_error_node(
+            diagnostic: MissingField {
+              field: authored_name_at(source_indices: scope.type_env.source_indices, node: sf),
+              type_name: name,
+              span: span
+            },
+            module_name: scope.module_name
+          ))
+      } else { [] }
+    Absent => []
+  }
+}
+
 // Every diagnostic a bare variant VALUE reference owes, in one place: the import-listing
 // check and the field obligation. The four expression sites that mint a
 // VariantValueBinding all call this, so a site cannot get one half without the other.
@@ -6450,14 +6475,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           }
                         Absent =>
                           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-                          ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                            name: name,
-                            expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
-                            children: [],
-                            inferred: Present { value: Resolved { node: gbinding.resolved } },
-                            span: span,
-                            name_span: span
-                          ))
+                          InferResult {
+                            typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
+                              name: name,
+                              expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+                              children: [],
+                              inferred: Present { value: Resolved { node: gbinding.resolved } },
+                              span: span,
+                              name_span: span
+                            ),
+                            diagnostics: bare_product_reference_missing_field_diagnostics(scope: scope, name: name, span: span)
+                          }
                       }
                   }
                 Absent =>
