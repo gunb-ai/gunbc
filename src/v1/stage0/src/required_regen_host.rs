@@ -6041,12 +6041,12 @@ mod regen_round_cost_tests {
         assert!(assembled.contains("v1_compiler_infer_service"));
     }
 
-    /// Identity join over the independently observed emitted/seed population and
-    /// the package map. A whole-build input cannot mask a different unowned mirror:
+    /// Identity join over the independently observed emitted module population
+    /// and the package map. Aggregate products have their separate modeled owners. A whole-build input cannot mask a different unowned mirror:
     /// each identity is asked separately. Removing the shell declaration then
     /// exercises the real host-to-model boundary's named refusal.
     #[test]
-    fn live_seed_mirrors_have_owners_and_removed_shell_owner_refuses() {
+    fn live_module_mirrors_have_owners_and_removed_shell_owner_refuses() {
         use crate::v1_interpreter::{self, ExecutionMode, Value};
         let workspace = workspace_root();
         let stage0 = workspace.join("src/v1/stage0/src");
@@ -6057,23 +6057,22 @@ mod regen_round_cost_tests {
         let shell =
             super::super::emitted_closure_compile_host::closure_modules(&stage0.join("lib.rs"))
                 .expect("generated shell declarations are readable");
-        let rows = crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows();
-        let seed = assembled_seed_modules(shell.iter().cloned().collect(), rows.as_ref());
         let emitted = HashMap::from([(
             format!("src/{}", emitted_population_manifest_basename()),
             fs::read_to_string(stage0.join(emitted_population_manifest_basename())).unwrap(),
         )]);
         let mirrors = generated_basenames_from_emit(&emitted).unwrap();
-        let seed_mirrors: Vec<String> = mirrors
+        // Classify non-module products through the independent emitter authority,
+        // never by whether the ownership map happens to contain the mirror. A missing
+        // owner must leave the obligation present, not shrink this test's population.
+        let (_, _, _, products, _) = regen_generation_role_population(&roots, &[]).unwrap();
+        let module_mirrors: Vec<String> = mirrors
             .into_iter()
-            .filter(|m| {
-                m.strip_suffix(".rs")
-                    .is_some_and(|module| seed.contains(module))
-            })
+            .filter(|mirror| !products.contains_key(mirror))
             .collect();
         assert!(
-            !seed_mirrors.is_empty(),
-            "no emitted seed population observed"
+            !module_mirrors.is_empty(),
+            "no emitted module population observed"
         );
         let entry = round_cost_entry(&roots).unwrap();
         let index = super::super::process_shared_index(&roots);
@@ -6106,12 +6105,12 @@ mod regen_round_cost_tests {
             };
             line.to_string()
         };
-        for mirror in &seed_mirrors {
+        for mirror in &module_mirrors {
             let line = decision_line(mirror, &shell);
             assert!(!line.contains("RebuildScopeRefused"), "{mirror}: {line}");
         }
         let subject = "v1_compiler_compile.rs";
-        assert!(seed_mirrors.iter().any(|m| m == subject));
+        assert!(module_mirrors.iter().any(|m| m == subject));
         let green = decision_line(subject, &shell);
         assert!(
             green.contains("owning_packages=[v1-compiler] package_closure=[v1-compiler]"),
@@ -6124,8 +6123,8 @@ mod regen_round_cost_tests {
         let red = decision_line(subject, &removed);
         assert_eq!(red, "partition-rebuild: RebuildScopeRefused MirrorHasNoOwningPackage mirror=v1_compiler_compile.rs");
         eprintln!(
-            "ownership identity join: {} emitted seed mirrors; {green}; mutation: {red}",
-            seed_mirrors.len()
+            "ownership identity join: {} emitted module mirrors; {green}; mutation: {red}",
+            module_mirrors.len()
         );
     }
 
