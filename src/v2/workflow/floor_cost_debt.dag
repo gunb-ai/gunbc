@@ -722,22 +722,37 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
   Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
 }
 
-// CENSORED: nine D1 (#10946) where-clause witnesses interrupted_before_verdict on the
-// floor of record — required-floor job 103143369933 on run 34560949186 at main
-// 0267f385 — raised_by=cpu_deadline at cpu_at_least 502-512ms / 500ms (wall inside
-// 8000ms). D1's own PR floor was green by ~3ms of headroom; the loaded fleet is not.
-// Own-work cost is UNMEASURED; those figures are interrupt points (a property of the
-// budget), not proven marginals. One-parse and three-parse identities interrupt in
-// the same 502-512ms band, so narrowing extra assertions is not a one-hour cost cut.
-// Restoration / cost-cut trigger: a measured fill-netted marginal under 500ms on the
-// floor of record for a single small-module tokenize/parse/normalize of the where
-// reproducer (shared prepared grammar / parsed fixture), after which these nine leave
-// this chunk. Left off because they were not among the nine interrupts:
-// cause_a_where_control_normalizes_holds, cause_a_empty_where_clause_refuses_holds,
-// where_refinement_empty_clause_is_refused_holds, and the three pre-D1
-// declaration_structure_preserved interiors.
+// CENSORED: D1+G parse/normalize family at the 500ms budget. Population is the
+// UNION of interrupted_before_verdict identities on two floors of record, plus
+// every sibling in those modules whose MEASURED cpu on either artifact is within
+// 10% of the 500ms budget (threshold: observed_cpu_ms or cpu_at_least_ms in
+// [450, 550] on required_floor_claim_cost.tsv). Load decides which member
+// interrupts; one job's interrupt list under-enrols.
+//
+// Floors of record:
+//   job 103143369933 run 34560949186 main 0267f385 — 9 D1 interrupts
+//   job 103152454288 run 34559365605 #10988 f355a460 — 13 interrupts
+//     (the 9, plus cause_a_where_control_normalizes_holds at 506ms, plus G
+//     braced_fn_decl_survives_normalize_holds 501 /
+//     expression_bodied_fn_decl_survives_normalize_holds 508 /
+//     expression_bodied_literal_fn_decl_survives_normalize_holds 509)
+// Within-10% completed siblings on those TSVs, not already in the 13:
+//   expression_bodied_fn_decl_parses_holds (observed 457ms on 10988)
+//   expression_bodied_literal_fn_decl_parses_holds (observed 484ms on 10988)
+// Also in-band on main: cause_a_where_control_normalizes_holds observed 480ms
+// (later interrupted on 10988) and braced_fn_decl_survives_normalize_holds
+// observed 465ms (later interrupted on 10988).
+// Not enrolled (measured below 450ms on both artifacts):
+//   cause_a_empty_where_clause_refuses_holds, where_refinement_empty_clause_is_refused_holds,
+//   braced_fn_decl_still_parses_holds, empty_eq_fn_decl_refuses_holds.
+// Pre-D1 declaration_structure_preserved interiors are already on proven debt and
+// did not appear as observed rows. Own-work of the interrupted rows is UNMEASURED.
+// Restoration / cost-cut trigger: a measured fill-netted marginal under 500ms
+// on the floor of record for one small-module tokenize/parse/normalize of this
+// family (shared prepared grammar / parsed fixture), after which these identities
+// leave this chunk.
 fn floor_cost_debt_censored_chunk_03() -> List<String> {
-  Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_reproducer_normalizes_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_refinement_clause_parses_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_survives_normalize_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_parse_tree_carries_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_well_formed_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_holds", tail: Cons { head: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_survives_normalize_graft_holds", tail: Cons { head: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_parses_and_is_carried_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds", tail: Empty {} } } } } } } } } }
+  Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_reproducer_normalizes_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_refinement_clause_parses_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_survives_normalize_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_parse_tree_carries_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_well_formed_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_holds", tail: Cons { head: "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_control_normalizes_holds", tail: Cons { head: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_survives_normalize_graft_holds", tail: Cons { head: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_parses_and_is_carried_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds", tail: Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_decl_survives_normalize_holds", tail: Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_decl_survives_normalize_holds", tail: Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_decl_survives_normalize_holds", tail: Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_decl_parses_holds", tail: Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_decl_parses_holds", tail: Empty {} } } } } } } } } } } } } } } }
 }
 
 // THE THIRD EVIDENCE CLASS: STRADDLING (2026-09-04, gunbc#10366-era main).
