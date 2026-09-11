@@ -16,7 +16,6 @@ import gunbc.harness.harness_reasoning_wire {
   harness_unit_declared_context_ceiling,
 }
 import gunbc.harness.harness_wire { harness_context_budget_for }
-import gunbc.harness.harness_cli { harness_bound_model }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
   GroupIdle, GroupOccupied, CoTenancyUnread,
@@ -35,7 +34,7 @@ import gunbc.harness.harness_seat {
   ServingModelRequirement, AnyAdmittedModel, ExactServingUnit, harness_requirement_admits,
   harness_required_capability,
 }
-import gunbc.spark.serving_offer { SparkServingReadiness, ServingObserved, ServingUnobserved }
+import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved }
 import std.measure { token_count_value }
 import product.fabric.demand { ObservationReceiptRef }
 
@@ -111,8 +110,7 @@ test fn a_route_advertising_an_admitted_model_other_than_the_selectors_is_taken(
     && w_unit_is_glm(id: "glm-5.3-flash-exl3-canary")
     && !w_admits(id: "tinyllama-1.1b")
     && !w_admits(id: "")
-    && harness_bound_model(unit: Glm53FlashOnVllm) == (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
-    && harness_bound_model(unit: DeepseekV4FlashOnVllm) != harness_bound_model(unit: Glm53FlashOnVllm)
+    && (harness_unit_model_id(unit: DeepseekV4FlashOnVllm) as String) != (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
 }
 
 // THE FIRST ADMITTED ID IN THE ROUTE'S OWN ORDER WINS, and a list carrying nothing admitted refuses
