@@ -2,6 +2,8 @@ module gunbc.spark.serving_runtime_capability_probe
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.vendor.nvidia { nvidia }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains,
@@ -51,21 +53,19 @@ import extdeps.docker.images.xomoxcc_dgx_spark_sglang {
 // Both halves are load-bearing. A digest without a compute capability is a claim about an image in
 // general, and an image that ships sm_100 kernels answers differently on a GB200 than on a GB10; a
 // compute capability without a digest is a claim about hardware that no engine can act on.
-type ComputeCapability sole_constructor {
-  major: Nat
-  minor: Nat
-}
-
-fn compute_capability_label(c: ComputeCapability) -> String {
-  join(["sm_", to_string(c.major), to_string(c.minor)], "")
-}
-
+//
+// THE CAPABILITY IS extdeps.gpu.types GpuComputeCapability, WHICH ALREADY EXISTS. An earlier
+// revision of this module minted a second major/minor carrier of its own, which is the concept
+// re-invention DESIGN section 2 measures a change by: the vendor-qualified type already models this
+// fact and already derives the sm_ label, so a second one would have been one more thing to keep in
+// agreement for no answer the first could not give.
+//
 // GB10, AS THE ACCELERATOR ITSELF REPORTS IT. `torch.cuda.get_device_capability(0)` returned (12, 1)
 // inside every container probed below, on spark-a3ee, 2026-09-11. It is recorded here as a fleet
 // OBSERVATION and not as a property of extdeps.systems.nvidia's GB10 catalog row, which deliberately
 // leaves compute_capability none because the cited NVIDIA pages do not state it: an observation this
 // repository made is a receipt in the observing layer, never a fact backfilled into the vendor's.
-data gb10_observed_compute_capability: ComputeCapability = ComputeCapability { major: 12, minor: 1 }
+data gb10_observed_compute_capability: GpuComputeCapability = GpuComputeCapability { vendor: nvidia, major: 12, minor: 1 }
 
 type ProbedRuntimeImage sole_constructor {
   image_reference: NonEmptyStr
@@ -110,7 +110,7 @@ type KernelProbeOutcome
 type RuntimeCapabilityProbeRow {
   image: ProbedRuntimeImage
   host: NonEmptyStr
-  compute_capability: ComputeCapability
+  compute_capability: GpuComputeCapability
   probed_at: NonEmptyStr
   capability: RuntimeKernelCapability
   outcome: KernelProbeOutcome

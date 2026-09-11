@@ -21,7 +21,6 @@ data gitcommit90_glm_53_one_spark_repository: NonEmptyStr = "ghcr.io/gitcommit90
 data gitcommit90_glm_53_one_spark_digest_sha256_hex: NonEmptyStr = "ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr
 data gitcommit90_glm_53_one_spark_vllm_version: NonEmptyStr = "0.1.dev20051+g487ecf187" as NonEmptyStr
 data gitcommit90_glm_53_one_spark_python: NonEmptyStr = "python3" as NonEmptyStr
-data gitcommit90_glm_53_one_spark_hub_cli_path: NonEmptyStr = "/usr/local/bin/hf" as NonEmptyStr
 
 // THE IMAGE IS BUILT FOR ONE COMPUTE CAPABILITY AND SAYS SO IN ITS OWN ENVIRONMENT.
 // `docker image inspect` on this digest reports TORCH_CUDA_ARCH_LIST=12.1a and

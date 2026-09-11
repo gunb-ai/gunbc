@@ -8,6 +8,9 @@ import gunbc.spark.serving_arm {
   serving_arm_admits, runtime_registers, serving_runtime_row, gitcommit90_sm121_exl3_row, gunbc_sparkrun_ds4_row,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import gunbc.spark.runtime_architecture_registry_reading {
+  ArchitectureRegistryReading, registry_reading_for, spark_architecture_registry_readings,
+}
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
 import gunbc.spark.serving_runtime_capability_probe {
   RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4KvCacheKernels,
@@ -15,6 +18,7 @@ import gunbc.spark.serving_runtime_capability_probe {
   KernelProbeOutcome, KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused,
   runtime_kernel_capability_label,
   V41RuntimeVerdict, V41RuntimeAdmissible, V41RuntimeMissing, V41RuntimeIncompletelyProbed,
+  RuntimeCandidateDisposition, CandidateProbed, CandidateNotProbed,
   v41_sm121_capability_probe_rows, v41_sm121_runtime_candidates, v41_runtime_verdict,
   v41_admissible_images, capability_outcome, v41_required_capabilities,
   v41_sm121_build_obligation, v41_capability_probe_symbol,
@@ -113,4 +117,21 @@ test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool 
            runtime_kernel_capability_label(c: r) == runtime_kernel_capability_label(c: c)))
     && all(v41_sm121_build_obligation.required, r =>
          length(v41_capability_probe_symbol(c: r) as String) != 0)
+}
+
+// EVERY IMAGE THE ROSTER CALLS PROBED HAS A READING WITH A HOST AND A DATE ON IT. This is the join
+// that keeps "probed" from being a label: a candidate could be marked CandidateProbed while no
+// receipt of that digest existed anywhere, and the sweep's denominator would then count an image
+// nobody read. Asserted against the reading roster by image reference, not by counting either side.
+test fn every_candidate_marked_probed_has_a_registry_reading() -> Bool {
+  all(v41_sm121_runtime_candidates, c =>
+    match c.disposition {
+      CandidateNotProbed { reason: _ } => true
+      CandidateProbed { image_reference: ref } =>
+        match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: ref) {
+          Absent => false
+          Present { value: r } =>
+            length(r.host as String) != 0 && length(r.observed_at as String) != 0 && length(r.instrument as String) != 0
+        }
+    })
 }
