@@ -1745,6 +1745,14 @@ pub struct TransitionAdmission {
 /// over the four module pairs, because a pattern would silently admit a genuine rebind that landed
 /// in the same pair. DISSOLVE-ON: this PR merging, after which the base binds these spellings to
 /// exactly these targets and the rows read as consumed.
+///
+/// Five of them arrived one wave late, and the reason is the predicate gap named above rather than
+/// a new rebind: the producer's `floor_discovery_merge_owned_data_record` spelled five names that
+/// moved to the source authority and was left without the import, so the first wave measured them
+/// as `NewUnresolvedness`. Writing the import turned each into a `TargetChanged` against the base
+/// (base: the producer's own declaration; head: the identical declaration in its new home), which
+/// `names_leaf` cannot see as authored resolution. Required floor run 34573949372 printed all five
+/// as unadjudicated; they are admitted here by the same exact identity as the rest.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "v2-native-route module split: FloorDiscoveryWalkState",
@@ -3372,6 +3380,56 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "floor_discovery_record_walk_failure",
+            target: "v2.workflow.floor_discovery_source_authority",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: EntryLiveTreeDispositionRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "EntryLiveTreeDispositionRefused",
+            target: "v2.workflow.floor_discovery_source_authority",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: EntryLiveTreeResolved",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "EntryLiveTreeResolved",
+            target: "v2.workflow.floor_discovery_source_authority",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_append_row",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "floor_discovery_append_row",
+            target: "v2.workflow.floor_discovery_source_authority",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_record_disposition_refusal",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "floor_discovery_record_disposition_refusal",
+            target: "v2.workflow.floor_discovery_source_authority",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_resolve_entry_live_tree",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "floor_discovery_resolve_entry_live_tree",
             target: "v2.workflow.floor_discovery_source_authority",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
