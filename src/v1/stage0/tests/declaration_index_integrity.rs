@@ -353,7 +353,11 @@ fn missing_export_names(dir: &Path, basenames: &[&str]) -> Vec<String> {
         let path = dir.join("probe_root").join(basename);
         let content = std::fs::read_to_string(&path).expect("fixture source");
         let key = basename.to_string();
-        let tokens = v1_compiler::v1_compiler_tokenize::tokenize(content.clone(), key.clone());
+        let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
+            content.clone(),
+            key.clone(),
+            v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let index = v1_compiler::v1_std_core::build_newline_index(key.clone(), content);
         indices.insert(key, index);
         let parsed = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(indices.clone()));

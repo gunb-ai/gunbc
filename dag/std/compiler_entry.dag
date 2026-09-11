@@ -15,9 +15,9 @@ module std.compiler_entry
 //
 // THE DRIVER SHAPE IS A SECOND FACT AND IS NOT DERIVABLE FROM THE FIRST. DESIGN section 3 separates
 // interface, realization and policy: "this module is the compiler pipeline entry" is the interface
-// fact, and WHICH DRIVER REALIZES IT is realization. Two realizations exist in the tree today and
-// both are load-bearing, so the sum below is closed at two rather than opened for futures nobody
-// has. A third would have to be authored deliberately, which is the point of a closed vocabulary.
+// fact, and WHICH DRIVER REALIZES IT is realization. Three realizations exist in the tree today and
+// all are load-bearing, so the sum below is closed at three rather than opened for futures nobody
+// has. A fourth would have to be authored deliberately, which is the point of a closed vocabulary.
 //
 // RetainedHostCliKernel -- the seed's own entry: a clap CLI whose compile verb dispatches into
 // hand-authored host Rust (v1_compiler.cli_run). Only a crate that CONTAINS that retained host
@@ -28,7 +28,20 @@ module std.compiler_entry
 //
 // DirectIngestDriver -- a driver that reaches the emitted compiler's own ingest entry, taking
 // source text and a target and returning emitted text, with no retained host kernel between them.
+// ONE SOURCE, NO PEERS, SYNTHETIC SUBJECT: it is a census instrument for the standalone native
+// front door, not a repository execution route -- a module whose imports resolve only against
+// sibling roots cannot pass through it.
+//
+// SourceRootEvalDriver -- the repository test-execution route. The rendered main reads a universe
+// of qualified test identities (module path + declaration name, one per line) and the declared
+// source roots, builds the SourceRootIngest itself (the filesystem read is the host boundary the
+// driver owns), then hands the whole ingest to the pipeline: assemble, resolve, infer ONCE, and
+// per universe member resolve the named declaration and Eval its body, reporting one typed
+// verdict row per member. This is the driver the required-v2-native CI lane executes; its
+// contract is that every universe member reaches exactly one terminal observation, never a
+// silent remainder.
 
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
+  | SourceRootEvalDriver

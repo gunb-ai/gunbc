@@ -9,7 +9,7 @@ import extdeps.cloudflare.r2 {
   r2_bucket_resource_name,
   workers_r2_storage_bucket_item_read_permission_group_id,
 }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_version, secret_ref_version_resource }
 import std.allocation_roster {
   AllocationAdmission,
   AllocationAdmitted,
@@ -19,6 +19,7 @@ import std.allocation_roster {
   build_allocation_roster,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import gunbc.cloudflare.r2_origin {
   CloudflareAccountId,
   CloudflareAccountAllocated,
@@ -33,6 +34,8 @@ import gunbc.cloudflare.r2_origin {
   fabric_durable_origin_standing,
   DurableOriginAllocated,
   DurableOriginUnallocated,
+  DurableOriginStanding,
+  DurableOriginBucket,
   FabricDurableOrigin,
   BucketPurpose,
   R2BucketAllocation,
@@ -41,6 +44,7 @@ import gunbc.cloudflare.r2_origin {
   allocated_bucket_name,
   fleet_cloudflare_account_id,
   fabric_durable_origin_read_secret_id,
+  fabric_durable_origin_read_secret_version,
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
 }
@@ -48,6 +52,7 @@ import gunbc.cloudflare.r2_permission_group_observe {
   ObservedPermissionGroup,
   observed_permission_group_by_id,
 }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.cloudflare.r2_token_mint_run {
   classify_r2_mint,
   R2MintReady,
@@ -56,6 +61,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintOriginUnallocated,
   R2MintAdmissionRefused,
   bootstrap_burden_text,
+  origin_read_pin_is_exact,
 }
 
 // THE CUSTODY RED, NOW BORNE BY A FIXTURE RATHER THAN BY THE DECLARATIONS -- AND THE MOVE IS
@@ -256,11 +262,51 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
     DurableOriginAllocated { bucket: bucket } =>
       (bucket.read_credential.secret as String) == (fabric_durable_origin_read_secret_id as String)
         && (bucket.read_credential.project as String) == (fleet_secrets_gcp_project as String)
+        && (bucket.read_credential.version as String) == (fabric_durable_origin_read_secret_version as String)
+        && (bucket.read_credential.version as String) != "latest"
         && (bucket.bucket_name as String) == (declared_bucket_name())
         && match bucket.admits {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
            }
   }
+}
+
+// THE PIN'S RESOURCE NAME JOINS THIS FLEET'S PROJECT NUMBER, not a transcribed AccessVersion string.
+// secret_ref_version_resource is derived from the origin declaration; gcp_resource_names_this_version
+// is the same identity join the bootstrap fetch uses. A pin that names another project fails while
+// fleet_secrets_project_number stays put.
+test fn r2_origin_read_pin_names_this_project_version() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: bucket } =>
+      gcp_resource_names_this_version(
+        returned: secret_ref_version_resource(ref: bucket.read_credential),
+        ref: bucket.read_credential,
+        project_number: fleet_secrets_project_number,
+      )
+  }
+}
+
+fn origin_with_latest_read_pin() -> DurableOriginStanding {
+  DurableOriginAllocated {
+    bucket: DurableOriginBucket {
+      bucket_name: "gunbai-fabric-origin",
+      jurisdiction: R2JurisdictionDefault,
+      admits: FabricCommitManifestsAndContentAddressedOutputs {},
+      read_credential: secret_ref_pin_version(
+        ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+        version: "latest",
+      ),
+    }
+  }
+}
+
+// THE DISCRIMINATING RED IS A FIXTURE, same move as the absent-bootstrap-custody test. latest is
+// representable as a standing handed to the classifier even though the accepted origin pin is
+// exact. origin_read_pin_is_exact on the declared standing is the positive control.
+test fn origin_read_pin_is_exact_is_false_for_latest() -> Bool {
+  !origin_read_pin_is_exact(origin: origin_with_latest_read_pin())
+    && origin_read_pin_is_exact(origin: fabric_durable_origin_standing())
 }
 
 // THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for

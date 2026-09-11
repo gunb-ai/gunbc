@@ -1,6 +1,7 @@
 module extdeps.tools.busybox
 
 import std.types { NonEmptyStr, String, Int, Port }
+import std.measure { Mebibyte, mebibyte_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -50,6 +51,28 @@ fn busybox_tftpd_over_udpsvd_command(busybox_bin: NonEmptyStr, document_root: No
       "udpsvd", "-E", "0.0.0.0", "69",
       busybox_bin as String,
       "tftpd", "-r", document_root as String,
+    ],
+  )
+}
+
+// count=0 AND seek=N CREATES A SPARSE FILE OF N BLOCKS WITHOUT WRITING ZEROS. busybox dd treats
+// `bs=1M` as the block size, so the seek count is a Mebibyte magnitude rendered here rather than
+// a bare integer at the call site. `of=` is the image path; the file is then formatted by a
+// different tool (mke2fs_format_command). This is the host-init workspace create X already runs.
+fn busybox_dd_sparse_image_command(
+  busybox_bin: NonEmptyStr,
+  image_path: String,
+  size: Mebibyte,
+) -> ArgvCommand {
+  argv_command(
+    program: busybox_bin,
+    arguments: [
+      "dd",
+      "if=/dev/zero",
+      concat("of=", image_path),
+      "bs=1M",
+      "count=0",
+      concat("seek=", to_string(mebibyte_count(m: size))),
     ],
   )
 }
