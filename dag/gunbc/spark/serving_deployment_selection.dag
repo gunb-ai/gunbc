@@ -239,10 +239,53 @@ fn kv_wire_in_roster(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
 }
 
 fn kv_layout_from_sm12_admit(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> KvLayoutPolicy? {
-  if !kv_wire_in_roster(wire: wire, admitted: admitted) {
-    none
-  } else {
-    kv_layout_policy_matching_wire(wire: wire)
+  match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
+    Sm12KvLayoutAdmitted { policy: k } => Present { value: k }
+    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => none
+  }
+}
+
+// THE JOIN IS PRESERVED BEFORE ANY PROFILE LIST. A miss is this standing, never Absent→[] and never
+// Auto. Field establishment consumes the failed arm so the missing fact keeps its name.
+type Sm12KvLayoutStanding
+  = Sm12KvLayoutAdmitted { policy: KvLayoutPolicy }
+  | Sm12KvLayoutJoinFailed { wire: NonEmptyStr, obligation: NonEmptyStr }
+
+data sm12_kv_layout_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.vllm.deepseek_v4_1_sm12" as NonEmptyStr,
+  decl_name: "v41_sm12_kv_layout" as NonEmptyStr,
+  field: WholeDeclaration,
+}
+
+data sm12_kv_admit_roster_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.vllm.deepseek_v4_1_sm12" as NonEmptyStr,
+  decl_name: "v41_sm12_admitted_kv_cache_dtypes" as NonEmptyStr,
+  field: WholeDeclaration,
+}
+
+data sm12_kv_admit_obligation: NonEmptyStr = join([
+  "missing ",
+  declaration_ref_display_key(ref: sm12_kv_layout_ref),
+  " from DeepseekV4FlashInferMLASparseBackend.supports_combination for device major 12; cite ",
+  declaration_ref_display_key(ref: sm12_kv_admit_roster_ref),
+], "") as NonEmptyStr
+
+fn sm12_kv_layout_standing(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Sm12KvLayoutStanding {
+  match kv_layout_policy_matching_wire(wire: wire) {
+    Absent => Sm12KvLayoutJoinFailed { wire: wire, obligation: sm12_kv_admit_obligation }
+    Present { value: k } =>
+      if kv_wire_in_roster(wire: wire, admitted: admitted) {
+        Sm12KvLayoutAdmitted { policy: k }
+      } else {
+        Sm12KvLayoutJoinFailed { wire: wire, obligation: sm12_kv_admit_obligation }
+      }
+  }
+}
+
+fn sm12_kv_join_causes(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
+    Sm12KvLayoutAdmitted { policy: _ } => []
+    Sm12KvLayoutJoinFailed { wire: _, obligation: o } => [o]
   }
 }
 
@@ -1193,14 +1236,18 @@ type ServingFieldStanding
   = ServingFieldEstablished
   | ServingFieldUnestablished { causes: List<NonEmptyStr> }
 
-fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
+fn field_carries_v4_1_sm12_kv(field: ServingDeploymentCandidateField) -> Bool {
+  any(field.domain.artifacts, a => declaration_ref_eq(a: a.identity, b: artifact_deepseek_v4_1_flash_native.identity))
+}
+
+fn establish_serving_candidate_field_with_causes(field: ServingDeploymentCandidateField, extra_causes: List<NonEmptyStr>) -> ServingFieldStanding {
   let expected = expected_combinations(d: field.domain)
   let actual = map(field.candidates, c => candidate_combination(c: c))
   let missing = filter(expected, k => key_occurrences(keys: actual, k: k) == 0)
   let extra = filter(actual, k => key_occurrences(keys: expected, k: k) == 0)
   let duplicated_actual = filter(expected, k => key_occurrences(keys: actual, k: k) > 1)
   let duplicated_declared = filter(expected, k => key_occurrences(keys: expected, k: k) > 1)
-  let param_defect = domain_profiles_defect(d: field.domain)
+  let param_defect = concat(domain_profiles_defect(d: field.domain), extra_causes)
   if count(missing) == 0 && count(extra) == 0 && count(duplicated_actual) == 0
     && count(duplicated_declared) == 0 && count(param_defect) == 0 {
     ServingFieldEstablished
@@ -1217,6 +1264,18 @@ fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> 
         param_defect),
     }
   }
+}
+
+fn establish_serving_candidate_field_at_sm12(field: ServingDeploymentCandidateField, wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingFieldStanding {
+  if field_carries_v4_1_sm12_kv(field: field) {
+    establish_serving_candidate_field_with_causes(field: field, extra_causes: sm12_kv_join_causes(wire: wire, admitted: admitted))
+  } else {
+    establish_serving_candidate_field_with_causes(field: field, extra_causes: [])
+  }
+}
+
+fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
+  establish_serving_candidate_field_at_sm12(field: field, wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes)
 }
 
 // ── THE PROJECTOR ─────────────────────────────────────────────────────────────────────────────
@@ -1309,25 +1368,6 @@ fn kv_bytes_gap(c: DeploymentCandidate) -> List<AxisGap> {
     KvBytesPerTokenNotThisSubject => []
   }
 }
-
-data sm12_kv_layout_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.vllm.deepseek_v4_1_sm12" as NonEmptyStr,
-  decl_name: "v41_sm12_kv_layout" as NonEmptyStr,
-  field: WholeDeclaration,
-}
-
-data sm12_kv_admit_roster_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.vllm.deepseek_v4_1_sm12" as NonEmptyStr,
-  decl_name: "v41_sm12_admitted_kv_cache_dtypes" as NonEmptyStr,
-  field: WholeDeclaration,
-}
-
-data sm12_kv_admit_obligation: NonEmptyStr = join([
-  "missing ",
-  declaration_ref_display_key(ref: sm12_kv_layout_ref),
-  " from DeepseekV4FlashInferMLASparseBackend.supports_combination for device major 12; cite ",
-  declaration_ref_display_key(ref: sm12_kv_admit_roster_ref),
-], "") as NonEmptyStr
 
 fn sm12_kv_admit_gaps(c: DeploymentCandidate, admitted: List<NonEmptyStr>) -> List<AxisGap> {
   if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
@@ -1604,11 +1644,15 @@ fn resolve_in_field(field: ServingDeploymentCandidateField, identity: Declaratio
 }
 
 fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDeploymentSelection {
-  select_serving_deployment_at_sm12_admit(input: input, admitted: v41_sm12_admitted_kv_cache_dtypes)
+  select_serving_deployment_at_sm12_join(input: input, wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes)
 }
 
 fn select_serving_deployment_at_sm12_admit(input: ServingDeploymentDecisionInput, admitted: List<NonEmptyStr>) -> ServingDeploymentSelection {
-  match establish_serving_candidate_field(field: input.field) {
+  select_serving_deployment_at_sm12_join(input: input, wire: v41_sm12_kv_layout, admitted: admitted)
+}
+
+fn select_serving_deployment_at_sm12_join(input: ServingDeploymentDecisionInput, wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentSelection {
+  match establish_serving_candidate_field_at_sm12(field: input.field, wire: wire, admitted: admitted) {
     ServingFieldUnestablished { causes: c } => ServingDeploymentSelectionRefused { defects: c }
     ServingFieldEstablished =>
       match select_realization(

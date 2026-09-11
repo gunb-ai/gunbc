@@ -7,7 +7,7 @@ import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import std.pareto { LowerIsBetter, SelectionAxis }
-import std.decision { HardConstraint, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
+import std.decision { HardConstraint }
 import std.roster_frontier {
   FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
 }
@@ -46,7 +46,8 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
   ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy,
-  select_serving_deployment, select_serving_deployment_at_sm12_admit,
+  select_serving_deployment, select_serving_deployment_at_sm12_join,
+  establish_serving_candidate_field_at_sm12,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
@@ -57,7 +58,7 @@ import gunbc.spark.serving_deployment_selection {
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token, ax_sm12_kv_admitted,
-  kv_layout_from_sm12_admit,
+  kv_layout_from_sm12_admit, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -67,6 +68,7 @@ import gunbc.spark.serving_deployment_selection {
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
   v41_sm12_kv_cache_dtype_admitted,
+  v41_sm12_admitted_kv_cache_dtypes,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -660,17 +662,27 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
     }
 }
 
-test fn empty_sm12_admit_roster_needs_evidence_and_keeps_the_complete_field() -> Bool {
-  let empty_admit: List<NonEmptyStr> = []
+fn names_sm12_kv_join(s: NonEmptyStr) -> Bool {
+  string_contains(s: s as String, pattern: "v41_sm12_kv_layout")
+    && string_contains(s: s as String, pattern: "supports_combination")
+    && string_contains(s: s as String, pattern: "v41_sm12_admitted_kv_cache_dtypes")
+}
+
+fn planted_join_is_named_failure(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
+  match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      match k {
+        KvAutoLayout => false
+        KvFp8DsMlaLayout => false
+        KvFp8Layout => false
+        KvFp4Layout => false
+      }
+    Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
+  }
+}
+
+fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
   count(v4_1_declared_profiles) == 3
-    && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
-      ServingFieldEstablished => true
-      ServingFieldUnestablished { causes: _ } => false
-    }
-    && match kv_layout_from_sm12_admit(wire: v41_sm12_kv_layout, admitted: empty_admit) {
-      Absent => true
-      Present { value: _ } => false
-    }
     && all(v4_1_declared_profiles, p =>
       match p.kv_layout {
         KvAutoLayout => false
@@ -678,30 +690,48 @@ test fn empty_sm12_admit_roster_needs_evidence_and_keeps_the_complete_field() ->
         KvFp8Layout => false
         KvFp4Layout => false
       })
-    && match select_serving_deployment_at_sm12_admit(input: deepseek_v4_1_decision_input, admitted: empty_admit) {
-      ServingDeploymentNeedsEvidence { needs: n } =>
-        any(n, need => match need {
-          UnfundedAxis { gap: g } =>
-            declaration_ref_eq(a: g.axis, b: ax_sm12_kv_admitted)
-              && string_contains(s: g.cause as String, pattern: "v41_sm12_kv_layout")
-              && string_contains(s: g.cause as String, pattern: "supports_combination")
-              && string_contains(s: g.cause as String, pattern: "v41_sm12_admitted_kv_cache_dtypes")
-          CandidateStandingIncomplete { candidate: _, cause: _ } => false
-          SubjectClosureIncomplete { subject: _, obligation: _ } => false
-        })
-      ServingDeploymentSelectionRefused { defects: _ } => false
+    && match establish_serving_candidate_field_at_sm12(field: deepseek_v4_1_candidate_field, wire: wire, admitted: admitted) {
+      ServingFieldEstablished => false
+      ServingFieldUnestablished { causes: cs } =>
+        any(cs, c => names_sm12_kv_join(s: c))
+          && !any(cs, c => string_contains(s: c as String, pattern: "no serving profiles"))
+    }
+    && match select_serving_deployment_at_sm12_join(input: deepseek_v4_1_decision_input, wire: wire, admitted: admitted) {
+      ServingDeploymentSelectionRefused { defects: ds } => any(ds, d => names_sm12_kv_join(s: d))
+      ServingDeploymentNeedsEvidence { needs: _ } => false
       ServingDeploymentSelected { selected: _ } => false
       ServingDeploymentNeedsPolicy { survivors: _ } => false
       NoFeasibleServingDeployment { causes: _ } => false
     }
-    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-      ServingDeploymentNeedsEvidence { needs: n } =>
-        !any(n, need => match need {
-          UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: ax_sm12_kv_admitted)
-          CandidateStandingIncomplete { candidate: _, cause: _ } => false
-          SubjectClosureIncomplete { subject: _, obligation: _ } => false
-        })
-      _ => false
+}
+
+test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> Bool {
+  let empty_admit: List<NonEmptyStr> = []
+  let unadmitted = kv_layout_wire(k: KvAutoLayout)
+  let nomatch = "nvfp4_ds_mla" as NonEmptyStr
+  planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
+    && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
+    && match kv_layout_from_sm12_admit(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+      Absent => true
+      Present { value: k } =>
+        match k { KvAutoLayout => false, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+    }
+    && match kv_layout_from_sm12_admit(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
+      ServingFieldEstablished => true
+      ServingFieldUnestablished { causes: _ } => false
+    }
+    && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+      Sm12KvLayoutAdmitted { policy: k } =>
+        match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
     }
 }
 
