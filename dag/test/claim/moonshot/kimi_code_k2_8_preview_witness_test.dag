@@ -27,7 +27,8 @@ import extdeps.moonshot.kimi_code_k2_8_preview {
   KimiForCodingHighspeed,
   KimiThinkingOff,
   KimiThinkingOn,
-  ServedK28PreviewThinkingOff,
+  ServedK28Preview,
+  ServedK3,
   ServedK27CodeHighspeed,
   kimi_code_served_version_name,
   kimi_k28_vendor_characterization_performance_close_to_k3,
@@ -56,6 +57,7 @@ import gunbc.kimi_code_k2_8_preview_observation {
   RequestedModelIdEvidence,
   ProviderDeclaredServedVersionEvidence,
   ExecutedVersionEvidence,
+  kimi_code_k28_preview_observation_frontier,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -109,20 +111,21 @@ test fn thinking_disabled_routes_k3_ids_to_k2_8_without_relabeling_the_request()
     && (k3_256k.requested_wire as String) == "k3-256k"
     && (k28.requested_wire as String) == "kimi-for-coding"
     && match k3.served_version {
-      ServedK28PreviewThinkingOff => true
-      ServedK28Preview => false
+      ServedK28Preview => true
       ServedK3 => false
       ServedK27CodeHighspeed => false
     }
+    && match k3.served_thinking {
+      KimiThinkingOff => true
+      KimiThinkingOn { effort: _ } => false
+    }
     && match k3_256k.served_version {
-      ServedK28PreviewThinkingOff => true
-      ServedK28Preview => false
+      ServedK28Preview => true
       ServedK3 => false
       ServedK27CodeHighspeed => false
     }
     && match k28.served_version {
-      ServedK28PreviewThinkingOff => true
-      ServedK28Preview => false
+      ServedK28Preview => true
       ServedK3 => false
       ServedK27CodeHighspeed => false
     }
@@ -141,13 +144,11 @@ test fn highspeed_remains_k2_7_code_highspeed() -> Bool {
     && (on.requested_wire as String) == "kimi-for-coding-highspeed"
     && match off.served_version {
       ServedK27CodeHighspeed => true
-      ServedK28PreviewThinkingOff => false
       ServedK28Preview => false
       ServedK3 => false
     }
     && match on.served_version {
       ServedK27CodeHighspeed => true
-      ServedK28PreviewThinkingOff => false
       ServedK28Preview => false
       ServedK3 => false
     }
@@ -227,4 +228,5 @@ test fn executed_version_stays_unobserved_without_a_receipt() -> Bool {
 
 test fn provider_integration_frontier_names_the_route() -> Bool {
   (kimi_code_k28_preview_provider_integration_frontier |> count) == 2
+    && (kimi_code_k28_preview_observation_frontier |> count) == 2
 }

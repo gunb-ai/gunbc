@@ -143,14 +143,12 @@ type KimiCodeThinkingControl
 
 type KimiCodeServedVersion
   = ServedK28Preview
-  | ServedK28PreviewThinkingOff
   | ServedK3
   | ServedK27CodeHighspeed
 
 fn kimi_code_served_version_name(v: KimiCodeServedVersion) -> NonEmptyStr {
   match v {
     ServedK28Preview => kimi_k28_preview_served_version_name
-    ServedK28PreviewThinkingOff => kimi_k28_preview_served_version_name
     ServedK3 => kimi_k3_served_version_name
     ServedK27CodeHighspeed => kimi_k27_code_highspeed_served_version_name
   }
@@ -160,58 +158,33 @@ type KimiCodeRoute {
   requested_id: KimiCodeRequestId
   requested_wire: NonEmptyStr
   served_version: KimiCodeServedVersion
+  served_thinking: KimiCodeThinkingControl
 }
 
-// ROUTING IS A FUNCTION OF (REQUESTED ID, THINKING CONTROL). Thinking-off for the K3 family and
-// for K2.8 Preview is served as K2.8 Preview with thinking off; the request id is not rewritten.
-// HighSpeed stays K2.7 Code HighSpeed.
+// ROUTING IS A FUNCTION OF (REQUESTED ID, THINKING CONTROL). Thinking is its own field; thinking-off
+// for the K3 family and for K2.8 Preview is still served as K2.8 Preview (the request id is not
+// rewritten). HighSpeed stays K2.7 Code HighSpeed. Served version and thinking are not a cross product.
 fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingControl) -> KimiCodeRoute {
   let wire = kimi_code_request_id_wire(id: requested)
-  match thinking {
+  let served_version = match thinking {
     KimiThinkingOff => match requested {
-      KimiForCodingHighspeed => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK27CodeHighspeed,
-      }
-      KimiForCoding => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK28PreviewThinkingOff,
-      }
-      KimiK3 => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK28PreviewThinkingOff,
-      }
-      KimiK3_256k => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK28PreviewThinkingOff,
-      }
+      KimiForCodingHighspeed => ServedK27CodeHighspeed
+      KimiForCoding => ServedK28Preview
+      KimiK3 => ServedK28Preview
+      KimiK3_256k => ServedK28Preview
     }
     KimiThinkingOn { effort: _ } => match requested {
-      KimiForCoding => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK28Preview,
-      }
-      KimiK3 => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK3,
-      }
-      KimiK3_256k => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK3,
-      }
-      KimiForCodingHighspeed => KimiCodeRoute {
-        requested_id: requested,
-        requested_wire: wire,
-        served_version: ServedK27CodeHighspeed,
-      }
+      KimiForCoding => ServedK28Preview
+      KimiK3 => ServedK3
+      KimiK3_256k => ServedK3
+      KimiForCodingHighspeed => ServedK27CodeHighspeed
     }
+  }
+  KimiCodeRoute {
+    requested_id: requested,
+    requested_wire: wire,
+    served_version: served_version,
+    served_thinking: thinking,
   }
 }
 
