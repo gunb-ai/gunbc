@@ -210,23 +210,6 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
                         )
                       Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
                     }
-                  } else if redir_binding == ^bash_production_fold_redir_stdout_and_stderr_to_file {
-                    match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
-                      Present { value: path_node } =>
-                        bind_outcome(
-                          o: bash_fold_serialize_word_node(word: path_node),
-                          f: fn(path_spelling) {
-                            bash_fold_serialize_emit_from_node(
-                              emitted: bash_stmt_with_redir_emitted,
-                              target: bash_stmt_with_redir_target_model(
-                                stmt: stmt_spelling,
-                                redir: concat(concat("> ", path_spelling), " 2>&1")
-                              )
-                            )
-                          }
-                        )
-                      Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
-                    }
                   } else {
                     bash_fold_serialize_refused(variant: ^bash_fold_serialize_redir_binding_unsupported)
                   }
