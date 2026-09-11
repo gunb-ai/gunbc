@@ -71,7 +71,7 @@ A route is an ordered chain from a durable origin to the bytes the runtime touch
 
 **C and D are different arms and the distinction is the point.** NFS carries three separable roles — correctness-bearing durable origin, site-level fill cache, and token-time serving path — and a route must state which it plays. The published third-party figures (2–3 ms/step on local NVMe, 5.9–7.8 ms/step on NFS) are exactly the C/B separation, and collapsing them into "NFS works" would price D at C's latency for no reason.
 
-D is the *expected* leader. It stays `NeedsEvidence` until this fleet measures it, and the plan's value is destroyed if that expectation is written as the answer.
+D is the *expected* leader. It does not become the selected route until this fleet measures it, and the plan's value is destroyed if that expectation is written as the answer.
 
 **FABRIC-M0 wall holds unchanged: one durable origin, no peer mesh.** A route may not name another serving host as a fill source. Every chain's head is the `gunbc.fabric_m0_origin_readback` origin, digest-verified at a declared point in the chain — which is itself a route fact, since verifying at fill and verifying at every token-time read are different costs and different guarantees.
 
@@ -95,7 +95,11 @@ Cost terms, each an axis:
 
 Hard constraints, screened *before* Pareto (§3d: an attractive candidate violating a hard constraint is excluded, never ranked): fits the pool at all; digest verified at a declared point; added per-step latency within the serving subject's admitted envelope; the runtime can actually serve the component from that tier (§11).
 
-Result vocabulary: `EngramPlacementSelected { route, evidence, cost_receipt }` | `NeedsEvidence { missing }` | `Refused { violated }` — the three arms of `RealizationSelectionResult` as this subject spells them, not a fourth algebra.
+**Result vocabulary: this subject returns `RealizationSelectionResult` itself.** An earlier revision proposed a three-arm spelling — selected / needs-evidence / refused — and called it "the three arms of `RealizationSelectionResult`". It has **six**: `SelectedWithin`, `CandidateFieldUnestablished`, `NoFeasibleRealization`, `SelectionNeedsEvidence`, `SelectionNeedsPolicy`, `RealizationSelectionRefused`. Collapsing them is not a spelling choice, it is a second algebra with fewer distinctions, which is exactly the §3d fork this plan claims elsewhere to avoid.
+
+The dropped arm that bites hardest here is **`SelectionNeedsPolicy`**, and this subject is likely to reach it. B and D can both be *fully measured* and still non-dominated — D wins on fill (the site cache is already near the hosts) while B wins on network bytes and failure-domain breadth — and no further measurement resolves that. Under the three-arm vocabulary such a field has nowhere honest to go: it either reports `NeedsEvidence` for evidence that exists, or picks a winner off a front of two, which §3d names as the thing the law exists to prevent. `NoFeasibleRealization` is the second live arm — see §11 — and it is distinct from a refusal, because "every candidate violated a constraint" is not "the selection itself was defective".
+
+So the subject adds no result type. It supplies a candidate field, funded axes, hard constraints and a policy authority, and hands back whatever `select_realization` returns. The receipt is `SelectionReceipt`, unchanged.
 
 ## 8. The deduction, worked — including why it does not conclude today
 
@@ -140,7 +144,7 @@ Against that, route A's price for 189 GiB of the scarcest resource on the fleet 
 
 ### 8.3 Why it still does not conclude
 
-Missing, and tracked as the obligations §12 carries: this fleet's measured per-step added latency for B, C and D; the page-cache RAM a B/D route actually retains; the row-size ground read; the workload's reuse locality; and the §11 runtime question, which is a hard constraint and can refuse every non-resident route outright. Today the honest output is `NeedsEvidence`, and a plan that shipped `Selected` off published third-party figures would be the fabricated-plausible-output failure with a receipt attached.
+Missing, and tracked as the obligations §12 carries: this fleet's measured per-step added latency for B, C and D; the page-cache RAM a B/D route actually retains; the row-size ground read; the workload's reuse locality; and the §11 runtime question, which is a hard constraint and can refuse every non-resident route outright. Today the honest output is `RealizationSelectionRefused`, not `SelectionNeedsEvidence`: §11's constraint axis is unfunded, and `std.decision` treats a selection run against a constraint nobody can read as defective rather than under-evidenced. Once that probe lands, the output becomes `SelectionNeedsEvidence` naming the unmeasured axes, and only after those are read can it be `SelectedWithin` — or `SelectionNeedsPolicy`, if B and D come back non-dominated. A plan that shipped `SelectedWithin` off published third-party figures would be the fabricated-plausible-output failure with a receipt attached.
 
 **Rung honesty (§4b) for each claim above:** the byte partitions and fleet pool are read facts (`FootprintObservedOnFleet`, `torch.cuda` on a GB10). The 48-reads/token count is *derived from declared config*, which is as strong as the config. The 264 B row is an inference with a stated read obligation. The rank arithmetic is a consequence of the first two and the declared memory fraction. The pair-serving group binding and the role assignments are declared fleet state, **read at this revision** — §8.2 records an earlier revision of this section getting that read wrong, which is why the binding must derive them live rather than inherit this paragraph's transcription. The admissible-host derivation is **proposed, not built** — today no screen consumes it, which is why §14 lands it. The ordering of routes is **unestablished** and typed as such.
 
@@ -175,9 +179,13 @@ For #11013's candidate field: a candidate's `topology` is derived, not authored,
 
 This plan does **not** settle it, and says so rather than inferring an answer. What is known: `extdeps.deepseek.deepseek_v4_1_flash` `deepseek_v4_1_flash_config_declares_engram_off_accelerator` is `false` — off-accelerator placement is not a publisher config key, the reference implementation allocates the tables as parameters, and a third-party 4-Spark build **patched vLLM** to do it. A patch existing is positive evidence that the stock image does not.
 
-It becomes a **hard constraint**, not an axis: if the runtime cannot serve the component from the selected tier, every non-resident route is `Refused` before Pareto, and the answer is A regardless of cost. Wiring it as an axis would let a cheap-but-unservable route rank.
+It becomes a **hard constraint**, not an axis: if the runtime cannot serve the component from a non-resident tier, B, C and D are excluded before Pareto. Wiring it as an axis would let a cheap-but-unservable route rank.
 
-The obligation is a capability probe against that exact digest, homed with the probes that already exist (`gunbc.spark.serving_runtime_capability_probe` `RuntimeCapabilityProbeRow`), answering one question: does this image expose a mechanism by which Engram tables are read from a non-resident tier at token time. Until that row exists the constraint reads unfunded, and per `std.decision` an unfunded constraint axis is a defect that produces `NeedsEvidence` — which is the correct output.
+**What that does not mean is "then the answer is A",** which an earlier revision said. A is subject to the same screen, and §8.2 establishes that A fails it today: TP8 × 1 needs all eight Sparks and only four are admissible. If the runtime refuses the non-resident routes *and* A fails host feasibility, every candidate has violated a hard constraint and the honest result is **`NoFeasibleRealization`** naming both causes — not A by elimination. A surviving candidate is one that passed every constraint, never the last one standing after the others were excluded; treating elimination as selection is how a screened-out candidate gets served anyway.
+
+That state is not hypothetical, and it is the most useful thing this subject can say: it would mean the deployment does not fit this fleet under any placement, and the reply is to change a constraint — release Group A, patch the runtime, add hosts — rather than to pick a route.
+
+The obligation is a capability probe against that exact digest, homed with the probes that already exist (`gunbc.spark.serving_runtime_capability_probe` `RuntimeCapabilityProbeRow`), answering one question: does this image expose a mechanism by which Engram tables are read from a non-resident tier at token time. Until that row exists the constraint reads unfunded, and per `std.decision` an unfunded constraint axis is a defect — `RealizationSelectionRefused`, since a selection run against a constraint nobody can read is defective rather than merely under-evidenced. That distinction is one of the six arms earning its keep.
 
 Note also that a GB10's host and GPU are **one unified pool**, so "host memory offload" adds no capacity here; the only routes that free bytes are ones that reach a *storage* tier. That is why B/C/D are the arms and a host-RAM arm is not.
 
@@ -193,7 +201,7 @@ The prediction and the measurement are separate rows with a stated relation, so 
 - No peer mesh. FABRIC-M0 holds: one durable origin, chains anchored there.
 - No second decision algebra, no score, no weights (§3d).
 - No `engram_location` string, anywhere, at any layer.
-- No route declared the winner in this document. D is an expectation; the corpus will say `NeedsEvidence` until this fleet measures it.
+- No route declared the winner in this document. D is an expectation; the corpus will refuse or ask for evidence until this fleet measures, and may legitimately end at `SelectionNeedsPolicy` rather than a winner.
 
 ## 14. Landing order, if approved
 
@@ -210,4 +218,4 @@ The prediction and the measurement are separate rows with a stated relation, so 
 5. Component decomposition on `ModelArtifact` and the resident-sum change to `weight_fit_of`, with the existing witness rows unchanged in meaning.
 6. `RoutePerformanceReading` and the receipt join, when a launch exists to read.
 
-Steps 1–2 can land before any measurement exists; their correct output is `NeedsEvidence`, and that is the deliverable, not a placeholder.
+Steps 1–2 can land before any measurement exists. Their correct output is a refusal naming the unfunded runtime constraint (§8.3), and that is the deliverable, not a placeholder — a fold that answers honestly about what it cannot yet decide is the shippable unit here.
