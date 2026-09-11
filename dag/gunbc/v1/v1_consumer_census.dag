@@ -889,15 +889,6 @@ type SeedLinkage
   | SeedLinkedIntoEmittedCode
   | SeedBesideEmittedCodeAsOracle
 
-fn seed_linkage_key(l: SeedLinkage) -> String {
-  match l {
-    NotASeedEdge => "not-a-seed-edge"
-    SeedLinkedIntoHandRust => "seed-linked-into-hand-rust"
-    SeedLinkedIntoEmittedCode => "seed-linked-into-emitted-code"
-    SeedBesideEmittedCodeAsOracle => "seed-beside-emitted-code-as-oracle"
-  }
-}
-
 // WHERE THE LINE LIVES. A rendered manifest names the .dag renderer the partition projects it
 // through; a hand manifest names its tracked path; a minted manifest names the declaration that
 // writes it at run time -- a .dag renderer or a Rust item projected through the same namespace
@@ -961,7 +952,8 @@ data v1_tests_manifest_dependency: CargoPathDependency = CargoPathDependency {
 // uses with the deletion set as the SUBJECT rather than the exclusion. v1_minted_manifest_join
 // refuses in both directions -- a produced site with no row here is undisposed, a row here naming
 // no produced site is stale -- so the table cannot drift from the tree in either direction without
-// the instrument saying which row. The three .dag renderers are cited by declaration and the
+// the instrument saying which row -- both directions land in the uncitable column as Undecided
+// consumers and the report entry renders the join. The three .dag renderers are cited by declaration and the
 // citation wall refuses a stale name; their join to a produced .dag literal population is the
 // declared frontier tools.v1_consumer_discovery (PR #10939) closes.
 //
@@ -1198,13 +1190,15 @@ fn minted_manifest_join_is_clean(j: MintedManifestJoin) -> Bool {
 }
 
 // WHAT THE JOIN CONTRIBUTES TO THE POPULATION: every undisposed site as an Undecided uncitable
-// consumer (blocks), every rostered uncitable site with its disposition, and the citable minted
-// rows minus the stale ones. An unobserved join contributes nothing and the population reads it as
-// Unmeasured, never as an empty column.
+// consumer (blocks); every rostered uncitable site with its disposition; and every STALE row -- a
+// rostered renderer or site the tree no longer carries -- ALSO as an Undecided uncitable consumer,
+// so a roster that drifted subtracts a consumer row only by adding a blocking one that names it.
+// The citable minted rows minus the stale ones are the consumer rows. An unobserved join
+// contributes nothing and the population reads it as Unmeasured, never as an empty column.
 fn v1_join_uncitable_consumers(j: MintedManifestJoin) -> List<V1UncitableConsumer> {
   match j {
     MintedManifestJoinUnobserved { reason: _ } => []
-    MintedManifestJoined { observed_at: v1cc_seen_tree, produced: _, undisposed_sites: a, undisposed_uncitable: b, uncitable: uc, stale_rows: _, stale_uncitable: _, unattributed_lines: e } => {
+    MintedManifestJoined { observed_at: v1cc_seen_tree, produced: _, undisposed_sites: a, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } => {
       let discovered_by = producer_cargo_manifest_relation_at(observed_at: v1cc_seen_tree)
       list_append(
         left: list_append(
@@ -1212,8 +1206,14 @@ fn v1_join_uncitable_consumers(j: MintedManifestJoin) -> List<V1UncitableConsume
           right: b |> map(k => v1_undisposed_site_row(item_key: k, detail: "produced uncitable seed-link site with no roster row", discovered_by: discovered_by))
         ),
         right: list_append(
-          left: uc,
-          right: e |> map(k => v1_undisposed_site_row(item_key: k, detail: "seed-link token on a line no item encloses", discovered_by: discovered_by))
+          left: list_append(
+            left: uc,
+            right: e |> map(k => v1_undisposed_site_row(item_key: k, detail: "seed-link token on a line no item encloses", discovered_by: discovered_by))
+          ),
+          right: list_append(
+            left: c |> map(r => v1_undisposed_site_row(item_key: declaration_ref_display_key(ref: r), detail: "rostered minted-manifest renderer the tree no longer carries (stale row)", discovered_by: discovered_by)),
+            right: d |> map(k => v1_undisposed_site_row(item_key: k, detail: "rostered uncitable seed-link site the tree no longer carries (stale row)", discovered_by: discovered_by))
+          )
         )
       )
     }
@@ -1454,7 +1454,16 @@ fn v1_blocking_consumer_count() -> V1BlockingCount {
 // verdict, and a report that exited 0 would read as "nothing blocks". An unmeasured population
 // renders as its reason, never as a number.
 func v1_blocking_consumer_count_report() -> ProcessExit {
-  ExitFailure { code: 1, reason: v1_blocking_count_rendered(c: v1_blocking_consumer_count()) }
+  let head = v1_current_head_rust_sources()
+  let seed_links = v1_seed_link_sites_over(sources: head)
+  let population = v1_consumer_population_for(observation: v1_rust_references_over(sources: head), seed_links: seed_links)
+  ExitFailure {
+    code: 1,
+    reason: concat(
+      v1_blocking_count_rendered(c: v1_blocking_count_of(p: population)),
+      concat(" | seed-link join: ", minted_manifest_join_rendered(j: v1_minted_manifest_join_over(observation: seed_links)))
+    )
+  }
 }
 
 fn v1_blocking_count_rendered(c: V1BlockingCount) -> String {

@@ -287,10 +287,14 @@ fn an_unrostered_seed_link_site_is_an_undecided_consumer_that_blocks() -> Bool {
     && (v1_join_uncitable_consumers(j: j) |> any(u => u.item_key == "v1_compiler.planted_extra::another_minted_manifest"))
 }
 
+// A STALE ROW SUBTRACTS A CONSUMER ROW ONLY BY ADDING A BLOCKING ONE THAT NAMES IT: the consumer
+// count drops by one, and the uncitable column gains an Undecided row for the stale renderer.
 fn a_rostered_renderer_the_tree_no_longer_carries_is_stale_and_excluded() -> Bool {
   let j = join_of(sources: [planted_source(path: behavioral_receipt_path, content: planted_behavioral_source)])
   !minted_manifest_join_is_clean(j: j)
     && count(v1_join_stale_renderers(j: j)) == 1
+    && count(v1_join_uncitable_consumers(j: j)) == count(v1_join_uncitable_consumers(j: v1_minted_manifest_join_over(observation: clean_seed_link_observation()))) + 1
+    && (v1_join_uncitable_consumers(j: j) |> any(u => consumer_disposition_blocks(d: u.disposition) && string_contains(s: u.refusal_detail, pattern: "stale row")))
     && (v1_join_stale_renderers(j: j) |> all(r => declaration_ref_display_key(ref: r) == "v1_compiler.cssl_seed_linked_closure_assembly.tests::normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo"))
     && count(consumer_population_rows(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: seed_link_observation(sources: [planted_source(path: behavioral_receipt_path, content: planted_behavioral_source)]))))
        == count(consumer_population_rows(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: clean_seed_link_observation()))) - 1
