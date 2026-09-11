@@ -9,6 +9,7 @@ data dag_artifact_identity_seed_growth_justification: SeedGrowthJustification = 
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_BASENAME", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DagArtifactIdentityOutcome", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "emit_dag_artifact_text", field: WholeDeclaration },

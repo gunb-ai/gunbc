@@ -8357,6 +8357,7 @@ mod seed_executable_digest_spelling_tests {
 
 pub const DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT: &str = "fixtures/dag_artifact_identity/subject";
 pub const DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT: &str = "fixtures/dag_artifact_identity/perturbed";
+pub const DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME: &str = "registry_order_specimen.dag";
 pub const DAG_ARTIFACT_BASENAME: &str = "dag-artifact.json";
 
 /// The minimum number of registry keys the subject artifact must carry for the equality half to
@@ -8401,10 +8402,26 @@ impl DagArtifactIdentityOutcome {
 /// rather than reaching `emit_dag_artifact` directly, because the subject is what the CLI
 /// produces. Nothing is written to disk: the bytes compared are the bytes the writer would have
 /// written, so no filesystem state can make two unequal emissions look equal.
+///
+/// THE SUBJECT IS AN `Entry`, NOT A `PrimaryRoot`, AND THAT IS NOT A SPELLING PREFERENCE. A
+/// primary-root subject is a WHOLE-CORPUS compile and is asked `whole_corpus_compile_admission`
+/// before anything is indexed; on a host exposing no cgroup memory limit that arm refuses with
+/// `WholeCorpusCompileBudgetUnreadable` — correctly, since an unbounded resolve on an unbounded
+/// host is the SIGKILL it exists to prevent. Measured on a BuildBuddy runner: the root form
+/// refused four runs out of four and emitted nothing. This control's subject is one specimen
+/// file, so `Entry` is also what it actually MEANS; borrowing the corpus subject would have made
+/// the control's availability a fact about the host's cgroup rather than about the emitter.
 fn emit_dag_artifact_text(root_rel: &str) -> Result<String, String> {
+    // ANCHORED ON `workspace_root()`, NOT LEFT RELATIVE. A relative subject is resolved against
+    // the PROCESS's workspace root, which is not the same path under every consumer: the same
+    // spelling that `gunbc compile` resolved refused under the test harness with
+    // `entry file does not exist or is not a file`. The fixture's location is a fact about the
+    // repository, so it is addressed as one.
+    let root = workspace_root().join(root_rel);
+    let entry = root.join(DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME);
     let run = super::compile_emission(&super::CompileRequest {
-        subject: super::CompileSubject::PrimaryRoot(root_rel.to_string()),
-        source_roots: vec![root_rel.to_string()],
+        subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
+        source_roots: vec![root.to_string_lossy().to_string()],
         primary_precedence: false,
         render_targets: vec![RenderTarget::Dag],
     });
@@ -8526,6 +8543,12 @@ mod dag_artifact_identity_tests {
     ///
     /// Measured on this control's own two arms: with `v1.compile` emitting `map_keys` of the item
     /// registry it reports the two-emission finding, and with `sorted_map_keys` it is clean.
+    ///
+    /// THE TEST PATH IS `cli_run::required_regen_host::…`, NOT `required_regen_host::…`, because
+    /// this file is wired in by `#[path] mod` INSIDE `cli_run`. Recorded because the wrong
+    /// spelling does not error: `cargo test -- --exact <wrong path>` reports
+    /// `0 passed; 0 failed; 970 filtered out` and exits 0, which is a green from a test that never
+    /// ran -- measured, on this very test, before the spelling was corrected.
     #[test]
     #[ignore = "live-corpus: compiles a committed fixture source root off disk"]
     fn dag_artifact_identity_control_holds() {
