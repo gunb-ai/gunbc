@@ -32,8 +32,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // what this fleet asked for, with the divergence visible as a difference between two declarations
 // rather than buried in one.
 
-data vllm_deepseek_v4_1_sm12_repository: NonEmptyStr = "https://github.com/vllm-project/vllm" as NonEmptyStr
-
 // THE REVISION THAT FIRST CARRIES THE DeepSeek V4.1 SM12 PATH. vllm/models/deepseek_v4_1/nvidia/
 // model.py at this commit selects DeepseekV4FlashInferSM120Attention whenever the device capability
 // major is 12; extdeps.vllm.deepseek_v4_1_sm12 carries what that path then demands of the runtime.
@@ -41,6 +39,16 @@ data vllm_deepseek_v4_1_sm12_revision: VllmSourceRevision = vllm_source_revision
   repository: "github.com/vllm-project/vllm" as NonEmptyStr,
   full_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
+
+// A REPOSITORY IDENTITY IS NOT A CLONE LOCATOR, AND CONFLATING THEM BREAKS COLD ACQUISITION.
+// `VllmSourceRevision.repository` is `github.com/vllm-project/vllm` -- an identity, the spelling a
+// citation uses. Handed to `git clone` it is a RELATIVE PATH: reproduced in an empty directory, `git
+// clone --depth 1 github.com/vllm-project/vllm x` answers `fatal: repository
+// 'github.com/vllm-project/vllm' does not exist`. The transport needs a scheme, and deriving it here
+// keeps one authority for the identity while giving the clone a locator it can actually resolve.
+fn vllm_clone_url(source: VllmSourceRevision) -> String {
+  join(["https://", source.repository as String], "")
+}
 
 // ── THE ARGUMENTS UPSTREAM'S CONTAINER BUILD TAKES ─────────────────────────────────────────────
 //

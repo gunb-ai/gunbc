@@ -73,26 +73,37 @@ data v41_published_arm64_config_observations: List<PublishedImageObservation> = 
   ),
 ]
 
-// THE REVISION, AND THE SECOND CONTRADICTION. The installed distribution's setuptools-scm stamp names
-// a commit, and the public repository does not have it -- which is what explains everything else: the
-// published image is built from source that is not on main.
+// TWO OBSERVATIONS, AND THE CONCLUSION THEY DO NOT ESTABLISH.
+//
+// A DISTRIBUTION NAME IS A SELF-REPORT. setuptools-scm writes the version at build time from whatever
+// repository state it was pointed at; the name is what the packager stamped, not proof that these
+// bytes were compiled from that commit -- the same reasoning extdeps.vllm.server already records for
+// a server's self-reported version prefix. An earlier revision of this module read the pair below as
+// "the published image is built from source that is not on main", which promotes a version string and
+// a failed lookup into source provenance. What is established is the two readings; the equality
+// between the image and any revision stays UNESTABLISHED, which is exactly what
+// extdeps.vllm.runtime_defaults ImageSourceEquivalence exists to say.
 data v41_published_distribution_observation: PublishedImageObservation = v41_published_observation(
-  subject: "installed vLLM distribution" as NonEmptyStr,
-  reading: "vllm-0.1.dev20904+g179dd0fa9, so setuptools-scm stamped commit 179dd0fa9" as NonEmptyStr,
+  subject: "installed vLLM distribution name in the arm64 image" as NonEmptyStr,
+  reading: "the site-packages layer of sha256:d84a1232... carries vllm-0.1.dev20904+g179dd0fa9.dist-info, so the packager stamped the identifier 179dd0fa9 into the version" as NonEmptyStr,
   instrument: "tar listing of the site-packages layer, streamed from the registry API" as NonEmptyStr,
 )
 
 data v41_published_revision_public_standing: PublishedImageObservation = v41_published_observation(
-  subject: "179dd0fa9 in vllm-project/vllm" as NonEmptyStr,
-  reading: "No commit found for SHA: 179dd0fa9 -- the revision the published image is built from is not in the public repository" as NonEmptyStr,
+  subject: "the identifier 179dd0fa9 as a commit in vllm-project/vllm" as NonEmptyStr,
+  reading: "the GitHub commits API answered `No commit found for SHA: 179dd0fa9`. That is a fact about the public repository and the identifier; it does not by itself establish which source these bytes were compiled from" as NonEmptyStr,
   instrument: "GitHub commits API, api.github.com/repos/vllm-project/vllm/commits/179dd0fa9" as NonEmptyStr,
 )
 
-// HOW IT MAPS THE ARCHITECTURE, read out of the image's OWN registry.py. An ordinary registry entry:
-// not a plugin entry point, not hf-overrides, not a launch-time registration. Two entries point at
-// vllm.models.deepseek_v4_1 and neither exists in public main at 07b75534, which is the entire
-// difference between the image this fleet built from public source and the published one -- the same
-// model code, wired in.
+// HOW THIS IMAGE MAPS THE ARCHITECTURE, read out of the registry.py IN ITS OWN site-packages layer.
+// The mapping is an ordinary registry entry -- not a plugin entry point, not hf-overrides, not a
+// launch-time registration -- and two entries point at vllm.models.deepseek_v4_1, which public main at
+// 07b75534 does not carry.
+//
+// WHAT THAT IS NOT. An earlier revision called it "the entire difference" between this image and the
+// one this fleet built. Two registry files differing in two entries is not a diff of two images, and
+// nothing here compared the rest of either tree; the wiring is the difference OBSERVED, at the grain
+// observed, in the layer named beside it.
 data v41_published_registry_entries: List<NonEmptyStr> = [
   "DeepseekV41ForCausalLM -> (vllm.models.deepseek_v4_1, DeepseekV41ForCausalLM)" as NonEmptyStr,
   "DSparkV41DraftModel -> (vllm.models.deepseek_v4_1, DSparkDeepseekV4ForCausalLM)" as NonEmptyStr,

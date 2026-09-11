@@ -831,6 +831,19 @@ fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
   argv_command(program: git_binary_name, arguments: git_rev_parse_head_args(repository_dir: repository_dir))
 }
 
+// HEAD IS NOT THE TREE. `rev-parse HEAD` says which commit is checked out and nothing about whether
+// the working tree still matches it, so a build whose only provenance check is the commit id will
+// happily build a modified context and stamp it with an unmodified revision. `--porcelain` prints one
+// line per difference and NOTHING when the tree is clean, so cleanliness is an empty answer rather
+// than a parse.
+fn git_status_porcelain_args(repository_dir: String) -> List<String> {
+  ["-C", repository_dir, "status", "--porcelain"]
+}
+
+fn git_status_porcelain_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_status_porcelain_args(repository_dir: repository_dir))
+}
+
 fn shape_git_config_get_argv(key: String) -> List<String> {
   ["git", "config", "--get", key]
 }

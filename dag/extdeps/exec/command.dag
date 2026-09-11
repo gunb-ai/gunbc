@@ -140,6 +140,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_shallow_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_rev_parse_head_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_status_porcelain_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),
