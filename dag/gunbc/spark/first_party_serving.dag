@@ -22,7 +22,7 @@ import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread, VllmUsageStatsContentClass,
   ConfigurationAndHardwareMetadataOnly, CarriesRequestMaterial,
-  vllm_usage_stats_reporting,
+  vllm_usage_stats_reporting, vllm_usage_stats_assignment_disables,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.fleet_physical_inventory { operator_site }
@@ -373,7 +373,7 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // right to call the same defect this module fixes one function below for the content class: the
 // environment is a MODELED value in this repository, so a sentence about it is a second authority
 // that rots the moment somebody edits the first. It is folded now -- the observed lanes' container
-// environments against extdeps.vllm.usage_stats' own disable_env_vars -- so adding
+// environments against extdeps.vllm.usage_stats' own disable terms, read by that module -- so adding
 // VLLM_NO_USAGE_STATS=1 to the launch flips this standing, flips the telemetry path to
 // ProviderPathAbsent, and takes the rung drop's population out from under it, with no edit here.
 //
@@ -384,14 +384,20 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // the check reading cleanest exactly where it knows least -- the same trap the host-coverage fold
 // avoids above.
 //
-// A NAME SET TO "0" IS NOT A DISABLE. Upstream reads these as booleans, so a present-but-false
-// assignment leaves reporting on; matching on the name alone would have read it as off.
+// WHETHER AN ASSIGNMENT DISABLES ANYTHING IS UPSTREAM'S READING AND IS NOT PERFORMED HERE. The
+// first spelling asked whether the value was anything other than "0"; upstream asks whether it
+// EQUALS "1", so VLLM_NO_USAGE_STATS=false would have read as disabled while the engine kept
+// reporting -- the admitting direction, on a launch still sending (review 64043). The predicate is
+// now extdeps.vllm.usage_stats' own, cited to envs.py, and this module only supplies the launch's
+// assignments to it. What is folded is the ENVIRONMENT terms; upstream's third term, the marker
+// file, is not answerable from a container environment and its absence here over-declares the
+// egress rather than hiding it.
 fn spark_lane_disables_usage_stats(lane: FabricLaneObserved) -> Bool {
   any(
-    vllm_usage_stats_reporting.disable_env_vars,
-    v => any(
+    vllm_usage_stats_reporting.disable_terms,
+    t => any(
       spark_pair_container_env(lane: lane),
-      e => (e.name as String) == (v as String) && e.value != "0",
+      e => vllm_usage_stats_assignment_disables(term: t, name: e.name, value: e.value),
     ),
   )
 }
@@ -404,11 +410,11 @@ fn spark_serving_usage_stats_standing() -> VllmUsageStatsLaunchStanding {
   } else {
     if count(filter(fabric_lane_observations, l => !spark_lane_disables_usage_stats(lane: l))) == 0 {
       UsageStatsDisabledByLaunch {
-        mechanism: "every observed fabric lane's serving container environment carries one of extdeps.vllm.usage_stats disable_env_vars with a value other than 0, so no lane reports usage statistics",
+        mechanism: "every observed fabric lane's serving container environment carries one of extdeps.vllm.usage_stats disable_terms at its disabling value, read by that module's own vllm_usage_stats_assignment_disables, so no lane reports usage statistics",
       }
     } else {
       UsageStatsEnabledByDefault {
-        basis: "at least one observed fabric lane's serving container environment (gunbc.spark.pair_serving_realization spark_pair_container_env) carries none of extdeps.vllm.usage_stats disable_env_vars, so usage reporting is on by upstream default for this route. Derived from the launch declaration, not from a reading of any running host's environment.",
+        basis: "at least one observed fabric lane's serving container environment (gunbc.spark.pair_serving_realization spark_pair_container_env) satisfies none of extdeps.vllm.usage_stats disable_terms, so usage reporting is on by upstream default for this route. Derived from the launch declaration, not from a reading of any running host's environment.",
       }
     }
   }

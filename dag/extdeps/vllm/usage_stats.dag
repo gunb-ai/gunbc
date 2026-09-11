@@ -76,6 +76,30 @@ type VllmUsageStatsServiceJurisdiction
   = ServiceJurisdictionDocumented { jurisdiction: NonEmptyStr }
   | ServiceJurisdictionUndocumentedUpstream
 
+// ── HOW UPSTREAM READS THE DISABLE VARIABLES, WHICH IS NOT "IS IT SET" ────────────────────────
+//
+// THE NAMES ALONE WERE NOT THE FACT, and modelling only the names pushed the reading into the
+// consumer, where it was authored rather than cited: gunbc asked whether an assignment's value was
+// anything other than "0", and upstream asks whether it EQUALS "1"
+// (os.environ.get("VLLM_NO_USAGE_STATS", "0") == "1", and DO_NOT_TRACK the same way, in envs.py).
+// Those disagree on VLLM_NO_USAGE_STATS=false, =no, =0.0 and every other spelling a person would
+// expect to mean off: upstream keeps reporting and the consumer read "disabled" -- the admitting
+// direction, on a launch that is still sending (review 64043).
+//
+// So the reading lives here, once, with the names it belongs to. A term is a variable AND the exact
+// value that disables it, because separating them is what let the pair be recombined wrongly.
+type VllmUsageStatsDisableTerm {
+  variable: NonEmptyStr
+  disabling_value: NonEmptyStr
+}
+
+// EXACT EQUALITY ON BOTH COMPONENTS, because that is what upstream performs. There is deliberately
+// no truthiness, no case folding and no "anything non-empty": each of those is a consumer's guess
+// about a reading this module can state.
+fn vllm_usage_stats_assignment_disables(term: VllmUsageStatsDisableTerm, name: NonEmptyStr, value: String) -> Bool {
+  (name as String) == (term.variable as String) && value == (term.disabling_value as String)
+}
+
 type VllmUsageStatsReporting sole_constructor {
   default_server: NonEmptyStr
   server_override_env: NonEmptyStr
@@ -83,7 +107,7 @@ type VllmUsageStatsReporting sole_constructor {
   content_class: VllmUsageStatsContentClass
   service_jurisdiction: VllmUsageStatsServiceJurisdiction
   collected_fields: List<NonEmptyStr>
-  disable_env_vars: List<NonEmptyStr>
+  disable_terms: List<VllmUsageStatsDisableTerm>
   disable_marker_path: NonEmptyStr
   established_against: VllmSourceRevision
 }
@@ -106,11 +130,22 @@ data vllm_usage_stats_reporting: VllmUsageStatsReporting = VllmUsageStatsReporti
     "gpu_memory_utilization", "quantization", "kv_cache_dtype", "enable_lora",
     "enable_prefix_caching", "enforce_eager", "disable_custom_all_reduce",
   ],
-  disable_env_vars: ["VLLM_NO_USAGE_STATS", "DO_NOT_TRACK"],
+  disable_terms: [
+    VllmUsageStatsDisableTerm { variable: "VLLM_NO_USAGE_STATS", disabling_value: "1" },
+    VllmUsageStatsDisableTerm { variable: "DO_NOT_TRACK", disabling_value: "1" },
+  ],
   disable_marker_path: "~/.config/vllm/do_not_track",
   established_against: vllm_source_revision_read,
 }
 
+// THE THIRD TERM OF UPSTREAM'S DISJUNCTION IS THE MARKER FILE, carried above as
+// disable_marker_path and deliberately not folded by the launch standing below: a container
+// environment cannot answer whether a path exists inside the image or the home directory, and
+// guessing would be the same authored reading this module just moved out of the consumer. Its
+// absence from the fold errs in the conservative direction -- a fleet that disabled reporting only
+// by marker file reads as ENABLED here, which over-declares the egress rather than hiding it -- and
+// the honest closure is a filesystem observation, not a bolder predicate.
+//
 // REPORTING IS ON UNLESS SOMETHING TURNS IT OFF, which is the shape of the upstream check
 // (_USAGE_STATS_ENABLED = not (do_not_track or no_usage_stats or do_not_track_file)) and therefore
 // the shape of the question a consumer must ask about a particular launch. The arms are what a
