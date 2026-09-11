@@ -17,7 +17,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_cmdsubst,
   bash_build_word_concat_parts,
   bash_build_word_lit,
-  bash_build_word_single_quoted,
   bash_build_word_var,
   bash_build_with_redir,
   bash_build_with_redir_to_file,
@@ -505,7 +504,7 @@ fn wrap_command_with_floor_attempt_receipt_stmts(command: String) -> List<Node> 
                   bash_build_word_lit(text: "sh"),
                   bash_build_word_lit(text: "-e"),
                   bash_build_word_lit(text: "-c"),
-                  bash_build_word_single_quoted(text: command)
+                  bash_build_word_lit(text: command)
                 ]
               )
             ]
