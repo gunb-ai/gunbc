@@ -5,6 +5,13 @@ import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDiv
 import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound }
 
 import std.checked_arithmetic { checked_int_add, checked_int_multiply, checked_int_optional }
+import std.algebra {
+  CostShape,
+  ShapeConstant,
+  ShapeIterateBody,
+  ShapeLinearScan,
+  ShapeSortBody,
+}
 
 
 type RecursionShape
@@ -363,9 +370,17 @@ fn poly_exp_degree_one() -> PolynomialExponent {
   IntegerExpPos { degree: OneStep }
 }
 
+// THE CALLER'S BODY IS AN ATOM OF COST, NOT A SHAPE OF ONE. A higher-order operation runs a body
+// the caller supplies once per element, and that work is real, unbounded by anything this carrier
+// knows, and NOT a polynomial or a logarithm in the parameter: it is a factor whose magnitude is
+// the caller's business. std.algebra CostShape has always distinguished it (ShapeIterateBody against
+// ShapeLinearScan) and std.primitive_identity carries it today for fold_list and index_by, so the
+// fact predates this arm; what was missing was a spelling for it here, which is why a projection
+// from this authority to CostShape could not reach ShapeIterateBody at all.
 type AtomicCost
   = PolyCost { param: String, exponent: PolynomialExponent }
   | LogCost { param: String }
+  | CallerBodyCost { param: String }
 
 type CostBound
   = ConstantBound
@@ -430,11 +445,225 @@ fn cost_nlogn(param: String) -> CostBound {
   ProductBound { factors: [PolyCost { param: param, exponent: poly_exp_degree_one() }, LogCost { param: param }] }
 }
 
+// Once per element of `param`, times whatever the caller's body costs -- the bound behind
+// std.algebra ShapeIterateBody.
+fn cost_iterate_body(param: String) -> CostBound {
+  ProductBound { factors: [
+    PolyCost { param: param, exponent: poly_exp_degree_one() },
+    CallerBodyCost { param: param }
+  ] }
+}
+
 fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
   SumOfProductsBound { terms: [
     [PolyCost { param: v_param, exponent: poly_exp_degree_one() }],
     [PolyCost { param: e_param, exponent: poly_exp_degree_one() }]
   ] }
+}
+
+// GROWTH IN ONE PARAMETER, READ OFF A CostBound. A consumer comparing two cost bounds needs to ask
+// what each one does as ONE named parameter grows, and the answer is three numbers rather than one:
+// the polynomial degree, the number of logarithmic factors, and whether a caller-supplied body runs
+// per element. Collapsing them loses real distinctions -- a single ordinal makes log(n)*log(n) and n
+// compare equal -- so they are carried, and the order below is lexicographic on (degree, logs),
+// which is the true order of n^a (log n)^b, with the body held out of the order deliberately.
+type ParamGrowth {
+  degree: Int
+  logs: Int
+  bodies: Int
+  representable: Bool
+}
+
+fn param_growth_zero() -> ParamGrowth {
+  ParamGrowth { degree: 0, logs: 0, bodies: 0, representable: true }
+}
+
+// A FRACTIONAL OR LOG-BASED EXPONENT IS A REAL BOUND THIS READING CANNOT ORDER, and it says so
+// rather than rounding to the nearest integer degree. sqrt(n) is not linear and is not constant; a
+// reader that reported either would be fabricating. The flag travels with the growth so every
+// consumer sees the same refusal instead of each one rediscovering it.
+fn param_growth_unrepresentable() -> ParamGrowth {
+  ParamGrowth { degree: 0, logs: 0, bodies: 0, representable: false }
+}
+
+fn atomic_cost_param(c: AtomicCost) -> String {
+  match c {
+    PolyCost { param: p, exponent: _ } => p
+    LogCost { param: p } => p
+    CallerBodyCost { param: p } => p
+  }
+}
+
+fn exponent_growth(e: PolynomialExponent) -> ParamGrowth {
+  match e {
+    IntegerExpZero => param_growth_zero()
+    IntegerExpPos { degree: d } =>
+      ParamGrowth { degree: positive_descent_count(steps: d), logs: 0, bodies: 0, representable: true }
+    FractionExp { numerator: _, root: _ } => param_growth_unrepresentable()
+    LogBasedExp { base: _, argument: _ } => param_growth_unrepresentable()
+  }
+}
+
+fn atomic_cost_growth(c: AtomicCost) -> ParamGrowth {
+  match c {
+    PolyCost { param: _, exponent: e } => exponent_growth(e: e)
+    LogCost { param: _ } => ParamGrowth { degree: 0, logs: 1, bodies: 0, representable: true }
+    CallerBodyCost { param: _ } => ParamGrowth { degree: 0, logs: 0, bodies: 1, representable: true }
+  }
+}
+
+// A PRODUCT MULTIPLIES, so the exponents ADD -- separately, which is why two linear factors over one
+// parameter read quadratic and two logarithmic ones read log-squared rather than colliding with it.
+fn param_growth_multiply(a: ParamGrowth, b: ParamGrowth) -> ParamGrowth {
+  ParamGrowth {
+    degree: a.degree + b.degree,
+    logs: a.logs + b.logs,
+    bodies: a.bodies + b.bodies,
+    representable: a.representable && b.representable,
+  }
+}
+
+fn param_growth_order(a: ParamGrowth, b: ParamGrowth) -> Ordering {
+  if a.degree < b.degree {
+    Less
+  } else {
+    if a.degree > b.degree {
+      Greater
+    } else {
+      if a.logs < b.logs { Less } else { if a.logs > b.logs { Greater } else { Equal } }
+    }
+  }
+}
+
+// A SUM TAKES THE LARGEST TERM'S GROWTH -- but the body and the unrepresentable flag are facts about
+// the WHOLE cost, not about the winning term, so they survive a term that loses the ordering.
+// Returning the winner whole drops them, and dropping the body makes a cost that runs a caller's
+// body compare EQUAL to one that does not.
+fn param_growth_max(a: ParamGrowth, b: ParamGrowth) -> ParamGrowth {
+  let bodies = if a.bodies > b.bodies { a.bodies } else { b.bodies }
+  let representable = a.representable && b.representable
+  match param_growth_order(a: a, b: b) {
+    Less => ParamGrowth { degree: b.degree, logs: b.logs, bodies: bodies, representable: representable }
+    Equal => ParamGrowth { degree: a.degree, logs: a.logs, bodies: bodies, representable: representable }
+    Greater => ParamGrowth { degree: a.degree, logs: a.logs, bodies: bodies, representable: representable }
+  }
+}
+
+fn atomic_factors_growth_in_param(factors: List<AtomicCost>, param: String) -> ParamGrowth {
+  factors |> fold(init: param_growth_zero(), f: fn(acc, c) {
+    if atomic_cost_param(c: c) == param {
+      param_growth_multiply(a: acc, b: atomic_cost_growth(c: c))
+    } else {
+      acc
+    }
+  })
+}
+
+// ForeverBound and ErrorBound are not growths and are not zero. Unbounded work and a malformed bound
+// are different facts from "does not grow in this parameter", and answering zero for either would
+// report the strongest possible claim about a cost nobody bounded.
+fn cost_bound_growth_in_param(b: CostBound, param: String) -> ParamGrowth {
+  match b {
+    ConstantBound => param_growth_zero()
+    AtomicBound { cost: c } =>
+      if atomic_cost_param(c: c) == param { atomic_cost_growth(c: c) } else { param_growth_zero() }
+    ProductBound { factors: fs } => atomic_factors_growth_in_param(factors: fs, param: param)
+    SumOfProductsBound { terms: ts } =>
+      ts |> fold(init: param_growth_zero(), f: fn(acc, factors) {
+        param_growth_max(a: acc, b: atomic_factors_growth_in_param(factors: factors, param: param))
+      })
+    SumBound { terms: ts } =>
+      ts |> fold(init: param_growth_zero(), f: fn(acc, inner) {
+        param_growth_max(a: acc, b: cost_bound_growth_in_param(b: inner, param: param))
+      })
+    ForeverBound => param_growth_unrepresentable()
+    ErrorBound => param_growth_unrepresentable()
+  }
+}
+
+fn cost_bound_params_of_factors(factors: List<AtomicCost>, seen: List<String>) -> List<String> {
+  factors |> fold(init: seen, f: fn(acc, c) {
+    if acc |> fold(init: false, f: fn(found, p) { found || p == atomic_cost_param(c: c) }) {
+      acc
+    } else {
+      concat([atomic_cost_param(c: c)], acc)
+    }
+  })
+}
+
+fn cost_bound_params_into(b: CostBound, seen: List<String>) -> List<String> {
+  match b {
+    ConstantBound => seen
+    AtomicBound { cost: c } => cost_bound_params_of_factors(factors: [c], seen: seen)
+    ProductBound { factors: fs } => cost_bound_params_of_factors(factors: fs, seen: seen)
+    SumOfProductsBound { terms: ts } =>
+      ts |> fold(init: seen, f: fn(acc, factors) {
+        cost_bound_params_of_factors(factors: factors, seen: acc)
+      })
+    SumBound { terms: ts } =>
+      ts |> fold(init: seen, f: fn(acc, inner) { cost_bound_params_into(b: inner, seen: acc) })
+    ForeverBound => seen
+    ErrorBound => seen
+  }
+}
+
+fn cost_bound_params(b: CostBound) -> List<String> {
+  reverse(cost_bound_params_into(b: b, seen: []))
+}
+
+// THE PROJECTION TO CostShape, AND IT IS PARTIAL ON PURPOSE. CostShape can say exactly four things,
+// and each has exactly one preimage here: constant (0,0,0), iterate-body (1,0,1), linear-scan
+// (1,0,0), sort-body (1,1,0), all in a single parameter. Every other real bound -- logarithmic,
+// quadratic, log-squared, a cost in two parameters, a fractional exponent, an unbounded one --
+// answers absent rather than being rounded to the nearest thing CostShape can say, because a
+// rounded rank presented as the operation's shape is a fabricated answer.
+fn shape_for_param_growth(growth: ParamGrowth) -> CostShape? {
+  if !growth.representable {
+    none
+  } else {
+    if growth.degree == 0 && growth.logs == 0 && growth.bodies == 0 {
+      Present { value: ShapeConstant }
+    } else {
+      if growth.degree == 1 && growth.logs == 0 && growth.bodies == 1 {
+        Present { value: ShapeIterateBody }
+      } else {
+        if growth.degree == 1 && growth.logs == 0 && growth.bodies == 0 {
+          Present { value: ShapeLinearScan }
+        } else {
+          if growth.degree == 1 && growth.logs == 1 && growth.bodies == 0 {
+            Present { value: ShapeSortBody }
+          } else {
+            none
+          }
+        }
+      }
+    }
+  }
+}
+
+fn cost_bound_to_shape(b: CostBound) -> CostShape? {
+  let params = cost_bound_params(b: b)
+  if params.length() == 0 {
+    match b {
+      ConstantBound => Present { value: ShapeConstant }
+      AtomicBound { cost: _ } => none
+      ProductBound { factors: _ } => none
+      SumOfProductsBound { terms: _ } => none
+      SumBound { terms: _ } => none
+      ForeverBound => none
+      ErrorBound => none
+    }
+  } else {
+    if params.length() == 1 {
+      match params.first() {
+        Absent => none
+        Present { value: only } =>
+          shape_for_param_growth(growth: cost_bound_growth_in_param(b: b, param: only))
+      }
+    } else {
+      none
+    }
+  }
 }
 
 type RecurrenceForm {

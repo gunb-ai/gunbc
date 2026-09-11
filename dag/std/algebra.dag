@@ -297,213 +297,25 @@ type CostShape
   | ShapeIterateBody
   | ShapeSortBody
 
-// THE STRUCTURED FORM OF THE SAME FACT, AND WHY IT LIVES HERE RATHER THAN BESIDE A CONSUMER.
-// CostShape names a growth RANK and nothing else, so it cannot distinguish an operation whose work
-// is linear in BOTH operands from one linear in only the right operand -- both are "linear". That
-// distinction is not academic: std.primitives concat_contract declares work over both operands
-// while the realization charges the right one only, so a cost model reading the contract prices an
-// accumulate-on-the-left fold as quadratic where the executing code is linear, and convicts the
-// correct construction (gunbc.recurring_failure_mode
-// lens_prices_the_authority_while_the_lane_runs_the_realization).
-// The repair is NOT a second cost vocabulary somewhere a consumer happens to sit -- that is the
-// fork DESIGN section 3 forbids, and it was the first shape proposed for this. It is the SAME
-// authority carrying the finer form, with CostShape kept as its PROJECTION for the sites that only
-// need a rank. One home, two readings.
-type CostFactor
-  = ConstantFactor
-  | LogarithmicInOperand { operand: String }
-  | LinearInOperand { operand: String }
-  | LinearithmicInOperand { operand: String }
-  | CallerBodyPerElementIn { operand: String }
-
-// A term is a PRODUCT of factors (m * n is one term with two linear factors) and a cost is a SUM of
-// terms (n + m is two terms). That is the whole grammar, and it is closed: every cost these
-// contracts state today is a sum of products of those four factors over named operand sizes.
-type CostTerm {
-  factors: List<CostFactor>
-}
-
-type StructuredCost {
-  terms: List<CostTerm>
-}
-
-// GROWTH IN ONE OPERAND IS TWO NUMBERS, NOT ONE, and collapsing them to one is lossy in a way that
-// fabricates answers. A cost in an operand has the form n^degree * (log n)^logs, and a single
-// ordinal cannot carry both: an earlier revision summed per-factor ranks (constant 0, log 1, linear
-// 2, linearithmic 3) within a term, which made log(n)*log(n) and n both score 2 -- so log-squared
-// and linear compared EQUAL, a divergence reported as preserved, in the module whose whole purpose
-// is to refuse exactly that. The pair is carried instead, and its order is lexicographic on
-// (degree, logs), which is the true order of those functions: n beats (log n)^k for every k.
-type OperandGrowth {
-  degree: Int
-  logs: Int
-  bodies: Int
-}
-
-// THE CALLER'S BODY IS A THIRD FACT, NOT A FOURTH RANK. CostShape is not a pure growth vocabulary:
-// ShapeIterateBody means "once per element, times whatever the caller's body costs", which is the
-// cost std.primitive_identity carries today for fold_list and index_by. Without a factor for it,
-// those primitives could only be written as LinearInOperand when they migrate, and the projection
-// would answer ShapeLinearScan -- a DIFFERENT arm from the one the authority declares, silently.
-// So the body is carried, and it is deliberately NOT an exponent: a body of unknown cost multiplies
-// the work without changing the growth in the operand, which is why it counts separately and why a
-// comparison that turns on it is UNDECIDED rather than decided in either direction.
-fn cost_factor_growth(f: CostFactor) -> OperandGrowth {
-  match f {
-    ConstantFactor => OperandGrowth { degree: 0, logs: 0, bodies: 0 }
-    LogarithmicInOperand { operand: _ } => OperandGrowth { degree: 0, logs: 1, bodies: 0 }
-    LinearInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 0, bodies: 0 }
-    LinearithmicInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 1, bodies: 0 }
-    CallerBodyPerElementIn { operand: _ } => OperandGrowth { degree: 1, logs: 0, bodies: 1 }
-  }
-}
-
-fn operand_growth_zero() -> OperandGrowth {
-  OperandGrowth { degree: 0, logs: 0, bodies: 0 }
-}
-
-// A TERM IS A PRODUCT, so the exponents ADD -- separately, which is the whole point. Two linear
-// factors over one operand are quadratic in it; two log factors are log-squared; and those are
-// different facts that now have different values.
-fn operand_growth_multiply(a: OperandGrowth, b: OperandGrowth) -> OperandGrowth {
-  OperandGrowth {
-    degree: a.degree + b.degree,
-    logs: a.logs + b.logs,
-    bodies: a.bodies + b.bodies,
-  }
-}
-
-// THE ORDER IS OVER GROWTH ONLY, and the body count is deliberately outside it. A cost that runs a
-// caller-supplied body once per element is not KNOWN to be worse than one that does not: the body
-// may be O(1). Ordering them would be a fabricated answer in one direction and hiding a real
-// difference in the other, so the order decides growth and operand_growth_body_disagreement reports
-// the rest — a consumer that needs a verdict asks both and answers undecided when they disagree.
-fn operand_growth_order(a: OperandGrowth, b: OperandGrowth) -> Ordering {
-  if a.degree < b.degree {
-    Less
-  } else {
-    if a.degree > b.degree {
-      Greater
-    } else {
-      if a.logs < b.logs { Less } else { if a.logs > b.logs { Greater } else { Equal } }
-    }
-  }
-}
-
-fn operand_growth_body_disagreement(a: OperandGrowth, b: OperandGrowth) -> Bool {
-  a.bodies != b.bodies
-}
-
-// THE BODY SURVIVES A LOSING TERM. A cost is a SUM, so the growth in an operand is the largest any
-// term reaches -- but the presence of a caller-supplied body is a fact about the COST, not about the
-// winning term, and returning the winner whole silently drops it: modeled [n*n] against realized
-// [n*n, body(n)] both collapsed to (2,0,0), compared Same, and answered CostShapePreserved for a
-// realization that runs a body per element where the model runs none. That is the fabricated
-// preserved this module exists to refuse, produced by the function that was supposed to keep the
-// two facts apart. Growth is taken from the ordering; bodies are maxed independently, for the same
-// reason degree and logs are carried separately rather than summed.
-fn operand_growth_max(a: OperandGrowth, b: OperandGrowth) -> OperandGrowth {
-  let bodies = if a.bodies > b.bodies { a.bodies } else { b.bodies }
-  match operand_growth_order(a: a, b: b) {
-    Less => OperandGrowth { degree: b.degree, logs: b.logs, bodies: bodies }
-    Equal => OperandGrowth { degree: a.degree, logs: a.logs, bodies: bodies }
-    Greater => OperandGrowth { degree: a.degree, logs: a.logs, bodies: bodies }
-  }
-}
-
-fn cost_factor_operand(f: CostFactor) -> String? {
-  match f {
-    ConstantFactor => none
-    LogarithmicInOperand { operand: o } => Present { value: o }
-    LinearInOperand { operand: o } => Present { value: o }
-    LinearithmicInOperand { operand: o } => Present { value: o }
-    CallerBodyPerElementIn { operand: o } => Present { value: o }
-  }
-}
-
-// THE GROWTH OF A COST IN ONE OPERAND is the largest growth any single term reaches in it,
-// multiplying the factors WITHIN a term because a term is a product.
-fn cost_term_growth_in_operand(t: CostTerm, operand: String) -> OperandGrowth {
-  t.factors |> fold(init: operand_growth_zero(), f: fn(acc, f) {
-    match cost_factor_operand(f: f) {
-      Absent => acc
-      Present { value: o } =>
-        if o == operand { operand_growth_multiply(a: acc, b: cost_factor_growth(f: f)) } else { acc }
-    }
-  })
-}
-
-fn structured_cost_growth_in_operand(c: StructuredCost, operand: String) -> OperandGrowth {
-  c.terms |> fold(init: operand_growth_zero(), f: fn(acc, t) {
-    operand_growth_max(a: acc, b: cost_term_growth_in_operand(t: t, operand: operand))
-  })
-}
-
-fn structured_cost_operands(c: StructuredCost) -> List<String> {
-  reverse(c.terms |> fold(init: [], f: fn(acc, t) {
-    t.factors |> fold(init: acc, f: fn(inner, f) {
-      match cost_factor_operand(f: f) {
-        Absent => inner
-        Present { value: o } =>
-          if inner |> fold(init: false, f: fn(seen, x) { seen || x == o }) {
-            inner
-          } else {
-            concat([o], inner)
-          }
-      }
-    })
-  }))
-}
-
-// THE PROJECTION IS PARTIAL AND SAYS SO. CostShape has no spelling for a cost that is linear in two
-// operands at once, so projecting one would have to round -- and a rounded rank presented as the
-// operation's shape is the fabricated answer this whole authority exists to prevent. The absent
-// arm is the vocabulary gap stated out loud, not a failure to compute.
-// EACH CostShape ARM HAS EXACTLY ONE PREIMAGE HERE, which is what makes this a projection rather
-// than a second vocabulary: constant is (0,0,0), iterate-body is (1,0,1), linear-scan is (1,0,0),
-// sort-body is (1,1,0). Before the body count existed, ShapeIterateBody had NO preimage and
-// ShapeLinearScan had two -- so fold_list's cost, which is ShapeIterateBody today, would have
-// projected back as ShapeLinearScan when it migrated: two names answering one question and
-// disagreeing (DESIGN section 3), and a rounded answer this function's own annotation forbids.
-// Everything outside those four -- a logarithmic cost, a quadratic one, a log-squared one, a body
-// over a non-linear operand -- is a real growth CostShape has no spelling for, and answers absent
-// rather than being rounded to the nearest thing it can say.
-fn shape_for_operand_growth(growth: OperandGrowth) -> CostShape? {
-  if growth.degree == 0 && growth.logs == 0 && growth.bodies == 0 {
-    Present { value: ShapeConstant }
-  } else {
-    if growth.degree == 1 && growth.logs == 0 && growth.bodies == 1 {
-      Present { value: ShapeIterateBody }
-    } else {
-      if growth.degree == 1 && growth.logs == 0 && growth.bodies == 0 {
-        Present { value: ShapeLinearScan }
-      } else {
-        if growth.degree == 1 && growth.logs == 1 && growth.bodies == 0 {
-          Present { value: ShapeSortBody }
-        } else {
-          none
-        }
-      }
-    }
-  }
-}
-
-fn structured_cost_to_shape(c: StructuredCost) -> CostShape? {
-  let operands = structured_cost_operands(c: c)
-  if operands.length() == 0 {
-    Present { value: ShapeConstant }
-  } else {
-    if operands.length() == 1 {
-      match operands.first() {
-        Absent => none
-        Present { value: only } =>
-          shape_for_operand_growth(growth: structured_cost_growth_in_operand(c: c, operand: only))
-      }
-    } else {
-      none
-    }
-  }
-}
+// THE STRUCTURED FORM OF THIS FACT IS NOT DECLARED HERE, AND THE FIRST REVISION OF THIS WORK
+// DECLARED IT ANYWAY. CostShape names a growth RANK and nothing else, so it cannot distinguish an
+// operation whose work is linear in BOTH operands from one linear in only the right operand -- both
+// are "linear" -- and that distinction is the whole of the concat specimen in
+// gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization. The
+// repair needs a cost expression over NAMED operands, and this module minted one: a sum-of-products
+// grammar of constant, log, linear and linearithmic factors.
+//
+// THAT WAS A FAILED DECOMPOSITION (DESIGN section 2): std.induction CostBound ALREADY owns exactly
+// that grammar -- AtomicCost PolyCost/LogCost over a named param, ProductBound for a product,
+// SumOfProductsBound for a sum of products -- and owns it more completely, with fractional and
+// log-based exponents this corpus already uses. cost_nlogn IS linearithmic and cost_graph_linear IS
+// the concat specimen, both already written. Minting a second grammar here would have put two names
+// on one concept (section 3) in the same change that argued against exactly that one field over, in
+// the module whose subject is a cost authority disagreeing with itself.
+//
+// So the structured cost of an operation is a std.induction CostBound, and CostShape remains what
+// it always was: a coarse rank for the sites that only need one. The projection between them lives
+// with the growth derivation in std.induction, beside the carrier it reads.
 
 type AlgebraFieldTemplate {
   name: String

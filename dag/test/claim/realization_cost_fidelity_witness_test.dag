@@ -1,65 +1,71 @@
 module test.claim.realization_cost_fidelity_witness
 
-// THE SPECIMEN IS THE FIRST WITNESS. gunbc.recurring_failure_mode
-// lens_prices_the_authority_while_the_lane_runs_the_realization measured a contract declaring work
-// over both operands against a realization charging the right one only. A cost authority that
-// cannot make that come out as a difference is a decoration, so the concat case leads here and the
-// rank-only reading is shown failing on it in the same module.
-import std.algebra {
-  CostTerm,
-  LinearInOperand,
-  LogarithmicInOperand,
-  LinearithmicInOperand,
-  CallerBodyPerElementIn,
-  StructuredCost,
-  ShapeIterateBody,
-  ShapeLinearScan,
-  ShapeSortBody,
-  structured_cost_growth_in_operand,
-  operand_growth_order,
-  structured_cost_to_shape,
+// THE SPECIMEN IS THE FIRST WITNESS, AND IT IS WRITTEN WITH A CONSTRUCTOR THAT ALREADY EXISTED.
+// gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization
+// measured a contract declaring work over BOTH operands against a realization charging the right
+// one only. std.induction cost_graph_linear IS that shape, already in the corpus, which is the
+// plainest possible evidence that the cost grammar this join needed was never missing.
+import std.algebra { Equal, Greater, Less, ShapeIterateBody, ShapeLinearScan, ShapeSortBody }
+import std.induction {
+  CostBound,
+  CallerBodyCost,
+  LogCost,
+  PolyCost,
+  ProductBound,
+  SumOfProductsBound,
+  cost_bound_growth_in_param,
+  cost_bound_to_shape,
+  cost_graph_linear,
+  cost_iterate_body,
+  cost_linear,
+  cost_log,
+  cost_nlogn,
+  cost_sqrt,
+  param_growth_order,
+  poly_exp_degree_one,
 }
 import std.realization_cost_fidelity {
   CostShapePreserved,
   ModeledCostNotStructured,
-  ModeledStructuredCostFact,
+  ModeledCostBoundFact,
+  RealizationCostBodyDependent,
   RealizationCostFact,
   RealizationCostUnknown,
-  RealizationCostBodyDependent,
   RealizationDivergesByOperand,
   RealizationFasterThanModeled,
   RealizationSlowerThanModeled,
   cost_fidelity_of,
-  count_cost_fidelity_findings,
   count_cost_body_dependent,
+  count_cost_fidelity_findings,
   count_cost_fidelity_unmeasured,
   count_cost_model_unmigrated,
   realization_cost_fidelity_rows,
 }
 import std.primitive_identity { EmitRust, InterpreterHost }
 import std.primitive_projection { PrimitiveIdentity }
-import std.types { Bool, List }
-import std.algebra { Equal, Greater, Less }
+import std.types { Bool, List, String }
 
-// concat as std.primitives declares it: work in both operands.
-fn concat_modeled_cost() -> StructuredCost {
-  StructuredCost {
-    terms: [
-      CostTerm { factors: [LinearInOperand { operand: "left" }] },
-      CostTerm { factors: [LinearInOperand { operand: "right" }] },
-    ]
-  }
+fn concat_modeled_cost() -> CostBound {
+  cost_graph_linear(v_param: "left", e_param: "right")
 }
 
-// concat as the realization charges it: the right operand only.
-fn concat_realized_cost() -> StructuredCost {
-  StructuredCost {
-    terms: [CostTerm { factors: [LinearInOperand { operand: "right" }] }]
-  }
+fn concat_realized_cost() -> CostBound {
+  cost_linear(param: "right")
 }
 
-// THE CASE THE AUTHORITY EXISTS FOR. Both costs are "linear"; a rank-only comparison calls them
-// equal. Per operand they are not: the realization does no work in the left operand, so it is
+fn log_squared(param: String) -> CostBound {
+  ProductBound { factors: [LogCost { param: param }, LogCost { param: param }] }
+}
+
+fn quadratic(param: String) -> CostBound {
+  ProductBound { factors: [
+    PolyCost { param: param, exponent: poly_exp_degree_one() },
+    PolyCost { param: param, exponent: poly_exp_degree_one() }
+  ] }
+}
+
+// THE CASE THE AUTHORITY EXISTS FOR. Both bounds are "linear"; a rank-only comparison calls them
+// equal. Per parameter they are not: the realization does no work in the left operand, so it is
 // cheaper there and identical on the right, and the model is the thing that is wrong.
 test fn concat_model_over_prices_the_left_operand() -> Bool {
   match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_realized_cost()) {
@@ -73,16 +79,16 @@ test fn concat_model_over_prices_the_left_operand() -> Bool {
   }
 }
 
-// THE DISCRIMINATOR FOR THE ABOVE, kept in the corpus rather than in a PR description: read as a
-// rank, the two costs are the same shape. This is the reading the briefed CostShape-only join would
-// have produced, and it is why the structured form had to land first.
+// THE DISCRIMINATOR, kept in the corpus rather than in a PR description: read as a single rank the
+// two bounds are indistinguishable on the operand they share, and the modeled bound has no CostShape
+// at all because it spans two parameters. That is the reading a rank-only join would have produced.
 test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
-  match structured_cost_to_shape(c: concat_modeled_cost()) {
+  match cost_bound_to_shape(b: concat_modeled_cost()) {
     Present { value: _ } => false
     Absent =>
-      match operand_growth_order(
-        a: structured_cost_growth_in_operand(c: concat_modeled_cost(), operand: "right"),
-        b: structured_cost_growth_in_operand(c: concat_realized_cost(), operand: "right"),
+      match param_growth_order(
+        a: cost_bound_growth_in_param(b: concat_modeled_cost(), param: "right"),
+        b: cost_bound_growth_in_param(b: concat_realized_cost(), param: "right"),
       ) {
         Equal => true
         Less => false
@@ -92,10 +98,7 @@ test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
 }
 
 test fn slower_realization_is_reported() -> Bool {
-  match cost_fidelity_of(
-    modeled: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] },
-    realized: StructuredCost { terms: [CostTerm { factors: [LinearithmicInOperand { operand: "n" }] }] },
-  ) {
+  match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_nlogn(param: "n")) {
     RealizationSlowerThanModeled => true
     CostShapePreserved => false
     RealizationFasterThanModeled => false
@@ -118,29 +121,135 @@ test fn identical_costs_are_preserved() -> Bool {
   }
 }
 
-// A PROVEN TRADE-OFF IS A FINDING, NOT AN ABSENCE: cheaper in one operand and dearer in another is
-// its own verdict, and collapsing it into Unknown would report "nothing to see" about two facts
-// that are both established.
+// A PROVEN TRADE-OFF IS A FINDING, NOT AN ABSENCE: cheaper in one parameter and dearer in another is
+// its own verdict, and collapsing it into Unknown would report "nothing to see" about two facts that
+// are both established.
 test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
   match cost_fidelity_of(
-    modeled: StructuredCost {
-      terms: [
-        CostTerm { factors: [LinearithmicInOperand { operand: "left" }] },
-        CostTerm { factors: [LinearInOperand { operand: "right" }] },
-      ]
-    },
-    realized: StructuredCost {
-      terms: [
-        CostTerm { factors: [LinearInOperand { operand: "left" }] },
-        CostTerm { factors: [LinearithmicInOperand { operand: "right" }] },
-      ]
-    },
+    modeled: SumOfProductsBound { terms: [
+      [PolyCost { param: "left", exponent: poly_exp_degree_one() }, LogCost { param: "left" }],
+      [PolyCost { param: "right", exponent: poly_exp_degree_one() }]
+    ] },
+    realized: SumOfProductsBound { terms: [
+      [PolyCost { param: "left", exponent: poly_exp_degree_one() }],
+      [PolyCost { param: "right", exponent: poly_exp_degree_one() }, LogCost { param: "right" }]
+    ] },
   ) {
     RealizationDivergesByOperand => true
-    RealizationCostBodyDependent => false
     CostShapePreserved => false
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
+    RealizationCostBodyDependent => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// THE COLLISION CONTROL. log-squared and linear are both "rank 2" under any single-ordinal encoding,
+// and they are not the same growth: n beats (log n)^k for every k.
+test fn log_squared_and_linear_do_not_collide() -> Bool {
+  match cost_fidelity_of(modeled: log_squared(param: "n"), realized: cost_linear(param: "n")) {
+    RealizationSlowerThanModeled => true
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+test fn log_squared_has_no_shape() -> Bool {
+  match cost_bound_to_shape(b: log_squared(param: "n")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn quadratic_in_one_operand_has_no_shape() -> Bool {
+  match cost_bound_to_shape(b: quadratic(param: "n")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A LOGARITHMIC COST HAS NO CostShape SPELLING, so the projection answers absent rather than
+// reporting a cost that grows as one that does not.
+test fn logarithmic_cost_has_no_shape_and_does_not_round_to_constant() -> Bool {
+  match cost_bound_to_shape(b: cost_log(param: "n")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn linear_and_sorting_single_operand_costs_still_project() -> Bool {
+  match cost_bound_to_shape(b: cost_linear(param: "n")) {
+    Absent => false
+    Present { value: linear } =>
+      match cost_bound_to_shape(b: cost_nlogn(param: "n")) {
+        Absent => false
+        Present { value: sorting } => linear == ShapeLinearScan && sorting == ShapeSortBody
+      }
+  }
+}
+
+// ShapeIterateBody HAS A PREIMAGE, and it is why CallerBodyCost was added to AtomicCost: fold_list
+// and index_by carry ShapeIterateBody today, and without a body atom the only spelling for them was
+// a plain linear bound, which projects back as ShapeLinearScan — a different arm, silently.
+test fn iterate_body_and_linear_scan_project_to_different_arms() -> Bool {
+  match cost_bound_to_shape(b: cost_iterate_body(param: "n")) {
+    Absent => false
+    Present { value: with_body } =>
+      match cost_bound_to_shape(b: cost_linear(param: "n")) {
+        Absent => false
+        Present { value: without_body } =>
+          with_body == ShapeIterateBody && without_body == ShapeLinearScan
+      }
+  }
+}
+
+// A PER-ELEMENT BODY IS NOT KNOWN TO BE WORSE THAN NO BODY: the body may be O(1). Two costs agreeing
+// on growth in every parameter and differing only in the body are UNDECIDED on evidence.
+test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
+  match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_iterate_body(param: "n")) {
+    RealizationCostBodyDependent => true
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+test fn a_body_does_not_outrank_a_real_growth_difference() -> Bool {
+  match cost_fidelity_of(modeled: cost_iterate_body(param: "n"), realized: cost_nlogn(param: "n")) {
+    RealizationSlowerThanModeled => true
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// THE BODY SURVIVES A LOSING TERM. Growth comes from the largest term; a body is a fact about the
+// COST, not about the winning term, and taking the winner whole dropped it.
+test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
+  match cost_fidelity_of(
+    modeled: quadratic(param: "n"),
+    realized: SumOfProductsBound { terms: [
+      [PolyCost { param: "n", exponent: poly_exp_degree_one() },
+       PolyCost { param: "n", exponent: poly_exp_degree_one() }],
+      [CallerBodyCost { param: "n" }]
+    ] },
+  ) {
+    RealizationCostBodyDependent => true
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -149,11 +258,9 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
 data probe_primitive_a: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fidelity_probe_a" }
 data probe_primitive_b: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fidelity_probe_b" }
 
-// A MISSING REALIZATION FACT IS THE ONLY DOOR INTO Unknown, and an un-migrated MODEL is a different
-// row again: three states that a single count would have flattened into one green.
 test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
   let rows = realization_cost_fidelity_rows(
-    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
     unstructured: [probe_primitive_b],
     target: EmitRust,
     facts: [],
@@ -163,10 +270,9 @@ test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
     && count_cost_fidelity_findings(rows: rows) == 0
 }
 
-// A realization fact for one target says nothing about another target.
 test fn realization_fact_does_not_cross_targets() -> Bool {
   let rows = realization_cost_fidelity_rows(
-    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
     unstructured: [],
     target: EmitRust,
     facts: [
@@ -182,7 +288,7 @@ test fn realization_fact_does_not_cross_targets() -> Bool {
 
 test fn measured_target_reports_the_finding() -> Bool {
   let rows = realization_cost_fidelity_rows(
-    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
     unstructured: [],
     target: InterpreterHost,
     facts: [
@@ -196,204 +302,18 @@ test fn measured_target_reports_the_finding() -> Bool {
   count_cost_fidelity_findings(rows: rows) == 1 && count_cost_fidelity_unmeasured(rows: rows) == 0
 }
 
-// THE PROJECTION MAY NOT ROUND, and this is the control for the one place it did: a cost
-// LOGARITHMIC in its single operand has no CostShape spelling, so the projection must answer
-// absent. Reporting it as ShapeConstant would say a cost that grows does not grow -- inside the
-// function whose own annotation forbids exactly that. Kept beside the accepted cases so the
-// distinction is executed rather than asserted.
-// THE COLLISION CONTROL. Two logarithmic factors over one operand is log-squared, and a single
-// linear factor is n. An earlier revision summed per-factor ranks, which made both score 2 — so a
-// realization that turned log-squared work into linear work compared EQUAL, and the module whose
-// purpose is to refuse a fabricated equality produced one. Growth is carried as (degree, logs) now,
-// ordered lexicographically, so n strictly beats (log n)^k for every k.
-test fn log_squared_and_linear_do_not_collide() -> Bool {
-  match cost_fidelity_of(
-    modeled: StructuredCost {
-      terms: [CostTerm {
-        factors: [LogarithmicInOperand { operand: "n" }, LogarithmicInOperand { operand: "n" }]
-      }]
-    },
-    realized: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] },
-  ) {
-    RealizationSlowerThanModeled => true
-    CostShapePreserved => false
-    RealizationFasterThanModeled => false
-    RealizationDivergesByOperand => false
-    RealizationCostBodyDependent => false
-    RealizationCostUnknown => false
-    ModeledCostNotStructured => false
-  }
-}
-
-// The same collision seen through the projection: log-squared is a growth CostShape cannot say, so
-// it must answer absent rather than ShapeLinearScan.
-test fn log_squared_has_no_shape() -> Bool {
-  match structured_cost_to_shape(
-    c: StructuredCost {
-      terms: [CostTerm {
-        factors: [LogarithmicInOperand { operand: "n" }, LogarithmicInOperand { operand: "n" }]
-      }]
-    }
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-// A term that is a product of two linear factors over one operand is QUADRATIC in it, which
-// CostShape also cannot say — the same refusal from the other direction.
-test fn quadratic_in_one_operand_has_no_shape() -> Bool {
-  match structured_cost_to_shape(
-    c: StructuredCost {
-      terms: [CostTerm {
-        factors: [LinearInOperand { operand: "n" }, LinearInOperand { operand: "n" }]
-      }]
-    }
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-test fn logarithmic_cost_has_no_shape_and_does_not_round_to_constant() -> Bool {
-  match structured_cost_to_shape(
-    c: StructuredCost { terms: [CostTerm { factors: [LogarithmicInOperand { operand: "n" }] }] }
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-// The neighbouring ranks still project, so the absent arm above is a statement about the
-// vocabulary rather than a projection that gave up.
-test fn linear_and_sorting_single_operand_costs_still_project() -> Bool {
-  match structured_cost_to_shape(
-    c: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] }
-  ) {
-    Absent => false
-    Present { value: linear } =>
-      match structured_cost_to_shape(
-        c: StructuredCost { terms: [CostTerm { factors: [LinearithmicInOperand { operand: "n" }] }] }
-      ) {
-        Absent => false
-        Present { value: sorting } => linear == ShapeLinearScan && sorting == ShapeSortBody
-      }
-  }
-}
-
-// ShapeIterateBody HAS A PREIMAGE NOW, and it is the reason the body factor exists. fold_list and
-// index_by carry ShapeIterateBody in std.primitive_identity today; before the body count, the only
-// honest structured spelling for them was LinearInOperand, which projected back as ShapeLinearScan
-// — a different arm of the same authority, silently. Each of the four arms has exactly one preimage
-// and the two that used to collide are kept apart here by execution.
-test fn iterate_body_and_linear_scan_project_to_different_arms() -> Bool {
-  match structured_cost_to_shape(
-    c: StructuredCost { terms: [CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] }] }
-  ) {
-    Absent => false
-    Present { value: with_body } =>
-      match structured_cost_to_shape(
-        c: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] }
-      ) {
-        Absent => false
-        Present { value: without_body } =>
-          with_body == ShapeIterateBody && without_body == ShapeLinearScan
-      }
-  }
-}
-
-// A PER-ELEMENT BODY IS NOT KNOWN TO BE WORSE THAN NO BODY: the body may be O(1). Two costs that
-// agree on growth in every operand and differ only in whether a caller's body runs per element are
-// UNDECIDED on evidence, and that answer is its own arm — reporting preserved would hide a real
-// difference, reporting slower would invent one, and folding it into RealizationCostUnknown would
-// say "not measured" about something measured.
-test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
-  match cost_fidelity_of(
-    modeled: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] },
-    realized: StructuredCost {
-      terms: [CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] }]
-    },
-  ) {
-    RealizationCostBodyDependent => true
-    CostShapePreserved => false
-    RealizationSlowerThanModeled => false
-    RealizationFasterThanModeled => false
-    RealizationDivergesByOperand => false
-    RealizationCostUnknown => false
-    ModeledCostNotStructured => false
-  }
-}
-
-// The body does not become a growth: a body over a linear operand is still degree 1, so a
-// realization that turns it into a SORT is slower for the reason the growth says, not the body.
-test fn a_body_does_not_outrank_a_real_growth_difference() -> Bool {
-  match cost_fidelity_of(
-    modeled: StructuredCost {
-      terms: [CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] }]
-    },
-    realized: StructuredCost {
-      terms: [CostTerm { factors: [LinearithmicInOperand { operand: "n" }] }]
-    },
-  ) {
-    RealizationSlowerThanModeled => true
-    CostShapePreserved => false
-    RealizationFasterThanModeled => false
-    RealizationDivergesByOperand => false
-    RealizationCostBodyDependent => false
-    RealizationCostUnknown => false
-    ModeledCostNotStructured => false
-  }
-}
-
-// THE BODY MUST SURVIVE A LOSING TERM. A cost is a sum, so the growth in an operand comes from the
-// largest term — but a caller-supplied body is a fact about the COST, not about the winning term.
-// Taking the winner whole dropped it: [n*n] against [n*n, body(n)] both read (2,0,0), compared
-// Same, and answered preserved for a realization that runs a body per element where the model runs
-// none. That is the fabricated preserved this module exists to refuse.
-test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
-  match cost_fidelity_of(
-    modeled: StructuredCost {
-      terms: [CostTerm {
-        factors: [LinearInOperand { operand: "n" }, LinearInOperand { operand: "n" }]
-      }]
-    },
-    realized: StructuredCost {
-      terms: [
-        CostTerm { factors: [LinearInOperand { operand: "n" }, LinearInOperand { operand: "n" }] },
-        CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] },
-      ]
-    },
-  ) {
-    RealizationCostBodyDependent => true
-    CostShapePreserved => false
-    RealizationSlowerThanModeled => false
-    RealizationFasterThanModeled => false
-    RealizationDivergesByOperand => false
-    RealizationCostUnknown => false
-    ModeledCostNotStructured => false
-  }
-}
-
-// AN ARM THAT NO REPORTED POPULATION COUNTS IS AN ANSWER NOBODY READS. The undecided arm exists so
-// a measured-but-undecided comparison is not reported as preserved; it would be defeated just as
-// completely by being invisible in every count the consumer reports. It is not a finding, not
-// unmeasured and not unmigrated, so it has its own population and this control asserts all four
-// counts on one ledger at once.
+// AN ARM THAT NO REPORTED POPULATION COUNTS IS AN ANSWER NOBODY READS: all four counts asserted on
+// one ledger, so the type cannot gain an arm without the accounting being revisited.
 test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
   let rows = realization_cost_fidelity_rows(
-    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
     unstructured: [],
     target: InterpreterHost,
     facts: [
       RealizationCostFact {
         primitive: probe_primitive_a,
         target: InterpreterHost,
-        cost: StructuredCost {
-          terms: [
-            CostTerm { factors: [LinearInOperand { operand: "left" }] },
-            CostTerm { factors: [CallerBodyPerElementIn { operand: "right" }] },
-          ]
-        },
+        cost: cost_iterate_body(param: "n"),
       },
     ],
   )
@@ -401,4 +321,14 @@ test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
     && count_cost_fidelity_findings(rows: rows) == 0
     && count_cost_fidelity_unmeasured(rows: rows) == 0
     && count_cost_model_unmigrated(rows: rows) == 0
+}
+
+// A FRACTIONAL EXPONENT IS A REAL BOUND THIS READING CANNOT ORDER, and std.induction already carries
+// it (cost_sqrt). It answers unrepresentable rather than rounding to constant or to linear, and the
+// projection refuses with it.
+test fn a_fractional_exponent_is_not_rounded_to_a_shape() -> Bool {
+  match cost_bound_to_shape(b: cost_sqrt(param: "n")) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

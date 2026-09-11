@@ -1,17 +1,13 @@
 module std.realization_cost_fidelity
 
-import std.algebra {
-  CostShape,
-  Equal,
-  Greater,
-  Less,
-  Ordering,
-  operand_growth_body_disagreement,
-  StructuredCost,
-  operand_growth_order,
-  structured_cost_growth_in_operand,
-  structured_cost_operands,
-  structured_cost_to_shape,
+import std.algebra { CostShape, Equal, Greater, Less, Ordering }
+import std.induction {
+  CostBound,
+  ParamGrowth,
+  cost_bound_growth_in_param,
+  cost_bound_params,
+  cost_bound_to_shape,
+  param_growth_order,
 }
 import std.pareto {
   AxisComparison,
@@ -65,7 +61,7 @@ import std.logic { Bool }
 // realized cost by hand is exactly the fabricated fact this authority exists to catch — the model
 // and the realization would then agree by construction, which is the failure this join is built to
 // make impossible. A second, smaller trigger retires `ModeledCostNotStructured` independently: the
-// migration of `std.primitives` contract costs into `StructuredCost`.
+// migration of `std.primitives` contract costs into `CostBound`.
 //
 // WHAT THAT MEANS FOR A READER OF A GREEN RUN TODAY: this module can state a divergence and has
 // never been asked about a real one. Its arms are proven against authored costs, and the population
@@ -106,12 +102,12 @@ type CostFidelity
 type RealizationCostFact {
   primitive: PrimitiveIdentity
   target: RealizationTarget
-  cost: StructuredCost
+  cost: CostBound
 }
 
-type ModeledStructuredCostFact {
+type ModeledCostBoundFact {
   primitive: PrimitiveIdentity
-  cost: StructuredCost
+  cost: CostBound
 }
 
 // EQUALITY ON A CLOSED COPRODUCT IS A MATCH, NOT A STRING COMPARE. An earlier revision minted a
@@ -142,11 +138,11 @@ fn realization_target_eq(left: RealizationTarget, right: RealizationTarget) -> B
   }
 }
 
-fn operand_union(modeled: StructuredCost, realized: StructuredCost) -> List<String> {
-  let seeded = structured_cost_operands(c: modeled) |> fold(init: [], f: fn(acc, o) {
+fn param_union(modeled: CostBound, realized: CostBound) -> List<String> {
+  let seeded = cost_bound_params(b: modeled) |> fold(init: [], f: fn(acc, o) {
     concat([o], acc)
   })
-  reverse(structured_cost_operands(c: realized) |> fold(init: seeded, f: fn(acc, o) {
+  reverse(cost_bound_params(b: realized) |> fold(init: seeded, f: fn(acc, o) {
     if acc |> fold(init: false, f: fn(seen, x) { seen || x == o }) {
       acc
     } else {
@@ -158,28 +154,28 @@ fn operand_union(modeled: StructuredCost, realized: StructuredCost) -> List<Stri
 // An operand named by only one side is not skipped: its rank on the other side is 0, which is the
 // TRUE statement that the cost does not grow in it. That is what makes "declares work in both
 // operands, realizes work in one" come out as a difference rather than as a missing axis.
-fn operand_axis_comparisons(
-  modeled: StructuredCost,
-  realized: StructuredCost,
+fn param_axis_comparisons(
+  modeled: CostBound,
+  realized: CostBound,
 ) -> List<AxisComparison> {
-  operand_union(modeled: modeled, realized: realized) |> fold(init: [], f: fn(acc, o) {
-    concat([operand_axis_comparison(modeled: modeled, realized: realized, operand: o)], acc)
+  param_union(modeled: modeled, realized: realized) |> fold(init: [], f: fn(acc, o) {
+    concat([param_axis_comparison(modeled: modeled, realized: realized, param: o)], acc)
   })
 }
 
 // AN AXIS WHOSE GROWTHS AGREE AND WHOSE BODIES DO NOT IS UNDECIDED ON EVIDENCE, not Same. The
 // missing evidence is the caller's body cost, which no cost in this vocabulary carries, so the axis
 // says so in std.pareto's own word for it rather than being silently called equal.
-fn operand_axis_comparison(
-  modeled: StructuredCost,
-  realized: StructuredCost,
-  operand: String,
+fn param_axis_comparison(
+  modeled: CostBound,
+  realized: CostBound,
+  param: String,
 ) -> AxisComparison {
-  let modeled_growth = structured_cost_growth_in_operand(c: modeled, operand: operand)
-  let realized_growth = structured_cost_growth_in_operand(c: realized, operand: operand)
-  match operand_growth_order(a: realized_growth, b: modeled_growth) {
+  let modeled_growth = cost_bound_growth_in_param(b: modeled, param: param)
+  let realized_growth = cost_bound_growth_in_param(b: realized, param: param)
+  match param_growth_order(a: realized_growth, b: modeled_growth) {
     Equal =>
-      if operand_growth_body_disagreement(a: realized_growth, b: modeled_growth) {
+      if realized_growth.bodies != modeled_growth.bodies {
         UndecidedOnEvidence
       } else {
         Same
@@ -189,9 +185,9 @@ fn operand_axis_comparison(
   }
 }
 
-fn cost_fidelity_of(modeled: StructuredCost, realized: StructuredCost) -> CostFidelity {
+fn cost_fidelity_of(modeled: CostBound, realized: CostBound) -> CostFidelity {
   match dominance_of_comparisons(
-    comparisons: operand_axis_comparisons(modeled: modeled, realized: realized)
+    comparisons: param_axis_comparisons(modeled: modeled, realized: realized)
   ) {
     Dominates => RealizationFasterThanModeled
     Dominated => RealizationSlowerThanModeled
@@ -204,8 +200,8 @@ fn cost_fidelity_of(modeled: StructuredCost, realized: StructuredCost) -> CostFi
 type RealizationCostFidelityRow {
   primitive: PrimitiveIdentity
   target: RealizationTarget
-  modeled: StructuredCost?
-  realized: StructuredCost?
+  modeled: CostBound?
+  realized: CostBound?
   fidelity: CostFidelity
   projected_shape: CostShape?
 }
@@ -214,7 +210,7 @@ fn realization_cost_for(
   facts: List<RealizationCostFact>,
   primitive: PrimitiveIdentity,
   target: RealizationTarget,
-) -> StructuredCost? {
+) -> CostBound? {
   facts |> fold(init: none, f: fn(acc, fact) {
     match acc {
       Present { value: c } => Present { value: c }
@@ -230,7 +226,7 @@ fn realization_cost_for(
 }
 
 fn realization_cost_fidelity_row(
-  modeled: ModeledStructuredCostFact,
+  modeled: ModeledCostBoundFact,
   target: RealizationTarget,
   facts: List<RealizationCostFact>,
 ) -> RealizationCostFidelityRow {
@@ -244,7 +240,7 @@ fn realization_cost_fidelity_row(
       Absent => RealizationCostUnknown
       Present { value: r } => cost_fidelity_of(modeled: modeled.cost, realized: r)
     },
-    projected_shape: structured_cost_to_shape(c: modeled.cost),
+    projected_shape: cost_bound_to_shape(b: modeled.cost),
   }
 }
 
@@ -266,7 +262,7 @@ fn unstructured_modeled_row(
 }
 
 fn realization_cost_fidelity_rows(
-  modeled: List<ModeledStructuredCostFact>,
+  modeled: List<ModeledCostBoundFact>,
   unstructured: List<PrimitiveIdentity>,
   target: RealizationTarget,
   facts: List<RealizationCostFact>,
