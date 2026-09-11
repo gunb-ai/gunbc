@@ -72,7 +72,17 @@ import gunbc.spark.native_incumbent {
 // running this root while the first is mid-transaction is refused before it stops anything.
 
 data native_claim_path: NonEmptyStr = "/home/briansrls/acq/glm-native-cutover.claim" as NonEmptyStr
-data native_attempt_raw: String = "glm-native-tp4-cutover"
+
+// THE ATTEMPT IDENTITY IS MINTED PER ATTEMPT AND IS NOT DECORATION. It is the authorisation subject the
+// durable claim carries, and it is the same token every device-memory observation is stamped with -- so a
+// reading taken under a previous attempt refuses as RankEnvelopeStaleAttempt rather than being believed
+// about a machine whose containers have since been removed. Reusing one across attempts would make both of
+// those checks vacuous at exactly the moment they matter, which is a retry after a failure.
+//
+// -4 IS THE FIRST ATTEMPT UNDER THE RESOLVED ENVELOPE. Attempts 1 through 3 launched against a fraction
+// derived from total capacity; this is a different plan built from observed supply, so it is a different
+// subject and not a repeat of the same one.
+data native_attempt_raw: String = "glm-native-tp4-cutover-4"
 
 // THE READINESS BUDGET IS UPSTREAM'S FIGURE FOR THIS MODEL, and the poll interval is chosen so the budget
 // is spent in observations rather than in one long blind wait.
