@@ -281,9 +281,30 @@ fn harness_metrics_url(endpoint: ServingRouteEndpoint) -> String {
 // exporter happened to render first. The reading here is a fleet-level count for ONE engine, so more
 // than one matching line means the body is not the body this reader models -- and that is an
 // obligation to model the label set, never a licence to choose (review 62155).
-fn harness_metric_line_value(body: String, prefix: String) -> String? {
+// AND A LABELLED MEMBER OF A FAMILY IS SELECTED BY ITS LABEL, THROUGH THE SAME READER. The
+// capacity-reason queue renders one line per reason, so the name-plus-brace prefix matches several
+// and the uniqueness check above would refuse the whole family. That is a narrower SELECTOR, not a
+// second way to read a line: a copy of this body with one extra predicate would mean the exactly-one
+// law, the value-field position and every future repair to Prometheus line reading were written
+// twice, and a repair would land in one copy and silently not the other (DESIGN section 2).
+type MetricLineSelector
+  = SeriesByName
+  | SeriesByNameAndLabel { pair: NonEmptyStr }
+
+fn harness_metric_line_matches(line: String, prefix: String, selector: MetricLineSelector) -> Bool {
+  if !starts_with(s: trim(s: line), prefix: prefix) {
+    false
+  } else {
+    match selector {
+      SeriesByName => true
+      SeriesByNameAndLabel { pair: p } => string_contains(s: line, pattern: p as String)
+    }
+  }
+}
+
+fn harness_metric_line_value(body: String, prefix: String, selector: MetricLineSelector) -> String? {
   let lines = split(s: body, delimiter: "\n")
-  let matching = filter(lines, l => starts_with(s: trim(s: l), prefix: prefix))
+  let matching = filter(lines, l => harness_metric_line_matches(line: l, prefix: prefix, selector: selector))
   if length(matching) != 1 {
     none
   } else {
@@ -298,31 +319,17 @@ fn harness_metric_line_value(body: String, prefix: String) -> String? {
 }
 
 fn harness_gauge_value(body: String, metric: VllmServingMetric) -> String? {
-  harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""))
+  harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""), selector: SeriesByName)
 }
 
-// A LABELLED SERIES IS SELECTED BY ITS LABEL, NEVER BY POSITION. The capacity-reason queue is one
-// member of a family that renders one line per reason, so the name-plus-brace prefix the gauge
-// reader uses matches several lines and its uniqueness check would refuse the whole family. The
-// selection here is the name prefix AND the label pair, and it still requires exactly one match:
-// two lines carrying the same reason means the body is not the body this reader models, which is an
-// obligation to model the rest of the label set and never a licence to pick one.
+// THE LABEL PAIR IS BUILT ONCE, HERE, from the label key and value rows the upstream module carries,
+// so no consumer spells a Prometheus label rendering of its own.
 fn harness_labelled_gauge_value(body: String, metric: VllmServingMetric, label: NonEmptyStr, value: NonEmptyStr) -> String? {
-  let name_prefix = join([vllm_metric_name(m: metric) as String, "{"], "")
-  let pair = join([label as String, "=\"", value as String, "\""], "")
-  let lines = split(s: body, delimiter: "\n")
-  let matching = filter(lines, l => starts_with(s: trim(s: l), prefix: name_prefix) && string_contains(s: l, pattern: pair))
-  if length(matching) != 1 {
-    none
-  } else {
-    match first(matching) {
-      Absent => none
-      Present { value: line } => {
-        let parts = split(s: trim(s: line), delimiter: " ")
-        if length(parts) < 2 { none } else { last(parts) }
-      }
-    }
-  }
+  harness_metric_line_value(
+    body: body,
+    prefix: join([vllm_metric_name(m: metric) as String, "{"], ""),
+    selector: SeriesByNameAndLabel { pair: join([label as String, "=\"", value as String, "\""], "") as NonEmptyStr },
+  )
 }
 
 // ── A POSITIVE FLOAT IS A COUNT, AND COLLAPSING IT TO ONE IS A WRONG ANSWER ───────────────────
@@ -431,7 +438,7 @@ fn harness_queue_from_body(body: String) -> ServingQueueReading {
 // into a time: the only operation on it is equality between two readings of one endpoint, and
 // parsing would lose the discrimination between two launches inside one second while buying nothing.
 fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -> VllmEndpointProcessLaunchObservation {
-  match harness_metric_line_value(body: body, prefix: join([prometheus_process_series_name(s: ProcessStartTimeSeconds) as String, " "], "")) {
+  match harness_metric_line_value(body: body, prefix: join([prometheus_process_series_name(s: ProcessStartTimeSeconds) as String, " "], ""), selector: SeriesByName) {
     Absent =>
       LaunchUnobserved { group: group, obligation: "the served metrics carried no process start-time series, so which launch answered cannot be named and the group cannot be offered" as NonEmptyStr }
     Present { value: field } =>
