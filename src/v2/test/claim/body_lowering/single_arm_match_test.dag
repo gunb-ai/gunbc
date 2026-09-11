@@ -1,5 +1,9 @@
 module v2.test.claim.body_lowering.single_arm_match
 
+import v2.test.claim.body_lowering.normalize_outcome_helpers {
+  body_lowering_normalize_outcome
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Cause D: a match with exactly one arm was refused because the empty comma-list Repeat
@@ -11,19 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // list.
 
 fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^single_arm_match_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-          }
-      }
-  }
+  body_lowering_normalize_outcome(src: src, file: ^single_arm_match_subject)
 }
 
 data src_single_arm_wildcard: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match t {\n    _ => 1\n  }\n}\n"

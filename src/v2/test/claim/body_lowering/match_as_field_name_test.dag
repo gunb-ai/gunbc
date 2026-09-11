@@ -3,6 +3,9 @@ module v2.test.claim.body_lowering.match_as_field_name
 import v2.compiler.body_lowering_fold {
   body_lowering_match_field_name_spine_does_not_sniff_holds
 }
+import v2.test.claim.body_lowering.normalize_outcome_helpers {
+  body_lowering_normalize_outcome
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -12,19 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // keyword-as-binder control.
 
 fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^match_as_field_name_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-          }
-      }
-  }
+  body_lowering_normalize_outcome(src: src, file: ^match_as_field_name_subject)
 }
 
 data src_field_named_match: String = "module m.t\ntype R {\n  match: Int\n  other: Int\n}\nfn f(r: R) -> Int {\n  r.match\n}\n"
