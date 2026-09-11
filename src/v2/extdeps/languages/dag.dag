@@ -530,6 +530,7 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_else, text: "else"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_false, text: "false"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_where, text: "where"),
       dag_literal_lex_rule(token_class: ^dag_token_arrow, text: "->"),
       dag_literal_lex_rule(token_class: ^dag_token_fat_arrow, text: "=>"),
       dag_literal_lex_rule(token_class: ^dag_token_eq_eq, text: "=="),
@@ -868,6 +869,69 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_type_expr,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_fn_type)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_where_predicate,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_where_predicate,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_lparen),
+        grammar_formal_terminal(identity: ^dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_where_predicate,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_lparen),
+        grammar_formal_terminal(identity: ^dag_token_string_literal),
+        grammar_formal_terminal(identity: ^dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_where_predicate,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_lparen),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_where_predicate,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_lparen),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_colon),
+        grammar_formal_terminal(identity: ^dag_token_int_literal),
+        grammar_formal_terminal(identity: ^dag_token_comma),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_colon),
+        grammar_formal_terminal(identity: ^dag_token_int_literal),
+        grammar_formal_terminal(identity: ^dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_where_refinement_clause,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_kw_where),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_where_predicate)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_where_refinement_clause,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_kw_where),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_where_predicate),
+        grammar_formal_terminal(identity: ^dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_where_predicate)
       ]
     ),
     grammar_formal_production(
@@ -1685,6 +1749,21 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_type_variant,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_where_refinement_clause)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_type_variant,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_field_decl_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_type_variant,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_where_refinement_clause),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_field_decl_block)
       ]
     ),
@@ -2130,6 +2209,50 @@ fn dag_grammar_fn_type_expr() -> GrammarExpr {
   )
 }
 
+fn dag_grammar_where_predicate_arg_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_colon),
+          right: dag_grammar_terminal(token_class: ^dag_token_int_literal)
+        )
+      )
+    )
+  )
+}
+
+// Predicate spellings and enforcement class live in
+// gunbc.where_refinement_predicate_vocabulary (WherePredicateRow). Parse carries
+// the authored spelling and does not mint a second table.
+fn dag_grammar_where_predicate_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    right: dag_grammar_optional(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+        right: dag_grammar_sequence(
+          left: dag_grammar_optional(
+            element: dag_grammar_comma_list_expr(item: dag_grammar_where_predicate_arg_expr())
+          ),
+          right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_where_refinement_clause_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_where),
+    right: dag_grammar_comma_list_expr(
+      item: dag_grammar_nonterminal(production: ^dag_production_where_predicate)
+    )
+  )
+}
+
 fn dag_grammar_type_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_qualified_type_expr(),
@@ -2163,7 +2286,8 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
     ^dag_token_kw_then,
     ^dag_token_kw_else,
     ^dag_token_kw_true,
-    ^dag_token_kw_false
+    ^dag_token_kw_false,
+    ^dag_token_kw_where
   ]
 }
 
@@ -2850,7 +2974,12 @@ fn dag_grammar_alias_decl_expr() -> GrammarExpr {
 fn dag_grammar_type_variant_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
-    right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_field_decl_block))
+    right: dag_grammar_sequence(
+      left: dag_grammar_optional(
+        element: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause)
+      ),
+      right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_field_decl_block))
+    )
   )
 }
 
@@ -2870,7 +2999,7 @@ fn dag_grammar_type_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_type),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_ident),
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_generic_params)),
         right: dag_grammar_optional(
@@ -3229,6 +3358,16 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_type_expr(),
     emitted: ^dag_surface_type_expr
   )
+  let where_predicate = dag_grammar_production(
+    name: ^dag_production_where_predicate,
+    expression: dag_grammar_where_predicate_expr(),
+    emitted: ^dag_surface_where_predicate
+  )
+  let where_refinement_clause = dag_grammar_production(
+    name: ^dag_production_where_refinement_clause,
+    expression: dag_grammar_where_refinement_clause_expr(),
+    emitted: ^dag_surface_where_refinement_clause
+  )
   let fn_type = dag_grammar_production(
     name: ^dag_production_fn_type,
     expression: dag_grammar_fn_type_expr(),
@@ -3375,6 +3514,8 @@ fn dag_grammar_root() -> GrammarRoot {
       generic_params,
       param_list,
       type_expr,
+      where_predicate,
+      where_refinement_clause,
       fn_type,
       type_variant,
       type_alias_rhs,

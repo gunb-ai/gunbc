@@ -49,7 +49,7 @@ import v2.std.optional {
 }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match }
 import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -503,6 +503,159 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_field_decl_block)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
+    || (emitted == ^dag_surface_where_refinement_clause)
+    || (emitted == ^dag_surface_where_predicate)
+}
+
+// A where-clause on a type-variant is a parse-projection sibling of the base
+// type-expr. namespace_graft treats every `_node_projection` edge as
+// transparent at the module body, so a preserved production shell is unfolded
+// and the clause identity is dissolved. Rehome a present clause onto a Named
+// edge that is not a projection (the emitted surface symbol) so graft keeps
+// the refined Conj and parse_subtree_find still sees the production.
+fn body_lower_type_variant_suffix_pair_optional(captured: Node) -> Optional<SugarSequencePair> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => optional_absent()
+    Present { value: pair } => sugar_sequence_pair_optional(node: pair.right)
+  }
+}
+
+fn body_lower_where_skip_token(id: Symbol) -> Bool {
+  (id == ^dag_token_kw_where)
+    || (id == ^dag_token_lparen)
+    || (id == ^dag_token_rparen)
+    || (id == ^dag_token_comma)
+    || (id == ^dag_token_colon)
+}
+
+fn body_lower_where_predicate_ident_optional(node: Node) -> Optional<Symbol> {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: id } =>
+      match body_lower_where_skip_token(id: id) {
+        true =>
+          fold(node.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_where_predicate_ident_optional(node: e.target)
+            }
+          })
+        false => Present { value: id }
+      }
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_where_predicate_ident_optional(node: e.target)
+        }
+      })
+  }
+}
+
+fn body_lower_where_predicate_atom(where_clause: Node) -> Node {
+  match body_lower_where_predicate_ident_optional(node: where_clause) {
+    Present { value: id } =>
+      node_with_occurrence_id(
+        kind: TypeNode { connective: Atom { identity: id } },
+        children: [],
+        occurrence_id: where_clause.occurrence_id
+      )
+    Absent =>
+      node_with_occurrence_id(
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: where_clause.occurrence_id
+      )
+  }
+}
+
+// Conj is LabeledEdges: every child must be Named. A parse-shell captured of
+// `where brand("...")` is not admitted by well_formed, so the clause is a
+// production-shaped Conj whose captured child is a bare predicate Atom.
+fn body_lower_kept_where_clause(where_clause: Node) -> Node {
+  let production = node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^grammar_production_identity_node_projection },
+        target: node_with_occurrence_id(
+          kind: TypeNode { connective: Atom { identity: ^dag_surface_where_refinement_clause } },
+          children: [],
+          occurrence_id: where_clause.occurrence_id
+        )
+      },
+      Edge {
+        label: Named { name: ^grammar_production_captured_node_projection },
+        target: body_lower_where_predicate_atom(where_clause: where_clause)
+      }
+    ],
+    occurrence_id: where_clause.occurrence_id
+  )
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^dag_surface_where_refinement_clause },
+        target: production
+      }
+    ],
+    occurrence_id: where_clause.occurrence_id
+  )
+}
+
+fn body_lower_type_variant_children_with_where(
+  base: Node,
+  where_clause: Node,
+  fields: Node
+) -> List<Edge> {
+  let with_clause = [
+    Edge { label: Named { name: ^dag_surface_type_expr }, target: base },
+    Edge {
+      label: Named { name: ^dag_surface_where_refinement_clause },
+      target: body_lower_kept_where_clause(where_clause: where_clause)
+    }
+  ]
+  if is_empty_conj_root(n: fields) {
+    with_clause
+  } else {
+    list_snoc_item(
+      xs: with_clause,
+      item: Edge { label: Named { name: ^dag_surface_field_decl_block }, target: fields }
+    )
+  }
+}
+
+fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => outcome_accepted(value: shell)
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => outcome_accepted(value: shell)
+        Present { value: pair } =>
+          match body_lower_type_variant_suffix_pair_optional(captured: captured) {
+            Absent => outcome_accepted(value: shell)
+            Present { value: suffixes } =>
+              match parse_production_emitted_identity_optional(node: suffixes.left) {
+                Absent => outcome_accepted(value: shell)
+                Present { value: suffix_id } =>
+                  if suffix_id == ^dag_surface_where_refinement_clause {
+                    outcome_accepted(
+                      value: node_with_occurrence_id(
+                        kind: TypeNode { connective: Conj },
+                        children: body_lower_type_variant_children_with_where(
+                          base: pair.left,
+                          where_clause: suffixes.left,
+                          fields: suffixes.right
+                        ),
+                        occurrence_id: shell.occurrence_id
+                      )
+                    )
+                  } else {
+                    outcome_accepted(value: shell)
+                  }
+              }
+          }
+      }
+  }
 }
 
 fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
@@ -4357,9 +4510,83 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
   }
 }
 
+fn body_lower_type_decl_ident_from_captured(captured: Node) -> Optional<Symbol> {
+  match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
+    Absent => Absent
+    Present { value: after_kw_type } =>
+      match body_lower_seq_child(node: after_kw_type, name: ^grammar_sequence_left_node_projection) {
+        Absent => Absent
+        Present { value: ident_node } =>
+          match dag_binding_branded_atom_identity(node: ident_node) {
+            Present { value: binding } => Present { value: binding }
+            Absent =>
+              match node_atom_identity_optional(node: ident_node) {
+                Present { value: sym } =>
+                  if dag_lex_token_symbol(sym: sym) {
+                    optional_absent()
+                  } else {
+                    optional_present(value: sym)
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_edge_names_where_clause(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => n == ^dag_surface_where_refinement_clause
+    Positional => false
+  }
+}
+
+fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
+  match fold(root.children, init: false, f: fn(found, e) {
+    found || body_lower_edge_names_where_clause(e: e)
+  }) {
+    true => Present { value: root }
+    false =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_find_where_host_conj(root: e.target)
+        }
+      })
+  }
+}
+
+fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => outcome_accepted(value: shell)
+    Present { value: captured } =>
+      match body_lower_type_decl_ident_from_captured(captured: captured) {
+        Absent => outcome_accepted(value: shell)
+        Present { value: type_name } =>
+          match body_lower_find_where_host_conj(root: captured) {
+            Absent => outcome_accepted(value: shell)
+            Present { value: host } =>
+              outcome_accepted(
+                value: node_with_occurrence_id(
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    Edge { label: Named { name: type_name }, target: host }
+                  ],
+                  occurrence_id: shell.occurrence_id
+                )
+              )
+          }
+      }
+  }
+}
+
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
-  if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+  if emitted == ^dag_surface_type_decl {
+    body_lower_type_decl(shell: shell)
+  } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
+  } else if emitted == ^dag_surface_type_variant {
+    body_lower_type_variant(shell: shell)
   } else if body_lower_is_structure_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
