@@ -2,6 +2,7 @@ module test.claim.mtcollins1_memory_census_witness_test
 
 import std.types { Bool, Int, List, list_length }
 import std.nat { Nat }
+import std.measure { byte_size_count, hardware_thread_count_value }
 import gunbc.machine_intake_mtcollins1_memory_census_observation {
   HistoricalAdHocCapture,
   MtCollins1AcquisitionStanding,
@@ -121,7 +122,7 @@ test fn edac_exposes_no_channel_topology_and_reports_no_errors() -> Bool {
 // The year-end plan's exit clause names nproc 160 explicitly, so the figure is asserted rather than
 // merely carried.
 test fn the_unit_presents_one_hundred_and_sixty_processors() -> Bool {
-  mtcollins1_nproc == 160
+  hardware_thread_count_value(t: mtcollins1_nproc) == 160
 }
 
 
@@ -152,7 +153,7 @@ test fn the_capture_is_bound_to_unit_one_by_board_serial() -> Bool {
 test fn the_health_reading_is_backed_by_a_workload_that_actually_ran() -> Bool {
   mtcollins1_memory_workload.write_exit_status == 0
     && mtcollins1_memory_workload.digest_stable_across_passes
-    && mtcollins1_memory_workload.bytes_exercised > 0
+    && byte_size_count(b: mtcollins1_memory_workload.bytes_exercised) > 0
     && mtcollins1_memory_workload.edac_corrected_before == 0
     && mtcollins1_memory_workload.edac_corrected_after == 0
     && mtcollins1_memory_workload.edac_uncorrected_before == 0
@@ -178,5 +179,5 @@ fn acquisition_is_ad_hoc(a: MtCollins1AcquisitionStanding) -> Bool {
 // asserting the producer, rather than quietly continuing to claim the weaker thing.
 test fn the_acquisition_is_declared_ad_hoc_while_no_producer_exists() -> Bool {
   acquisition_is_ad_hoc(a: mtcollins1_acquisition_standing)
-    && mtcollins1_host_capture_byte_count > 0
+    && byte_size_count(b: mtcollins1_host_capture_byte_count) > 0
 }

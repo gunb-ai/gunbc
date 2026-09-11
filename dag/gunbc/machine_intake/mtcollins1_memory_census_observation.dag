@@ -2,7 +2,14 @@ module gunbc.machine_intake_mtcollins1_memory_census_observation
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { BitWidth, bit_width }
+import std.measure {
+  BitWidth, bit_width,
+  ByteSize, byte_size, byte_size_count,
+  Kibibyte, kibibyte,
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
+  MegatransfersPerSecond, megatransfers_per_second,
+  Second, second,
+}
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -33,7 +40,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data mtcollins1_census_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-hw-census.txt"
 
-data mtcollins1_census_byte_count: Int = 247849
+data mtcollins1_census_byte_count: ByteSize = byte_size(count: 247849)
 
 // THE HOST COMPUTED THIS DIGEST ITSELF, BEFORE THE BYTES CROSSED THE NETWORK, and reported it to
 // the serial console; the receiving side recomputed it after writing the file. The two agree, so
@@ -45,7 +52,7 @@ data mtcollins1_census_digest: ContentHash = Sha256Hash(Sha256Digest {
 
 data mtcollins1_census_sol_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-hw-census-sol.log"
 
-data mtcollins1_census_sol_byte_count: Int = 240475
+data mtcollins1_census_sol_byte_count: ByteSize = byte_size(count: 240475)
 
 data mtcollins1_census_sol_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8",
@@ -70,14 +77,14 @@ data mtcollins1_census_kernel: NonEmptyStr = "Linux 6.8.0-71-generic #71-Ubuntu 
 // nproc, read on the machine. 160 is the expected figure for a dual-socket Altra Max at 80 cores
 // per socket, and numactl reports 2 nodes of 80 CPUs each in the same capture, so the count is
 // corroborated by a second reading rather than resting on one number.
-data mtcollins1_nproc: Int = 160
+data mtcollins1_nproc: HardwareThreadCount = hardware_thread_count(count: 160)
 
 // MemTotal in kB as the kernel reports it. This is the OS-USABLE figure and is NOT the nominal
 // population: 16 x 16 GiB is 256 GiB nominal, and the kernel reports about 249.9 GiB after
 // firmware and kernel reservations. gunbc.fleet.fleet_intent already rules that conflating these
 // two is a live error class, so the nominal figure is carried by the slot rows below and this row
 // answers only for what the kernel could use.
-data mtcollins1_memtotal_kb: Int = 262088084
+data mtcollins1_memtotal_kb: Kibibyte = kibibyte(count: 262088084)
 
 // ── what EDAC actually exposes, which is the load-bearing negative result ──────────────────────
 
@@ -141,11 +148,11 @@ data mtcollins1_edac_topology: MtCollins1EdacTopologyObservation = MtCollins1Eda
 // and the memtest86 pass recorded earlier in the intake remains the endurance evidence.
 data mtcollins1_edac_clean_at_capture: Bool = true
 
-data mtcollins1_edac_uptime_at_capture_seconds: Int = 20
+data mtcollins1_edac_uptime_at_capture_seconds: Second = second(count: 20)
 
 type MtCollins1MemoryWorkload {
   description: NonEmptyStr
-  bytes_exercised: Int
+  bytes_exercised: ByteSize
   write_exit_status: Int
   digest_stable_across_passes: Bool
   edac_corrected_before: Int
@@ -156,7 +163,7 @@ type MtCollins1MemoryWorkload {
 
 data mtcollins1_memory_workload: MtCollins1MemoryWorkload = MtCollins1MemoryWorkload {
   description: "4 x 16 GiB tmpfs chunks seeded from /dev/urandom, sha256 hashed twice and the passes compared; EDAC tree read immediately before and immediately after.",
-  bytes_exercised: 68719476736,
+  bytes_exercised: byte_size(count: 68719476736),
   write_exit_status: 0,
   digest_stable_across_passes: true,
   edac_corrected_before: 0,
@@ -178,7 +185,7 @@ type MtCollins1SlotOccupancy
       part_number: NonEmptyStr
       rank_count: Nat
       serial_number: NonEmptyStr
-      configured_mts: Int
+      configured_mts: MegatransfersPerSecond
     }
   | SlotEmpty
 
@@ -195,55 +202,55 @@ type MtCollins1SlotObservation {
 
 data mtcollins1_socket0_slots: List<MtCollins1SlotObservation> = [
   MtCollins1SlotObservation { connector: 1, smbios_locator: "DIMM 1", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "716CAAE8", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "716CAAE8", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 2, smbios_locator: "DIMM 2", processor_socket: 0, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 3, smbios_locator: "DIMM 3", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "32F42EB5", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "32F42EB5", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 4, smbios_locator: "DIMM 4", processor_socket: 0, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 5, smbios_locator: "DIMM 5", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA79", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA79", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 6, smbios_locator: "DIMM 6", processor_socket: 0, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 7, smbios_locator: "DIMM 7", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA7D", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA7D", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 8, smbios_locator: "DIMM 8", processor_socket: 0, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 9, smbios_locator: "DIMM 9", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "32F42F1A", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "32F42F1A", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 10, smbios_locator: "DIMM 10", processor_socket: 0, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 11, smbios_locator: "DIMM 11", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7CJR8N-VK", rank_count: 2, serial_number: "53BC6E37", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7CJR8N-VK", rank_count: 2, serial_number: "53BC6E37", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 12, smbios_locator: "DIMM 12", processor_socket: 0, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 13, smbios_locator: "DIMM 13", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "324D6C80", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "324D6C80", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 14, smbios_locator: "DIMM 14", processor_socket: 0, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 15, smbios_locator: "DIMM 15", processor_socket: 0,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "82531556", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "82531556", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 16, smbios_locator: "DIMM 16", processor_socket: 0, occupancy: SlotEmpty },
 ]
 
 data mtcollins1_socket1_slots: List<MtCollins1SlotObservation> = [
   MtCollins1SlotObservation { connector: 17, smbios_locator: "Socket 1 DIMM 1", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA7F", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA7F", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 18, smbios_locator: "Socket 1 DIMM 2", processor_socket: 1, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 19, smbios_locator: "Socket 1 DIMM 3", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA8D", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA8D", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 20, smbios_locator: "Socket 1 DIMM 4", processor_socket: 1, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 21, smbios_locator: "Socket 1 DIMM 5", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "92EB346F", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "92EB346F", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 22, smbios_locator: "Socket 1 DIMM 6", processor_socket: 1, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 23, smbios_locator: "Socket 1 DIMM 7", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "716CAB6E", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "716CAB6E", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 24, smbios_locator: "Socket 1 DIMM 8", processor_socket: 1, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 25, smbios_locator: "Socket 1 DIMM 9", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA6A", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA6A", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 26, smbios_locator: "Socket 1 DIMM 10", processor_socket: 1, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 27, smbios_locator: "Socket 1 DIMM 11", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "51E93E99", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "51E93E99", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 28, smbios_locator: "Socket 1 DIMM 12", processor_socket: 1, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 29, smbios_locator: "Socket 1 DIMM 13", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "420EDC31", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "420EDC31", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 30, smbios_locator: "Socket 1 DIMM 14", processor_socket: 1, occupancy: SlotEmpty },
   MtCollins1SlotObservation { connector: 31, smbios_locator: "Socket 1 DIMM 15", processor_socket: 1,
-    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "52A0A7B5", configured_mts: 2666 } },
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "52A0A7B5", configured_mts: megatransfers_per_second(count: 2666) } },
   MtCollins1SlotObservation { connector: 32, smbios_locator: "Socket 1 DIMM 16", processor_socket: 1, occupancy: SlotEmpty },
 ]
 
@@ -528,7 +535,7 @@ data mtcollins1_acquisition_standing: MtCollins1AcquisitionStanding = Historical
 
 data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
 
-data mtcollins1_host_capture_byte_count: Int = 270880
+data mtcollins1_host_capture_byte_count: ByteSize = byte_size(count: 270880)
 
 data mtcollins1_host_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a",
