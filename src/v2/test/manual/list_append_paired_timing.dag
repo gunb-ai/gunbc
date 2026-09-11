@@ -18,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // This entry times production list_append against the pre-repair body reconstructed from the
 // SAME emitted fold_list_right, in one process of one vintage. Invoke natively on a
 // HostBudget-capable host (not the interpreter): gunbc run --source-root dag --source-root src/v2
-// --entry src/v2/test/claim/manual/list_append_paired_timing.dag --function paired_timing
+// --entry src/v2/test/manual/list_append_paired_timing.dag --function paired_timing
 
 fn list_append_from_fold_list_right<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
   fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
