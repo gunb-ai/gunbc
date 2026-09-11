@@ -1,43 +1,64 @@
 module v2.test.claim.body_lowering.single_arm_match
 
-import v2.compiler.body_lowering_fold {
-  body_lower_match_arm_repeat_elem_is_separator,
-  body_lower_collect_match_arms_from_repeat_tail,
-  body_lower_wire_match_arm_capture
-}
-import std.algebra { Empty }
-import v2.std.algebra { length }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Conj, Node, TypeNode, node_synthetic }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Cause D: a match with exactly one arm was refused because the empty comma-list Repeat
-// tail was navigated as a missing arm. These claims exercise the skip-before-extract
-// classifier and the retained extract-refusal red on a synthetic empty Conj (the same shape the
-// Repeat tail is). Full-module tokenize/parse/normalize of a source string is above the floor's
-// 500ms changed-witness CPU ceiling; the closure receipt is the population green for one-arm
-// sources.
+// tail was navigated as a missing arm. Two-or-more arms already accepted. Zero-arm match
+// remains the retained red.
+//
+// `match t { }` does not reach that red: the brace is taken as a record on the ident
+// scrutinee, so parse refuses before body-lowering. `match (t) { }` is the empty arm
+// list.
 
-fn empty_conj_node() -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: Empty)
-}
-
-test fn empty_repeat_elem_is_separator_holds() -> Bool {
-  body_lower_match_arm_repeat_elem_is_separator(node: empty_conj_node())
-}
-
-test fn empty_repeat_tail_collects_no_arm_holds() -> Bool {
-  match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: empty_conj_node()) {
-    Accepted { value: arms, diagnostics: _ } => length(xs: arms) == 0
-    Rejected { diagnostics: _ } => false
+fn normalize_outcome(src: String) -> String {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^single_arm_match_subject, rules: lm.lex) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => "PARSE_REFUSED"
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+          }
+      }
   }
 }
 
-test fn zero_arm_unnavigable_capture_still_refuses_holds() -> Bool {
-  match body_lower_wire_match_arm_capture(arm_capture: empty_conj_node()) {
-    Rejected { diagnostics: d } =>
-      d.head.reason == ^body_lowering_reason_match_arm_navigation_refused
-    Accepted { value: _, diagnostics: _ } => false
-  }
+data src_single_arm_wildcard: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match t {\n    _ => 1\n  }\n}\n"
+
+data src_two_arm_accepts: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    _ => 2\n  }\n}\n"
+
+data src_three_arm_accepts: String = "module m.t\ntype T = A | B | C\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    B => 2\n    _ => 3\n  }\n}\n"
+
+data src_one_arm_constructor: String = "module m.t\ntype T = B { x: Int } | C\nfn f(t: T) -> Int {\n  match t {\n    B { x: v } => v\n  }\n}\n"
+
+data src_one_arm_shorthand_field: String = "module m.t\ntype T = B { x: Int } | C\nfn f(t: T) -> Int {\n  match t {\n    B { x } => x\n  }\n}\n"
+
+data src_zero_arm_refuses: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
+
+test fn single_arm_wildcard_match_normalizes_holds() -> Bool {
+  normalize_outcome(src: src_single_arm_wildcard) == "ACCEPTED"
+}
+
+test fn two_arm_match_still_accepts_holds() -> Bool {
+  normalize_outcome(src: src_two_arm_accepts) == "ACCEPTED"
+}
+
+test fn three_arm_match_is_not_parity_holds() -> Bool {
+  normalize_outcome(src: src_three_arm_accepts) == "ACCEPTED"
+}
+
+test fn one_arm_constructor_pattern_normalizes_holds() -> Bool {
+  normalize_outcome(src: src_one_arm_constructor) == "ACCEPTED"
+}
+
+test fn one_arm_shorthand_field_pattern_normalizes_holds() -> Bool {
+  normalize_outcome(src: src_one_arm_shorthand_field) == "ACCEPTED"
+}
+
+test fn zero_arm_match_still_refuses_holds() -> Bool {
+  normalize_outcome(src: src_zero_arm_refuses)
+    == "body_lowering_reason_match_arm_navigation_refused"
 }
