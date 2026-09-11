@@ -89,7 +89,7 @@ data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
   footprint: FootprintReportedExternally {
     bytes: 510286023000,
-    source: "extdeps.deepseek.deepseek_v4_1_flash at pin dba1be0a40aa45a94ad051997016db3960a90277 (DSV41-0 PR 11007): safetensors index metadata.total_size 510286023000 equals the payload partition (backbone 298309535168, Engram 203073076240, vision+aligner 970536960, MTP/draft 7932874632; 48 shards). That is payload bytes on the publisher index, not serving memory and not a Spark reading. Tree-file size 510296708312 is a different quantity. Weight-fit cannot treat either as GB10 resident bytes until FootprintObservedOnFleet" as NonEmptyStr,
+    source: "extdeps.deepseek.deepseek_v4_1_flash at pin dba1be0a40aa45a94ad051997016db3960a90277 (DSV41-0 PR 11007): HF tree API 48 shards = 510296708312 bytes (file size, not serving RAM). Tensor payload from shard headers = 510286023000 (backbone 298309535168, Engram 203073076240, vision 970536960, draft 7932874632). FootprintReportedExternally until a fleet read; weight-fit cannot treat either quantity as GB10 resident bytes" as NonEmptyStr,
   },
   weight_treatment: PublishedNativeWeights,
 }
@@ -1663,6 +1663,8 @@ data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_
 // Completeness is an identity join over artifact × topology × profile. Narrowing to the existing
 // fleet image would drop the GB10 vLLM lead; llama.cpp is conversion-only and is not a candidate;
 // SGLang preview images target larger accelerators only. Engram offload is zero pool gain on GB10.
+// DSV41-0's payload total_size is FootprintReportedExternally until a fleet read; this module does
+// not author a TP width.
 data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_quality_requirement"),
   required_artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
