@@ -22,6 +22,8 @@ import gunbc.review_sheet_projection {
   ReviewSheetConflict,
   ReviewSheetUnreadable,
   DerivedCellWrite,
+  AppendListingRow,
+  append_row_a1,
   classify_review_sheet,
   conflict_reason,
   decide_review_sheet,
@@ -180,8 +182,31 @@ fn value_range_from_derived_write(write: DerivedCellWrite) -> ValueRange {
   }
 }
 
+fn value_range_from_append(row: AppendListingRow, tab: NonEmptyStr) -> ValueRange? {
+  match append_row_a1(row: row) {
+    Absent => none
+    Present { value: a1 } =>
+      Present {
+        value: ValueRange {
+          range: sheet_qualified_a1(tab: tab, a1: a1) as String,
+          majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
+          values: Present { value: [row.cells] },
+        }
+      }
+  }
+}
+
 fn value_ranges_from_write_plan(plan: ReviewSheetWritePlan, tab: NonEmptyStr) -> List<ValueRange> {
-  qualify_write_plan(plan: plan, tab: tab).patches |> map(w => value_range_from_derived_write(write: w))
+  let qualified = qualify_write_plan(plan: plan, tab: tab)
+  concat(
+    map(qualified.patches, w => value_range_from_derived_write(write: w)),
+    fold(qualified.appends, init: [], f: fn(acc, row) {
+      match value_range_from_append(row: row, tab: tab) {
+        Absent => acc
+        Present { value: vr } => concat(acc, [vr])
+      }
+    }),
+  )
 }
 
 type ObservedSheetFromReadback

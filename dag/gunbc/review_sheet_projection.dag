@@ -63,7 +63,9 @@ type DerivedCellWrite {
 
 type AppendListingRow {
   listing_id: NonEmptyStr
+  sheet_row: Int
   derived: List<DerivedCell>
+  cells: List<String>
 }
 
 type ReviewSheetWritePlan {
@@ -136,6 +138,31 @@ fn a1_cell(column_index: Int, sheet_row: Int) -> NonEmptyStr? {
     Present { value: letter } => Present { value: concat(letter, to_string(sheet_row)) as NonEmptyStr }
     Absent => none
   }
+}
+
+fn a1_closed_row(sheet_row: Int, cell_count: Int) -> NonEmptyStr? {
+  if cell_count < 1 {
+    none
+  } else {
+    match a1_column_letter(index: 0) {
+      Absent => none
+      Present { value: start } =>
+        match a1_column_letter(index: cell_count - 1) {
+          Absent => none
+          Present { value: last } =>
+            Present {
+              value: concat(
+                concat(start, to_string(sheet_row)),
+                concat(":", concat(last, to_string(sheet_row))),
+              ) as NonEmptyStr
+            }
+        }
+    }
+  }
+}
+
+fn append_row_a1(row: AppendListingRow) -> NonEmptyStr? {
+  a1_closed_row(sheet_row: row.sheet_row, cell_count: row.cells |> count)
 }
 
 fn sheet_row_number(data_index: Int) -> Int {
@@ -477,29 +504,40 @@ fn fold_columns_for_row(
   })
 }
 
-fn append_row_for(projection_row: ProjectionRow, schema: ReviewSheetSchema) -> AppendListingRow {
+fn append_cell_for_column(projection_row: ProjectionRow, column: ReviewColumn) -> String {
   let derived = derived_by_column(row: projection_row)
+  match column.kind {
+    ListingStanding => listing_standing_label(state: StandingObserved)
+    OperatorEntered => ""
+    DerivedField { source_field: _ } =>
+      match derived.lookup(column.name as String) {
+        Present { value: v } => v
+        Absent => ""
+      }
+  }
+}
+
+fn append_row_for(
+  projection_row: ProjectionRow,
+  schema: ReviewSheetSchema,
+  sheet_row: Int,
+) -> AppendListingRow {
+  let derived_cols = schema.columns |> filter(c => match c.kind {
+    OperatorEntered => false
+    DerivedField { source_field: _ } => true
+    ListingStanding => true
+  })
   AppendListingRow {
     listing_id: projection_row.listing_id,
-    derived: map(
-      schema.columns |> filter(c => match c.kind {
-        OperatorEntered => false
-        DerivedField { source_field: _ } => true
-        ListingStanding => true
-      }),
-      c => DerivedCell {
-        column: c.name,
-        value: match c.kind {
-          ListingStanding => listing_standing_label(state: StandingObserved)
-          OperatorEntered => ""
-          DerivedField { source_field: _ } =>
-            match derived.lookup(c.name as String) {
-              Present { value: v } => v
-              Absent => ""
-            }
-        },
-      },
-    )
+    sheet_row: sheet_row,
+    derived: map(derived_cols, c => DerivedCell {
+      column: c.name,
+      value: append_cell_for_column(projection_row: projection_row, column: c),
+    }),
+    cells: concat(
+      [projection_row.listing_id as String],
+      map(schema.columns, c => append_cell_for_column(projection_row: projection_row, column: c)),
+    ),
   }
 }
 
@@ -561,25 +599,40 @@ fn finish_classify(
     ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
     ReviewSheetConverged => ReviewSheetConverged
     ReviewSheetNeedsWrite { plan: p } => {
+      let start_row = (observed.rows |> count) + 2
       let missing = projection.rows |> filter(r => match observed_by_id.lookup(r.listing_id as String) {
         Present { value: _ } => false
         Absent => true
       })
-      let after_appends = fold(missing, init: ReviewSheetNeedsWrite { plan: p }, f: fn(acc, prow) {
+      let after_appends = fold(missing |> enumerate, init: ReviewSheetNeedsWrite { plan: p }, f: fn(acc, pair) {
         match acc {
           ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
           ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
           ReviewSheetConverged => ReviewSheetConverged
           ReviewSheetNeedsWrite { plan: accp } =>
-            match first_omitted_derived_column(row: prow, schema: projection.schema) {
+            match first_omitted_derived_column(row: pair.second, schema: projection.schema) {
               Present { value: col } =>
                 ReviewSheetUnreadable {
-                  reason: omitted_derived_column_reason(listing_id: prow.listing_id, column: col)
+                  reason: omitted_derived_column_reason(listing_id: pair.second.listing_id, column: col)
                 }
-              Absent =>
-                ReviewSheetNeedsWrite {
-                  plan: plan_plus_append(plan: accp, row: append_row_for(projection_row: prow, schema: projection.schema))
+              Absent => {
+                let row = append_row_for(
+                  projection_row: pair.second,
+                  schema: projection.schema,
+                  sheet_row: start_row + pair.first,
+                )
+                match append_row_a1(row: row) {
+                  Absent =>
+                    ReviewSheetUnreadable {
+                      reason: concat(
+                        "unrepresentable A1 for append listing ",
+                        pair.second.listing_id as String,
+                      ) as NonEmptyStr
+                    }
+                  Present { value: _ } =>
+                    ReviewSheetNeedsWrite { plan: plan_plus_append(plan: accp, row: row) }
                 }
+              }
             }
         }
       })
