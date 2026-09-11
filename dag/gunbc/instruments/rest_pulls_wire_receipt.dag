@@ -27,7 +27,7 @@ func list_open_pulls_wire_receipt() -> ProcessExit uses net: Network {
   match result.outcome {
     RestOk => ExitSuccess
     RestBodyUndecodable { status: _, cause } =>
-      exit_failure(reason: cause)
+      exit_failure(reason: cause as String)
     RestStatusRefused { status: _, body } =>
       exit_failure(reason: body)
     RestTransportRefused { cause } =>
