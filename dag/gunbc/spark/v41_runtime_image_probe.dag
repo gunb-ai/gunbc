@@ -492,14 +492,6 @@ fn v41_probe_body(o: V41ProbeOutcome) -> String {
   }
 }
 
-// THE PROBE CONVERGES THE IMAGE FIRST, and that is convergence rather than a second build: the build
-// entry and this one ask the same question -- does an image with this tag exist -- and an image that
-// is already there is inspected, not rebuilt. What it will not do is probe an image it could not
-// identify, because a reading whose subject is unknown is not a reading.
-// THE HOST IS AN ARGUMENT HERE FOR THE SAME REASON IT IS ONE FOR THE BUILD: `gunbc run --arg
-// host=<identity>`, admitted against the derived roster before anything else runs. A probe is
-// read-only, but "which member may this lane reach" is still a fleet decision rather than a property
-// of the question being asked.
 // ── THE READINGS THIS LANE TOOK ───────────────────────────────────────────────────────────────
 //
 // EXECUTED, NOT PREDICTED. Every row below was produced by the generated script above running inside
