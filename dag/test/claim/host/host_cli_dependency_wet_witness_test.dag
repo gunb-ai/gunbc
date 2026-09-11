@@ -50,9 +50,19 @@ test fn observe_sshpass_wet_posix_command_v_check_does_not_crash() -> Bool {
   }
 }
 
-// THE ENROLLED ROSTER WALKS WET, which is the discriminating part: if a roster row resolves to no
-// CliTool, this returns an absence carrying the row's provision sentence rather than an
-// observation, so a row enrolled without its tool is caught by execution here and not by reading.
+// THE ENROLLED ROSTER WALKS WET, and what this row proves is narrower than what stood here before.
+// The earlier annotation called it "the discriminating part: if a roster row resolves to no
+// CliTool, this returns an absence carrying the row's provision sentence". That case no longer
+// exists: HostCliEnrollmentRequirement.tool carries the CliTool itself, so a row without its tool
+// has no constructor, and an annotation describing how a witness catches an unwritable state is
+// worse than none -- it would be cited as coverage for a class that cannot occur (§4b: ask whether
+// the check's RED is authorable before claiming the check).
+//
+// WHAT IT ACTUALLY PROVES: the roster walk reaches a real PATH observation for every enrolled row
+// without raising, and any absence it reports is about the enrolled tool rather than some other
+// row. Present and absent are both correct outcomes here -- which of the two this runner gives is
+// a fact about the runner, not about the enrollment -- so the only RED is a runtime error, which
+// is precisely the raw exec failure this whole enrollment exists to replace.
 test fn password_session_enrollment_walks_wet_without_crashing() -> Bool {
   match first_absent_password_session_host_cli_dependency() {
     Present { value: absence } => absence.tool == sshpass_cli_tool.name

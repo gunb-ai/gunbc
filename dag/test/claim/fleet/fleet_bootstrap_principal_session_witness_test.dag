@@ -3,6 +3,7 @@ module test.claim.fleet_bootstrap_principal_session_witness
 import std.types { Bool, List, String, NonEmptyStr }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user, fleet_bootstrap_principal_login }
 import gunbc.host_cli_dependency { HostCliDependencyAbsence }
+import extdeps.tools.sshpass { sshpass_cli_tool }
 import gunbc.fleet_bootstrap_principal_session {
   FleetSshPrincipalSession,
   FleetSshKeySession,
@@ -158,6 +159,15 @@ test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bo
   }
 }
 
+// THE FIXTURE BINDS THE MODEL, THE ORACLE STAYS A LITERAL, and the split is deliberate. The
+// injected absence takes its tool from sshpass_cli_tool.name so the INPUT tracks the enrolled
+// declaration; the assertion below checks the rendered cause against the bare word "sshpass",
+// which is grounded in the upstream this repository cites (sourceforge.net/projects/sshpass) and
+// is therefore an INDEPENDENT oracle. Binding both ends would make the row self-satisfying -- a
+// cause built from a name, checked against the same name, cannot fail -- and that is the
+// measure-itself shape §5 rejects. Kept apart, renaming the binary reddens this row, which is the
+// correct outcome: it forces a deliberate update rather than silently following.
+//
 // THE REFUSAL HAS ITS OWN WITNESS, hermetic, because the discriminator above must not carry it.
 // Both call the pure decision with an INJECTED observation, so neither is moved by the PATH of the
 // host that runs it: the discriminator supplies a satisfied prerequisite and stays a statement
@@ -169,7 +179,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
   match fleet_password_leg_from_host_observation(
     absence: Present {
       value: HostCliDependencyAbsence {
-        tool: "sshpass" as NonEmptyStr,
+        tool: sshpass_cli_tool.name,
         hint: "apt install sshpass",
       },
     },
