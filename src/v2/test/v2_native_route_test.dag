@@ -25,8 +25,10 @@ import gunbc.witness_v2_native_route {
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
   native_route_admission_summary
 }
-import v2.compiler.self_host.emitter_producer_provenance { cssl_harness_realized_closure }
-import v2.compiler.self_host.native_ancestry { admitted_native_producer_closure }
+import v2.compiler.self_host.emitter_producer_provenance {
+  cssl_harness_realized_closure,
+  realized_closure_for_v2_direct_rust_door_emit_run
+}
 import v2.compiler.compile {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused,
@@ -1105,7 +1107,7 @@ test fn old_route_absent_by_construction_with_the_admitted_native_closure_is_adm
     true_control: base.true_control,
     malformed_control: base.malformed_control,
     old_route_control: OldRouteAbsentByConstruction {
-      admitted_native_producer_closure: admitted_native_producer_closure()
+      admitted_native_producer_closure: realized_closure_for_v2_direct_rust_door_emit_run()
     }
   }
   native_route_admitted(admission: native_route_admission(receipt: receipt))

@@ -990,7 +990,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     };
     let admitted_closure = v1_interpreter::run_in_context_with_args(
         &route_ctx,
-        "v2.compiler.self_host.native_ancestry.admitted_native_producer_closure",
+        "v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run",
         &[],
         false,
     )
