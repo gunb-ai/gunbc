@@ -16816,7 +16816,7 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 //
 // HOST BOUNDARY, retained by cause and not by schedule: argv (`main`, the mode dispatch's input),
 // the source-root walk and byte reads (`collect_dag_paths`, the read into DagSourceReadWitness),
-// the two clocks (`now_nanos`, `process_cpu_nanos`), the `/proc` memory reading
+// the clock (`now_nanos`), the `/proc` memory reading
 // (`proc_status_kib`), the stdout/stderr writes and the exit status. Nothing in `.dag` can perform
 // these; they shrink only to the extent that each becomes a modeled host operation the emitter
 // renders a call to, rather than a body it authors.
@@ -16827,10 +16827,12 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 //   Retires when the lane's host facts cross the boundary through a modeled decode (the ingest
 //   direction of the one grammar, DESIGN section 4) producing NativeLaneHostFacts in `.dag`, so the
 //   main hands bytes in and receives the record.
-// - the cost-line assembly (`cost_partition_line` and its JSON): the `[cost-partition]` row shape is
-//   already an authority on the host helper's side. Retires when a `.dag` fold renders the row from
-//   phase readings the main supplies (the clocks stay host; the row stops being), which needs the
-//   `.dag` emission of a JSON-shaped record the host prints verbatim.
+// - the cost-line assembly (the `[native-cost-partition]` JSON this main prints): the row set and
+//   the reconcile verdict are already a `.dag` authority (std.compiler_entry NativeDriverExclusiveRows
+//   and native_driver_cost_account, which this main calls); what is retained here is only the
+//   RENDERING of that verdict plus the host readings into a JSON line. Retires when a `.dag` fold
+//   renders the row from phase readings the main supplies (the clocks and /proc stay host; the row
+//   stops being), which needs the `.dag` emission of a JSON-shaped record the host prints verbatim.
 // - the two-mode orchestration (`run_census`, `run_adjudication`: phase order, refusal arms,
 //   terminal marker): the sequence of `.dag` calls and the arm each Outcome selects. Retires when
 //   the rendered main is a single call into a `.dag` driver function parameterised by the host
@@ -17050,18 +17052,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    0", "\n",
       "\}", "\n",
       "", "\n",
-      "fn process_cpu_nanos() -> u128 \{", "\n",
-      "    let stat = std::fs::read_to_string(\"/proc/self/stat\").unwrap_or_default();", "\n",
-      "    let after_comm = match stat.rfind(')') \{", "\n",
-      "        Some(idx) => &stat[idx + 1..],", "\n",
-      "        None => return 0,", "\n",
-      "    \};", "\n",
-      "    let fields: Vec<&str> = after_comm.split_whitespace().collect();", "\n",
-      "    let utime = fields.get(11).and_then(|v| v.parse::<u128>().ok()).unwrap_or(0);", "\n",
-      "    let stime = fields.get(12).and_then(|v| v.parse::<u128>().ok()).unwrap_or(0);", "\n",
-      "    (utime + stime) * 10_000_000", "\n",
-      "\}", "\n",
-      "", "\n",
       "fn run_adjudication(facts_path: &str, source_roots: &[String]) \{", "\n",
       "    let driver_start = Instant::now();", "\n",
       "    let head = std::env::var(\"GITHUB_SHA\").unwrap_or_else(|_| \"local\".to_string());", "\n",
@@ -17070,7 +17060,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // source_load: reading the declared roots off disk. Its own exclusive row rather than a", "\n",
       "    // field on another phase, so the IO is never mixed into a fold's number.", "\n",
       "    let load_started = now_nanos();", "\n",
-      "    let load_cpu_started = process_cpu_nanos();", "\n",
       "    let reads = read_ingest(source_roots);", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
@@ -17080,7 +17069,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // import scans, over EVERY read -- discovery is a corpus-wide question -- and then the", "\n",
       "    // import closure of the universe's modules, which is all the front end is given.", "\n",
       "    let universe_started = now_nanos();", "\n",
-      "    let universe_cpu_started = process_cpu_nanos();", "\n",
       "    let source_facts = native_lane_source_facts(ingest.clone());", "\n",
       "    let universe = match &*native_lane_universe(ingest.clone()) \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
@@ -17121,7 +17109,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "", "\n",
       "    // test_context: the front-end fold -- tokenize, parse, normalize -- over the CLOSURE only.", "\n",
       "    let context_started = now_nanos();", "\n",
-      "    let context_cpu_started = process_cpu_nanos();", "\n",
       "    let context = match &*native_test_context_from_ingest(closure_ingest) \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
       "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
@@ -17181,7 +17168,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary", "\n",
       "    // over it. The controls are executed here because they are receipt inputs, not universe members.", "\n",
       "    let admission_started = now_nanos();", "\n",
-      "    let admission_cpu_started = process_cpu_nanos();", "\n",
       "    let receipt = native_lane_receipt(", "\n",
       "        context.clone(),", "\n",
       "        universe.clone(),", "\n",
@@ -17272,6 +17258,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2),", "\n",
       "        \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20),", "\n",
       "        \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0),", "\n",
+      "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\") * 1024,", "\n",
+      "        \"rss_bytes\": proc_status_kib(\"VmRSS\") * 1024,", "\n",
       "    \}));", "\n",
       "", "\n",
       "    for refusal in receipt.file_refusals.iter() \{", "\n",

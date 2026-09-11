@@ -1,0 +1,50 @@
+module gunbc.recurring_failure_mode.carrier_by_spelling
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data carrier_by_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "carrier_by_spelling" as NonEmptyStr,
+
+  receipts: [
+    "**carrier by spelling** (INVALID STATE: a module imports the structural text carrier `v2.std.text` `String` and then authors a BARE `String` as if that import bound it; KERNEL NAMES ARE NEVER OVERRIDDEN BY IMPORTS (`v1.compiler.infer` `overlay_skips_kernel_name`, kernel overlay unconditional since #9813), so the bare spelling binds the KERNEL host carrier beside the unused import. ",
+
+    "A host-carrier value can therefore flow into a fold whose declared positions are the STRUCTURAL carrier, and the front end ACCEPTS the program. ",
+
+    "HARM: section 5 silent wrongness on the source path, becoming a TARGET compiler refusal on the emitted-Rust path -- gunbc says Accepted and hands over a crate rustc will not compile. ",
+
+    "THE SPECIMEN, measured on the `v2.compiler.compile` / `00_compile` closure rather than on a fixture: `gunbc.self_host_compile_phase_frontier` `receipt_2_66765317_raw_error_diagnostic_identities` carries the parse.rs pair `src/v2_compiler_parse.rs` E0282 `type annotations needed` and E0308 `mismatched types`, together with the rest of that census's fifteen identities (lexing, qualified_name, target_model, dag/python/typescript language modules, interpreter `row_key`). ",
+
+    "THE FIFTEEN HAND CONVERSIONS are `285b02eed2944331574330282fc49165a805b75e` (`Clear the remaining XL-N closure errors at source: carrier conversions at the boundaries`): each site converted at a construction or operation boundary -- `chars()` ingress, host-carrier `string_length` / `char_at` instead of routing through structural `string_is_empty`, nested `concat` instead of a method on the host token -- so the emitted crate went cargo-clean. ",
+
+    "Those conversions are a WORKAROUND POPULATION, not a climb: they leave the competing bindings writable, and the next module that imports `v2.std.text` `\{ String \}` and spells a bare `String` repeats the class. Filed beside `unmarked_workaround` rather than as a specimen of it, because the conversions DID mark their dissolve-on in the frontier receipt; the class they paper over is the binding, not the missing marker. ",
+
+    "THE POSITIVE CONTROL THAT MAKES THE BINDING A FACT RATHER THAN A GUESS is already enrolled: `test.claim.self_host_structural_text_witness_test` `w_bare_string_with_text_import_stays_host_deterministically` compiles a module that imports `v2.std.text` `\{ String \}` and returns a literal from a bare `String` boundary, and requires the HOST spelling (a `.to_string()` render) rather than the scalar-sequence elaboration. ",
+
+    "That row pins CURRENT kernel-wins; it is the discriminating evidence that the import does not bind, not a claim that kernel-wins is the terminal architecture. ",
+
+    "THE VERDICT THAT WAS INVERTED AND CORRECTED, cited so this row does not re-invert it: `gunbc.rust_source_type_bindings` `checkpoint_row_migration_rows` String arm. It previously argued that a module importing `v2.std.text` `String` made every bare `String` the text carrier and the kernel spelling unreachable. The opposite holds. Locals beat kernel; IMPORTS DO NOT. ",
+
+    "Three routes, all sound for that checkpoint: a bare reference in an importing module IS the kernel and IS that row's binding; a bare reference INSIDE `v2.std.text` resolves locally and is gated structural; a QUALIFIED `v2.std.text.String` resolves through the alias onto `std.algebra.FreeMonoid` and matches no bare row. ",
+
+    "RECOGNITION RULE: when an emitted type error names `String` at a site whose source module imports `v2.std.text` `\{ String \}`, ask which declaration the BARE spelling resolved to BEFORE asking which conversion is missing. If it resolved to the kernel, the defect is this class and a conversion at the call is treating the symptom. ",
+
+    "THE NEIGHBOURS THIS IS NOT, named so an append does not fork them. `meaning_fork` is the one-name/two-meanings dual this specimen inhabits -- one spelling, kernel versus structural, across scopes -- and remains the general class; this row is the AUTHORING ILLUSION that an import selects the structural arm of that fork for the bare spelling. `generated_binding_shadows_bare_render` is EMISSION composing a use-line with a bare render; here the wrong declaration is already bound in the typed tree. `alias_resolution_collides_with_kernel_spelling` is an INSTRUMENT attributing a QUALIFIED alias to the kernel; here the bare spelling really is the kernel and the instrument that says so (`carrier_realization_census` at declaration_field) is correct. `one_refusal_two_destinations` is two producers rendering two expected types for one column; this class can be one of the reasons those types differ, but the invalid state here is acceptance-then-uncompilable-target, not a misdirected refusal. `accepted_source_emits_uncompilable_target` is the shared SYMPTOM class (Accepted source, rustc refuses); this row is the mechanism that produced that symptom for the fifteen-identity population, so it is added rather than absorbed -- repairing any one conversion, or component (iv) of that row, leaves the next bare-spelled import authorable. The declared drop `gunbc.rung_drop` `text_boundary_identity_wall` is leaf-name COMPAT admitting a kernel VALUE at an already-structural BOUNDARY; this class is that the BOUNDARY ITSELF was authored as bare `String` intending the import. ",
+
+    "RUNG FOUND AT: below the ladder on the source-acceptance path -- the competing bindings are Accepted, nothing at the .dag boundary is typed, located or countable about the unused import -- and mitigatable on the emitted-Rust self-host path, where rustc E0282/E0308 stop the crate. Section 4b's current rung is the MINIMUM across in-scope paths, so the class sits below the ladder. ",
+
+    "CEILING: 4, structurally impossible. Membership is decidable: a spelling is either a kernel name or it is not, and a resolving scope either has one binding for it or it has two. A constructor roster that admits at most one binding per spelling per scope makes the unused-import-beside-kernel-bare-spelling state unwritable. No undecidable predicate is involved. ",
+
+    "NEXT-RUNG TRIGGER, phrased as the capability rather than an artifact: ONE BINDING PER SPELLING PER RESOLVING SCOPE for every kernel homonym that also has a structural declaration, sufficient that `import v2.std.text \{ String \}` either makes a bare `String` the text carrier or REFUSES the import as colliding with a kernel name -- so a host-carrier value cannot inhabit a position the author spelled as the imported type. ",
+
+    "A trigger naming the fifteen conversions, the parse.rs pair, the enrolled host-control witness, or a climb of `text_boundary_identity_wall` is less than the capability and would retire this row while the next importing module can still author the class. Repairing a call site, qualifying one annotation, or converting at construction satisfies none of it.) ",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "overlay_skips_kernel_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.rust_source_type_bindings", decl_name: "checkpoint_row_migration_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.self_host_structural_text_witness_test", decl_name: "w_bare_string_with_text_import_stays_host_deterministically", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.self_host_compile_phase_frontier", decl_name: "receipt_2_66765317_raw_error_diagnostic_identities", field: WholeDeclaration },
+  ],
+}

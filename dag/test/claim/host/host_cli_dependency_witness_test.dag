@@ -3,7 +3,11 @@ module test.claim.host_cli_dependency_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Absent, Present }
 import std.types { Bool, String, NonEmptyStr }
+import extdeps.tools { install_hint }
+import extdeps.tools.sshpass { sshpass_cli_tool }
+import extdeps.exec.command { sshpass_binary_name }
 import gunbc.host_cli_dependency {
+  password_session_host_cli_requirements,
   host_dependency_absent_wire,
   host_cli_dependency_failure_receipt,
   HostCliDependencyPresent,
@@ -14,6 +18,26 @@ import gunbc.host_cli_dependency {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_note: String = "Hermetic controls for gunbc.host_cli_dependency: wire shape is built by host_dependency_absent_wire (escaped braces in source); failure_receipt is Optional so Present does not conflate with an empty string."
+
+// THE PASSWORD-SESSION ENROLLMENT IS A ROW, and this is the hermetic half of its evidence: the
+// roster names the binary that ssh.PasswordFileSsh's argv actually execs, and its hint resolves to
+// an install source rather than prose. The DISCRIMINATION is real in both directions -- point the
+// row at a different tool and the name check reddens; drop SourceApt off the CliTool and the hint
+// check reddens -- and it is exactly the pair a reader of the refusal needs: which binary, and how
+// to get it. Whether THIS runner has it is a wet question and lives in the wet witness; asserting
+// it here would be a claim about the runner, not about the enrollment.
+test fn password_session_enrollment_names_the_execed_binary() -> Bool {
+  sshpass_cli_tool.name == sshpass_binary_name
+    && install_hint(sources: sshpass_cli_tool.installable_via).contains("apt install sshpass")
+}
+
+test fn password_session_roster_carries_the_sshpass_requirement() -> Bool {
+  fold_list(
+    xs: password_session_host_cli_requirements,
+    empty: false,
+    cons: fn(acc, t) { acc || t.name == sshpass_cli_tool.name },
+  )
+}
 
 test fn host_dependency_absent_wire_is_stable() -> Bool {
   let wire = host_dependency_absent_wire(
