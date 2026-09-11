@@ -1,0 +1,19 @@
+module fixture.closure.rustc_typed_optional_fold_init_lambda
+
+import v2.std.optional { Optional, optional_absent, optional_present }
+
+// Second rustc-red for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target
+// component (vii), beside fixtures/fixture_closure_rustc/bare_absent_fold_init.dag.
+//
+// Init is the generic constructor optional_absent() (typed Optional, not the variant Absent).
+// The step is still a .dag lambda, which has no parameter type slot, so emission renders
+// acc: _ and rustc cannot infer T (E0282). This is the #10961 head after the first source
+// repair. Do not rewrite the lambda into a declared typed step -- that would delete the subject.
+//
+// Consumer: ACT realization-fidelity (fixture_closure_rustc_verdict over this path).
+
+fn fold_init_typed_optional_lambda(xs: List<Int>) -> Optional<Int> {
+  fold(xs, init: optional_absent(), f: fn(_acc, e) {
+    optional_present(value: e)
+  })
+}
