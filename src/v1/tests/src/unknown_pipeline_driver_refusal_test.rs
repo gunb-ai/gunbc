@@ -44,8 +44,8 @@ fn emitted_main() -> String {
         .find(|f| f.path.ends_with("main.rs"))
         .unwrap_or_else(|| {
             panic!(
-                "the emitted crate must carry a main.rs; {} emitted paths: {:?}",
-                format!("{:?}", run.disposition),
+                "the emitted crate must carry a main.rs; {:?} emitted paths: {:?}",
+                run.disposition,
                 emission
                     .result
                     .files
