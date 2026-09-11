@@ -76,6 +76,7 @@ import gunbc.review_sheet_operator {
   fleet_review_sheet_operator_admission,
   buyer_review_spreadsheet,
   buyer_review_workspace_domain_sharing,
+  buyer_review_workspace_sharing_reading,
   buyer_review_account_tenancy,
   spreadsheet_share_intervention,
   share_intervention_for_spreadsheet,
@@ -626,10 +627,19 @@ test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bo
       ReviewSheetPlainGoogleAccount => false
       AccountTenancyUnobserved => false
     }
-    && match buyer_review_workspace_domain_sharing {
-      DomainSharingPolicyUnobserved => true
+    && match buyer_review_workspace_domain_sharing() {
+      DomainSharingAllowsServiceAccountShare =>
+        (buyer_review_workspace_sharing_reading.read_on as String) == "2026-09-11"
+          && string_contains(
+            s: buyer_review_workspace_sharing_reading.source as String,
+            pattern: "Drive and Docs > Sharing settings",
+          )
+          && string_contains(
+            s: buyer_review_workspace_sharing_reading.quoted_selection as String,
+            pattern: "shared outside of gunb.ai",
+          )
+      DomainSharingPolicyUnobserved => false
       DomainSharingForbidsExternalPrincipals => false
-      DomainSharingAllowsServiceAccountShare => false
     }
     && !intervention_is_discharged(intervention: gcp_fleet_secrets_wif_binding_intervention())
     && match review_sheet_live_access(
@@ -933,7 +943,7 @@ test fn unread_workspace_sharing_policy_refuses() -> Bool {
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
-    sharing_policy: buyer_review_workspace_domain_sharing,
+    sharing_policy: DomainSharingPolicyUnobserved,
     tenancy: buyer_review_account_tenancy,
   ) {
     ReviewSheetOperatorRefused { reason: r } =>
