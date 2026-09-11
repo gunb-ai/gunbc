@@ -13,6 +13,12 @@ import gunbc.ensure {
   ensure_decide,
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
+import extdeps.cloud.gcp.serviceusage {
+  gcp_service_usage_state_from_wire,
+  ServiceUsageStateEnabled,
+  ServiceUsageStateDisabled,
+  ServiceUsageStateUnspecified,
+}
 
 // A GCP API enablement is a declared desired state with Service Usage readback, not a console
 // click. The converge ENABLES. It must never disable: Google's own disable dialog warns that
@@ -28,6 +34,7 @@ type ServiceEnablementObservation
   = ServiceObservedEnabled { project: GcpProjectId, service_id: NonEmptyStr }
   | ServiceObservedDisabled { project: GcpProjectId, service_id: NonEmptyStr }
   | ServiceEnablementUnobserved { project: GcpProjectId, service_id: NonEmptyStr }
+  | ServiceEnablementStateForeign { project: GcpProjectId, service_id: NonEmptyStr, raw: String }
 
 type EnableApiPlan {
   project: GcpProjectId
@@ -61,14 +68,15 @@ fn service_enablement_from_state_wire(
   service_id: NonEmptyStr,
   state_wire: String,
 ) -> ServiceEnablementObservation {
-  if state_wire == "ENABLED" {
-    ServiceObservedEnabled { project: project, service_id: service_id }
-  } else {
-    if state_wire == "DISABLED" {
+  match gcp_service_usage_state_from_wire(raw: state_wire) {
+    Present { value: ServiceUsageStateEnabled } =>
+      ServiceObservedEnabled { project: project, service_id: service_id }
+    Present { value: ServiceUsageStateDisabled } =>
       ServiceObservedDisabled { project: project, service_id: service_id }
-    } else {
-      ServiceEnablementUnobserved { project: project, service_id: service_id }
-    }
+    Present { value: ServiceUsageStateUnspecified } =>
+      ServiceEnablementStateForeign { project: project, service_id: service_id, raw: state_wire }
+    Absent =>
+      ServiceEnablementStateForeign { project: project, service_id: service_id, raw: state_wire }
   }
 }
 
@@ -129,6 +137,20 @@ fn decide_service_enablement(
             Refuse {
               reason: concat("enablement observation subject mismatch for ", s as String) as NonEmptyStr
             }
+          }
+        ServiceEnablementStateForeign { project: op, service_id: os, raw: raw } =>
+          Refuse {
+            reason: join(
+              [
+                "serviceusage state foreign for ",
+                os as String,
+                " on ",
+                op as String,
+                ": ",
+                raw,
+              ],
+              "",
+            ) as NonEmptyStr
           }
       }
   }
