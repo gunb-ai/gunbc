@@ -14374,6 +14374,9 @@ pub struct ExclusiveCostPartition {
     pub volume_measured: bool,
     pub basis_note: &'static str,
     pub labels: Vec<(String, String)>,
+    /// Files this partition's ingest actually opened. Absence means unmeasured;
+    /// `Some` is the identity set (sorted unique), never a count standing alone.
+    pub ingested_file_population: Option<Vec<String>>,
 }
 
 impl ExclusiveCostPartition {
@@ -14687,6 +14690,7 @@ pub fn exclusive_cost_partition_from(
          Elapsed wall is NOT additive over concurrent spans and is carried under \
          `observations`, never partitioned.",
         labels: Vec::new(),
+        ingested_file_population: None,
     }
 }
 
@@ -14766,6 +14770,7 @@ pub fn exclusive_cost_partition_from_rows(
         basis_note: "elapsed wall of this parent; exclusive rows are sequential clocks inside it. \
          Resolve-volume counters were not observed on this path and are omitted, not zeroed.",
         labels: Vec::new(),
+        ingested_file_population: None,
     }
 }
 
@@ -14880,6 +14885,20 @@ pub fn render_exclusive_cost_partition_json(
             out.push('"');
         }
         out.push('}');
+    }
+
+    if let Some(files) = &p.ingested_file_population {
+        out.push_str(",\"ingested_files\":[");
+        for (i, path) in files.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push('"');
+            out.push_str(&esc(path.clone()));
+            out.push('"');
+        }
+        out.push_str("],\"ingested_file_count\":");
+        out.push_str(&json_num(files.len() as u128));
     }
 
     out.push_str(

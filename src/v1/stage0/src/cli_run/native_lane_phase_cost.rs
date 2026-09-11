@@ -136,7 +136,6 @@ fn intern_observation_key(name: &str) -> Option<&'static str> {
     Some(match name {
         "identities" => "identities",
         "modules" => "modules",
-        "source_files" => "source_files",
         "eval_mean_nanos" => "eval_mean_nanos",
         "eval_p50_nanos" => "eval_p50_nanos",
         "eval_p95_nanos" => "eval_p95_nanos",
@@ -205,7 +204,9 @@ fn render_child_phase_as_cost_partition(json_text: &str) -> Result<String, Strin
             | "accounting_law"
             | "spans"
             | "nested_spans"
-            | "producer" => continue,
+            | "producer"
+            | "ingested_files"
+            | "ingested_file_count" => continue,
             _ => {}
         }
         if let Some(s) = v.as_str() {
@@ -219,6 +220,21 @@ fn render_child_phase_as_cost_partition(json_text: &str) -> Result<String, Strin
         }
     }
     partition.labels = labels;
+    if let Some(files_v) = obj.get("ingested_files") {
+        let arr = files_v
+            .as_array()
+            .ok_or_else(|| "ingested_files must be an array of paths".to_string())?;
+        let mut files: Vec<String> = Vec::new();
+        for item in arr {
+            let path = item
+                .as_str()
+                .ok_or_else(|| "ingested_files entries must be strings".to_string())?;
+            files.push(path.to_string());
+        }
+        files.sort();
+        files.dedup();
+        partition.ingested_file_population = Some(files);
+    }
     Ok(render_exclusive_cost_partition_json(
         &partition,
         &observations,
@@ -326,5 +342,38 @@ mod tests {
         assert!(line.contains("\"resolve_volume\":\"unmeasured\""));
         assert!(!line.contains("edge_index_construction"));
         assert!(!line.contains("pool_parse"));
+        assert!(
+            !line.contains("ingested_files"),
+            "unmeasured ingest population must be omitted, not an empty or zeroed set: {line}"
+        );
+    }
+
+    #[test]
+    fn child_ingested_files_are_the_identity_set_not_a_count() {
+        let json = render_child_phase_as_cost_partition(
+            r#"{"phase":"binary_parent","basis":"source_root_eval_driver_main_wall","parent_span_nanos":10,"exclusive":{"source_load":10},"ingested_files":["b.dag","a.dag","a.dag"]}"#,
+        )
+        .expect("parse");
+        assert!(
+            json.contains(r#""ingested_files":["a.dag","b.dag"]"#),
+            "population is sorted unique paths: {json}"
+        );
+        assert!(
+            json.contains("\"ingested_file_count\":2"),
+            "count is derived from the set: {json}"
+        );
+        assert!(
+            !json.contains("\"source_files\""),
+            "a lone count is not the population: {json}"
+        );
+    }
+
+    #[test]
+    fn a_source_files_count_observation_is_refused() {
+        let err = render_child_phase_as_cost_partition(
+            r#"{"phase":"binary_parent","parent_span_nanos":10,"exclusive":{"source_load":10},"source_files":5433}"#,
+        )
+        .expect_err("count is not a population");
+        assert!(err.contains("unknown observation source_files"), "{err}");
     }
 }
