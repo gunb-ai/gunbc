@@ -1623,10 +1623,22 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
   }
 }
 
-// FleetSsh cannot carry posix_command_v_check_argv: the -c payload is not a PortableRemoteWord
-// (spaces, quotes, `$`), so the probe refused before contacting the host and srv3_ensure_apt_tool
-// never reached the install arm. LocalShell and SshShell keep command -v. FleetSsh tests the
-// apt-installed FHS path (extdeps.apt apt_installed_bin_path) with shell.Test.IsExecutable.
+// TRANSPORT-CONDITIONED PRESENCE, not a silent fork of one question. LocalShell and SshShell keep
+// posix_command_v_check_argv / shell.PosixCommandV.Check: PRESENT ON PATH. FleetSsh cannot carry that
+// argv -- the -c payload is not a PortableRemoteWord (spaces, quotes, `$`) -- so it answers a
+// different, named question: shell.Test.IsExecutable over extdeps.apt apt_installed_bin_path,
+// PRESENT AT THIS PATH (`apt_bin_dir` + binary). A tool installed outside apt_bin_dir (diverted
+// path, /usr/sbin, a local build) now reads absent and the ensure takes the install arm; apt then
+// no-ops if the package is already recorded, so the host is not harmed, but the receipt can say
+// the install ran for a host that already had the binary elsewhere.
+//
+// Path-presence is the right question for an apt-acquired tool: the installer places the binary
+// at that FHS path, and the password-session exec is that argv0. PATH search would accept a
+// shadow that apt does not own. srv3_toolchain_rows consumers are unaffected: host_toolchain_ensure
+// passes host_identity_ssh_access transport (SshShell), and seeded-install-media toolchain
+// ensure uses ci_deploy_srv1_access (LocalShell). Neither production caller uses FleetSsh; both
+// still rely on PATH presence. The realize entry gate admits FleetSsh so a later caller would
+// inherit this path-presence arm -- that is the caveat, not a current production change.
 fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
     LocalShell =>
@@ -1651,6 +1663,8 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
   }
 }
 
+// FleetSsh resolved path is the same apt_installed_bin_path the presence probe tests, not PATH
+// stdout from command -v (see srv3_apt_tool_present).
 fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
