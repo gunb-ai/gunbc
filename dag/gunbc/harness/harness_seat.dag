@@ -199,7 +199,7 @@ fn harness_seat_capacity(group: FabricGroup, class: ServingCoTenancyClass) -> Ha
 // unreadable group look like patience. An unread group frees nobody: nothing about waiting turns it
 // into a reading, so its remedy is to go and measure.
 type HarnessSeatBinding
-  = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, group_wire: String, launch: VllmEndpointProcessLaunch, layout: EventLogLayout, model: NonEmptyStr, unit: HarnessServingUnit, class: ServingCoTenancyClass }
+  = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, ceiling: Nat, group_wire: String, launch: VllmEndpointProcessLaunch, layout: EventLogLayout, model: NonEmptyStr, unit: HarnessServingUnit, class: ServingCoTenancyClass }
   | HarnessSeatPending { detail: String }
   | HarnessSeatRefused { detail: String }
 
@@ -679,6 +679,7 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
             url: harness_backend_url_for_endpoint(shape: shape, endpoint: candidate.endpoint),
             grant: grant,
             partition: partition,
+            ceiling: candidate.ceiling,
             group_wire: fabric_group_wire(g: candidate.group) as String,
             launch: candidate.launch,
             layout: layout,
@@ -904,20 +905,28 @@ fn release_retry(layout: EventLogLayout, partition: PartitionId, ceiling: Nat, r
   }
 }
 
+// THE BINDING CARRIES THE CEILING ITS SEAT WAS TAKEN AGAINST, for the same reason the cross-process
+// capability does, and an earlier spelling of this function got it wrong in the one way the rest of
+// the module is written to prevent. It re-derived the ceiling from the group and the class at RELEASE
+// time -- which is the move the capability's own annotation forbids three screens below, because it
+// rebuilds the pool of whichever ceiling that pair resolves to TODAY rather than the one the seat was
+// admitted under.
+//
+// AND THE TOLERANT PARTITION MAKES THE DISAGREEMENT CONCRETE RATHER THAN THEORETICAL. Its identity
+// carries the ceiling, so after the canary is relaunched under a different bound an in-flight seat
+// still names partition c1 while a re-derived release would fold that history against a root of 2 --
+// reinterpreting exactly the events the versioned partition exists to keep separate. Acquisition
+// already takes the number from candidate.ceiling; the release now reads the same number back off
+// the grant instead of asking the world again.
 fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> HarnessSeatRelease {
   match binding {
     HarnessSeatRefused { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") }
     HarnessSeatPending { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release, the placement is pending: ", d], "") }
-    HarnessSeatBound { url: _, grant: g, partition: p, group_wire: _, launch: l, layout: layout, model: _, unit: _, class: c } =>
+    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: ceiling, group_wire: _, launch: _, layout: layout, model: _, unit: _, class: _ } =>
       match now_epoch_seconds() {
         Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } =>
-          match harness_seat_capacity(group: l.group, class: c) {
-            AdmissionCeilingUnestablished { group: _, cause: why } =>
-              HarnessSeatReleaseRefused { detail: join(["the seat cannot be released because its pool no longer establishes a ceiling: ", why as String], "") }
-            SeatCeilingByDeclaredPolicy { class: _, pool: _, seats: ceiling } =>
-              release_retry(layout: layout, partition: p, ceiling: ceiling, reference: g.reference, reason: reason, now: now)
-          }
+          release_retry(layout: layout, partition: p, ceiling: ceiling, reference: g.reference, reason: reason, now: now)
       }
   }
 }

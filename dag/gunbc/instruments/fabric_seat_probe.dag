@@ -62,7 +62,7 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
   match binding {
     HarnessSeatRefused { detail: d } => exit_failure(reason: join(["seat probe: bind refused: ", d], ""))
     HarnessSeatPending { detail: d } => exit_failure(reason: join(["seat probe: placement pending: ", d], ""))
-    HarnessSeatBound { url: u, grant: g, partition: p, group_wire: gw, launch: launch, layout: _, model: m, unit: _, class: c } => {
+    HarnessSeatBound { url: u, grant: g, partition: p, ceiling: _, group_wire: gw, launch: launch, layout: _, model: m, unit: _, class: c } => {
       let line = join([
         "host=", short, " group=", gw, " launch=", launch.process_start_field as String,
         " class=", serving_co_tenancy_class_wire(c: c) as String, " model=", m as String,
