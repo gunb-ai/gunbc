@@ -11,7 +11,8 @@
 
 use v1_compiler::std_compiler_entry::{
     native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,
-    native_driver_cost_rows_observed, NativeDriverCostAccounting, NativeDriverExclusiveRows,
+    native_driver_cost_row_standing, NativeDriverChildStanding, NativeDriverCostAccounting,
+    NativeDriverCostRowStanding, NativeDriverExclusiveRows,
 };
 use v1_compiler::std_measure::nanosecond;
 use v1_compiler::v1_compiler_emit_rust::emit_source_root_eval_driver_main_rs;
@@ -102,8 +103,16 @@ fn emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_pro
 
 #[test]
 fn a_completed_capture_with_no_cost_rows_is_unobserved() {
+    let standing = native_driver_cost_row_standing(std::rc::Rc::new(
+        NativeDriverChildStanding::NativeDriverChildExited {
+            stderr: String::new(),
+        },
+    ));
     assert!(
-        !native_driver_cost_rows_observed(String::new()),
+        matches!(
+            standing.as_ref(),
+            NativeDriverCostRowStanding::NativeDriverCostRowsUnobserved
+        ),
         "empty stderr after a completed spawn is unobserved, not a green partition"
     );
 }
@@ -113,8 +122,30 @@ fn a_planted_shared_and_partition_line_is_observed() {
     let stderr =
         "[native-cost-shared] {\"producer\":\"std.compiler_entry.SourceRootEvalDriver\"}\n\
          [native-cost-partition] {\"verdict\":\"NativeDriverCostReconciled\"}\n";
+    let standing = native_driver_cost_row_standing(std::rc::Rc::new(
+        NativeDriverChildStanding::NativeDriverChildExited {
+            stderr: stderr.to_string(),
+        },
+    ));
     assert!(
-        native_driver_cost_rows_observed(stderr.to_string()),
+        matches!(
+            standing.as_ref(),
+            NativeDriverCostRowStanding::NativeDriverCostRowsObserved
+        ),
         "a planted completed capture must be observed"
+    );
+}
+
+#[test]
+fn a_child_that_has_not_exited_is_pending_not_unobserved() {
+    let standing = native_driver_cost_row_standing(std::rc::Rc::new(
+        NativeDriverChildStanding::NativeDriverChildStillRunning,
+    ));
+    assert!(
+        matches!(
+            standing.as_ref(),
+            NativeDriverCostRowStanding::NativeDriverCostRowsPending
+        ),
+        "Command::output never returns until exit; empty mid-run is pending, not unobserved"
     );
 }
