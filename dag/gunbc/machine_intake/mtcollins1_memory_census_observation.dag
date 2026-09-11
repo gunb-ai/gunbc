@@ -267,33 +267,44 @@ data mtcollins1_slots: List<MtCollins1SlotObservation> = concat(mtcollins1_socke
 //
 // EVERY POPULATED MODULE SITS AT S0 — slot 0 of its channel — on all sixteen channels, so the unit
 // is uniformly 1DPC and the sixteen empty connectors are the S1 position of each channel.
+// NO CONNECTOR FIELD, AND ITS ABSENCE IS THE POINT. Firmware DRAM training reports a SOCKET, a
+// MEMORY CONTROLLER and a SLOT WITHIN THAT CHANNEL. It does not report a J-number, and neither does
+// SMBIOS. The J-number for a given (socket, controller) at 1DPC is already derived, from the
+// guide's pair and population tables, by
+// extdeps.ampere.mt_collins_product_brief.memory_population -- so carrying a connector column here
+// was a SECOND COPY of that mapping, hand-written beside the authority that owns it and free to
+// drift from it (DESIGN section 3, one fact one place; section 2, net concepts must not grow by
+// re-invention). Review 63939 found it, along with this module's claim to "consume" that authority
+// while importing nothing from it.
+//
+// The census now carries only what the firmware SAID. The join to a connector is performed where
+// it can be checked, by the witness, against the upstream rows themselves.
 type MtCollins1FirmwareChannelBinding {
   processor_socket: Nat
   memory_controller: Nat
   slot_in_channel: Nat
-  connector: Nat
   rank_count: Nat
   chip_width: BitWidth
   part_number: NonEmptyStr
 }
 
 data mtcollins1_firmware_channel_bindings: List<MtCollins1FirmwareChannelBinding> = [
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 0, slot_in_channel: 0, connector: 1,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 1, slot_in_channel: 0, connector: 3,  rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 2, slot_in_channel: 0, connector: 5,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 3, slot_in_channel: 0, connector: 7,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 4, slot_in_channel: 0, connector: 9,  rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 5, slot_in_channel: 0, connector: 11, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7CJR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 6, slot_in_channel: 0, connector: 13, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 7, slot_in_channel: 0, connector: 15, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 0, slot_in_channel: 0, connector: 17, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 1, slot_in_channel: 0, connector: 19, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 2, slot_in_channel: 0, connector: 21, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 3, slot_in_channel: 0, connector: 23, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 4, slot_in_channel: 0, connector: 25, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 5, slot_in_channel: 0, connector: 27, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 6, slot_in_channel: 0, connector: 29, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 7, slot_in_channel: 0, connector: 31, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 0, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 1, slot_in_channel: 0, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 2, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 3, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 4, slot_in_channel: 0, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 5, slot_in_channel: 0, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7CJR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 6, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 7, slot_in_channel: 0, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 0, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 1, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 2, slot_in_channel: 0, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 3, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 4, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 5, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 6, slot_in_channel: 0, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 7, slot_in_channel: 0, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
 ]
 
 // ── how connector numbers were attached to the two readings, and what discriminates the join ───

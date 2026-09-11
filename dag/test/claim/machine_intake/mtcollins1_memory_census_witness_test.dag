@@ -2,6 +2,13 @@ module test.claim.mtcollins1_memory_census_witness_test
 
 import std.types { Bool, Int, List, list_length }
 import std.nat { Nat }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelPopulationRole,
+  MtCollinsChannelPopulationRoleStanding,
+  PopulationRolesResolved,
+  PopulationRolesRefused,
+  mt_collins_channel_population_roles,
+}
 import std.measure { byte_size_count, hardware_thread_count_value, second_count }
 import gunbc.machine_intake_mtcollins1_memory_census_observation {
   HistoricalAdHocCapture,
@@ -49,11 +56,30 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation {
 // stops agreeing and this test goes red. A test that merely asserted "sixteen rows exist" would
 // stay green through exactly that corruption.
 
-fn slot_agrees_with_binding(b: MtCollins1FirmwareChannelBinding, s: MtCollins1SlotObservation) -> Bool {
-  if s.connector == b.connector {
+// THE CONNECTOR IS RESOLVED THROUGH AMPERE, NOT READ OFF THE BINDING. The census no longer carries
+// a connector column -- firmware reports (socket, controller, slot-in-channel) and nothing else --
+// so this join can only be performed by asking the upstream authority which J-number it assigns to
+// that channel at 1DPC. That makes the import load-bearing: delete it and this file stops
+// compiling, which is the difference between consuming an authority and citing one.
+//
+// A CHANNEL WITH NO ROLE ROW, OR MORE THAN ONE, RESOLVES TO NOTHING and every slot comparison
+// against it fails rather than defaulting to a plausible connector -- DESIGN section 5, a failure
+// arm refuses instead of widening.
+// NO SENTINEL, BECAUSE THERE IS NOTHING TO RESOLVE TO. An earlier attempt folded the roles down to
+// a connector number and needed an "unresolved" value to stand for a channel the authority does not
+// cover. Nat has no value outside the connector range to reserve, and inventing one -- 0, or a
+// negative in an Int -- would have been a sentinel that some later reader could mistake for an
+// answer. The pair fold below has no such hole: a channel with no role row simply contributes no
+// matching pair, so its count is zero and the test refuses, with no value standing for absence.
+fn role_covers_binding(r: MtCollinsChannelPopulationRole, b: MtCollins1FirmwareChannelBinding) -> Bool {
+  r.processor_socket == b.processor_socket && r.memory_controller == b.memory_controller
+}
+
+fn slot_agrees_with_binding_at(b: MtCollins1FirmwareChannelBinding, s: MtCollins1SlotObservation, r: MtCollinsChannelPopulationRole) -> Bool {
+  if s.connector == r.connector_used_at_one_dpc {
     match s.occupancy {
-      SlotPopulated { part_number: p, rank_count: r, serial_number: _, configured_mts: _ } =>
-        p == b.part_number && r == b.rank_count && s.processor_socket == b.processor_socket
+      SlotPopulated { part_number: p, rank_count: rc, serial_number: _, configured_mts: _ } =>
+        p == b.part_number && rc == b.rank_count && s.processor_socket == b.processor_socket
       SlotEmpty => false
     }
   } else {
@@ -61,19 +87,36 @@ fn slot_agrees_with_binding(b: MtCollins1FirmwareChannelBinding, s: MtCollins1Sl
   }
 }
 
-fn agreeing_slot_count(b: MtCollins1FirmwareChannelBinding, slots: List<MtCollins1SlotObservation>) -> Int {
-  fold(slots, init: 0, f: fn(acc, s) { if slot_agrees_with_binding(b: b, s: s) { acc + 1 } else { acc } })
+// ONE BINDING, ONE ROLE, ONE SLOT -- counted as PAIRS so all three cardinalities are asserted at
+// once. The count is over (role, slot) combinations where the role covers the observed channel and
+// the slot sits at the connector that role assigns. Requiring exactly one means: the upstream
+// authority covers this channel exactly once, and exactly one SMBIOS slot carries the module the
+// firmware reported there. A missing role, a duplicated role, a missing slot or a duplicated
+// connector each move the count off one.
+fn agreeing_pair_count(b: MtCollins1FirmwareChannelBinding, slots: List<MtCollins1SlotObservation>, roles: List<MtCollinsChannelPopulationRole>) -> Int {
+  fold(roles, init: 0, f: fn(outer, r) {
+    if role_covers_binding(r: r, b: b) {
+      outer + fold(slots, init: 0, f: fn(inner, s) {
+        if slot_agrees_with_binding_at(b: b, s: s, r: r) { inner + 1 } else { inner }
+      })
+    } else {
+      outer
+    }
+  })
 }
 
-// EXACTLY ONE, never "at least one": a duplicated connector row would satisfy an existence check
-// while making the slot table ambiguous about which module sits where.
-fn every_binding_has_exactly_one_agreeing_slot(bindings: List<MtCollins1FirmwareChannelBinding>, slots: List<MtCollins1SlotObservation>) -> Bool {
-  fold(bindings, init: true, f: fn(acc, b) { acc && (agreeing_slot_count(b: b, slots: slots) == 1) })
+fn every_binding_has_exactly_one_agreeing_slot(bindings: List<MtCollins1FirmwareChannelBinding>, slots: List<MtCollins1SlotObservation>, roles: List<MtCollinsChannelPopulationRole>) -> Bool {
+  fold(bindings, init: true, f: fn(acc, b) { acc && (agreeing_pair_count(b: b, slots: slots, roles: roles) == 1) })
 }
 
 test fn firmware_channel_map_agrees_with_the_smbios_slot_table() -> Bool {
   list_length(items: mtcollins1_firmware_channel_bindings) == 16
-    && every_binding_has_exactly_one_agreeing_slot(bindings: mtcollins1_firmware_channel_bindings, slots: mtcollins1_slots)
+    && list_length(items: population_roles(standing: mt_collins_channel_population_roles)) == 16
+    && every_binding_has_exactly_one_agreeing_slot(
+         bindings: mtcollins1_firmware_channel_bindings,
+         slots: mtcollins1_slots,
+         roles: population_roles(standing: mt_collins_channel_population_roles),
+       )
 }
 
 fn populated_count(slots: List<MtCollins1SlotObservation>) -> Int {
@@ -309,12 +352,71 @@ fn singleton_part_count(bindings: List<MtCollins1FirmwareChannelBinding>) -> Int
   })
 }
 
-fn basis_cites_the_pair_authority(basis: MtCollins1ConnectorIdentificationBasis) -> Bool {
-  basis.upstream_pair_authority.module_path == "extdeps.ampere.mt_collins_product_brief.memory_population"
-    && basis.upstream_pair_authority.decl_name == "mt_collins_channel_connector_pairs"
+// REVIEW 63939 FOUND THIS TEST COMPARING STRINGS AND IT WAS RIGHT. The previous version asserted
+// that the basis's DeclarationRef carried the expected module_path and decl_name spellings. That
+// is a CITATION check -- it proves a sentence names the right authority, and it would stay green
+// while the mapping the sentence is about drifted arbitrarily. DESIGN section 5: a typecheck and a
+// grep are not consumers. Comparing a reference's spelling to a literal is the same thing wearing
+// a struct.
+//
+// SO THE AMPERE ROWS ARE FOLDED HERE INSTEAD. extdeps.ampere.mt_collins_product_brief.memory_population
+// derives, for each (socket, memory controller), the connector populated at 1DPC -- itself a join
+// over the guide's pair table rather than a transcription. The census observes (socket, controller)
+// from firmware DRAM training and joins to a J-number. Those are two independent routes to the same
+// mapping, and until now the census simply hand-wrote its answer beside the authority that owns it.
+fn population_roles(standing: MtCollinsChannelPopulationRoleStanding) -> List<MtCollinsChannelPopulationRole> {
+  match standing {
+    PopulationRolesResolved { roles: rs } => rs
+    PopulationRolesRefused { refusals: _ } => []
+  }
 }
 
+fn binding_matches_some_ampere_role(b: MtCollins1FirmwareChannelBinding, roles: List<MtCollinsChannelPopulationRole>) -> Int {
+  fold(roles, init: 0, f: fn(acc, r) {
+    if r.processor_socket == b.processor_socket && r.memory_controller == b.memory_controller { acc + 1 } else { acc }
+  })
+}
+
+// EVERY OBSERVED CHANNEL MUST RESOLVE TO EXACTLY ONE UPSTREAM ROLE ROW. This is what makes the
+// connector resolution above total: no role row would leave a channel with no J-number, and two
+// would make its J-number ambiguous, and in either case the cross-join's agreement would be an
+// accident rather than a fact. Asserting it separately keeps that precondition from being silently
+// carried by the join it enables.
+//
+// It also catches the drift the census can no longer commit on its own. Since the connector column
+// is gone, a change to Ampere's derivation now moves this unit's channel map -- correctly, since
+// that is where the mapping lives -- and a change that DROPPED a channel would surface here rather
+// than as a mysteriously failing slot comparison.
+test fn every_observed_channel_resolves_to_exactly_one_upstream_role() -> Bool {
+  list_length(items: population_roles(standing: mt_collins_channel_population_roles)) == 16
+    && fold(mtcollins1_firmware_channel_bindings, init: true, f: fn(acc, b) {
+         acc && binding_matches_some_ampere_role(b: b, roles: population_roles(standing: mt_collins_channel_population_roles)) == 1
+       })
+}
+
+// AND THE ONE-OF-SIXTEEN DISCRIMINATOR THE IDENTIFICATION RESTS ON MUST STILL EXIST. The argument
+// is that a part occurring EXACTLY ONCE agrees with the pair table at the single position carrying
+// it, which no shift or reversal of the sequence reproduces. That is a structural property of the
+// rows, and if a later edit duplicated the part it would collapse while the prose kept claiming it.
 test fn the_one_of_sixteen_discriminator_the_identification_rests_on_still_exists() -> Bool {
   singleton_part_count(bindings: mtcollins1_firmware_channel_bindings) == 1
-    && basis_cites_the_pair_authority(basis: mtcollins1_connector_identification_basis)
+}
+
+// A COHERENCE GUARD, AND IT IS NAMED THAT RATHER THAN CALLED A CHECK. The basis row explains HOW
+// the SMBIOS-to-connector join was established and cites the authority it was established against.
+// Asserting that its citation names the module this witness actually folds keeps the prose and the
+// executed join from drifting apart -- a basis that cited one authority while the test folded
+// another would be a sentence about work nobody did.
+//
+// WHAT THIS IS NOT: the discriminating check. That is
+// the_observed_channels_carry_the_connectors_ampere_assigns_them, which folds the rows. An earlier
+// version of this file had ONLY the string comparison and presented it as the discriminating
+// witness; review 63939 caught that, and the distinction is kept explicit here so the weaker check
+// cannot be mistaken for the stronger one again.
+fn basis_citation_names_the_folded_authority(basis: MtCollins1ConnectorIdentificationBasis) -> Bool {
+  basis.upstream_pair_authority.module_path == "extdeps.ampere.mt_collins_product_brief.memory_population"
+}
+
+test fn the_identification_basis_cites_the_authority_this_witness_folds() -> Bool {
+  basis_citation_names_the_folded_authority(basis: mtcollins1_connector_identification_basis)
 }
