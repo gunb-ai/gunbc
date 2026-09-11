@@ -1701,47 +1701,75 @@ pub struct TransitionAdmission {
 /// change produces. Empty is not permissive and non-empty is not permission - a run with any delta
 /// no row names still refuses it as UNADJUDICATED.
 ///
-/// gunbc#10956 runner provider roster rehome (2026-09-10). `gunbc.runner_shape_census` authored
-/// `surveyed_runner_catalogs`, the roster of which CI runner providers this repository has read.
-/// That roster acquired a SECOND consumer — `gunbc.runner_label_resolution`, which asks the same
-/// list a different question: not what a provider's sizes are, but what one of its `runs-on` labels
-/// means. A roster copied into the second consumer is a fork that goes stale the first time a
-/// provider is added to one list and not the other (DESIGN §3), so the declaration moved to
-/// `gunbc.runner_provider_survey` and both consumers import it.
+/// TWENTY-FIRST DISSOLUTION (2026-09-11). #10956 merged, and the required floor on gunbc#11071
+/// (run 34627055157) reported its row as `CONSUMED ADMISSION ... already satisfied at the base —
+/// consumed by its own merge`. This change edits the roster, so it is the toucher the rule charges
+/// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
+/// empty was the resting state and one change authoring rows back into it is the ordinary motion.
 ///
-/// WHY THIS IS `TargetChanged` AND WHY THAT CLASSIFICATION IS CORRECT HERE. The spelling
-/// `surveyed_runner_catalogs` is authored on both sides inside `surveyed_runner_shapes`, and what
-/// changed is which declaration it admits: base `{gunbc.runner_shape_census}`, head
-/// `{gunbc.runner_provider_survey}`. That is exactly the motion this wall exists to make an author
-/// say out loud, because a spelling that silently starts denoting a different declaration is how a
-/// rehome smuggles a semantic change past review. It is not the `AuthoredReferenceResolution`
-/// pattern the 2026-08-27 ruling auto-admits: the name was not previously unresolved or bound to
-/// nothing, it was bound to a real declaration that this change deliberately relocated.
+/// gunbc#11071 LinuxKernelRelease rehome (2026-09-11). `gunbc.served_surface_browser_observation`
+/// authored `LinuxKernelRelease`, the brand for what `uname -r` answers. That is a fact the Linux
+/// kernel owns, and it was declared inside a downstream RECEIPT module — so when
+/// `extdeps.linux.edac` needed to key its GHES/APEI topology facts to a kernel release it could not
+/// reach the brand at all: an extdeps module may not import a gunbc one. The only two landings were
+/// re-coining the brand upstream, which is the §3 fork, or moving it. It moved, to the new
+/// `extdeps.linux.kernel`, and both prior consumers import it from there.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `LinuxKernelRelease` is authored
+/// on both sides in all three declarations below, and what changed is which declaration it admits:
+/// base `{gunbc.served_surface_browser_observation}`, head `{extdeps.linux.kernel}`. That is the
+/// motion this wall exists to make an author say out loud. It is not `AuthoredReferenceResolution`:
+/// the name was bound to a real declaration that this change deliberately relocated.
 ///
 /// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. The moved declaration is
-/// byte-identical to the one it replaces — same name, same signature, same six-element body — and
-/// the four `SameDeclarationIdentityRebind` membership rows the required floor on this branch's
-/// first head reported (run 34517395009, `gunbc.runner_shape_census ->
-/// extdeps.ci_runner.{blacksmith,circleci,depot,github_actions}`, removed) are the mechanical
-/// evidence: every name the census stopped importing directly still
-/// denotes the same declaration through the new module, and a binding that did not would have been
-/// refused on its own row. The closure blast radius that run measured is 407 modules, the census's
-/// own reach and not new reach — `gunbc.runner_provider_survey` imports nothing the census did not already
-/// import.
+/// byte-identical to the one it replaces — same name, same `NonEmptyStr where brand(...)` body, same
+/// brand STRING, so every `as LinuxKernelRelease` ascription in the corpus denotes the same brand it
+/// did at the base; a changed brand string would have changed what the ascriptions mean and this row
+/// would be admitting a semantic change under a relocation's name. The two consumers are the
+/// complete population: `LinuxKernelRelease` resolved to exactly
+/// `gunbc.served_surface_browser_observation` and
+/// `test.claim.served_surface_browser_observation_witness` at the base, and both are edited here, so
+/// no third site is left resolving through a module that no longer authors the name. The witness
+/// suite over the consuming module passes on this head. The closure blast radius the same run
+/// measured is 4 modules — `extdeps.linux.kernel` imports only the citation vocabulary the base
+/// consumer already reached (`std.types`, `std.decl_ref`, `extdeps.external_authority`,
+/// `extdeps.uri`), so nothing downstream gained reach it did not have.
 ///
-/// TRIGGER: this row goes when #10956 merges. The base then authors `surveyed_runner_catalogs` in
-/// `gunbc.runner_provider_survey`, the delta stops being producible, and CONSUMED comes due on the
-/// roster's next touch — adjudicated by the declaring-module join, not by this sentence.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#10956 runner provider roster rehome",
-    subject: AdmissionSubject::Binding {
-        module: "gunbc.runner_shape_census",
-        in_declaration: "surveyed_runner_shapes",
-        spelling: "surveyed_runner_catalogs",
-        target: "gunbc.runner_provider_survey",
+/// TRIGGER: these rows go when #11071 merges. The base then authors `LinuxKernelRelease` in
+/// `extdeps.linux.kernel`, the delta stops being producible, and CONSUMED comes due on the roster's
+/// next touch — adjudicated by the declaring-module join, not by this sentence.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#11071 LinuxKernelRelease rehome",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.served_surface_browser_observation",
+            in_declaration: "ContainerVisibleHostKernel",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
     },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+    TransitionAdmission {
+        label: "gunbc#11071 LinuxKernelRelease rehome",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.served_surface_browser_observation",
+            in_declaration: "playwright_chromium_151_linux_arm64_headless_navigation_run",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11071 LinuxKernelRelease rehome",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.served_surface_browser_observation_witness",
+            in_declaration: "witness_run_owns_one_execution_identity",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
