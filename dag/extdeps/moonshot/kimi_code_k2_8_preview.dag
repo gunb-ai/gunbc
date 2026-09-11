@@ -1,0 +1,350 @@
+module extdeps.moonshot.kimi_code_k2_8_preview
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.measure { TokenCount, token_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation,
+}
+import extdeps.uri { Uri, Https }
+
+// KIMI CODE K2.8 PREVIEW as a SERVICE RELEASE, not a local serving candidate. Kimi Code is an
+// independently versioned Moonshot product; wire-compatible OpenAI/Anthropic shapes live elsewhere
+// and do not become this product. No moonshot/kimi vendor module existed to inhabit.
+
+data kimi_code_docs_retrieved_on: NonEmptyStr = "2026-09-11" as NonEmptyStr
+
+data kimi_code_whats_new_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.kimi.com/code/docs/en/kimi-code/whats-new.html" as NonEmptyStr,
+  }
+}
+
+data kimi_code_models_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.kimi.com/code/docs/en/kimi-code/models.html" as NonEmptyStr,
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = kimi_code_whats_new_authority
+
+data kimi_for_coding_wire_id: NonEmptyStr = "kimi-for-coding" as NonEmptyStr
+data kimi_k3_wire_id: NonEmptyStr = "k3" as NonEmptyStr
+data kimi_k3_256k_wire_id: NonEmptyStr = "k3-256k" as NonEmptyStr
+data kimi_for_coding_highspeed_wire_id: NonEmptyStr = "kimi-for-coding-highspeed" as NonEmptyStr
+data kimi_k28_preview_served_version_name: NonEmptyStr = "K2.8 Preview" as NonEmptyStr
+data kimi_k27_code_highspeed_served_version_name: NonEmptyStr = "K2.7 Code HighSpeed" as NonEmptyStr
+data kimi_k3_served_version_name: NonEmptyStr = "K3" as NonEmptyStr
+
+type KimiCodeAliasEnd
+  = AliasEndUnobserved
+  | AliasEndObserved { on: NonEmptyStr }
+
+type KimiCodeAliasAssignment {
+  model_id: NonEmptyStr
+  served_version: NonEmptyStr
+  effective_from: NonEmptyStr
+  effective_until: KimiCodeAliasEnd
+  authority: ExternalAuthority
+}
+
+// THE WIRE ID IS STABLE; THE SERVED VERSION IS TIME-BOUNDED. Overwriting a timeless "current
+// version" row would collapse two epochs onto one name. This assignment is the 2026-09-11
+// rollout; its end is unobserved because the vendor has not published a successor cutover.
+data kimi_for_coding_k28_preview_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  model_id: kimi_for_coding_wire_id,
+  served_version: kimi_k28_preview_served_version_name,
+  effective_from: "2026-09-11" as NonEmptyStr,
+  effective_until: AliasEndUnobserved,
+  authority: kimi_code_whats_new_authority,
+}
+
+data kimi_for_coding_highspeed_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  model_id: kimi_for_coding_highspeed_wire_id,
+  served_version: kimi_k27_code_highspeed_served_version_name,
+  effective_from: "2026-09-11" as NonEmptyStr,
+  effective_until: AliasEndUnobserved,
+  authority: kimi_code_models_authority,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
+      decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: kimi_code_whats_new_authority,
+  further_citations: [kimi_code_models_authority],
+}
+
+data kimi_for_coding_k28_preview_assignment_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
+    decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr,
+    field: WholeDeclaration,
+  },
+  authority: kimi_code_whats_new_authority,
+}
+
+type KimiCodeExecutedVersionStanding
+  = ExecutedVersionUnobserved { reason: NonEmptyStr }
+  | ExecutedVersionObserved { version: NonEmptyStr, receipt: NonEmptyStr }
+
+type KimiCodeVersionEvidence
+  = RequestedModelIdEvidence { model_id: NonEmptyStr }
+  | ProviderDeclaredServedVersionEvidence { assignment: KimiCodeAliasAssignment }
+  | ExecutedVersionEvidence { standing: KimiCodeExecutedVersionStanding }
+
+data kimi_code_executed_version_without_receipt: KimiCodeExecutedVersionStanding = ExecutedVersionUnobserved {
+  reason: "no version-bearing execution receipt observed" as NonEmptyStr,
+}
+
+fn kimi_code_is_request_model_id(spelling: NonEmptyStr) -> Bool {
+  (spelling as String) == (kimi_for_coding_wire_id as String)
+    || (spelling as String) == (kimi_k3_wire_id as String)
+    || (spelling as String) == (kimi_k3_256k_wire_id as String)
+    || (spelling as String) == (kimi_for_coding_highspeed_wire_id as String)
+}
+
+type KimiCodeRequestId
+  = KimiForCoding
+  | KimiK3
+  | KimiK3_256k
+  | KimiForCodingHighspeed
+
+fn kimi_code_request_id_wire(id: KimiCodeRequestId) -> NonEmptyStr {
+  match id {
+    KimiForCoding => kimi_for_coding_wire_id
+    KimiK3 => kimi_k3_wire_id
+    KimiK3_256k => kimi_k3_256k_wire_id
+    KimiForCodingHighspeed => kimi_for_coding_highspeed_wire_id
+  }
+}
+
+type KimiK28ThinkingEffort
+  = KimiK28EffortLow
+  | KimiK28EffortHigh
+  | KimiK28EffortMax
+
+fn kimi_k28_thinking_effort_wire(effort: KimiK28ThinkingEffort) -> NonEmptyStr {
+  match effort {
+    KimiK28EffortLow => "low" as NonEmptyStr
+    KimiK28EffortHigh => "high" as NonEmptyStr
+    KimiK28EffortMax => "max" as NonEmptyStr
+  }
+}
+
+data kimi_k28_thinking_effort_wires: List<NonEmptyStr> = [
+  "low" as NonEmptyStr,
+  "high" as NonEmptyStr,
+  "max" as NonEmptyStr,
+]
+
+data kimi_k28_default_thinking_effort: KimiK28ThinkingEffort = KimiK28EffortMax
+
+type KimiCodeThinkingControl
+  = KimiThinkingOn { effort: KimiK28ThinkingEffort }
+  | KimiThinkingOff
+
+type KimiCodeServedVersion
+  = ServedK28Preview
+  | ServedK28PreviewThinkingOff
+  | ServedK3
+  | ServedK27CodeHighspeed
+
+fn kimi_code_served_version_name(v: KimiCodeServedVersion) -> NonEmptyStr {
+  match v {
+    ServedK28Preview => kimi_k28_preview_served_version_name
+    ServedK28PreviewThinkingOff => kimi_k28_preview_served_version_name
+    ServedK3 => kimi_k3_served_version_name
+    ServedK27CodeHighspeed => kimi_k27_code_highspeed_served_version_name
+  }
+}
+
+type KimiCodeRoute {
+  requested_id: KimiCodeRequestId
+  requested_wire: NonEmptyStr
+  served_version: KimiCodeServedVersion
+}
+
+// ROUTING IS A FUNCTION OF (REQUESTED ID, THINKING CONTROL). Thinking-off for the K3 family and
+// for K2.8 Preview is served as K2.8 Preview with thinking off; the request id is not rewritten.
+// HighSpeed stays K2.7 Code HighSpeed.
+fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingControl) -> KimiCodeRoute {
+  let wire = kimi_code_request_id_wire(id: requested)
+  match thinking {
+    KimiThinkingOff => match requested {
+      KimiForCodingHighspeed => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK27CodeHighspeed,
+      }
+      KimiForCoding => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK28PreviewThinkingOff,
+      }
+      KimiK3 => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK28PreviewThinkingOff,
+      }
+      KimiK3_256k => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK28PreviewThinkingOff,
+      }
+    }
+    KimiThinkingOn { effort: _ } => match requested {
+      KimiForCoding => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK28Preview,
+      }
+      KimiK3 => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK3,
+      }
+      KimiK3_256k => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK3,
+      }
+      KimiForCodingHighspeed => KimiCodeRoute {
+        requested_id: requested,
+        requested_wire: wire,
+        served_version: ServedK27CodeHighspeed,
+      }
+    }
+  }
+}
+
+data kimi_k28_declared_context_ceiling: TokenCount = token_count(count: 1048576)
+
+data kimi_k28_context_ceiling_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
+    decl_name: "kimi_k28_declared_context_ceiling" as NonEmptyStr,
+    field: WholeDeclaration,
+  },
+  authority: kimi_code_models_authority,
+}
+
+type KimiVendorMeasurementStanding
+  = MeasurementUnestablished
+  | MeasurementEstablished { instrument: NonEmptyStr }
+
+type VendorCharacterization {
+  claim: NonEmptyStr
+  measurement: KimiVendorMeasurementStanding
+}
+
+data kimi_k28_vendor_characterization_performance_close_to_k3: VendorCharacterization = VendorCharacterization {
+  claim: "Performance close to K3" as NonEmptyStr,
+  measurement: MeasurementUnestablished,
+}
+
+data kimi_k28_vendor_characterization_more_efficient_thinking: VendorCharacterization = VendorCharacterization {
+  claim: "more efficient thinking" as NonEmptyStr,
+  measurement: MeasurementUnestablished,
+}
+
+type KimiQualityReadingConstruction
+  = KimiQualityReadingRefusedUnestablishedMeasurement { characterization: VendorCharacterization }
+  | KimiQualityReadingRefusedVendorCharacterization { characterization: VendorCharacterization }
+
+fn kimi_vendor_characterization_as_quality_reading(
+  characterization: VendorCharacterization,
+) -> KimiQualityReadingConstruction {
+  match characterization.measurement {
+    MeasurementUnestablished => KimiQualityReadingRefusedUnestablishedMeasurement {
+      characterization: characterization,
+    }
+    MeasurementEstablished { instrument: _ } => KimiQualityReadingRefusedVendorCharacterization {
+      characterization: characterization,
+    }
+  }
+}
+
+type KimiK28SearchedSurface
+  = MoonshotHuggingFaceOrg { locator: NonEmptyStr }
+  | MoonshotGitHubOrg { locator: NonEmptyStr }
+
+data kimi_k28_hf_org_surface: KimiK28SearchedSurface = MoonshotHuggingFaceOrg {
+  locator: "huggingface.co/moonshotai" as NonEmptyStr,
+}
+
+data kimi_k28_github_org_surface: KimiK28SearchedSurface = MoonshotGitHubOrg {
+  locator: "github.com/MoonshotAI" as NonEmptyStr,
+}
+
+type KimiK28ArtifactStanding
+  = OfficialCheckpointLocated { locator: NonEmptyStr, observed_at: NonEmptyStr }
+  | OfficialCheckpointNotLocated {
+      observed_at: NonEmptyStr
+      searched_surfaces: List<KimiK28SearchedSurface>
+      trigger: NonEmptyStr
+    }
+
+data kimi_k28_artifact_standing: KimiK28ArtifactStanding = OfficialCheckpointNotLocated {
+  observed_at: kimi_code_docs_retrieved_on,
+  searched_surfaces: [kimi_k28_hf_org_surface, kimi_k28_github_org_surface],
+  trigger: "an official K2.8 checkpoint published on a searched surface with a citable revision, sufficient to construct a local ModelArtifact" as NonEmptyStr,
+}
+
+type KimiK28LocalConstructionKind
+  = KimiK28LocalModelArtifact
+  | KimiK28VllmCandidate
+  | KimiK28FitCalculation
+
+type KimiK28LocalConstruction
+  = KimiK28LocalConstructionUnconstructible {
+      kind: KimiK28LocalConstructionKind
+      standing: KimiK28ArtifactStanding
+    }
+  | KimiK28LocalConstructionDeferredToLocatedWeights {
+      kind: KimiK28LocalConstructionKind
+      locator: NonEmptyStr
+    }
+
+fn kimi_k28_local_construction(
+  standing: KimiK28ArtifactStanding,
+  kind: KimiK28LocalConstructionKind,
+) -> KimiK28LocalConstruction {
+  match standing {
+    OfficialCheckpointLocated { locator: loc, observed_at: _ } =>
+      KimiK28LocalConstructionDeferredToLocatedWeights { kind: kind, locator: loc }
+    OfficialCheckpointNotLocated { observed_at: _, searched_surfaces: _, trigger: _ } =>
+      KimiK28LocalConstructionUnconstructible { kind: kind, standing: standing }
+  }
+}
+
+fn kimi_k28_local_construction_is_unconstructible(attempt: KimiK28LocalConstruction) -> Bool {
+  match attempt {
+    KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
+    KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
+  }
+}
+
+fn kimi_code_k28_preview_fact(decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef {
+    module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
+    decl_name: decl_name,
+    field: WholeDeclaration,
+  }
+}
+
+data kimi_code_k28_preview_provider_integration_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: kimi_code_k28_preview_fact(decl_name: "kimi_code_route" as NonEmptyStr),
+    reason: "KIMI28-1 provider integration binds routing; this change does not",
+    dissolution: unbound_dissolution(description: "KIMI28-1 provider integration consumes kimi_code_route on a live request path"),
+  ),
+]
