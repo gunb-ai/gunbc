@@ -404,6 +404,16 @@ fn spark_lane_disables_usage_stats(lane: FabricLaneObserved) -> Bool {
 
 data spark_serving_usage_stats_unread_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: no fabric lane is observed, so no serving container environment exists to read and whether vLLM's usage-stats reporter is disabled on this fleet is unknown. Read the lanes (gunbc.spark.fabric_switch_observed fabric_lane_observations) before this route's telemetry path can be resolved."
 
+// THE OBLIGATION THE REQUEST-MATERIAL ARM NAMES, AND IT MUST EXIST FOR THAT ARM TO BE WORTH
+// ANYTHING. It was declared, then lost in the rewrite that moved the launch standing to a fold, and
+// the citation survived it -- so the one path where the rung drop's operator condition is
+// discharged pointed at nothing, and an auditor following the refusal out to the remedy would have
+// landed nowhere (review 64068). It is a row rather than a sentence at the arm because what the
+// refusal asks for is a re-assessment of the route, not a smaller repair: a reporter carrying
+// request material is route material leaving the site, which is the premise the first-party posture
+// rests on.
+data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extdeps.vllm.usage_stats vllm_usage_stats_reporting now reports CarriesRequestMaterial at its cited source revision, so vLLM's usage-stats reporter no longer carries only host, build and engine configuration. The first-party posture rests on route material staying on site and this is route material leaving it, so the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete. The remedies: set VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch (gunbc.spark.pair_serving_realization spark_pair_container_env), which this module's launch standing folds and which turns the path Absent; or re-assess the posture with the operator, whose 2026-09-11 ruling admitted this path ON the condition that the payload stay metadata-only."
+
 fn spark_serving_usage_stats_standing() -> VllmUsageStatsLaunchStanding {
   if count(fabric_lane_observations) == 0 {
     UsageStatsLaunchUnread { obligation: spark_serving_usage_stats_unread_obligation }
