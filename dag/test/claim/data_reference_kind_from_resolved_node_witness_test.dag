@@ -17,12 +17,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the isolated four-module geometry is stern-bear-703's fixture on gunbc#11062.
 //
 // A PROBABILISTIC REGRESSION CONTROL, AND NEVER THIS CLASS'S COVERAGE. A reintroduced fork reds this
-// only on processes whose hash seed puts the `fn` last -- about 42% of runs at the rate measured
-// when it was written -- so one run misses a regression about 58% of the time, and repeating the
-// assertion in-process cannot help because the seed is per process. Over k pushes a reintroduction
-// survives with probability about 0.58^k: caught eventually, not reliably at the grain that matters,
-// which is one PR. If asked whether this class is caught, the answer is the N-run comparison on
-// gunbc#11065 (control 10/24 failed, repair 0/24), not a green run of this witness.
+// only on processes whose hash seed puts the `fn` last. At the rate the N-run comparison on
+// gunbc#11065 measured, one run MISSES a regression more often than it catches it, and repeating the
+// assertion in-process cannot help because the seed is per process. Over successive pushes a
+// reintroduction's survival decays geometrically: caught eventually, not reliably at the grain that
+// matters, which is one PR. If asked whether this class is caught, the answer is that N-run
+// comparison -- a control binary built from the base against the repaired binary, across
+// per-process hash seeds, on this specimen -- not a green run of this witness.
 //
 // The class's rung, ceiling and next-rung trigger live in its ledger row,
 // gunbc.recurring_failure_mode surface_shorthand_preempts_resolved_identity, not here.

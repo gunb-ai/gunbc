@@ -15834,13 +15834,15 @@ pub(crate) fn resolve_published_mock_keys(
     ctx: &InterpContext,
 ) -> InterpResult<std::collections::HashSet<String>> {
     let mut keys = std::collections::HashSet::new();
-    for (name, info) in ctx.item_registry.iter() {
-        if info.kind != ItemKind::DataItem {
-            continue;
-        }
+    // Classify the node evaluated, not the bare-name registry entry (see `eval_var`'s slow path);
+    // selection is still the shared bare slot, as in `eval_data_item_value`.
+    for name in ctx.item_registry.keys() {
         let Some(node) = ctx.lookup_fn(name) else {
             continue;
         };
+        if item_kind(node.clone()) != ItemKind::DataItem {
+            continue;
+        }
         let Some(ty) = node.type_annotation.as_ref() else {
             continue;
         };
