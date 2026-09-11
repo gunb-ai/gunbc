@@ -52,10 +52,13 @@ module tools.scm_acceptance_binary
 // LOAD IT. It does NOT prove the build happened locally, and it does not prove the artifact was
 // produced from the current worktree: `cargo` is PATH-resolved, and in an environment where that
 // resolves to a remote-dispatching shim the build occurs elsewhere and only the RESULT is judged
-// here. Freshness comes from Cargo reporting the path it just produced, compatibility comes from the
-// probe, and LOCAL BUILD PROVENANCE is established by neither -- an environment whose `cargo` is a
-// remote shim is outside what this module can decide, which is why the refusals below name what was
-// observed rather than asserting where it came from.
+// here. ARTIFACT SELECTION comes from Cargo reporting the path for this invocation, COMPATIBILITY
+// comes from the probe, and LOCAL BUILD PROVENANCE is established by neither -- an environment whose
+// `cargo` is a remote shim is outside what this module can decide, which is why the refusals below
+// name what was observed rather than asserting where it came from. (This sentence said FRESHNESS,
+// which is the larger word the headline above was corrected away from, surviving inside the very
+// paragraph written to explain the narrower boundary. Found by external review, on a second pass
+// over a repair I had already reported as complete.)
 //
 // COMPATIBILITY IS CHECKED RATHER THAN ASSUMED. An amd64 artifact and
 // an arm64 child are not a receipt problem; they are two different programs. The subtlety is that
