@@ -918,16 +918,32 @@ fn gunb_ci_has_sheets() -> Bool {
   gunb_ci_enables_service(service: sheets_api_service_id)
 }
 
-fn gunb_test_sts_is_absent() -> Bool {
-  !gunb_test_enables_service(service: sts_api_service_id)
+fn gunb_test_has_sts() -> Bool {
+  gunb_test_enables_service(service: sts_api_service_id)
+}
+
+fn gunbai_secrets_enables_service(service: NonEmptyStr) -> Bool {
+  fold(
+    gunbai_secrets_enabled_service_ids,
+    init: false,
+    f: fn(acc, s) { acc || s == service },
+  )
+}
+
+fn gunbai_secrets_has_sts() -> Bool {
+  gunbai_secrets_enables_service(service: sts_api_service_id)
 }
 
 fn none_of_the_three_sandboxes_has_sheets() -> Bool {
   gunb_test_sheets_is_absent() && !gunbai_auto_has_sheets() && !gunb_ci_has_sheets()
 }
 
+fn gunbai_auto_is_the_only_pool_host_without_sts() -> Bool {
+  gunbai_secrets_has_sts() && gunb_test_has_sts() && gunb_ci_has_sts() && !gunbai_auto_has_sts()
+}
+
 fn gunbai_auto_lacks_sts_while_ci_and_test_have_it() -> Bool {
-  !gunbai_auto_has_sts() && gunb_ci_has_sts() && !gunb_test_sts_is_absent()
+  gunbai_auto_is_the_only_pool_host_without_sts()
 }
 
 type TokenExchangeStsHypothesis
@@ -935,6 +951,7 @@ type TokenExchangeStsHypothesis
       pool_project_number: String
       pool_id: NonEmptyStr
       sts_enabled_in_pool_project: Bool
+      auto_is_the_only_pool_host_without_sts: Bool
     }
 
 fn gunbai_auto_token_exchange_sts_hypothesis() -> TokenExchangeStsHypothesis {
@@ -942,6 +959,7 @@ fn gunbai_auto_token_exchange_sts_hypothesis() -> TokenExchangeStsHypothesis {
     pool_project_number: unread_project_number_314501921854 as String,
     pool_id: github_pool_id,
     sts_enabled_in_pool_project: gunbai_auto_has_sts(),
+    auto_is_the_only_pool_host_without_sts: gunbai_auto_is_the_only_pool_host_without_sts(),
   }
 }
 
@@ -951,25 +969,28 @@ fn gunbai_auto_sts_inert_is_not_established() -> Bool {
       pool_project_number: _,
       pool_id: _,
       sts_enabled_in_pool_project: enabled,
-    } => !enabled
+      auto_is_the_only_pool_host_without_sts: only,
+    } => !enabled && only
   }
 }
 
 type SheetsCallingStrategy
-  = UnchosenCreateOrAdoptAndRepair {
-      none_of_three_has_sheets: Bool
-      no_candidate_is_clean: Bool
+  = CreatePurposeScopedProject {
+      project_id: String?
     }
 
 fn sheets_calling_strategy() -> SheetsCallingStrategy {
-  UnchosenCreateOrAdoptAndRepair {
-    none_of_three_has_sheets: none_of_the_three_sandboxes_has_sheets(),
-    no_candidate_is_clean: true,
-  }
+  CreatePurposeScopedProject { project_id: Absent }
 }
 
-fn sheets_home_is_unchosen_because_no_candidate_is_clean() -> Bool {
-  none_of_the_three_sandboxes_has_sheets()
+fn sheets_home_is_create_purpose_scoped_unminted() -> Bool {
+  match sheets_calling_strategy() {
+    CreatePurposeScopedProject { project_id: id } =>
+      match id {
+        Absent => none_of_the_three_sandboxes_has_sheets()
+        Present { value: _ } => false
+      }
+  }
 }
 
 fn observed_project_roster_count(census: GcpEstateCensus) -> Int {
@@ -988,9 +1009,11 @@ fn observed_project_roster_count(census: GcpEstateCensus) -> Int {
 // Secrets is refused as Sheets API surface because custody and API surface should be
 // separated in the target state, not because the project is currently narrow: it already
 // runs compute, bigquery, dataplex, datastore, and storage, and is a narrowing candidate.
-// gunb-test is deranked scratch. No Sheets home candidate is clean (three github-pool
-// providers share the copied malformed condition; workspace-admin holds no project roles
-// and is impersonable only from gunbai-auto's pool). Not Selected.
+// gunb-test is deranked scratch. No existing project is a clean adopt target (three
+// github-pool providers share the copied malformed condition; workspace-admin holds no
+// project roles and is impersonable only from gunbai-auto's pool). Strategy is
+// CreatePurposeScopedProject; the project id stays unminted until the converge that
+// creates it mints it. Not Selected.
 type SheetsCallingHome
   = SheetsCallingHomeUnresolved {
       refused_api_surface_project: GcpProjectId
@@ -1039,7 +1062,7 @@ fn sheets_leading_candidate_is_not_selected() -> Bool {
         && broad
         && !selected
         && copied_malformed_condition_has_three_instances()
-        && sheets_home_is_unchosen_because_no_candidate_is_clean()
+        && sheets_home_is_create_purpose_scoped_unminted()
   }
 }
 

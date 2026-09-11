@@ -64,10 +64,11 @@ import gunbc.gcp_estate_observation {
   gunbai_auto_has_sts,
   gunb_ci_has_sts,
   none_of_the_three_sandboxes_has_sheets,
-  sheets_home_is_unchosen_because_no_candidate_is_clean,
+  gunbai_auto_is_the_only_pool_host_without_sts,
+  sheets_home_is_create_purpose_scoped_unminted,
   gunbai_secrets_enabled_service_ids,
   copied_malformed_condition_has_three_instances,
-  gunb_test_sts_is_absent,
+  gunb_test_has_sts,
   gunbai_auto_provider_condition_is_tight_legacy_repo,
   gunbai_auto_legacy_federation_hygiene,
   CorrectlyScopedPossiblyInertUndeclared,
@@ -359,11 +360,12 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   gunb_test_is_enumerated_not_selected(census: census)
     && observed_project_roster_count(census: census) == 5
     && gunb_test_sheets_is_absent()
-    && !gunb_test_sts_is_absent()
+    && gunb_test_has_sts()
     && none_of_the_three_sandboxes_has_sheets()
-    && sheets_home_is_unchosen_because_no_candidate_is_clean()
+    && sheets_home_is_create_purpose_scoped_unminted()
     && !gunbai_auto_has_sts()
     && gunb_ci_has_sts()
+    && gunbai_auto_is_the_only_pool_host_without_sts()
     && gunbai_auto_enabled_service_ids.length() == 32
     && gunb_ci_enabled_service_ids.length() == 40
     && gunb_test_enabled_service_ids.length() == 27
