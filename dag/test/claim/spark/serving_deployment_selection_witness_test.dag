@@ -41,6 +41,8 @@ import gunbc.spark.serving_deployment_selection {
   deepseek_v4_1_quality_requirement,
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
+  serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
+  engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_gb10_kv_layout_authority_frontier, v4_1_publisher_fit_authority_frontier, v4_1_gb10_kv_bytes_authority_frontier,
 }
@@ -502,6 +504,23 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
           && (o as String).contains("allocator")
           && (o as String).contains("not eight")
       KvBytesPerTokenNotThisSubject => false
+    }
+}
+
+test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
+  !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
+    && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
+    && match kv_bytes_per_token_standing(c: cand(name: "glm_kv", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))) {
+      KvBytesPerTokenNotThisSubject => true
+      KvBytesPerTokenUnestablished { layout: _, obligation: _ } => false
+    }
+    && match engram_standing(art: artifact_deepseek_v4_1_flash_native) {
+      EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => true
+      EngramNotAComponentOfThisArtifact => false
+    }
+    && match engram_standing(art: artifact_glm_53_flash_native) {
+      EngramNotAComponentOfThisArtifact => true
+      EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => false
     }
 }
 

@@ -858,7 +858,6 @@ data ax_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_dep
 data ax_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_native_quality")
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
 data ax_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_no_redundancy")
-data ax_engram_placement: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_engram_placement")
 data ax_kv_bytes_per_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_kv_bytes_per_token")
 data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
@@ -881,8 +880,6 @@ data serving_selection_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_native_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_weight_fit, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_engram_placement, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_kv_bytes_per_token, goal: LowerIsBetter },
   SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
   SelectionAxis { identity: ax_context_covered, goal: HigherIsBetter },
   SelectionAxis { identity: ax_workload_established, goal: HigherIsBetter },
@@ -922,6 +919,7 @@ data v4_1_selection_constraints: List<HardConstraint> = concat(serving_selection
 
 data v4_1_selection_axes: List<SelectionAxis> = concat(serving_selection_axes, [
   SelectionAxis { identity: ax_no_redundancy, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_kv_bytes_per_token, goal: LowerIsBetter },
 ])
 
 // THE MEASUREMENTS THAT DO NOT EXIST YET, each named so its absence is a located obligation rather
@@ -1216,20 +1214,6 @@ fn workload_gap(e: ServingDeploymentEvidenceSnapshot) -> List<AxisGap> {
   }
 }
 
-fn engram_reading(c: DeploymentCandidate) -> AxisReading? {
-  match engram_standing(art: c.artifact) {
-    EngramNotAComponentOfThisArtifact => Present { value: reading(axis: ax_engram_placement, v: 1) }
-    EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => Present { value: reading(axis: ax_engram_placement, v: 1) }
-  }
-}
-
-fn engram_gap(c: DeploymentCandidate) -> List<AxisGap> {
-  match engram_standing(art: c.artifact) {
-    EngramNotAComponentOfThisArtifact => []
-    EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => []
-  }
-}
-
 fn kv_bytes_gap(c: DeploymentCandidate) -> List<AxisGap> {
   match kv_bytes_per_token_standing(c: c) {
     KvBytesPerTokenUnestablished { layout: _, obligation: o } => [AxisGap { axis: ax_kv_bytes_per_token, cause: o }]
@@ -1251,16 +1235,14 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
              optional_reading(r: runtime_reading(profile: execution_profile_of(c: c, p: p), e: e))),
       concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
              optional_reading(r: workload_reading(e: e)))),
-    concat(
-      optional_reading(r: engram_reading(c: c)),
-      [
+    [
       reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
       reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c))),
       reading(axis: ax_context_covered, v: flag(b: covers_demand(p: p, demand: e.workload))),
       reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
       reading(axis: ax_independent_replicas, v: c.topology.replica_count),
       reading(axis: ax_replica_capacity_share_lost, v: replica_capacity_share_lost_percent(c: c)),
-    ]))
+    ])
 }
 
 fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisGap> {
@@ -1269,7 +1251,7 @@ fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, 
       concat(quality_gap(profile: execution_profile_of(c: c, p: p), e: e),
              runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
       concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
-    concat(concat(engram_gap(c: c), kv_bytes_gap(c: c)), map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
+    concat(kv_bytes_gap(c: c), map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
 }
 
 fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
