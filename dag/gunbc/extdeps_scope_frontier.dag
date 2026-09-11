@@ -339,6 +339,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/network/switch_types.dag",
   "dag/extdeps/network/tp_link.dag",
   "dag/extdeps/network/mikrotik_crs812.dag",
+  "dag/extdeps/transceiver/sff_8636.dag",
+  "dag/extdeps/transceiver/fs_145681.dag",
   "dag/extdeps/network/arista_7050s_52.dag",
   "dag/extdeps/rack/navepoint.dag",
   "dag/extdeps/rack/types.dag",
