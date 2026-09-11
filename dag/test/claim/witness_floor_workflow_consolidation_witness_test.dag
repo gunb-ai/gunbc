@@ -3,7 +3,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs, mutable_head_runs_cancel_expression, WitnessFloorGroupFixture, resolve_witness_floor_concurrency_group }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs, mutable_head_runs_cancel_expression, ci_heal_expected_healed_sha_input_name, github_event_name_equals_expr, WitnessFloorGroupFixture, resolve_witness_floor_concurrency_group }
 import gunbc.witness_v2_native_route { required_v2_native_job_name }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
@@ -519,7 +519,36 @@ test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_canc
     && resolve_witness_floor_concurrency_group(fx: push) != "witness-floor-pr-7"
     && match expected_witness_floor_yml() {
       WitnessFloorGenerated { content: yml } =>
-        string_contains(s: yml, pattern: "cancel-in-progress: false")
+        string_contains(
+          s: yml,
+          pattern: concat(github_event_name_equals_expr(event: github_event_name_merge_group), " && format('mg-{0}', github.sha)")
+        )
+          && string_contains(
+               s: yml,
+               pattern: concat(
+                 github_event_name_equals_expr(event: github_event_name_workflow_dispatch),
+                 concat(
+                   " && github.event.inputs.",
+                   concat(
+                     ci_heal_expected_healed_sha_input_name,
+                     concat(" != '' && format('heal-{0}', github.event.inputs.", concat(ci_heal_expected_healed_sha_input_name, ")"))
+                   )
+                 )
+               )
+             )
+          && string_contains(
+               s: yml,
+               pattern: concat(github_event_name_equals_expr(event: github_event_name_pull_request), " && format('pr-{0}', github.event.pull_request.number)")
+             )
+          && string_contains(
+               s: yml,
+               pattern: concat(github_event_name_equals_expr(event: github_event_name_push), " && github.ref")
+             )
+          && !string_contains(
+                s: yml,
+                pattern: concat(github_event_name_equals_expr(event: github_event_name_push), " && format('pr-{0}'")
+              )
+          && string_contains(s: yml, pattern: "cancel-in-progress: false")
           && !string_contains(s: yml, pattern: mutable_head_runs_cancel_expression())
           && string_contains(s: yml, pattern: "timeout-minutes: 180")
           && !string_contains(s: yml, pattern: "timeout-minutes: 360")
