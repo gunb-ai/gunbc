@@ -41,6 +41,7 @@ import gunbc.spark.managed_access_bootstrap {
   spark_managed_grant_wire,
   spark_managed_grant_sudoers_command,
 }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // THE JOIN BETWEEN AUTHORIZATION AND EXECUTION, which is the one thing this vertical was missing.
 //

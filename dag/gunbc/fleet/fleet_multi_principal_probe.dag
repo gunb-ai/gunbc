@@ -60,6 +60,7 @@ import gunbc.spark.managed_access_bootstrap {
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import product.placement_supply { HostIdentity }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
 // whether the fleet key is already enrolled for SOME pre-existing account on srv3/srv4.

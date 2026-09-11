@@ -88,6 +88,7 @@ import gunbc.spark.remote_step_sequence {
   remote_step_sequence_failed,
   remote_step_sequence_wire,
 }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // INSTALLING THE GRANT THE RECONCILE FOUND MISSING, which is the step that turns a receipt naming a
 // gap into a process that closes it. Until this existed the only way a grant reached a host was an
