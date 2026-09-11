@@ -13,7 +13,7 @@
 
 This is not an infrastructure detour competing with the year-end plan. **Public CI on our own microVM runners is the M1 dogfood deliverable.** Until that exit is true, the two-week clock cannot start, and M1b `dogfood-window` cannot start.
 
-The 2026-09-10 motive is independent and already declared. Public `gunbc.witness_floor_workflow` `toolchain_filesystem_probe_dissolution_condition` (emitted into `.github/workflows/witnesses.yml`) says to delete the start/end runner-filesystem instrument after the readings identify the deleter **or after per-job runner microVMs make the shared-filesystem eviction class impossible**. gunbc-private PR #50 went red today on "Build gunbc from the public seed" with exit 126 (~15s, command found but not executable). That is the same class. MicroVMs are the named cure; today's red is the trigger firing.
+The 2026-09-10 motive is independent and already declared. gunbc-private PR #50 went red on "Build gunbc from the public seed" with exit 126 (~15s, command found but not executable). Public `gunbc.witness_floor_workflow` `toolchain_filesystem_probe_dissolution_condition` is the named cure for that shared-FS eviction class. **gunbc#10985** (still-bear-335) rewrites that row so the probe dissolves only on **both** conjuncts this plan already named — public `selected_ci_runner_target` / `gunbc_ci_selected_runner_spec` and private `witnesses_job()` `SelfHosted` custom labels, not the empty-custom fleet slot — and identifying a deleter on the shared slot is **not** a substitute. Typed env-vs-code (POSIX 126/127, BMC/host/JIT) does not dissolve here. This PR does not flip `runs-on`; #10985 does not either.
 
 ## 1. What must be true for `host_boot_cutover_frontier` to fire
 
@@ -144,14 +144,15 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 
 | Lane | Question | Relation to this plan |
 |---|---|---|
-| **still-bear-335** (`adhoc-3b2f737a-7b8`) | Typed env-vs-code outcome; private copy of the public filesystem instrument | **Mitigation of the deleter class.** Dissolution of that *instrument* is the microVM arm of `toolchain_filesystem_probe_dissolution_condition`. Typed classification of BMC/host/JIT failure is **not** dissolved by isolation. |
+| **still-bear-335** (`adhoc-3b2f737a-7b8`, gunbc#10985) | Typed env-vs-code; public filesystem probe | **Mitigation.** Probe dissolves only on this plan's two conjuncts (their rewrite of `toolchain_filesystem_probe_dissolution_condition`). Typed BMC/host/JIT vs code stays. Private probe copy is follow-on STEPS with the same bind rule. They do not edit `strategy.private_witness_workflow`. |
 | **warm-badger-62** (private #46) | Process count: stop re-acquiring the composed world 34 times | **DESIGN §2.** MicroVMs do not replace it. After #46 the seed build dominates; whole-job arithmetic against runs 34462653642 and 34512318040 says even a cold seed still crushes the pre-#46 job wall. Do not edit `strategy.private_witness_workflow`. Per-attempt label: `self_hosted_labels(…, custom: …)`. |
 | This plan | Per-job guest; FCI-3 before jailer; host image from Y | **Cure of the shared-FS eviction class.** Does not shorten the 3341 s roster-dominated job. Does not classify failures. |
 
-**Retirement signal for still-bear-335's filesystem instrument (delete when true, not before):**
+**Retirement of the probe instrument (home: #10985's `toolchain_filesystem_probe_dissolution_condition`, bind when both hold):**
 
-1. Private and public required jobs select a per-attempt microVM label (`custom` on private; `selected_ci_runner_target` on public), not the empty-custom fleet slot.
-2. `toolchain_filesystem_probe_dissolution_condition` is eligible to bind on the microVM arm.
+1. Public required jobs: `selected_ci_runner_target` / `gunbc_ci_selected_runner_spec` is a per-attempt microVM, not the empty-custom fleet slot.
+2. Private required jobs: `witnesses_job()` `SelfHosted` `custom` labels, same, not empty-custom.
+3. That selection makes shared-FS eviction impossible, so the row is eligible to bind. Identifying a deleter on the shared slot is not a substitute for (1)–(2).
 
 **Not retired by this cure:** private #46's single-process roster; the timeout-cancel class (run 34523487941); typed env-vs-code classification.
 
