@@ -1,0 +1,136 @@
+module gunbc.review_sheet_sheets
+
+import std.types { NonEmptyStr, String, List }
+import std.upsert_decision { UpsertDecision }
+import gunbc.ensure {
+  EnsurePolicy,
+  EnsureObserved,
+  EnsurePlan,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+  ensure_decide,
+}
+import gunbc.review_sheet_projection {
+  ObservedSheet,
+  ObservedSheetRow,
+  ReviewSheetProjection,
+  ReviewSheetWritePlan,
+  ReviewSheetClassification,
+  ReviewSheetConverged,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
+  classify_review_sheet,
+  conflict_reason,
+  decide_review_sheet,
+}
+import extdeps.google.sheets {
+  ValueRange,
+  sheets_spreadsheets_oauth_scope,
+  sheets_api_version,
+  InputRaw,
+  sheets_value_input_option_wire,
+}
+import extdeps.cloud.gcp.gcp { GcpOAuth2AccessTokenStrategy, AdcRefresh }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.google.workspace { google_workspace_product }
+
+// ONE realization of the review-sheet projection: Google Sheets values.get as independent
+// readback, values.batchUpdate only for the derived write plan. Auth is ADC / a SecretRef under
+// gunbc.secret_provision; this module does not mint a credential type.
+
+type SheetsAccess {
+  spreadsheet_id: NonEmptyStr
+  credential: SecretRef
+  token_strategy: GcpOAuth2AccessTokenStrategy
+}
+
+fn sheets_access(spreadsheet_id: NonEmptyStr, credential: SecretRef) -> SheetsAccess {
+  SheetsAccess {
+    spreadsheet_id: spreadsheet_id,
+    credential: credential,
+    token_strategy: AdcRefresh { adc_path: none },
+  }
+}
+
+fn sheets_projection_oauth_scope() -> NonEmptyStr {
+  sheets_spreadsheets_oauth_scope
+}
+
+fn sheets_value_input_raw() -> String {
+  sheets_value_input_option_wire(o: InputRaw)
+}
+
+fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheet {
+  match range.values {
+    Absent => ObservedSheet { headers: [], rows: [] }
+    Present { value: rows } =>
+      match rows |> first {
+        Absent => ObservedSheet { headers: [], rows: [] }
+        Present { value: headers } => ObservedSheet {
+          headers: headers,
+          rows: observed_data_rows(rows: rows),
+        }
+      }
+  }
+}
+
+fn observed_data_rows(rows: List<List<String>>) -> List<ObservedSheetRow> {
+  rows |> enumerate |> filter(pair => pair.first > 0) |> map(pair => ObservedSheetRow {
+    data_index: pair.first - 1,
+    cells: pair.second,
+  })
+}
+
+fn review_sheet_from_readback(
+  range: ValueRange,
+  projection: ReviewSheetProjection,
+) -> UpsertDecision<ReviewSheetWritePlan> {
+  decide_review_sheet(
+    observed: observed_sheet_from_value_range(range: range),
+    projection: projection,
+  )
+}
+
+fn review_sheet_ensure_plan(classified: ReviewSheetClassification) -> EnsurePlan<ReviewSheetWritePlan> {
+  match classified {
+    ReviewSheetConverged => EnsurePlanUnavailable { reason: "already converged" }
+    ReviewSheetNeedsWrite { plan: p } => EnsurePlanAvailable { plan: p }
+    ReviewSheetConflict { conflict: c } => EnsurePlanUnavailable { reason: conflict_reason(conflict: c) as String }
+    ReviewSheetUnreadable { reason: r } => EnsurePlanUnavailable { reason: r as String }
+  }
+}
+
+fn review_sheet_ensure(
+  policy: EnsurePolicy,
+  range: ValueRange,
+  projection: ReviewSheetProjection,
+) -> UpsertDecision<ReviewSheetWritePlan> {
+  let observed = observed_sheet_from_value_range(range: range)
+  let classified = classify_review_sheet(observed: observed, projection: projection)
+  ensure_decide(
+    policy: policy,
+    observation: EnsureObserved { evidence: observed },
+    observation_satisfies: match classified {
+      ReviewSheetConverged => true
+      ReviewSheetNeedsWrite { plan: _ } => false
+      ReviewSheetConflict { conflict: _ } => false
+      ReviewSheetUnreadable { reason: _ } => false
+    },
+    mismatch_reason: match classified {
+      ReviewSheetConverged => "derived region already equals the projection"
+      ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
+      ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
+      ReviewSheetUnreadable { reason: r } => r as String
+    },
+    plan: review_sheet_ensure_plan(classified: classified),
+  )
+}
+
+fn sheets_api_edition() -> NonEmptyStr {
+  sheets_api_version
+}
+
+fn sheets_workspace_suite() -> NonEmptyStr {
+  google_workspace_product
+}

@@ -1,0 +1,247 @@
+module test.claim.review_sheet_converge_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.upsert_decision { Noop, Apply, Refuse }
+import gunbc.ensure { EnsureMayApply }
+import gunbc.review_sheet_projection {
+  ReviewColumn,
+  ReviewColumnKind,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  ReviewSheetSchema,
+  ReviewSheetProjection,
+  ProjectionRow,
+  DerivedCell,
+  ObservedSheet,
+  ObservedSheetRow,
+  ReviewSheetWritePlan,
+  write_plan_preserves_operator_columns,
+  write_plan_touches_column,
+  decide_review_sheet,
+  judgement_for_listing,
+  listing_standing_gone,
+  listing_standing_observed,
+}
+import gunbc.review_sheet_sheets {
+  observed_sheet_from_value_range,
+  review_sheet_ensure,
+  review_sheet_from_readback,
+  sheets_workspace_suite,
+}
+import extdeps.google.sheets {
+  ValueRange,
+  sheets_api_version,
+  sheets_spreadsheets_oauth_scope,
+  sheets_read_requests_per_minute_per_project,
+}
+
+fn w_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "listing_id" as NonEmptyStr,
+    columns: [
+      ReviewColumn { name: "title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } },
+      ReviewColumn { name: "standing" as NonEmptyStr, kind: ListingStanding },
+      ReviewColumn { name: "judgement" as NonEmptyStr, kind: OperatorEntered },
+    ]
+  }
+}
+
+fn w_projection(rows: List<ProjectionRow>) -> ReviewSheetProjection {
+  ReviewSheetProjection { schema: w_schema(), rows: rows }
+}
+
+fn w_row(listing_id: NonEmptyStr, title: String) -> ProjectionRow {
+  ProjectionRow {
+    listing_id: listing_id,
+    derived: [DerivedCell { column: "title" as NonEmptyStr, value: title }],
+  }
+}
+
+fn w_observed(headers: List<String>, rows: List<List<String>>) -> ObservedSheet {
+  ObservedSheet {
+    headers: headers,
+    rows: rows |> enumerate |> map(pair => ObservedSheetRow { data_index: pair.first, cells: pair.second }),
+  }
+}
+
+fn w_headers() -> List<String> {
+  ["listing_id", "title", "standing", "judgement"]
+}
+
+fn w_value_range(rows: List<List<String>>) -> ValueRange {
+  ValueRange {
+    range: "Review!A1:D4",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], rows) },
+  }
+}
+
+test fn converge_twice_unchanged_is_noop() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", listing_standing_observed, ""]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Noop =>
+      match decide_review_sheet(observed: observed, projection: projection) {
+        Noop => true
+        Apply { plan: _ } => false
+        Refuse { reason: _ } => false
+      }
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn converge_preserves_populated_human_column() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "", listing_standing_observed, "buy"]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Apply { plan: p } =>
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && judgement_for_listing(
+          observed: observed,
+          identity_column: "listing_id" as NonEmptyStr,
+          judgement_column: "judgement" as NonEmptyStr,
+          listing_id: "L1" as NonEmptyStr,
+        ) == "buy"
+        && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "hand-edited", listing_standing_observed, ""]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "column=title")
+        && string_contains(s: r as String, pattern: "cell=B2")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
+  let projection = w_projection(rows: [
+    w_row(listing_id: "L1" as NonEmptyStr, title: "alpha"),
+    w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
+  ])
+  let sorted = w_observed(
+    headers: w_headers(),
+    rows: [
+      ["L1", "alpha", listing_standing_observed, "buy"],
+      ["L2", "beta", listing_standing_observed, "skip"],
+    ],
+  )
+  let resorted = w_observed(
+    headers: w_headers(),
+    rows: [
+      ["L2", "beta", listing_standing_observed, "skip"],
+      ["L1", "alpha", listing_standing_observed, "buy"],
+    ],
+  )
+  match decide_review_sheet(observed: sorted, projection: projection) {
+    Noop =>
+      match decide_review_sheet(observed: resorted, projection: projection) {
+        Noop =>
+          judgement_for_listing(
+            observed: resorted,
+            identity_column: "listing_id" as NonEmptyStr,
+            judgement_column: "judgement" as NonEmptyStr,
+            listing_id: "L1" as NonEmptyStr,
+          ) == "buy"
+            && judgement_for_listing(
+              observed: resorted,
+              identity_column: "listing_id" as NonEmptyStr,
+              judgement_column: "judgement" as NonEmptyStr,
+              listing_id: "L2" as NonEmptyStr,
+            ) == "skip"
+        Apply { plan: _ } => false
+        Refuse { reason: _ } => false
+      }
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
+  let projection = w_projection(rows: [])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", listing_standing_observed, "buy"]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Apply { plan: p } =>
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && (p.appends |> count) == 0
+        && judgement_for_listing(
+          observed: observed,
+          identity_column: "listing_id" as NonEmptyStr,
+          judgement_column: "judgement" as NonEmptyStr,
+          listing_id: "L1" as NonEmptyStr,
+        ) == "buy"
+        && fold(p.patches, init: false, f: fn(acc, w) {
+          acc || (w.listing_id == ("L1" as NonEmptyStr)
+            && w.column == ("standing" as NonEmptyStr)
+            && w.value == listing_standing_gone)
+        })
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn ensure_over_unchanged_readback_is_noop() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = w_value_range(rows: [["L1", "alpha", listing_standing_observed, "buy"]])
+  match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
+    Noop =>
+      match review_sheet_from_readback(range: range, projection: projection) {
+        Noop => true
+        Apply { plan: _ } => false
+        Refuse { reason: _ } => false
+      }
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
+  let projection = w_projection(rows: [
+    w_row(listing_id: "L1" as NonEmptyStr, title: "alpha"),
+    w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
+  ])
+  let range = w_value_range(rows: [
+    ["L2", "beta", listing_standing_observed, "skip"],
+    ["L1", "alpha", listing_standing_observed, "buy"],
+  ])
+  let observed = observed_sheet_from_value_range(range: range)
+  match review_sheet_from_readback(range: range, projection: projection) {
+    Noop =>
+      judgement_for_listing(
+        observed: observed,
+        identity_column: "listing_id" as NonEmptyStr,
+        judgement_column: "judgement" as NonEmptyStr,
+        listing_id: "L1" as NonEmptyStr,
+      ) == "buy"
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn sheets_api_is_v4_with_published_read_quota_and_scope() -> Bool {
+  (sheets_api_version as String) == "v4"
+    && (sheets_spreadsheets_oauth_scope as String) == "https://www.googleapis.com/auth/spreadsheets"
+    && sheets_read_requests_per_minute_per_project.requests == 300
+    && (sheets_workspace_suite() as String) == "Google Workspace"
+}
