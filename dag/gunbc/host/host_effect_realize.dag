@@ -115,7 +115,14 @@ import product.placement_supply { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
 import extdeps.gunbc
-import extdeps.apt { package_curl, package_nbdkit, package_socat, package_xorriso, apt_get_binary_path }
+import extdeps.apt {
+  package_curl,
+  package_nbdkit,
+  package_socat,
+  package_xorriso,
+  apt_get_binary_path,
+  apt_installed_bin_path,
+}
 import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
@@ -1616,6 +1623,10 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
   }
 }
 
+// FleetSsh cannot carry posix_command_v_check_argv: the -c payload is not a PortableRemoteWord
+// (spaces, quotes, `$`), so the probe refused before contacting the host and srv3_ensure_apt_tool
+// never reached the install arm. LocalShell and SshShell keep command -v. FleetSsh tests the
+// apt-installed FHS path (extdeps.apt apt_installed_bin_path) with shell.Test.IsExecutable.
 fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
     LocalShell =>
@@ -1628,13 +1639,10 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
-    FleetSsh { target: t, context: c } =>
-      srv3_predicate_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(
-          target: t,
-          context: c,
-          argv: posix_command_v_check_argv(command: tool_name),
-        ),
+    FleetSsh { target: _, context: _ } =>
+      srv3_transport_test_executable(
+        path: apt_installed_bin_path(binary: tool_name) as String,
+        transport: transport,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3PredicateUnobserved {
@@ -1660,14 +1668,16 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
       srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
-    FleetSsh { target: t, context: c } =>
-      srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(
-          target: t,
-          context: c,
-          argv: posix_command_v_check_argv(command: tool_name),
-        ),
-      )
+    FleetSsh { target: _, context: _ } =>
+      match srv3_transport_test_executable(
+        path: apt_installed_bin_path(binary: tool_name) as String,
+        transport: transport,
+      ) {
+        Srv3PredicateHolds =>
+          Srv3TokenObserved { value: apt_installed_bin_path(binary: tool_name) as String }
+        Srv3PredicateFails => Srv3TokenAbsent
+        Srv3PredicateUnobserved { reason: why } => Srv3TokenUnobserved { reason: why }
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3TokenUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can resolve a tool path",

@@ -7,7 +7,7 @@ import extdeps.tools { apt_package_of }
 import extdeps.tools.sshpass { sshpass_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_cli_tool }
-import extdeps.apt { package_sshpass }
+import extdeps.apt { package_sshpass, apt_installed_bin_path, apt_bin_dir }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -48,4 +48,9 @@ test fn the_resolved_package_is_not_the_binary_name() -> Bool {
     Present { value: p } => (p as String) != (mosquitto_pub_cli_tool.name as String)
     Absent => false
   }
+}
+
+test fn apt_installed_bin_path_is_apt_bin_dir_plus_the_binary_name() -> Bool {
+  (apt_installed_bin_path(binary: sshpass_cli_tool.name) as String)
+    == concat(apt_bin_dir as String, concat("/", sshpass_cli_tool.name as String))
 }
