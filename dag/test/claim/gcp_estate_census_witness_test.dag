@@ -13,6 +13,7 @@ import gunbc.gcp_estate_observation {
   gunbai_ci_iap_sa_email,
   census_gap_count,
   unread_project_gap_names_trusting_accounts,
+  unread_project_gap_names_role_and_repo,
   gap_project_314501921854,
   fleet_automation_has_no_principal_set_binding,
   principal_set_pool_project_number,
@@ -58,6 +59,7 @@ test fn unread_project_is_a_named_gap_not_an_absence() -> Bool {
   let census = operator_audit_census()
   census_gap_count(census: census) >= 1
     && unread_project_gap_names_trusting_accounts(gap: gap_project_314501921854)
+    && unread_project_gap_names_role_and_repo(gap: gap_project_314501921854)
     && (gap_project_314501921854.discharge as String).contains("projects.get")
     && (gap_project_314501921854.cause as String).contains("314501921854")
 }

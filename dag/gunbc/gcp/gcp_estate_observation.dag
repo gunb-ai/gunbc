@@ -67,6 +67,8 @@ type EstateCoverageGap {
   cause: NonEmptyStr
   discharge: NonEmptyStr
   trusting_accounts: List<ServiceAccountEmail>
+  trusting_role: String?
+  federated_repo: String?
 }
 
 type GcpEstateCoverage<T>
@@ -264,6 +266,8 @@ data gap_project_314501921854: EstateCoverageGap = EstateCoverageGap {
   cause: "named by principalSet IAM bindings on gunbai-secrets service accounts; this session has no credential that can read the project",
   discharge: "projects.get on 314501921854 plus that project's workloadIdentityPools list and each provider's attribute condition",
   trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
+  trusting_role: Present { value: role_iam_workload_identity_user },
+  federated_repo: Present { value: legacy_federated_repo },
 }
 
 data gap_third_legacy_sa: EstateCoverageGap = EstateCoverageGap {
@@ -271,6 +275,8 @@ data gap_third_legacy_sa: EstateCoverageGap = EstateCoverageGap {
   cause: "operator audit stated three service accounts bound to gunb-ai/gunb.ai; two are named (gunbai-ci-secrets, gunbai-ci-iap); the third identity was not recorded",
   discharge: "IAM policy scan of every service account in gunbai-secrets for principalSet members containing gunb-ai/gunb.ai",
   trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Present { value: legacy_federated_repo },
 }
 
 data gap_github_pool_provider_id: EstateCoverageGap = EstateCoverageGap {
@@ -278,6 +284,8 @@ data gap_github_pool_provider_id: EstateCoverageGap = EstateCoverageGap {
   cause: "operator audit recorded attribute condition assertion.repository_owner=='https:' and not the provider resource id; minting an id would be a guess wearing observation standing",
   discharge: "iam.googleapis.com list providers on pool github-pool",
   trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
 }
 
 data gap_cross_project_principal_set_member: EstateCoverageGap = EstateCoverageGap {
@@ -285,6 +293,8 @@ data gap_cross_project_principal_set_member: EstateCoverageGap = EstateCoverageG
   cause: "audit named the pool project number and the federated repo gunb-ai/gunb.ai but not the principalSet member URI or pool id",
   discharge: "getIamPolicy on gunbai-ci-secrets and gunbai-ci-iap; parse principalSet members verbatim",
   trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
+  trusting_role: Present { value: role_iam_workload_identity_user },
+  federated_repo: Present { value: legacy_federated_repo },
 }
 
 fn operator_audit_census() -> GcpEstateCensus {
@@ -331,6 +341,17 @@ fn unread_project_gap_names_trusting_accounts(gap: EstateCoverageGap) -> Bool {
   gap.trusting_accounts.length() == 2
     && accounts_include(accounts: gap.trusting_accounts, email: gunbai_ci_secrets_sa_email)
     && accounts_include(accounts: gap.trusting_accounts, email: gunbai_ci_iap_sa_email)
+}
+
+fn unread_project_gap_names_role_and_repo(gap: EstateCoverageGap) -> Bool {
+  match gap.trusting_role {
+    Present { value: role } =>
+      role == role_iam_workload_identity_user && match gap.federated_repo {
+        Present { value: repo } => repo == legacy_federated_repo
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 fn fleet_automation_has_no_principal_set_binding(census: GcpEstateCensus) -> Bool {
