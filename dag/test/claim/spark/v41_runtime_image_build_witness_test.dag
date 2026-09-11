@@ -7,6 +7,7 @@ import std.content_hash { serialize_content_hash }
 import extdeps.exec.command { argv_words }
 import extdeps.git { git_status_porcelain_command }
 import extdeps.docker.cli { docker_build_spec_command }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.gpu.types { GpuCapabilityLabelOk, GpuCapabilityLabelRejected }
 import extdeps.vllm.source_build {
   vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
@@ -60,6 +61,19 @@ import gunbc.spark.v41_runtime_image_probe {
   v41_probed_sibling_architecture, v41_probed_sibling_architecture_present,
   v41_probed_admitted_kv_layouts, v41_probed_rejected_kv_layouts, v41_probed_layout_admitted,
 }
+
+// WHAT THIS ENTRY READS, DECLARED RATHER THAN LEFT SILENT. Every witness in this file is a pure fold
+// over declarations -- generated script text, argv construction, hostname classification, the
+// capability partition, recorded readings joined against upstream's source rows. None of them opens
+// a file, asks a host, or reaches a corpus outside its resolved closure: the one thing here that ever
+// touched a live tree, the probe itself, runs from a wet entry in gunbc.spark.v41_runtime_image_probe
+// and is not a witness.
+//
+// AND THE HONEST CAVEAT, because v2.std.live_tree says a stamp is checked by nothing today: this row
+// is AUTHOR-vouched, not machine-vouched. It is worth writing anyway -- the selection consumer treats
+// an undeclared entry as live-reading and never predict-skips it, so silence here is a fact about
+// this file that is simply wrong.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ONE FIELD THAT DIVERGES FROM UPSTREAM IS THE ONE THE LANE EXISTS FOR. Everything else in the
 // fleet recipe is copied from upstream's own aarch64 release row, and this asserts the copy rather
