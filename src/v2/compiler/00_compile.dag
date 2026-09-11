@@ -656,6 +656,16 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // NativeTestRefused verdict carrying the stage and the diagnostic's head reason, so a census
 // over observations has no silent remainder.
 //
+// THE PREPARE GRAIN IS TWO HALVES, AND THE SEAM IS THE PORTABILITY BOUNDARY. A seed-interpreted
+// witness that drives this route evaluates in the required floor's per-claim frame, and the
+// only value that crosses that frame is one the cross-claim pure tier can reify
+// (v2.workflow.floor_pure_producer_share): the resolved tree is closure-free, the InferredTree
+// one stage up carries the facts PartialFunction and is not — the same share point
+// v2.compiler.self_host.direct_rust_door_fixture names for the same reason. So
+// native_test_resolve_module and native_test_infer_resolved are the two halves, and
+// native_test_prepare_module is their composition: the emitted lane harness keeps calling the
+// composition, and a witness fixture shares at the resolved seam.
+//
 // THE PER-FILE FRONT-END REFUSAL IS CENSUS DATA, NOT A WHOLE-CONTEXT REFUSAL. The program
 // assembly fold (v2.compiler.program_assembly) is wholesale fail-closed — one unparseable
 // source fails the program — which is the right door for COMPILATION and the wrong shape for
@@ -810,32 +820,44 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
   }
 }
 
+fn native_test_resolve_module(
+  context: NativeTestContext,
+  module: QualifiedName
+) -> Outcome<ResolvedTree> {
+  resolve_with_admission_grounded(
+    lm: dag_language_model(),
+    roots: context.roots,
+    admission: Admission {
+      subject: ResolutionSubject { name: module },
+      imports: Empty
+    },
+    index: context.index,
+    active_roots: context.active_roots
+  )
+}
+
+fn native_test_infer_resolved(
+  module: QualifiedName,
+  resolved: ResolvedTree
+) -> Outcome<NativeTestPreparedModule> {
+  bind_outcome(
+    o: infer(tree: resolved),
+    f: fn(inferred) {
+      outcome_accepted(value: NativeTestPreparedModule {
+        module: module,
+        inferred: inferred
+      })
+    }
+  )
+}
+
 fn native_test_prepare_module(
   context: NativeTestContext,
   module: QualifiedName
 ) -> Outcome<NativeTestPreparedModule> {
   bind_outcome(
-    o: resolve_with_admission_grounded(
-      lm: dag_language_model(),
-      roots: context.roots,
-      admission: Admission {
-        subject: ResolutionSubject { name: module },
-        imports: Empty
-      },
-      index: context.index,
-      active_roots: context.active_roots
-    ),
-    f: fn(resolved) {
-      bind_outcome(
-        o: infer(tree: resolved),
-        f: fn(inferred) {
-          outcome_accepted(value: NativeTestPreparedModule {
-            module: module,
-            inferred: inferred
-          })
-        }
-      )
-    }
+    o: native_test_resolve_module(context: context, module: module),
+    f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
   )
 }
 

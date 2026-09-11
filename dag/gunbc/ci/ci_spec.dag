@@ -976,7 +976,7 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
     entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
     function: gunbc_ci_live_deploy_apply_srv1_target.function,
     claim_run: false,
-    receipt_rel: "target/live-deploy-srv1-receipt.txt"
+    receipt_rel: none
   )
 }
 

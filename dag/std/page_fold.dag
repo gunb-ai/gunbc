@@ -3,6 +3,7 @@ module std.page_fold
 import std.types { NonEmptyStr, Int, Bool, List, String }
 import std.integer { PositiveInt, NonNegativeInt }
 import extdeps.uri { Uri, uri_wire }
+import v2.std.algebra { fold_list }
 
 // THREE CLAIMS, NOT ONE, AND CONFLATING THEM IS WHY THIS MODULE DID NOT EXIST FOR SO LONG.
 //
