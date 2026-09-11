@@ -21,12 +21,17 @@ import gunbc.review_sheet_projection {
   ReviewSheetNeedsWrite,
   ReviewSheetConflict,
   ReviewSheetUnreadable,
+  DerivedCellWrite,
   classify_review_sheet,
   conflict_reason,
   decide_review_sheet,
 }
 import extdeps.google.sheets {
   ValueRange,
+  SheetsValueInputOption,
+  InputUserEntered,
+  sheets_major_dimension_wire,
+  DimensionRows,
 }
 import extdeps.cloud.gcp.gcp { GcpOAuth2AccessTokenStrategy, AdcRefresh }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -87,6 +92,22 @@ fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
     admission: fleet_review_sheet_operator_admission(),
     credential: credential,
   )
+}
+
+fn review_sheet_batch_value_input_option() -> SheetsValueInputOption {
+  InputUserEntered
+}
+
+fn value_range_from_derived_write(write: DerivedCellWrite) -> ValueRange {
+  ValueRange {
+    range: write.a1 as String,
+    majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
+    values: Present { value: [[write.value]] },
+  }
+}
+
+fn value_ranges_from_write_plan(plan: ReviewSheetWritePlan) -> List<ValueRange> {
+  plan.patches |> map(w => value_range_from_derived_write(write: w))
 }
 
 fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheet {

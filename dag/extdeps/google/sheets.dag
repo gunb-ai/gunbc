@@ -138,6 +138,18 @@ fn sheets_value_input_option_wire(o: SheetsValueInputOption) -> String {
   }
 }
 
+fn sheets_value_input_option_from_wire(raw: String) -> SheetsValueInputOption? {
+  if raw == sheets_value_input_option_wire(o: InputRaw) {
+    Present { value: InputRaw }
+  } else {
+    if raw == sheets_value_input_option_wire(o: InputUserEntered) {
+      Present { value: InputUserEntered }
+    } else {
+      none
+    }
+  }
+}
+
 type SheetsError {
   code: Int
   message: String
@@ -206,8 +218,8 @@ service sheets.Spreadsheets {
     input {
       access_token: Secret
       spreadsheet_id: String
-      value_input_option: String
-      data: Json
+      value_input_option: SheetsValueInputOption
+      data: List<ValueRange>
       include_values_in_response: Bool = false
     }
     output {
@@ -219,7 +231,7 @@ service sheets.Spreadsheets {
       method: POST,
       path: "/spreadsheets/\{spreadsheet_id\}/values:batchUpdate",
       body: {
-        valueInputOption: value_input_option,
+        valueInputOption: sheets_value_input_option_wire(o: value_input_option),
         data: data,
         includeValuesInResponse: include_values_in_response
       }
