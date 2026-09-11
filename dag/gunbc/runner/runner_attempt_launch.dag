@@ -90,9 +90,10 @@ data jail_jit_device_staging_frontier: DissolutionCondition = unbound_dissolutio
 // unbound host_boot_cutover_frontier, not a second false constant.
 
 // §4b(1): the reported rung is the MINIMUM across in-scope paths. The planner-witness path has
-// executed REDs in this change. The host-boot jailer-exec path has not: mtcollins1 is powered off
-// and placeability is still access-refused. Claiming MechanicallyPreventable for the class would
-// be inflation.
+// executed REDs. The host-boot jailer-exec path has not: host_image_placeability_standing is still
+// HostShellAndBootImageAccessRefused (BMC answering is not tmpfs exec). Claiming
+// MechanicallyPreventable for the class would be inflation. Cutover sequence:
+// docs/plans/ci-per-job-microvm-migration.md — plan only, unbound host_boot_cutover_frontier.
 data attempt_launch_planner_witness_rung: GuaranteeRung = MechanicallyPreventable
 
 data attempt_launch_host_boot_exec_rung: GuaranteeRung = Mitigatable

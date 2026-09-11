@@ -1,0 +1,25 @@
+module v2.test.claim.body_lowering.normalize_outcome_helpers
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol }
+
+fn body_lowering_normalize_outcome(src: String, file: Symbol) -> String {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => "PARSE_REFUSED"
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+          }
+      }
+  }
+}
