@@ -2,6 +2,8 @@ module test.claim.fleet_bootstrap_principal_session_witness
 
 import std.types { Bool, List, String, NonEmptyStr }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user, fleet_bootstrap_principal_login }
+import gunbc.host_cli_dependency { HostCliDependencyAbsence }
+import extdeps.tools.sshpass { sshpass_cli_tool }
 import gunbc.fleet_bootstrap_principal_session {
   FleetSshPrincipalSession,
   FleetSshKeySession,
@@ -15,7 +17,10 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetBootstrapCredentialPathReady,
   FleetBootstrapCredentialPathAbsent,
   resolve_fleet_bootstrap_credential_path,
-  exec_as_fleet_principal_with_stdin,
+  PasswordLegPrerequisiteReady,
+  PasswordLegPrerequisiteRefused,
+  fleet_password_leg_from_host_observation,
+  exec_as_fleet_principal_with_stdin_observed,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
@@ -114,12 +119,13 @@ fn witness_leg_stdout(principal: NonEmptyStr, credential: FleetBootstrapCredenti
       match portable_remote_words(raws: ["id", "-un"]) {
         Absent => none
         Present { value: words } =>
-          match exec_as_fleet_principal_with_stdin(
+          match exec_as_fleet_principal_with_stdin_observed(
             context: context,
             target: SshTarget { endpoint: witness_bootstrap_target_endpoint, principal: principal },
             words: words,
             stdin_payload: "",
             credential: credential,
+            absence: none,
           ) {
             FleetPrincipalLegRefused { cause: _ } => none
             FleetPrincipalLegRan { session: _, result: r } => Present { value: r.stdout }
@@ -149,5 +155,82 @@ test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bo
     Present { value: out } =>
       out == "mock-ssh-portable-words-stdin"
         && out != "mock-password-file-ssh-portable-words-stdin"
+  }
+}
+
+// THE FIXTURE BINDS THE MODEL, THE ORACLE STAYS A LITERAL, and the split is deliberate. The
+// injected absence takes its tool from sshpass_cli_tool.name so the INPUT tracks the enrolled
+// declaration; the assertion below checks the rendered cause against the bare word "sshpass",
+// which is grounded in the upstream this repository cites (sourceforge.net/projects/sshpass) and
+// is therefore an INDEPENDENT oracle. Binding both ends would make the row self-satisfying -- a
+// cause built from a name, checked against the same name, cannot fail -- and that is the
+// measure-itself shape §5 rejects. Kept apart, renaming the binary reddens this row, which is the
+// correct outcome: it forces a deliberate update rather than silently following.
+//
+// THE REFUSAL WITNESS EXERCISES THE SEAM, NOT THE HELPER, and that distinction is the whole point
+// of the row. An earlier cut called fleet_password_leg_from_host_observation directly and asserted
+// it returns PasswordLegPrerequisiteRefused -- true, and useless as a regression wall: the claim
+// being made is "missing sshpass, so the leg refuses BEFORE the transport", and a test of the
+// helper alone stays green if exec_as_fleet_principal_with_stdin_observed later ignores the helper
+// result and calls password_file_ssh_exec_portable_words_with_stdin anyway. The ordering is the
+// subject, so the integration function must be what runs.
+//
+// THE `FleetPrincipalLegRan => false` ARM IS THE ASSERTION THAT THE TRANSPORT WAS NOT REACHED. Both
+// transports carry a mock_response with distinct stdout, so under the hermetic envelope a leg that
+// did reach one comes back as Ran with that stdout -- there is no way for the transport to run and
+// this row to stay green. Refused is only reachable by stopping first.
+//
+// THE REFUSAL HAS ITS OWN WITNESS, hermetic, because the discriminator above must not carry it.
+// Both call the pure decision with an INJECTED observation, so neither is moved by the PATH of the
+// host that runs it: the discriminator supplies a satisfied prerequisite and stays a statement
+// about which TRANSPORT the principal derivation selects, and this pair is the statement about the
+// prerequisite. Before the split the discriminator observed PATH inline and went red on any host
+// without sshpass -- passing on srv1/srv2 and failing on srv3/srv4, flaky by whichever runner
+// picked the job up, while appearing to measure transport selection.
+test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => false
+    Present { value: context } =>
+      match portable_remote_words(raws: ["id", "-un"]) {
+        Absent => false
+        Present { value: words } =>
+          match exec_as_fleet_principal_with_stdin_observed(
+            context: context,
+            target: SshTarget {
+              endpoint: witness_bootstrap_target_endpoint,
+              principal: fleet_bootstrap_principal_login(),
+            },
+            words: words,
+            stdin_payload: "",
+            credential: BootstrapCredentialFileHeld {
+              path: "/run/gunbc-witness-credential" as NonEmptyStr,
+            },
+            absence: Present {
+              value: HostCliDependencyAbsence {
+                tool: sshpass_cli_tool.name,
+                hint: "apt install sshpass",
+              },
+            },
+          ) {
+            FleetPrincipalLegRan { session: _, result: _ } => false
+            FleetPrincipalLegRefused { cause: c } =>
+              string_contains(c as String, "sshpass")
+                && string_contains(c as String, "NOT attempted")
+          }
+      }
+  }
+}
+
+// THE SATISFIED SIDE, which is what makes the row above discriminating rather than a one-armed
+// assertion: with no absence the same fold reaches the credential and yields the password file, so
+// a refusal that fired unconditionally would redden here.
+test fn a_present_password_session_binary_reaches_the_credential() -> Bool {
+  match fleet_password_leg_from_host_observation(
+    absence: none,
+    credential: BootstrapCredentialFileHeld { path: "/run/gunbc-witness-credential" as NonEmptyStr },
+  ) {
+    PasswordLegPrerequisiteReady { password_file: p } =>
+      (p as String) == "/run/gunbc-witness-credential"
+    PasswordLegPrerequisiteRefused { cause: _ } => false
   }
 }

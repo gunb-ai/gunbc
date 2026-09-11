@@ -377,6 +377,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "observe_sshpass_wet_posix_command_v_check_does_not_crash" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "observe_sshpass_wet_posix_command_v_check_does_not_crash",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "password_session_enrollment_walks_wet_without_crashing" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "password_session_enrollment_walks_wet_without_crashing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_check_fixture", function: "clean_directory_passes_v1_rt_check" },
       entry: "dag/test/claim/self_host_logic_seed_unavailable_check_fixture_test.dag",
       function: "clean_directory_passes_v1_rt_check",
