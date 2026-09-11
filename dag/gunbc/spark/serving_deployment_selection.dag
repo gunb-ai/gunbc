@@ -315,13 +315,12 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
-// V4.1 PARAMETER SET. Do not inherit V4 Flash's 300k window, fp8_ds_mla KV, or MTP-off.
-// Context is the yarn-scaled ceiling from extdeps.deepseek.deepseek_v4_1_flash. Compressed KV
-// is fp4 in the reference inference; config.json does not declare a kv-cache-dtype (CSA2 source
-// layers are a config fact, not this V4 Flash layout). Speculation is DeepSeek DSpark, not V4's
-// SpeculationOff. Memory fraction and batching stay the fleet envelope until DSV41-1 names others.
-// DSV41-1 has not enumerated supported TP widths; the field enumerates every fleet-admitted
-// (tp, replicas) and does not prune to a guessed set.
+// V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
+// extdeps.deepseek.deepseek_v4_1_flash. KV layout is a candidate fact: vLLM 07b75534 on device
+// major 12 admits fp8 / fp8_ds_mla only; NVFP4 DS-MLA is SM10x-only, so the Spark candidate is
+// fp8_ds_mla, not the card's FP4. Higher-precision KV does not violate native quality — it is a
+// capacity fact. Speculation is DeepSeek DSpark. Per-token KV bytes for this layout are an
+// obligation on DSV41-4; the card's 890 does not apply.
 fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
   serving_decision_parameters(
     max_model_len: deepseek_v4_1_flash_context_length,
@@ -329,7 +328,7 @@ fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
     max_num_batched_tokens: spark_host_max_num_batched_tokens,
     max_num_seqs: spark_host_max_num_seqs,
     executor: ExecutorRayProfile,
-    kv_layout: KvFp4Layout,
+    kv_layout: KvFp8DsMlaLayout,
     speculative: SpeculationDraft { algorithm: DSpark },
     runtime: runtime,
   )
@@ -366,6 +365,22 @@ type DeploymentCandidate sole_constructor {
 
 fn deployment_candidate_at(identity: DeclarationRef, label: NonEmptyStr, artifact: ModelArtifact, topology: TopologyShape, profile: ServingDecisionParameters) -> DeploymentCandidate {
   DeploymentCandidate { identity: identity, label: label, artifact: artifact, topology: topology, profile: profile }
+}
+
+// KV LAYOUT IS A CANDIDATE FACT. Bytes-per-token for that layout are a separate capacity
+// observation. The card's 890 B/token is not this layout; DSV41-4 owns the GB10 fp8_ds_mla figure.
+type KvBytesPerTokenStanding
+  = KvBytesPerTokenUnestablished { layout: KvLayoutPolicy, obligation: NonEmptyStr }
+  | KvBytesPerTokenNotThisSubject
+
+data v4_1_gb10_kv_bytes_obligation: NonEmptyStr = "DSV41-4 (clever-bat-173) derives whole-model KV bytes per token for fp8_ds_mla on GB10. The card's 890 B/token does not apply to this layout. NVFP4 DS-MLA is SM10x-only. Higher-precision KV is a capacity fact, not a native-quality violation" as NonEmptyStr
+
+fn kv_bytes_per_token_standing(c: DeploymentCandidate) -> KvBytesPerTokenStanding {
+  if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
+    KvBytesPerTokenUnestablished { layout: c.profile.kv_layout, obligation: v4_1_gb10_kv_bytes_obligation }
+  } else {
+    KvBytesPerTokenNotThisSubject
+  }
 }
 
 fn deployment_candidate(identity: DeclarationRef, label: NonEmptyStr, artifact: ModelArtifact, topology: TopologyShape) -> DeploymentCandidate {
@@ -837,6 +852,7 @@ data ax_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serv
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
 data ax_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_no_redundancy")
 data ax_engram_placement: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_engram_placement")
+data ax_kv_bytes_per_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_kv_bytes_per_token")
 data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
 data ax_workload_established: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_workload_established")
@@ -859,6 +875,7 @@ data serving_selection_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_native_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_weight_fit, goal: HigherIsBetter },
   SelectionAxis { identity: ax_engram_placement, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_kv_bytes_per_token, goal: LowerIsBetter },
   SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
   SelectionAxis { identity: ax_context_covered, goal: HigherIsBetter },
   SelectionAxis { identity: ax_workload_established, goal: HigherIsBetter },
@@ -1206,6 +1223,13 @@ fn engram_gap(c: DeploymentCandidate) -> List<AxisGap> {
   }
 }
 
+fn kv_bytes_gap(c: DeploymentCandidate) -> List<AxisGap> {
+  match kv_bytes_per_token_standing(c: c) {
+    KvBytesPerTokenUnestablished { layout: _, obligation: o } => [AxisGap { axis: ax_kv_bytes_per_token, cause: o }]
+    KvBytesPerTokenNotThisSubject => []
+  }
+}
+
 fn optional_reading(r: AxisReading?) -> List<AxisReading> {
   match r {
     Present { value: v } => [v]
@@ -1238,7 +1262,7 @@ fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, 
       concat(quality_gap(profile: execution_profile_of(c: c, p: p), e: e),
              runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
       concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
-    concat(engram_gap(c: c), map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
+    concat(concat(engram_gap(c: c), kv_bytes_gap(c: c)), map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
 }
 
 fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {

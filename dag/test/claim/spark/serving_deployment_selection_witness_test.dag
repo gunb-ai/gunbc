@@ -41,6 +41,7 @@ import gunbc.spark.serving_deployment_selection {
   deepseek_v4_1_quality_requirement,
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
+  kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -463,22 +464,28 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
   }
 }
 
-test fn v4_1_profiles_do_not_inherit_v4_flash_window_or_kv() -> Bool {
+test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished() -> Bool {
   token_count_value(t: serving_parameters_current.max_model_len) == 300000
     && all(v4_1_declared_profiles, p =>
       token_count_value(t: p.max_model_len) == 1048576
-        && token_count_value(t: p.max_model_len) != token_count_value(t: serving_parameters_current.max_model_len)
         && match p.speculative {
           SpeculationDraft { algorithm: _ } => true
           SpeculationOff => false
           SpeculationOn => false
         }
         && match p.kv_layout {
-          KvFp4Layout => true
+          KvFp8DsMlaLayout => true
           KvAutoLayout => false
           KvFp8Layout => false
-          KvFp8DsMlaLayout => false
+          KvFp4Layout => false
         })
+    && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
+    && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
+      KvBytesPerTokenUnestablished { layout: k, obligation: o } =>
+        match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+          && (o as String).contains("890")
+      KvBytesPerTokenNotThisSubject => false
+    }
 }
 
 test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool {
