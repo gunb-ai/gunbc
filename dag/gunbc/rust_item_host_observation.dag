@@ -1006,8 +1006,16 @@ fn path_is_on_claimed_hand_rust_surface(path: String) -> Bool {
 // the namespace-claimed trees, the reference population is scoped to everything outside the
 // deletion set. Sharing the read keeps that difference a predicate rather than a second copy of the
 // git conversation.
+// WHAT WAS READ CARRIES WHERE IT WAS READ. A row derived from these sources is an observation of
+// one commit and one tree, and a consumer that stamps it with anything else labels a live reading
+// as an older one; so the revision and the tree object id travel with the sources.
+type RustObservedTree {
+  revision: String
+  tree: String
+}
+
 type HeadRustSources
-  = HeadRustSourcesRead { sources: List<RustFileChangeInput>, generated_repo_paths: List<String> }
+  = HeadRustSourcesRead { observed_at: RustObservedTree, sources: List<RustFileChangeInput>, generated_repo_paths: List<String> }
   | HeadRustSourcesRefused { detail: String }
 
 fn head_rust_sources(select: fn(String) -> Bool) -> HeadRustSources {
@@ -1017,9 +1025,14 @@ fn head_rust_sources(select: fn(String) -> Bool) -> HeadRustSources {
   } else {
     let revision = head.sha as String
     let tree = git.Inspect.ListTreePathsAtRevision(ref: revision as GitRef, expect: ExpectSuccess)
+    let tree_id = git.Inspect.ShowTree(ref: revision as GitRef)
     if !tree.success {
       HeadRustSourcesRefused {
         detail: git_refusal_detail(operation: "git.Inspect.ListTreePathsAtRevision(HEAD)", stderr: tree.stderr)
+      }
+    } else if !tree_id.success {
+      HeadRustSourcesRefused {
+        detail: git_refusal_detail(operation: "git.Inspect.ShowTree(HEAD)", stderr: tree_id.stderr)
       }
     } else {
       match generated_population_at(revision: revision) {
@@ -1032,7 +1045,12 @@ fn head_rust_sources(select: fn(String) -> Bool) -> HeadRustSources {
           }
         GeneratedPopulationObserved { repo_paths: generated_repo_paths } => {
           let sources = list_map(
-            xs: filter(xs: rust_paths_from_nul(raw: tree.paths_nul), predicate: select),
+            xs: filter(
+              xs: rust_paths_from_nul(raw: tree.paths_nul),
+              predicate: fn(path) {
+                select(path) && !any(xs: generated_repo_paths, predicate: fn(p) { p == path })
+              }
+            ),
             f: fn(path) {
               let show = git.Core.Show(ref: revision as GitRef, path: path, expect: ExpectSuccess)
               RustFileChangeInput {
@@ -1046,18 +1064,25 @@ fn head_rust_sources(select: fn(String) -> Bool) -> HeadRustSources {
               }
             }
           )
-          head_rust_sources_complete(sources: sources, generated_repo_paths: generated_repo_paths)
+          head_rust_sources_complete(
+            observed_at: RustObservedTree { revision: revision, tree: trim(s: tree_id.tree) },
+            sources: sources, generated_repo_paths: generated_repo_paths
+          )
         }
       }
     }
   }
 }
 
+// GENERATED PATHS ARE EXCLUDED BEFORE THE Show LOOP, not after: the generated population is
+// resolved above, and reading ~200 emitted mirrors only to drop them in the consumer is one
+// git.Core.Show per file spent on nothing. The consumers keep their own generated filter -- it is
+// what makes a planted fixture honest -- but the live read never pays for it twice.
 // A PATH THE TREE LISTS BUT Show CANNOT READ REFUSES THE WHOLE READ. Every path here came from
 // HEAD's own listing, so `present_at_head: false` can only mean the read failed -- and a consumer
 // that filtered on present_at_head would drop that file silently, making the population a lower
 // bound with nothing to say so. The refusal names the paths.
-fn head_rust_sources_complete(sources: List<RustFileChangeInput>, generated_repo_paths: List<String>) -> HeadRustSources {
+fn head_rust_sources_complete(observed_at: RustObservedTree, sources: List<RustFileChangeInput>, generated_repo_paths: List<String>) -> HeadRustSources {
   let unread = filter(xs: sources, predicate: fn(s) { !s.present_at_head })
   if length(xs: unread) > 0 {
     HeadRustSourcesRefused {
@@ -1067,14 +1092,14 @@ fn head_rust_sources_complete(sources: List<RustFileChangeInput>, generated_repo
       )
     }
   } else {
-    HeadRustSourcesRead { sources: sources, generated_repo_paths: generated_repo_paths }
+    HeadRustSourcesRead { observed_at: observed_at, sources: sources, generated_repo_paths: generated_repo_paths }
   }
 }
 
 fn observe_current_live_hand_rust() -> LiveHandRustObservation {
   match head_rust_sources(select: fn(path) { path_is_on_claimed_hand_rust_surface(path: path) }) {
     HeadRustSourcesRefused { detail: detail } => LiveHandRustHostRefused { detail: detail }
-    HeadRustSourcesRead { sources: sources, generated_repo_paths: generated_repo_paths } =>
+    HeadRustSourcesRead { observed_at: _, sources: sources, generated_repo_paths: generated_repo_paths } =>
       observe_live_hand_rust(sources: sources, generated_repo_paths: generated_repo_paths)
   }
 }
@@ -1117,6 +1142,7 @@ type RustReferenceUnattributed {
 
 type RustReferenceObservation
   = RustReferencesObserved {
+      observed_at: RustObservedTree,
       rows: List<RustReferenceRow>,
       unattributed: List<RustReferenceUnattributed>,
       unscannable: List<RustFileScan>
@@ -1249,6 +1275,7 @@ fn rust_source_carries_a_token(content: String, tokens: List<String>) -> Bool {
 }
 
 fn observe_rust_references(
+  observed_at: RustObservedTree,
   sources: List<RustFileChangeInput>,
   generated_repo_paths: List<String>,
   tokens: List<String>,
@@ -1268,7 +1295,7 @@ fn observe_rust_references(
       rust_reference_fold_file(state: acc, rows: rows, tokens: tokens, repo_path: file_change.repo_path, content: file_change.head_content)
     }
   )
-  RustReferencesObserved { rows: final.rows, unattributed: final.unattributed, unscannable: final.unscannable }
+  RustReferencesObserved { observed_at: observed_at, rows: final.rows, unattributed: final.unattributed, unscannable: final.unscannable }
 }
 
 // THE LIVE ENTRY. The selection is NOT narrowed to the namespace-claimed trees: a token-carrying
@@ -1277,7 +1304,7 @@ fn observe_rust_references(
 fn observe_current_rust_references(tokens: List<String>, excluded_repo_prefix: String) -> RustReferenceObservation {
   match head_rust_sources(select: fn(path) { !starts_with(s: path, prefix: excluded_repo_prefix) }) {
     HeadRustSourcesRefused { detail: detail } => RustReferenceHostRefused { detail: detail }
-    HeadRustSourcesRead { sources: sources, generated_repo_paths: generated_repo_paths } =>
-      observe_rust_references(sources: sources, generated_repo_paths: generated_repo_paths, tokens: tokens, rows: rust_source_namespace_rows)
+    HeadRustSourcesRead { observed_at: at, sources: sources, generated_repo_paths: generated_repo_paths } =>
+      observe_rust_references(observed_at: at, sources: sources, generated_repo_paths: generated_repo_paths, tokens: tokens, rows: rust_source_namespace_rows)
   }
 }

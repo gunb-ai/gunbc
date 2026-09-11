@@ -3,6 +3,7 @@ module test.claim.self_host_v1_consumer_census_witness_test
 import std.types { Bool, Int, List, String }
 import gunbc.replacement_cut { BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty }
 import gunbc.rust_item_host_observation {
+  RustObservedTree,
   RustSourceNamespaceRow, rust_source_namespace_rows, rust_source_prefix_tooling,
   rust_module_path_for_repo_path, RustModulePathProjected, RustModulePathRefused,
   RustFileChangeInput, RustReferenceObservation, RustReferencesObserved, RustReferenceHostRefused,
@@ -24,6 +25,8 @@ import test.fixture.v1_consumer_census.specimens {
   planted_lower_bound_population, planted_unmeasured_population,
   planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population
 }
+
+data planted_observed_tree: RustObservedTree = RustObservedTree { revision: "0000000000000000000000000000000000000001", tree: "0000000000000000000000000000000000000002" }
 
 // THE LIVE HALF LIVES IN self_host_v1_consumer_census_live_witness_test.dag. Since the Rust
 // reference population became a produced observation (gunbc.rust_item_host_observation
@@ -128,23 +131,23 @@ fn planted_sources() -> List<RustFileChangeInput> {
 }
 
 fn planted_observation(rows: List<RustSourceNamespaceRow>) -> RustReferenceObservation {
-  observe_rust_references(sources: planted_sources(), generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rows)
+  observe_rust_references(observed_at: planted_observed_tree, sources: planted_sources(), generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rows)
 }
 
 // A TOKEN THE AUTHORITY TABLE DOES NOT CARRY IS AN UNDECIDED CONSUMER, NOT A V1RuntimeBridge ROW:
 // the producer is handed a token the census never declared, and the partition refuses to guess.
 fn an_unknown_token_refuses_rather_than_borrowing_the_first_authority() -> Bool {
-  match observe_rust_references(sources: planted_sources(), generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
+  match observe_rust_references(observed_at: planted_observed_tree, sources: planted_sources(), generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
     RustReferenceHostRefused { detail: _ } => false
-    RustReferencesObserved { rows: rs, unattributed: u, unscannable: _ } => {
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: _ } => {
       let unknown_sources = [planted_source(path: "dag/gunbc/instruments/planted_unknown_shims/lib.rs", content: "pub use v1_compiler::planted_unknown_token;\n")]
-      match observe_rust_references(sources: unknown_sources, generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
+      match observe_rust_references(observed_at: planted_observed_tree, sources: unknown_sources, generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
         RustReferenceHostRefused { detail: _ } => false
-        RustReferencesObserved { rows: rs2, unattributed: u2, unscannable: _ } => {
-          let p = v1_shim_partition_over(rows: rs2, unattributed: u2)
+        RustReferencesObserved { observed_at: _, rows: rs2, unattributed: u2, unscannable: _ } => {
+          let p = v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs2, unattributed: u2)
           count(rs2) == 1 && count(p.cited) == 0 && count(p.uncitable) == 1
             && (p.uncitable |> all(x => consumer_disposition_blocks(d: x.disposition) && string_contains(s: x.refusal_detail, pattern: "planted_unknown_token")))
-            && count(v1_shim_partition_over(rows: rs, unattributed: u).cited) == count(rs)
+            && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs, unattributed: u).cited) == count(rs)
         }
       }
     }
@@ -157,10 +160,10 @@ fn an_unknown_token_refuses_rather_than_borrowing_the_first_authority() -> Bool 
 // its own item, so that is two consumers.)
 fn two_lines_naming_one_authority_are_one_consumer() -> Bool {
   let twice = [planted_source(path: "dag/gunbc/instruments/planted_twice_shims/lib.rs", content: "pub use v1_compiler::v1_rt;\npub use v1_compiler::v1_rt as rt;\n")]
-  match observe_rust_references(sources: twice, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rust_source_namespace_rows) {
+  match observe_rust_references(observed_at: planted_observed_tree, sources: twice, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rust_source_namespace_rows) {
     RustReferenceHostRefused { detail: _ } => false
-    RustReferencesObserved { rows: rs, unattributed: u, unscannable: _ } =>
-      count(rs) == 2 && count(v1_shim_partition_over(rows: rs, unattributed: u).cited) == 1
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: _ } =>
+      count(rs) == 2 && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs, unattributed: u).cited) == 1
   }
 }
 
@@ -170,7 +173,7 @@ fn planted_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPopulation {
 
 fn planted_row_count() -> Int {
   match planted_observation(rows: rust_source_namespace_rows) {
-    RustReferencesObserved { rows: rs, unattributed: _, unscannable: _ } => count(rs)
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: _, unscannable: _ } => count(rs)
     RustReferenceHostRefused { detail: _ } => 0
   }
 }

@@ -39,9 +39,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 fn the_live_reference_population_is_produced() -> Bool {
   match v1_current_rust_references() {
     RustReferenceHostRefused { detail: _ } => false
-    RustReferencesObserved { rows: rs, unattributed: u, unscannable: un } =>
+    RustReferencesObserved { observed_at: at, rows: rs, unattributed: u, unscannable: un } =>
       count(rs) > 0 && count(un) == 0 && count(u) == 0
-        && count(v1_shim_partition_over(rows: rs, unattributed: u).cited) == count(rs)
+        && count(v1_shim_partition_over(observed_at: at, rows: rs, unattributed: u).cited) == count(rs)
   }
 }
 

@@ -18,7 +18,7 @@ import gunbc.rust_item_identity { rust_item_identity_key }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjected, ItemDeclarationRefUncitable, ItemDeclarationRefRefused,
   RustReferenceRow, RustReferenceUnattributed,
-  RustReferenceObservation, RustReferencesObserved, RustReferenceHostRefused,
+  RustReferenceObservation, RustReferencesObserved, RustReferenceHostRefused, RustObservedTree,
   observe_current_rust_references
 }
 
@@ -299,16 +299,19 @@ data producer_cargo_manifest_graph: DiscoveryProducer = discovery_producer(
   source_tree_hex: v1_census_tree,
 )
 
-// THE RUST ROWS ARE PRODUCED AT RUN TIME, so this producer's revision is the pin of the hand sweep
-// it replaced and its command is the instrument that now re-derives the rows from HEAD: the fold in
-// gunbc.rust_item_host_observation observe_current_rust_references over v1_reference_tokens,
-// outside v1_deletion_set_prefix, consumed by v1_consumer_population().
-data producer_rust_bridge_edge: DiscoveryProducer = discovery_producer(
-  instrument: "hand-Rust items outside src/v1 whose text names a v1 reference token, folded by gunbc.rust_item_host_observation observe_current_rust_references and projected through item_declaration_ref_in",
-  command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count_report",
-  source_revision: v1_census_revision,
-  source_tree_hex: v1_census_tree,
-)
+// THE RUST ROWS ARE PRODUCED AT RUN TIME, SO THEIR PRODUCER IS MINTED FROM THE TREE THE FOLD READ.
+// DiscoveryProducer's revision and tree exist so a row says which tree it observed; stamping a
+// live HEAD reading with the hand sweep's pin would label a current observation as an older one --
+// one field, two meanings. So this producer is a function of the observation: the revision and
+// tree object id gunbc.rust_item_host_observation head_rust_sources carried with the sources.
+fn producer_rust_bridge_edge_at(observed_at: RustObservedTree) -> DiscoveryProducer {
+  discovery_producer(
+    instrument: "hand-Rust items outside src/v1 whose text names a v1 reference token, folded by gunbc.rust_item_host_observation observe_rust_references over head_rust_sources and projected through item_declaration_ref_in",
+    command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count_report",
+    source_revision: observed_at.revision,
+    source_tree_hex: observed_at.tree,
+  )
+}
 
 data producer_generated_mirror: DiscoveryProducer = discovery_producer(
   instrument: "the committed generated Rust under src/v1, defined by its header rather than by basename, and the .gitattributes rows projected from the artifact registry",
@@ -605,23 +608,23 @@ type V1ShimPartition {
   uncitable: List<V1UncitableConsumer>
 }
 
-fn v1_shim_cited_row(ref: DeclarationRef, authority: V1ReferenceAuthority) -> V1ConsumerRow {
+fn v1_shim_cited_row(ref: DeclarationRef, authority: V1ReferenceAuthority, discovered_by: DiscoveryProducer) -> V1ConsumerRow {
   {
     boundary: v1cc_boundary(consumer: ref, authority: authority.authority, disposition: v1_shim_disposition()),
     medium: RustSourceReference,
     subject: authority.subject,
-    discovered_by: producer_rust_bridge_edge,
+    discovered_by: discovered_by,
   }
 }
 
-fn v1_shim_uncitable_row(item_key: String, detail: String, authority: V1ReferenceAuthority) -> V1UncitableConsumer {
+fn v1_shim_uncitable_row(item_key: String, detail: String, authority: V1ReferenceAuthority, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
   {
     item_key: item_key,
     refusal_detail: detail,
     medium: RustSourceReference,
     subject: authority.subject,
     disposition: v1_shim_disposition(),
-    discovered_by: producer_rust_bridge_edge,
+    discovered_by: discovered_by,
   }
 }
 
@@ -632,37 +635,37 @@ fn v1_unattributed_key(u: RustReferenceUnattributed) -> String {
 // CITABILITY IS THE PROJECTION'S ANSWER, CARRIED ON EACH PRODUCED ROW. One fold, two accumulators;
 // a reference cannot be in both and cannot be in neither, and the unattributed rows join the
 // uncitable column so the partition's member count equals the producer's row count.
-fn v1_unknown_token_row(item_key: String, token: String) -> V1UncitableConsumer {
+fn v1_unknown_token_row(item_key: String, token: String, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
   {
     item_key: item_key,
     refusal_detail: concat("reference token the authority table does not carry: ", token),
     medium: RustSourceReference,
     subject: V1CompilerCrate,
     disposition: Undecided,
-    discovered_by: producer_rust_bridge_edge,
+    discovered_by: discovered_by,
   }
 }
 
-fn v1_shim_absorb_row(acc: V1ShimPartition, row: RustReferenceRow) -> V1ShimPartition {
+fn v1_shim_absorb_row(acc: V1ShimPartition, row: RustReferenceRow, discovered_by: DiscoveryProducer) -> V1ShimPartition {
   match v1_reference_authority_for(token: row.token) {
     V1ReferenceTokenUnknown { token: t } =>
-      V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_unknown_token_row(item_key: rust_item_identity_key(item: row.item), token: t)) }
+      V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_unknown_token_row(item_key: rust_item_identity_key(item: row.item), token: t, discovered_by: discovered_by)) }
     V1ReferenceAuthorityFound { authority: authority } =>
       match row.projection {
         ItemDeclarationRefProjected { ref: r } =>
-          V1ShimPartition { cited: list_snoc_item(xs: acc.cited, item: v1_shim_cited_row(ref: r, authority: authority)), uncitable: acc.uncitable }
+          V1ShimPartition { cited: list_snoc_item(xs: acc.cited, item: v1_shim_cited_row(ref: r, authority: authority, discovered_by: discovered_by)), uncitable: acc.uncitable }
         ItemDeclarationRefUncitable { item_key: k, detail: d } =>
-          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d, authority: authority)) }
+          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d, authority: authority, discovered_by: discovered_by)) }
         ItemDeclarationRefRefused { item_key: k, detail: d } =>
-          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d, authority: authority)) }
+          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d, authority: authority, discovered_by: discovered_by)) }
       }
   }
 }
 
-fn v1_shim_unattributed_row(u: RustReferenceUnattributed) -> V1UncitableConsumer {
+fn v1_shim_unattributed_row(u: RustReferenceUnattributed, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
   match v1_reference_authority_for(token: u.token) {
-    V1ReferenceTokenUnknown { token: t } => v1_unknown_token_row(item_key: v1_unattributed_key(u: u), token: t)
-    V1ReferenceAuthorityFound { authority: authority } => v1_shim_uncitable_row(item_key: v1_unattributed_key(u: u), detail: u.detail, authority: authority)
+    V1ReferenceTokenUnknown { token: t } => v1_unknown_token_row(item_key: v1_unattributed_key(u: u), token: t, discovered_by: discovered_by)
+    V1ReferenceAuthorityFound { authority: authority } => v1_shim_uncitable_row(item_key: v1_unattributed_key(u: u), detail: u.detail, authority: authority, discovered_by: discovered_by)
   }
 }
 
@@ -687,11 +690,12 @@ fn v1_shim_join_to_census_grain(p: V1ShimPartition) -> V1ShimPartition {
   }
 }
 
-fn v1_shim_partition_over(rows: List<RustReferenceRow>, unattributed: List<RustReferenceUnattributed>) -> V1ShimPartition {
-  let attributed = fold_list(xs: rows, empty: V1ShimPartition { cited: [], uncitable: [] }, cons: fn(acc, row) { v1_shim_absorb_row(acc: acc, row: row) })
+fn v1_shim_partition_over(observed_at: RustObservedTree, rows: List<RustReferenceRow>, unattributed: List<RustReferenceUnattributed>) -> V1ShimPartition {
+  let discovered_by = producer_rust_bridge_edge_at(observed_at: observed_at)
+  let attributed = fold_list(xs: rows, empty: V1ShimPartition { cited: [], uncitable: [] }, cons: fn(acc, row) { v1_shim_absorb_row(acc: acc, row: row, discovered_by: discovered_by) })
   v1_shim_join_to_census_grain(p: V1ShimPartition {
     cited: attributed.cited,
-    uncitable: list_append(left: attributed.uncitable, right: unattributed |> map(u => v1_shim_unattributed_row(u: u)))
+    uncitable: list_append(left: attributed.uncitable, right: unattributed |> map(u => v1_shim_unattributed_row(u: u, discovered_by: discovered_by)))
   })
 }
 
@@ -703,11 +707,11 @@ fn v1_shim_population_of(observation: RustReferenceObservation) -> V1ShimPopulat
   match observation {
     RustReferenceHostRefused { detail: d } =>
       V1ShimPopulationRefused { reason: concat("the Rust reference population could not be observed: ", d) }
-    RustReferencesObserved { rows: rows, unattributed: u, unscannable: unscannable } =>
+    RustReferencesObserved { observed_at: at, rows: rows, unattributed: u, unscannable: unscannable } =>
       if count(unscannable) > 0 {
         V1ShimPopulationRefused { reason: concat(count(unscannable) as String, " token-carrying Rust file(s) could not be scanned, so the reference population is not closed") }
       } else {
-        V1ShimPopulationObserved { partition: v1_shim_partition_over(rows: rows, unattributed: u) }
+        V1ShimPopulationObserved { partition: v1_shim_partition_over(observed_at: at, rows: rows, unattributed: u) }
       }
   }
 }
