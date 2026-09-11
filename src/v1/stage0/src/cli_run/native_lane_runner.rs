@@ -1,6 +1,11 @@
-//! The required-v2-native lane's host harness (lane authority:
-//! `gunbc.witness_v2_native_route`; roster row: `gunbc.required_ci_phase_roster`
-//! `V2NativePhase`).
+//! The v2-native ROUTE's host harness (route authority: `gunbc.witness_v2_native_route`),
+//! reached as `claim_executor --v2-native-route`.
+//!
+//! IT IS NOT A REQUIRED LANE, and the prefixes below say so. The required-v2-native CI job was
+//! deleted by the 2026-09-11 operator ruling (#11003) because its wall did not fit the acceptance
+//! path; the route survives as an operator-invoked instrument under the declared drop
+//! `gunbc.rung_drop` `v2_native_route_off_the_merge_path`, whose restoration trigger is a required
+//! native-route job designed against an operator-agreed contract rather than this one re-added.
 //!
 //! THE SEED PREPARES; THE EMITTED COMPILER DECIDES. This harness emits the compiler closure once,
 //! builds it with cargo, withdraws the old-route CLI, and spawns the emitted binary — twice: once
@@ -108,7 +113,7 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     // host temp locally) — the selection's authority and its receipt live beside the required
     // phase's own root policy in `emitted_closure_compile_host`.
     let probe_root = super::lane_emit_compile_probe_root();
-    eprintln!("required-ci: v2-native emitting {NATIVE_COMPILE_ENTRY} (seed, in-process)");
+    eprintln!("v2-native-route: emitting {NATIVE_COMPILE_ENTRY} (seed, in-process)");
     let run = super::compile_entry_emission(
         source_roots,
         NATIVE_COMPILE_ENTRY,
@@ -150,7 +155,7 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     let trim_reclaimed_kb = super::trim_retained_heap();
     let rss_after_kb = super::current_rss_bytes().map(|b| b / 1024);
     eprintln!(
-        "required-ci: v2-native emitted {written} files into {} (closure {closure_identity}); \
+        "v2-native-route: emitted {written} files into {} (closure {closure_identity}); \
          emission arena released (rss_kb_before={rss_before_kb:?} trim_reclaimed_kb={trim_reclaimed_kb:?} \
          rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
@@ -181,7 +186,7 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
         format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
     })?)?;
     eprintln!(
-        "required-ci: v2-native emitted compiler at {} (sha256 {binary_identity})",
+        "v2-native-route: emitted compiler at {} (sha256 {binary_identity})",
         binary_path.display()
     );
     Ok(EmittedPreparation {
@@ -221,7 +226,7 @@ fn withdraw_old_route(workspace: &Path) -> Result<OldRouteWithdrawalGuard, Strin
         )
     })?;
     eprintln!(
-        "required-ci: v2-native old route withdrawn ({} moved aside for the native spawns)",
+        "v2-native-route: old route withdrawn ({} moved aside for the native spawns)",
         original.display()
     );
     Ok(OldRouteWithdrawalGuard {
@@ -234,7 +239,7 @@ impl Drop for OldRouteWithdrawalGuard {
     fn drop(&mut self) {
         if let Err(e) = std::fs::rename(&self.withdrawn, &self.original) {
             eprintln!(
-                "required-ci: v2-native WARNING — restoring the old route failed ({}): {e}",
+                "v2-native-route: WARNING — restoring the old route failed ({}): {e}",
                 self.original.display()
             );
         }
@@ -473,7 +478,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         None => (String::new(), String::new()),
     };
     eprintln!(
-        "required-ci: v2-native malformed control observed path=\"{}\" reason=\"{}\"",
+        "v2-native-route: malformed control observed path=\"{}\" reason=\"{}\"",
         malformed_control.0, malformed_control.1
     );
 
@@ -493,12 +498,12 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
 
     // 5. THE LANE RUN. The emitted binary, by explicit path, over the real source roots: it
     // derives the universe, executes it, mints the receipt and judges it.
-    eprintln!("required-ci: v2-native adjudicating through the emitted compiler");
+    eprintln!("v2-native-route: adjudicating through the emitted compiler");
     let mut args = vec!["adjudicate".to_string(), facts_file.display().to_string()];
     args.extend(source_roots.iter().cloned());
     let run = run_native_binary(&preparation.binary_path, &args);
     drop(withdrawal);
-    eprintln!("required-ci: v2-native old route restored");
+    eprintln!("v2-native-route: old route restored");
     let run = run?;
     if run.terminal.mode != "adjudicate" {
         return Err(format!(
@@ -508,14 +513,14 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         ));
     }
     eprintln!(
-        "required-ci: v2-native universe={} population={} file_refusals={}",
+        "v2-native-route: universe={} population={} file_refusals={}",
         run.terminal.universe, run.terminal.rows, run.terminal.file_refusals
     );
 
     // 6. THE VERDICT IS THE AUTHORITY'S, REPORTED AS GIVEN. The summary and the admission are one
     // value inside the binary (`native_lane_run` derives the summary from the admission it
     // returns), so the terminal line and the admission cannot disagree about what was decided.
-    eprintln!("required-ci: v2-native admission {}", run.terminal.summary);
+    eprintln!("v2-native-route: admission {}", run.terminal.summary);
     if run.terminal.admitted {
         Ok(())
     } else {

@@ -16,6 +16,7 @@ import extdeps.github.app {
   AppAccessWrite
 }
 import extdeps.github.github { Repository }
+import v2.std.algebra { fold_list }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

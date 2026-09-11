@@ -3,7 +3,8 @@ module v2.test.native_decl_selection
 import v2.compiler.compile {
   native_test_context_from_ingest,
   native_test_eval_one,
-  native_test_prepare_module,
+  native_test_infer_resolved,
+  native_test_resolve_module,
   NativeTestPreparedModule
 }
 import v2.compiler.native_test_vocabulary {
@@ -12,13 +13,15 @@ import v2.compiler.native_test_vocabulary {
   NativeTestRefused,
   NativeTestStageEntry
 }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName }
 import extdeps.communication.medium { Lossless, Medium }
 
 // Selection controls for the native driver's exact scope walk: a test identity names a top-level
@@ -57,11 +60,34 @@ fn collision_sibling_read() -> DagSourceReadWitness {
   }
 }
 
-fn collision_prepared() -> Optional<NativeTestPreparedModule> {
+fn collision_module() -> QualifiedName {
+  [^v2, ^test, ^collision]
+}
+
+// THE SHARE POINT. Every witness below needs the same prepared module, and the required floor
+// evaluates each witness in its own frame, so the ingest fold (tokenize/parse/normalize of both
+// sources) plus resolve was re-derived once per claim — the run's own cross-claim demand census
+// (required_floor_cross_claim_demand.tsv, main run 34542819448) ranked collision_prepared /
+// native_test_context_from_ingest as its top cross-claim producer, and every one of the four
+// claims was interrupted at the 500ms CPU ceiling before reaching a verdict. This nullary
+// producer is enrolled warm in v2.workflow.floor_pure_producer_share: the floor forces it once
+// during strict preparation, outside every per-claim budget, and each claim is handed the
+// resolved tree. The seam is the resolved stage because it is the deepest closure-free stage
+// (the InferredTree carries a PartialFunction), exactly as
+// v2.compiler.self_host.direct_rust_door_fixture shares; infer stays per claim.
+fn collision_resolved() -> Outcome<ResolvedTree> {
   match native_test_context_from_ingest(ingest: [collision_read(), collision_sibling_read()]) {
-    Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: context, diagnostics: _ } =>
-      match native_test_prepare_module(context: context, module: [^v2, ^test, ^collision]) {
+      native_test_resolve_module(context: context, module: collision_module())
+  }
+}
+
+fn collision_prepared() -> Optional<NativeTestPreparedModule> {
+  match collision_resolved() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match native_test_infer_resolved(module: collision_module(), resolved: resolved) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: prepared, diagnostics: _ } => optional_present(value: prepared)
       }

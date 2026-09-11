@@ -678,7 +678,7 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
-// THE SOURCE-ROOT EVAL DRIVER — the terminal route the required-v2-native CI lane executes.
+// THE SOURCE-ROOT EVAL DRIVER — the terminal route `claim_executor --v2-native-route` executes.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
 // THE TERMINAL SUBJECT IS A TEST VERDICT, NOT A TRANSLATION. DirectIngestDriver answers "the
@@ -695,6 +695,16 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // evaluation per declaration and NEVER rejects: every failure it can reach is a typed
 // NativeTestRefused verdict carrying the stage and the diagnostic's head reason, so a census
 // over observations has no silent remainder.
+//
+// THE PREPARE GRAIN IS TWO HALVES, AND THE SEAM IS THE PORTABILITY BOUNDARY. A seed-interpreted
+// witness that drives this route evaluates in the required floor's per-claim frame, and the
+// only value that crosses that frame is one the cross-claim pure tier can reify
+// (v2.workflow.floor_pure_producer_share): the resolved tree is closure-free, the InferredTree
+// one stage up carries the facts PartialFunction and is not — the same share point
+// v2.compiler.self_host.direct_rust_door_fixture names for the same reason. So
+// native_test_resolve_module and native_test_infer_resolved are the two halves, and
+// native_test_prepare_module is their composition: the emitted lane harness keeps calling the
+// composition, and a witness fixture shares at the resolved seam.
 //
 // THE PER-FILE FRONT-END REFUSAL IS CENSUS DATA, NOT A WHOLE-CONTEXT REFUSAL. The program
 // assembly fold (v2.compiler.program_assembly) is wholesale fail-closed — one unparseable
@@ -788,7 +798,7 @@ fn native_test_context_fold_step(
 // One language model for the whole fold: dag_language_model() rebuilds the grammar, lex rules
 // and canonical-symbol set on every call, and calling it inside the cons closure paid that
 // once PER FILE — measured at ~0.3s/file of the context fold's wall time (2026-09-09,
-// required-v2-native lane work), a pure recompute with no per-file dependency.
+// v2-native route work), a pure recompute with no per-file dependency.
 fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
   let lm = dag_language_model()
   match prepare_grammar(grammar: lm.grammar) {
@@ -821,32 +831,44 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
   }
 }
 
+fn native_test_resolve_module(
+  context: NativeTestContext,
+  module: QualifiedName
+) -> Outcome<ResolvedTree> {
+  resolve_with_admission_grounded(
+    lm: dag_language_model(),
+    roots: context.roots,
+    admission: Admission {
+      subject: ResolutionSubject { name: module },
+      imports: Empty
+    },
+    index: context.index,
+    active_roots: context.active_roots
+  )
+}
+
+fn native_test_infer_resolved(
+  module: QualifiedName,
+  resolved: ResolvedTree
+) -> Outcome<NativeTestPreparedModule> {
+  bind_outcome(
+    o: infer(tree: resolved),
+    f: fn(inferred) {
+      outcome_accepted(value: NativeTestPreparedModule {
+        module: module,
+        inferred: inferred
+      })
+    }
+  )
+}
+
 fn native_test_prepare_module(
   context: NativeTestContext,
   module: QualifiedName
 ) -> Outcome<NativeTestPreparedModule> {
   bind_outcome(
-    o: resolve_with_admission_grounded(
-      lm: dag_language_model(),
-      roots: context.roots,
-      admission: Admission {
-        subject: ResolutionSubject { name: module },
-        imports: Empty
-      },
-      index: context.index,
-      active_roots: context.active_roots
-    ),
-    f: fn(resolved) {
-      bind_outcome(
-        o: infer(tree: resolved),
-        f: fn(inferred) {
-          outcome_accepted(value: NativeTestPreparedModule {
-            module: module,
-            inferred: inferred
-          })
-        }
-      )
-    }
+    o: native_test_resolve_module(context: context, module: module),
+    f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
   )
 }
 
@@ -1003,15 +1025,17 @@ fn native_test_eval_one(
 // THE LANE'S OWN ADJUDICATION — DERIVED UNIVERSE, OBSERVED POPULATION, JUDGED RECEIPT.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// WHAT MOVED HERE, AND WHY IT COULD NOT STAY IN THE SEED. The required-v2-native lane's claim is
-// that the EMITTED compiler answers, not the seed. Until this section existed the lane was
+// WHAT MOVED HERE, AND WHY IT COULD NOT STAY IN THE SEED. The v2-native route's claim is that the
+// EMITTED compiler answers, not the seed. Until this section existed the lane was
 // interpreter-bracketed on both ends: the seed folded the floor's discovery producer over every
 // source through the v1 interpreter to derive the universe (~4 minutes interpreted), and then
 // evaluated native_route_admission through the interpreter to judge the receipt — so the lane
 // that exists to prove a pristine v2 process could not run without the v1 interpreter at all.
 // Both brackets are folds this module can reach natively, so they are declared here and
 // COMPILED; the seed's remaining job is emit + cargo, and every semantic decision the lane makes
-// is executed by the binary the lane is about (operator ruling 2026-09-10).
+// is executed by the binary the route is about (operator ruling 2026-09-10). The route is invoked
+// by an operator rather than by a required job since #11003 deleted that job; what it proves about
+// the route is unchanged by where it is invoked from.
 //
 // THE JOIN IS NOT MADE TAUTOLOGICAL BY THE MOVE. The driver's earlier contract note — a binary
 // that discovered its own population would make the host-side join tautological — was about a

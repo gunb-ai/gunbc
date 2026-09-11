@@ -60,6 +60,13 @@ type GuestReachability {
 // segment. These 172.16.0.x values and the MAC that embeds them are the Mt. Collins probe
 // observation, not gunbc.runner_microvm_network's slot-derived 172.30.slot.{1,2} -- that module is
 // the fleet authority; this row records what the probe actually used.
+//
+// §3b DIVERGENCE, MEASURED RATHER THAN CAUSED. This row has zero consuming files on the
+// gunbc#10921 branch: no import, no fold, no executing route. #10818 never closed that. It
+// asserted closure via folds whose results nothing read -- an open gap with a lid on it. This
+// change removes the lid. It does not close the gap. TRIGGER for the honest close: a consumer
+// that folds guest_reachability and whose own result reaches an executing route. A witness over
+// authored constants cannot redden on a live divergence and is not that consumer.
 data guest_reachability: GuestReachability = GuestReachability {
   host_address: ipv4_address(octet1: 172, octet2: 16, octet3: 0, octet4: 1),
   guest_address: ipv4_address(octet1: 172, octet2: 16, octet3: 0, octet4: 2),
