@@ -3,7 +3,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, mutable_head_runs_cancel_expression, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, mutable_head_runs_cancel_expression, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -12,6 +12,19 @@ import v2.std.diagnostic { Outcome }
 import extdeps.languages.yaml.gha_workflow { pr_activity_string }
 import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed, github_event_name_pull_request, github_event_name_push, github_event_name_merge_group, github_event_name_workflow_dispatch }
 import extdeps.github.actions { RunStep, UsesStep }
+import extdeps.github.expressions {
+  ContextAccess,
+  Github,
+  FunctionCall,
+  Format,
+  StringLiteral,
+  ExpressionEvaluationRefused,
+  ExpressionValue,
+  UnmodeledContext,
+  UnmodeledFormat,
+  FormatArityNotOneSubstitution,
+  github_path_key
+}
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc
@@ -466,6 +479,13 @@ test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subjec
   }
 }
 
+fn group_resolved_as(fx: WitnessFloorGroupFixture, expected: String) -> Bool {
+  match resolve_witness_floor_concurrency_group(fx: fx) {
+    WitnessFloorGroupResolved { group: g } => g == expected
+    WitnessFloorGroupRefused { cause: _ } => false
+  }
+}
+
 test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_cancel() -> Bool {
   let mg = WitnessFloorGroupFixture {
     event: github_event_name_merge_group,
@@ -519,13 +539,13 @@ test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_canc
     github_ref: "refs/heads/main",
     dispatch_inputs: []
   }
-  resolve_witness_floor_concurrency_group(fx: mg) == "witness-floor-mg-mgsha"
-    && resolve_witness_floor_concurrency_group(fx: heal) == "witness-floor-heal-healsha"
-    && resolve_witness_floor_concurrency_group(fx: heal_empty) == "witness-floor-run-rid"
-    && resolve_witness_floor_concurrency_group(fx: bare_dispatch) == "witness-floor-run-rid"
-    && resolve_witness_floor_concurrency_group(fx: pr) == "witness-floor-pr-7"
-    && resolve_witness_floor_concurrency_group(fx: push) == "witness-floor-refs/heads/main"
-    && resolve_witness_floor_concurrency_group(fx: push) != "witness-floor-pr-7"
+  group_resolved_as(fx: mg, expected: "witness-floor-mg-mgsha")
+    && group_resolved_as(fx: heal, expected: "witness-floor-heal-healsha")
+    && group_resolved_as(fx: heal_empty, expected: "witness-floor-run-rid")
+    && group_resolved_as(fx: bare_dispatch, expected: "witness-floor-run-rid")
+    && group_resolved_as(fx: pr, expected: "witness-floor-pr-7")
+    && group_resolved_as(fx: push, expected: "witness-floor-refs/heads/main")
+    && !group_resolved_as(fx: push, expected: "witness-floor-pr-7")
     && match expected_witness_floor_yml() {
       WitnessFloorGenerated { content: yml } =>
         string_contains(
@@ -563,5 +583,35 @@ test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_canc
           && string_contains(s: yml, pattern: "cancel-in-progress: false")
           && !string_contains(s: yml, pattern: mutable_head_runs_cancel_expression())
       WitnessFloorGenerationRefused { reason: _ } => false
+    }
+}
+
+test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool {
+  let fx = WitnessFloorGroupFixture {
+    event: github_event_name_push,
+    sha: "mgsha",
+    run_id: "rid",
+    pull_request_number: "7",
+    github_ref: "refs/heads/main",
+    dispatch_inputs: []
+  }
+  let two_arg_format = FunctionCall {
+    function: Format,
+    args: [StringLiteral { value: "x-{0}" }, StringLiteral { value: "a" }, StringLiteral { value: "b" }]
+  }
+  let base_ref_expr = ContextAccess { context: Github, path: ["base_ref"] }
+  match evaluate_against_group_fixture(expression: two_arg_format, fx: fx) {
+    ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: n } } } => n == 3
+    ExpressionEvaluationRefused { cause: _ } => false
+    ExpressionValue { value: _ } => false
+  }
+    && match evaluate_against_group_fixture(expression: base_ref_expr, fx: fx) {
+      ExpressionEvaluationRefused { cause: UnmodeledContext { context: Github, path: p } } => github_path_key(path: p) == "base_ref"
+      ExpressionEvaluationRefused { cause: _ } => false
+      ExpressionValue { value: _ } => false
+    }
+    && match resolve_witness_floor_concurrency_group(fx: fx) {
+      WitnessFloorGroupResolved { group: g } => g == "witness-floor-refs/heads/main"
+      WitnessFloorGroupRefused { cause: _ } => false
     }
 }

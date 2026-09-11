@@ -233,3 +233,24 @@ test fn witness_not_equals_renders_ne_operator() -> Bool {
   serialize_expression(expression: not_equals_empty_input_expr()) == "github.event.inputs.expected_healed_sha != ''"
 }
 
+fn unused_github_path(path: List<String>) -> GithubPathResolution {
+  GithubPathUnmodeled
+}
+
+test fn witness_not_equals_evaluates_false_when_equal() -> Bool {
+  match evaluate_expression(
+    expression: NotEquals { left: StringLiteral { value: "a" }, right: StringLiteral { value: "a" } },
+    github_path: unused_github_path
+  ) {
+    ExpressionValue { value: v } => v == ""
+    ExpressionEvaluationRefused { cause: _ } => false
+  }
+    && match evaluate_expression(
+      expression: NotEquals { left: StringLiteral { value: "a" }, right: StringLiteral { value: "b" } },
+      github_path: unused_github_path
+    ) {
+      ExpressionValue { value: v } => v == "true"
+      ExpressionEvaluationRefused { cause: _ } => false
+    }
+}
+

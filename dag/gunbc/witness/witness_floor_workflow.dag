@@ -88,7 +88,16 @@ import extdeps.github.expressions {
   LogicalOr,
   LogicalAnd,
   Equals,
-  NotEquals
+  NotEquals,
+  evaluate_expression,
+  github_path_key,
+  GithubPathValue,
+  GithubPathUnmodeled,
+  GithubPathResolution,
+  ExpressionValue,
+  ExpressionEvaluationRefused,
+  ExpressionEvaluation,
+  ExpressionEvaluationRefusal
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.workflow.required_ci_measurement_shell {
@@ -348,10 +357,6 @@ type WitnessFloorGroupFixture {
   dispatch_inputs: List<DispatchInputBinding>
 }
 
-fn gha_value_is_truthy(s: String) -> Bool {
-  s != "" && s != "false" && s != "0"
-}
-
 fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> String {
   fold_list(
     xs: bindings,
@@ -370,61 +375,33 @@ fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> S
   )
 }
 
-fn github_path_key(path: List<String>) -> String {
-  fold_list(
-    xs: path,
-    empty: "",
-    cons: fn(acc, s) {
-      if acc == "" {
-        s
-      } else {
-        concat(concat(acc, "."), s)
-      }
-    }
-  )
-}
-
-fn eval_github_inputs_path(path: List<String>, fx: WitnessFloorGroupFixture) -> String {
-  match list_head(xs: path) {
-    HeadFound { value: event_seg } =>
-      if event_seg == "event" {
-        match list_head(xs: skip(xs: path, n: 1)) {
-          HeadFound { value: inputs_seg } =>
-            if inputs_seg == "inputs" {
-              match list_head(xs: skip(xs: path, n: 2)) {
-                HeadFound { value: name } => dispatch_input_value(bindings: fx.dispatch_inputs, name: name)
-                HeadAbsent => ""
-              }
-            } else {
-              ""
-            }
-          HeadAbsent => ""
-        }
-      } else {
-        ""
-      }
-    HeadAbsent => ""
-  }
-}
-
-fn eval_github_path(path: List<String>, fx: WitnessFloorGroupFixture) -> String {
+fn fixture_github_path(fx: WitnessFloorGroupFixture, path: List<String>) -> GithubPathResolution {
   let key = github_path_key(path: path)
   if key == "event_name" {
-    fx.event
+    GithubPathValue { value: fx.event }
   } else {
     if key == "sha" {
-      fx.sha
+      GithubPathValue { value: fx.sha }
     } else {
       if key == "ref" {
-        fx.github_ref
+        GithubPathValue { value: fx.github_ref }
       } else {
         if key == "run_id" {
-          fx.run_id
+          GithubPathValue { value: fx.run_id }
         } else {
           if key == "event.pull_request.number" {
-            fx.pull_request_number
+            GithubPathValue { value: fx.pull_request_number }
           } else {
-            eval_github_inputs_path(path: path, fx: fx)
+            if starts_with(s: key, prefix: "event.inputs.") {
+              GithubPathValue {
+                value: dispatch_input_value(
+                  bindings: fx.dispatch_inputs,
+                  name: substring(s: key, start: string_length(s: "event.inputs."), end: string_length(s: key))
+                )
+              }
+            } else {
+              GithubPathUnmodeled
+            }
           }
         }
       }
@@ -432,76 +409,19 @@ fn eval_github_path(path: List<String>, fx: WitnessFloorGroupFixture) -> String 
   }
 }
 
-fn apply_format_arg0(template: String, arg0: String) -> String {
-  let n = string_length(s: template)
-  let m = string_length(s: "{0}")
-  if n >= m && substring(s: template, start: n - m, end: n) == "{0}" {
-    concat(substring(s: template, start: 0, end: n - m), arg0)
-  } else {
-    ""
+fn evaluate_against_group_fixture(expression: Expression, fx: WitnessFloorGroupFixture) -> ExpressionEvaluation {
+  evaluate_expression(expression: expression, github_path: fn(path) { fixture_github_path(fx: fx, path: path) })
+}
+
+type WitnessFloorGroupResolution
+  = WitnessFloorGroupResolved { group: String }
+  | WitnessFloorGroupRefused { cause: ExpressionEvaluationRefusal }
+
+fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> WitnessFloorGroupResolution {
+  match evaluate_against_group_fixture(expression: witness_floor_group_expression(), fx: fx) {
+    ExpressionValue { value: suffix } => WitnessFloorGroupResolved { group: concat("witness-floor-", suffix) }
+    ExpressionEvaluationRefused { cause: c } => WitnessFloorGroupRefused { cause: c }
   }
-}
-
-fn eval_format_args(args: List<Expression>, fx: WitnessFloorGroupFixture) -> String {
-  match list_head(xs: args) {
-    HeadFound { value: tmpl } =>
-      match tmpl {
-        StringLiteral { value: t } =>
-          match list_head(xs: skip(xs: args, n: 1)) {
-            HeadFound { value: arg } => apply_format_arg0(template: t, arg0: eval_gha_expression(expression: arg, fx: fx))
-            HeadAbsent => ""
-          }
-        ContextAccess { context: _, path: _ } => ""
-        FunctionCall { function: _, args: _ } => ""
-        LogicalOr { left: _, right: _ } => ""
-        LogicalAnd { left: _, right: _ } => ""
-        Equals { left: _, right: _ } => ""
-        NotEquals { left: _, right: _ } => ""
-      }
-    HeadAbsent => ""
-  }
-}
-
-fn eval_gha_expression(expression: Expression, fx: WitnessFloorGroupFixture) -> String {
-  match expression {
-    ContextAccess { context: Github, path: p } => eval_github_path(path: p, fx: fx)
-    ContextAccess { context: _, path: _ } => ""
-    FunctionCall { function: Format, args: a } => eval_format_args(args: a, fx: fx)
-    FunctionCall { function: _, args: _ } => ""
-    StringLiteral { value: v } => v
-    LogicalOr { left: l, right: r } =>
-      if gha_value_is_truthy(s: eval_gha_expression(expression: l, fx: fx)) {
-        eval_gha_expression(expression: l, fx: fx)
-      } else {
-        eval_gha_expression(expression: r, fx: fx)
-      }
-    LogicalAnd { left: l, right: r } =>
-      if gha_value_is_truthy(s: eval_gha_expression(expression: l, fx: fx)) {
-        eval_gha_expression(expression: r, fx: fx)
-      } else {
-        eval_gha_expression(expression: l, fx: fx)
-      }
-    Equals { left: l, right: r } =>
-      if eval_gha_expression(expression: l, fx: fx) == eval_gha_expression(expression: r, fx: fx) {
-        "true"
-      } else {
-        ""
-      }
-    NotEquals { left: l, right: r } =>
-      if eval_gha_expression(expression: l, fx: fx) == eval_gha_expression(expression: r, fx: fx) {
-        ""
-      } else {
-        "true"
-      }
-  }
-}
-
-fn resolve_witness_floor_group_suffix(fx: WitnessFloorGroupFixture) -> String {
-  eval_gha_expression(expression: witness_floor_group_expression(), fx: fx)
-}
-
-fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> String {
-  concat("witness-floor-", resolve_witness_floor_group_suffix(fx: fx))
 }
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
