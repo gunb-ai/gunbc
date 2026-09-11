@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
 import std.measure { token_count, token_count_value, basis_point, gigabyte_count }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
+import v2.std.optional { Present, Absent }
 import std.pareto { LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint }
 import extdeps.vllm.deepseek_v4_1_flash_recipe {

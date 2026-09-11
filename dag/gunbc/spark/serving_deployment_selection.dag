@@ -8,6 +8,7 @@ import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.interval { OrderedClosedInterval, degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   HardConstraint, SelectionPolicy, UniqueSurvivorRequired, SelectionReceipt,
@@ -1366,6 +1367,7 @@ data tensor_parallel_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vllm.ai/en/latest/serving/distributed_serving.html" },
 }
 
+data serving_deployment_subject: NonEmptyStr = "which whole-fleet topology and execution profile serve this exact artifact" as NonEmptyStr
 data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_deployment_subject")
 data id_var_topology: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_fleet_topology")
 data id_var_execution: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_execution_profile")
@@ -1406,7 +1408,7 @@ fn unique_constraint_identities(cs: List<HardConstraint>) -> List<DeclarationRef
 fn subject_for(input: ServingDeploymentDecisionInput) -> DecisionSubject {
   DecisionSubject {
     identity: id_subject,
-    question: "which whole-fleet topology and execution profile serve this exact artifact" as NonEmptyStr,
+    question: serving_deployment_subject,
     parameters: [],
     constraints: map(unique_constraint_identities(cs: input.constraints), id => DecisionConstraint { identity: id }),
     objective: serving_objective,
