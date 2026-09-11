@@ -122,11 +122,6 @@ fn v41_published_observations() -> List<PublishedImageObservation> {
   )
 }
 
-fn v41_published_registers_architecture(architecture: NonEmptyStr) -> Bool {
-  fold(v41_published_registry_entries, init: false, f: (acc, e) =>
-    if acc { true } else { starts_with(s: e as String, prefix: join([architecture as String, " ->"], "")) })
-}
-
 // ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
 //
 // Several declarations here have no consumer in this change, and that is a DECLARED FRONTIER with a
@@ -141,3 +136,7 @@ fn v41_published_registers_architecture(architecture: NonEmptyStr) -> Bool {
 // The pinned arm64 reference is the same case with a second named consumer: if the operator's route
 // decision adopts the published image, the adoption names repository@digest through this function and
 // not through the tag the recipe page documents, which does not resolve.
+fn v41_published_registers_architecture(architecture: NonEmptyStr) -> Bool {
+  fold(v41_published_registry_entries, init: false, f: (acc, e) =>
+    if acc { true } else { starts_with(s: e as String, prefix: join([architecture as String, " ->"], "")) })
+}

@@ -89,10 +89,6 @@ fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
 // layer with their instrument and date (gunbc.spark.v41_published_image_observation), never here.
 // An extdeps module carries what upstream publishes; a resolved digest is what we found when we
 // looked.
-data v41_flash_documented_image: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
-data v41_flash_documented_engine_floor: NonEmptyStr = "vLLM 0.30.0+" as NonEmptyStr
-data v41_flash_documented_install_note: NonEmptyStr = "No pip wheel serves this architecture, so the Install block only offers Docker" as NonEmptyStr
-
 // ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
 //
 // Several declarations here have no consumer in this change, and that is a DECLARED FRONTIER with a
@@ -103,4 +99,6 @@ data v41_flash_documented_install_note: NonEmptyStr = "No pip wheel serves this 
 // which point that lane's frontier rows become imports and these declarations acquire their readers.
 // The rows the witnesses already exercise are the ones a reader can check today; the rest are the
 // figures that lane asked for, in the shape it asked for them.
-
+data v41_flash_documented_image: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
+data v41_flash_documented_engine_floor: NonEmptyStr = "vLLM 0.30.0+" as NonEmptyStr
+data v41_flash_documented_install_note: NonEmptyStr = "No pip wheel serves this architecture, so the Install block only offers Docker" as NonEmptyStr

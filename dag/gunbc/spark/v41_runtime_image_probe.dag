@@ -118,7 +118,11 @@ data v41_probe_architecture_class: NonEmptyStr = "DeepseekV41ForCausalLM" as Non
 
 // ── THE SCRIPT ────────────────────────────────────────────────────────────────────────────────
 
-data v41_probe_script_path: NonEmptyStr = "/home/briansrls/gunbc-v41-build/v41_capability_probe.py" as NonEmptyStr
+data v41_probe_script_name: NonEmptyStr = "v41_capability_probe.py" as NonEmptyStr
+
+fn v41_probe_script_path() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/", v41_probe_script_name as String], "") as NonEmptyStr
+}
 
 // PATH-RESOLVED, DELIBERATELY. An absolute interpreter path would be a claim about the filesystem of
 // an image this repository built but has not read, and the image's own PATH is what its vLLM
@@ -302,7 +306,7 @@ fn v41_probe_script() -> String {
 // argument is refused before it reaches the host; extdeps.docker.cli docker_short_mount_flag renders
 // the CLI's own documented short form of the same mount.
 fn v41_probe_mounts() -> List<DockerMount> {
-  [BindMount { host_path: vllm_build_root as FilePath, container_path: vllm_build_root as FilePath, readonly: true }]
+  [BindMount { host_path: vllm_build_root() as FilePath, container_path: vllm_build_root() as FilePath, readonly: true }]
 }
 
 fn v41_probe_command(image: NonEmptyStr) -> ArgvCommand {
@@ -311,7 +315,7 @@ fn v41_probe_command(image: NonEmptyStr) -> ArgvCommand {
     gpus_all: true,
     mounts: v41_probe_mounts(),
     entrypoint: v41_probe_interpreter,
-    argv: [v41_probe_script_path as String],
+    argv: [v41_probe_script_path() as String],
   )
 }
 
@@ -456,9 +460,9 @@ func converge_v41_probe_script(target: SshTarget, context: FleetSshExecutionCont
     target: target,
     context: context,
     admission: typed_remote_file_write_seal(
-      path: v41_probe_script_path as FilePath,
+      path: v41_probe_script_path() as FilePath,
       content: v41_probe_script(),
-      allowed_scope: FileTreeScope { root_path: vllm_build_root },
+      allowed_scope: FileTreeScope { root_path: vllm_build_root() },
     ),
     mode: v41_probe_script_mode,
   )

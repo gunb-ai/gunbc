@@ -27,6 +27,7 @@ import gunbc.spark.v41_published_image_observation {
 }
 import gunbc.spark.vllm_runtime_image_build {
   vllm_source_is_clean, vllm_image_provenance_wire, BuiltByThisRun, AdoptedUnderExpectedTag,
+  vllm_source_dir,
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
   v41_gb10_recipe, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
   admissible_spark_build_hosts, spark_build_host_admissible, admit_spark_build_host,
@@ -116,7 +117,9 @@ test fn the_build_argv_carries_the_arch_list_the_aarch64_base_and_the_context_la
     && string_contains(s: line, pattern: "--build-arg BUILD_BASE_IMAGE=pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042")
     && string_contains(s: line, pattern: "--target vllm-openai")
     && string_contains(s: line, pattern: "--platform linux/arm64")
-    && string_contains(s: line, pattern: "/home/briansrls/gunbc-v41-build/src/docker/Dockerfile")
+    && string_contains(s: line, pattern: join([vllm_source_dir() as String, "/", v41_gb10_recipe().dockerfile_path as String], ""))
+    && string_contains(s: line, pattern: vllm_source_dir() as String)
+    && !string_contains(s: line, pattern: "/home/briansrls/")
 }
 
 // THE PROBE ASKS WHAT THE ROSTER SAYS, AND NOTHING IS SPELLED TWICE. Every symbol in every surface
