@@ -373,3 +373,61 @@ test fn the_identitys_ref_is_the_one_the_read_was_made_with() -> Bool {
     other => false
   }
 }
+
+// -------------------------------------------------------------------------------------
+// THREE SUBJECTS HAVE TO AGREE, NOT TWO. The join checked the hit against the REQUEST and then
+// built identity.workflow_path from the RESPONSE - so a coherent request could still return a
+// record naming a different file and the hybrid was minted anyway, one field further along than
+// the version this witness already guards. Checking two of three subjects leaves the third free.
+data response_naming_another_file: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  size: 5172,
+  encoding: "base64",
+  content: "ZmFrZQ==",
+}
+
+test fn a_response_naming_another_file_never_becomes_an_identity() -> Bool {
+  match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: coherent_request, file: response_naming_another_file },
+  ) {
+    HitCanonicalized { identity } => false
+    HitNotCanonicalized { repository_full_name, path, cause } =>
+      string_contains(s: cause as String, pattern: "the response reports")
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+}
+
+// AND A BRANCH NAME IS NOT AN EXACT REF, WHICH THE TYPE DOES NOT ENFORCE. CommitSha is an
+// unvalidated String alias on this tree, so declaring the field CommitSha renamed the obligation
+// without creating a wall - "main" satisfies it. An identity keyed to a branch names whatever that
+// branch points at today and cannot be returned to, which is the whole reason the ref is carried.
+data branch_ref_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "llvm",
+  repo: "llvm-project",
+  path: ".github/workflows/premerge.yaml",
+  ref: "main",
+}
+
+test fn a_branch_name_is_refused_as_a_ref() -> Bool {
+  let branch_refused = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: branch_ref_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => false
+    HitNotCanonicalized { repository_full_name, path, cause } =>
+      string_contains(s: cause as String, pattern: "40-character lowercase hex")
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  // and a real sha still resolves, so the check is not refusing everything
+  let sha_admitted = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: coherent_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => true
+    other => false
+  }
+  branch_refused && sha_admitted
+}

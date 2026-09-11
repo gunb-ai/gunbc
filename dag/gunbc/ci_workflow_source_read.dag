@@ -1,6 +1,6 @@
 module gunbc.ci_workflow_source_read
 
-import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Secret }
+import std.types { Bool, CommitSha, commit_sha_text_holds, Int, List, NonEmptyStr, String, Secret }
 import std.resources { Network }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -216,9 +216,14 @@ type HitCanonicalization
 // AGREE - otherwise the row asserts that a repository contains a blob nobody read from it.
 //
 // THE REF IS NO LONGER A CALLER ARGUMENT. It comes from the request the read was made with, so
-// there is no way to label an identity with a ref the fetch did not use. It is a CommitSha rather
-// than a String because "main" is not an exact ref: a branch name names whatever it points at
-// today, and an observation keyed by one cannot be returned to.
+// there is no way to label an identity with a ref the fetch did not use.
+//
+// AND THE TYPE DOES NOT ENFORCE THAT IT IS EXACT - an earlier revision of this note claimed it did.
+// CommitSha is an unvalidated String alias on this tree, so declaring the field CommitSha renamed
+// the obligation without creating a wall: "main" satisfies it, and an identity keyed to a branch
+// names whatever that branch points at today. std.types.commit_sha_text_holds is the validating
+// CHECK the alias does not provide, and it is run below. It dissolves when CommitSha gains a
+// validating constructor, at which point the invalid state stops being writable and the check goes.
 fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonicalization {
   match read {
     WorkflowSourceObserved { request, file } =>
@@ -228,6 +233,18 @@ fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonica
           cause: join(["the search hit is in ", hit.repository.full_name,
             " and the file was read from ", request_repository_full_name(r: request),
             ". Minting an identity from these would assert that one repository contains a blob read out of another."], ""),
+        }
+      } else if file.path != request.path {
+        HitNotCanonicalized {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          cause: join(["the file was requested at ", request.path, " and the response reports ", file.path,
+            "; the identity's workflow_path is built from the RESPONSE, so minting it would key an observation to a file the request did not ask for. Three subjects have to agree - the hit, the request, and the response - and checking only the first two leaves the third free to differ."], ""),
+        }
+      } else if commit_sha_text_holds(head: request.ref as String) == false {
+        HitNotCanonicalized {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          cause: join(["the read was made at ref '", request.ref,
+            "', which is not a 40-character lowercase hex commit sha. CommitSha is an unvalidated String alias on this tree, so the TYPE does not make a branch name unwritable - 'main' satisfies it - and an identity keyed to a moving ref cannot be returned to. This check is the wall the alias does not provide; it dissolves when CommitSha gains a validating constructor."], ""),
         }
       } else if request.path != hit.path {
         HitNotCanonicalized {
