@@ -64,6 +64,13 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // this repository never modelled at all. The snapshot's declared_scope is what a reader consults
 // for the second; separating them mechanically needs a vendor-side family recognizer homed in
 // each provider's own module, which is this class's next-rung trigger and is not built here.
+// A CALLER CATEGORY ERROR IS NOT A ROSTER DEFECT, which is why the last arm below exists. A match
+// on the wrong selection surface means somebody asked a resource_class value as a runs-on question
+// and the repair is at the CALL SITE; ambiguity means two surveyed catalogs both carry a label and
+// the repair is in gunbc.runner_provider_survey's ROSTER. An earlier revision reported the first as
+// the second, leaving the English cause as the only discriminator - the exact shape this module
+// declares a defect in its own SnapshotStanding note below. A materially different contract needs a
+// materially different name (DESIGN section 3's meaning fork).
 type RunnerLabelResolution
   = RunnerLabelResolved {
       row: RunnerLabelRow
@@ -82,6 +89,11 @@ type RunnerLabelResolution
       cause: NonEmptyStr
     }
   | RunnerLabelAmbiguousAcrossCatalogs {
+      label: String
+      matches: List<LabelMatch>
+      cause: NonEmptyStr
+    }
+  | RunnerLabelWrongSelectionSurface {
       label: String
       matches: List<LabelMatch>
       cause: NonEmptyStr
@@ -164,7 +176,7 @@ fn resolve_from_matches(
 ) -> RunnerLabelResolution {
   let foreign = filter(matches, m => declaration_ref_eq(a: m.selection_surface, b: github_actions_runs_on_surface) == false)
   if count(foreign) > 0 {
-    RunnerLabelAmbiguousAcrossCatalogs {
+    RunnerLabelWrongSelectionSurface {
       label: label,
       matches: foreign,
       cause: join(["the label '", label, "' was matched on a selection surface this resolver does not answer for. ",
@@ -326,6 +338,7 @@ fn resolution_cause(r: RunnerLabelResolution) -> NonEmptyStr {
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => cause
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => cause
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => cause
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => cause
   }
 }
 
@@ -335,6 +348,7 @@ fn resolution_label(r: RunnerLabelResolution) -> String {
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => label
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => label
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => label
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => label
   }
 }
 

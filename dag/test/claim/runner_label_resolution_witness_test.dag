@@ -163,6 +163,7 @@ test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() ->
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => count(untrusted_snapshots) > 0
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
   }
 }
 
@@ -211,6 +212,7 @@ test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> 
       count(snapshots_consulted) > 0
         && count(filter(snapshots_consulted, s => snapshot_postdates(snapshot: s, observed_at: observed_at) == false)) == 0
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
   }
 }
 
@@ -225,6 +227,7 @@ test fn witness_every_snapshot_the_stale_arm_reports_predates_the_observation() 
         && count(filter(untrusted_snapshots, a => snapshot_postdates(snapshot: a.snapshot, observed_at: observed_at))) == 0
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
   }
 }
 
@@ -354,6 +357,7 @@ fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
     RunnerLabelResolved { row, snapshot } => false
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => false
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => false
   }
 }
 
@@ -442,6 +446,7 @@ test fn witness_no_surveyed_label_is_carried_by_two_catalogs() -> Bool {
   let colliding = filter(rows, r =>
     match resolve_runner_label(label: r.label, observed_at: biome_observed_at) {
       RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => true
+      RunnerLabelWrongSelectionSurface { label, matches, cause } => false
       other => false
     })
   count(rows) > 0 && count(colliding) == 0
@@ -575,9 +580,9 @@ test fn witness_the_seam_refuses_a_row_from_another_surface() -> Bool {
       snapshot: control_snapshot,
     }],
   ) {
+    RunnerLabelWrongSelectionSurface { label, matches, cause } => count(matches) == 1
     RunnerLabelResolved { row, snapshot } => false
-    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } =>
-      string_contains(s: cause as String, pattern: "does not answer for")
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
     other => false
   }
 }
@@ -591,7 +596,6 @@ test fn witness_a_lowercase_separator_is_refused_rather_than_misordered() -> Boo
     Rfc3339OrderUndecidable { cause } => true
     other => false
   }
-  // the same instants in canonical spelling still order correctly, so the refusal is not blanket
   let canonical_still_orders = match rfc3339_compare(left: "2026-07-11T00:00:00Z", right: "2026-09-04T16:04:06Z") {
     Rfc3339Precedes => true
     other => false
