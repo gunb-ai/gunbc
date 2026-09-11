@@ -1,7 +1,7 @@
 module gunbc.spark.first_party_serving
 
 import std.types { NonEmptyStr, List }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.placement_supply { SiteIdentity, HostIdentity }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
@@ -13,6 +13,9 @@ import product.fabric.provider_route {
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
   DispositionStanding, DispositionNotEngaged, admit_provider_use,
+}
+import extdeps.vllm.usage_stats {
+  VllmUsageStatsLaunchStanding, UsageStatsEnabledByDefault,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.fleet_physical_inventory { operator_site }
@@ -149,7 +152,7 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
     basis: "The operator asserts that the Spark serving groups serve gunbc itself and nobody else as of this date. Attributable assertion, not a measurement: who the served turns are for is a fact about our intent, which no probe can read off a running engine.",
   },
   serves: "gunbc itself. Every turn placed on this route originates inside this repository's own harness and control plane; no turn is served to any party outside gunbc and none crosses an organisational or national boundary.",
-  data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it.",
+  data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it. ROUTE MATERIAL STAYS ON SITE AND EXACTLY ONE PATH LEAVES IT: vLLM reports host, build and engine-configuration metadata to https://stats.vllm.ai by upstream default, carrying no request content (extdeps.vllm.usage_stats, and gunbc.spark.first_party_serving spark_serving_usage_stats_standing for this fleet's launch). The remedy for zero egress is VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch, which is the operator's to set on his own box.",
   hardware_custody: "operator-owned and operator-held. There is no third-party agreement governing this route because there is no third party: no hosting contract, no processor, and no service terms stand between us and the hardware.",
   staleness_condition: "SERVING ANYONE ELSE ENDS THIS POSTURE. A turn served to a party outside gunbc, or any third-party material processed on this route, is a materially different contract subject and requires a NEW CompliancePostureRevision; every RouteScopeSanction below is bound to THIS revision, so it goes stale through product.fabric.provider_admission PostureRevisionStale rather than silently carrying over. Nothing here may be widened to cover another customer profile by adding a roster row under this revision.",
 }
@@ -271,17 +274,24 @@ fn spark_first_party_sanction_roster() -> List<RouteScopeSanction> {
   ]
 }
 
-// ── THE ROUTE FACTS: NINE PATHS, ALL LOCATED, NONE ABSENT ─────────────────────────────────────
+// ── THE ROUTE FACTS: EIGHT PATHS AT THE SITE, AND ONE THAT LEAVES IT ──────────────────────────
 //
-// EVERY PATH IS LOCATED AT THE SAME SITE BY THE SAME ASSERTION, and no path is claimed ABSENT. The
-// tempting shortcut is to write backups or spill as ProviderPathAbsent -- "we do not back the
+// EIGHT PATHS ARE LOCATED AT THE SAME SITE BY THE SAME ASSERTION, and no path is claimed ABSENT.
+// The tempting shortcut is to write backups or spill as ProviderPathAbsent -- "we do not back the
 // serving host up" -- and that would be a claim about our own machines that nobody has made and no
 // probe has read. What the operator's assertion DOES establish is location: whatever these paths
 // are, they terminate on operator-owned hardware at the operator's own site, because there is no
-// other estate for them to reach. So every path takes the located arm, with the site allocation as
-// its jurisdiction and the posture as its evidence, and the honest weakness of the row is that its
-// operator and jurisdiction are an allocation rather than a measurement -- which is the same stated
-// divergence the route itself carries, not a second one.
+// other estate for them to reach. So they take the located arm, with the site allocation as the
+// jurisdiction and the posture as the evidence, and the honest weakness is that both rest on an
+// allocation rather than a measurement -- the same stated divergence the route carries, not a
+// second one.
+//
+// TELEMETRY IS NOT ONE OF THE EIGHT, AND THAT IS REVIEW 63981's CORROBORATING FINDING TAKEN
+// SERIOUSLY RATHER THAN ABSORBED. "Each path answers for itself", and one assertion about where a
+// box sits cannot answer for a path that LEAVES the box: vLLM reports usage statistics to
+// https://stats.vllm.ai unless a launch disables it, and nothing on this serving launch does.
+// Writing the site into that slot would have been the exact failure the closure exists to catch --
+// an unexamined egress reading as a clean one -- so it is recorded below with its real destination.
 fn spark_first_party_path() -> ProviderPathStanding {
   ProviderPathLocated {
     operator: spark_first_party_provider_ref(),
@@ -300,6 +310,45 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
   }
 }
 
+// ── THE ONE PATH THAT LEAVES THE SITE, RECORDED WITH ITS REAL DESTINATION ─────────────────────
+//
+// WHY IT ADMITS RATHER THAN REFUSES, ruled by the operator 2026-09-11. The closure governs the
+// paths that reach the ROUTE'S MATERIAL. This one does not: extdeps.vllm.usage_stats carries the
+// documented payload -- host, build and engine configuration -- and upstream is explicit that
+// request content, prompts and completions are not collected. So the first-party posture holds for
+// route material exactly as stated, and what reaches a third party is metadata about the machine.
+// Refusing over it would have blocked serving on a path carrying nothing the posture is about.
+//
+// THE JURISDICTION SLOT CITES A FIELD, NOT A PLACE, and that is deliberate. Upstream documents the
+// server and nothing about who operates it or under which legal system, so the honest value is the
+// typed ServiceJurisdictionUndocumentedUpstream that field holds. WHAT THAT COSTS, STATED PLAINLY:
+// ProviderPathLocated cannot express "located at a party whose jurisdiction upstream does not
+// document" -- a consumer matching Located reads all three components as known. The weakness is
+// carried where a reader following the citation hits a typed arm rather than a sentence, which is
+// the best this type admits. NEXT-RUNG TRIGGER: a jurisdiction standing on ProviderPathStanding
+// itself, sufficient for a located path to say its jurisdiction is unread without the whole path
+// becoming unread.
+//
+// THE REMEDY IF ZERO EGRESS IS EVER WANTED is one environment variable on the launch --
+// VLLM_NO_USAGE_STATS=1, or DO_NOT_TRACK=1, or the marker file -- on a box the operator owns. It is
+// named here rather than blocked on, because it is the operator's to set.
+data spark_serving_usage_stats_standing: VllmUsageStatsLaunchStanding = UsageStatsEnabledByDefault {
+  basis: "gunbc.spark.pair_serving_realization's container environment sets neither VLLM_NO_USAGE_STATS nor DO_NOT_TRACK, and no launch step writes the do_not_track marker, so usage reporting is on by upstream default on every Spark serving group. This is read from OUR OWN launch declaration, which is what a launch standing is about; it does not claim that a running host's environment was inspected.",
+}
+
+fn spark_usage_stats_telemetry_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting"),
+    jurisdiction: decl_field_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting", field_name: "service_jurisdiction"),
+    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+  }
+}
+
+// THE observed_at DATE IS THE ASSERTION'S, AT DATE GRAIN. ProviderRouteFacts takes a Timestamp and
+// these facts rest on a statement made on a DAY, so the time of day carries nothing and must not be
+// read as a moment anybody measured; the midnight is the date-grain convention already used by
+// gunbc.instruments.fabric_control_plane_live_probe, not a reading. The field is named for an
+// observation because most routes are observed; this one says in every other line that it is not.
 fn spark_first_party_route_facts() -> ProviderRouteFacts {
   ProviderRouteFacts {
     route: spark_first_party_route(),
@@ -309,7 +358,7 @@ fn spark_first_party_route_facts() -> ProviderRouteFacts {
       durable_storage: spark_first_party_path(),
       backups: spark_first_party_path(),
       logs: spark_first_party_path(),
-      telemetry: spark_first_party_path(),
+      telemetry: spark_usage_stats_telemetry_path(),
       control_plane: spark_first_party_path(),
       support_access: spark_first_party_path(),
       administrative_access: spark_first_party_path(),
