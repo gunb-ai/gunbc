@@ -1321,20 +1321,42 @@ fn v1_blocking_uncitable(uncitable: List<V1UncitableConsumer>) -> List<V1Uncitab
   uncitable |> filter(u => consumer_disposition_blocks(d: u.disposition))
 }
 
-fn v1_blocking_consumer_count_of(p: ConsumerPopulation) -> Int {
-  count(v1_blocking_consumers(rows: v1_consumers_of(p: p))) + count(v1_blocking_uncitable(uncitable: v1_uncitable_consumers_of(p: p)))
+// THE COUNT CARRIES ITS OWN REFUSAL. Since the population became a produced observation,
+// PopulationUnmeasured is REACHABLE (a host refusal, an unscannable token-carrying file), and the
+// row projections answer [] on that arm -- so a bare Int here would print 0 blocking consumers on
+// a git refusal: the most reassuring answer, from ignorance rather than measurement, on the one
+// instrument the drop row names as the census's executing consumer. The count is therefore a
+// coproduct; a caller that wants a number must match, and the unmeasured arm carries the reason.
+type V1BlockingCount
+  = V1BlockingCounted { blocking: Int, members: Int }
+  | V1BlockingUnmeasured { reason: String }
+
+fn v1_blocking_count_of(p: ConsumerPopulation) -> V1BlockingCount {
+  match p {
+    PopulationUnmeasured { reason: r } => V1BlockingUnmeasured { reason: r }
+    PopulationMeasuredComplete { rows: _, joined_media: _ } => v1_blocking_counted(p: p)
+    PopulationMeasuredLowerBound { rows: _, uncitable: _, missing_basis: _ } => v1_blocking_counted(p: p)
+  }
 }
 
-fn v1_consumer_member_count_of(p: ConsumerPopulation) -> Int {
-  count(v1_consumers_of(p: p)) + count(v1_uncitable_consumers_of(p: p))
+fn v1_blocking_counted(p: ConsumerPopulation) -> V1BlockingCount {
+  V1BlockingCounted {
+    blocking: count(v1_blocking_consumers(rows: v1_consumers_of(p: p))) + count(v1_blocking_uncitable(uncitable: v1_uncitable_consumers_of(p: p))),
+    members: count(v1_consumers_of(p: p)) + count(v1_uncitable_consumers_of(p: p)),
+  }
 }
 
-fn v1_blocking_consumer_count() -> Int {
-  v1_blocking_consumer_count_of(p: v1_consumer_population())
+// THE OPERATOR INSTRUMENT: one read of the tree, rendered with its arm named, so an unmeasured
+// population reads as "unmeasured: <reason>" and never as a number.
+fn v1_blocking_consumer_count() -> V1BlockingCount {
+  v1_blocking_count_of(p: v1_consumer_population())
 }
 
-fn v1_consumer_member_count() -> Int {
-  v1_consumer_member_count_of(p: v1_consumer_population())
+fn v1_blocking_count_rendered(c: V1BlockingCount) -> String {
+  match c {
+    V1BlockingCounted { blocking: b, members: m } => concat(concat("blocking=", b as String), concat(" members=", m as String))
+    V1BlockingUnmeasured { reason: r } => concat("unmeasured: ", r)
+  }
 }
 
 // THE ADMISSION GATE FOR THE BANKRUPTCY TRANSACTION. All four conditions, and the first is the one

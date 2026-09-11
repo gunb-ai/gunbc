@@ -13,6 +13,7 @@ import gunbc.v1_consumer_census {
   v1_bankruptcy_transaction_admitted,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
   v1_consumer_population_for, v1_reference_tokens, v1_seed_link_tokens,
+  V1BlockingCount, V1BlockingCounted, V1BlockingUnmeasured, v1_blocking_count_of,
   V1ShimPopulation, V1ShimPopulationObserved, V1ShimPopulationRefused, v1_shim_population_of,
   MintedManifestJoin, MintedManifestJoined, MintedManifestJoinUnobserved,
   v1_minted_manifest_join_over, minted_manifest_join_is_clean, v1_join_uncitable_consumers, v1_join_stale_renderers,
@@ -179,6 +180,14 @@ fn the_population_carries_the_partition() -> Bool {
     && !consumer_population_is_complete(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }, seed_links: clean_seed_link_observation()))
     && !consumer_population_is_complete(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: RustReferenceHostRefused { detail: "planted host refusal" }))
     && count(consumer_population_rows(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: RustReferenceHostRefused { detail: "planted host refusal" }))) == 0
+    && match v1_blocking_count_of(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }, seed_links: clean_seed_link_observation())) {
+         V1BlockingUnmeasured { reason: r } => string_contains(s: r, pattern: "planted host refusal")
+         V1BlockingCounted { blocking: _, members: _ } => false
+       }
+    && match v1_blocking_count_of(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: clean_seed_link_observation())) {
+         V1BlockingCounted { blocking: b, members: m } => b > 0 && b <= m
+         V1BlockingUnmeasured { reason: _ } => false
+       }
 }
 
 // THE CARGO MANIFEST MEDIUM, ON PLANTED SEED-LINK SITES. The roster of Rust renderers is authored
