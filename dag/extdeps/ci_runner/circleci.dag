@@ -6,6 +6,9 @@ import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
+  CatalogSnapshot,
+  label_catalog_of_shapes,
+  RunnerLabelCatalog,
   EntitlementUnstated,
   RunnerCatalogAvailability,
   QuotedWithoutBasis,
@@ -77,3 +80,40 @@ data circleci_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
     circleci_shape(label: "2xlarge+", architecture: X86_64, vcpus: 20, quoted_numeral: 40),
   ],
 }
+
+// The label roster and its snapshot. See extdeps.ci_runner.types CatalogSnapshot for why the
+// fetch time and the declared scope both have to be carried: a consumer that meets a label this
+// catalog lacks must be able to tell a finding about the observed repository from a gap in ours.
+data circleci_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-08-18T00:00:00Z",
+  declared_scope: "Docker executor resource classes only, from the configuration reference cited above. CircleCI's machine, macOS, GPU and Arm executor classes are absent from this catalog because this repository has not read them.",
+}
+
+// THESE LABELS ARE NOT GitHub Actions runs-on VALUES AND THE SURFACE SAYS SO. A CircleCI resource
+// class is written in `resource_class` in .circleci/config.yml. The spellings overlap ordinary
+// words - small, medium, large, arm.medium - which are exactly what a self-hosted GitHub runner
+// gets labelled, so a resolver that searched this catalog for a runs-on label would answer
+// confidently from the wrong ecosystem. Naming the surface is what keeps that unwritable.
+// THE SURFACE IS ITS OWN DECLARATION AND NOT THE PROVIDER'S. An earlier revision pointed this at
+// circleci_catalog_authority, which is byte-for-byte the ref circleci_provider_identity already
+// uses - so "which key are these labels written in" and "who publishes them" were the same fact,
+// and a provider identity passed where a surface was expected would have compared equal. That is
+// the interface/realization/policy conflation DESIGN section 3 names, one level up from the defect
+// this axis was added to fix.
+//
+// GitHub's side names the declaration that IS the key: extdeps.github.actions RunnerSpec. There is
+// no CircleCI analogue in this repository - `resource_class` is not modelled here at all - so this
+// row names ITSELF rather than borrowing a neighbour, and says so instead of implying a modelled
+// key exists. When resource_class is modelled, this ref moves to it.
+data circleci_resource_class_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.circleci",
+  decl_name: "circleci_resource_class_surface",
+)
+
+data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.circleci", decl_name: "circleci_label_catalog"),
+  provider: circleci_provider_identity,
+  selection_surface: circleci_resource_class_surface,
+  snapshot: circleci_catalog_snapshot,
+  availability: circleci_runner_catalog,
+)

@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.zero_field_construction_escapes_the_field_set_check
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data zero_field_construction_escapes_the_field_set_check: RecurringFailureMode = RecurringFailureMode {
+  identity: "zero_field_construction_escapes_the_field_set_check" as NonEmptyStr,
+
+  receipts: [
+    "**a construction supplying ZERO fields is accepted for a type that declares fields, and every declared field then reads as `null`** (INVALID STATE: a coproduct variant declaring `{ code: Int, reason: String }` is written bare, or with an empty brace pair, and compiles with zero diagnostics; matching the value binds each declared field to `null`, a value inhabiting neither Int nor String. ",
+
+    "HARM: this is a hole in the ORDINARY COMPILER FLOOR, not above it. DESIGN section 4b names `values inhabit declared types` among the floor properties whose failure is a below-baseline regression, and `code: Int` holding `null` is exactly that failure. It is not a diagnostics gap: no message is missing, an inhabitant exists that the declaration says cannot. ",
+
+    "MEASURED, EIGHT SOURCES ON ONE BINARY, through gunbc.compile_diagnostic_census (the v1 compile path). PRODUCT `type Pair { a: Int, b: Int }`: bare `Pair` -> 0 diagnostics ACCEPTED; `Pair { }` -> REFUSES, MissingField `a` and MissingField `b`, both blocking; `Pair { a: 1 }` -> refuses, MissingField `b`; `Pair { a: 1, b: 2 }` -> clean. COPRODUCT, and NOTE THE PARTIAL ARM USES A SECOND DECLARATION because a one-field variant cannot express a partial omission at all: on `type Shape = Circle { radius: Int } | Square`, bare `Circle` -> 0 diagnostics ACCEPTED, `Circle { }` -> 0 diagnostics ACCEPTED, and `Circle { radius: 1 }` -> clean; on `type Shape = Circle { radius: Int, color: Int } | Square`, `Circle { radius: 1 }` -> refuses, MissingField `color`. An earlier cut of this receipt stated the one-field declaration and then reported the two-field result against it, so that row was not re-derivable from the row itself (codex review 63289). ",
+
+    "**SO THERE ARE TWO SUB-FORMS AND THEY ARE NOT THE SAME DEFECT.** (1) EMPTY BRACES ON A VARIANT: `Pair { }` refuses with one MissingField per declared field while `Circle { }` is silent, so the completeness check exists and handles zero-supplied fields CORRECTLY for a product and is not reached on the variant path. (2) BARE NAME, EITHER KIND: no literal is written, so no field set is presented and nothing is checked. A row claiming `empty braces are never checked` would be FALSE, and the first cut of this investigation nearly filed it -- the variant was measured alone and the product control was added only because the existing floor fixture happens to use a product. ",
+
+    "OBSERVED FIRST AS A SILENT WITNESS. gunbc-private `test.claim.year_end_plan_witness` ends `if <eleven conjuncts> { ExitSuccess } else { ExitFailure }` -- a bare `ExitFailure` for a variant declaring `{ code, reason }`. The host prints a failure reason only when non-empty, so eleven conjuncts collapsed into an exit 1 with ZERO output, and a real break on main presented as a run that printed nothing. Nothing scopes the hole to ProcessExit; that is where it was noticed. ",
+
+    "**A CONSUMER CANNOT DESCRIBE THIS HOLE FROM DOWNSTREAM, AND THAT IS MEASURED RATHER THAN ASSUMED.** An aggregate folding such a witness rendered `FAIL <entry> — null`. An arm was written to report `the witness returned no reason` instead; it NEVER FIRED, because `reason == \"\"` is false for an absent field, and it was deleted rather than shipped -- a check whose RED is unauthorable is a decoration that a later reader cites as coverage (DESIGN section 4b). Matching the rendered spelling `null` was refused as keying on a projection of the value. The repair cannot live in the renderer. ",
+
+    "**IT REFINES A SIBLING ROW RATHER THAN REPEATING IT.** `duplicate_record_literal_field_silently_last_wins` states that of the three ways a literal's field set can be wrong -- too few keys, an unknown key, the same key twice -- the first two REFUSE and only the duplicate is silent. That is true as measured there, on a PRODUCT with SOME fields supplied. It does not hold for a variant with none supplied, nor for a bare name in either kind. The sibling's claim is not withdrawn; its scope is narrower than its wording, and this row is the part that falls outside it. ",
+
+    "HYPOTHESIS, STATED AS ONE AND NOT AS A FINDING: this may be the third member of a family whose shape is A RECORD LITERAL'S FIELD SET IS SAMPLED RATHER THAN CHECKED AGAINST ITS DECLARATION -- with `duplicate_record_literal_field_silently_last_wins` (a key repeated) and `kind_carried_but_its_fields_stay_optional` (declared fields not obligated) as the other two. If that shape is real, one repair at the point where a literal's key set meets its declaration may retire all three, and nobody would see that from three separately filed rows. It is a hypothesis because no measurement here tested the other two members against a shared mechanism. ",
+
+    "RUNG FOUND AT: OUTSIDE THE LADDER. The state is writable, accepted, and silent, and the value that results is ill-typed rather than merely undescribed. DESIGN section 4b places silent wrongness outside the ladder and section 5 forbids it outright. ",
+
+    "CEILING: 3, structurally guaranteed. The compiler can refuse every program that constructs a fields-declaring type with no fields, but it cannot make the form unwritable: a bare name is one identifier and an empty brace pair is two characters, both spellable in any source a human or a generator emits. Claiming 4 would be rung inflation on a row whose subject is a floor breach. ",
+
+    "**WHAT A WALL MUST NOT BREAK, CHECKED BEFORE PROPOSING ONE.** A bare fields-declaring variant in PATTERN position is a legitimate and widely used idiom: `dag/extdeps/uri_path.dag` matches `ParamToken => true` where the declaration is `ParamToken { name: String }`, binding no fields deliberately. So the wall is position-sensitive -- it must refuse a CONSTRUCTION supplying zero fields while leaving pattern position untouched -- and that distinction, not the check itself, is the hard part. The population of genuine zero-field CONSTRUCTION sites is NOT known: a text search cannot separate construction from pattern and type positions (an attempt returned 25,763 candidates across 8,507 names and was discarded as unsound), so it needs a lens over the Node tree or the wall itself counting its own refusals. ",
+
+    "NEXT-RUNG TRIGGER: THE COMPILER REFUSING A CONSTRUCTION THAT SUPPLIES ZERO FIELDS FOR A TYPE OR VARIANT DECLARING ONE OR MORE, with a located MissingField per declared field, in both the bare-name and empty-brace forms, and WITHOUT refusing bare variant names in pattern position. Nothing smaller retires this row: repairing the private witness that surfaced it removes the specimen and leaves the class untouched.)",
+  ],
+
+  evidence: [],
+}
