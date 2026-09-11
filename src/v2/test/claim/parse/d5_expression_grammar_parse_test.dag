@@ -2,7 +2,6 @@ module v2.test.parse.d5_expression_grammar_parse
 
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
