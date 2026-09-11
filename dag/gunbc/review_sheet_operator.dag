@@ -22,22 +22,22 @@ import gunbc.gcp_service_enablement {
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
 
-// Sheets API project and calling SA are UNRESOLVED parameters. This module must not land
-// gunbai-secrets as the API project (custody stays there; blast radius stays small) and must not
-// pick fleet-automation@ or any other SA. Which automation project and which SA is an estate
-// inventory question, not a default in this PR.
+// Sheets API project and calling identity are AwaitingIdentification — same standing as
+// SpreadsheetAwaitingCreation. This PR does not name a GCP project or a service account. Estate
+// inventory (not this lane) decides the automation project that holds the SA and the enabled API,
+// with credential custody remaining a separate job.
 
 type ReviewSheetGcpProjectStanding
-  = ReviewSheetGcpProjectUnresolved
+  = ReviewSheetGcpProjectAwaitingIdentification
   | ReviewSheetGcpProjectIdentified { project: GcpProjectId }
 
-data review_sheet_gcp_project: ReviewSheetGcpProjectStanding = ReviewSheetGcpProjectUnresolved
+data review_sheet_gcp_project: ReviewSheetGcpProjectStanding = ReviewSheetGcpProjectAwaitingIdentification
 
 type ReviewSheetWriterStanding
-  = ReviewSheetWriterUnresolved
+  = ReviewSheetWriterAwaitingIdentification
   | ReviewSheetWriterIdentified { email: ServiceAccountEmail }
 
-data review_sheet_writer: ReviewSheetWriterStanding = ReviewSheetWriterUnresolved
+data review_sheet_writer: ReviewSheetWriterStanding = ReviewSheetWriterAwaitingIdentification
 
 data serviceusage_services_enable_permission: NonEmptyStr = "serviceusage.services.enable"
 
@@ -50,9 +50,9 @@ fn sheets_api_enablement_decision(
   observed: ServiceEnablementObservation,
 ) -> UpsertDecision<EnableApiPlan> {
   match project {
-    ReviewSheetGcpProjectUnresolved =>
+    ReviewSheetGcpProjectAwaitingIdentification =>
       Refuse {
-        reason: "review sheet GCP project unresolved; must not default to gunbai-secrets (custody-only)" as NonEmptyStr
+        reason: "review sheet GCP project awaiting identification; estate inventory settles the automation project (not a custody-project default)" as NonEmptyStr
       }
     ReviewSheetGcpProjectIdentified { project: p } =>
       decide_service_enablement(desired: sheets_api_desired_enablement(project: p), observed: observed)
@@ -155,17 +155,17 @@ fn admit_review_sheet_operator(
   share: HumanIntervention,
 ) -> ReviewSheetOperatorAdmission {
   match project {
-    ReviewSheetGcpProjectUnresolved =>
+    ReviewSheetGcpProjectAwaitingIdentification =>
       ReviewSheetEstateUnresolved {
         subject: "review_sheet_gcp_project" as NonEmptyStr,
-        reason: "API project unresolved; must not default to gunbai-secrets (custody-only). Estate inventory settles the automation project." as NonEmptyStr,
+        reason: "API project awaiting identification; estate inventory settles the automation project (not a custody-project default)." as NonEmptyStr,
       }
     ReviewSheetGcpProjectIdentified { project: p } =>
       match writer {
-        ReviewSheetWriterUnresolved =>
+        ReviewSheetWriterAwaitingIdentification =>
           ReviewSheetEstateUnresolved {
             subject: "review_sheet_writer" as NonEmptyStr,
-            reason: "calling SA unresolved; must not reuse fleet-automation@ (SSH identity, no bindings) or pick a SA in this PR." as NonEmptyStr,
+            reason: "calling identity awaiting identification; estate inventory names the SA. This PR does not pick one." as NonEmptyStr,
           }
         ReviewSheetWriterIdentified { email: sa } =>
           if intervention_is_discharged(intervention: serviceusage_enable_iam) {
@@ -196,17 +196,17 @@ fn admit_review_sheet_operator(
 
 fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
   match review_sheet_gcp_project {
-    ReviewSheetGcpProjectUnresolved =>
+    ReviewSheetGcpProjectAwaitingIdentification =>
       ReviewSheetEstateUnresolved {
         subject: "review_sheet_gcp_project" as NonEmptyStr,
-        reason: "API project unresolved; must not default to gunbai-secrets (custody-only). Estate inventory settles the automation project." as NonEmptyStr,
+        reason: "API project awaiting identification; estate inventory settles the automation project (not a custody-project default)." as NonEmptyStr,
       }
     ReviewSheetGcpProjectIdentified { project: p } =>
       match review_sheet_writer {
-        ReviewSheetWriterUnresolved =>
+        ReviewSheetWriterAwaitingIdentification =>
           ReviewSheetEstateUnresolved {
             subject: "review_sheet_writer" as NonEmptyStr,
-            reason: "calling SA unresolved; must not reuse fleet-automation@ (SSH identity, no bindings) or pick a SA in this PR." as NonEmptyStr,
+            reason: "calling identity awaiting identification; estate inventory names the SA. This PR does not pick one." as NonEmptyStr,
           }
         ReviewSheetWriterIdentified { email: sa } =>
           admit_review_sheet_operator(
