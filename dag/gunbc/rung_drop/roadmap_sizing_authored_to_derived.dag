@@ -36,17 +36,22 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // missing. The spawn request omits its two size keys, which the dashboard's both-or-neither
 // argument pair accepts; and the roadmap page drops a badge. The forecast is the only consumer whose OUTPUT changes.
 //
-// THREE CONTROLS ARE IN THE POPULATION, WHICH IS UNUSUAL AND IS DELIBERATE. The last three
+// FOUR CONTROLS ARE IN THE POPULATION, WHICH IS UNUSUAL AND IS DELIBERATE. The last four
 // population entries are witnesses, not production functions: each asserted a property of the live
-// calibration population -- located, counted, per-cell gaps, and nothing but calibration in the
-// refusal -- and their subject is precisely what this drop loses. A control whose subject no longer
+// calibration population -- located, counted, per-cell gaps, nothing but calibration in the
+// refusal, and the three live cells calibrating to their exact observed intervals -- and their
+// subject is precisely what this drop loses. A control whose subject no longer
 // exists cannot be kept green without weakening what it asserts, which is how a wall becomes a
 // decoration. They are retired by name here rather than deleted quietly, and the trigger below is
 // the condition under which they become writable again against a real population. What replaces
 // them meanwhile is one control that IS authorable and does the load-bearing job:
 // test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
 // executes the live authority and refuses -- it goes red the day the graph renders a forecast,
-// which is either this drop retiring or a regression that would otherwise be silent.
+// which is either this drop retiring or a regression that would otherwise be silent. The history
+// join keeps its own live control for the same reason:
+// test.claim.roadmap_forecast_witness.witness_cited_acceptance_pr_history_refuses_every_link_as_unsized
+// asserts that EVERY cited acceptance/pull link refuses as HistoryNodeUnsized, so the loss is
+// measured as total and loud rather than left as four observations quietly becoming zero.
 //
 // THE TRIGGER NAMES THE CAPABILITY AND NOT THE ARTIFACT. "gunbc.roadmap_sizing derive_task_sizing
 // is replaced" would be satisfied by any function that returns a cell, including one that guesses,
@@ -77,12 +82,13 @@ data roadmap_sizing_authored_to_derived: RungDrop = RungDrop {
     "gunbc.roadmap_forecast build_node_forecast",
     "gunbc.roadmap_forecast path_to_node",
     "gunbc.roadmap_forecast calibration_gaps",
-    "gunbc.roadmap_forecast cycle_time_history_for_link",
+    "gunbc.roadmap_forecast observation_for_link",
     "gunbc.roadmap_presentation sizing_fact",
     "gunbc.roadmap_spawner sizing_json_members",
     "test.claim.roadmap_forecast_witness.witness_live_graph_refuses_with_located_counted_calibration_gaps",
     "test.claim.roadmap_forecast_witness.witness_live_graph_gap_count_matches_refusal_rows",
-    "test.claim.roadmap_forecast_witness.witness_live_graph_refusal_is_only_calibration"
+    "test.claim.roadmap_forecast_witness.witness_live_graph_refusal_is_only_calibration",
+    "test.claim.roadmap_forecast_witness.witness_live_calibration_keeps_small_sample_intervals"
     ],
     restoration_trigger: "a sizing derivation that reads a task and answers from it: given a gunbc.roadmap_sizing SizingSubject -- title, description, exit criterion -- derive_task_sizing returns an Intricacy and a Volume on the real acceptance path, with an executed discriminating control in which two materially different subjects receive different cells, and gunbc.roadmap_forecast calibrates and projects from those derived cells end to end. Replacing the stub with any function that returns a cell does NOT satisfy this trigger; a constant answer leaves the capability dead."
   }

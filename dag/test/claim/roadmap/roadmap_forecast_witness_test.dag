@@ -19,25 +19,25 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_sizing {
   NodeSizing,
-  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
-  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
-  node_sizing_eq,
+  IntricacyMedium, IntricacyHigh,
+  VolumeSmall, VolumeMedium,
 }
 import gunbc.roadmap_forecast {
   NodeSizingAssignment,
-  derived_node_sizings,
   CycleTimeObservation,
   AcceptedRoadmapNodePullHistory,
-  CycleTimeObserved,
-  CycleTimeHistoryRefused,
   roadmap_cycle_time_observation_builds,
   accepted_cycle_time_observations,
   cycle_time_history_refusals,
-  cycle_time_population_exclusions,
-  BundledPullDelivery,
-  calibrate_cell,
-  Calibrated,
-  CalibrationRefusedNoSample,
+  HistoryNodeUnsized,
+  HistoryNodeMissing,
+  HistoryNodeDuplicate,
+  HistoryAcceptanceMissing,
+  HistoryAcceptanceDuplicate,
+  HistoryPullMissing,
+  HistoryPullDuplicate,
+  HistoryPullNotMergedAfterOpen,
+  HistoryAcceptanceCarrierLoadRefused,
   ForecastAnchorObservation,
   ReviewCycleCount,
   OperatorMergeLatencyAssumption,
@@ -133,66 +133,40 @@ fn fixture_observations() -> List<CycleTimeObservation> {
   ]
 }
 
-test fn witness_cited_acceptance_pr_history_joins_without_refusal() -> Bool {
+// THE LIVE HISTORY JOIN IS THE OTHER SIDE OF THE SAME LOSS, AND THIS WITNESS NOW ASSERTS WHAT IS
+// TRUE RATHER THAN WHAT USED TO BE. Before the unbundling, each accepted node carried a hand-
+// authored cell, so the ten cited acceptance/pull links produced four calibration observations and
+// two bundled-delivery exclusions with no refusals. Sizing is derived now and the deriver is a
+// stub, so observation_for_link reaches its sizing check with no assignment and refuses every
+// remaining link as HistoryNodeUnsized. Asserting that refusal is not bookkeeping: it is the
+// discriminating control that the loss is TOTAL and LOUD rather than partial and quiet, and it
+// goes red the day a link joins again -- which is this drop retiring.
+test fn witness_cited_acceptance_pr_history_refuses_every_link_as_unsized() -> Bool {
   let builds = roadmap_cycle_time_observation_builds()
+  let refusals = cycle_time_history_refusals(builds: builds)
   count(builds) == 10
-    && count(accepted_cycle_time_observations(builds: builds)) == 4
-    && count(cycle_time_history_refusals(builds: builds)) == 0
-    && count(cycle_time_population_exclusions(builds: builds)) == 2
-    && all(accepted_cycle_time_observations(builds: builds), observation =>
-      millisecond_count(m: observation.cycle_time) > 0
-        && string_contains(observation.source_url as String, "https://github.com/gunb-ai/gunbc/pull/")
-    )
-    && all(cycle_time_population_exclusions(builds: builds), exclusion => match exclusion {
-      BundledPullDelivery { pull_number: _, nodes } => count(nodes) > 1
+    && count(accepted_cycle_time_observations(builds: builds)) == 0
+    && count(refusals) > 0
+    && all(refusals, refusal => match refusal {
+      HistoryNodeUnsized { node: _ } => true
+      HistoryNodeMissing { node: _ } => false
+      HistoryNodeDuplicate { node: _ } => false
+      HistoryAcceptanceMissing { node: _ } => false
+      HistoryAcceptanceDuplicate { node: _ } => false
+      HistoryPullMissing { node: _, pull_number: _ } => false
+      HistoryPullDuplicate { node: _, pull_number: _ } => false
+      HistoryPullNotMergedAfterOpen { node: _, pull_number: _ } => false
+      HistoryAcceptanceCarrierLoadRefused { detail: _ } => false
     })
 }
 
-test fn witness_live_calibration_keeps_small_sample_intervals() -> Bool {
-  let observations = accepted_cycle_time_observations(builds: roadmap_cycle_time_observation_builds())
-  let low_small = calibrate_cell(
-    cell: NodeSizing { intricacy: IntricacyLow, volume: VolumeSmall },
-    observations: observations,
-  )
-  let medium_medium = calibrate_cell(
-    cell: NodeSizing { intricacy: IntricacyMedium, volume: VolumeMedium },
-    observations: observations,
-  )
-  let high_medium = calibrate_cell(
-    cell: NodeSizing { intricacy: IntricacyHigh, volume: VolumeMedium },
-    observations: observations,
-  )
-  match low_small {
-    CalibrationRefusedNoSample { cell: _ } => false
-    Calibrated { interval: l } =>
-      l.sample_count == 1
-        && millisecond_count(m: l.minimum) == 7721000
-        && millisecond_count(m: l.median) == 7721000
-        && millisecond_count(m: l.maximum) == 7721000
-        && match medium_medium {
-          CalibrationRefusedNoSample { cell: _ } => false
-          Calibrated { interval: m } =>
-            m.sample_count == 1
-              && millisecond_count(m: m.minimum) == 2570000
-              && millisecond_count(m: m.median) == 2570000
-              && millisecond_count(m: m.maximum) == 2570000
-              && match high_medium {
-                CalibrationRefusedNoSample { cell: _ } => false
-                Calibrated { interval: h } =>
-                  h.sample_count == 2
-                    && millisecond_count(m: h.minimum) == 4396000
-                    && millisecond_count(m: h.median) == 21652000
-                    && millisecond_count(m: h.maximum) == 38908000
-              }
-        }
-  }
-}
-
-// THREE LIVE-GRAPH CALIBRATION WITNESSES WERE RETIRED HERE, AND SAYING SO IS THE POINT.
+// FOUR LIVE-GRAPH CALIBRATION WITNESSES WERE RETIRED HERE, AND SAYING SO IS THE POINT.
 // witness_live_graph_refuses_with_located_counted_calibration_gaps,
-// witness_live_graph_gap_count_matches_refusal_rows and witness_live_graph_refusal_is_only_calibration
-// each asserted a property of the LIVE calibration population -- that the roadmap's own graph
-// refuses with located, counted, per-cell calibration gaps and with nothing else. That population
+// witness_live_graph_gap_count_matches_refusal_rows, witness_live_graph_refusal_is_only_calibration
+// and witness_live_calibration_keeps_small_sample_intervals each asserted a property of the LIVE
+// calibration population -- that the roadmap's own graph refuses with located, counted, per-cell
+// calibration gaps and with nothing else, and that the three live cells calibrate to their exact
+// observed intervals without collapsing a small sample to a point. That population
 // was keyed on the hand-authored intricacy/volume cells this change deleted, so the subject of all
 // three no longer exists: there are no cells to gap, because nothing is sized. They were not
 // weakened to keep them green and they were not quietly dropped; they are named in the population

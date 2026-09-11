@@ -1865,56 +1865,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.roadmap_forecast_witness",
-            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
-            spelling: "IntricacyHigh",
-            target: "gunbc.roadmap_sizing",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.roadmap_forecast_witness",
-            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
-            spelling: "IntricacyLow",
-            target: "gunbc.roadmap_sizing",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10994 sizing unbundling: `IntricacyMedium` moves to `gunbc.roadmap_sizing`",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.roadmap_forecast_witness",
-            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
-            spelling: "IntricacyMedium",
-            target: "gunbc.roadmap_sizing",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.roadmap_forecast_witness",
-            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
-            spelling: "VolumeMedium",
-            target: "gunbc.roadmap_sizing",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10994 sizing unbundling: `VolumeSmall` moves to `gunbc.roadmap_sizing`",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.roadmap_forecast_witness",
-            in_declaration: "witness_live_calibration_keeps_small_sample_intervals",
-            spelling: "VolumeSmall",
-            target: "gunbc.roadmap_sizing",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
-        subject: AdmissionSubject::Binding {
             module: "test.claim.dispatch_selection_witness",
             in_declaration: "witness_intricacy_does_not_change_automatic_effort",
             spelling: "IntricacyHigh",
