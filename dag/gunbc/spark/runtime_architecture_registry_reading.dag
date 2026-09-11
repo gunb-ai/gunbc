@@ -63,6 +63,24 @@ fn registry_reading_for(readings: List<ArchitectureRegistryReading>, image_refer
     if reading_applies_to(r: r, desired_reference: image_reference) { Present { value: r } } else { acc })
 }
 
+// AN ASKED QUESTION IS NOT A REGISTRY DUMP. registry_reading_contains treats a miss as a measured
+// negative over the whole architecture set. A one-element list admitted as ArchitectureRegistryReading
+// would answer "no" for every architecture the probe never asked. This receipt names the one
+// architecture that was asked and whether it was present; it cannot inhabit spark_architecture_registry_readings.
+type ArchitectureAskedReceipt {
+  image_reference: NonEmptyStr
+  host: NonEmptyStr
+  observed_at: NonEmptyStr
+  instrument: NonEmptyStr
+  architecture: NonEmptyStr
+  present: Bool
+}
+
+fn architecture_asked_receipt_for(receipts: List<ArchitectureAskedReceipt>, image_reference: NonEmptyStr) -> ArchitectureAskedReceipt? {
+  fold(receipts, init: none, f: (acc, r) =>
+    if (r.image_reference as String) == (image_reference as String) { Present { value: r } } else { acc })
+}
+
 data vllm_registry_instrument: NonEmptyStr = "python3 -c: vllm.model_executor.models.registry.ModelRegistry.get_supported_archs(), executed by `docker run --gpus all` against the pinned digest" as NonEmptyStr
 data sglang_registry_instrument: NonEmptyStr = "python3 -c: sglang.srt.models.registry.ModelRegistry keys, executed by `docker run --gpus all` against the pinned digest" as NonEmptyStr
 
@@ -1892,25 +1910,38 @@ data gunbc_vllm_dsv41_gb10_registry_reading: ArchitectureRegistryReading = Archi
 // THE PUBLISHED ROUTE-A IMAGE, probed on srv9 by fleet-converge 34643985099
 // (gunbc.spark.v41_runtime_image_probe v41_published_image_probe_ci_wet). The subject is the local
 // config id inspect reported, not the pull pin sha256:d84a1232... -- those are different hashes.
-// This reading records the architecture the probe asked about, which was present; it is not a
-// full registry dump.
-data v41_published_arm64_observed_digest: NonEmptyStr = "sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040" as NonEmptyStr
+data v41_published_arm64_observed_config_id: NonEmptyStr = "sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040" as NonEmptyStr
 
-data v41_published_arm64_registry_reading: ArchitectureRegistryReading = ArchitectureRegistryReading {
-  image_reference: v41_published_arm64_observed_digest,
+data v41_published_arm64_architecture_asked: ArchitectureAskedReceipt = ArchitectureAskedReceipt {
+  image_reference: v41_published_arm64_observed_config_id,
   host: srv9_gb10_host,
   observed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
-  instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM. Same digest re-read by fleet-converge 34646650317 (inspect JSON, no --format)." as NonEmptyStr,
-  architectures: [deepseek_v4_1_flash_architecture_class],
+  instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM. Same config id re-read by fleet-converge 34646650317 (inspect JSON, no --format)." as NonEmptyStr,
+  architecture: deepseek_v4_1_flash_architecture_class,
+  present: true,
 }
 
-// THE ROSTER EVERY CONSUMER READS, so a reading that exists cannot be missed by a consumer that
-// happened to import only some of them.
+data spark_architecture_asked_receipts: List<ArchitectureAskedReceipt> = [
+  v41_published_arm64_architecture_asked,
+]
+
+// THE ROSTER EVERY DUMP CONSUMER READS. Asked receipts are not members: a miss on this list is a
+// measured negative over get_supported_archs(), which an asked-one question must not mint.
 data spark_architecture_registry_readings: List<ArchitectureRegistryReading> = [
   sparkrun_vllm_ds4_gb10_registry_reading,
   gitcommit90_glm_53_one_spark_registry_reading,
   timothystewart6_vllm_gb10_registry_reading,
   xomoxcc_dgx_spark_sglang_registry_reading,
   gunbc_vllm_dsv41_gb10_registry_reading,
-  v41_published_arm64_registry_reading,
 ]
+
+fn architecture_observation_exists(image_reference: NonEmptyStr) -> Bool {
+  match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: image_reference) {
+    Present { value: _ } => true
+    Absent =>
+      match architecture_asked_receipt_for(receipts: spark_architecture_asked_receipts, image_reference: image_reference) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}

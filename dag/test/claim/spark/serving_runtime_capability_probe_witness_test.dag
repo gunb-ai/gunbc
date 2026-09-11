@@ -11,7 +11,7 @@ import gunbc.spark.serving_arm {
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_for, spark_architecture_registry_readings,
-  reading_applies_to,
+  reading_applies_to, architecture_observation_exists, v41_published_arm64_observed_config_id,
 }
 
 import extdeps.gpu.types { GpuComputeCapability }
@@ -212,7 +212,7 @@ test fn every_candidate_marked_probed_has_a_registry_reading() -> Bool {
       CandidateNotProbed { reason: _ } => true
       CandidateProbed { image_reference: ref } =>
         match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: ref) {
-          Absent => false
+          Absent => architecture_observation_exists(image_reference: ref)
           Present { value: r } =>
             length(r.host as String) != 0 && length(r.observed_at as String) != 0 && length(r.instrument as String) != 0
         }
@@ -355,10 +355,16 @@ test fn a_repinned_digest_finds_no_capability_rows_and_reads_as_unprobed() -> Bo
 // pin, a repin would break this -- which is the alarm, not a nuisance.
 test fn every_capability_row_names_a_digest_some_reading_was_taken_in() -> Bool {
   all(v41_sm121_capability_probe_rows(), r =>
-    match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: r.image.image_reference) {
-      Present { value: _ } => true
-      Absent => false
-    })
+    architecture_observation_exists(image_reference: r.image.image_reference))
+}
+
+// A ONE-ARCHITECTURE ASK IS NOT A DUMP. registry_reading_contains would mint measured negatives for
+// every architecture the published-image probe never asked.
+test fn the_published_config_id_is_not_a_registry_dump() -> Bool {
+  match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: v41_published_arm64_observed_config_id) {
+    Absent => architecture_observation_exists(image_reference: v41_published_arm64_observed_config_id)
+    Present { value: _ } => false
+  }
 }
 
 // A DEVICE KEY WITHOUT THE VENDOR IS NOT A DEVICE. AMD's (12, 1) is gfx121 and NVIDIA's is sm_121 --
