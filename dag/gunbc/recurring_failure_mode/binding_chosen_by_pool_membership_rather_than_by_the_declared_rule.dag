@@ -228,6 +228,28 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
 
     "The resolution rule is the namespace cut's subject; this is its measurement, and the ordering between them is unchanged.",
 
+    "**THE EVALUATION CHANNEL, MEASURED 2026-09-11 BY stern-bear-703, AND IT FALSIFIES THE INVARIANT MORE STRONGLY THAN ANY PROBE ABOVE.** Every specimen in this row flips on CLOSURE COMPOSITION and is deterministic given a closure. This one flips on NOTHING OBSERVABLE: identical files, identical binary, identical command, and the verdict differs from run to run. ",
+
+    "It is a different layer from the type and value channels above: the typechecker accepts the program every time, and the wrong binding is taken by the TREE-WALKING INTERPRETER at evaluation. ",
+
+    "THE SPECIMEN THAT FOUND IT: gunbc-private's one-process witness roster, test.claim.private_roster_witness, failed with TypeError cannot access field 'field' on Fn in 3 of 4 local runs of one unchanged tree once a witness importing the public roadmap stack joined it, while every member witness passed alone. The data/fn homonym in main's own closure is gigabyte: data in extdeps.vendor.gigabyte, fn in std.measure. ",
+
+    "THE MECHANISM, READ IN THE SOURCE: v1_interpreter.rs InterpContext::build_scope_indexes_with_module_order projects graph.item_registry -- an im::HashMap keyed by declaration identity, hashed with std RandomState and therefore seeded per process -- into bare_item_registry by re-keying every entry to its BARE name, with collect() keeping the last write. Iteration order decides which declarer's ItemInfo survives a homonym, and that order changes every process. The comment above it says the projection reproduces the map this field used to receive; that stopped being true when the source became identity-keyed, because the re-key is where the randomness now enters. ",
+
+    "THE CHECK EXISTS AND ONE CONSUMER DOES NOT READ IT, which is the finding rather than the missing sort. The same function counts bare spellings into bare_name_counts and derives ambiguous_bare_function_names, and lookup_fn_from consults that set: for an ambiguous name it resolves the NODE through the referring file's own module, then its explicit import, before the shared slot. The variable slow path in eval then takes the item's KIND -- DataItem versus FnItem -- from bare_item_registry, which never consults the ambiguous set. So for an ambiguous name the node is chosen by locality and the kind by hash order, and when an FnItem wins over a data reference the interpreter returns Value::Fn wrapping the data declaration; the next field access raises exactly the TypeError above. ",
+
+    "COMMITTED DISCRIMINATING FIXTURE, in this row's idiom and outside the compiled source roots: fixtures.data_fn_homonym_evaluation. data_declarer declares a record-valued data and reads its field inside its own module; fn_declarer declares a fn with the same bare spelling and nothing else; closure_with_both imports both, closure_without_fn is the same subject without fn_declarer. ",
+
+    "Reproduce with gunbc run --source-root dag --source-root src/v2 --source-root fixtures/data_fn_homonym_evaluation --entry fixtures/data_fn_homonym_evaluation/closure_with_both.dag --function evaluation_main, repeated. Measured with one binary (sha256 prefix 33f179b2da723442, built from seed commit 1c0c30d416 -- not the CI build, which is why the rate is quoted as observed rather than as the class's): closure_with_both failed with the TypeError in 1 of 12 runs from this tree and in 7 of 12 when the same three modules sat in a larger overlay closure; closure_without_fn passed 6 of 6. The rate moves with the closure because the hash layout does; the flip does not need the closure to move at all. ",
+
+    "THE TWO REPAIRS SIT AT DIFFERENT RUNGS AND ARE LAYERED, NOT ALTERNATIVES. Taking the kind from the node lookup_fn_from returns makes every run agree and binds the reference correctly wherever the referring module declares or imports the name -- it makes the specimen deterministic. Where an ambiguous name still falls through to the shared slot, refusing it as a typed ambiguous reference is namespace-resolution-design section 13's ancestor-chain uniqueness applied to this channel -- that is what makes the class refuse. The first alone would leave the residue silent. ",
+
+    "THE FIXTURE IS REPRODUCED BY COMMAND AND EXECUTED BY NOTHING ENROLLED, recorded rather than glossed as with free_call_pool_binding above: a single run proves nothing about a nondeterministic defect, and the enrolment that fits it is a repeated-run witness on the pinned build, which does not exist yet. ",
+
+    "CONSEQUENCE FOR CI TRIAGE, stated because it changes how reds are read: a per-process seed can change how a reference EVALUATES, so a nondeterministic red on an unchanged tree is not evidence of infrastructure flakiness until this channel is ruled out for that closure. ",
+
+    "RUNG FOUND AT, on this channel: below the ladder, because the wrong declaration is evaluated silently and the only symptom is a downstream TypeError at a site that is correct. CEILING AND TRIGGER are this row's existing ones; the trigger's sufficiency gains one obligation -- the capability is not demonstrated while evaluation can bind a reference differently from the resolver that typechecked it. ",
+
     "CROSS-LINK: this class is what makes join_judged_against_its_sibling_rather_than_its_declared_context visible; repairing that join alone would silence the diagnostic while leaving the wrong binding in place, so the ordering is resolution first.",
   ],
 
