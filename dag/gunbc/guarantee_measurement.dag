@@ -2,6 +2,7 @@ module gunbc.guarantee_measurement
 
 import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
 import std.nat { Nat }
+import gunbc.guarantee_rung { GuaranteeRung, MechanicallyPreventable, OutsideTheLadder, guarantee_rung_index }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 
 // STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else
@@ -224,4 +225,266 @@ fn probe_set_digest(probe_ids: List<GuaranteeProbeId>) -> Fnv1a64Structural {
   fold(probe_ids, init: content_hash_atom(value: "guarantee-probe-set" as NonEmptyStr), f: fn(acc, id) {
     content_hash_combine_structural(left: acc, right: content_hash_tagged_structural(tag: "probe" as NonEmptyStr, payload: content_hash_atom(value: id as NonEmptyStr)))
   })
+}
+
+// ============================================================================================
+// THE CLAIM SIDE: A REQUIREMENT, AND A DISPOSITION DERIVED PER PATH AND NEVER STORED.
+//
+// The measurement side above answers "what did this probe observe". It deliberately stops there:
+// dispositions are "DERIVED by the claims carrier from receipts, so storing one here would be the
+// transcribed-rung defect the carrier stage exists to make unrepresentable". This section is that
+// carrier, in the same module because it keys on the same identities - a separate module would put
+// the join between class identity and its own vocabulary across an authority edge for no fact.
+//
+// THE ROADMAP NODE SPECIFIES FOUR CARRIERS AND TWO OF THEM ALREADY EXIST HERE. GuaranteePath is
+// declared above; GuaranteeMeasurement is GuaranteeMeasurementReceipt above. What was missing is
+// GuaranteeRequirement and GuaranteeDisposition, and those are what this section adds - not a
+// partial realization of the set elsewhere, but the absent half landing beside the present half.
+//
+// THERE IS NO current_rung FIELD, AND THAT IS THE POINT. A stored rung is a number someone typed,
+// which is the rung inflation DESIGN section 4b(1) names: the reported rung must EQUAL the rung
+// established by executed evidence. Here the only way to obtain a rung is to fold receipts, so a
+// transcribed one is not merely discouraged, it is unwritable.
+
+// THE CEILING'S REASON IS TYPED because DESIGN section 4b derives the attainable ceiling rather
+// than asserting it, and the derivation differs by KIND: a decidable fully-modeled class may reach
+// impossibility; a decidable class missing its authority is section 5's wall-after-grounding; a
+// class blocked on a language capability names that capability; an undecidable property honestly
+// stays a ratchet; an external fact stays a boundary obligation. A String reason would let all five
+// be spelled the same way and none of them be folded.
+type GuaranteeCeilingReason
+  = DecidableAndFullyModeled
+  | WallAfterGrounding { missing_authority: NonEmptyStr }
+  | BlockedOnCapability { capability: NonEmptyStr }
+  | UndecidableProperty { property: NonEmptyStr }
+  | ExternalBoundaryObligation { boundary: NonEmptyStr }
+
+// A REQUIREMENT IS WHAT IS OWED FOR ONE CLASS, and every field is required: a class whose harm is
+// unstated cannot be prioritised, and a ceiling without its reason is an assertion. next_rung_trigger
+// carries section 4b(2)'s "no untracked stall" - a class below its ceiling must name what would move
+// it, separating cannot-climb from can-climb-after-one-grounding from can-climb-now-but-unbuilt.
+type GuaranteeRequirement {
+  class: GuaranteeClassId
+  domain: NonEmptyStr
+  harm: NonEmptyStr
+  ceiling: GuaranteeRung
+  ceiling_reason: GuaranteeCeilingReason
+  next_rung_trigger: NonEmptyStr
+}
+
+// THE DISPOSITION OF ONE CLASS ON ONE PATH. OutsideModeledGuarantee is DESIGN's column that is
+// deliberately not a rung - external reality, undecidable properties, undeclared intent - and it is
+// carried here so that "we do not model this" can be said without masquerading as a weak rung.
+type GuaranteeDisposition
+  = Unmeasured
+  | BelowFloor
+  | FrontierAccepted
+  | OnLadder { rung: GuaranteeRung }
+  | OutsideModeledGuarantee
+
+// A RUNG NEEDS A PAIR OF OBSERVATIONS, NOT ONE, and this is the load-bearing shape of the whole
+// carrier. DESIGN section 4b(1): the rung must equal what is established by "a discriminating RED
+// refused on the real acceptance path plus an accepted positive control". One observation cannot
+// establish it in either direction - a gate that refuses everything refuses the planted red too, and
+// a gate that accepts everything accepts the positive control too. So a path's evidence is the pair,
+// and the two failure directions are different facts with the same disposition:
+//   - the RED was ACCEPTED  => the wall did not fire on the state it exists for.
+//   - the GREEN was REFUSED => the wall refuses a correct program.
+// Both are BelowFloor, and both are worth distinguishing to a reader, which is what the cause is for.
+type PathEvidence {
+  path: GuaranteePathId
+  red_probe: ProbeObservation
+  green_probe: ProbeObservation
+}
+
+type BelowFloorCause
+  = PlantedRedAccepted
+  | PositiveControlRefused
+  | ObservationDiverged
+
+fn probe_is_not_runnable(o: ProbeObservation) -> Bool {
+  match o {
+    ProbeNotRunnable { cause: _ } => true
+    RefusedTyped { diagnostic_class: _, count: _ } => false
+    AcceptedClean => false
+    AcceptedCounted { diagnostic_class: _, count: _ } => false
+    ExecutionDiverged { description: _ } => false
+  }
+}
+
+fn probe_diverged(o: ProbeObservation) -> Bool {
+  match o {
+    ExecutionDiverged { description: _ } => true
+    ProbeNotRunnable { cause: _ } => false
+    RefusedTyped { diagnostic_class: _, count: _ } => false
+    AcceptedClean => false
+    AcceptedCounted { diagnostic_class: _, count: _ } => false
+  }
+}
+
+fn probe_refused(o: ProbeObservation) -> Bool {
+  match o {
+    RefusedTyped { diagnostic_class: _, count: _ } => true
+    AcceptedClean => false
+    AcceptedCounted { diagnostic_class: _, count: _ } => false
+    ExecutionDiverged { description: _ } => false
+    ProbeNotRunnable { cause: _ } => false
+  }
+}
+
+fn probe_accepted_with_counted_residue(o: ProbeObservation) -> Bool {
+  match o {
+    AcceptedCounted { diagnostic_class: _, count: _ } => true
+    AcceptedClean => false
+    RefusedTyped { diagnostic_class: _, count: _ } => false
+    ExecutionDiverged { description: _ } => false
+    ProbeNotRunnable { cause: _ } => false
+  }
+}
+
+// PROBE EVIDENCE CAPS AT MechanicallyPreventable, AND SAYING SO IS THE WHOLE HONESTY OF THIS FOLD.
+// A pair of probes can establish that a gate EXECUTES and DISCRIMINATES, which is exactly DESIGN's
+// rung 2: "a generated test, lens, or gate reliably exposes and blocks it, but the invalid state
+// remains writable and safety depends on that mechanism executing and staying enrolled". Rungs 3 and
+// 4 are claims about what no Accepted program CAN contain and what has no constructor at all - they
+// are properties of the model, not of any finite set of probe runs, and no number of green probes
+// can witness them. A derivation that returned StructurallyGuaranteed from probe observations would
+// be manufacturing the inflation this carrier exists to prevent.
+fn probe_pair_rung() -> GuaranteeRung {
+  MechanicallyPreventable
+}
+
+fn disposition_for_path(evidence: PathEvidence) -> GuaranteeDisposition {
+  if probe_is_not_runnable(o: evidence.red_probe)
+    || probe_is_not_runnable(o: evidence.green_probe) {
+    Unmeasured
+  } else {
+    if probe_diverged(o: evidence.red_probe) || probe_diverged(o: evidence.green_probe) {
+      BelowFloor
+    } else {
+      if !probe_refused(o: evidence.red_probe) {
+        BelowFloor
+      } else {
+        if probe_refused(o: evidence.green_probe) {
+          BelowFloor
+        } else {
+          if probe_accepted_with_counted_residue(o: evidence.green_probe) {
+            FrontierAccepted
+          } else {
+            OnLadder { rung: probe_pair_rung() }
+          }
+        }
+      }
+    }
+  }
+}
+
+// WHY A BELOW-FLOOR PATH IS NAMED RATHER THAN ONLY COUNTED: the two directions send a repair to
+// different places. A RED that was accepted means the wall is missing or misaimed; a GREEN that was
+// refused means the wall is wrong about correct programs, which is the more expensive defect
+// because it stops honest work.
+fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause {
+  if probe_diverged(o: evidence.red_probe) || probe_diverged(o: evidence.green_probe) {
+    ObservationDiverged
+  } else {
+    if !probe_refused(o: evidence.red_probe) { PlantedRedAccepted } else { PositiveControlRefused }
+  }
+}
+
+// THE FOLD ACROSS PATHS, IN THE ORDER THE ROADMAP FIXES: below-floor dominance, then frontier, then
+// unmeasured, then the MINIMUM rung across paths. The order is not a preference and each step is a
+// separate law:
+//   - BELOW-FLOOR DOMINATES because a class that fails its floor on any path is below the floor,
+//     full stop; averaging a failing path against passing ones is the compensating-errors defect.
+//   - FRONTIER BEFORE UNMEASURED because an accepted-with-residue path is a MEASURED fact, and
+//     reporting it as unmeasured would discard evidence that exists.
+//   - UNMEASURED BEFORE A RUNG because an unmeasured path is ignorance, and a rung reported over it
+//     would be a claim about a path nobody looked at.
+//   - MINIMUM, NEVER MAXIMUM OR AVERAGE, because section 4b(1) says a class's rung is the minimum
+//     across its in-scope paths: citing the strongest path while another stays silent is inflation.
+// OutsideModeledGuarantee contributes no rung: a path outside the modeled guarantee is not a weak
+// rung, so it is skipped in the minimum, and a class ALL of whose paths are outside is outside.
+fn disposition_is_below_floor(d: GuaranteeDisposition) -> Bool {
+  match d {
+    BelowFloor => true
+    Unmeasured => false
+    FrontierAccepted => false
+    OnLadder { rung: _ } => false
+    OutsideModeledGuarantee => false
+  }
+}
+
+fn disposition_is_frontier(d: GuaranteeDisposition) -> Bool {
+  match d {
+    FrontierAccepted => true
+    BelowFloor => false
+    Unmeasured => false
+    OnLadder { rung: _ } => false
+    OutsideModeledGuarantee => false
+  }
+}
+
+fn disposition_is_unmeasured(d: GuaranteeDisposition) -> Bool {
+  match d {
+    Unmeasured => true
+    BelowFloor => false
+    FrontierAccepted => false
+    OnLadder { rung: _ } => false
+    OutsideModeledGuarantee => false
+  }
+}
+
+fn disposition_rung_index(d: GuaranteeDisposition) -> Int {
+  match d {
+    OnLadder { rung: r } => guarantee_rung_index(r: r)
+    BelowFloor => guarantee_rung_index(r: OutsideTheLadder)
+    Unmeasured => guarantee_rung_index(r: OutsideTheLadder)
+    FrontierAccepted => guarantee_rung_index(r: OutsideTheLadder)
+    OutsideModeledGuarantee => guarantee_rung_index(r: OutsideTheLadder)
+  }
+}
+
+fn minimum_on_ladder(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
+  fold(dispositions, init: OutsideModeledGuarantee, f: fn(acc, d) {
+    match d {
+      OnLadder { rung: r } =>
+        match acc {
+          OnLadder { rung: current } =>
+            if guarantee_rung_index(r: r) < guarantee_rung_index(r: current) {
+              OnLadder { rung: r }
+            } else {
+              acc
+            }
+          _ => OnLadder { rung: r }
+        }
+      _ => acc
+    }
+  })
+}
+
+fn fold_dispositions(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
+  if any(dispositions, d => disposition_is_below_floor(d: d)) {
+    BelowFloor
+  } else {
+    if any(dispositions, d => disposition_is_frontier(d: d)) {
+      FrontierAccepted
+    } else {
+      if any(dispositions, d => disposition_is_unmeasured(d: d)) {
+        Unmeasured
+      } else {
+        minimum_on_ladder(dispositions: dispositions)
+      }
+    }
+  }
+}
+
+fn class_disposition(evidence: List<PathEvidence>) -> GuaranteeDisposition {
+  fold_dispositions(dispositions: map(evidence, e => disposition_for_path(evidence: e)))
+}
+
+// A CLASS AT ITS CEILING IS DONE; A CLASS BELOW IT OWES ITS TRIGGER. This is the one place the
+// requirement and the disposition meet, and it is a comparison rather than a stored state: below
+// the ceiling is a correctness gap, never optional elegance (DESIGN section 4b).
+fn disposition_is_at_ceiling(r: GuaranteeRequirement, d: GuaranteeDisposition) -> Bool {
+  disposition_rung_index(d: d) >= guarantee_rung_index(r: r.ceiling)
 }

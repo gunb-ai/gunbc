@@ -1,0 +1,241 @@
+module test.claim.guarantee_disposition_witness
+
+// THE DERIVATION'S CLAIM IS THAT A RUNG CANNOT BE OBTAINED WITHOUT THE EVIDENCE THAT ESTABLISHES
+// IT, so the controls here withhold or corrupt exactly one observation and assert the disposition
+// falls. The fold's ORDER is a separate claim with its own controls: each precedence step is a law
+// (below-floor dominance, frontier over unmeasured, unmeasured over a rung, minimum never maximum),
+// and a fold that got any one of them backwards would still look reasonable on a happy path.
+import gunbc.guarantee_measurement {
+  AcceptedClean,
+  GuaranteeClassId,
+  GuaranteePathId,
+  ProbeObservation,
+  AcceptedCounted,
+  BelowFloor,
+  ExecutionDiverged,
+  FrontierAccepted,
+  GuaranteeCeilingReason,
+  GuaranteeRequirement,
+  OnLadder,
+  OutsideModeledGuarantee,
+  PathEvidence,
+  PlantedRedAccepted,
+  PositiveControlRefused,
+  ObservationDiverged,
+  ProbeNotRunnable,
+  RefusedTyped,
+  Unmeasured,
+  WallAfterGrounding,
+  below_floor_cause,
+  class_disposition,
+  disposition_for_path,
+  disposition_is_at_ceiling,
+  fold_dispositions,
+}
+import gunbc.guarantee_rung {
+  GuaranteeRung,
+  MechanicallyPreventable,
+  Mitigatable,
+  StructurallyGuaranteed,
+}
+import std.types { Bool, NonEmptyStr }
+
+fn path_id() -> NonEmptyStr {
+  "guarantee-disposition-probe-path" as NonEmptyStr
+}
+
+fn refused() -> ProbeObservation {
+  RefusedTyped { diagnostic_class: "PlantedRed" as NonEmptyStr, count: 1 }
+}
+
+fn accepted_with_residue() -> ProbeObservation {
+  AcceptedCounted { diagnostic_class: "Advisory" as NonEmptyStr, count: 2 }
+}
+
+fn evidence(red: ProbeObservation, green: ProbeObservation) -> PathEvidence {
+  PathEvidence { path: path_id() as GuaranteePathId, red_probe: red, green_probe: green }
+}
+
+// THE POSITIVE CONTROL: the pair that DESIGN §4b(1) names — a discriminating RED refused and a
+// positive control accepted — is the only shape that puts a path on the ladder.
+test fn a_refused_red_and_an_accepted_green_is_on_the_ladder() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: AcceptedClean)) {
+    OnLadder { rung: r } => r == MechanicallyPreventable
+    _ => false
+  }
+}
+
+// PROBE EVIDENCE CAPS AT RUNG 2 AND MUST NOT CLIMB HIGHER. Rungs 3 and 4 are claims about what no
+// Accepted program can contain; no finite set of probe runs witnesses them, so a derivation that
+// returned one from observations would be manufacturing the inflation this carrier prevents.
+test fn probe_evidence_never_reaches_a_structural_rung() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: AcceptedClean)) {
+    OnLadder { rung: r } => r != StructurallyGuaranteed
+    _ => false
+  }
+}
+
+// THE WALL DID NOT FIRE: the planted red was accepted, so the gate is missing or misaimed.
+test fn an_accepted_planted_red_is_below_floor() -> Bool {
+  match disposition_for_path(evidence: evidence(red: AcceptedClean, green: AcceptedClean)) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+// THE WALL IS WRONG ABOUT CORRECT PROGRAMS: the positive control was refused. Same disposition,
+// different repair, which is why the cause is named rather than only counted.
+test fn a_refused_positive_control_is_below_floor() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: refused())) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+test fn the_two_below_floor_directions_are_named_apart() -> Bool {
+  match below_floor_cause(evidence: evidence(red: AcceptedClean, green: AcceptedClean)) {
+    PlantedRedAccepted =>
+      match below_floor_cause(evidence: evidence(red: refused(), green: refused())) {
+        PositiveControlRefused => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A PROBE THAT COULD NOT RUN IS IGNORANCE, NOT A VERDICT: could-not-measure must never read as the
+// subject passing or failing (DESIGN §5, top-as-answer against top-as-ignorance).
+test fn an_unrunnable_probe_is_unmeasured_not_below_floor() -> Bool {
+  match disposition_for_path(evidence: evidence(
+    red: ProbeNotRunnable { cause: "toolchain absent" as NonEmptyStr },
+    green: AcceptedClean
+  )) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+// ACCEPTED WITH COUNTED RESIDUE IS THE FRONTIER, not a clean rung: the gate admitted the subject
+// and reported something, and flattening that into OnLadder would discard the residue.
+test fn an_accepted_green_with_residue_is_the_frontier() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: accepted_with_residue())) {
+    FrontierAccepted => true
+    _ => false
+  }
+}
+
+test fn a_diverged_observation_is_below_floor_and_named() -> Bool {
+  match below_floor_cause(evidence: evidence(
+    red: ExecutionDiverged { description: "harness crashed" as NonEmptyStr },
+    green: AcceptedClean
+  )) {
+    ObservationDiverged => true
+    _ => false
+  }
+}
+
+// ---- THE FOLD ORDER, one control per precedence law ----
+
+// BELOW-FLOOR DOMINATES: a class failing its floor on any path is below the floor, full stop.
+// Averaging a failing path against passing ones is the compensating-errors defect.
+test fn below_floor_dominates_a_passing_path() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: MechanicallyPreventable },
+    BelowFloor,
+  ]) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+// FRONTIER BEFORE UNMEASURED: an accepted-with-residue path is a MEASURED fact, and calling the
+// class unmeasured would discard evidence that exists.
+test fn frontier_outranks_unmeasured() -> Bool {
+  match fold_dispositions(dispositions: [Unmeasured, FrontierAccepted]) {
+    FrontierAccepted => true
+    _ => false
+  }
+}
+
+// UNMEASURED BEFORE A RUNG: a rung reported beside an unmeasured path is a claim about a path
+// nobody looked at.
+test fn unmeasured_outranks_a_rung() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: MechanicallyPreventable },
+    Unmeasured,
+  ]) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+// MINIMUM, NEVER MAXIMUM: §4b(1) — a class's rung is the minimum across its in-scope paths, and
+// citing the strongest while another stays silent is exactly the inflation the rule names.
+test fn the_fold_takes_the_minimum_rung_not_the_maximum() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: StructurallyGuaranteed },
+    OnLadder { rung: Mitigatable },
+  ]) {
+    OnLadder { rung: r } => r == Mitigatable
+    _ => false
+  }
+}
+
+// A PATH OUTSIDE THE MODELED GUARANTEE CONTRIBUTES NO RUNG rather than a weak one, and a class all
+// of whose paths are outside is outside — "we do not model this" said without masquerading as a
+// low rung.
+test fn an_outside_path_does_not_lower_a_rung() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: MechanicallyPreventable },
+    OutsideModeledGuarantee,
+  ]) {
+    OnLadder { rung: r } => r == MechanicallyPreventable
+    _ => false
+  }
+}
+
+test fn all_paths_outside_is_outside() -> Bool {
+  match fold_dispositions(dispositions: [OutsideModeledGuarantee, OutsideModeledGuarantee]) {
+    OutsideModeledGuarantee => true
+    _ => false
+  }
+}
+
+// THE CLASS-LEVEL DERIVATION over real evidence rows, so the fold is exercised through the door its
+// consumer will use rather than only through hand-built disposition lists.
+test fn a_class_with_one_failing_path_is_below_floor() -> Bool {
+  match class_disposition(evidence: [
+    evidence(red: refused(), green: AcceptedClean),
+    evidence(red: AcceptedClean, green: AcceptedClean),
+  ]) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+fn requirement_at(ceiling: GuaranteeRung) -> GuaranteeRequirement {
+  GuaranteeRequirement {
+    class: "probe-class" as GuaranteeClassId,
+    domain: "probe domain" as NonEmptyStr,
+    harm: "a wrong answer ships" as NonEmptyStr,
+    ceiling: ceiling,
+    ceiling_reason: WallAfterGrounding { missing_authority: "std.probe" as NonEmptyStr },
+    next_rung_trigger: "the authority lands" as NonEmptyStr,
+  }
+}
+
+// BELOW THE CEILING IS A CORRECTNESS GAP, and it is a comparison against the requirement rather
+// than a state anyone stored.
+test fn a_rung_below_its_ceiling_is_not_at_ceiling() -> Bool {
+  !disposition_is_at_ceiling(
+    r: requirement_at(ceiling: StructurallyGuaranteed),
+    d: OnLadder { rung: MechanicallyPreventable }
+  )
+}
+
+test fn a_rung_at_its_ceiling_is_at_ceiling() -> Bool {
+  disposition_is_at_ceiling(
+    r: requirement_at(ceiling: MechanicallyPreventable),
+    d: OnLadder { rung: MechanicallyPreventable }
+  )
+}
