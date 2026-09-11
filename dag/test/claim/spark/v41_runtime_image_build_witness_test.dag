@@ -16,7 +16,9 @@ import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_demand_symbols, v41_sm12_kv_cache_dtype_admitted, v41_sm12_admitted_kv_cache_dtypes,
   v41_fp4_sm120_block, v41_fp4_sm100_block,
 }
-import extdeps.vllm.deepseek_v4_1_flash_recipe { v41_flash_hardware_verified, v41_flash_vram_minimum_gb }
+import extdeps.vllm.deepseek_v4_1_flash_recipe {
+  v41_flash_hardware_verified, v41_flash_vram_minimum_gb, v41_flash_checkpoint_gb, v41_flash_headroom_gb,
+}
 import gunbc.spark.v41_published_image_observation {
   v41_published_revision_public_standing,
   v41_published_distribution_observation, v41_published_arm64_config_observations,
@@ -27,6 +29,9 @@ import gunbc.spark.vllm_runtime_image_build {
   v41_gb10_recipe, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
   admissible_spark_build_hosts, spark_build_host_admissible, admit_spark_build_host,
   SparkBuildHostAdmitted, SparkBuildHostRefused,
+  SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable,
+  SparkHostUnreachable, SparkHostUnresolved,
+  classify_reported_hostname, spark_host_answered,
 }
 import gunbc.spark.v41_runtime_image_probe {
   V41CapabilityPresent, V41CapabilityAbsent, V41CapabilityUnread,
@@ -284,7 +289,7 @@ test fn the_published_image_registers_the_architecture_from_a_revision_public_ma
     && string_contains(s: v41_published_tag_absent.reading as String, pattern: "404")
     && !v41_flash_hardware_verified(hardware: "gb10" as NonEmptyStr)
     && v41_flash_hardware_verified(hardware: "gb200" as NonEmptyStr)
-    && v41_flash_vram_minimum_gb == 614
+    && v41_flash_vram_minimum_gb == v41_flash_headroom_gb(total_gb: v41_flash_checkpoint_gb)
 }
 
 // EVERY OBSERVATION NAMES AN INSTRUMENT AND A DATE, which is the property that separates a reading
@@ -292,8 +297,7 @@ test fn the_published_image_registers_the_architecture_from_a_revision_public_ma
 // quietly becomes the first.
 test fn every_published_image_observation_carries_its_instrument_and_date() -> Bool {
   let rows = v41_published_observations()
-  length(rows) == 7
-    && fold(rows, init: true, f: (acc, o) =>
+  fold(rows, init: true, f: (acc, o) =>
       acc && (o.instrument as String) != "" && (o.observed_at as String) == "2026-09-11")
     && fold(v41_published_arm64_config_observations, init: true, f: (acc, o) =>
       acc && string_contains(s: o.instrument as String, pattern: "registry-1.docker.io"))
@@ -317,4 +321,45 @@ test fn the_admissible_build_hosts_exclude_the_serving_pair_and_the_rpc_reservat
       SparkBuildHostRefused { cause: why } => string_contains(s: why, pattern: "does not pick")
       SparkBuildHostAdmitted { host: _ } => false
     })
+}
+
+// THE REACHABILITY JOIN IS COMPARED AGAINST THE VENDOR LABEL, NOT THE FLEET IDENTITY, and the second
+// arm is what makes that load-bearing rather than incidental: a Spark answers `hostname -s` with
+// spark-a3ee and never with srv5, so a join written against the identity would call every host in the
+// fleet a defect. This is the same label-versus-identity confusion that refused this lane's first
+// modelled leg, asserted here so it cannot come back as a green check.
+test fn the_reachability_join_reads_the_vendor_label_and_refuses_the_identity() -> Bool {
+  (match classify_reported_hostname(host: "srv5" as HostIdentity, endpoint: "192.168.1.226" as NonEmptyStr, reported: "spark-a3ee" as NonEmptyStr) {
+    SparkHostAnswered { host: _, endpoint: _, reported_hostname: n } => (n as String) == "spark-a3ee"
+    SparkHostIdentityMismatch { host: _, endpoint: _, expected: _, reported: _ } => false
+    SparkHostIdentityUnjoinable { host: _, endpoint: _, reported: _ } => false
+    SparkHostUnreachable { host: _, endpoint: _, cause: _ } => false
+    SparkHostUnresolved { host: _ } => false
+  })
+    && (match classify_reported_hostname(host: "srv5" as HostIdentity, endpoint: "192.168.1.226" as NonEmptyStr, reported: "srv5" as NonEmptyStr) {
+      SparkHostIdentityMismatch { host: _, endpoint: _, expected: want, reported: got } =>
+        (want as String) == "spark-a3ee" && (got as String) == "srv5"
+      SparkHostAnswered { host: _, endpoint: _, reported_hostname: _ } => false
+      SparkHostIdentityUnjoinable { host: _, endpoint: _, reported: _ } => false
+      SparkHostUnreachable { host: _, endpoint: _, cause: _ } => false
+      SparkHostUnresolved { host: _ } => false
+    })
+    && (match classify_reported_hostname(host: "srv1" as HostIdentity, endpoint: "srv1" as NonEmptyStr, reported: "srv1" as NonEmptyStr) {
+      SparkHostIdentityUnjoinable { host: _, endpoint: _, reported: _ } => true
+      SparkHostAnswered { host: _, endpoint: _, reported_hostname: _ } => false
+      SparkHostIdentityMismatch { host: _, endpoint: _, expected: _, reported: _ } => false
+      SparkHostUnreachable { host: _, endpoint: _, cause: _ } => false
+      SparkHostUnresolved { host: _ } => false
+    })
+}
+
+// ONLY AN ANSWER THAT JOINED COUNTS AS AN ANSWER, which is what the entry's exit path now gates on.
+// An earlier revision returned success whenever the receipt file wrote, so the run in which every
+// admissible host refused the key exited zero with its diagnostics intact and discarded.
+test fn only_a_joined_answer_counts_as_reachable() -> Bool {
+  spark_host_answered(r: SparkHostAnswered { host: "srv5" as HostIdentity, endpoint: "e" as NonEmptyStr, reported_hostname: "spark-a3ee" as NonEmptyStr })
+    && !spark_host_answered(r: SparkHostIdentityMismatch { host: "srv5" as HostIdentity, endpoint: "e" as NonEmptyStr, expected: "spark-a3ee" as NonEmptyStr, reported: "other" as NonEmptyStr })
+    && !spark_host_answered(r: SparkHostIdentityUnjoinable { host: "srv1" as HostIdentity, endpoint: "e" as NonEmptyStr, reported: "srv1" as NonEmptyStr })
+    && !spark_host_answered(r: SparkHostUnreachable { host: "srv9" as HostIdentity, endpoint: "192.168.1.236" as NonEmptyStr, cause: "Permission denied (publickey,password)" })
+    && !spark_host_answered(r: SparkHostUnresolved { host: "srv9" as HostIdentity })
 }

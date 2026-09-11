@@ -9,7 +9,7 @@ import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
-import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts, fabric_lane_for_host }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -529,10 +529,41 @@ func vllm_runtime_image_build_wet(host: String) -> ProcessExit
 // is exactly the join a caller needs -- an endpoint resolved from a fleet identity should answer with
 // that identity's machine, and a reachable box that answers with a different name is a fleet-data
 // defect rather than a reachable host.
+// THE JOIN IS PERFORMED, NOT DESCRIBED. An earlier revision captured `reported_hostname` and compared
+// it to nothing, while the annotation above claimed the comparison as the point of the probe -- a
+// promise in prose that the code did not keep, which is worse than not making it.
+//
+// AND THE NAME IT IS COMPARED TO IS NOT THE IDENTITY. A Spark answers `hostname -s` with its VENDOR
+// LABEL (spark-a3ee), never with its fleet identity (srv5); asserting equality against the identity
+// would call every host in the fleet a defect. The label bound to an identity is recorded by
+// gunbc.spark.fabric_switch_observed as `spark_hostname` on that host's lane observation, so the join
+// is between two independently obtained facts: a lane reading taken earlier, and the box's own answer
+// now. A host with no lane row cannot be joined at all, which is its own arm rather than a pass.
 type SparkHostReachability
   = SparkHostAnswered { host: HostIdentity, endpoint: NonEmptyStr, reported_hostname: NonEmptyStr }
+  | SparkHostIdentityMismatch { host: HostIdentity, endpoint: NonEmptyStr, expected: NonEmptyStr, reported: NonEmptyStr }
+  | SparkHostIdentityUnjoinable { host: HostIdentity, endpoint: NonEmptyStr, reported: NonEmptyStr }
   | SparkHostUnreachable { host: HostIdentity, endpoint: NonEmptyStr, cause: String }
   | SparkHostUnresolved { host: HostIdentity }
+
+fn spark_expected_reported_hostname(host: HostIdentity) -> NonEmptyStr? {
+  match fabric_lane_for_host(host: host) {
+    Absent => none
+    Present { value: o } => Present { value: o.spark_hostname }
+  }
+}
+
+fn classify_reported_hostname(host: HostIdentity, endpoint: NonEmptyStr, reported: NonEmptyStr) -> SparkHostReachability {
+  match spark_expected_reported_hostname(host: host) {
+    Absent => SparkHostIdentityUnjoinable { host: host, endpoint: endpoint, reported: reported }
+    Present { value: expected } =>
+      if (expected as String) == (reported as String) {
+        SparkHostAnswered { host: host, endpoint: endpoint, reported_hostname: reported }
+      } else {
+        SparkHostIdentityMismatch { host: host, endpoint: endpoint, expected: expected, reported: reported }
+      }
+  }
+}
 
 func probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
   uses net: Network
@@ -547,10 +578,20 @@ func probe_spark_host_reachability(context: FleetSshExecutionContext, host: Host
           if name == "" {
             SparkHostUnreachable { host: host, endpoint: endpoint as NonEmptyStr, cause: "the leg succeeded and the host reported no name" }
           } else {
-            SparkHostAnswered { host: host, endpoint: endpoint as NonEmptyStr, reported_hostname: name as NonEmptyStr }
+            classify_reported_hostname(host: host, endpoint: endpoint as NonEmptyStr, reported: name as NonEmptyStr)
           }
       }
     }
+  }
+}
+
+fn spark_host_answered(r: SparkHostReachability) -> Bool {
+  match r {
+    SparkHostAnswered { host: _, endpoint: _, reported_hostname: _ } => true
+    SparkHostIdentityMismatch { host: _, endpoint: _, expected: _, reported: _ } => false
+    SparkHostIdentityUnjoinable { host: _, endpoint: _, reported: _ } => false
+    SparkHostUnreachable { host: _, endpoint: _, cause: _ } => false
+    SparkHostUnresolved { host: _ } => false
   }
 }
 
@@ -558,6 +599,10 @@ fn spark_reachability_line(r: SparkHostReachability) -> String {
   match r {
     SparkHostAnswered { host: h, endpoint: e, reported_hostname: name } =>
       join(["reachable host=", h as String, " endpoint=", e as String, " reported=", name as String, " fleet_key=admitted\n"], "")
+    SparkHostIdentityMismatch { host: h, endpoint: e, expected: want, reported: got } =>
+      join(["IDENTITY MISMATCH host=", h as String, " endpoint=", e as String, " expected=", want as String, " reported=", got as String, " -- the endpoint answered, as a different machine than the fleet model binds to this identity\n"], "")
+    SparkHostIdentityUnjoinable { host: h, endpoint: e, reported: got } =>
+      join(["unjoinable host=", h as String, " endpoint=", e as String, " reported=", got as String, " -- no lane observation records a hostname for this identity, so the answer cannot be checked against anything\n"], "")
     SparkHostUnreachable { host: h, endpoint: e, cause: why } =>
       join(["unreachable host=", h as String, " endpoint=", e as String, " cause=", why, "\n"], "")
     SparkHostUnresolved { host: h } =>
@@ -596,8 +641,15 @@ func spark_build_host_reachability_wet() -> ProcessExit
               let w = Filesystem.Write(path: spark_reachability_receipt_path, content: body)
               if !w.success {
                 exit_failure(reason: join(["spark reachability receipt write failed: ", w.error], ""))
-              } else {
+              } else if fold(readings, init: true, f: (acc, r) => acc && spark_host_answered(r: r)) {
                 ExitSuccess
+              } else {
+                // A RECEIPT THAT WROTE IS NOT A LINE THAT RAN. An earlier revision returned success
+                // whenever the file landed, so a run in which every admissible host refused the key
+                // -- which is what actually happened -- exited zero and any caller gating on it
+                // proceeded. The diagnostics were typed and located and then discarded by the exit
+                // path, which is DESIGN §5's failure arm widening into silence.
+                exit_failure(reason: join(["not every admissible build host answered:\n", body], ""))
               }
             }
           }

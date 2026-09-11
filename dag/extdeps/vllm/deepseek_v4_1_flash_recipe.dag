@@ -38,6 +38,20 @@ data v41_flash_checkpoint_on_disk: VllmPublishedFigure = VllmPublishedFigure {
 // recipe schema's 1.2 headroom factor, which is a publishing convention rather than an observed
 // floor -- so a fleet that wants a real floor measures one, and a fleet that wants to know whether it
 // is even in range compares against this.
+// THE TWO FIGURES THE PAGE STATES, AND THE RELATION IT STATES BETWEEN THEM. The checkpoint total and
+// the minimum are not independent rows: the page says the second IS the first times the schema's 1.2
+// headroom factor. Carrying both plus the relation is what lets a reader check the transcription --
+// if either number were copied wrong, the derivation disagrees. Carrying only the minimum leaves a
+// literal that can only be compared to itself.
+data v41_flash_checkpoint_gb: Nat = 511
+data v41_flash_headroom_factor_tenths: Nat = 12
+
+// Integer ceiling of total * 1.2, because the published figure is rounded up: 511 * 1.2 = 613.2 and
+// the page states 614.
+fn v41_flash_headroom_gb(total_gb: Nat) -> Nat {
+  (total_gb * v41_flash_headroom_factor_tenths + 9) / 10
+}
+
 data v41_flash_vram_minimum_gb: Nat = 614
 
 data v41_flash_vram_minimum: VllmPublishedFigure = VllmPublishedFigure {
