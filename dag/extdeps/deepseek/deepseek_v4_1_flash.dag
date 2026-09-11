@@ -182,6 +182,8 @@ data deepseek_v4_1_flash_config_declares_engram_off_accelerator: Bool = false
 // over a 64K native window. Declared frontier for the working-window constraint: DSV41-2.
 data deepseek_v4_1_flash_context_length: TokenCount = token_count(count: 1048576)
 data deepseek_v4_1_flash_native_context_length: TokenCount = token_count(count: 65536)
+data deepseek_v4_1_flash_yarn_factor: Nat = 16
+
 fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
   token_count(count: token_count_value(t: deepseek_v4_1_flash_native_context_length) * deepseek_v4_1_flash_yarn_factor)
 }
@@ -255,11 +257,11 @@ data deepseek_v4_1_flash_safetensors_index_total_size: ByteSize = byte_size(coun
 data deepseek_v4_1_flash_safetensors_tree_file_bytes: ByteSize = byte_size(count: 510296708312)
 
 fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloadFootprint) -> ByteSize {
-  byte_size(count:
-    byte_size_count(b: f.backbone_bytes)
-      + byte_size_count(b: f.engram_bytes)
-      + byte_size_count(b: f.vision_bytes)
-      + byte_size_count(b: f.draft_bytes))
+  let n = byte_size_count(b: f.backbone_bytes)
+    + byte_size_count(b: f.engram_bytes)
+    + byte_size_count(b: f.vision_bytes)
+    + byte_size_count(b: f.draft_bytes)
+  byte_size(count: n)
 }
 
 data deepseek_v4_1_flash_footprint_unread_on_fleet: Bool = true
