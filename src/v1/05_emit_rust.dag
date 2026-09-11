@@ -16808,6 +16808,35 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 // THE FILESYSTEM READ IS THE HOST BOUNDARY THE DRIVER OWNS (std.compiler_entry): the rendered
 // main walks the declared source roots, reads the bytes, and mints one DagSourceReadWitness per
 // path -- the .dag pipeline itself never touches IO.
+//
+// THIS MAIN IS SEED, AND ITS FRONTIER IS DECLARED HERE, PART BY PART (DESIGN section 7; review
+// 63791). Every line of it is hand-authored Rust spelled as string literals, which no Rust census
+// counts and no `.dag` lens reads, so the only place its retention can be stated is on this
+// function. It divides into two parts, and only the first is irreducible.
+//
+// HOST BOUNDARY, retained by cause and not by schedule: argv (`main`, the mode dispatch's input),
+// the source-root walk and byte reads (`collect_dag_paths`, the read into DagSourceReadWitness),
+// the two clocks (`now_nanos`, `process_cpu_nanos`), the `/proc` memory reading
+// (`proc_status_kib`), the stdout/stderr writes and the exit status. Nothing in `.dag` can perform
+// these; they shrink only to the extent that each becomes a modeled host operation the emitter
+// renders a call to, rather than a body it authors.
+//
+// SEMANTICS EXPRESSIBLE IN `.dag`, retained for want of a named capability each, and each retired by
+// that capability and nothing smaller:
+// - the host-facts decode (`read_host_facts`, `host_fact`): a TSV-to-record decoding authority.
+//   Retires when the lane's host facts cross the boundary through a modeled decode (the ingest
+//   direction of the one grammar, DESIGN section 4) producing NativeLaneHostFacts in `.dag`, so the
+//   main hands bytes in and receives the record.
+// - the cost-line assembly (`cost_partition_line` and its JSON): the `[cost-partition]` row shape is
+//   already an authority on the host helper's side. Retires when a `.dag` fold renders the row from
+//   phase readings the main supplies (the clocks stay host; the row stops being), which needs the
+//   `.dag` emission of a JSON-shaped record the host prints verbatim.
+// - the two-mode orchestration (`run_census`, `run_adjudication`: phase order, refusal arms,
+//   terminal marker): the sequence of `.dag` calls and the arm each Outcome selects. Retires when
+//   the rendered main is a single call into a `.dag` driver function parameterised by the host
+//   operations above, which needs a `.dag` driver to receive host effects as values.
+// Until then the growth is bounded to this function; a new mode or phase is a new clause here, not
+// a new driver.
 fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   TextFile {
