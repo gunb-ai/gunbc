@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.corpus_only_value_recomputed_below_its_least_common_ancestor
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data corpus_only_value_recomputed_below_its_least_common_ancestor: RecurringFailureMode = RecurringFailureMode {
+  identity: "corpus_only_value_recomputed_below_its_least_common_ancestor" as NonEmptyStr,
+
+  receipts: [
+    "**a value that depends only on inputs fixed for a wide scope is computed at a narrower one, so every consumer pays for it again** (INVALID STATE: a value whose every input is fixed for some scope -- the compiled corpus, a prepared grammar, a resolved fixture -- is derived inside a narrower one: per parse call, per claim, per request. HARM: the cost multiplies by the number of narrow scopes, grows with the corpus, and lands on budgets and latency far from the code that causes it. This is DESIGN section 2's demand-graph rule violated -- authored duplication whose least common ancestor is the wide scope -- and std.materialization_ladder is the authority for how that demand must be joined; this row records how the violation keeps presenting, not a second statement of the law. ",
+
+    "**RECOGNITION RULE: name the inputs this value actually depends on, then name the scope it is computed at. If every input is fixed for a wider scope, the computation is at the wrong one.** Ask it of the value, not of the call site: the call site is always correct locally, which is why the defect survives review. ",
+
+    "**THE TELL THAT HIDES IT: the symptom appears at the CONSUMING site as a budget or latency problem, never at the PRODUCING site as duplication**, so whoever notices is never the person whose code is wrong, and each instance is diagnosed from scratch. In all three receipts the first report named something else -- a witness that does not fit its budget, a route that is slow, a fixture that is expensive. ",
+
+    "RECEIPT 1 (gunbc#10992). v2.test.native_decl_selection's shared fixture was rebuilt per witness; its four witnesses exceeded the per-claim CPU budget until the fixture was shared at the resolved seam. Found at: mitigatable (typed budget refusals on the floor). ",
+
+    "RECEIPT 2 (gunbc#11032). v2.compiler.parse parse_grammar_digest and the production index were re-derived on every parse call -- a content hash of the whole grammar tree plus an O(P) map build -- although prepare_grammar fixed both before the first token. About 128 ms per claim; eleven where-refinement witnesses exceeded the 500 ms budget and reddened main. Repaired by carrying both on the prepared grammar, where the analysis already lived. Found at: mitigatable (budget refusals, main red). ",
+
+    "RECEIPT 3 (open). The belt dispatch route: same node dispatched twice in one serve process cost 121.0 s and 122.5 s, while the roadmap page, which reaches corpus-derived data values memoized for the process lifetime, fell from 3.8 s to 2.2 s on repeat. The corpus-only share of the dispatch route is an open follow-up; much of its cost was separately a fork tax (metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound). ",
+
+    "**CARRY, DO NOT CACHE, WHERE THE SCOPE IS MODELLED.** #11032 did two different things and the difference is the lesson. Carrying the digest ON THE PREPARED GRAMMAR is the placement repair: the value now lives at its least common ancestor and cannot be recomputed per call. Its warm-share rows in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm are a provider at the floor's scope: legitimate for recurrence that is genuinely unavoidable across claims, but by DESIGN section 2 a cache may discharge unavoidable recurrence and may never excuse authored duplication -- a provider installed where a carrier was available makes the redundant work cheap and removes the signal that would rank it for deletion. ",
+
+    "DISTINCT FROM ITS NEIGHBOURS. recurrence_ledger_scoped_below_the_recurrence is the INSTRUMENT's version of this shape: a counter reset per unit cannot see repetition across units. This row is the PROGRAM's version: the value itself is computed below its scope. The two meet in the evidence -- the floor's cross-claim demand census is the instrument scoped correctly, and it is what named receipt 2's producer. ",
+
+    "ATTAINABLE CEILING FOR THE CLASS: MECHANICALLY PREVENTABLE, not higher. Whether a value's inputs are all fixed for a wider scope is decidable from the declaration's dependencies. What its least common ancestor SHOULD be -- which carrier is the right home, and whether recurrence across that scope is avoidable at all -- is a modelling judgement no check can make, so construction cannot rule the state out. ",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the floor's cross-claim demand census joins each repeated producer to the input-dependence of its value and REFUSES a producer demanded at claims above one whose inputs are all fixed for the prepared subject, unless it is carried on a prepared value or admitted as a named provider under std.materialization_ladder. The census naming the producer in a TSV does not satisfy this trigger: it named receipt 2 and nothing refused. ",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.parse", decl_name: "parse_grammar_digest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.floor_pure_producer_share", decl_name: "floor_cross_claim_pure_producers_warm", field: WholeDeclaration },
+  ],
+}
