@@ -39,14 +39,15 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation {
   MtCollins1MediaRedirectionSample,
   MtCollins1ConnectorIdentificationBasis,
   MtCollins1PartnerRequirement,
+  MtCollins1BootDeliveryObservation,
   mtcollins1_acquisition_standing,
+  mtcollins1_boot_delivery_observation,
   mtcollins1_cross_channel_rank_mixing_standing,
   mtcollins1_partner_requirement,
   mtcollins1_census_observed_at,
   mtcollins1_connector_identification_basis,
   mtcollins1_edac_clean_at_capture,
   mtcollins1_edac_uptime_at_capture_seconds,
-  mtcollins1_host_capture_attempt_label_defect,
   mtcollins1_host_capture_observed_at,
   mtcollins1_media_attach_observed_at,
   mtcollins1_consumption_frontier,
@@ -350,7 +351,6 @@ test fn the_clean_flag_agrees_with_the_counters_and_has_an_observation_window() 
 test fn the_capture_windows_actually_distinguish_the_attempts() -> Bool {
   mtcollins1_census_observed_at < mtcollins1_host_capture_observed_at
     && mtcollins1_media_attach_observed_at < mtcollins1_host_capture_observed_at
-    && !(mtcollins1_host_capture_attempt_label_defect == "")
 }
 
 // THE CONNECTOR IDENTIFICATION RESTS ON A ONE-OF-SIXTEEN PART, and that is a structural property
@@ -450,7 +450,7 @@ test fn the_identification_basis_cites_the_authority_this_witness_folds() -> Boo
 fn catalog_agrees_with_binding(c: DramModuleCatalogRow, b: MtCollins1FirmwareChannelBinding) -> Bool {
   c.part_number == b.part_number
     && c.rank_count == b.rank_count
-    && bit_width_count(w: c.chip_width) == bit_width_count(w: b.chip_width)
+    && bit_width_count(b: c.chip_width) == bit_width_count(b: b.chip_width)
 }
 
 fn catalog_row_for_binding_count(b: MtCollins1FirmwareChannelBinding, rows: List<DramModuleCatalogRow>) -> Int {
@@ -533,4 +533,31 @@ test fn cross_channel_rank_mixing_remains_unaffirmed_by_the_specification() -> B
     MixingNotSupported => false
     MixingNotPreferred => false
   }
+}
+
+
+// ── the boot-delivery control, as a joinable fact rather than a paragraph ──────────────────────
+
+// THE EXPERIMENT THIS LANE RAN HAD EXACTLY ONE VARIED TERM, and that is what makes it a control
+// rather than an anecdote. Across the failing and succeeding probes the device selector and the
+// persistence setting were held constant and the firmware BOOT TYPE was not: legacy on the
+// attempts that booted nothing, EFI on the attempt that produced the host capture. Asserting it
+// here means a later edit that flattened the two boot-type readings to the same value -- which
+// would destroy the control while leaving the prose intact -- goes red.
+test fn the_boot_type_is_the_only_varied_term_across_the_probes() -> Bool {
+  mtcollins1_boot_delivery_observation.boot_flag_valid_observed
+    && mtcollins1_boot_delivery_observation.persistence_held_constant_across_probes
+    && !(mtcollins1_boot_delivery_observation.efi_boot_type_on_failing_attempts
+         == mtcollins1_boot_delivery_observation.efi_boot_type_on_succeeding_attempt)
+    && mtcollins1_boot_delivery_observation.efi_boot_type_on_succeeding_attempt
+}
+
+// AND THE MODEL CALLED EVERY ONE OF THEM COMPLETE. This is the observation that made the whole
+// defect invisible for an intake lane, so it is carried as a Bool a fold reads rather than a
+// sentence. It is a control that SHOULD flip: when gunbc#11001 lands and the terminal can no
+// longer be minted from an accepted power command plus a readback, this goes red and the receipt
+// has to be restated against a model that no longer lies.
+test fn the_model_reported_a_completed_handoff_even_when_nothing_booted() -> Bool {
+  mtcollins1_boot_delivery_observation.model_reported_completed_on_every_attempt
+    && !(mtcollins1_boot_delivery_observation.efi_boot_type_on_failing_attempts)
 }
