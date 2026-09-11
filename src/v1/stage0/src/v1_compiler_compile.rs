@@ -63,7 +63,9 @@ pub use crate::v1_compiler_ownership::analyze_ownership;
 use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
 pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
 pub use crate::v1_compiler_parse::ParseResult;
-pub use crate::v1_compiler_parse::{parse_with_table, parse_with_table_in_occurrence_scope};
+pub use crate::v1_compiler_parse::{
+    census_heads_body_stand_in, parse_with_table, parse_with_table_in_occurrence_scope,
+};
 pub use crate::v1_compiler_resolve::{
     module_occurrence_input, module_occurrence_input_node, module_occurrence_input_transport,
     resolve_modules_with_occurrence_transport,
@@ -2770,6 +2772,78 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             annotations: parsed.annotations.clone(),
         })
     }
+}
+
+pub fn census_heads_item_is_fn_decl(item: Rc<Node>) -> bool {
+    (((item.connective.clone() == Connective::NoConnective)
+        && (item.body.clone() != std::option::Option::None))
+        && (item.transport.clone() == std::option::Option::None))
+}
+
+pub fn census_heads_node(
+    node: Rc<Node>,
+    children: Rc<Vec<Rc<Node>>>,
+    body: Option<Rc<Node>>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: node.occurrence_identity.clone(),
+        name: node.name.clone(),
+        ident: node.ident.clone(),
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        children: children.clone(),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: Rc::new(vec![]),
+        body: body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: std::option::Option::None,
+        module_item_kind: node.module_item_kind.clone(),
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
+pub fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        census_heads_node(
+            item.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for child in item.children.clone().iter().cloned() {
+                    __result.push(census_heads_module_item(child.clone()));
+                }
+                __result
+            }),
+            if census_heads_item_is_fn_decl(item.clone()) {
+                Some(crate::v1_compiler_parse::census_heads_body_stand_in())
+            } else {
+                std::option::Option::None
+            },
+        )
+    })
+}
+
+pub fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
+    census_heads_node(
+        module.clone(),
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in crate::v1_std_core::module_items(module.clone())
+                .iter()
+                .cloned()
+            {
+                __result.push(census_heads_module_item(item.clone()));
+            }
+            __result
+        }),
+        std::option::Option::None,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
