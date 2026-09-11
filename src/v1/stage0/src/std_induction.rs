@@ -990,45 +990,6 @@ pub fn cost_bound_params(b: Rc<CostBound>) -> Rc<Vec<String>> {
     v1_rt::reverse(cost_bound_params_into(b.clone(), Rc::new(vec![])))
 }
 
-pub fn atomic_cost_is_orderable(c: Rc<AtomicCost>) -> bool {
-    match (*atomic_cost_growth(c.clone())).clone() {
-        ParamGrowth::OrderableGrowth { rank: _, .. } => true,
-        ParamGrowth::GrowthNotOrderable => false,
-    }
-}
-
-pub fn atomic_factors_are_orderable(factors: Rc<Vec<Rc<AtomicCost>>>) -> bool {
-    factors
-        .iter()
-        .cloned()
-        .fold(true, |acc: bool, c: Rc<AtomicCost>| {
-            (acc && atomic_cost_is_orderable(c.clone()))
-        })
-}
-
-pub fn cost_bound_is_orderable(b: Rc<CostBound>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*b.clone()).clone() {
-        CostBound::ConstantBound => true,
-        CostBound::AtomicBound { cost: c, .. } => atomic_cost_is_orderable(c.clone()),
-        CostBound::ProductBound { factors: fs, .. } => atomic_factors_are_orderable(fs.clone()),
-        CostBound::SumOfProductsBound { terms: ts, .. } => {
-            ts.iter()
-                .cloned()
-                .fold(true, |acc: bool, factors: Rc<Vec<Rc<AtomicCost>>>| {
-                    (acc && atomic_factors_are_orderable(factors.clone()))
-                })
-        }
-        CostBound::SumBound { terms: ts, .. } => ts
-            .iter()
-            .cloned()
-            .fold(true, |acc: bool, inner: Rc<CostBound>| {
-                (acc && cost_bound_is_orderable(inner.clone()))
-            }),
-        CostBound::ForeverBound => false,
-        CostBound::ErrorBound => false,
-    })
-}
-
 pub fn shape_for_growth_rank(r: GrowthRank) -> Option<CostShape> {
     if (((r.degree.clone() == 0) && (r.logs.clone() == 0)) && (r.bodies.clone() == 0)) {
         Some(CostShape::ShapeConstant)
