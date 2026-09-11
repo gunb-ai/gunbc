@@ -182,26 +182,33 @@ fn cell_at(cells: List<String>, index: Int) -> String {
   }
 }
 
-type IdDupScan {
+type NameDupScan {
   seen: Map<String, Bool>
-  first: NonEmptyStr?
+  first: String?
 }
 
-fn first_duplicate(ids: List<NonEmptyStr>) -> NonEmptyStr? {
-  match fold(ids, init: IdDupScan { seen: empty_map(), first: none }, f: fn(acc, id) {
+fn first_duplicate_name(names: List<String>) -> String? {
+  match fold(names, init: NameDupScan { seen: empty_map(), first: none }, f: fn(acc, name) {
     match acc.first {
-      Present { value: d } => IdDupScan { seen: acc.seen, first: Present { value: d } }
+      Present { value: d } => NameDupScan { seen: acc.seen, first: Present { value: d } }
       Absent =>
-        match acc.seen.lookup(id as String) {
-          Present { value: _ } => IdDupScan { seen: acc.seen, first: Present { value: id } }
-          Absent => IdDupScan {
-            seen: map_insert(acc.seen, id as String, true),
+        match acc.seen.lookup(name) {
+          Present { value: _ } => NameDupScan { seen: acc.seen, first: Present { value: name } }
+          Absent => NameDupScan {
+            seen: map_insert(acc.seen, name, true),
             first: none,
           }
         }
     }
   }) {
-    IdDupScan { seen: _, first: f } => f
+    NameDupScan { seen: _, first: f } => f
+  }
+}
+
+fn first_duplicate(ids: List<NonEmptyStr>) -> NonEmptyStr? {
+  match first_duplicate_name(names: map(ids, id => id as String)) {
+    Present { value: d } => Present { value: d as NonEmptyStr }
+    Absent => none
   }
 }
 
@@ -570,8 +577,12 @@ fn append_row_for(
 }
 
 fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProjection) -> ReviewSheetClassification {
-  let header_by_name = indexes_by_header(headers: observed.headers)
-  match missing_schema_header(schema: projection.schema, header_by_name: header_by_name) {
+  match first_duplicate_name(names: observed.headers) {
+    Present { value: d } =>
+      ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+    Absent => {
+      let header_by_name = indexes_by_header(headers: observed.headers)
+      match missing_schema_header(schema: projection.schema, header_by_name: header_by_name) {
     Present { value: missing } =>
       ReviewSheetUnreadable { reason: concat("missing header ", missing as String) as NonEmptyStr }
     Absent =>
@@ -595,6 +606,8 @@ fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProject
               }
           }
       }
+      }
+    }
   }
 }
 
@@ -720,33 +733,39 @@ fn judgement_for_listing(
   judgement_column: NonEmptyStr,
   listing_id: NonEmptyStr,
 ) -> JudgementRead {
-  let header_by_name = indexes_by_header(headers: observed.headers)
-  match header_by_name.lookup(identity_column as String) {
-    Absent =>
-      JudgementUnreadable {
-        reason: concat("missing identity column ", identity_column as String) as NonEmptyStr
-      }
-    Present { value: id_idx } =>
-      match header_by_name.lookup(judgement_column as String) {
+  match first_duplicate_name(names: observed.headers) {
+    Present { value: d } =>
+      JudgementUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+    Absent => {
+      let header_by_name = indexes_by_header(headers: observed.headers)
+      match header_by_name.lookup(identity_column as String) {
         Absent =>
           JudgementUnreadable {
-            reason: concat("missing judgement column ", judgement_column as String) as NonEmptyStr
+            reason: concat("missing identity column ", identity_column as String) as NonEmptyStr
           }
-        Present { value: j_idx } =>
-          match observed.rows |> filter(r => cell_at(cells: r.cells, index: id_idx) == (listing_id as String)) |> first {
+        Present { value: id_idx } =>
+          match header_by_name.lookup(judgement_column as String) {
             Absent =>
               JudgementUnreadable {
-                reason: concat("listing not present ", listing_id as String) as NonEmptyStr
+                reason: concat("missing judgement column ", judgement_column as String) as NonEmptyStr
               }
-            Present { value: row } => {
-              let raw = cell_at(cells: row.cells, index: j_idx)
-              if raw == "" {
-                JudgementBlank
-              } else {
-                JudgementEntered { value: raw as NonEmptyStr }
+            Present { value: j_idx } =>
+              match observed.rows |> filter(r => cell_at(cells: r.cells, index: id_idx) == (listing_id as String)) |> first {
+                Absent =>
+                  JudgementUnreadable {
+                    reason: concat("listing not present ", listing_id as String) as NonEmptyStr
+                  }
+                Present { value: row } => {
+                  let raw = cell_at(cells: row.cells, index: j_idx)
+                  if raw == "" {
+                    JudgementBlank
+                  } else {
+                    JudgementEntered { value: raw as NonEmptyStr }
+                  }
+                }
               }
-            }
           }
       }
+    }
   }
 }
