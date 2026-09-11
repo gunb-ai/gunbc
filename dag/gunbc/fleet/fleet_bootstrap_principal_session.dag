@@ -1,0 +1,282 @@
+module gunbc.fleet_bootstrap_principal_session
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.shell
+
+import extdeps.ssh.session {
+  SshSessionExecResult,
+  ssh_session_exec_portable_words,
+  ssh_session_exec_portable_words_with_stdin,
+}
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  FleetOpenSshTrustPolicy,
+  SshTarget,
+  PortableRemoteWords,
+  shape_fleet_ssh_exec,
+  shape_fleet_ssh_password_exec,
+  shape_fleet_ssh_password_exec_trusting,
+}
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+
+// WHICH SESSION REACHES A PRINCIPAL IS ONE FACT, AND IT WAS TWO.
+//
+// The corpus shaped fleet SSH legs two ways and let each consumer pick: shape_fleet_ssh_exec (key,
+// BatchMode, PasswordAuthentication=no) and shape_fleet_ssh_password_exec (password-only, BatchMode
+// off, sshpass -f). Both are correct shapers. What was missing is the fact that decides BETWEEN them,
+// so the choice was made per call site -- and two modules made it differently for the SAME principal:
+//
+//   gunbc.spark.managed_access_apply      privileged_leg       briansrls over the PASSWORD session
+//   gunbc.spark.model_snapshot_materialize spark_remote_run    briansrls over the PASSWORD session
+//   gunbc.spark.grant_privileged_operation run_privileged_step briansrls over the KEY session
+//   gunbc.typed_remote_file_write, gunbc.typed_argv_exec       briansrls over the KEY session
+//                                                             (whenever a caller names it)
+//
+// MEASURED CONSEQUENCE, not a hypothetical. mode=spark_grants refused on all four of srv9-srv12 on
+// 2026-09-11 (runs 34575801880 srv12, 34579018156 srv9, 34579022921 srv10, 34579027462 srv11), every
+// leg with `briansrls@<ip>: Permission denied (publickey,password)` and the run's own receipt printing
+// `-o PreferredAuthentications=publickey -o PasswordAuthentication=no -o User=briansrls`. The
+// administrator password was materialized and correct; the transport never offered it. The grant
+// installer was gated on briansrls holding the fleet key -- and no route in this corpus installs the
+// fleet key for briansrls. It only ever worked on srv5-srv8 because that key was placed there BY HAND.
+// So the fork was not merely untidy: it made a modeled convergence depend on an unmodeled provisioning
+// accident, and the accident was invisible for as long as the hosts that had it were the only hosts
+// anyone ran against.
+//
+// THE REPAIR IS A SINGLE AUTHORITY, NOT A THIRD SHAPER. The session is derived from the principal
+// here, once; consumers ask for a leg and never choose a shaper. A call site that wanted the key
+// session for the bootstrap principal is no longer expressible, because no call site selects a
+// session at all -- correctness by construction rather than a check that the right shaper was passed
+// (DESIGN §5).
+type FleetSshPrincipalSession
+  = FleetSshKeySession
+  | FleetSshPasswordSession
+
+// THE DERIVATION, and the asymmetry in it is the point. The bootstrap principal is the account a unit
+// arrives with -- created by the vendor first-boot wizard, holding a password and no fleet key -- so
+// the only credential that reaches it is the administrator password. Every OTHER principal on a fleet
+// host is one this repository created and keyed itself (gunbc-automation through
+// gunbc.spark.managed_access_apply), so the key session is what reaches those. That is why this is a
+// total function with no Unobserved arm: it is not an observation of a host, it is a consequence of
+// which account model created the account.
+fn fleet_ssh_session_for_principal(principal: NonEmptyStr) -> FleetSshPrincipalSession {
+  if (principal as String) == (fleet_bootstrap_principal_login() as String) {
+    FleetSshPasswordSession
+  } else {
+    FleetSshKeySession
+  }
+}
+
+// WHERE THE ADMINISTRATOR CREDENTIAL IS HELD, rehomed from gunbc.spark.grant_privileged_operation
+// because the password session is its only consumer and the dependency ran the wrong way: the module
+// that EXECUTES a password leg cannot import the module that merely named the file without closing a
+// cycle. The reasoning that put a PATH in the environment instead of the secret is unchanged and is
+// reproduced because it is the load-bearing half: an environment variable holding the credential is
+// readable by every child process the run spawns and is printed by any diagnostic that dumps the
+// environment -- and this repository's receipts do dump argv. A path is not the secret; whoever cannot
+// read the file learns nothing from knowing where it was.
+data fleet_bootstrap_credential_path_env: NonEmptyStr = "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE" as NonEmptyStr
+
+// READ AT THE MOMENT OF USE, NEVER CARRIED. The path is not threaded through
+// FleetSshExecutionContext or added as a parameter to every typed remote operation, and that is a
+// decision rather than an omission: a password leg is reached from inside generic machinery
+// (gunbc.typed_argv_exec, gunbc.typed_remote_file_write) whose callers have no business holding a
+// credential path, and widening their signatures would put one in the hands of every caller of a
+// typed remote write. The ambient read is the same discipline the rehomed declaration above already
+// stated -- the path is read when it is needed and never before.
+type FleetBootstrapCredentialPath
+  = FleetBootstrapCredentialPathReady { path: NonEmptyStr }
+  | FleetBootstrapCredentialPathAbsent { cause: NonEmptyStr }
+
+// WHERE THIS RUN HOLDS THE CREDENTIAL, which is a fact about the RUN and not about the principal. Two
+// provenances exist and both are legitimate: a self-hosted runner has the file written for it by the
+// job prelude and names it in the environment, while an operator-workstation entry resolves the secret
+// itself and materializes its own owner-only file. Carrying that as a locus is what lets the SESSION
+// stay a single derived fact: a caller says where its credential is, never which transport to use, so
+// supplying a file cannot smuggle back the choice this module exists to remove.
+// The third arm is for a leg that needs none: a key-session leg carries no password, and saying so is
+// better than handing it a path it will ignore. A password leg given this arm REFUSES with a located
+// cause rather than reaching for an ambient file, so "this run holds no bootstrap credential" stays a
+// statement the caller made rather than something the session guessed.
+type FleetBootstrapCredentialLocus
+  = BootstrapCredentialFileHeld { path: NonEmptyStr }
+  | BootstrapCredentialInRunEnvironment
+  | BootstrapCredentialNotHeld
+
+fn resolve_fleet_bootstrap_credential_path(
+  locus: FleetBootstrapCredentialLocus,
+) -> FleetBootstrapCredentialPath {
+  match locus {
+    BootstrapCredentialFileHeld { path: p } => FleetBootstrapCredentialPathReady { path: p }
+    BootstrapCredentialInRunEnvironment => read_fleet_bootstrap_credential_path()
+    BootstrapCredentialNotHeld =>
+      FleetBootstrapCredentialPathAbsent {
+        cause: join([
+          "this leg declared it holds no bootstrap credential, and ",
+          fleet_bootstrap_principal_login() as String,
+          " is reached only by the password session, so the leg was NOT attempted",
+        ], "") as NonEmptyStr,
+      }
+  }
+}
+
+fn read_fleet_bootstrap_credential_path() -> FleetBootstrapCredentialPath {
+  match shell.Env.Get(name: fleet_bootstrap_credential_path_env).value {
+    Absent =>
+      FleetBootstrapCredentialPathAbsent {
+        cause: join([
+          "no ", fleet_bootstrap_credential_path_env as String,
+          " in the environment: this run materialized no administrator credential, so the password session that reaches ",
+          fleet_bootstrap_principal_login() as String, " cannot be opened",
+        ], "") as NonEmptyStr,
+      }
+    Present { value: raw } => {
+      let path = trim(s: raw)
+      if path == "" {
+        FleetBootstrapCredentialPathAbsent {
+          cause: join([
+            fleet_bootstrap_credential_path_env as String, " is set but empty, which is not a path",
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        FleetBootstrapCredentialPathReady { path: path as NonEmptyStr }
+      }
+    }
+  }
+}
+
+// A LEG THAT DID NOT RUN IS NOT A LEG THAT FAILED, so this is a typed outcome and not an
+// SshSessionExecResult carrying success:false. Minting an exec result for an invocation that was never
+// made is the fabricated-plausible-output failure DESIGN §5 forbids outright: a caller folding over
+// exit codes would read "the host rejected us" where the truth is "this run holds no credential for
+// this principal", and those have different remedies.
+type FleetPrincipalLegOutcome
+  = FleetPrincipalLegRan { session: FleetSshPrincipalSession, result: SshSessionExecResult }
+  | FleetPrincipalLegRefused { cause: NonEmptyStr }
+
+fn password_exec_result_as_session_result(
+  exit_code: Int,
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: exit_code, success: success, stdout: stdout, stderr: stderr }
+}
+
+// THE ONE EXEC EVERY CONSUMER CALLS, stdin-bearing. The key arm is byte-for-byte what the call sites
+// did before; the password arm is what gunbc.spark.managed_access_apply privileged_leg already did,
+// now reached by derivation instead of by the author remembering.
+fn exec_as_fleet_principal_with_stdin(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+  stdin_payload: String,
+  credential: FleetBootstrapCredentialLocus,
+) -> FleetPrincipalLegOutcome {
+  let session = fleet_ssh_session_for_principal(principal: target.principal)
+  match session {
+    FleetSshKeySession =>
+      FleetPrincipalLegRan {
+        session: session,
+        result: ssh_session_exec_portable_words_with_stdin(
+          client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+          stdin_payload: stdin_payload,
+        ),
+      }
+    FleetSshPasswordSession =>
+      match resolve_fleet_bootstrap_credential_path(locus: credential) {
+        FleetBootstrapCredentialPathAbsent { cause: c } => FleetPrincipalLegRefused { cause: c }
+        FleetBootstrapCredentialPathReady { path: p } => {
+          let r = password_file_ssh_exec_portable_words_with_stdin(
+            password_file: p,
+            client_args: shape_fleet_ssh_password_exec(context: context, target: target, words: words),
+            stdin_payload: stdin_payload,
+          )
+          FleetPrincipalLegRan {
+            session: session,
+            result: password_exec_result_as_session_result(
+              exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr,
+            ),
+          }
+        }
+      }
+  }
+}
+
+// THE NO-STDIN LEG. It is a separate entry rather than the above with an empty payload because the two
+// reach DIFFERENT upstream operations (ssh.Session.ExecPortableWords vs ...WithStdin), and collapsing
+// them would change which operation a migrated call site invokes -- a behaviour change smuggled into a
+// transport repair. The password arm has no such pair upstream, so it passes an empty payload through
+// the stdin operation, which is the only shape sshpass -f offers.
+fn exec_as_fleet_principal(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+  credential: FleetBootstrapCredentialLocus,
+) -> FleetPrincipalLegOutcome {
+  let session = fleet_ssh_session_for_principal(principal: target.principal)
+  match session {
+    FleetSshKeySession =>
+      FleetPrincipalLegRan {
+        session: session,
+        result: ssh_session_exec_portable_words(
+          client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+        ),
+      }
+    FleetSshPasswordSession =>
+      exec_as_fleet_principal_with_stdin(
+        context: context, target: target, words: words, stdin_payload: "", credential: credential,
+      )
+  }
+}
+
+// THE TRUST-ONLY ENTRY, for a caller that holds a trust POLICY and no credential binding. A key leg
+// cannot be shaped from that -- shape_fleet_ssh_exec derives its credential options from the binding --
+// so the key arm here REFUSES rather than reaching for one, which is the honest shape: a caller with no
+// credential binding can talk to the bootstrap principal and to nobody else, and now says so in a
+// located refusal instead of a compile-time impossibility nobody wrote down.
+//
+// It exists so gunbc.spark.model_snapshot_materialize spark_remote_run reads the session fact like
+// every other consumer instead of naming shape_fleet_ssh_password_exec_trusting itself. That leg was
+// already correct; what it was missing is that its correctness was its own, not derived, which is how
+// the grant installer managed to be wrong about the same principal.
+fn exec_as_fleet_principal_trusting_with_stdin(
+  trust: FleetOpenSshTrustPolicy,
+  target: SshTarget,
+  words: PortableRemoteWords,
+  stdin_payload: String,
+  credential: FleetBootstrapCredentialLocus,
+) -> FleetPrincipalLegOutcome {
+  let session = fleet_ssh_session_for_principal(principal: target.principal)
+  match session {
+    FleetSshKeySession =>
+      FleetPrincipalLegRefused {
+        cause: join([
+          "a trust-only context carries no credential binding, so no key-session leg can be shaped from it; ",
+          target.principal as String,
+          " is not the bootstrap principal and is reached only by the key session",
+        ], "") as NonEmptyStr,
+      }
+    FleetSshPasswordSession =>
+      match resolve_fleet_bootstrap_credential_path(locus: credential) {
+        FleetBootstrapCredentialPathAbsent { cause: c } => FleetPrincipalLegRefused { cause: c }
+        FleetBootstrapCredentialPathReady { path: p } => {
+          let r = password_file_ssh_exec_portable_words_with_stdin(
+            password_file: p,
+            client_args: shape_fleet_ssh_password_exec_trusting(
+              trust: trust, target: target, words: words,
+            ),
+            stdin_payload: stdin_payload,
+          )
+          FleetPrincipalLegRan {
+            session: session,
+            result: password_exec_result_as_session_result(
+              exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr,
+            ),
+          }
+        }
+      }
+  }
+}

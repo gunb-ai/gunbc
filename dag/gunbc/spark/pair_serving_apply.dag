@@ -7,7 +7,12 @@ import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
-import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import gunbc.fleet_bootstrap_principal_session {
+  exec_as_fleet_principal_trusting_with_stdin,
+  BootstrapCredentialFileHeld,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
+}
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { gunbc_spark_pair_runtime_dockerfile }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -15,9 +20,9 @@ import gunbc.spark.fabric_reach { SparkReachPath, ReachManagementLan, ReachFabri
 import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
-  SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
+  SshTarget, portable_remote_words,
 }
-import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
@@ -208,35 +213,42 @@ fn spark_pair_apply_all_applied(outcomes: List<SparkPairHostApplyOutcome>) -> Bo
   all(outcomes, o => spark_pair_host_applied(o: o))
 }
 
+// THE LAST PRODUCTION TWIN, CUT. This leg named shape_fleet_ssh_password_exec_trusting itself, which
+// is the same locally-correct choice gunbc.spark.model_snapshot_materialize spark_remote_run used to
+// make -- and a fact each call site states for itself is a fact two call sites can disagree about. The
+// grant installer is the proof that they eventually do. Raised in review 63709 against the first cut of
+// this repair, which left this twin standing while claiming consumers no longer choose a shaper; that
+// claim is only true once this one derives too.
 fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => SparkPairHostApplyFailed { host: plan.host, cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } =>
       match spark_reach_endpoint(host: plan.host, path: path) {
         Absent => SparkPairHostApplyFailed { host: plan.host, cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
-        Present { value: endpoint } => {
-          let r = password_file_ssh_exec_portable_words_with_stdin(
-            password_file: admin_credential_file,
-            client_args: shape_fleet_ssh_password_exec_trusting(
-              trust: trust,
-              target: SshTarget {
-                endpoint: endpoint as NonEmptyStr,
-                principal: spark_operator_bootstrap_login as NonEmptyStr,
-              },
-              words: words,
-            ),
+        Present { value: endpoint } =>
+          match exec_as_fleet_principal_trusting_with_stdin(
+            trust: trust,
+            target: SshTarget {
+              endpoint: endpoint as NonEmptyStr,
+              principal: fleet_bootstrap_principal_login(),
+            },
+            words: words,
             stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),
-          )
-          if r.success {
-            SparkPairHostApplied {
-              host: plan.host,
-              detail: join([spark_reach_path_wire(p: path), " ", trim(s: r.stdout)], ""),
-              standing: serving_standing(attempts: []),
-            }
-          } else {
-            SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+            credential: BootstrapCredentialFileHeld { path: admin_credential_file },
+          ) {
+            FleetPrincipalLegRefused { cause: why } =>
+              SparkPairHostApplyFailed { host: plan.host, cause: why as String }
+            FleetPrincipalLegRan { session: _, result: r } =>
+              if r.success {
+                SparkPairHostApplied {
+                  host: plan.host,
+                  detail: join([spark_reach_path_wire(p: path), " ", trim(s: r.stdout)], ""),
+                  standing: serving_standing(attempts: []),
+                }
+              } else {
+                SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+              }
           }
-        }
       }
   }
 }
