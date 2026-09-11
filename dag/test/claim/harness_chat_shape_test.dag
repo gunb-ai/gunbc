@@ -11,6 +11,8 @@ import gunbc.harness.harness_wire {
   harness_decode_response,
   harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_address, harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, DeepseekV4FlashOnVllm }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.harness.harness_turn {
   HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
   harness_user_text_message_json,
@@ -61,7 +63,7 @@ test fn an_unknown_finish_reason_is_unreadable() -> Bool {
 
 // THE REPLAY CARRIES REASONING AS reasoning_content AND THE CALL WITH ITS ARGUMENTS RE-SERIALIZED.
 test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool {
-  let wire = serialize_json(v: harness_assistant_message_json(shape: OpenAiChatCompletionsShape, blocks: [
+  let wire = serialize_json(v: harness_assistant_message_json(unit: DeepseekV4FlashOnVllm, shape: OpenAiChatCompletionsShape, blocks: [
     WireThinkingBlock { thinking: "think first" },
     WireTextBlock { text: "Listing now." },
     WireToolUseBlock { id: "chatcmpl-tool-1", name: "run_command", input: json_object([json_kv(key: "command", value: json_string(s: "ls"))]) },
@@ -74,7 +76,7 @@ test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool {
 // THE MESSAGES-SHAPE REPLAY IS UNCHANGED BY THE NEW REALIZATION: a thinking block still rides as a
 // thinking block, and no reasoning_content key appears.
 test fn the_messages_replay_is_untouched() -> Bool {
-  let wire = serialize_json(v: harness_assistant_message_json(shape: AnthropicMessagesShape, blocks: [WireThinkingBlock { thinking: "think first" }]))
+  let wire = serialize_json(v: harness_assistant_message_json(unit: DeepseekV4FlashOnVllm, shape: AnthropicMessagesShape, blocks: [WireThinkingBlock { thinking: "think first" }]))
   wire.contains("\"type\": \"thinking\"") && !wire.contains("reasoning_content")
 }
 
@@ -108,17 +110,34 @@ test fn each_shape_posts_to_its_own_path() -> Bool {
     && harness_backend_path(shape: AnthropicMessagesShape) == "/v1/messages"
 }
 
-// The roster is DERIVED from the pair heads through the fleet topology: two serving pairs, two heads
-// (srv6 at .225, srv9 at .236), both resolved, and the backend URL renders on the engine port. RED
-// if a head loses its LAN endpoint row (Unresolved) or the derivation collapses to one address.
+// The roster is DERIVED from the pair heads through the fleet topology: one address per serving
+// pair, every head carrying a LAN endpoint row, and the backend URL rendering on the engine port.
+// RED if a head loses its endpoint row (Unresolved) or the derivation drops a pair.
+//
+// THE TWO TRANSCRIBED ADDRESSES THAT USED TO BE HERE ARE DELETED, and their rot is the reason this
+// witness is worth reading. It asserted `count == 2` with the literals ".225" and ".236" against a
+// roster whose authority -- `gunbc.spark.pair_serving_desired` `spark_pair_serving_groups` -- now
+// carries ONE group. The assertion had been false for as long as that row has been a singleton and
+// nothing said so, because this module had no standing consumer to say it in (review 63385; the
+// enrollment is now `gunbc.commit_workflow` `commit_gate_roster`). DESIGN section 6: name the
+// instrument, never transcribe its output. The count is read from the groups roster and each
+// address is joined against the head's own endpoint row, so a fleet move moves the witness with it.
 test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
   match harness_engine_replica_roster() {
     HarnessReplicasUnresolved { hosts: _ } => false
     HarnessReplicasResolved { addresses } =>
-      count(addresses) == 2
-        && any(addresses, a => a == "192.168.1.225")
-        && any(addresses, a => a == "192.168.1.236")
-        && string_contains(s: harness_backend_url_for_address(shape: OpenAiChatCompletionsShape, address: "192.168.1.236"), pattern: "http://192.168.1.236:30000/v1/chat/completions")
+      count(addresses) == count(spark_pair_serving_groups)
+        && count(addresses) > 0
+        && all(map(spark_pair_serving_groups, g => spark_pair_serving_head(group: g)), h =>
+             match host_lan_address(host: h) {
+               Present { value: a } => any(addresses, x => x == (a as String))
+               Absent => false
+             })
+        && all(addresses, a =>
+             string_contains(
+               s: harness_backend_url_for_address(shape: OpenAiChatCompletionsShape, address: a),
+               pattern: join(["http://", a, ":30000/v1/chat/completions"], ""),
+             ))
   }
 }
 

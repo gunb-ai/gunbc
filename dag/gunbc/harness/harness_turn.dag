@@ -321,6 +321,14 @@ fn harness_write_events(config: HarnessTurnConfig, events: List<String>) -> Harn
 // and removed by rebuilding the package. The wire label cannot distinguish them, so the harness
 // reports the label and says so, and whether the WORK was done is decided by external pinned
 // verification against the attempt head -- never here.
+// TurnUsageUnavailable IS ITS OWN OUTCOME rather than a reuse of TurnResponseUnreadable, because
+// the two have different remedies: an unreadable response is a transport or schema problem, while
+// this is a response the codec READ whose usage object the serving side did not supply in the shape
+// it declares. It is not folded into the ordinary continuation either -- harness_context_exhausted
+// and harness_compaction_due are the two mechanisms that keep a turn inside its window, both compare
+// the backend's COUNTED input against the declared budget, and neither can run on a count that was
+// never observed. Continuing with a fabricated 0 would report "the context is empty" for a turn that
+// may be at the ceiling, so the line stops and names which member was missing.
 type HarnessTurnOutcome
   = TurnProviderStopped {
       wire_stop_reason: String
@@ -337,15 +345,6 @@ type HarnessTurnOutcome
   | TurnContextWindowExhausted { input_tokens: Int, budget: Int, steps_taken: Int }
   | TurnTruncatedMidToolCall { output_tokens: Int, ceiling: Int, steps_taken: Int }
   | TurnThinkingFormatInvalid { cause: String, steps_taken: Int }
-  // THE ROUND DECODED BUT ITS TOKEN COUNTS DID NOT. This is its own outcome rather than a reuse of
-  // TurnResponseUnreadable because the two have different remedies: an unreadable response is a
-  // transport or schema problem, while this is a response the codec read whose usage object the
-  // serving side did not supply in the shape it declares. It is not folded into the ordinary
-  // continuation either: harness_context_exhausted and harness_compaction_due are the two
-  // mechanisms that keep a turn inside its window, both compare the backend's COUNTED input against
-  // the declared budget, and neither can run on a count that was never observed. Continuing with a
-  // fabricated 0 would report "the context is empty" for a turn that may be at the ceiling, so the
-  // line stops here and names which member was missing.
   | TurnUsageUnavailable { cause: String, steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
