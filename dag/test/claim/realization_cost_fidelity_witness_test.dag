@@ -37,7 +37,14 @@ import std.realization_cost_fidelity {
   ModeledCostBoundFact,
   CostGrowthNotOrderable,
   RealizationCostBodyDependent,
+  FidelityInputRefused,
+  FidelityRows,
+  PrimitiveIsBothStructuredAndUnstructured,
   RealizationCostFact,
+  RealizationCostFidelityReport,
+  StructuredPrimitiveDuplicated,
+  UnstructuredPrimitiveDuplicated,
+  count_cost_facts_contradicted,
   RealizationCostUnknown,
   RealizationDivergesByOperand,
   RealizationFasterThanModeled,
@@ -76,6 +83,29 @@ fn quadratic(param: String) -> CostBound {
 // THE CASE THE AUTHORITY EXISTS FOR. Both bounds are "linear"; a rank-only comparison calls them
 // equal. Per parameter they are not: the realization does no work in the left operand, so it is
 // cheaper there and identical on the right, and the model is the thing that is wrong.
+// EVERY CONTROL READS ITS ROWS THROUGH THIS, and the refusal arm returns NO ROWS ON PURPOSE. A
+// refused report means the INPUT was contradictory, so there is no honest row set to count; handing
+// back an empty list makes every population assertion below fail loudly rather than quietly reading
+// as "nothing to report", which is the one reading that would hide a refusal.
+fn rows_of(report: RealizationCostFidelityReport) -> List<RealizationCostFidelityRow> {
+  match report {
+    FidelityRows { rows: r } => r
+    FidelityInputRefused { cause: _ } => []
+  }
+}
+
+fn refusal_kind(report: RealizationCostFidelityReport) -> String {
+  match report {
+    FidelityRows { rows: _ } => "rows"
+    FidelityInputRefused { cause: c } =>
+      match c {
+        PrimitiveIsBothStructuredAndUnstructured { primitive: _ } => "both-structured-and-unstructured"
+        StructuredPrimitiveDuplicated { primitive: _ } => "structured-duplicated"
+        UnstructuredPrimitiveDuplicated { primitive: _ } => "unstructured-duplicated"
+      }
+  }
+}
+
 test fn concat_model_over_prices_the_left_operand() -> Bool {
   match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_realized_cost()) {
     RealizationFasterThanModeled => true
@@ -85,6 +115,7 @@ test fn concat_model_over_prices_the_left_operand() -> Bool {
     RealizationCostBodyDependent => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -121,6 +152,7 @@ test fn slower_realization_is_reported() -> Bool {
     RealizationCostBodyDependent => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -134,6 +166,7 @@ test fn identical_costs_are_preserved() -> Bool {
     RealizationCostBodyDependent => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -159,6 +192,7 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
     RealizationCostBodyDependent => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -174,6 +208,7 @@ test fn log_squared_and_linear_do_not_collide() -> Bool {
     RealizationCostBodyDependent => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -238,6 +273,7 @@ test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -258,6 +294,7 @@ test fn an_opposing_body_and_growth_delta_is_body_dependent() -> Bool {
     RealizationDivergesByOperand => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -274,6 +311,7 @@ test fn an_opposing_body_does_not_make_a_realization_faster() -> Bool {
     RealizationDivergesByOperand => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -295,6 +333,7 @@ test fn an_agreeing_body_and_growth_delta_stays_decided() -> Bool {
     RealizationDivergesByOperand => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -318,6 +357,7 @@ test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -326,19 +366,19 @@ data probe_primitive_a: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fide
 data probe_primitive_b: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fidelity_probe_b" }
 
 test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
-  let rows = realization_cost_fidelity_rows(
+  let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
     unstructured: [probe_primitive_b],
     target: EmitRust,
     facts: [],
-  )
+  ))
   count_cost_fidelity_unmeasured(rows: rows) == 1
     && count_cost_model_unmigrated(rows: rows) == 1
     && count_cost_fidelity_findings(rows: rows) == 0
 }
 
 test fn realization_fact_does_not_cross_targets() -> Bool {
-  let rows = realization_cost_fidelity_rows(
+  let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
     unstructured: [],
     target: EmitRust,
@@ -349,12 +389,12 @@ test fn realization_fact_does_not_cross_targets() -> Bool {
         cost: concat_realized_cost(),
       },
     ],
-  )
+  ))
   count_cost_fidelity_unmeasured(rows: rows) == 1 && count_cost_fidelity_findings(rows: rows) == 0
 }
 
 test fn measured_target_reports_the_finding() -> Bool {
-  let rows = realization_cost_fidelity_rows(
+  let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
     unstructured: [],
     target: InterpreterHost,
@@ -365,14 +405,14 @@ test fn measured_target_reports_the_finding() -> Bool {
         cost: concat_realized_cost(),
       },
     ],
-  )
+  ))
   count_cost_fidelity_findings(rows: rows) == 1 && count_cost_fidelity_unmeasured(rows: rows) == 0
 }
 
 // AN ARM THAT NO REPORTED POPULATION COUNTS IS AN ANSWER NOBODY READS: all four counts asserted on
 // one ledger, so the type cannot gain an arm without the accounting being revisited.
 test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
-  let rows = realization_cost_fidelity_rows(
+  let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
     unstructured: [],
     target: InterpreterHost,
@@ -383,7 +423,7 @@ test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
         cost: cost_iterate_body(param: "n"),
       },
     ],
-  )
+  ))
   count_cost_body_dependent(rows: rows) == 1
     && count_cost_fidelity_findings(rows: rows) == 0
     && count_cost_fidelity_unmeasured(rows: rows) == 0
@@ -415,6 +455,7 @@ test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool {
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -431,6 +472,7 @@ test fn an_unbounded_cost_is_not_preserved_against_a_constant() -> Bool {
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
   }
 }
@@ -454,7 +496,7 @@ test fn two_constants_still_compare_as_preserved() -> Bool {
 // AND THE ARM IS COUNTED: an answer no population reports is an answer nobody reads, which is the
 // defect this module shipped one round earlier.
 test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
-  let rows = realization_cost_fidelity_rows(
+  let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
     unstructured: [],
     target: InterpreterHost,
@@ -465,7 +507,7 @@ test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
         cost: cost_sqrt(param: "n"),
       },
     ],
-  )
+  ))
   count_cost_not_orderable(rows: rows) == 1
     && count_cost_fidelity_findings(rows: rows) == 0
     && count_cost_body_dependent(rows: rows) == 0
@@ -516,4 +558,108 @@ test fn an_unorderable_growth_projects_to_no_shape() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// ---- ORDER INDEPENDENCE, AND THE PARTITION ----
+
+// THE RED FOR FIRST-PICK, AND IT IS THE SAME TWO FACTS IN BOTH ORDERS. The lookup used to stop at
+// the first matching (primitive, target) fact, so a key carrying a linear and a quadratic
+// realization answered whichever the caller happened to list first -- a verdict decided by the
+// accumulator's order rather than by the realization. Reversing the list is the whole discriminator:
+// under first-pick these two calls disagree, and a fidelity that changes when nothing about the
+// subject changed is the fabricated plausible output section 5 forbids.
+fn contradicted_report(first: CostBound, second: CostBound) -> RealizationCostFidelityReport {
+  realization_cost_fidelity_rows(
+    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
+    unstructured: [],
+    target: InterpreterHost,
+    facts: [
+      RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: first },
+      RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: second },
+    ],
+  )
+}
+
+test fn two_facts_for_one_key_contradict_in_either_order() -> Bool {
+  let forward = rows_of(report: contradicted_report(first: cost_linear(param: "n"), second: quadratic(param: "n")))
+  let reversed = rows_of(report: contradicted_report(first: quadratic(param: "n"), second: cost_linear(param: "n")))
+  count_cost_facts_contradicted(rows: forward) == 1
+    && count_cost_facts_contradicted(rows: reversed) == 1
+    && count_cost_fidelity_findings(rows: forward) == count_cost_fidelity_findings(rows: reversed)
+    && count_cost_fidelity_unmeasured(rows: forward) == 0
+    && count_cost_fidelity_unmeasured(rows: reversed) == 0
+}
+
+// A CONTRADICTED KEY IS NOT AN UNMEASURED ONE. Both are "no usable realized cost", and collapsing
+// them would file a repair against the wrong lane: unmeasured means nobody looked, contradicted
+// means two people looked and disagreed.
+test fn a_contradicted_key_is_not_counted_as_unmeasured() -> Bool {
+  let rows = rows_of(report: contradicted_report(first: cost_linear(param: "n"), second: quadratic(param: "n")))
+  count_cost_facts_contradicted(rows: rows) == 1 && count_cost_fidelity_unmeasured(rows: rows) == 0
+}
+
+// ONE FACT PER KEY STILL ANSWERS NORMALLY, so the repair did not turn every lookup into a refusal.
+test fn a_single_fact_for_one_key_still_compares() -> Bool {
+  let rows = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
+    unstructured: [],
+    target: InterpreterHost,
+    facts: [
+      RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: cost_nlogn(param: "n") },
+    ],
+  ))
+  count_cost_facts_contradicted(rows: rows) == 0 && count_cost_fidelity_findings(rows: rows) == 1
+}
+
+// THE PARTITION IS ENFORCED, NOT ASSUMED. A primitive in BOTH lists is a contradiction about the
+// same key -- it would have produced two rows, one with a real fidelity and one
+// ModeledCostNotStructured -- so the whole report refuses rather than emitting rows from a premise
+// that does not hold.
+test fn a_primitive_in_both_lists_refuses_the_report() -> Bool {
+  refusal_kind(
+    report: realization_cost_fidelity_rows(
+      modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
+      unstructured: [probe_primitive_a],
+      target: InterpreterHost,
+      facts: [],
+    )
+  ) == "both-structured-and-unstructured"
+}
+
+test fn a_duplicated_structured_primitive_refuses_the_report() -> Bool {
+  refusal_kind(
+    report: realization_cost_fidelity_rows(
+      modeled: [
+        ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") },
+        ModeledCostBoundFact { primitive: probe_primitive_a, cost: quadratic(param: "n") },
+      ],
+      unstructured: [],
+      target: InterpreterHost,
+      facts: [],
+    )
+  ) == "structured-duplicated"
+}
+
+test fn a_duplicated_unstructured_primitive_refuses_the_report() -> Bool {
+  refusal_kind(
+    report: realization_cost_fidelity_rows(
+      modeled: [],
+      unstructured: [probe_primitive_b, probe_primitive_b],
+      target: InterpreterHost,
+      facts: [],
+    )
+  ) == "unstructured-duplicated"
+}
+
+// THE BOUNDARY: a well-formed partition still reports rows, so the refusals above are arms rather
+// than a report that refuses whenever two lists are non-empty.
+test fn a_disjoint_partition_still_reports_rows() -> Bool {
+  refusal_kind(
+    report: realization_cost_fidelity_rows(
+      modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
+      unstructured: [probe_primitive_b],
+      target: InterpreterHost,
+      facts: [],
+    )
+  ) == "rows"
 }

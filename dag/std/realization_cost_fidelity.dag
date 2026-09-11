@@ -54,7 +54,7 @@ import std.logic { Bool }
 // currently reports as having no home — joined per (primitive, target) through
 // `realization_cost_fidelity_rows`, with `count_cost_fidelity_findings`,
 // `count_cost_fidelity_unmeasured`, `count_cost_model_unmigrated` `count_cost_body_dependent` and
-// `count_cost_not_orderable` as its five reported populations. THE ROUTE: the census entry point folds
+// `count_cost_not_orderable` and `count_cost_facts_contradicted` as its reported populations. THE ROUTE: the census entry point folds
 // `std.primitive_identity`'s modeled costs against `RealizationCostFact` rows measured from the
 // emitted compiler, and reports the rows.
 //
@@ -88,6 +88,7 @@ type CostFidelity
   | RealizationCostBodyDependent
   | CostGrowthNotOrderable
   | RealizationCostUnknown
+  | RealizationCostFactsContradict { count: Int }
   | ModeledCostNotStructured
 
 // EVERY ARM BEYOND THE OBVIOUS TWO EXISTS TO KEEP AN HONEST ANSWER FROM BEING REPORTED AS ONE OF
@@ -293,21 +294,34 @@ type RealizationCostFidelityRow {
   projected_shape: CostShape?
 }
 
+// A KEY WITH TWO FACTS IS A CONTRADICTED KEY, NOT A FIRST ONE. The earlier fold stopped at the
+// first match, so [linear, quadratic] and [quadratic, linear] over one (primitive, target) answered
+// DIFFERENTLY -- the verdict was decided by list order, which is a property of the caller's
+// accumulator rather than of the realization. That is the fabricated plausible output DESIGN
+// section 5 forbids, and it is worse than a refusal because the wrong answer is well-formed.
+//
+// The three arms are the three facts a lookup can establish, and the fold reaches Duplicated from
+// EITHER order, which is what makes the answer independent of how the caller built its list.
+type RealizationCostLookup
+  = RealizationCostFactAbsent
+  | RealizationCostFactSingleton { cost: CostBound }
+  | RealizationCostFactsDuplicated { count: Int }
+
 fn realization_cost_for(
   facts: List<RealizationCostFact>,
   primitive: PrimitiveIdentity,
   target: RealizationTarget,
-) -> CostBound? {
-  facts |> fold(init: none, f: fn(acc, fact) {
-    match acc {
-      Present { value: c } => Present { value: c }
-      Absent =>
-        if primitive_identity_eq(left: fact.primitive, right: primitive)
-          && realization_target_eq(left: fact.target, right: target) {
-          Present { value: fact.cost }
-        } else {
-          none
-        }
+) -> RealizationCostLookup {
+  facts |> fold(init: RealizationCostFactAbsent, f: fn(acc, fact) {
+    if primitive_identity_eq(left: fact.primitive, right: primitive)
+      && realization_target_eq(left: fact.target, right: target) {
+      match acc {
+        RealizationCostFactAbsent => RealizationCostFactSingleton { cost: fact.cost }
+        RealizationCostFactSingleton { cost: _ } => RealizationCostFactsDuplicated { count: 2 }
+        RealizationCostFactsDuplicated { count: n } => RealizationCostFactsDuplicated { count: n + 1 }
+      }
+    } else {
+      acc
     }
   })
 }
@@ -317,15 +331,20 @@ fn realization_cost_fidelity_row(
   target: RealizationTarget,
   facts: List<RealizationCostFact>,
 ) -> RealizationCostFidelityRow {
-  let realized = realization_cost_for(facts: facts, primitive: modeled.primitive, target: target)
+  let lookup = realization_cost_for(facts: facts, primitive: modeled.primitive, target: target)
   RealizationCostFidelityRow {
     primitive: modeled.primitive,
     target: target,
     modeled: Present { value: modeled.cost },
-    realized: realized,
-    fidelity: match realized {
-      Absent => RealizationCostUnknown
-      Present { value: r } => cost_fidelity_of(modeled: modeled.cost, realized: r)
+    realized: match lookup {
+      RealizationCostFactSingleton { cost: c } => Present { value: c }
+      RealizationCostFactAbsent => none
+      RealizationCostFactsDuplicated { count: _ } => none
+    },
+    fidelity: match lookup {
+      RealizationCostFactAbsent => RealizationCostUnknown
+      RealizationCostFactSingleton { cost: r } => cost_fidelity_of(modeled: modeled.cost, realized: r)
+      RealizationCostFactsDuplicated { count: n } => RealizationCostFactsContradict { count: n }
     },
     projected_shape: cost_bound_to_shape(b: modeled.cost),
   }
@@ -348,18 +367,99 @@ fn unstructured_modeled_row(
   }
 }
 
+// THE TWO INPUT LISTS ARE A PARTITION, AND NOTHING ENFORCED IT. `modeled` says "this primitive has
+// stated its cost in the structured form" and `unstructured` says "this one has not". They are the
+// two halves of one question, so a primitive in BOTH is a contradiction about the same key -- and
+// the fold below would have answered it twice, once with a real fidelity and once with
+// ModeledCostNotStructured, leaving a reader to pick. A duplicate within either list is the same
+// defect at a shorter range. None of it is a per-row fact: it is the input's SHAPE that is wrong,
+// so the whole report refuses rather than emitting rows derived from a premise that does not hold
+// (DESIGN section 5: a failure arm refuses, it never widens).
+type FidelityInputRefusal
+  = PrimitiveIsBothStructuredAndUnstructured { primitive: PrimitiveIdentity }
+  | StructuredPrimitiveDuplicated { primitive: PrimitiveIdentity }
+  | UnstructuredPrimitiveDuplicated { primitive: PrimitiveIdentity }
+
+type RealizationCostFidelityReport
+  = FidelityInputRefused { cause: FidelityInputRefusal }
+  | FidelityRows { rows: List<RealizationCostFidelityRow> }
+
+fn primitive_occurrences(ps: List<PrimitiveIdentity>, p: PrimitiveIdentity) -> Int {
+  ps |> fold(init: 0, f: fn(acc, q) {
+    if primitive_identity_eq(left: q, right: p) { acc + 1 } else { acc }
+  })
+}
+
+fn modeled_primitives(modeled: List<ModeledCostBoundFact>) -> List<PrimitiveIdentity> {
+  reverse(modeled |> fold(init: [], f: fn(acc, m) { concat([m.primitive], acc) }))
+}
+
+fn fidelity_input_refusal(
+  modeled: List<ModeledCostBoundFact>,
+  unstructured: List<PrimitiveIdentity>,
+) -> FidelityInputRefusal? {
+  let structured = modeled_primitives(modeled: modeled)
+  let duplicated_structured = structured |> fold(init: none, f: fn(acc, p) {
+    match acc {
+      Present { value: c } => Present { value: c }
+      Absent =>
+        if primitive_occurrences(ps: structured, p: p) > 1 {
+          Present { value: StructuredPrimitiveDuplicated { primitive: p } }
+        } else {
+          none
+        }
+    }
+  })
+  match duplicated_structured {
+    Present { value: c } => Present { value: c }
+    Absent => {
+      let duplicated_unstructured = unstructured |> fold(init: none, f: fn(acc, p) {
+        match acc {
+          Present { value: c } => Present { value: c }
+          Absent =>
+            if primitive_occurrences(ps: unstructured, p: p) > 1 {
+              Present { value: UnstructuredPrimitiveDuplicated { primitive: p } }
+            } else {
+              none
+            }
+        }
+      })
+      match duplicated_unstructured {
+        Present { value: c } => Present { value: c }
+        Absent =>
+          structured |> fold(init: none, f: fn(acc, p) {
+            match acc {
+              Present { value: c } => Present { value: c }
+              Absent =>
+                if primitive_occurrences(ps: unstructured, p: p) > 0 {
+                  Present { value: PrimitiveIsBothStructuredAndUnstructured { primitive: p } }
+                } else {
+                  none
+                }
+            }
+          })
+      }
+    }
+  }
+}
+
 fn realization_cost_fidelity_rows(
   modeled: List<ModeledCostBoundFact>,
   unstructured: List<PrimitiveIdentity>,
   target: RealizationTarget,
   facts: List<RealizationCostFact>,
-) -> List<RealizationCostFidelityRow> {
-  let structured_rows = modeled |> fold(init: [], f: fn(acc, m) {
-    concat([realization_cost_fidelity_row(modeled: m, target: target, facts: facts)], acc)
-  })
-  reverse(unstructured |> fold(init: structured_rows, f: fn(acc, p) {
-    concat([unstructured_modeled_row(primitive: p, target: target)], acc)
-  }))
+) -> RealizationCostFidelityReport {
+  match fidelity_input_refusal(modeled: modeled, unstructured: unstructured) {
+    Present { value: cause } => FidelityInputRefused { cause: cause }
+    Absent => {
+      let structured_rows = modeled |> fold(init: [], f: fn(acc, m) {
+        concat([realization_cost_fidelity_row(modeled: m, target: target, facts: facts)], acc)
+      })
+      FidelityRows { rows: reverse(unstructured |> fold(init: structured_rows, f: fn(acc, p) {
+        concat([unstructured_modeled_row(primitive: p, target: target)], acc)
+      })) }
+    }
+  }
 }
 
 fn cost_fidelity_is_finding(fidelity: CostFidelity) -> Bool {
@@ -371,6 +471,7 @@ fn cost_fidelity_is_finding(fidelity: CostFidelity) -> Bool {
     RealizationCostBodyDependent => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
+    RealizationCostFactsContradict { count: _ } => true
     ModeledCostNotStructured => false
   }
 }
@@ -391,6 +492,7 @@ fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int
       RealizationDivergesByOperand => acc
       RealizationCostBodyDependent => acc
       CostGrowthNotOrderable => acc
+      RealizationCostFactsContradict { count: _ } => acc
       ModeledCostNotStructured => acc
     }
   })
@@ -406,6 +508,7 @@ fn count_cost_body_dependent(rows: List<RealizationCostFidelityRow>) -> Int {
     match row.fidelity {
       RealizationCostBodyDependent => acc + 1
       RealizationCostUnknown => acc
+      RealizationCostFactsContradict { count: _ } => acc
       CostShapePreserved => acc
       RealizationSlowerThanModeled => acc
       RealizationFasterThanModeled => acc
@@ -419,12 +522,32 @@ fn count_cost_body_dependent(rows: List<RealizationCostFidelityRow>) -> Int {
 // A BOUND THIS READING CANNOT ORDER IS A FIFTH REPORTED POPULATION. An arm that no count reports is
 // an answer nobody reads -- the defect one round earlier in this module -- so the arm and its
 // population land together.
+// THE CONTRADICTED-KEY POPULATION IS COUNTED LIKE EVERY OTHER ARM, because an arm no fold reports
+// is an answer nobody reads. It counts keys whose facts disagree -- not keys nobody measured, which
+// is RealizationCostUnknown and a different obligation.
+fn count_cost_facts_contradicted(rows: List<RealizationCostFidelityRow>) -> Int {
+  rows |> fold(init: 0, f: fn(acc, row) {
+    match row.fidelity {
+      RealizationCostFactsContradict { count: _ } => acc + 1
+      CostGrowthNotOrderable => acc
+      RealizationCostBodyDependent => acc
+      RealizationCostUnknown => acc
+      CostShapePreserved => acc
+      RealizationSlowerThanModeled => acc
+      RealizationFasterThanModeled => acc
+      RealizationDivergesByOperand => acc
+      ModeledCostNotStructured => acc
+    }
+  })
+}
+
 fn count_cost_not_orderable(rows: List<RealizationCostFidelityRow>) -> Int {
   rows |> fold(init: 0, f: fn(acc, row) {
     match row.fidelity {
       CostGrowthNotOrderable => acc + 1
       RealizationCostBodyDependent => acc
       RealizationCostUnknown => acc
+      RealizationCostFactsContradict { count: _ } => acc
       CostShapePreserved => acc
       RealizationSlowerThanModeled => acc
       RealizationFasterThanModeled => acc
@@ -439,6 +562,7 @@ fn count_cost_model_unmigrated(rows: List<RealizationCostFidelityRow>) -> Int {
     match row.fidelity {
       ModeledCostNotStructured => acc + 1
       RealizationCostUnknown => acc
+      RealizationCostFactsContradict { count: _ } => acc
       CostShapePreserved => acc
       RealizationSlowerThanModeled => acc
       RealizationFasterThanModeled => acc
