@@ -246,10 +246,16 @@ test fn floor_record_completeness_zero_field_variant_is_still_silent() -> Bool {
 }
 
 // A BARE NAME PRESENTS NO FIELD SET AT ALL, in either declaration kind, so nothing is checked.
-// Both spellings are asserted because a repair reaching only one of them would leave this green.
+// BOTH KINDS GET THE FULL SILENCE CHECK, not one strong and one narrow. An earlier cut asserted
+// `silent_hole_holds` (zero diagnostics of ANY severity) on the variant source and only
+// `blocking_count(..., "MissingField") == 0` on the product one — which stays green if the product
+// bare name starts emitting some OTHER blocking diagnostic, so the row's claim to cover both kinds
+// was stronger than its assertion. That is the specification-without-execution gap DESIGN section 5
+// names: the RED for the product half was authorable and was not authored (cursor review 63461).
 test fn floor_record_completeness_bare_name_is_still_silent() -> Bool {
   silent_hole_holds(probe: floor_record_completeness_bare_name_hole_probe, source: record_completeness_bare_name_variant_source)
     && blocking_count(source: record_completeness_bare_name_variant_source, wanted: "MissingField") == 0
+    && silent_hole_holds(probe: floor_record_completeness_bare_name_hole_probe, source: record_completeness_bare_name_product_source)
     && blocking_count(source: record_completeness_bare_name_product_source, wanted: "MissingField") == 0
 }
 
