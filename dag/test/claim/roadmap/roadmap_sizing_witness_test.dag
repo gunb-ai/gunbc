@@ -55,9 +55,12 @@ fn fixture_node() -> RoadmapNode {
 
 // THE SUBJECT IS PROJECTED FROM THE TASK'S OWN WORDS, and carries nothing about the lane. A subject
 // that picked up the repository or the owner would let a later deriver size by who filed the row.
+// Its IDENTITY is the node's minted identity rather than its slug, because roadmap_node_identity_law
+// forbids the slug as an identity input and sizing evidence derived later must join to something
+// that survives a rename.
 test fn witness_sizing_subject_is_the_task_and_not_the_lane() -> Bool {
   let s = node_sizing_subject(rn: fixture_node())
-  s.subject == ("sizing-fixture" as SizingSubjectId)
+  s.subject == ("rnfx_SIZING000000000000000001" as SizingSubjectId)
     && s.title == "Teach the belt to size its own work"
     && s.description == "Read the task and answer how hard it is and how much of it there is."
     && match s.exit_criterion {
@@ -92,7 +95,7 @@ test fn witness_stub_deriver_refuses_rather_than_fabricating_a_cell() -> Bool {
   match derive_task_sizing(subject: node_sizing_subject(rn: fixture_node())) {
     SizingDerived { subject: _, sizing: _ } => false
     SizingNotDerivable { subject, detail } =>
-      subject == ("sizing-fixture" as SizingSubjectId)
+      subject == ("rnfx_SIZING000000000000000001" as SizingSubjectId)
         && detail == sizing_deriver_unbuilt_detail
   }
 }
@@ -109,7 +112,7 @@ test fn witness_refused_derivation_yields_no_cell() -> Bool {
 // "nothing derived" for the stub report the cell here.
 fn fixture_derived() -> NodeSizingDerivation {
   SizingDerived {
-    subject: "sizing-fixture" as SizingSubjectId,
+    subject: "rnfx_SIZING000000000000000001" as SizingSubjectId,
     sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeLarge },
   }
 }

@@ -65,9 +65,14 @@ type RoadmapNode {
 // deriver's subject is a task (gunbc.roadmap_sizing SizingSubject) precisely so that a plan item in
 // another repository can be sized by the same authority; a roadmap node is one kind of task, so it
 // projects into the subject here rather than the sizer reaching back into the roadmap.
+// THE SUBJECT IS THE DURABLE IDENTITY, NOT THE SLUG. roadmap_node_identity_law in this module
+// states that a node's identity is minted and that the slug is a FORBIDDEN identity input, so
+// keying a sizing derivation to rn.node would join future sizing evidence to a name that can
+// change under it -- the exact rot the law exists to prevent, committed one declaration below the
+// law that forbids it.
 fn node_sizing_subject(rn: RoadmapNode) -> SizingSubject {
   SizingSubject {
-    subject: rn.node as String as SizingSubjectId,
+    subject: rn.identity as String as SizingSubjectId,
     title: node_title(item: rn.line),
     description: item_description(item: rn.line),
     exit_criterion: item_exit_criterion(item: rn.line),
