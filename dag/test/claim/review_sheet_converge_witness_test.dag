@@ -38,6 +38,7 @@ import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
   value_ranges_from_write_plan,
+  TabBoundWritePlan,
   ReadbackObserved,
   ReadbackUnreadable,
   review_sheet_batch_value_input_option,
@@ -320,19 +321,41 @@ test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
   match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
-    Apply { plan: p } =>
-      match p.patches |> first {
-        Present { value: w } =>
-          (w.a1 as String) == "B2"
-            && !string_contains(s: w.a1 as String, pattern: "!")
-            && match value_ranges_from_write_plan(plan: p, tab: "Review" as NonEmptyStr) |> first {
-              Present { value: vr } =>
-                vr.range == "Review!B2"
-                  && !string_contains(s: vr.range, pattern: "Review!Review!")
-              Absent => false
-            }
-        Absent => false
-      }
+    Apply { plan: bound } =>
+      (bound.tab as String) == "Review"
+        && match bound.plan.patches |> first {
+          Present { value: w } =>
+            (w.a1 as String) == "B2"
+              && !string_contains(s: w.a1 as String, pattern: "!")
+              && match value_ranges_from_write_plan(bound: bound) |> first {
+                Present { value: vr } =>
+                  vr.range == "Review!B2"
+                    && !string_contains(s: vr.range, pattern: "Review!Review!")
+                Absent => false
+              }
+          Absent => false
+        }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
+  let range = ValueRange {
+    range: "OtherTab!A1:D4",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], [["L1", "", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
+    Apply { plan: bound } =>
+      (bound.tab as String) == "OtherTab"
+        && match value_ranges_from_write_plan(bound: bound) |> first {
+          Present { value: vr } =>
+            vr.range == "OtherTab!B2"
+              && !string_contains(s: vr.range, pattern: "Review!")
+          Absent => false
+        }
     Noop => false
     Refuse { reason: _ } => false
   }
@@ -560,7 +583,9 @@ test fn absent_listing_appends_a_located_row() -> Bool {
               && match a.cells |> first {
                 Present { value: id } =>
                   id == "L2"
-                    && match value_ranges_from_write_plan(plan: p, tab: "Review" as NonEmptyStr) |> first {
+                    && match value_ranges_from_write_plan(
+                      bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                    ) |> first {
                       Present { value: vr } =>
                         vr.range == "Review!A2:D2"
                           && match vr.values {
@@ -603,7 +628,9 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
                       && match a.cells.skip(n: 3).first() {
                         Present { value: judgement } =>
                           judgement == ""
-                            && match value_ranges_from_write_plan(plan: p, tab: "Review" as NonEmptyStr) |> first {
+                            && match value_ranges_from_write_plan(
+                              bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                            ) |> first {
                               Present { value: vr } =>
                                 match vr.values {
                                   Present { value: rows } =>
@@ -710,18 +737,20 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
                     ) {
                       Present { value: RenderFormattedValue } =>
                         match value_ranges_from_write_plan(
-                          plan: ReviewSheetWritePlan {
-                            patches: [
-                              DerivedCellWrite {
-                                listing_id: "L1" as NonEmptyStr,
-                                column: "title" as NonEmptyStr,
-                                a1: "B2" as NonEmptyStr,
-                                value: "Widget",
-                              }
-                            ],
-                            appends: [],
+                          bound: TabBoundWritePlan {
+                            tab: "Review" as NonEmptyStr,
+                            plan: ReviewSheetWritePlan {
+                              patches: [
+                                DerivedCellWrite {
+                                  listing_id: "L1" as NonEmptyStr,
+                                  column: "title" as NonEmptyStr,
+                                  a1: "B2" as NonEmptyStr,
+                                  value: "Widget",
+                                }
+                              ],
+                              appends: [],
+                            },
                           },
-                          tab: "Review" as NonEmptyStr,
                         ) |> first {
                           Present { value: vr } =>
                             vr.range == "Review!B2"
