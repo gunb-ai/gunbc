@@ -468,6 +468,14 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
 // (the reversion this row exists to catch) and emptying the activity list entirely (the
 // over-deletion an absence-only row would have passed). Both went FAIL; the unmutated tree went
 // PASS.
+//
+// SOURCE->EMISSION IS THIS FRAGMENT, NOT A FULL WORKFLOW SERIALIZE. The bytes asserted here are
+// `workflow_triggers_yaml(witness_floor_triggers())` -- the same projector `project_workflow_to_yaml`
+// uses for the workflow `on:` block -- so a mutation that drops `witness_floor_pull_request_activity_types`
+// from that trigger and inlines another list still fails. The heal/regen drift gate already
+// establishes that committed witnesses.yml equals the full projection; fragment plus that gate
+// cover the path end to end. A per-claim `expected_witness_floor_yml()` read is the whole-file
+// serialize this row must not pay (measured 1823ms against the 500ms line).
 test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
   let yml = serialize_yaml(v: workflow_triggers_yaml(triggers: witness_floor_triggers()))
   string_contains(
