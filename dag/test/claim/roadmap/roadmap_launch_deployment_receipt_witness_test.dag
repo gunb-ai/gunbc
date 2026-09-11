@@ -114,7 +114,6 @@ fn rlm_dashboard(run: ActionsRunBinding, expected: String) -> LiveDeployApplyRec
     candidate_revision: expected,
     candidate_surface_identity: rlm_fixture_surface,
     candidate_tree_oid: rlm_fixture_tree,
-    target_decision: DecisionProceed,
     apply_outcome: LiveDeployApplyConverged,
     readiness: LiveDeployReadinessObserved { revision: expected, surface: rlm_fixture_surface },
     provenance: LiveDeployFleetProvenance {
@@ -522,7 +521,7 @@ test fn witness_dashboard_citing_another_plan_receipt_is_incomplete_at_dashboard
   let d = LiveDeployApplyReceipt {
     run: base.run, target: base.target, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
     candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
-    target_decision: base.target_decision, apply_outcome: base.apply_outcome, readiness: base.readiness,
+    apply_outcome: base.apply_outcome, readiness: base.readiness,
     provenance: LiveDeployFleetProvenance {
       plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
       plan_receipt_identity: "9999999999999999", apply_receipt_identity: rlm_apply_identity(),
