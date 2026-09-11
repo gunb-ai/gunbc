@@ -104,7 +104,10 @@ test fn bare_string_rows_with_different_values_project_different_atoms() -> Bool
   distinct_values_project_distinct_atoms(a: bare_a, b: bare_b)
 }
 
-// EXPECTED RED 2 — list-literal element position, including the empty-versus-two-element case.
+// EXPECTED RED 2 — list-literal element position. Both specimens hold TWO elements and share
+// their second, so arity and element count are held fixed and only the first element's characters
+// differ; an earlier revision paired a two-element list against an EMPTY one, which a projection
+// carrying cardinality alone could have greened (review 64012).
 test fn list_rows_with_different_elements_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: list_a, b: list_b)
 }
