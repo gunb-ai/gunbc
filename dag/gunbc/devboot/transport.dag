@@ -130,21 +130,6 @@ fn devboot_store_address(store_root: String, repo_root: String) -> GitRepository
   GitDirectoryAt { path: store_root as FilePath, run_in: repo_root as FilePath }
 }
 
-type GitOidOutcome
-  = GitOidPresent { oid: String }
-  | GitOidCommandFailed { exit_code: Int, stderr: String }
-
-// A DEVBOOT TEXT BLOB IS HASHED FROM THE BYTES IN HAND, NEVER FROM A PATH. Every text object
-// devboot stores -- the lease claim, the subject record, the artifact digest, and the request and
-// produced entries -- was written to a file keyed by the token and then hashed from that path, so
-// concurrent producers of one token hashed whatever the file held when git read it: another
-// producer's claim, or git's empty blob, bound under this producer's ref
-// (gunbc.recurring_failure_mode identity_hashed_from_a_shared_mutable_path).
-fn devboot_hash_text_blob(address: GitRepositoryAddress, text: String) -> GitOidOutcome {
-  let hashed = git.Plumbing.HashObjectWriteStdin(address: address, content: text)
-  if hashed.exit_code == 0 { GitOidPresent { oid: trim(s: hashed.oid) } } else { GitOidCommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) } }
-}
-
 // A REF READ HAS THREE ANSWERS AND THIS IS WHERE THE EXIT CODES BECOME THEM. `rev-parse
 // --verify --quiet` exits 0 with the object id, 1 when the ref is absent, and 128 when the
 // repository itself could not be used (extdeps.git git_ref_missing_exit_code /

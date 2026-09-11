@@ -16,9 +16,6 @@ import gunbc.devboot.transport {
   devboot_ensure_directory,
   devboot_repo_address,
   devboot_store_address,
-  GitOidPresent,
-  GitOidCommandFailed,
-  devboot_hash_text_blob,
   devboot_ref_observation,
   retained_devboot_rm_file,
   retained_devboot_rm_rf,
@@ -859,20 +856,19 @@ fn lease_failure_report(
 // git.Plumbing.CreateRefIfAbsent rather than passing an empty string is what makes that
 // precondition readable at the call site instead of being an argument nobody can explain.
 fn devboot_produce_build(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
-  match devboot_hash_text_blob(address: devboot_store_address(store_root: store_root, repo_root: repo_root), text: concat("producer=", caller)) {
-    GitOidCommandFailed { exit_code, stderr } =>
-      ProduceRefused { reason: bind_step_refusal(step: "hashing the lease claim", exit_code: exit_code, detail: stderr) }
-    GitOidPresent { oid: claim_oid } => {
-      let taken = git.Plumbing.CreateRefIfAbsent(
-        address: devboot_store_address(store_root: store_root, repo_root: repo_root),
-        ref_name: lease_ref_of(token: token),
-        new: claim_oid,
-      )
-      if !(taken.exit_code == 0) {
-        lease_failure_report(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token, detail: trim(s: taken.stderr))
-      } else {
-        devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
-      }
+  let claim = git.Plumbing.HashObjectWriteStdin(address: devboot_store_address(store_root: store_root, repo_root: repo_root), content: concat("producer=", caller))
+  if !(claim.exit_code == 0) {
+    ProduceRefused { reason: bind_step_refusal(step: "hashing the lease claim", exit_code: claim.exit_code, detail: trim(s: claim.stderr)) }
+  } else {
+    let taken = git.Plumbing.CreateRefIfAbsent(
+      address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+      ref_name: lease_ref_of(token: token),
+      new: trim(s: claim.oid),
+    )
+    if !(taken.exit_code == 0) {
+      lease_failure_report(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token, detail: trim(s: taken.stderr))
+    } else {
+      devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
     }
   }
 }
@@ -1108,44 +1104,43 @@ fn devboot_bind_produced_artifact(
   blob_oid: String,
 ) -> ProduceReport {
   let artifact_sha256 = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: blob_oid)
-  match devboot_hash_text_blob(address: devboot_store_address(store_root: store_root, repo_root: repo_root), text: render_build_subject(subject: subject)) {
-    GitOidCommandFailed { exit_code, stderr } =>
-      ProduceRefused { reason: bind_step_refusal(step: "hashing the subject record", exit_code: exit_code, detail: stderr) }
-    GitOidPresent { oid: record_oid } =>
-      match devboot_hash_text_blob(address: devboot_store_address(store_root: store_root, repo_root: repo_root), text: artifact_sha256) {
-        GitOidCommandFailed { exit_code, stderr } =>
-          ProduceRefused { reason: bind_step_refusal(step: "hashing the artifact digest", exit_code: exit_code, detail: stderr) }
-        GitOidPresent { oid: digest_oid } => {
-          let record_bound = git.Plumbing.CreateRefIfAbsent(
-            address: devboot_store_address(store_root: store_root, repo_root: repo_root),
-            ref_name: subject_ref_of(token: token),
-            new: record_oid,
-          )
-          let digest_bound = git.Plumbing.CreateRefIfAbsent(
-            address: devboot_store_address(store_root: store_root, repo_root: repo_root),
-            ref_name: digest_ref_of(token: token),
-            new: digest_oid,
-          )
-          let bound = git.Plumbing.CreateRefIfAbsent(
-            address: devboot_store_address(store_root: store_root, repo_root: repo_root),
-            ref_name: artifact_ref_of(token: token),
-            new: blob_oid,
-          )
-          if !(record_bound.exit_code == 0) {
-            ProduceRefused { reason: bind_step_refusal(step: "binding the subject record", exit_code: record_bound.exit_code, detail: trim(s: record_bound.stderr)) }
+  let record_blob = git.Plumbing.HashObjectWriteStdin(address: devboot_store_address(store_root: store_root, repo_root: repo_root), content: render_build_subject(subject: subject))
+  let digest_blob = git.Plumbing.HashObjectWriteStdin(address: devboot_store_address(store_root: store_root, repo_root: repo_root), content: artifact_sha256)
+  if !(record_blob.exit_code == 0) {
+    ProduceRefused { reason: bind_step_refusal(step: "hashing the subject record", exit_code: record_blob.exit_code, detail: trim(s: record_blob.stderr)) }
+  } else {
+    if !(digest_blob.exit_code == 0) {
+      ProduceRefused { reason: bind_step_refusal(step: "hashing the artifact digest", exit_code: digest_blob.exit_code, detail: trim(s: digest_blob.stderr)) }
+    } else {
+      let record_bound = git.Plumbing.CreateRefIfAbsent(
+        address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+        ref_name: subject_ref_of(token: token),
+        new: trim(s: record_blob.oid),
+      )
+      let digest_bound = git.Plumbing.CreateRefIfAbsent(
+        address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+        ref_name: digest_ref_of(token: token),
+        new: trim(s: digest_blob.oid),
+      )
+      let bound = git.Plumbing.CreateRefIfAbsent(
+        address: devboot_store_address(store_root: store_root, repo_root: repo_root),
+        ref_name: artifact_ref_of(token: token),
+        new: blob_oid,
+      )
+      if !(record_bound.exit_code == 0) {
+        ProduceRefused { reason: bind_step_refusal(step: "binding the subject record", exit_code: record_bound.exit_code, detail: trim(s: record_bound.stderr)) }
+      } else {
+        if !(digest_bound.exit_code == 0) {
+          ProduceRefused { reason: bind_step_refusal(step: "binding the artifact digest", exit_code: digest_bound.exit_code, detail: trim(s: digest_bound.stderr)) }
+        } else {
+          if !(bound.exit_code == 0) {
+            ProduceRefused { reason: bind_step_refusal(step: "binding the artifact", exit_code: bound.exit_code, detail: trim(s: bound.stderr)) }
           } else {
-            if !(digest_bound.exit_code == 0) {
-              ProduceRefused { reason: bind_step_refusal(step: "binding the artifact digest", exit_code: digest_bound.exit_code, detail: trim(s: digest_bound.stderr)) }
-            } else {
-              if !(bound.exit_code == 0) {
-                ProduceRefused { reason: bind_step_refusal(step: "binding the artifact", exit_code: bound.exit_code, detail: trim(s: bound.stderr)) }
-              } else {
-                ProduceProduced { token: token, artifact: blob_oid }
-              }
-            }
+            ProduceProduced { token: token, artifact: blob_oid }
           }
         }
       }
+    }
   }
 }
 

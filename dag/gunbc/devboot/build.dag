@@ -50,10 +50,6 @@ import extdeps.git.plumbing {
 import gunbc.devboot.transport {
   devboot_witness_run,
   devboot_repo_address,
-  GitOidOutcome,
-  GitOidPresent,
-  GitOidCommandFailed,
-  devboot_hash_text_blob,
   devboot_observe_ref,
   retained_devboot_rm_rf,
   devboot_ensure_directory,
@@ -438,12 +434,17 @@ fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
   ).exit_code == 0
 }
 
-// THE TEXT ENTRIES GO TO GIT AS BYTES ON STDIN, through gunbc.devboot.transport
-// devboot_hash_text_blob: never through a file, whose bytes another producer of the same token can
+// THE TEXT ENTRIES GO TO GIT AS BYTES ON STDIN, via git.Plumbing
+// HashObjectWriteStdin: never through a file, whose bytes another producer of the same token can
 // replace between the write and the hash, and never through argv, where the subject's own bytes
 // would become part of a command line.
+type GitOidOutcome
+  = GitOidPresent { oid: String }
+  | GitOidCommandFailed { exit_code: Int, stderr: String }
+
 fn stage_text_blob(repo_root: String, text: String) -> GitOidOutcome {
-  devboot_hash_text_blob(address: devboot_repo_address(repo_root: repo_root), text: text)
+  let hashed = git.Plumbing.HashObjectWriteStdin(address: devboot_repo_address(repo_root: repo_root), content: text)
+  if hashed.exit_code == 0 { GitOidPresent { oid: trim(s: hashed.oid) } } else { GitOidCommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) } }
 }
 
 fn hash_blob_file(repo_root: String, path: String) -> GitOidOutcome {
