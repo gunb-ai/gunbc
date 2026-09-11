@@ -270,6 +270,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
+    let mut v2_native_route_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -345,6 +346,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             // required phase runs, so a green here and a green there cannot be two facts.
             "--required-emit-compile" => {
                 required_emit_compile_mode = true;
+            }
+            // THE NATIVE ROUTE AS AN OPERATOR-INVOKED INSTRUMENT, NOT A REQUIRED PHASE. It ran
+            // as the required `v2-native` lane from 2026-09-09 until the 2026-09-11 operator
+            // ruling deleted that job (~4h wall on every push against a 180-minute envelope;
+            // gunbc.rung_drop v2_native_route_off_the_merge_path). The harness and the
+            // admission authority are unchanged — this flag is the one route to them, so a
+            // receipt minted here and one minted by the deleted lane cannot be two facts.
+            "--v2-native-route" => {
+                v2_native_route_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -1081,25 +1091,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("floor");
         }
 
-        // THE NATIVE ROUTE PHASE. The harness derives the v2.test.* universe with the floor's
-        // own discovery producer, prepares the emitted-native compiler through the emit-compile
-        // machinery, runs the universe plus controls through that binary by explicit path with
-        // the old route withdrawn, and hands the minted receipt to the admission authority —
-        // the phase greens exactly when gunbc.witness_v2_native_route admits it.
-        if required_ci_phase_selected(RequiredCiPhase::V2Native, required_ci_lane) {
-            eprintln!(
-                "required-ci: phase v2-native (emitted-native compiler executes the derived v2.test.* universe)"
-            );
-            match v1_compiler::cli_run::run_required_v2_native(&source_roots) {
-                Ok(()) => {}
-                Err(e) => {
-                    eprintln!("required-ci: v2-native refused: {e}");
-                    phase_failures.push(format!("v2-native refused: {e}"));
-                }
-            }
-            ran.push("v2-native");
-        }
-
         // THE OBSERVED RAN SET IS THE AUTHORITY-EXPECTED SET, EXACTLY. The census below prints
         // phases_run; this refusal covers the state where that number is legible but wrong — a
         // phase silently never reached, or one executed that the authority does not expect in
@@ -1252,6 +1243,24 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
         }
+    }
+
+    if v2_native_route_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        eprintln!(
+            "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
+        );
+        return match v1_compiler::cli_run::run_required_v2_native(&roots) {
+            Ok(()) => Ok(ExitCode::SUCCESS),
+            Err(e) => {
+                eprintln!("v2-native-route: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
     }
 
     if required_v2_emission_mode {
@@ -1614,7 +1623,6 @@ fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
 enum RequiredCiLane {
     Build,
     Witnesses,
-    V2Native,
 }
 
 impl RequiredCiLane {
@@ -1622,7 +1630,6 @@ impl RequiredCiLane {
         match self {
             RequiredCiLane::Build => "build",
             RequiredCiLane::Witnesses => "witnesses",
-            RequiredCiLane::V2Native => "v2-native",
         }
     }
 
@@ -1633,9 +1640,8 @@ impl RequiredCiLane {
         match value {
             "build" => Ok(RequiredCiLane::Build),
             "witnesses" => Ok(RequiredCiLane::Witnesses),
-            "v2-native" => Ok(RequiredCiLane::V2Native),
             other => Err(format!(
-                "unknown --required-lane: {other} (expected build | witnesses | v2-native)"
+                "unknown --required-lane: {other} (expected build | witnesses)"
             )),
         }
     }
@@ -1648,7 +1654,6 @@ enum RequiredCiPhase {
     GeneratedArtifact,
     RegenFixedPoint,
     Floor,
-    V2Native,
 }
 
 impl RequiredCiPhase {
@@ -1659,7 +1664,6 @@ impl RequiredCiPhase {
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
-            RequiredCiPhase::V2Native => "v2-native",
         }
     }
 
@@ -1685,29 +1689,24 @@ impl RequiredCiPhase {
             // measurement to reference and nothing to compare.
             RequiredCiPhase::RegenFixedPoint => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
-            // THE NATIVE ROUTE IS ITS OWN LANE, NOT A FLOOR RIDER: the lane's no-fallback
-            // control withdraws the old compiler/interpreter route's CLI for the spawn window,
-            // and the floor lane's own execution IS that route -- the two cannot share a job
-            // (lane authority: gunbc.witness_v2_native_route).
-            RequiredCiPhase::V2Native => RequiredCiLane::V2Native,
         }
     }
 }
 
-// THE REQUIRED GATE IS SIX PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
+// THE REQUIRED GATE IS FIVE PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
 // identities would preserve the independently-green outcomes this composition removes. The other
-// three removed phases remain outside required CI and inside the declared drop. The sixth,
-// v2-native, is the 2026-09-09 operator-authorized native-route lane: the emitted-native
-// compiler executes the derived v2.test.* universe (gunbc.witness_v2_native_route).
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
+// three removed phases remain outside required CI and inside the declared drop. The v2-native
+// phase (2026-09-09 to 2026-09-11) left required CI by operator ruling — its ~4h wall on every
+// push starved the gating lanes; the route stays reachable as `--v2-native-route` and the drop
+// is gunbc.rung_drop v2_native_route_off_the_merge_path.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
-    RequiredCiPhase::V2Native,
 ];
 
 /// The `.dag` coproduct this enum realizes, and the declaration whose variants it must equal.
@@ -1719,13 +1718,12 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
     "ParsePhase",
     "NamespaceWaveAdmissionPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
     "FloorPhase",
-    "V2NativePhase",
 ];
 
 /// Refuse if the host phase enum and the `.dag` phase roster disagree — the same both-directions
@@ -1737,8 +1735,8 @@ const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
 /// WHAT THIS JOIN DOES NOT COVER: lane ownership. A match arm is not a declaration, so the
 /// index this join reads cannot see which lane owns a phase. That half is joined by evaluation
 /// instead — `authority_lane_phase_rows` against this host's enum-plus-lane-match, executed at
-/// run start in EVERY lane (three lanes are independently selected now, and the native route's
-/// isolation is load-bearing), with the empty-expectation and exact-ran-set refusals beside it.
+/// run start in EVERY lane (the lanes are independently selected jobs), with the
+/// empty-expectation and exact-ran-set refusals beside it.
 fn phase_roster_findings(
     index: &v1_compiler::cli_run::declaration_index::DeclarationIndex,
 ) -> Vec<String> {
@@ -2316,17 +2314,12 @@ mod tests {
             lane_phase_row("build", "generated-artifact"),
             lane_phase_row("build", "regen-fixed-point"),
             lane_phase_row("witnesses", "floor"),
-            lane_phase_row("v2-native", "v2-native"),
         ]
     }
 
     #[test]
     fn the_standing_pairs_join_cleanly_in_every_lane() {
-        for lane in [
-            RequiredCiLane::Build,
-            RequiredCiLane::Witnesses,
-            RequiredCiLane::V2Native,
-        ] {
+        for lane in [RequiredCiLane::Build, RequiredCiLane::Witnesses] {
             assert!(
                 lane_roster_findings(&standing_authority_rows(), Some(lane)).is_empty(),
                 "lane {} must join cleanly",
@@ -2339,21 +2332,23 @@ mod tests {
     #[test]
     fn a_lane_ownership_divergence_is_red_and_names_the_pair() {
         // The review's scenario — the host mapping and the authority mapping disagree about
-        // which lane owns v2-native — simulated by moving the authority row; the pair
-        // difference is symmetric, so either side's edit fires both directions.
+        // which lane owns a phase — simulated by moving every build-lane row to witnesses;
+        // the pair difference is symmetric, so either side's edit fires both directions, and
+        // the build lane's expectation is now empty and must refuse.
         let mut rows = standing_authority_rows();
-        rows.retain(|r| r.phase != "v2-native");
-        rows.push(lane_phase_row("build", "v2-native"));
-        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::V2Native));
+        rows.retain(|r| r.lane != "build");
+        rows.push(lane_phase_row("witnesses", "generated-artifact"));
+        rows.push(lane_phase_row("witnesses", "regen-fixed-point"));
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
         assert!(
             findings
                 .iter()
-                .any(|f| f.contains("v2-native") && f.contains("build")),
+                .any(|f| f.contains("generated-artifact") && f.contains("witnesses")),
             "the divergence must name the pair: {findings:?}"
         );
         assert!(
             findings.iter().any(|f| f.contains("owns no phases")),
-            "the native lane's expectation is now empty and must refuse: {findings:?}"
+            "the build lane's expectation is now empty and must refuse: {findings:?}"
         );
     }
 
@@ -2361,9 +2356,9 @@ mod tests {
     fn a_selected_lane_with_no_expected_phases_is_refused() {
         let rows: Vec<_> = standing_authority_rows()
             .into_iter()
-            .filter(|r| r.phase != "v2-native")
+            .filter(|r| r.lane != "build")
             .collect();
-        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::V2Native));
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
         assert!(findings.iter().any(|f| f.contains("owns no phases")));
     }
 
@@ -2371,10 +2366,15 @@ mod tests {
     fn the_expected_set_tracks_the_selected_lane() {
         let rows = standing_authority_rows();
         assert_eq!(
-            expected_lane_phases(&rows, Some(RequiredCiLane::V2Native)),
-            ["v2-native".to_string()].into_iter().collect()
+            expected_lane_phases(&rows, Some(RequiredCiLane::Build)),
+            [
+                "generated-artifact".to_string(),
+                "regen-fixed-point".to_string()
+            ]
+            .into_iter()
+            .collect()
         );
-        assert_eq!(expected_lane_phases(&rows, None).len(), 6);
+        assert_eq!(expected_lane_phases(&rows, None).len(), 5);
     }
 
     #[test]
