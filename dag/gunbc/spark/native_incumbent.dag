@@ -132,6 +132,49 @@ func stop_incumbent_retaining_it(ctx: SparkRemoteExecutionContext, host: HostIde
   }
 }
 
+// ── CLEARING THE HEAD IS A DIFFERENT QUESTION FROM RETAINING THE INCUMBENT ────────────────────
+//
+// THE RETAINABILITY GATE OUTLIVED THE THING IT GUARDED. While a failed cutover restored the canary, the
+// transaction had to know the canary was running AND answering before it stopped anything -- otherwise there
+// would be nothing to put back. The operator retired the canary on 2026-09-11 and the restoration branch was
+// deleted, but the precondition that existed only to protect it was not. On attempt 7 it withheld the cutover
+// with "there is nothing this transaction could restore" -- about an engine nobody intends to restore -- and
+// it would have blocked every future attempt, because the previous attempt had correctly left the canary
+// stopped.
+//
+// SO THE QUESTION IS WHETHER THE HEAD IS CLEAR, AND HOW IT CAME TO BE CLEAR DOES NOT MATTER. A canary that
+// was running and has now been stopped, one that was already stopped, and one that was never there are the
+// same state for a launch about to bind that host's port and memory. What is NOT the same is a canary this
+// transaction could not stop, or a host it could not read: those leave something possibly holding the
+// resources the launch needs, and they refuse.
+//
+// STOPPING IS STILL A REAL DESTRUCTIVE STEP AND IS STILL PERFORMED HERE. What changed is only that the
+// incumbent's ABSENCE stopped being a failure.
+type IncumbentClearance
+  = IncumbentCleared { detail: NonEmptyStr }
+  | IncumbentClearFailed { cause: NonEmptyStr }
+
+func clear_incumbent_from_head(ctx: SparkRemoteExecutionContext, host: HostIdentity, observed: IncumbentObservation) -> IncumbentClearance
+  uses net: Network
+{
+  match observed {
+    IncumbentRunning { container_id: cid, image: _, argv_json: _, endpoint_answers: _ } => {
+      let stopped = spark_exec(ctx: ctx, host: host, argv: incumbent_stop_argv())
+      if remote_run_succeeded(r: stopped) {
+        IncumbentCleared { detail: join(["the incumbent ", cid as String, " was running and this transaction stopped it"], "") as NonEmptyStr }
+      } else {
+        IncumbentClearFailed { cause: join(["the incumbent is running and could not be stopped: ", remote_run_text(r: stopped)], "") as NonEmptyStr }
+      }
+    }
+    IncumbentStoppedPresent { container_id: cid, image: _ } =>
+      IncumbentCleared { detail: join(["the incumbent ", cid as String, " was already stopped, so this transaction stopped nothing"], "") as NonEmptyStr }
+    IncumbentAbsent { detail: d } =>
+      IncumbentCleared { detail: join(["no incumbent on this host: ", d as String], "") as NonEmptyStr }
+    IncumbentUnreadable { cause: c } =>
+      IncumbentClearFailed { cause: join(["the head's container state could not be read, so it is unknown whether anything holds the port and memory: ", c as String], "") as NonEmptyStr }
+  }
+}
+
 // ── RESTORATION CARRIES ITS OWN OBSERVATION ───────────────────────────────────────────────────
 //
 // THE RECEIPT REQUIRES THE ENDPOINT TO HAVE ANSWERED, not the start command to have exited zero. `docker

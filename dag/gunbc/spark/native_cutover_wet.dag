@@ -53,8 +53,8 @@ import gunbc.spark.native_deployment_readback {
 }
 import gunbc.spark.native_incumbent {
   IncumbentObservation, IncumbentRunning, IncumbentStoppedPresent, IncumbentAbsent, IncumbentUnreadable,
-  observe_incumbent, incumbent_is_retainable,
-  IncumbentStopOutcome, IncumbentStopped, IncumbentStopFailed, stop_incumbent_retaining_it,
+  observe_incumbent,
+  IncumbentClearance, IncumbentCleared, IncumbentClearFailed, clear_incumbent_from_head,
 }
 
 // ── ONE OPERATOR-REACHABLE ROOT THAT OWNS THE WHOLE TRANSACTION ────────────────────────────────
@@ -417,22 +417,16 @@ func attempt_cutover(ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, hea
   uses net: Network
 {
   let incumbent = observe_incumbent(ctx: ctx, host: head)
-  if !incumbent_is_retainable(o: incumbent) {
-    NativeCutoverWithheld {
-      reasons: ["the incumbent is not observed running and answering, so there is nothing this transaction could restore if the native arm fails" as NonEmptyStr],
-    }
+  if !win_claim(ctx: ctx, host: head, attempt: attempt) {
+    NativeCutoverWithheld { reasons: ["another attempt holds the durable cutover claim" as NonEmptyStr] }
   } else {
-    if !win_claim(ctx: ctx, host: head, attempt: attempt) {
-      NativeCutoverWithheld { reasons: ["another attempt holds the durable cutover claim" as NonEmptyStr] }
-    } else {
-      match stop_incumbent_retaining_it(ctx: ctx, host: head, observed: incumbent) {
-        IncumbentStopFailed { cause: c } => {
-          let settled = settle_claim(ctx: ctx, host: head, status: "aborted-before-stop")
-          NativeCutoverWithheld { reasons: [c as NonEmptyStr] }
-        }
-        IncumbentStopped { container_id: _ } =>
-          launch_after_stop(ctx: ctx, nodes: nodes, head: head, attempt: attempt)
+    match clear_incumbent_from_head(ctx: ctx, host: head, observed: incumbent) {
+      IncumbentClearFailed { cause: c } => {
+        let settled = settle_claim(ctx: ctx, host: head, status: "aborted-before-stop")
+        NativeCutoverWithheld { reasons: [c] }
       }
+      IncumbentCleared { detail: _ } =>
+        launch_after_stop(ctx: ctx, nodes: nodes, head: head, attempt: attempt)
     }
   }
 }
