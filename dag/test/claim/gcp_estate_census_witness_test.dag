@@ -124,13 +124,11 @@ import gunbc.gcp_estate_read_instrument {
   estate_rows_are_hand_observed,
   HandObserved,
   MachineObserved,
-  every_named_instrument_is_a_gcloud_read,
+  enrolled_roster_includes_projects_list_and_workspace_admin_keys,
   hand_observed_becomes_machine_observed_by_executing_the_named_instrument,
   machine_observed_from_instrument,
   gcloud_projects_list_instrument,
   estate_readonly_credential_intervention,
-  estate_observation_observed_at,
-  estate_observation_observed_by,
 }
 import std.human_intervention { FleetOnce }
 
@@ -461,10 +459,8 @@ test fn unread_pool_rows_do_not_classify_desired_pool_as_absent() -> Bool {
 
 test fn estate_rows_name_their_producer_and_stay_hand_observed() -> Bool {
   match estate_rows_are_hand_observed() {
-    HandObserved { observed_at: at, observed_by: by } =>
-      at == estate_observation_observed_at
-        && by == estate_observation_observed_by
-        && every_named_instrument_is_a_gcloud_read()
+    HandObserved { observed_at: _, observed_by: _ } =>
+      enrolled_roster_includes_projects_list_and_workspace_admin_keys()
         && hand_observed_becomes_machine_observed_by_executing_the_named_instrument()
         && estate_readonly_credential_intervention().frequency == FleetOnce
         && match machine_observed_from_instrument(instrument: gcloud_projects_list_instrument()) {

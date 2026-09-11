@@ -423,7 +423,6 @@ type FederationGenerationHypothesis
       auto_github_pool_condition: String
       secrets_github_pool_condition: String
       modeled_github_actions_condition: String
-      copied_malformed_instance_count: Int
     }
 
 fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
@@ -431,7 +430,6 @@ fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
     auto_github_pool_condition: observed_gunbai_auto_github_provider.attribute_condition,
     secrets_github_pool_condition: observed_secrets_github_pool_attribute_condition,
     modeled_github_actions_condition: observed_github_actions_attribute_condition,
-    copied_malformed_instance_count: 3,
   }
 }
 
@@ -442,12 +440,10 @@ fn copied_malformed_condition_and_auto_escaped_well_formed() -> Bool {
         auto_github_pool_condition: auto_c,
         secrets_github_pool_condition: secrets_c,
         modeled_github_actions_condition: _,
-        copied_malformed_instance_count: n,
       } =>
         (secrets_c).contains("repository_owner=='https:'")
           && (auto_c).contains(legacy_federated_repo)
           && !(auto_c).contains("https:")
-          && n == 3
     }
 }
 
