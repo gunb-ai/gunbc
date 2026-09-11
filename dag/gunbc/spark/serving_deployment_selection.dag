@@ -311,18 +311,21 @@ data serving_parameters_current: ServingDecisionParameters = serving_decision_pa
 // pinned GB10 build is the lead, not a silent reuse of spark_runtime. SGLang preview images are
 // for larger accelerators only. llama.cpp #28696 is conversion-only -- not a candidate.
 data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
-  image: "GB10 serving image to be built at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 (lead; not a fleet image today)" as NonEmptyStr,
+  image: "GB10 serving image to be built at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 (lead; not a fleet image today). TORCH_CUDA_ARCH_LIST including 12.1 is a compiled-kernel fact, not publisher verification: recipes.vllm.ai lists h200/gb200/gb300/mi350x only" as NonEmptyStr,
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
 data v4_1_gb10_kv_layout: KvLayoutPolicy = KvFp8DsMlaLayout
 
-data v4_1_gb10_kv_layout_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173) once it records DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for device major 12. Until that module lands, this row names the serving KV layout as a frontier rather than copying the engine admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout, not the card's FP4 (NVFP4 DS-MLA is SM10x-only). SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr)
+data v4_1_gb10_kv_layout_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173 #11022) v41_sm12_admitted_kv_cache_dtypes / v41_sm12_kv_cache_dtype_admitted, which record DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for DeviceCapability(12,1). Until that module is importable here, this row names the serving KV layout as a frontier rather than copying the admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout. Unset/auto kv_cache_dtype is a launch refusal on this backend, not a default. nvfp4_ds_mla is not reachable on sm_12x. SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr)
+
+data v4_1_publisher_fit_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_flash_recipe (clever-bat-173) for recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash publisher figures. Do not copy vram_minimum_gb or the component table into this module. That page's vram_minimum_gb is schema headroom on verified GB200/H200/MI350x runs, not a GB10 floor and not a Spark reading. SUFFICIENT FOR: any publisher-fit citation in this module is a declaration ref into that recipe, never a transcribed number." as NonEmptyStr)
 
 // V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
 // extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, cited to the SM12
-// frontier above. Higher-precision KV does not violate native quality. Speculation is DSpark.
-// Per-token KV bytes stay an obligation on DSV41-4; the card's 890 does not apply.
+// frontier above: the dtype must be set (auto is refused). Higher-precision KV does not
+// violate native quality. Speculation is DSpark. Per-token KV bytes stay an obligation;
+// the card's 890 does not apply.
 fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
   serving_decision_parameters(
     max_model_len: deepseek_v4_1_flash_context_length,
@@ -375,7 +378,7 @@ type KvBytesPerTokenStanding
   = KvBytesPerTokenUnestablished { layout: KvLayoutPolicy, obligation: NonEmptyStr }
   | KvBytesPerTokenNotThisSubject
 
-data v4_1_gb10_kv_bytes_obligation: NonEmptyStr = "DSV41-4 (clever-bat-173) derives whole-model KV bytes per token for fp8_ds_mla on GB10. The card's 890 B/token does not apply to this layout. NVFP4 DS-MLA is SM10x-only. Higher-precision KV is a capacity fact, not a native-quality violation" as NonEmptyStr
+data v4_1_gb10_kv_bytes_obligation: NonEmptyStr = "DSV41-4 (clever-bat-173) derives whole-model KV bytes per token for fp8_ds_mla on GB10 from source at vLLM 07b75534 and config dba1be0a; cite extdeps.vllm.deepseek_v4_1_flash_recipe when it lands rather than transcribing. The four compressed KV-owner layers already exceed the card's 890 B/token, so 890 is not the whole-model fp8_ds_mla figure. Do not use 656 (withdrawn; Kimi K3 stride). Indexer caches and SWA remain a follow-up; the engine allocator report on first real load decides, the source derivation only predicts. Higher-precision KV is a capacity fact, not a native-quality violation" as NonEmptyStr
 
 fn kv_bytes_per_token_standing(c: DeploymentCandidate) -> KvBytesPerTokenStanding {
   if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
