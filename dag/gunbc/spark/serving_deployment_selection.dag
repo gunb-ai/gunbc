@@ -15,6 +15,7 @@ import std.decision {
   DecisionAssessment, DecisionSubject, DecisionVariable,
   DecisionConstraint, DecisionRegion, ContextParameter, ObjectiveTerm, ObjectiveMeasure,
   ChoiceDomain, VariesAlong, MonotoneIncreasing, ConstraintSatisfied, ParameterBound,
+  ConstraintDisposition,
   PhysicalModelEstablished, CausalModelEstablished, VendorDocumentedCoupling,
   SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
   RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
@@ -857,7 +858,6 @@ data serving_selection_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_native_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_weight_fit, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_no_redundancy, goal: HigherIsBetter },
   SelectionAxis { identity: ax_engram_placement, goal: HigherIsBetter },
   SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
   SelectionAxis { identity: ax_context_covered, goal: HigherIsBetter },
@@ -894,6 +894,10 @@ data serving_selection_constraints: List<HardConstraint> = [
 
 data v4_1_selection_constraints: List<HardConstraint> = concat(serving_selection_constraints, [
   HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 1 },
+])
+
+data v4_1_selection_axes: List<SelectionAxis> = concat(serving_selection_axes, [
+  SelectionAxis { identity: ax_no_redundancy, goal: HigherIsBetter },
 ])
 
 // THE MEASUREMENTS THAT DO NOT EXIST YET, each named so its absence is a located obligation rather
@@ -1318,7 +1322,6 @@ data term_failure_isolation: ObjectiveTerm = ObjectiveTerm {
 }
 
 data param_execution_parameters: ContextParameter = ContextParameter { identity: id_param_execution }
-data constraint_cell: DecisionConstraint = DecisionConstraint { identity: id_constraint_authority }
 data serving_topology_region: DecisionRegion = DecisionRegion { identity: id_region }
 
 data serving_objective: ObjectiveMeasure = ObjectiveMeasure {
@@ -1332,20 +1335,52 @@ data serving_choice_domain_cell: ChoiceDomain = ChoiceDomain {
   variables: [var_fleet_topology],
 }
 
-data serving_deployment_subject: DecisionSubject = DecisionSubject {
-  identity: id_subject,
-  question: "which whole-fleet deployment shape serves this exact artifact under this exact execution profile" as NonEmptyStr,
-  parameters: [param_execution_parameters],
-  constraints: [constraint_cell],
-  objective: serving_objective,
-  choice_domain: serving_choice_domain_cell,
+fn unique_constraint_identities(cs: List<HardConstraint>) -> List<DeclarationRef> {
+  fold(cs, init: [], f: (acc, c) =>
+    if any(acc, x => declaration_ref_eq(a: x, b: c.identity)) { acc } else { concat(acc, [c.identity]) })
+}
+
+fn subject_for(input: ServingDeploymentDecisionInput) -> DecisionSubject {
+  DecisionSubject {
+    identity: id_subject,
+    question: "which whole-fleet deployment shape serves this exact artifact under this exact execution profile" as NonEmptyStr,
+    parameters: [param_execution_parameters],
+    constraints: map(unique_constraint_identities(cs: input.constraints), id => DecisionConstraint { identity: id }),
+    objective: serving_objective,
+    choice_domain: serving_choice_domain_cell,
+  }
+}
+
+fn constraint_dispositions_for(input: ServingDeploymentDecisionInput) -> List<ConstraintDisposition> {
+  map(unique_constraint_identities(cs: input.constraints), id =>
+    ConstraintSatisfied {
+      constraint: id,
+      evidence: join([
+        "hard constraint ",
+        declaration_ref_display_key(ref: id),
+        " excluded before dominance under ",
+        declaration_ref_display_key(ref: input.constraint_authority),
+      ], "") as NonEmptyStr,
+    })
+}
+
+fn assessment_constraint_identities(input: ServingDeploymentDecisionInput) -> List<DeclarationRef> {
+  unique_constraint_identities(cs: input.constraints)
+}
+
+fn selection_axes_for(input: ServingDeploymentDecisionInput) -> List<SelectionAxis> {
+  if declaration_ref_eq(a: input.constraint_authority, b: id_v4_1_constraint_authority) {
+    v4_1_selection_axes
+  } else {
+    serving_selection_axes
+  }
 }
 
 // DERIVED, NOT ACCEPTED. The parameter's binding evidence quotes the actual declared parameters, so
 // the assessment cannot describe a closure other than the one being decided.
 fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
   DecisionAssessment {
-    subject: serving_deployment_subject,
+    subject: subject_for(input: input),
     sensitivities: [
       VariesAlong {
         term: id_term_isolation,
@@ -1355,12 +1390,7 @@ fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
         coupling: CitedToAuthority { authority: tensor_parallel_authority },
       },
     ],
-    constraints: [
-      ConstraintSatisfied {
-        constraint: id_constraint_authority,
-        evidence: join(["hard constraints excluded before dominance under ", declaration_ref_display_key(ref: input.constraint_authority)], "") as NonEmptyStr,
-      },
-    ],
+    constraints: constraint_dispositions_for(input: input),
     parameters: [
       ParameterBound {
         parameter: id_param_execution,
@@ -1414,7 +1444,7 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
         assessment: assessment_for(input: input),
         candidate_field_identity: input.field.identity,
         field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile)),
-        axes: serving_selection_axes,
+        axes: selection_axes_for(input: input),
         constraints: input.constraints,
         constraint_authority: input.constraint_authority,
         policy: UniqueSurvivorRequired { identity: input.selection_policy },
