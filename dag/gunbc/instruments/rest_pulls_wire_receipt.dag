@@ -1,0 +1,34 @@
+module gunbc.instruments.rest_pulls_wire_receipt
+
+import std.types { Secret, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.github.pulls { Open }
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
+
+data receipt_owner: String = "gunb-ai"
+data receipt_repo: String = "gunbc"
+
+// Wet GET /repos/gunb-ai/gunbc/pulls through github.Pulls.List. Set GUNBC_REST_WIRE_RECEIPT=1
+// (optional GUNBC_REST_WIRE_RECEIPT_PATH) so dispatch_rest prints status, body digest and prefix,
+// JSON root kind, and mapper output field kinds. That is the raw-body receipt; this function's
+// RestOk arm is the live green after the performer refuses Null under RestOk.
+func list_open_pulls_wire_receipt() -> ProcessExit uses net: Network {
+  let result = github.Pulls.List(
+    auth_token: "" as Secret,
+    owner: receipt_owner,
+    repo: receipt_repo,
+    state: Open,
+  )
+  match result.outcome {
+    RestOk => ExitSuccess
+    RestBodyUndecodable { status: _, cause } =>
+      exit_failure(reason: cause)
+    RestStatusRefused { status: _, body } =>
+      exit_failure(reason: body)
+    RestTransportRefused { cause } =>
+      exit_failure(reason: cause as String)
+  }
+}

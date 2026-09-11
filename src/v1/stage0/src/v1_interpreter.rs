@@ -15005,12 +15005,63 @@ fn decide_rest_exchange(
         });
     }
     let mapped = if response_format == "Text" {
+        emit_rest_wire_receipt(status, &body, "text", "text-body", "<text>", ctx);
         map_response_to_value(&body, None, op_node, ctx)?
     } else {
-        let json: serde_json::Value =
-            serde_json::from_str(&body).unwrap_or_else(|_| serde_json::Value::String(body));
-        map_response_to_value_json(&json, op_node, ctx)?
+        let json = match serde_json::from_str::<serde_json::Value>(&body) {
+            Ok(json) => json,
+            Err(error) => {
+                emit_rest_wire_receipt(
+                    status,
+                    &body,
+                    "undecodable",
+                    "<json-parse-refused>",
+                    &error.to_string(),
+                    ctx,
+                );
+                let cause = format!("JSON body did not decode: {}", error);
+                return match outcome_field {
+                    Some(field) => Ok(attach_rest_outcome(
+                        None,
+                        op_node,
+                        field,
+                        rest_body_undecodable_value(ctx, status, cause),
+                        ctx,
+                    )),
+                    None => Err(InterpError::TypeError {
+                        msg: format!("HTTP {} body undecodable: {}", status, cause),
+                    }),
+                };
+            }
+        };
+        let root_kind = rest_json_root_kind(&json);
+        let mapped = map_response_to_value_json(&json, op_node, ctx)?;
+        emit_rest_wire_receipt(
+            status,
+            &body,
+            root_kind,
+            &rest_mapped_field_kinds(&mapped, ctx),
+            &format!("{}", json),
+            ctx,
+        );
+        mapped
     };
+    if let Some(missing) = rest_payload_null_fields(&mapped, outcome_field, ctx) {
+        let cause = format!(
+            "HTTP {} body did not inhabit the declared output (null at {})",
+            status, missing
+        );
+        return match outcome_field {
+            Some(field) => Ok(attach_rest_outcome(
+                None,
+                op_node,
+                field,
+                rest_body_undecodable_value(ctx, status, cause),
+                ctx,
+            )),
+            None => Err(InterpError::TypeError { msg: cause }),
+        };
+    }
     match outcome_field {
         Some(field) => Ok(attach_rest_outcome(
             Some(mapped),
@@ -15610,6 +15661,123 @@ fn map_response_to_value(
     })
 }
 
+fn rest_output_child_is_outcome(child: &Rc<Node>, ctx: &InterpContext) -> bool {
+    let Some(crate::v1_std_core::InferredNode::Resolved { node }) = child.inferred.as_deref()
+    else {
+        return false;
+    };
+    authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("RestOutcome")
+}
+
+fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
+    let Some(crate::v1_std_core::InferredNode::Resolved { node }) = child.inferred.as_deref()
+    else {
+        return false;
+    };
+    authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("List")
+}
+
+fn rest_json_root_kind(json: &serde_json::Value) -> &'static str {
+    match json {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+fn rest_mapped_field_kinds(mapped: &Value, ctx: &InterpContext) -> String {
+    match mapped {
+        Value::Record { fields, .. } => fields
+            .iter()
+            .map(|(name, value)| format!("{}:{}", ctx.resolve(*name), value.type_label()))
+            .collect::<Vec<_>>()
+            .join(","),
+        other => other.type_label().to_string(),
+    }
+}
+
+fn rest_payload_null_fields(
+    mapped: &Value,
+    outcome_field: Option<&str>,
+    ctx: &InterpContext,
+) -> Option<String> {
+    match mapped {
+        Value::Record { fields, .. } => {
+            let missing: Vec<String> = fields
+                .iter()
+                .filter(|(name, value)| {
+                    let field = ctx.resolve(*name);
+                    Some(field.as_str()) != outcome_field && matches!(value, Value::Null)
+                })
+                .map(|(name, _)| ctx.resolve(*name))
+                .collect();
+            if missing.is_empty() {
+                None
+            } else {
+                Some(missing.join(","))
+            }
+        }
+        Value::Null => Some("<mapped-null>".to_string()),
+        _ => None,
+    }
+}
+
+fn emit_rest_wire_receipt(
+    status: u16,
+    body: &str,
+    json_root: &str,
+    mapper_output: &str,
+    mapper_input: &str,
+    _ctx: &InterpContext,
+) {
+    if std::env::var_os("GUNBC_REST_WIRE_RECEIPT").is_none() {
+        return;
+    }
+    let bytes = body.as_bytes();
+    let prefix_len = bytes.len().min(200);
+    let prefix = String::from_utf8_lossy(&bytes[..prefix_len]);
+    let digest = v1_rt::atom_identity_hash(body.to_string());
+    let input_prefix_len = mapper_input.len().min(200);
+    let line = format!(
+        "[rest-wire-receipt] status={} body_bytes={} digest={} json_root={} mapper_input_prefix={:?} mapper_output={} body_prefix={:?}",
+        status,
+        bytes.len(),
+        digest,
+        json_root,
+        &mapper_input[..input_prefix_len],
+        mapper_output,
+        prefix.as_ref(),
+    );
+    trace_emit(OutputChannel::ShellTrace, &line);
+    eprintln!("{}", line);
+    if let Ok(path) = std::env::var("GUNBC_REST_WIRE_RECEIPT_PATH") {
+        if !path.is_empty() {
+            let _ = std::fs::write(&path, format!("{}\n", line));
+        }
+    }
+}
+
+fn map_response_root_into_payload_field(
+    json: &serde_json::Value,
+    child: &Rc<Node>,
+    ctx: &InterpContext,
+) -> Value {
+    if rest_output_child_is_list(child, ctx) {
+        if json.is_array() {
+            json_to_value(json)
+        } else {
+            Value::Null
+        }
+    } else if json.is_array() {
+        Value::Null
+    } else {
+        json_to_value(json)
+    }
+}
+
 fn map_response_to_value_json(
     json: &serde_json::Value,
     op_node: &Rc<Node>,
@@ -15624,22 +15792,16 @@ fn map_response_to_value_json(
         return Ok(json_to_value(json));
     }
 
-    let type_name = authored_name_at(ctx.si(), return_type.clone());
-    if type_name == "List" && children.is_empty() {
-        return Ok(json_to_value(json));
-    }
-
-    if json.is_array() && !children.is_empty() {
-        let first_field = authored_name_at(ctx.si(), children[0].clone());
-        return Ok(Value::Record {
-            type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-            fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
-        });
-    }
-
+    let payload_count = children
+        .iter()
+        .filter(|child| !rest_output_child_is_outcome(child, ctx))
+        .count();
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
+        if rest_output_child_is_outcome(child, ctx) {
+            continue;
+        }
         let from_key = extract_from_key(child, ctx);
         let val = match from_key {
             Some(path) => {
@@ -15651,13 +15813,10 @@ fn map_response_to_value_json(
             }
             None => match json.get(&field_name) {
                 Some(v) => json_to_value(v),
-                None => {
-                    if children.len() == 1 {
-                        json_to_value(json)
-                    } else {
-                        Value::Null
-                    }
+                None if payload_count == 1 => {
+                    map_response_root_into_payload_field(json, child, ctx)
                 }
+                None => Value::Null,
             },
         };
         fields.push((ctx.sym(&field_name), val));
