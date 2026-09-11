@@ -39211,6 +39211,12 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("use ");
         content.push_str(&crate_name);
         content.push_str("::v2_std_diagnostic::Outcome;\n");
+        content.push_str("use ");
+        content.push_str(&crate_name);
+        content.push_str("::std_compiler_entry::{\n");
+        content.push_str("    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos, native_driver_exclusive_sum,\n");
+        content.push_str("    NativeDriverCostAccounting, NativeDriverExclusiveRows,\n");
+        content.push_str("};\n");
         content.push_str("\n");
         content.push_str("fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {\n");
         content.push_str("    let entries = match std::fs::read_dir(dir) {\n");
@@ -39238,6 +39244,10 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    if sorted.is_empty() { return 0; }\n");
         content.push_str("    let idx = (sorted.len() - 1) * numer / denom;\n");
         content.push_str("    sorted[idx]\n");
+        content.push_str("}\n");
+        content.push_str("\n");
+        content.push_str("fn native_cost_i64(n: u128) -> i64 {\n");
+        content.push_str("    i64::try_from(n).unwrap_or(i64::MAX)\n");
         content.push_str("}\n");
         content.push_str("\n");
         content.push_str("fn main() {\n");
@@ -39486,8 +39496,14 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    let parent_span_nanos = driver_start.elapsed().as_nanos();\n");
         content.push_str("    let identities = universe.len() as u64;\n");
         content.push_str("    let unique_modules = module_order.len() as u64;\n");
+        content.push_str("    let exclusive = Rc::new(NativeDriverExclusiveRows {\n");
+        content.push_str("        load: native_cost_i64(load_nanos),\n");
+        content.push_str("        context: native_cost_i64(context_nanos),\n");
+        content.push_str("        prepare: native_cost_i64(prepare_nanos),\n");
+        content.push_str("        eval: native_cost_i64(eval_nanos),\n");
+        content.push_str("    });\n");
         content.push_str(
-            "    let exclusive_sum = load_nanos + context_nanos + prepare_nanos + eval_nanos;\n",
+            "    let exclusive_sum = native_driver_exclusive_sum(exclusive.clone()) as u128;\n",
         );
         content.push_str(
             "    let remainder_nanos = parent_span_nanos.saturating_sub(exclusive_sum);\n",
@@ -39499,8 +39515,20 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    let decls_per_module = if unique_modules == 0 { 0 } else { identities / unique_modules };\n");
         content.push_str("    let prepare_share_per_identity = if identities == 0 { 0 } else { prepare_nanos / identities as u128 };\n");
         content.push_str("    let floor_per_identity = eval_mean + prepare_share_per_identity;\n");
-        content.push_str("    let verdict = if exclusive_sum > parent_span_nanos { r#\"NativeDriverCostOverAttributed\"# } else if remainder_nanos > 50000000 { r#\"NativeDriverCostRemainderExceedsTolerance\"# } else { r#\"NativeDriverCostReconciled\"# };\n");
-        content.push_str("    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": 50000000, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": { \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos }, \"sum_exclusive_nanos\": exclusive_sum, \"remainder_nanos\": remainder_nanos, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module, \"prepare_resolve_nanos\": prepare_resolve_nanos, \"prepare_infer_nanos\": prepare_infer_nanos }));\n");
+        content.push_str(
+            "    let tolerance_nanos = native_driver_cost_remainder_tolerance_nanos() as u128;\n",
+        );
+        content.push_str("    let accounting = native_driver_cost_account(\n");
+        content.push_str("        native_cost_i64(parent_span_nanos),\n");
+        content.push_str("        exclusive,\n");
+        content.push_str("        native_driver_cost_remainder_tolerance_nanos(),\n");
+        content.push_str("    );\n");
+        content.push_str("    let verdict = match accounting.as_ref() {\n");
+        content.push_str("        NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } => r#\"NativeDriverCostOverAttributed\"#,\n");
+        content.push_str("        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { .. } => r#\"NativeDriverCostRemainderExceedsTolerance\"#,\n");
+        content.push_str("        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => r#\"NativeDriverCostReconciled\"#,\n");
+        content.push_str("    };\n");
+        content.push_str("    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": tolerance_nanos, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": { \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos }, \"sum_exclusive_nanos\": exclusive_sum, \"remainder_nanos\": remainder_nanos, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module, \"prepare_resolve_nanos\": prepare_resolve_nanos, \"prepare_infer_nanos\": prepare_infer_nanos }));\n");
         content.push_str("}\n");
         Rc::new(TextFile {
             path: v1_rt::concat(

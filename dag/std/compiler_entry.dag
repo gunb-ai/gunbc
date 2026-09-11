@@ -45,8 +45,10 @@ import std.types { Int, Bool }
 // as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: exclusive
 // load / context / prepare / eval over parent_span_nanos) plus one `[native-prepare]` line per
 // unique module and one `[native-prepare-split]` line that partitions prepare into resolve vs
-// infer (the two halves native_test_resolve_module / native_test_infer_resolved). Re-run the
-// emitted binary over a universe file to re-derive the numbers.
+// infer (the two halves native_test_resolve_module / native_test_infer_resolved). The
+// `[native-cost-partition]` verdict is native_driver_cost_account over NativeDriverExclusiveRows,
+// not a second copy of the reconcile law. Re-run the emitted binary over a universe file to
+// re-derive the numbers.
 
 type CompilerEntryDriver
   = RetainedHostCliKernel
