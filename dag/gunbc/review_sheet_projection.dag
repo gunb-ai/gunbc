@@ -1,6 +1,6 @@
 module gunbc.review_sheet_projection
 
-import std.types { NonEmptyStr, String, Int, List, Bool }
+import std.types { NonEmptyStr, String, Int, List, Bool, Map }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 
 // Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
@@ -128,7 +128,7 @@ data a1_column_letters: List<String> = [
 ]
 
 fn a1_column_letter(index: Int) -> String? {
-  a1_column_letters |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first
+  a1_column_letters.skip(n: index).first()
 }
 
 fn a1_cell(column_index: Int, sheet_row: Int) -> NonEmptyStr? {
@@ -142,48 +142,82 @@ fn sheet_row_number(data_index: Int) -> Int {
   data_index + 2
 }
 
-fn header_index(headers: List<String>, name: NonEmptyStr) -> Int? {
-  headers |> enumerate |> filter(pair => pair.second == (name as String)) |> map(pair => pair.first) |> first
+fn indexes_by_header(headers: List<String>) -> Map<String, Int> {
+  fold(headers |> enumerate, init: empty_map(), f: fn(acc, pair) {
+    map_insert(acc, pair.second, pair.first)
+  })
 }
 
 fn cell_at(cells: List<String>, index: Int) -> String {
-  match cells |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
+  match cells.skip(n: index).first() {
     Present { value: v } => v
     Absent => ""
   }
 }
 
-fn count_id(xs: List<NonEmptyStr>, id: NonEmptyStr) -> Int {
-  fold(xs, init: 0, f: fn(acc, x) {
-    if x == id { acc + 1 } else { acc }
-  })
+type IdDupScan {
+  seen: Map<String, Bool>
+  first: NonEmptyStr?
+}
+
+fn first_duplicate(ids: List<NonEmptyStr>) -> NonEmptyStr? {
+  match fold(ids, init: IdDupScan { seen: empty_map(), first: none }, f: fn(acc, id) {
+    match acc.first {
+      Present { value: d } => IdDupScan { seen: acc.seen, first: Present { value: d } }
+      Absent =>
+        match acc.seen.lookup(id as String) {
+          Present { value: _ } => IdDupScan { seen: acc.seen, first: Present { value: id } }
+          Absent => IdDupScan {
+            seen: map_insert(acc.seen, id as String, true),
+            first: none,
+          }
+        }
+    }
+  }) {
+    IdDupScan { seen: _, first: f } => f
+  }
 }
 
 fn projection_ids(projection: ReviewSheetProjection) -> List<NonEmptyStr> {
   map(projection.rows, r => r.listing_id)
 }
 
-fn observed_ids(sheet: ObservedSheet, identity_index: Int) -> List<NonEmptyStr> {
-  fold(sheet.rows, init: [], f: fn(acc, row) {
-    let raw = cell_at(cells: row.cells, index: identity_index)
-    if raw == "" {
-      acc
-    } else {
-      concat(acc, [raw as NonEmptyStr])
-    }
+fn projection_by_listing(projection: ReviewSheetProjection) -> Map<String, ProjectionRow> {
+  fold(projection.rows, init: empty_map(), f: fn(acc, row) {
+    map_insert(acc, row.listing_id as String, row)
   })
 }
 
-fn first_duplicate(ids: List<NonEmptyStr>) -> NonEmptyStr? {
-  ids |> filter(id => count_id(xs: ids, id: id) > 1) |> first
+fn derived_by_column(row: ProjectionRow) -> Map<String, String> {
+  fold(row.derived, init: empty_map(), f: fn(acc, cell) {
+    map_insert(acc, cell.column as String, cell.value)
+  })
 }
 
-fn projection_row_for(projection: ReviewSheetProjection, listing_id: NonEmptyStr) -> ProjectionRow? {
-  projection.rows |> filter(r => r.listing_id == listing_id) |> first
+type ObservedIdIndex {
+  by_id: Map<String, Bool>
+  first_dup: NonEmptyStr?
 }
 
-fn derived_value_for(row: ProjectionRow, column: NonEmptyStr) -> String? {
-  row.derived |> filter(c => c.column == column) |> map(c => c.value) |> first
+fn observed_id_index(sheet: ObservedSheet, identity_index: Int) -> ObservedIdIndex {
+  fold(sheet.rows, init: ObservedIdIndex { by_id: empty_map(), first_dup: none }, f: fn(acc, row) {
+    match acc.first_dup {
+      Present { value: d } => ObservedIdIndex { by_id: acc.by_id, first_dup: Present { value: d } }
+      Absent => {
+        let raw = cell_at(cells: row.cells, index: identity_index)
+        if raw == "" {
+          acc
+        } else {
+          match acc.by_id.lookup(raw) {
+            Present { value: _ } =>
+              ObservedIdIndex { by_id: acc.by_id, first_dup: Present { value: raw as NonEmptyStr } }
+            Absent =>
+              ObservedIdIndex { by_id: map_insert(acc.by_id, raw, true), first_dup: none }
+          }
+        }
+      }
+    }
+  })
 }
 
 fn omitted_derived_column_reason(listing_id: NonEmptyStr, column: NonEmptyStr) -> NonEmptyStr {
@@ -195,13 +229,14 @@ fn col_and_listing(column: NonEmptyStr, listing_id: NonEmptyStr) -> String {
 }
 
 fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -> NonEmptyStr? {
+  let derived = derived_by_column(row: row)
   schema.columns
     |> filter(c => match c.kind {
       DerivedField { source_field: _ } => true
       OperatorEntered => false
       ListingStanding => false
     })
-    |> filter(c => match derived_value_for(row: row, column: c.name) {
+    |> filter(c => match derived.lookup(c.name as String) {
       Absent => true
       Present { value: _ } => false
     })
@@ -209,17 +244,16 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
     |> first
 }
 
-fn schema_column(schema: ReviewSheetSchema, name: NonEmptyStr) -> ReviewColumn? {
-  schema.columns |> filter(c => c.name == name) |> first
+fn missing_schema_header(schema: ReviewSheetSchema, header_by_name: Map<String, Int>) -> NonEmptyStr? {
+  let needed = concat([schema.identity_column], map(schema.columns, c => c.name))
+  needed |> filter(n => match header_by_name.lookup(n as String) {
+    Present { value: _ } => false
+    Absent => true
+  }) |> first
 }
 
 fn standing_desired(in_projection: Bool) -> ListingStandingState {
   if in_projection { StandingObserved } else { StandingGone }
-}
-
-fn missing_schema_header(schema: ReviewSheetSchema, headers: List<String>) -> NonEmptyStr? {
-  let needed = concat([schema.identity_column], map(schema.columns, c => c.name))
-  needed |> filter(n => match header_index(headers: headers, name: n) { Present { value: _ } => false  Absent => true }) |> first
 }
 
 fn empty_write_plan() -> ReviewSheetWritePlan {
@@ -227,11 +261,15 @@ fn empty_write_plan() -> ReviewSheetWritePlan {
 }
 
 fn plan_plus_patch(plan: ReviewSheetWritePlan, write: DerivedCellWrite) -> ReviewSheetWritePlan {
-  ReviewSheetWritePlan { patches: concat(plan.patches, [write]), appends: plan.appends }
+  ReviewSheetWritePlan { patches: concat([write], plan.patches), appends: plan.appends }
 }
 
 fn plan_plus_append(plan: ReviewSheetWritePlan, row: AppendListingRow) -> ReviewSheetWritePlan {
-  ReviewSheetWritePlan { patches: plan.patches, appends: concat(plan.appends, [row]) }
+  ReviewSheetWritePlan { patches: plan.patches, appends: concat([row], plan.appends) }
+}
+
+fn reverse_write_plan(plan: ReviewSheetWritePlan) -> ReviewSheetWritePlan {
+  ReviewSheetWritePlan { patches: reverse(plan.patches), appends: reverse(plan.appends) }
 }
 
 fn write_plan_nonempty(plan: ReviewSheetWritePlan) -> Bool {
@@ -330,9 +368,9 @@ fn classification_from_cell_decision(
 
 fn classify_existing_row(
   schema: ReviewSheetSchema,
-  headers: List<String>,
+  header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
-  projection: ReviewSheetProjection,
+  rows_by_listing: Map<String, ProjectionRow>,
   identity_index: Int,
   plan: ReviewSheetWritePlan,
 ) -> ReviewSheetClassification {
@@ -347,25 +385,25 @@ fn classify_existing_row(
     }
   } else {
     let listing_id = listing_raw as NonEmptyStr
-    match projection_row_for(projection: projection, listing_id: listing_id) {
+    match rows_by_listing.lookup(listing_raw) {
       Present { value: prow } =>
         fold_columns_for_row(
           schema: schema,
-          headers: headers,
+          header_by_name: header_by_name,
           row: row,
           listing_id: listing_id,
           in_projection: true,
-          prow: Present { value: prow },
+          derived: derived_by_column(row: prow),
           plan: plan,
         )
       Absent =>
         fold_columns_for_row(
           schema: schema,
-          headers: headers,
+          header_by_name: header_by_name,
           row: row,
           listing_id: listing_id,
           in_projection: false,
-          prow: none,
+          derived: empty_map(),
           plan: plan,
         )
     }
@@ -374,11 +412,11 @@ fn classify_existing_row(
 
 fn fold_columns_for_row(
   schema: ReviewSheetSchema,
-  headers: List<String>,
+  header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
   listing_id: NonEmptyStr,
   in_projection: Bool,
-  prow: ProjectionRow?,
+  derived: Map<String, String>,
   plan: ReviewSheetWritePlan,
 ) -> ReviewSheetClassification {
   fold(schema.columns, init: ReviewSheetNeedsWrite { plan: plan }, f: fn(acc, col) {
@@ -387,7 +425,7 @@ fn fold_columns_for_row(
       ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
       ReviewSheetConverged => ReviewSheetConverged
       ReviewSheetNeedsWrite { plan: p } =>
-        match header_index(headers: headers, name: col.name) {
+        match header_by_name.lookup(col.name as String) {
           Absent => ReviewSheetUnreadable { reason: concat("missing column ", col.name as String) as NonEmptyStr }
           Present { value: idx } => {
             let observed = cell_at(cells: row.cells, index: idx)
@@ -407,27 +445,20 @@ fn fold_columns_for_row(
               OperatorEntered => ReviewSheetNeedsWrite { plan: p }
               DerivedField { source_field: _ } =>
                 if in_projection {
-                  match prow {
+                  match derived.lookup(col.name as String) {
                     Absent =>
                       ReviewSheetUnreadable {
                         reason: omitted_derived_column_reason(listing_id: listing_id, column: col.name)
                       }
-                    Present { value: pr } =>
-                      match derived_value_for(row: pr, column: col.name) {
-                        Absent =>
-                          ReviewSheetUnreadable {
-                            reason: omitted_derived_column_reason(listing_id: listing_id, column: col.name)
-                          }
-                        Present { value: desired } =>
-                          classification_from_cell_decision(
-                            plan: p,
-                            listing_id: listing_id,
-                            column: col.name,
-                            column_index: idx,
-                            data_index: row.data_index,
-                            decision: decide_derived_field_cell(observed: observed, desired: desired),
-                          )
-                      }
+                    Present { value: desired } =>
+                      classification_from_cell_decision(
+                        plan: p,
+                        listing_id: listing_id,
+                        column: col.name,
+                        column_index: idx,
+                        data_index: row.data_index,
+                        decision: decide_derived_field_cell(observed: observed, desired: desired),
+                      )
                   }
                 } else {
                   classification_from_cell_decision(
@@ -447,6 +478,7 @@ fn fold_columns_for_row(
 }
 
 fn append_row_for(projection_row: ProjectionRow, schema: ReviewSheetSchema) -> AppendListingRow {
+  let derived = derived_by_column(row: projection_row)
   AppendListingRow {
     listing_id: projection_row.listing_id,
     derived: map(
@@ -461,7 +493,7 @@ fn append_row_for(projection_row: ProjectionRow, schema: ReviewSheetSchema) -> A
           ListingStanding => listing_standing_label(state: StandingObserved)
           OperatorEntered => ""
           DerivedField { source_field: _ } =>
-            match derived_value_for(row: projection_row, column: c.name) {
+            match derived.lookup(c.name as String) {
               Present { value: v } => v
               Absent => ""
             }
@@ -472,24 +504,27 @@ fn append_row_for(projection_row: ProjectionRow, schema: ReviewSheetSchema) -> A
 }
 
 fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProjection) -> ReviewSheetClassification {
-  match missing_schema_header(schema: projection.schema, headers: observed.headers) {
+  let header_by_name = indexes_by_header(headers: observed.headers)
+  match missing_schema_header(schema: projection.schema, header_by_name: header_by_name) {
     Present { value: missing } =>
       ReviewSheetUnreadable { reason: concat("missing header ", missing as String) as NonEmptyStr }
     Absent =>
-      match header_index(headers: observed.headers, name: projection.schema.identity_column) {
+      match header_by_name.lookup(projection.schema.identity_column as String) {
         Absent => ReviewSheetUnreadable { reason: "missing identity column" as NonEmptyStr }
         Present { value: identity_index } =>
           match first_duplicate(ids: projection_ids(projection: projection)) {
             Present { value: d } =>
               ReviewSheetUnreadable { reason: concat("duplicate projection listing ", d as String) as NonEmptyStr }
             Absent =>
-              match first_duplicate(ids: observed_ids(sheet: observed, identity_index: identity_index)) {
-                Present { value: d } =>
+              match observed_id_index(sheet: observed, identity_index: identity_index) {
+                ObservedIdIndex { by_id: by_id, first_dup: Present { value: d } } =>
                   ReviewSheetUnreadable { reason: concat("duplicate sheet listing ", d as String) as NonEmptyStr }
-                Absent => finish_classify(
+                ObservedIdIndex { by_id: by_id, first_dup: Absent } => finish_classify(
                   observed: observed,
                   projection: projection,
+                  header_by_name: header_by_name,
                   identity_index: identity_index,
+                  observed_by_id: by_id,
                 )
               }
           }
@@ -500,8 +535,11 @@ fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProject
 fn finish_classify(
   observed: ObservedSheet,
   projection: ReviewSheetProjection,
+  header_by_name: Map<String, Int>,
   identity_index: Int,
+  observed_by_id: Map<String, Bool>,
 ) -> ReviewSheetClassification {
+  let rows_by_listing = projection_by_listing(projection: projection)
   let after_existing = fold(observed.rows, init: ReviewSheetNeedsWrite { plan: empty_write_plan() }, f: fn(acc, row) {
     match acc {
       ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
@@ -510,9 +548,9 @@ fn finish_classify(
       ReviewSheetNeedsWrite { plan: p } =>
         classify_existing_row(
           schema: projection.schema,
-          headers: observed.headers,
+          header_by_name: header_by_name,
           row: row,
-          projection: projection,
+          rows_by_listing: rows_by_listing,
           identity_index: identity_index,
           plan: p,
         )
@@ -523,8 +561,10 @@ fn finish_classify(
     ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
     ReviewSheetConverged => ReviewSheetConverged
     ReviewSheetNeedsWrite { plan: p } => {
-      let observed_id_set = observed_ids(sheet: observed, identity_index: identity_index)
-      let missing = projection.rows |> filter(r => count_id(xs: observed_id_set, id: r.listing_id) == 0)
+      let missing = projection.rows |> filter(r => match observed_by_id.lookup(r.listing_id as String) {
+        Present { value: _ } => false
+        Absent => true
+      })
       let after_appends = fold(missing, init: ReviewSheetNeedsWrite { plan: p }, f: fn(acc, prow) {
         match acc {
           ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
@@ -546,7 +586,7 @@ fn finish_classify(
       match after_appends {
         ReviewSheetNeedsWrite { plan: final_plan } =>
           if write_plan_nonempty(plan: final_plan) {
-            ReviewSheetNeedsWrite { plan: final_plan }
+            ReviewSheetNeedsWrite { plan: reverse_write_plan(plan: final_plan) }
           } else {
             ReviewSheetConverged
           }
@@ -596,13 +636,14 @@ fn judgement_for_listing(
   judgement_column: NonEmptyStr,
   listing_id: NonEmptyStr,
 ) -> JudgementRead {
-  match header_index(headers: observed.headers, name: identity_column) {
+  let header_by_name = indexes_by_header(headers: observed.headers)
+  match header_by_name.lookup(identity_column as String) {
     Absent =>
       JudgementUnreadable {
         reason: concat("missing identity column ", identity_column as String) as NonEmptyStr
       }
     Present { value: id_idx } =>
-      match header_index(headers: observed.headers, name: judgement_column) {
+      match header_by_name.lookup(judgement_column as String) {
         Absent =>
           JudgementUnreadable {
             reason: concat("missing judgement column ", judgement_column as String) as NonEmptyStr
