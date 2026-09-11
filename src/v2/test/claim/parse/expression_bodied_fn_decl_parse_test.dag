@@ -51,8 +51,8 @@ fn g_tree_has_arrow_body(root: Node) -> Bool {
   }
 }
 
-fn g_normalize_has_arrow_body(text: String, file: Symbol) -> Bool {
-  match g_tokenize_parse(text: text, file: file) {
+fn g_normalize_has_arrow_body(parsed: Outcome<Node>) -> Bool {
+  match parsed {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match normalize(parse_tree: tree) {
@@ -71,20 +71,48 @@ data braced_fn_control_source: String = "module probe.braced_fn\n\nfn f(a: Int) 
 
 data empty_eq_fn_source: String = "module probe.empty_eq\n\nfn f(a: Int) -> Int =\n"
 
+// THE SHARE POINTS. Each of the three accepted sources is parsed by two claims -- once to
+// assert the parse, once to normalize the tree -- and the required floor evaluates each claim
+// in its own frame, so every tokenize+parse was paid twice: the floor's own cost receipt (main
+// run 34556223550, required_floor_claim_cost.tsv) shows braced_fn_decl_survives_normalize_holds
+// INTERRUPTED at the 500ms per-claim CPU ceiling and its file-mates within one runner swing of
+// it. Each nullary producer below is enrolled WARM in v2.workflow.floor_pure_producer_share:
+// the floor forces it once during strict preparation, outside every per-claim budget, and both
+// claims are handed the parse tree; normalize stays per claim. The empty-`=` source is not
+// shared: one claim reads it, and a refusal is the cheap arm.
+fn expression_bodied_fn_parsed() -> Outcome<Node> {
+  g_tokenize_parse(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+}
+
+fn expression_bodied_literal_fn_parsed() -> Outcome<Node> {
+  g_tokenize_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+}
+
+fn braced_fn_control_parsed() -> Outcome<Node> {
+  g_tokenize_parse(text: braced_fn_control_source, file: ^probe_braced_fn)
+}
+
+fn g_parsed_accepted(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn expression_bodied_fn_decl_parses_holds() -> Bool {
-  g_parse_accepted(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+  g_parsed_accepted(parsed: expression_bodied_fn_parsed())
 }
 
 test fn expression_bodied_literal_fn_decl_parses_holds() -> Bool {
-  g_parse_accepted(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+  g_parsed_accepted(parsed: expression_bodied_literal_fn_parsed())
 }
 
 test fn braced_fn_decl_still_parses_holds() -> Bool {
-  g_parse_accepted(text: braced_fn_control_source, file: ^probe_braced_fn)
+  g_parsed_accepted(parsed: braced_fn_control_parsed())
 }
 
 test fn braced_fn_decl_survives_normalize_holds() -> Bool {
-  g_normalize_has_arrow_body(text: braced_fn_control_source, file: ^probe_braced_fn)
+  g_normalize_has_arrow_body(parsed: braced_fn_control_parsed())
 }
 
 test fn empty_eq_fn_decl_refuses_holds() -> Bool {
@@ -95,9 +123,9 @@ test fn empty_eq_fn_decl_refuses_holds() -> Bool {
 }
 
 test fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
-  g_normalize_has_arrow_body(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+  g_normalize_has_arrow_body(parsed: expression_bodied_fn_parsed())
 }
 
 test fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
-  g_normalize_has_arrow_body(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+  g_normalize_has_arrow_body(parsed: expression_bodied_literal_fn_parsed())
 }

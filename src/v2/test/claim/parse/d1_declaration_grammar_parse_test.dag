@@ -48,17 +48,6 @@ fn d1_parse_accepted(text: String, file: Symbol) -> Bool {
   }
 }
 
-fn d1_normalize_accepted(text: String, file: Symbol) -> Bool {
-  match d1_tokenize_parse(text: text, file: file) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match normalize(parse_tree: tree) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-  }
-}
-
 fn d1_tree_carries_where_clause(root: Node) -> Bool {
   match parse_subtree_find_production_captured(
     root: root,
@@ -139,17 +128,64 @@ data d1_where_empty: String = "module m\ntype A = NonEmptyStr where\nfn f() -> I
 
 data d1_cache_identity_where_source: String = "module probe.cache_identity\n\ntype CacheInterfaceId = NonEmptyStr where brand(\"CacheInterfaceId\")\ntype ArtifactKindId = NonEmptyStr where brand(\"ArtifactKindId\")\n\nfn f() -> Int {\n  1\n}\n"
 
+// THE SHARE POINTS. Four of the five sources above are parsed by more than one claim in this
+// file (the reproducer by four, the bare form by three, the control and the cache-identity
+// source by two each), and the required floor evaluates each claim in its own frame, so the
+// tokenize+parse of one module-constant string was re-derived once per demanding claim: the
+// floor's own cost receipt (main run 34556223550, required_floor_claim_cost.tsv) shows seven
+// of this file's eight rows INTERRUPTED at the 500ms per-claim CPU ceiling before reaching a
+// verdict. Each nullary producer below is enrolled WARM in v2.workflow.floor_pure_producer_share:
+// the floor forces it once during strict preparation, outside every per-claim budget, and every
+// claim is handed the parse tree. The seam is the parse tree because it is the value every
+// consumer branches on -- normalize stays per claim, so the normalize claims still execute the
+// stage they name -- and it is fully portable (an Outcome over a Node tree, no closure at any
+// depth), the same seam direct_rust_door_specimen_resolved shares at. The empty-where source is
+// not shared: one claim reads it, and a refusal is the cheap arm.
+fn d1_where_reproducer_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_reproducer)
+}
+
+fn d1_where_bare_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_bare)
+}
+
+fn d1_where_control_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_where_control, file: ^d1_where_control)
+}
+
+fn d1_cache_identity_where_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_cache_identity_where_source, file: ^d1_cache_identity_where)
+}
+
+fn d1_parsed_accepted(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn d1_parsed_normalizes(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
 test fn cause_a_where_refinement_clause_parses_holds() -> Bool {
-  d1_parse_accepted(text: d1_where_reproducer, file: ^d1_where_reproducer)
-    && d1_parse_accepted(text: d1_where_bare, file: ^d1_where_bare)
-    && d1_parse_accepted(text: d1_where_control, file: ^d1_where_control)
+  d1_parsed_accepted(parsed: d1_where_reproducer_parsed())
+    && d1_parsed_accepted(parsed: d1_where_bare_parsed())
+    && d1_parsed_accepted(parsed: d1_where_control_parsed())
 }
 
 test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
-  match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_parse) {
+  match d1_where_reproducer_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: brand_tree, diagnostics: _ } =>
-      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_parse_bare) {
+      match d1_where_bare_parsed() {
         Rejected { diagnostics: _ } => false
         Accepted { value: bare_tree, diagnostics: _ } =>
           d1_tree_carries_where_clause(root: brand_tree)
@@ -159,19 +195,19 @@ test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
 }
 
 test fn cause_a_where_control_normalizes_holds() -> Bool {
-  d1_normalize_accepted(text: d1_where_control, file: ^d1_where_control_norm)
+  d1_parsed_normalizes(parsed: d1_where_control_parsed())
 }
 
 test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
-  d1_normalize_accepted(text: d1_where_reproducer, file: ^d1_where_norm)
+  d1_parsed_normalizes(parsed: d1_where_reproducer_parsed())
 }
 
 fn cause_a_where_clause_survives_normalize_locus() -> ProcessExit {
-  match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
+  match d1_where_reproducer_parsed() {
     Rejected { diagnostics: r } =>
       exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
     Accepted { value: brand_tree, diagnostics: _ } =>
-      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_norm_bare) {
+      match d1_where_bare_parsed() {
         Rejected { diagnostics: r } =>
           exit_failure(
             reason: join(["bare-parse-refused: ", symbol_lexeme(sym: r.head.reason)], "")
@@ -219,10 +255,10 @@ fn cause_a_where_clause_survives_normalize_locus() -> ProcessExit {
 }
 
 test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
-  match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
+  match d1_where_reproducer_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: brand_tree, diagnostics: _ } =>
-      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_norm_bare) {
+      match d1_where_bare_parsed() {
         Rejected { diagnostics: _ } => false
         Accepted { value: bare_tree, diagnostics: _ } =>
           match normalize(parse_tree: brand_tree) {
@@ -244,11 +280,11 @@ test fn cause_a_empty_where_clause_refuses_holds() -> Bool {
 }
 
 test fn cause_a_cache_identity_where_normalizes_holds() -> Bool {
-  d1_normalize_accepted(text: d1_cache_identity_where_source, file: ^d1_cache_identity_where_norm)
+  d1_parsed_normalizes(parsed: d1_cache_identity_where_parsed())
 }
 
 test fn cause_a_cache_identity_where_normalizes_well_formed_holds() -> Bool {
-  match d1_tokenize_parse(text: d1_cache_identity_where_source, file: ^d1_cache_identity_where) {
+  match d1_cache_identity_where_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match normalize(parse_tree: tree) {
