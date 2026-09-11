@@ -22,16 +22,12 @@ import extdeps.memory.sk_hynix {
 import extdeps.ocp.mt_jade.memory_mixing {
   MtJadeDimmMixingAxis,
   MtJadeDimmMixingPlacement,
-  MtJadeMixedDimmSupport,
-  MixingUndetermined,
+  MtJadeMixedDimmSupportOutcome,
   Mixing1rAnd2r,
   MixingX4AndX8,
   DifferentDensity,
   SameChannel,
   DifferentChannel,
-  MixedDimmSupportResolved,
-  MixedDimmSupportUnmodelled,
-  MixedDimmSupportAmbiguous,
   mt_jade_mixed_dimm_support,
 }
 
@@ -422,31 +418,31 @@ data mtcollins1_connector_identification_basis: MtCollins1ConnectorIdentificatio
 // WHAT IS DELIBERATELY NOT BUILT HERE: a fill requirement or a purchase vector. This module
 // resolves THIS UNIT's observations against cited rules. Turning sixteen per-connector
 // requirements into an order is a decision over a population this module has not observed.
+// THE LOOKUP OUTCOME IS CARRIED WHOLE, NOT FOLDED DOWN TO A SUPPORT VALUE. An earlier version of
+// this module mapped MixedDimmSupportUnmodelled and MixedDimmSupportAmbiguous onto
+// MixingUndetermined, and review 64125 caught it. extdeps.ocp.mt_jade.memory_mixing made its
+// lookup total-with-refusal precisely to stop that, and says so in its own annotation: a
+// manufactured MixingUndetermined is the WORST of the three substitutions available, because the
+// table really does print TBD, so a fabricated one is indistinguishable from a cited one.
+//
+// THE CONCRETE HARM, not a style point. mtcollins1_cross_channel_rank_mixing_standing is the row
+// that records the specification declining to affirm what this unit runs, and its witness is
+// documented as a control that SHOULD flip when a later revision resolves that cell. Collapsed,
+// the control could not flip: a row that went MISSING or became AMBIGUOUS would arrive as
+// MixingUndetermined and the test would stay green while its subject had disappeared. One spelling
+// would carry both "the specification declines to state" and "this corpus has no row" -- DESIGN
+// section 3's meaning fork, and section 5's widening failure arm.
 type MtCollins1PartnerRequirement {
   empty_connector: Nat
   peer_connector: Nat
   peer_part_number: NonEmptyStr
-  rank_mixing_in_channel: MtJadeMixedDimmSupport
-  width_mixing_in_channel: MtJadeMixedDimmSupport
-  density_mixing_in_channel: MtJadeMixedDimmSupport
+  rank_mixing_in_channel: MtJadeMixedDimmSupportOutcome
+  width_mixing_in_channel: MtJadeMixedDimmSupportOutcome
+  density_mixing_in_channel: MtJadeMixedDimmSupportOutcome
 }
 
-fn mtcollins1_mixing_verdict(placement: MtJadeDimmMixingPlacement, axis: MtJadeDimmMixingAxis) -> MtJadeMixedDimmSupport {
-  match mt_jade_mixed_dimm_support(placement: placement, axis: axis) {
-    MixedDimmSupportResolved { cell: c } => c.support
-    MixedDimmSupportUnmodelled { query: _ } => MixingUndetermined
-    MixedDimmSupportAmbiguous { query: _ } => MixingUndetermined
-  }
-}
-
-// THE VERDICTS ARE THE SPECIFICATION'S OWN, CARRIED WHOLE. Same-channel rank, width and density
-// each read MixingNotSupported, which is what makes each empty partner's required rank, width and
-// density equal to its peer's -- a CONSEQUENCE of a cited rule rather than a preference read off
-// the installed modules. The states are not collapsed to a Bool on the way through: a cell that
-// said MixingNotPreferred or MixingUndetermined would arrive here saying so, which is the defect
-// filed at gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission.
-fn mtcollins1_same_channel_verdict(axis: MtJadeDimmMixingAxis) -> MtJadeMixedDimmSupport {
-  mtcollins1_mixing_verdict(placement: SameChannel, axis: axis)
+fn mtcollins1_same_channel_lookup(axis: MtJadeDimmMixingAxis) -> MtJadeMixedDimmSupportOutcome {
+  mt_jade_mixed_dimm_support(placement: SameChannel, axis: axis)
 }
 
 fn mtcollins1_partner_requirement(b: MtCollins1FirmwareChannelBinding, peer_connector: Nat) -> MtCollins1PartnerRequirement {
@@ -454,22 +450,21 @@ fn mtcollins1_partner_requirement(b: MtCollins1FirmwareChannelBinding, peer_conn
     empty_connector: peer_connector + 1,
     peer_connector: peer_connector,
     peer_part_number: b.part_number,
-    rank_mixing_in_channel: mtcollins1_same_channel_verdict(axis: Mixing1rAnd2r),
-    width_mixing_in_channel: mtcollins1_same_channel_verdict(axis: MixingX4AndX8),
-    density_mixing_in_channel: mtcollins1_same_channel_verdict(axis: DifferentDensity),
+    rank_mixing_in_channel: mtcollins1_same_channel_lookup(axis: Mixing1rAnd2r),
+    width_mixing_in_channel: mtcollins1_same_channel_lookup(axis: MixingX4AndX8),
+    density_mixing_in_channel: mtcollins1_same_channel_lookup(axis: DifferentDensity),
   }
 }
 
 // THE CONFIGURATION THIS UNIT ALREADY RUNS IS NOT AFFIRMED BY ITS OWN PLATFORM SPECIFICATION, and
 // that is recorded as a first-class reading rather than left for a reader to notice. Sixteen
 // channels carry a mix of 1R and 2R modules ACROSS channels; the specification's different-channel
-// row answers every other axis Supported and answers rank with MixingUndetermined -- its TBD.
+// row answers every other axis Supported and answers rank with its TBD.
 //
 // The machine boots and its EDAC counters are clean under load. That is evidence THIS SPECIMEN
 // EXECUTES. It is not evidence that the authority affirms the arrangement, and substituting the
 // first for the second is exactly the trap this row exists to keep open rather than close.
-
-data mtcollins1_cross_channel_rank_mixing_standing: MtJadeMixedDimmSupport = mtcollins1_mixing_verdict(placement: DifferentChannel, axis: Mixing1rAnd2r)
+data mtcollins1_cross_channel_rank_mixing_standing: MtJadeMixedDimmSupportOutcome = mt_jade_mixed_dimm_support(placement: DifferentChannel, axis: Mixing1rAnd2r)
 
 // ── the population, in the corpus's own carrier ────────────────────────────────────────────────
 

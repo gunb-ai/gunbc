@@ -22,7 +22,10 @@ import extdeps.memory.sk_hynix {
 }
 import extdeps.memory.types { DramModuleCatalogRow }
 import extdeps.ocp.mt_jade.memory_mixing {
-  MtJadeMixedDimmSupport,
+  MtJadeMixedDimmSupportOutcome,
+  MixedDimmSupportResolved,
+  MixedDimmSupportUnmodelled,
+  MixedDimmSupportAmbiguous,
   MixingSupported,
   MixingNotSupported,
   MixingNotPreferred,
@@ -505,19 +508,29 @@ test fn the_population_by_catalog_identity_accounts_for_all_sixteen() -> Bool {
 
 // ── the fill consequence, derived from the specification rather than from the sample ───────────
 
-fn mixing_is_forbidden(support: MtJadeMixedDimmSupport) -> Bool {
-  match support {
-    MixingNotSupported => true
-    MixingSupported => false
-    MixingNotPreferred => false
-    MixingUndetermined => false
+// THE REFUSAL ARMS ARE FALSE, EXPLICITLY, AND THEY ARE NOT THE SAME AS A TBD. An unmodelled or
+// ambiguous lookup means this corpus cannot answer for the cell; a MixingUndetermined means the
+// SPECIFICATION declines to. Both make the requirement underivable, so both return false here --
+// but they arrive as distinct constructors rather than one substituted value, which is what lets
+// the control below tell them apart.
+fn mixing_is_forbidden(outcome: MtJadeMixedDimmSupportOutcome) -> Bool {
+  match outcome {
+    MixedDimmSupportResolved { cell: c } =>
+      match c.support {
+        MixingNotSupported => true
+        MixingSupported => false
+        MixingNotPreferred => false
+        MixingUndetermined => false
+      }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
   }
 }
 
 fn requirement_is_peer_determined(r: MtCollins1PartnerRequirement) -> Bool {
-  mixing_is_forbidden(support: r.rank_mixing_in_channel)
-    && mixing_is_forbidden(support: r.width_mixing_in_channel)
-    && mixing_is_forbidden(support: r.density_mixing_in_channel)
+  mixing_is_forbidden(outcome: r.rank_mixing_in_channel)
+    && mixing_is_forbidden(outcome: r.width_mixing_in_channel)
+    && mixing_is_forbidden(outcome: r.density_mixing_in_channel)
     && r.empty_connector == r.peer_connector + 1
 }
 
@@ -541,12 +554,26 @@ test fn every_empty_partner_is_determined_by_its_channel_peer() -> Bool {
 // a TBD: if a later specification revision resolved that cell either way, this goes red and the
 // purchase question it gates gets revisited, instead of the corpus quietly carrying a stale
 // non-affirmation. It is a control that is SUPPOSED to flip.
+// A CONTROL THAT CAN ACTUALLY FLIP, which the previous version could not. It requires the lookup
+// to RESOLVE and the resolved cell to read MixingUndetermined -- the specification's own TBD. If a
+// later revision answers that cell either way, this goes red and the purchase question it gates
+// gets revisited. And if the row ever went missing or was duplicated, the lookup would return
+// Unmodelled or Ambiguous and this ALSO goes red, rather than a fabricated MixingUndetermined
+// keeping it green while its subject had disappeared. That substitution is what review 64125
+// found, and it is the same class as
+// gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission one turn further in:
+// there, a non-affirmation read as permission; here, an ABSENCE read as a non-affirmation.
 test fn cross_channel_rank_mixing_remains_unaffirmed_by_the_specification() -> Bool {
   match mtcollins1_cross_channel_rank_mixing_standing {
-    MixingUndetermined => true
-    MixingSupported => false
-    MixingNotSupported => false
-    MixingNotPreferred => false
+    MixedDimmSupportResolved { cell: c } =>
+      match c.support {
+        MixingUndetermined => true
+        MixingSupported => false
+        MixingNotSupported => false
+        MixingNotPreferred => false
+      }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
   }
 }
 
