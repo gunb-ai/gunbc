@@ -6,6 +6,10 @@ import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout, v41_sm12_attention_class }
+import gunbc.spark.v41_published_image_observation {
+  v41_published_repository, v41_published_tag, v41_published_arm64_reference,
+  v41_published_distribution_name,
+}
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, ArchitectureObservation, ArchitectureAsked, RegistryDump,
   registry_reading_contains, architecture_observation_image_reference,
@@ -448,7 +452,13 @@ data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
     disposition: CandidateProbed { image_reference: gunbc_vllm_dsv41_gb10_registry_reading.image_reference },
   },
   RuntimeCandidateRow {
-    candidate: "vllm/vllm-openai:deepseekv41-flash-0909 arm64, pulled as vllm/vllm-openai@sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr,
+    candidate: join([
+      v41_published_repository as String,
+      ":",
+      v41_published_tag as String,
+      " arm64, pulled as ",
+      v41_published_arm64_reference() as String,
+    ], "") as NonEmptyStr,
     discovered_via: "operator-chosen route A published image; probed on srv9 by fleet-converge 34643985099" as NonEmptyStr,
     disposition: CandidateProbed { image_reference: architecture_observation_image_reference(o: v41_published_arm64_architecture_asked) },
   },
@@ -783,7 +793,7 @@ data v41_sm121_source_build_probe_rows: List<RuntimeCapabilityProbeRow> = [
 data v41_published_arm64_probe: ProbedRuntimeImage = ProbedRuntimeImage {
   image_reference: architecture_observation_image_reference(o: v41_published_arm64_architecture_asked),
   framework: "vllm" as NonEmptyStr,
-  framework_version: "0.1.dev20904+g179dd0fa9" as NonEmptyStr,
+  framework_version: v41_published_distribution_name,
 }
 
 data v41_sm121_published_image_probe_rows: List<RuntimeCapabilityProbeRow> = [

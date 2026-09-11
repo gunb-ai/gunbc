@@ -55,17 +55,9 @@ fn registry_reading_contains(r: ArchitectureRegistryReading, architecture: NonEm
     if acc { true } else { a as String == architecture as String })
 }
 
-// THE READING FOR ONE IMAGE, OR NOTHING. `none` is not "this image registers nothing": it is "no
-// reading of this digest exists here", and a consumer that folded those together would turn an
-// unasked question into a measured negative.
-fn registry_reading_for(readings: List<ArchitectureRegistryReading>, image_reference: NonEmptyStr) -> ArchitectureRegistryReading? {
-  fold(readings, init: none, f: (acc, r) =>
-    if reading_applies_to(r: r, desired_reference: image_reference) { Present { value: r } } else { acc })
-}
-
 // ONE OBSERVATION, TWO COVERAGES. A get_supported_archs() dump and a single asked architecture are
-// the same fact with different coverage. Two peer records made the second roster missable.
-// registry_reading_contains remains dump-only: a miss on a dump is a measured negative.
+// the same fact with different coverage. registry_reading_contains remains dump-only: a miss on
+// a dump is a measured negative.
 type ArchitectureObservation
   = RegistryDump { reading: ArchitectureRegistryReading }
   | ArchitectureAsked {
@@ -95,6 +87,9 @@ fn architecture_observation_applies_to(o: ArchitectureObservation, desired_refer
   (architecture_observation_image_reference(o: o) as String) == (desired_reference as String)
 }
 
+// THE OBSERVATION FOR ONE IMAGE, OR NOTHING. `none` is not "this image registers nothing": it is "no
+// observation of this digest exists here", and a consumer that folded those together would turn an
+// unasked question into a measured negative.
 fn architecture_observation_for(observations: List<ArchitectureObservation>, image_reference: NonEmptyStr) -> ArchitectureObservation? {
   fold(observations, init: none, f: (acc, o) =>
     if architecture_observation_applies_to(o: o, desired_reference: image_reference) { Present { value: o } } else { acc })
