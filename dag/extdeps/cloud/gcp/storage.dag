@@ -4,7 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Int, List, String }
 import std.decl_ref { decl_ref }
-import std.dissolution { bound_dissolution }
+import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -100,11 +100,13 @@ data gcs_object_status_facts: List<GcsObjectStatusFact> = [
   GcsObjectStatusFact { status: 503, meaning: GcsServerError },
 ]
 
-// The frontier, typed: the subject is this module's status-fact roster; it dissolves when the named
-// consumer declaration appears (std.dissolution bound_dissolution -- DissolutionPending until then,
-// mechanically, not by reading this annotation).
+// The frontier, typed: the subject is this module's status-fact roster, and the dissolution is
+// UNBOUND because its consumer does not exist yet -- a bound dissolution may only cite a declaration
+// the tree already carries (the required declarations phase refuses CITED-MODULE-ABSENT otherwise).
+// The description names the consumer declaration and the ruled dispatch step, so the row becomes
+// bindable to std.dissolution bound_dissolution in the change that lands the handler.
 data gcs_interface_consumer_frontier: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "extdeps.cloud.gcp.storage", decl_name: "gcs_object_status_facts"),
   reason: "GCS JSON API v1 interface rows land ahead of their handler (operator provider ruling 2026-09-11: interface rows day one, handler later). Named consumer: extdeps.realization.materialization_store_gcs, which maps gcs_objects_get / gcs_objects_insert_if_absent and gcs_object_status_facts onto std.materialization_object StoreObjectRead / StoreObjectPublish. Named change: ruled dispatch step 5 (NFS/GCS realization), after 4 (route integration).",
-  dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.realization.materialization_store_gcs", decl_name: "gcs_store_read_observation"))
+  dissolution: unbound_dissolution(description: "dissolve-on: extdeps.realization.materialization_store_gcs gcs_store_read_observation appears (the GCS realization handler, sibling of extdeps.realization.materialization_store_local, landed at ruled dispatch step 5 NFS/GCS realization); that change rebinds this row to bound_dissolution on that declaration.")
 )
