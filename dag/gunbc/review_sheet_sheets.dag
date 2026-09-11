@@ -25,14 +25,15 @@ import gunbc.review_sheet_projection {
   AppendListingRow,
   classify_review_sheet,
   conflict_reason,
-  decide_review_sheet,
 }
 import extdeps.google.sheets {
   ValueRange,
   SheetsValueInputOption,
   InputUserEntered,
   sheets_major_dimension_wire,
+  sheets_major_dimension_from_wire,
   DimensionRows,
+  DimensionColumns,
 }
 import extdeps.cloud.gcp.gcp { GcpOAuth2AccessTokenStrategy, AdcRefresh }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -199,21 +200,30 @@ fn grid_from_value_rows(values: List<List<String>>?) -> ObservedSheet {
 }
 
 fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheetFromReadback {
+  match range.majorDimension {
+    Absent =>
+      observed_sheet_from_row_major_range(range: range)
+    Present { value: raw } =>
+      match sheets_major_dimension_from_wire(raw: raw) {
+        Absent =>
+          ReadbackUnreadable {
+            reason: concat("foreign majorDimension: ", raw) as NonEmptyStr
+          }
+        Present { value: DimensionColumns } =>
+          ReadbackUnreadable {
+            reason: "column-major ValueRange is not a row-grid readback" as NonEmptyStr
+          }
+        Present { value: DimensionRows } =>
+          observed_sheet_from_row_major_range(range: range)
+      }
+  }
+}
+
+fn observed_sheet_from_row_major_range(range: ValueRange) -> ObservedSheetFromReadback {
   match a1_readback_standing(range: range.range) {
     A1ReadbackUnreadable { reason: r } => ReadbackUnreadable { reason: r }
     A1ReadbackAnchored { tab: tab } =>
       ReadbackObserved { observed: grid_from_value_rows(values: range.values), tab: tab }
-  }
-}
-
-fn review_sheet_from_readback(
-  range: ValueRange,
-  projection: ReviewSheetProjection,
-) -> UpsertDecision<ReviewSheetWritePlan> {
-  match observed_sheet_from_value_range(range: range) {
-    ReadbackUnreadable { reason: r } => Refuse { reason: r }
-    ReadbackObserved { observed: observed, tab: _ } =>
-      decide_review_sheet(observed: observed, projection: projection)
   }
 }
 
@@ -257,12 +267,12 @@ fn review_sheet_ensure(
 }
 
 // sunny-carp-475 binds a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter onto
-// review_sheet_from_readback. Until that lands this is owed work, not a terminal.
+// review_sheet_ensure (policy is the caller's EnsurePolicy, never a literal in this module).
 data live_sheets_transport_frontier: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.review_sheet_sheets",
-    decl_name: "review_sheet_from_readback",
+    decl_name: "review_sheet_ensure",
     field: WholeDeclaration
   }
 }
