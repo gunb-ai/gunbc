@@ -12,6 +12,7 @@ import std.measure {
 }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.linux.edac { EdacDriverBinding, GhesEdac }
 import extdeps.ocp.mt_jade.memory_mixing {
   MtJadeDimmMixingAxis,
   MtJadeDimmMixingPlacement,
@@ -120,7 +121,16 @@ data mtcollins1_memtotal_kb: Kibibyte = kibibyte(count: 262088084)
 // different states, and only the second is authorable here. csrow_node_count is 0 because
 // `find /sys/devices/system/edac` returned no path containing "csrow" — the absence is a counted
 // reading over an enumerated tree, not an inference from a driver name.
+// THE DRIVER IS A TYPED BINDING NOW, NOT A NAME. gunbc#11071 landed extdeps.linux.edac, which owns
+// the question this observation used to answer in prose: what a driver binding can and cannot tell
+// you about memory topology. So the receipt declares WHICH BINDING IT OBSERVED and lets that
+// authority say what follows -- that under firmware-first the channel topology is absent on EVERY
+// boot, which is the actionable half and was previously a sentence in a String row here.
+//
+// The string spelling is kept beside it because it is what /sys and dmesg actually rendered, and a
+// reader resolving this receipt against the committed capture needs the bytes they will find there.
 type MtCollins1EdacTopologyObservation {
+  driver_binding: EdacDriverBinding
   driver_name: NonEmptyStr
   apei_firmware_first: Bool
   memory_controller_count: Nat
@@ -131,6 +141,7 @@ type MtCollins1EdacTopologyObservation {
 }
 
 data mtcollins1_edac_topology: MtCollins1EdacTopologyObservation = MtCollins1EdacTopologyObservation {
+  driver_binding: GhesEdac,
   driver_name: "ghes_edac",
   apei_firmware_first: true,
   memory_controller_count: 1,

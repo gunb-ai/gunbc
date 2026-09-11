@@ -2,6 +2,16 @@ module test.claim.mtcollins1_memory_census_witness_test
 
 import std.types { Bool, Int, List, list_length }
 import std.nat { Nat }
+import extdeps.linux.edac {
+  ChannelTopologyAbsent,
+  ChannelTopologyEnumerated,
+  FirmwareFirstErrorAttributionShim,
+  NoMemoryControllerDriverBound,
+  AbsentOnEveryBoot,
+  AbsentUntilDriverBound,
+  edac_channel_topology_availability,
+  edac_channel_topology_absence_standing,
+}
 import extdeps.memory.sk_hynix {
   hma82gr7afr4n_vk_catalog,
   hma82gr7afr8n_vk_catalog,
@@ -560,4 +570,42 @@ test fn the_boot_type_is_the_only_varied_term_across_the_probes() -> Bool {
 test fn the_model_reported_a_completed_handoff_even_when_nothing_booted() -> Bool {
   mtcollins1_boot_delivery_observation.model_reported_completed_on_every_attempt
     && !(mtcollins1_boot_delivery_observation.efi_boot_type_on_failing_attempts)
+}
+
+
+// ── the absence, derived from the Linux authority rather than asserted here ────────────────────
+
+// THIS RECEIPT USED TO CARRY A PARAGRAPH SAYING re-booting would not produce a channel map. That
+// sentence was true and unfalsifiable in place; gunbc#11071 made it derivable, so it is derived.
+// The observation contributes ONE fact -- the binding this host actually had -- and the authority
+// supplies what follows from it.
+//
+// WHY THE STANDING IS THE LOAD-BEARING HALF: AbsentOnEveryBoot is the difference between "no
+// channel map here" and "no channel map, and another boot will not change that". The second is
+// what justified recovering the channel map from firmware DRAM training instead, and it is now a
+// consequence of a cited kernel authority rather than of my confidence.
+test fn the_channel_topology_absence_is_derived_and_holds_on_every_boot() -> Bool {
+  match edac_channel_topology_availability(binding: mtcollins1_edac_topology.driver_binding).availability {
+    ChannelTopologyAbsent { cause: c } =>
+      match c {
+        FirmwareFirstErrorAttributionShim =>
+          match edac_channel_topology_absence_standing(cause: c) {
+            AbsentOnEveryBoot => true
+            AbsentUntilDriverBound => false
+          }
+        NoMemoryControllerDriverBound => false
+      }
+    ChannelTopologyEnumerated { kernel_module: _ } => false
+  }
+}
+
+// AND THE MEASURED TREE MUST AGREE WITH WHAT THE AUTHORITY PREDICTS. Zero csrow nodes is the
+// EXPECTED reading under the shim, not an anomaly; sixteen DIMM nodes mirrored from SMBIOS Type 17
+// is what the shim registers them for. If a future capture on this platform found a populated
+// csrow tree, the observation and the authority would disagree and this goes red -- which is the
+// only way either of them can be wrong out loud.
+test fn the_measured_edac_tree_matches_what_the_authority_predicts() -> Bool {
+  mtcollins1_edac_topology.csrow_node_count == 0
+    && mtcollins1_edac_topology.apei_firmware_first
+    && mtcollins1_edac_topology.dimm_node_count == 16
 }
