@@ -255,11 +255,11 @@ data deepseek_v4_1_flash_safetensors_index_total_size: ByteSize = byte_size(coun
 data deepseek_v4_1_flash_safetensors_tree_file_bytes: ByteSize = byte_size(count: 510296708312)
 
 fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloadFootprint) -> ByteSize {
-  byte_size(count:
-    byte_size_count(b: f.backbone_bytes)
-      + byte_size_count(b: f.engram_bytes)
-      + byte_size_count(b: f.vision_bytes)
-      + byte_size_count(b: f.draft_bytes))
+  let n = byte_size_count(b: f.backbone_bytes)
+    + byte_size_count(b: f.engram_bytes)
+    + byte_size_count(b: f.vision_bytes)
+    + byte_size_count(b: f.draft_bytes)
+  byte_size(count: n)
 }
 
 data deepseek_v4_1_flash_footprint_unread_on_fleet: Bool = true
