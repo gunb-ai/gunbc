@@ -13,9 +13,11 @@ domain's home authorities and omits the authorities both subjects actually inhab
 
 ## 1. The census
 
-### The shared authority (already single)
+### The shared authority — selection (single); and the serving side's capacity carriers
 
-`gunbc.product.capacity.*` and `gunbc.product.fabric.*` hold the admission concept once, generically:
+`product.capacity.*` and `product.fabric.*` hold the admission concept once, generically. (Those are
+the module paths, which is what a citation names; the files happen to live under
+`dag/gunbc/product/`, and §3 is explicit that a fact's home is its layer, not its file.)
 
 - `product.capacity.lease` — `LeasePolicy`, `LeaseGrant`, `LeaseFence`, `fence_verdict`,
   `ReleaseLaw`, `capacity_after_expiry`. This is the **serving** side's lease algebra. It is *not*
@@ -105,7 +107,8 @@ happen — one occupancy producer under two subjects — rather than asserting i
    landing beside a live decode degrades an *already-admitted* tenant. A compute cell's slot is
    binary (held/free); a serving group's seat count is quality-conditioned
    (`harness_interactive_quality_seats`). Verified present and consumed — this is the sharpest
-   distinguishing fact and it sits on the serving side of the shared pool, not beside it.
+   distinguishing fact, and it sits on the serving subject's own pool — which, per §1b, the
+   compute control plane does not share.
 3. **Subject grain and refusal shape.** Compute admission refuses with
    `WorkInfrastructureRefusal`; serving admission refuses with `AdmissibilityUnread` /
    `SeatAcquireRefused`. Different observation boundaries over different lease algebras (§1b).
