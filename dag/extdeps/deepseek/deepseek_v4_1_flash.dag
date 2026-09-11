@@ -3,7 +3,7 @@ module extdeps.deepseek.deepseek_v4_1_flash
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
 import std.measure {
-  TokenCount, token_count, token_count_value,
+  TokenCount, token_count, token_count_value, token_count_remaining_in_window,
   ParameterCount, parameter_count,
   ByteSize, byte_size, byte_size_count,
 }
@@ -93,8 +93,8 @@ data deepseek_v4_1_flash_vocab_size: Nat = 129280
 data deepseek_v4_1_flash_n_routed_experts: Nat = 384
 data deepseek_v4_1_flash_n_shared_experts: Nat = 1
 data deepseek_v4_1_flash_num_experts_per_tok: Nat = 6
-data deepseek_v4_1_flash_sliding_window: Nat = 128
-data deepseek_v4_1_flash_index_topk: Nat = 512
+data deepseek_v4_1_flash_sliding_window: TokenCount = token_count(count: 128)
+data deepseek_v4_1_flash_index_topk: TokenCount = token_count(count: 512)
 data deepseek_v4_1_flash_candidate_topk_blocks: Nat = 2048
 data deepseek_v4_1_flash_candidate_block_size: Nat = 8
 data deepseek_v4_1_flash_num_nextn_predict_layers: Nat = 3
@@ -140,7 +140,7 @@ data deepseek_v4_1_flash_config_declares_encoder_decoder_split: Bool = false
 data deepseek_v4_1_flash_vision_num_hidden_layers: Nat = 32
 data deepseek_v4_1_flash_vision_hidden_size: Nat = 1024
 data deepseek_v4_1_flash_vision_patch_size: Nat = 14
-data deepseek_v4_1_flash_vision_max_image_tokens: Nat = 1024
+data deepseek_v4_1_flash_vision_max_image_tokens: TokenCount = token_count(count: 1024)
 data deepseek_v4_1_flash_image_token_id: Nat = 129264
 data deepseek_v4_1_flash_accepts_image_input: Bool = true
 
@@ -192,9 +192,7 @@ fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
 data deepseek_v4_1_flash_declares_no_output_ceiling: Bool = true
 
 fn deepseek_v4_1_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
-  let w = token_count_value(t: window)
-  let i = token_count_value(t: input_tokens)
-  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+  token_count_remaining_in_window(window: window, used: input_tokens)
 }
 
 // ===========================================================================================
@@ -329,7 +327,6 @@ data deepseek_v4_1_flash_encoder_has_no_jinja_chat_template: Bool = true
 // deepseek-ai/deepseek-recipe (rev 8cadfede7063c896b944e7bae05daa3549ae97ea) is an independently
 // versioned Rust+Python codec that does not enforce strict tool schemas. Adopting it would be its
 // own extdeps module, not a second encoder inside this one.
-data deepseek_v4_1_flash_does_not_adopt_deepseek_recipe: Bool = true
 
 // THINKING IS STILL A PREFILL, with the same start/end tokens as V4's encoder, declared HERE
 // because they are this file's constants, not a re-export. encode_messages takes thinking_mode
@@ -447,4 +444,3 @@ data deepseek_v4_1_flash_vllm_reasoning_parser: NonEmptyStr = "deepseek_v41" as 
 // scenario, and a number measured under one and read under another is the failure already named
 // on the GLM peer. This change grounds the publisher authority; a measurement belongs to the
 // unit that made it.
-data deepseek_v4_1_flash_carries_no_serving_measurements: Bool = true

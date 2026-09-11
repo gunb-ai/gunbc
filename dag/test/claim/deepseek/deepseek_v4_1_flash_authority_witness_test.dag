@@ -1,7 +1,7 @@
 module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
 
 import std.types { Bool, String }
-import std.measure { token_count, token_count_value, byte_size_count }
+import std.measure { token_count, token_count_value, token_count_remaining_in_window, byte_size_count }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision, deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
   deepseek_v4_1_flash_encoder_source_url, deepseek_v4_1_flash_config_source_url,
@@ -36,7 +36,9 @@ test fn yarn_factor_reproduces_the_scaled_window() -> Bool {
 
 test fn output_budget_is_the_window_minus_input_and_zero_when_input_fills_it() -> Bool {
   let window = token_count(count: 100)
-  token_count_value(t: deepseek_v4_1_flash_output_budget_for_input(window: window, input_tokens: token_count(count: 30))) == 70
+  let used_thirty = token_count(count: 30)
+  token_count_value(t: token_count_remaining_in_window(window: window, used: used_thirty)) == 70
+    && token_count_value(t: deepseek_v4_1_flash_output_budget_for_input(window: window, input_tokens: used_thirty)) == 70
     && token_count_value(t: deepseek_v4_1_flash_output_budget_for_input(window: window, input_tokens: window)) == 0
     && token_count_value(t: deepseek_v4_1_flash_output_budget_for_input(window: window, input_tokens: token_count(count: 101))) == 0
 }

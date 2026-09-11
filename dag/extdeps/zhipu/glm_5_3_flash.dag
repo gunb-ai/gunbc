@@ -2,7 +2,7 @@ module extdeps.zhipu.glm_5_3_flash
 
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, token_count_remaining_in_window }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -188,7 +188,5 @@ data glm_5_3_flash_recipe_declares_gpu_memory_utilization: Bool = false
 data glm_5_3_flash_carries_no_serving_measurements: Bool = true
 
 fn glm_5_3_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
-  let w = token_count_value(t: window)
-  let i = token_count_value(t: input_tokens)
-  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+  token_count_remaining_in_window(window: window, used: input_tokens)
 }

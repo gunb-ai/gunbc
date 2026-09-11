@@ -1,7 +1,7 @@
 module extdeps.deepseek.deepseek_v4
 
 import std.types { NonEmptyStr, String, Bool }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, token_count_remaining_in_window }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -87,9 +87,7 @@ fn deepseek_v4_think_max_is_recommended_at(window: TokenCount) -> Bool {
 data deepseek_v4_declares_no_output_ceiling: Bool = true
 
 fn deepseek_v4_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
-  let w = token_count_value(t: window)
-  let i = token_count_value(t: input_tokens)
-  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+  token_count_remaining_in_window(window: window, used: input_tokens)
 }
 
 // WHETHER THINKING IS ON WHEN A REQUEST SAYS NOTHING IS A PROPERTY OF THE SERVING REALIZATION, NOT
