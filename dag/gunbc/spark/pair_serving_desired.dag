@@ -86,7 +86,7 @@ type SparkPairServingSeqCapacity
 // REACHABLE. An accidental guard is not a guard, and removing one is a change in its own right.
 data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
   max_num_seqs: 32,
-  basis: "read from the first pair's own vLLM launch line on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_vllm_serve), for DeepSeek V4 Flash at the fp8_ds_mla KV layout on this fabric. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own. THE SCENARIO CLAUSE THAT STOOD HERE -- that this is the scenario the route still serves -- WAS WITHDRAWN 2026-09-08: the route serves nothing. Its five gunbc-spark-pair containers run sleep infinity, and the DeepSeek answering on 192.168.1.225:30000 was launched out of band from a container that has since exited. So this figure is a reading of a launch line from five days ago whose topology nothing has re-verified, and the sentence asserting it still applied was the kind of claim that ages without anyone touching it" as NonEmptyStr,
+  basis: "THIS GOVERNS A LAUNCH ARGUMENT AND IS NOT A READING OF ANY RUNNING ENGINE. It is what a pair-serving convergence would request for max_num_seqs; it is NOT the admitted-sequence count of the process answering on the route's front door, which nothing observes -- gunbc.serving.serving_enrollment therefore declines to inherit this number and carries an attributable declared ceiling instead. Read from the first pair's own vLLM launch line on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_vllm_serve), for DeepSeek V4 Flash at the fp8_ds_mla KV layout on this fabric. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own. THE SCENARIO CLAUSE THAT STOOD HERE -- that this is the scenario the route still serves -- WAS WITHDRAWN 2026-09-08: the route serves nothing. Its five gunbc-spark-pair containers run sleep infinity, and the DeepSeek answering on 192.168.1.225:30000 was launched out of band from a container that has since exited. So this figure is a reading of a launch line from five days ago whose topology nothing has re-verified, and the sentence asserting it still applied was the kind of claim that ages without anyone touching it" as NonEmptyStr,
 }
 
 // A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the arm this replaced said so in its own
@@ -168,6 +168,17 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // quiet rather than a guard being dead: the arm is reachable the moment B is promoted again, and
 // deleting it because the current roster does not reach it would be reading occupancy as
 // reachability. The withdrawal belongs in the ROSTER, which is the thing that decides.
+// THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing converges to it today, and that is a guard
+// being quiet rather than a guard being dead: the arm is reachable the moment B is claimed again,
+// and deleting it because the current roster does not reach it would be reading occupancy as
+// reachability. The withdrawal belongs in the ROSTER, which is the thing that decides.
+//
+// AND THIS ROSTER NO LONGER DECIDES WHERE A TURN GOES, which is the repair that let group B be
+// enrolled for SERVING without restoring the claim this row withdrew. It answered two questions that
+// move for different reasons -- whose hosts this repository claims and converges, and which routes a
+// turn may be offered to -- and gunbc.serving.serving_enrollment now owns the second. This row is
+// the first question only, and it still says what it said on 2026-09-08: group B's hosts are the
+// canary's and are not claimed here.
 data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
 
 // WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair

@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.a_constant_enforces_a_law_narrower_than_its_own_annotation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_constant_enforces_a_law_narrower_than_its_own_annotation: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_constant_enforces_a_law_narrower_than_its_own_annotation" as NonEmptyStr,
+
+  receipts: [
+    "A SCALAR STANDS WHERE A RELATION BELONGS, so the law it enforces is the one its TYPE can express rather than the one its annotation states -- and the two differ by exactly the discriminant the scalar cannot carry. The invalid state is a guard that is simultaneously correct where it was measured and over-applied everywhere else, with nothing in the program able to tell the two populations apart.",
+    "THE INSTANCE, 2026-09-11: gunbc.harness.harness_seat harness_interactive_quality_seats. Its annotation read 'one COLD-RISK turn in flight per serving group', following a measured hazard whose subject was specific -- a cold prefill landing beside a decode SOMEBODY IS READING collapses that decoder's inter-token latency. What a ceiling of one on a single pool enforces is 'one turn in flight per serving group', because the pool has no notion of who is reading. Every harness turn -- a worker assembling a tool call, a reviewer writing a verdict file, a probe printing an outcome at the end -- was therefore held to a law written for a reader, and a healthy route sat idle while their work queued.",
+    "WHY IT SURVIVED: the annotation was ACCURATE about the measurement and the constant was ACCURATE about the measured case. Nothing was wrong at the point of declaration; the error is that the discriminant was carried in prose, where no Accepted program can read it (DESIGN section 4c), while the enforcement was carried in a number. So the over-application produced no refusal, no diagnostic and no counter -- only work that did not happen, which is the cheapest kind of harm to miss.",
+    "THE REVIEW TELL, AND IT IS MECHANICAL: an annotation over a scalar that names a QUALIFIED subject -- a cold-risk turn, an interactive request, a first-party caller, a large input -- while the scalar's consumers can only count. Whenever the qualifier is real, the qualifier is a type and the number is per case of it. The repair is not a bigger number: it is the relation the annotation already described, with the scalar surviving as one case's ceiling.",
+    "THE SECOND-ORDER TELL, worth stating because it is what makes this class expensive rather than merely untidy: a number under-applied is loud (something refuses that should not), a number over-applied is silent (something never runs that could have). So this class is systematically discovered late, by someone asking why a resource is idle rather than by anything failing.",
+  ],
+
+  evidence: [],
+}

@@ -7,7 +7,11 @@ import gunbc.harness.harness_wire {
   HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
   HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
-  harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_address, harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved }
+  harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_endpoint }
+import gunbc.serving.serving_enrollment {
+  serving_enrolled_routes, ServingRoute, ServingRouteResolved, ServingRouteUnresolved,
+  serving_route_endpoint_wire,
+}
 import gunbc.harness.harness_turn {
   HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
   harness_user_text_message_json,
@@ -105,17 +109,34 @@ test fn each_shape_posts_to_its_own_path() -> Bool {
     && harness_backend_path(shape: AnthropicMessagesShape) == "/v1/messages"
 }
 
-// The roster is DERIVED from the pair heads through the fleet topology: two serving pairs, two heads
-// (srv6 at .225, srv9 at .236), both resolved, and the backend URL renders on the engine port. RED
-// if a head loses its LAN endpoint row (Unresolved) or the derivation collapses to one address.
-test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
-  match harness_engine_replica_roster() {
-    HarnessReplicasUnresolved { hosts: _ } => false
-    HarnessReplicasResolved { addresses } =>
-      count(addresses) == 2
-        && any(addresses, a => a == "192.168.1.225")
-        && any(addresses, a => a == "192.168.1.236")
-        && string_contains(s: harness_backend_url_for_address(shape: OpenAiChatCompletionsShape, address: "192.168.1.236"), pattern: "http://192.168.1.236:30000/v1/chat/completions")
-  }
+// THE ROSTER THIS ROW ASSERTED DID NOT EXIST WHEN IT WAS WRITTEN, and the repair is the point of
+// this branch rather than an edit to the assertion. It read the CONVERGENCE roster, which has held
+// exactly one group since 2026-09-08 -- so "two heads, both resolved" was red, and had been red for
+// as long as the withdrawal stood. The routes a turn may be offered to are now their own authority
+// and both are enrolled, so the property this row always wanted is true and measurable.
+//
+// AND THE PORT IS PART OF IT. Each route renders its own front door: the pair route on 30000, the
+// canary on 30001. A single global engine-port row -- which is what this URL used to be built from
+// -- cannot satisfy both halves, so this is red on any regression back to one port.
+fn t_endpoints() -> List<String> {
+  flat_map(serving_enrolled_routes(), r => match r {
+    ServingRouteUnresolved { group: _, obligation: _ } => []
+    ServingRouteResolved { endpoint: e, ceiling: _ } => [serving_route_endpoint_wire(e: e) as String]
+  })
+}
+
+fn t_urls() -> List<String> {
+  flat_map(serving_enrolled_routes(), r => match r {
+    ServingRouteUnresolved { group: _, obligation: _ } => []
+    ServingRouteResolved { endpoint: e, ceiling: _ } => [harness_backend_url_for_endpoint(shape: OpenAiChatCompletionsShape, endpoint: e)]
+  })
+}
+
+test fn both_enrolled_routes_resolve_and_each_renders_its_own_front_door() -> Bool {
+  count(t_endpoints()) == 2
+    && any(t_endpoints(), a => a == "192.168.1.225:30000")
+    && any(t_endpoints(), a => a == "192.168.1.236:30001")
+    && any(t_urls(), u => u == "http://192.168.1.225:30000/v1/chat/completions")
+    && any(t_urls(), u => u == "http://192.168.1.236:30001/v1/chat/completions")
 }
 

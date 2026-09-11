@@ -26,12 +26,17 @@ import gunbc.compute.test_run {
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
-import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window, harness_serving_unit }
+import gunbc.harness.harness_wire { harness_context_budget_for }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
+import gunbc.serving.turn_admission {
+  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
+}
 import gunbc.harness.harness_seat {
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
   harness_seat_release_wire, harness_release_held, harness_release_capability,
-  HarnessReleaseCapability, harness_release_capability_wire,
+  HarnessReleaseCapability, harness_release_capability_wire, harness_interactive_quality_seats,
+  ServingModelRequirement, AnyAdmittedModel,
 }
 import product.capacity.lease { LeasePolicy, QuiescenceRequired, GrantIdentity }
 import extdeps.tools.hostname
@@ -52,8 +57,13 @@ import extdeps.filesystem.filesystem_io
 // extdeps.ollama.api already owns how a model reference is spelled on the wire, and a second
 // spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
 // backend carried a structured cause; that is the argument for keeping the body on a failed post.
-fn harness_default_model() -> String {
-  harness_engine_model
+// THE MODEL IS THE ONE THE PLACED ROUTE WAS OBSERVED SERVING, NOT A GLOBAL ROW. It used to be the
+// harness's single selector, which is why a route serving anything else was unusable: the id in the
+// request would have named a model that route does not have. The seat now carries the unit and the
+// id its own probe read, so the request is shaped for the engine that granted it -- which is what
+// makes "take whatever is up" a placement fact rather than a hope.
+fn harness_bound_model(unit: HarnessServingUnit) -> String {
+  harness_unit_model_id(unit: unit) as String
 }
 
 // THE MACBOOK'S TOOL ENVIRONMENT. The timeout program is the GNU build, for the reason
@@ -209,20 +219,18 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 // field the way it takes the worktree, the timeout program and its two paths -- so the same loop
 // runs against a different serving surface by being handed a different number, not by importing a
 // different authority.
-data harness_context_budget: TokenCount = harness_engine_context_window
-
-fn harness_macbook_config(backend_url: String) -> HarnessTurnConfig {
+fn harness_macbook_config(backend_url: String, unit: HarnessServingUnit) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_default_model(),
+    model: harness_bound_model(unit: unit),
     max_tokens: harness_default_max_tokens,
-    serving_unit: harness_serving_unit,
+    serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
-    context_budget: harness_context_budget,
+    context_budget: harness_context_budget_for(unit: unit),
     request_deadline: harness_request_deadline,
     environment: harness_macbook_environment(),
     completion: CompletesOnProviderStop,
@@ -236,9 +244,9 @@ fn harness_macbook_config(backend_url: String) -> HarnessTurnConfig {
 // posted, received a tool_use, executed it, posted the result back, and received a terminal.
 data harness_probe_prompt: String = "How many files in the dag/gunbc/harness directory of this repository end in .dag? Use run_command to find out, then state the number."
 
-fn harness_probe_outcome(backend_url: String) -> HarnessTurnOutcome {
+fn harness_probe_outcome(backend_url: String, unit: HarnessServingUnit) -> HarnessTurnOutcome {
   harness_run_turn(
-    config: harness_macbook_config(backend_url: backend_url),
+    config: harness_macbook_config(backend_url: backend_url, unit: unit),
     prompt: harness_probe_prompt,
     step_budget: harness_default_step_budget,
   )
@@ -314,21 +322,44 @@ fn harness_probe_attempt(label: String) -> NonEmptyStr {
 // that re-derived the partition from the group would address a newer partition than the one holding
 // the seat the moment the ceiling is versioned again, and a bare reference names an entry without
 // establishing that its bearer is the holder.
+// ── WHICH CO-TENANCY CLASS EACH ENTRY DECLARES, AND WHY ──────────────────────────────────────
+//
+// The class is a statement about an entry point's CONSUMER, which is a thing the entry point knows
+// and nothing else does. gunbc.serving.turn_admission owns what the two classes mean; this is where
+// each of the harness's doors says which one it is, and the answers are not uniform.
+//
+// THIS ENTRY IS THE QUALITY-SENSITIVE ONE. It hands a URL and a release capability to whoever asked
+// and then gets out of the way, so the thing on the other end is a session somebody is driving and
+// watching -- exactly the victim the overlap experiment measured. It therefore takes the quality
+// seat, and while it holds one nothing else is placed on that route.
+//
+// THE OTHERS ARE TOLERANT, and that is the finding this branch turns into a law. A worker assembling
+// a tool call, a reviewer writing a verdict file, a probe printing an outcome at the end: none of
+// them has a reader watching tokens arrive, so the measured harm -- a decode stalling for the length
+// of a co-tenant's prefill -- costs them time and costs nobody an experience. They were held to the
+// reader's law because one scalar could not tell the two apart, which is why a healthy route sat
+// idle while their work queued.
+//
+// WHAT KEEPS THIS HONEST RATHER THAN CONVENIENT: the quality arm has a real production caller above,
+// so the wall it enforces is exercised rather than unreachable, and a tolerant turn arriving while
+// this entry holds a seat is refused by the law rather than by a count.
 fn harness_place_cli(actor: String, attempt: String, receipt: String) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant, partition, group_wire, launch, layout: _ } => {
-      let capability = harness_release_capability(partition: partition, grant: grant)
+    HarnessSeatBound { url, grant, partition, group_wire, launch, layout: _, model: bound_model, unit: _, class: _ } => {
+      let capability = harness_release_capability(partition: partition, ceiling: harness_interactive_quality_seats, grant: grant)
       let line = join([
         "url=", url,
         " group=", group_wire,
+        " model=", bound_model as String,
         " partition=", capability.partition as String,
         " endpoint_process=", launch.process_start_field as String,
         " reference=", capability.reference as String,
         " grant=", capability.grant as String,
         " generation=", to_string(capability.generation),
+        " ceiling=", to_string(capability.ceiling),
         " expires_at=", to_string(grant.expires_at), "\n",
       ], "")
       let w = Filesystem.Write(path: receipt, content: line)
@@ -361,9 +392,15 @@ fn harness_place_receipt_failed(binding: HarnessSeatBinding, cause: String) -> P
 // AND IT TAKES THE WHOLE CAPABILITY, which is what the placement receipt hands out: the exact
 // partition, the reference, and the grant fence it was issued under. The earlier form took a group
 // name and any reference, which let a caller address a partition it never held a grant in.
-fn harness_release_cli(partition: String, reference: String, grant: String, generation: Int, reason: String) -> ProcessExit {
+// THE CEILING IS PART OF THE CAPABILITY NOW, AND THE PLACEMENT RECEIPT CARRIES IT. A release is
+// proven against a POOL, and a pool is a partition plus its ceiling; with a seat per co-tenancy
+// class there is no single ceiling this entry could assume, and assuming one would rebuild the
+// wrong pool and refuse a valid release. It travels the same way the generation does -- written on
+// the receipt by the placement that granted the seat, handed back by whoever holds it.
+fn harness_release_cli(partition: String, reference: String, grant: String, generation: Int, ceiling: Int, reason: String) -> ProcessExit {
   let capability = HarnessReleaseCapability {
     partition: partition as PartitionId,
+    ceiling: ceiling as Nat,
     reference: reference as NonEmptyStr,
     grant: grant as GrantIdentity,
     generation: generation as Nat,
@@ -383,12 +420,12 @@ fn harness_release_cli(partition: String, reference: String, grant: String, gene
 // bypass that only a diagnostic uses is still a bypass, and it is the one most likely to be run
 // while something else is in flight.
 fn harness_probe_cli() -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
-      let outcome = harness_probe_outcome(backend_url: url)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
+      let outcome = harness_probe_outcome(backend_url: url, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       harness_turn_exit_released(outcome: outcome, seat: seat_release)
     }
@@ -425,20 +462,21 @@ fn harness_worker_config(
   request_scratch_path: FilePath,
   events_path: FilePath,
   backend_url: String,
+  unit: HarnessServingUnit,
   repo_root: String,
   gunbc_program: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_default_model(),
+    model: harness_bound_model(unit: unit),
     max_tokens: harness_default_max_tokens,
-    serving_unit: harness_serving_unit,
+    serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_worker_system_prompt_at(worktree: worktree as String, repo_root: repo_root, gunbc_program: gunbc_program),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
-    context_budget: harness_context_budget,
+    context_budget: harness_context_budget_for(unit: unit),
     request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
@@ -479,11 +517,11 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -491,6 +529,7 @@ fn harness_worker_cli(
           request_scratch_path: request_scratch_path as FilePath,
           events_path: events_path as FilePath,
           backend_url: url,
+          unit: bound_unit,
           repo_root: repo_root,
           gunbc_program: gunbc_program,
         ),
@@ -529,19 +568,20 @@ fn harness_reviewer_config(
   verdict_dir: String,
   verdict_name: String,
   backend_url: String,
+  unit: HarnessServingUnit,
 ) -> HarnessTurnConfig {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_default_model(),
+    model: harness_bound_model(unit: unit),
     max_tokens: harness_default_max_tokens,
-    serving_unit: harness_serving_unit,
+    serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_reviewer_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
-    context_budget: harness_context_budget,
+    context_budget: harness_context_budget_for(unit: unit),
     request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
@@ -562,11 +602,11 @@ fn harness_reviewer_cli(
   verdict_name: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
@@ -576,6 +616,7 @@ fn harness_reviewer_cli(
           verdict_dir: verdict_dir,
           verdict_name: verdict_name,
           backend_url: url,
+          unit: bound_unit,
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
@@ -599,19 +640,20 @@ fn harness_auditor_config(
   verdict_dir: String,
   verdict_name: String,
   backend_url: String,
+  unit: HarnessServingUnit,
 ) -> HarnessTurnConfig {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_default_model(),
+    model: harness_bound_model(unit: unit),
     max_tokens: harness_default_max_tokens,
-    serving_unit: harness_serving_unit,
+    serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_auditor_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
-    context_budget: harness_context_budget,
+    context_budget: harness_context_budget_for(unit: unit),
     request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
@@ -632,11 +674,11 @@ fn harness_auditor_cli(
   verdict_name: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
@@ -646,6 +688,7 @@ fn harness_auditor_cli(
           verdict_dir: verdict_dir,
           verdict_name: verdict_name,
           backend_url: url,
+          unit: bound_unit,
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
@@ -659,12 +702,12 @@ fn harness_auditor_cli(
 // AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
 // with a door beside it.
 fn harness_probe_report() -> String {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
-      let outcome = harness_probe_outcome(backend_url: url)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
+      let outcome = harness_probe_outcome(backend_url: url, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       join([
         "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",

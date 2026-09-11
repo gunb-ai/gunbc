@@ -42,10 +42,22 @@ data serving_co_tenancy_overlap_receipt: ObservationReceiptRef = "gunbc.serving.
 
 // ── WHAT THE SERVED GAUGES SAY, AND WHAT AN UNREAD GAUGE IS NOT ───────────────────────────────
 //
-// Two counts, or neither. A reading carrying one gauge and defaulting the other is an observation
+// Three readings, or none. A reading carrying one gauge and defaulting the others is an observation
 // half-invented, and the half that gets invented is always the one that admits.
+//
+// THE THIRD READING IS NEW AND IT IS THE ROUTE'S OWN ANSWER ABOUT ITSELF. waiting and running say
+// how much work is on the engine; the capacity-reason queue says whether the engine is holding
+// requests back FOR SCHEDULING CAPACITY, which is the only present-tense statement a stateless box
+// can make about whether it will take more. It is modelled at extdeps.vllm.metrics, where the plain
+// waiting gauge and the reason-labelled family are separate pairings, because a queue that will
+// clear on the next step and a route refusing to admit are different facts.
+type ServingCapacityPressure
+  = RouteAdmittingMore
+  | RouteHoldingForCapacity { held: Nat }
+  | CapacityPressureUnread { obligation: NonEmptyStr }
+
 type ServingQueueReading
-  = QueueDepthRead { waiting: Nat, running: Nat }
+  = QueueDepthRead { waiting: Nat, running: Nat, pressure: ServingCapacityPressure }
   | QueueDepthUnread { obligation: NonEmptyStr }
 
 // UNREAD IS NOT IDLE. This is the whole rule, and it is stated as a coproduct rather than as a
@@ -53,30 +65,85 @@ type ServingQueueReading
 // engine with nothing running, and the placement went ahead on that. An unreadable group carries an
 // obligation to go and measure -- never a licence to place beside whatever is actually running on
 // it.
+//
+// THE OCCUPIED ARM COUNTS OCCUPANTS AND NO LONGER CLAIMS WHAT THEY ARE. It was
+// GroupServingInteractiveTurn, from a time when one turn per group was the whole law, so the name
+// asserted a CLASS the gauges cannot see: num_requests_running counts requests, not readers. With
+// co-tenancy now decided per class, a constructor asserting the class of an occupant it cannot
+// observe would be the one place the law could be told a fact nobody established.
 type ServingCoTenancy
   = GroupIdle
-  | GroupServingInteractiveTurn { occupied_by: Nat }
+  | GroupOccupied { occupants: Nat }
   | CoTenancyUnread { obligation: NonEmptyStr }
 
 fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
   match reading {
     QueueDepthUnread { obligation: o } => CoTenancyUnread { obligation: o }
-    QueueDepthRead { waiting: w, running: r } =>
+    QueueDepthRead { waiting: w, running: r, pressure: _ } =>
       if r == 0 {
-        if w == 0 { GroupIdle } else { GroupServingInteractiveTurn { occupied_by: w } }
+        if w == 0 { GroupIdle } else { GroupOccupied { occupants: w } }
       } else {
-        GroupServingInteractiveTurn { occupied_by: r }
+        GroupOccupied { occupants: r + w }
       }
+  }
+}
+
+fn serving_capacity_pressure(reading: ServingQueueReading) -> ServingCapacityPressure {
+  match reading {
+    QueueDepthUnread { obligation: o } => CapacityPressureUnread { obligation: o }
+    QueueDepthRead { waiting: _, running: _, pressure: p } => p
   }
 }
 
 // A GROUP WITH WORK WAITING IS NOT IDLE EITHER, which is why the reading above folds waiting into
 // the occupied arm rather than looking only at running. A request admitted and waiting is a request
 // that will start the moment the engine is free, so placing a cold prefill in front of it produces
-// the same overlap one scheduler step later. The field is named occupied_by rather than running
-// BECAUSE it carries whichever gauge established the occupancy: calling it running would be a second
-// name for one of the two readings, and the wrong one half the time. Nothing downstream prices it,
-// so no ordering depends on which gauge it came from.
+// the same overlap one scheduler step later.
+
+// ── CO-TENANCY IS A RELATION BETWEEN CLASSES, NOT A COUNT ─────────────────────────────────────
+//
+// WHAT THE MEASUREMENT ACTUALLY FORBIDS. serving_co_tenancy_overlap_receipt names a controlled
+// overlap experiment, and its subject is specific: a cold prefill sharing a group with an ACTIVE
+// INTERACTIVE DECODER collapses that decoder's inter-token latency for the length of the overlap.
+// The victim is a turn already in flight and already being read by someone, and the harm is the
+// interactive product failing while it is being used.
+//
+// THE CEILING THAT FOLLOWED COLLAPSED TWO STATEMENTS INTO ONE. "One cold-risk turn in flight per
+// serving group" is what the quality seat was annotated as; "one turn in flight per serving group"
+// is what a scalar ceiling of one actually enforces, because nothing downstream could tell the two
+// apart. So a fleet of agents whose turns nobody watches decode -- a worker assembling a tool call,
+// a reviewer producing a verdict file -- was held to a law written for a reader, and a healthy route
+// sat idle while work queued in front of it.
+//
+// SO THE CLASS IS THE THING THE LAW TAKES. Quality-sensitive means a consumer is reading this stream
+// as it decodes, so a mid-stream freeze is the product failing; quality-tolerant means nothing reads
+// the stream until it completes, so the stall the experiment measured costs throughput and not the
+// product. That distinction is a DECLARATION BY THE CALLER about its own consumer, not an
+// observation of the engine, and it is typed rather than inferred: an entry point knows whether a
+// person is watching, and nothing else does.
+//
+// THE LAW IS ASYMMETRIC, AND THE ASYMMETRY IS WHY THIS IS A LAW RATHER THAN A LARGER NUMBER.
+//
+//   - AN ARRIVING QUALITY-SENSITIVE TURN REQUIRES AN IDLE ROUTE. Not merely "no other quality turn":
+//     the in-flight turns may still be prefilling, nothing here observes prefill phase, and a
+//     tolerant turn's prefill degrades a reader's decode exactly as the experiment measured. So the
+//     protection the reader gets is strictly the one the old ceiling gave.
+//   - AN ARRIVING TOLERANT TURN REQUIRES ONLY THAT NO QUALITY-SENSITIVE TURN IS HELD. Its prefill
+//     can then harm only other tolerant turns, which is the throughput cost their class is defined
+//     by.
+//
+// Widening this further -- admitting a tolerant turn while a reader is mid-stream -- is the exact
+// state the experiment forbids, and no ceiling here may be raised into it.
+type ServingCoTenancyClass
+  = InteractiveQualitySensitive
+  | BatchQualityTolerant
+
+fn serving_co_tenancy_class_wire(c: ServingCoTenancyClass) -> NonEmptyStr {
+  match c {
+    InteractiveQualitySensitive => "interactive-quality-sensitive" as NonEmptyStr
+    BatchQualityTolerant => "batch-quality-tolerant" as NonEmptyStr
+  }
+}
 
 // ── THE SEAT LEDGER IS THE NON-LAGGING HALF OF THE OCCUPANCY READING ──────────────────────────
 //
@@ -89,67 +156,139 @@ fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
 //
 // THE FIX IS NOT A DELAY OR A TIGHTER GAUGE. The seat pool already holds the answer: a granted seat
 // IS an occupancy observation, taken at placement time rather than at arrival time, and the
-// placement path reads it before it offers anything. So occupancy is BOTH readings, and a group is
-// idle only when the ledger holds no seat AND the engine reports nothing.
+// placement path reads it before it offers anything.
 //
-// WHAT THIS COSTS, STATED RATHER THAN DISCOVERED. The ceiling is whatever
-// gunbc.harness.harness_seat harness_interactive_quality_seats says, and this rule admits only at
-// zero held -- so while it stands, a serving group takes ONE cold-risk turn at a time and any
-// remaining seats are unreachable for this demand class. Naming the row rather than its value is the
-// whole point: an earlier spelling of this block transcribed the count, the same commit changed it,
-// and the prose was wrong before anyone read it. That is the interactive-quality consequence of the
-// measurement, not a capacity claim: the ceiling still says what the pool may hold, and this says
-// what may be placed beside a turn already in flight. It dissolves when a turn can be observed to be
-// warm on a named launch, because a warm turn is not the arriving cold prefill that
-// serving_co_tenancy_overlap_receipt names the experiment for.
-type ServingSeatOccupancy
-  = NoSeatHeld
-  | SeatsHeldForTurns { held: Nat }
-  | SeatOccupancyUnread { obligation: NonEmptyStr }
+// THE LEDGER IS NOW READ PER CLASS, because the law is per class. One count could not answer "is a
+// reader mid-stream" and "how many tolerant turns are in flight" at once, and a law that had to
+// guess which one a number meant would be the same collapse in a new place. The two counts come from
+// two pools with two ceilings; gunbc.harness.harness_seat owns how they are partitioned and what
+// each ceiling is, and this module owns only what the counts mean together.
+type ServingSeatStanding
+  = SeatStandingRead { quality_held: Nat, tolerant_held: Nat }
+  | SeatStandingUnread { obligation: NonEmptyStr }
 
 // ── THE ADMISSION VERDICT ─────────────────────────────────────────────────────────────────────
 //
-// Three arms and no fourth. There is deliberately no arm meaning "occupied but acceptable": that is
-// the priced reading this module replaces, and re-admitting it here as a constructor would let a
-// caller reconstruct it. A group that is occupied -- by the ledger or by the engine -- is not a
-// candidate for fresh cold-risk work, and a group whose occupancy is unread on EITHER reading is not
-// a candidate either.
+// There is deliberately no arm meaning "occupied but acceptable": that is the priced reading this
+// module replaces, and re-admitting it here as a constructor would let a caller reconstruct it. Each
+// refusal names a DIFFERENT remedy, which is why they are separate arms rather than one with a
+// string: a route at its declared ceiling and a route reporting capacity pressure both free
+// themselves and are worth retrying; an unexplained occupant and an unread standing are not answered
+// by waiting.
 //
-// WHAT MAKES A TURN COLD-RISK, AND WHY THERE IS NO WARM ARM YET. A turn is cold-risk when the prefix
-// it would prefill is not established to be resident on the candidate. Nothing in this repository
-// observes prefix residency, so every turn is cold-risk today and the type carries no second arm for
-// a state nothing can produce. The trigger for a warm arm is an observed prefix-hit standing on a
-// named launch; until then, a warm turn is unrepresentable rather than assumed.
+// UNEXPLAINED OCCUPANCY IS ITS OWN ARM AND IT IS THE ONE THAT KEEPS THE LEDGER HONEST. The engine on
+// this fleet was launched out of band and anybody can post to it, so occupants the seat ledger did
+// not admit are an ordinary state rather than a corruption -- and their CLASS is unknowable. A turn
+// we did not seat may be a person reading a stream, so an occupant we cannot account for is treated
+// as though it were, and nothing is admitted beside it.
+//
+// WHAT MAKES A TURN COLD-RISK, AND WHY THERE IS STILL NO WARM ARM. A turn is cold-risk when the
+// prefix it would prefill is not established to be resident on the candidate. Nothing in this
+// repository observes prefix residency, so every turn is cold-risk today, and the class above is
+// about who is HARMED rather than about whether this turn prefills. The trigger for a warm arm is an
+// observed prefix-hit standing on a named launch.
 type ServingGroupAdmission
-  = AdmissibleForColdPrefill { receipt: ObservationReceiptRef }
-  | InadmissibleActiveInteractiveTurn { occupied_by: Nat, basis: ObservationReceiptRef }
+  = AdmissibleForClass { class: ServingCoTenancyClass, receipt: ObservationReceiptRef }
+  | InadmissibleQualityTurnInFlight { held: Nat, basis: ObservationReceiptRef }
+  | InadmissibleGroupNotIdle { occupied_by: Nat, basis: ObservationReceiptRef }
+  | InadmissibleRouteHoldingForCapacity { held: Nat }
+  | InadmissibleClassCeilingReached { held: Nat, ceiling: Nat }
+  | InadmissibleUnexplainedOccupancy { occupants: Nat, seated: Nat }
   | AdmissibilityUnread { obligation: NonEmptyStr }
 
-// UNREAD ON EITHER READING REFUSES, AND THE LEDGER IS CONSULTED FIRST. Not because it outranks the
-// engine, but because it sees the earlier event: a seat is taken before a request is sent, so a
-// group the ledger calls busy is busy even when the gauges have not caught up. When both readings
-// are clear the group is idle on both clocks, which is the only state this rule admits.
-fn serving_group_admission(tenancy: ServingCoTenancy, seats: ServingSeatOccupancy, receipt: ObservationReceiptRef) -> ServingGroupAdmission {
+fn serving_occupant_count(tenancy: ServingCoTenancy) -> Nat {
+  match tenancy {
+    GroupIdle => 0
+    GroupOccupied { occupants: n } => n
+    CoTenancyUnread { obligation: _ } => 0
+  }
+}
+
+// THE LEDGER IS CONSULTED FIRST, not because it outranks the engine, but because it sees the earlier
+// event: a seat is taken before a request is sent, so a group the ledger calls busy is busy even
+// when the gauges have not caught up. The gauges are then consulted for what the ledger cannot see:
+// occupants nobody seated.
+//
+// AND THE CEILING BOUNDS OPTIMISM WHILE THE READING MAY ALWAYS REFUSE. A tolerant turn is admitted
+// only while the ledger is below the route's declared ceiling AND the route itself reports no
+// capacity pressure -- the minimum of a decision and an observation. A ceiling alone would be a
+// static claim about a box we are told to assume is stateless and unreliable; a reading alone would
+// over-admit, because "nothing running" is stale the instant it is taken and would admit every
+// arrival at once.
+fn serving_group_admission(
+  incoming: ServingCoTenancyClass,
+  tenancy: ServingCoTenancy,
+  pressure: ServingCapacityPressure,
+  seats: ServingSeatStanding,
+  ceiling: Nat,
+  receipt: ObservationReceiptRef,
+) -> ServingGroupAdmission {
   match seats {
-    SeatOccupancyUnread { obligation: o } => AdmissibilityUnread { obligation: o }
-    SeatsHeldForTurns { held: h } =>
-      InadmissibleActiveInteractiveTurn { occupied_by: h, basis: serving_co_tenancy_overlap_receipt }
-    NoSeatHeld =>
+    SeatStandingUnread { obligation: o } => AdmissibilityUnread { obligation: o }
+    SeatStandingRead { quality_held: q, tolerant_held: t } =>
       match tenancy {
         CoTenancyUnread { obligation: o } => AdmissibilityUnread { obligation: o }
-        GroupIdle => AdmissibleForColdPrefill { receipt: receipt }
-        GroupServingInteractiveTurn { occupied_by: r } =>
-          InadmissibleActiveInteractiveTurn { occupied_by: r, basis: serving_co_tenancy_overlap_receipt }
+        GroupIdle => serving_admission_on_counts(incoming: incoming, occupants: 0, quality_held: q, tolerant_held: t, pressure: pressure, ceiling: ceiling, receipt: receipt)
+        GroupOccupied { occupants: n } => serving_admission_on_counts(incoming: incoming, occupants: n, quality_held: q, tolerant_held: t, pressure: pressure, ceiling: ceiling, receipt: receipt)
       }
+  }
+}
+
+fn serving_admission_on_counts(
+  incoming: ServingCoTenancyClass,
+  occupants: Nat,
+  quality_held: Nat,
+  tolerant_held: Nat,
+  pressure: ServingCapacityPressure,
+  ceiling: Nat,
+  receipt: ObservationReceiptRef,
+) -> ServingGroupAdmission {
+  let seated = quality_held + tolerant_held
+  if occupants > seated {
+    InadmissibleUnexplainedOccupancy { occupants: occupants, seated: seated }
+  } else {
+    match incoming {
+      InteractiveQualitySensitive =>
+        if seated > 0 {
+          InadmissibleGroupNotIdle { occupied_by: seated, basis: serving_co_tenancy_overlap_receipt }
+        } else if occupants > 0 {
+          InadmissibleGroupNotIdle { occupied_by: occupants, basis: serving_co_tenancy_overlap_receipt }
+        } else {
+          AdmissibleForClass { class: InteractiveQualitySensitive, receipt: receipt }
+        }
+      BatchQualityTolerant =>
+        if quality_held > 0 {
+          InadmissibleQualityTurnInFlight { held: quality_held, basis: serving_co_tenancy_overlap_receipt }
+        } else {
+          match pressure {
+            CapacityPressureUnread { obligation: o } => AdmissibilityUnread { obligation: o }
+            RouteHoldingForCapacity { held: h } => InadmissibleRouteHoldingForCapacity { held: h }
+            RouteAdmittingMore =>
+              if tolerant_held >= ceiling {
+                InadmissibleClassCeilingReached { held: tolerant_held, ceiling: ceiling }
+              } else {
+                AdmissibleForClass { class: BatchQualityTolerant, receipt: receipt }
+              }
+          }
+        }
+    }
   }
 }
 
 fn serving_admission_detail(group: FabricGroup, admission: ServingGroupAdmission) -> String {
   match admission {
-    AdmissibleForColdPrefill { receipt: _ } =>
-      join([fabric_group_wire(g: group) as String, ": idle and admissible"], "")
-    InadmissibleActiveInteractiveTurn { occupied_by: r, basis: _ } =>
-      join([fabric_group_wire(g: group) as String, ": ", to_string(r), " turn(s) held or in flight, so a cold prefill placed here would stall a decode already being read"], "")
+    AdmissibleForClass { class: c, receipt: _ } =>
+      join([fabric_group_wire(g: group) as String, ": admissible for a ", serving_co_tenancy_class_wire(c: c) as String, " turn"], "")
+    InadmissibleQualityTurnInFlight { held: h, basis: _ } =>
+      join([fabric_group_wire(g: group) as String, ": ", to_string(h), " quality-sensitive turn(s) held, so a prefill placed here would stall a decode already being read"], "")
+    InadmissibleGroupNotIdle { occupied_by: n, basis: _ } =>
+      join([fabric_group_wire(g: group) as String, ": ", to_string(n), " turn(s) held or in flight, and a quality-sensitive turn takes an idle route because nothing here observes whether they are past prefill"], "")
+    InadmissibleRouteHoldingForCapacity { held: h } =>
+      join([fabric_group_wire(g: group) as String, ": the route reports ", to_string(h), " request(s) waiting for scheduling capacity, so it is not taking more work now"], "")
+    InadmissibleClassCeilingReached { held: h, ceiling: c } =>
+      join([fabric_group_wire(g: group) as String, ": ", to_string(h), " tolerant turn(s) held against a declared ceiling of ", to_string(c)], "")
+    InadmissibleUnexplainedOccupancy { occupants: n, seated: s } =>
+      join([fabric_group_wire(g: group) as String, ": the engine reports ", to_string(n), " occupant(s) while the seat ledger admitted ", to_string(s), "; a turn nobody seated may be one somebody is reading, so nothing is placed beside it"], "")
     AdmissibilityUnread { obligation: o } =>
       join([fabric_group_wire(g: group) as String, ": occupancy unread, which is not idle -- ", o as String], "")
   }
