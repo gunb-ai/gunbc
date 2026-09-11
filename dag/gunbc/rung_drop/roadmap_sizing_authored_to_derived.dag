@@ -36,11 +36,12 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // missing. The spawn request omits its two size keys, which the dashboard's both-or-neither
 // argument pair accepts; and the roadmap page drops a badge. The forecast is the only consumer whose OUTPUT changes.
 //
-// FOUR CONTROLS ARE IN THE POPULATION, WHICH IS UNUSUAL AND IS DELIBERATE. The last four
+// FIVE CONTROLS ARE IN THE POPULATION, WHICH IS UNUSUAL AND IS DELIBERATE. The last five
 // population entries are witnesses, not production functions: each asserted a property of the live
 // calibration population -- located, counted, per-cell gaps, nothing but calibration in the
-// refusal, and the three live cells calibrating to their exact observed intervals -- and their
-// subject is precisely what this drop loses. A control whose subject no longer
+// refusal, the three live cells calibrating to their exact observed intervals, and the authored
+// size distribution across the active rows being deliberate rather than one value copied down the
+// file -- and their subject is precisely what this drop loses. A control whose subject no longer
 // exists cannot be kept green without weakening what it asserts, which is how a wall becomes a
 // decoration. They are retired by name here rather than deleted quietly, and the trigger below is
 // the condition under which they become writable again against a real population. What replaces
@@ -88,7 +89,8 @@ data roadmap_sizing_authored_to_derived: RungDrop = RungDrop {
     "test.claim.roadmap_forecast_witness.witness_live_graph_refuses_with_located_counted_calibration_gaps",
     "test.claim.roadmap_forecast_witness.witness_live_graph_gap_count_matches_refusal_rows",
     "test.claim.roadmap_forecast_witness.witness_live_graph_refusal_is_only_calibration",
-    "test.claim.roadmap_forecast_witness.witness_live_calibration_keeps_small_sample_intervals"
+    "test.claim.roadmap_forecast_witness.witness_live_calibration_keeps_small_sample_intervals",
+    "test.claim.roadmap_authority.witness_active_sizes_are_intentional_and_nonuniform"
     ],
     restoration_trigger: "a sizing derivation that reads a task and answers from it: given a gunbc.roadmap_sizing SizingSubject -- title, description, exit criterion -- derive_task_sizing returns an Intricacy and a Volume on the real acceptance path, with an executed discriminating control in which two materially different subjects receive different cells, and gunbc.roadmap_forecast calibrates and projects from those derived cells end to end. Replacing the stub with any function that returns a cell does NOT satisfy this trigger; a constant answer leaves the capability dead."
   }
