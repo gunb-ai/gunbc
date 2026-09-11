@@ -58,7 +58,7 @@ data receipt_subject_is_the_prose_about_the_mechanism: RecurringFailureMode = Re
     ),
     decl_ref(
       module_path: "gunbc.v2_compile_obligation_census",
-      decl_name: "lens_native_execution"
+      decl_name: "native_standing"
     ),
   ],
 }
