@@ -1,16 +1,11 @@
 module gunbc.runner.runner_host_filtered_egress
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
   runner_microvm_network_supernet,
 }
-import gunbc.runner.runner_guest_egress_attempt {
-  egress_outcome, GuestEgressEstablished, GuestEgressNotEstablished,
-  cpu_bound_write_refused,
-}
-import gunbc.runner.runner_guest_network_receipt { guest_reachability }
 
 // THE EGRESS PATH A RAW RUNNER HOST OWES, and why it is not the one the shared hosts run.
 // gunbc.runner.runner_microvm_network already derives a slot's tap name, host and guest addresses,
@@ -49,29 +44,6 @@ data runner_host_guest_attachment: GuestAttachment = RoutedPointToPointTap {
 data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
   rejected_because: "segment adjacency hands the guest DHCP, ARP, RAs, multicast, the BMC addresses and every other host, and filtering it needs bridge-family policy and a second processing boundary",
 }
-
-// THE REJECTED TOPOLOGY IS THE ONE THE ATTEMPT RECEIPT HOLDS, not a second telling of it. Naming
-// that module only in the annotation above was not a citation: DESIGN section 4c erases annotations
-// from every semantic pass, so the cited-symbol check never saw the name and DESIGN section 3c had
-// no consumer. These rows import the attempt and the point-to-point reachability receipt and fold
-// them, which is the citation the annotation pretended to be.
-fn bridged_attempt_left_guest_without_egress() -> Bool {
-  match egress_outcome {
-    GuestEgressEstablished { via: _ } => false
-    GuestEgressNotEstablished { reached: _, blocked_at: _ } => true
-  }
-}
-
-data bridged_topology_rejected_because_it_failed: Bool = bridged_attempt_left_guest_without_egress()
-
-data kernel_rebuild_owes_cfs_bandwidth: Bool = cpu_bound_write_refused
-
-fn host_reached_the_guest_on_the_point_to_point_tap() -> Bool {
-  guest_reachability.transmitted == guest_reachability.received
-    && guest_reachability.transmitted > 0
-}
-
-data routed_attachment_already_carries_the_guest: Bool = host_reached_the_guest_on_the_point_to_point_tap()
 
 // ── the host uplink is static, on purpose ───────────────────────────────────────────────────────
 
