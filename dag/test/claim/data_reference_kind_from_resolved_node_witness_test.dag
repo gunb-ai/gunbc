@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // also in scope, declares `fn gigabyte`. The evaluator used to take the item kind from a bare-name
 // registry projection that keeps one homonym in hash-seed order, so on some processes this reference
 // evaluated as a function and the field read refused ("cannot access field 'legal_name' on Fn").
-// The kind now comes from the resolved node. This is the production homonym, not a synthetic one;
+// eval_var now takes the kind from the resolved node. This is the production homonym, not a synthetic one;
 // the isolated four-module geometry is stern-bear-703's fixture on gunbc#11062.
 //
 // A PROBABILISTIC REGRESSION CONTROL, AND NEVER THIS CLASS'S COVERAGE. A reintroduced fork reds this
@@ -24,10 +24,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // which is one PR. If asked whether this class is caught, the answer is the N-run comparison on
 // gunbc#11065 (control 10/24 failed, repair 0/24), not a green run of this witness.
 //
-// THE CEILING IS NOT PERMANENT. Refusing an ambiguous bare name that reaches the shared slot -- the
-// layer after this repair -- turns this behavioural control into a structural refusal: the ambiguity
-// becomes unwritable instead of merely unlikely to be observed. This witness's weakness is the reason
-// that layer exists.
+// The class's rung, ceiling and next-rung trigger live in its ledger row,
+// gunbc.recurring_failure_mode surface_shorthand_preempts_resolved_identity, not here.
 test fn a_data_reference_is_classified_by_the_declaration_it_resolves_to() -> Bool {
   (gigabyte.legal_name as String) == "GIGA-BYTE Technology Co., Ltd."
 }

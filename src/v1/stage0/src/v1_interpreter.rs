@@ -5144,9 +5144,15 @@ fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     Ok(Env::extend(&Env::empty(), bindings))
 }
 
-// Both helpers classify the node they evaluate, not the bare-name registry entry: the registry
-// projection keeps one homonym in hash-seed order, so its kind can describe a different declaration
-// from the node `lookup_fn` returns (see `eval_var`'s slow path).
+// Both helpers classify the node they evaluate, not the bare-name registry entry, so the kind can
+// no longer describe a different declaration from the node (see `eval_var`'s slow path). THAT IS
+// ALL THIS REPAIRS HERE, stated because the rung is the minimum across paths: unlike `eval_var`,
+// these helpers are asked by bare name with no referring file, so they still SELECT the node
+// through `lookup_fn`'s shared bare slot, whose owner for a colliding spelling is chosen by walk
+// order, not by declaration. For a data name that collides with a same-spelled item elsewhere they
+// can therefore still evaluate -- or, now consistently, decline -- the wrong declaration. That
+// residue is the shared-slot ambiguity the next layer refuses
+// (gunbc.recurring_failure_mode surface_shorthand_preempts_resolved_identity).
 pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Value>> {
     let mut out = Vec::new();
     for name in ctx.item_registry.keys() {
