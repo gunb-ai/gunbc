@@ -65,15 +65,6 @@ while the modelled route already uses `-f` with a password file. If the unit's c
 ever rotated off the published default, that value *is* a secret, must never reach argv, and
 any capture containing it is genuinely unpublishable.
 
-----ARGV` lines, and `gunbc`
-is public. Those occurrences are replaced with a marker and the file carries a header saying
-so; nothing else changed. Pre-redaction digest
-`e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad` (1,669 bytes) is recorded
-so the edit is auditable. **The redaction does not undo the publication** — the unredacted
-bytes reached a public PR branch, so the credential must be treated as disclosed. It is the
-factory default on a routable BMC; rotating it is the operator-attended `BmcSecure` step and
-was deliberately not performed by this lane.
-
 ---
 
 ## 3. The two purchasing conclusions
@@ -421,22 +412,20 @@ eliminate. It remains the blocking objection on #10965 and it is fair.
 
 ## 10. Outstanding
 
-**Not mine — being recut by the directing session:**
+**Not mine — being recut by the directing session.** An earlier revision of this section
+enumerated that lane's design: the shape of the boot-intent product, how the readback should
+refuse, which terminal splits into which, how the request body should be serialized, how
+legacy-on-aarch64 should be made unconstructible. **That has been removed, for the same
+reason §8's decoder was.** A probe record that specifies another lane's carriers becomes a
+second authority for them the moment they land, and enumerating someone else's design in
+prose is exactly the coupling this PR was recut to remove — the fact that I happened to
+agree with the design does not make it mine to write down.
 
-- Typed `IpmiBootSelection = device × firmware boot mode × persistence`, argv derived from
-  the type, no opaque `options=` string from callers.
-- Full boot-flag readback verifying Boot Flag Valid, selector, **EFI mode**, and
-  persistence — refusing when any disagrees with the request.
-- `BootHandoffCompleted` split into a control-plane fact (`BootControlIssued`) and a
-  host-originating `BootArtifactExecuted`.
-- Decoded `MegaRacRedirectionStatus` + readiness predicate over it; `any(...)` replaced so
-  zero / one / multiple matching rows are distinct states.
-- Serialized `MegaRacStartMediaRequest` through the existing JSON authority, with
-  `image_redirection: 1` emitted unconditionally by the sole constructor.
-- `BootFirmwareCapability` modelling legacy-on-aarch64 as **unconstructible** rather than a
-  runtime check.
-- Modelled capture producer: ARP, image identity, BMC state, boot flags, console, host
-  census as operations writing attempt-owned output; no compound `sh -c`; `-f` not `-P`.
+What this record contributes to that work is the *evidence*: the measured boot flags on
+failing and succeeding attempts (§7.1), that the model reported a completed handoff
+throughout (§7.2), the two distinct failure modes (§7.3), and the controller observations
+in §8. The design conclusions drawn from that evidence belong in the migration's carriers,
+where they can be consumed rather than read.
 
 **Open questions:**
 
