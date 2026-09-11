@@ -2,7 +2,8 @@ module test.claim.ebay_browse_witness
 
 import std.types { Bool, String, List }
 import v2.std.algebra { for_all, filter }
-import std.roster_frontier { frontier_rows_well_formed }
+import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd, Eur, currency_alphabetic_code }
 import extdeps.api_rate_limit { rate_limit_period_seconds }
@@ -110,6 +111,10 @@ test fn witness_browse_search_page_admission_holds_the_published_bounds() -> Boo
     && (match browse_search_page_admission(limit: 200, offset: 10000) { BrowseSearchBeyondResultWindow { limit: _, offset: o } => o == 10000  _ => false })
 }
 
-test fn witness_browse_frontier_rows_are_well_formed() -> Bool {
+test fn witness_browse_frontier_rows_are_well_formed_and_in_the_census() -> Bool {
   frontier_rows_well_formed(rows: ebay_browse_frontier_rows)
+    && length(ebay_browse_frontier_rows) == 3
+    && for_all(xs: ebay_browse_frontier_rows, predicate: fn(row) {
+      any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+    })
 }
