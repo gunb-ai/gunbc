@@ -201,14 +201,37 @@ type WorkflowSourceIdentity {
 // candidate here", and the deficit that shrank the population never ranks for fixing.
 //
 // It is a SEPARATE ARM rather than an extra field on the existing one, because the two states are
-// not the same kind of thing. HitNotCanonicalized means the bytes arrived and could not be used -
+// not the same kind of thing. The non-refusal arms all mean the bytes arrived and could not be used -
 // a fact about the file, already carrying its own located cause from the classifier. HitReadRefused
 // means the bytes never arrived, and what a caller needs then is the performance, which is where
 // the status and the transport disposition live. Merging them would put an optional refusal on a
 // row that usually has none, which is the shape that gets defaulted away.
+// WHICH SUBJECTS DISAGREED, CARRIED ON THE VALUE. An identity is a join of three subjects - the
+// search hit, the request the read was made with, and the response that came back - and there are
+// three distinct ways for them to fail to agree. They share an owner (a caller paired the wrong
+// things) but not a repair: a repository mismatch means the wrong read was paired with the hit, a
+// requested-path mismatch means the wrong path was asked for, and a response-path mismatch means
+// the endpoint answered about a different file than the one requested.
+type SubjectDisagreement
+  = RepositoryDiffersFromHit { hit_repository: String, read_repository: String }
+  | RequestedPathDiffersFromHit { hit_path: String, requested_path: String }
+  | ResponsePathDiffersFromRequest { requested_path: String, response_path: String }
+
+// FIVE WAYS NOT TO MINT AN IDENTITY, AND THEY WERE ALL ONE ARM. HitNotCanonicalized carried a file
+// that could not be read, an unrecognized encoding, three kinds of subject disagreement and a ref
+// that was not a commit sha - six materially different contracts distinguished only by English, so
+// a consumer could not route them and the witnesses reached into the cause with string_contains to
+// tell them apart. Same meaning fork DESIGN section 3 names, found in the sibling module and
+// applied here rather than waiting to be told twice.
+//
+// The arms below split by REPAIR. Unusable bytes are re-read through a different endpoint; a
+// subject disagreement is a caller pairing the wrong things and carries WHICH pair disagreed; a
+// non-exact ref is a caller supplying a branch name; a refusal never reached the bytes at all.
 type HitCanonicalization
   = HitCanonicalized { identity: WorkflowSourceIdentity }
-  | HitNotCanonicalized { repository_full_name: String, path: String, cause: NonEmptyStr }
+  | HitFileUnreadable { repository_full_name: String, path: String, cause: NonEmptyStr }
+  | HitSubjectsDisagree { repository_full_name: String, path: String, disagreement: SubjectDisagreement, cause: NonEmptyStr }
+  | HitRefNotExact { repository_full_name: String, path: String, ref: CommitSha, cause: NonEmptyStr }
   | HitReadRefused { repository_full_name: String, path: String, performance: RestExchangePerformance }
 
 // THE JOIN, AND IT REFUSES. The hit says which repository and path the index pointed at; the read
@@ -228,27 +251,38 @@ fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonica
   match read {
     WorkflowSourceObserved { request, file } =>
       if request_repository_full_name(r: request) != hit.repository.full_name {
-        HitNotCanonicalized {
+        HitSubjectsDisagree {
           repository_full_name: hit.repository.full_name, path: hit.path,
+          disagreement: RepositoryDiffersFromHit {
+            hit_repository: hit.repository.full_name,
+            read_repository: request_repository_full_name(r: request),
+          },
           cause: join(["the search hit is in ", hit.repository.full_name,
             " and the file was read from ", request_repository_full_name(r: request),
             ". Minting an identity from these would assert that one repository contains a blob read out of another."], ""),
         }
       } else if file.path != request.path {
-        HitNotCanonicalized {
+        HitSubjectsDisagree {
           repository_full_name: hit.repository.full_name, path: hit.path,
+          disagreement: ResponsePathDiffersFromRequest {
+            requested_path: request.path, response_path: file.path,
+          },
           cause: join(["the file was requested at ", request.path, " and the response reports ", file.path,
             "; the identity's workflow_path is built from the RESPONSE, so minting it would key an observation to a file the request did not ask for. Three subjects have to agree - the hit, the request, and the response - and checking only the first two leaves the third free to differ."], ""),
         }
       } else if commit_sha_text_holds(head: request.ref as String) == false {
-        HitNotCanonicalized {
+        HitRefNotExact {
           repository_full_name: hit.repository.full_name, path: hit.path,
+          ref: request.ref,
           cause: join(["the read was made at ref '", request.ref,
             "', which is not a 40-character lowercase hex commit sha. CommitSha is an unvalidated String alias on this tree, so the TYPE does not make a branch name unwritable - 'main' satisfies it - and an identity keyed to a moving ref cannot be returned to. This check is the wall the alias does not provide; it dissolves when CommitSha gains a validating constructor."], ""),
         }
       } else if request.path != hit.path {
-        HitNotCanonicalized {
+        HitSubjectsDisagree {
           repository_full_name: hit.repository.full_name, path: hit.path,
+          disagreement: RequestedPathDiffersFromHit {
+            hit_path: hit.path, requested_path: request.path,
+          },
           cause: join(["the search hit names ", hit.path, " and the file was read from ", request.path,
             " in the same repository; the identity would carry a blob from a different file than the one the hit found"], ""),
         }
@@ -264,10 +298,10 @@ fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonica
           },
         }
       }
-    WorkflowSourceTooLargeForContentsApi { file, cause } => HitNotCanonicalized {
+    WorkflowSourceTooLargeForContentsApi { file, cause } => HitFileUnreadable {
       repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
     }
-    WorkflowSourceEncodingUnrecognized { file, cause } => HitNotCanonicalized {
+    WorkflowSourceEncodingUnrecognized { file, cause } => HitFileUnreadable {
       repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
     }
     WorkflowSourceRefused { performance } => HitReadRefused {

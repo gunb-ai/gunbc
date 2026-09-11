@@ -18,7 +18,9 @@ import gunbc.ci_workflow_source_read {
   WorkflowSourceRead, WorkflowSourceObserved, WorkflowSourceTooLargeForContentsApi,
   WorkflowSourceEncodingUnrecognized, WorkflowSourceRefused,
   perform_workflow_source_read, classify_workflow_source, classify_code_search_page,
-  HitCanonicalization, HitCanonicalized, HitNotCanonicalized, HitReadRefused, canonicalize_hit,
+  HitCanonicalization, HitCanonicalized, HitFileUnreadable, HitSubjectsDisagree, HitRefNotExact,
+  HitReadRefused, canonicalize_hit,
+  SubjectDisagreement, RepositoryDiffersFromHit, RequestedPathDiffersFromHit, ResponsePathDiffersFromRequest,
   WorkflowSourceRequest, request_repository_full_name,
   WorkflowSourceIdentity,
 }
@@ -172,7 +174,9 @@ test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> 
         && identity.repository_full_name == request_repository_full_name(r: coherent_request)
         && identity.workflow_path == coherent_request.path
         && identity.repository_is_fork == false
-    HitNotCanonicalized { repository_full_name, path, cause } => false
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
   }
 }
@@ -183,12 +187,16 @@ test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> 
 test fn an_unread_file_never_becomes_an_identity() -> Bool {
   let oversized_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: oversized_response)) {
     HitCanonicalized { identity } => false
-    HitNotCanonicalized { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
+    HitFileUnreadable { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
   }
   let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: unknown_encoding_response)) {
     HitCanonicalized { identity } => false
-    HitNotCanonicalized { repository_full_name, path, cause } => true
+    HitFileUnreadable { repository_full_name, path, cause } => true
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => true
+    HitRefNotExact { repository_full_name, path, ref, cause } => true
     HitReadRefused { repository_full_name, path, performance } => false
   }
   oversized_refused && unknown_encoding_refused
@@ -290,7 +298,9 @@ fn refused_status(read: WorkflowSourceRead) -> Int {
         other => 0
       }
     HitCanonicalized { identity } => 0
-    HitNotCanonicalized { repository_full_name, path, cause } => 0
+    HitFileUnreadable { repository_full_name, path, cause } => 0
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => 0
+    HitRefNotExact { repository_full_name, path, ref, cause } => 0
   }
 }
 
@@ -315,7 +325,9 @@ test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
         other => false
       }
     HitCanonicalized { identity } => false
-    HitNotCanonicalized { repository_full_name, path, cause } => false
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
   }
 }
 
@@ -336,8 +348,14 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
     read: WorkflowSourceObserved { request: foreign_repo_request, file: observed_file },
   ) {
     HitCanonicalized { identity } => false
-    HitNotCanonicalized { repository_full_name, path, cause } =>
-      string_contains(s: cause as String, pattern: "read from")
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
+      match disagreement {
+        RepositoryDiffersFromHit { hit_repository, read_repository } => read_repository == "biomejs/biome"
+        other => false
+      }
+    HitCanonicalized { identity } => false
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
   }
   let foreign_path_refused = match canonicalize_hit(
@@ -345,7 +363,9 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
     read: WorkflowSourceObserved { request: foreign_path_request, file: observed_file },
   ) {
     HitCanonicalized { identity } => false
-    HitNotCanonicalized { repository_full_name, path, cause } => true
+    HitFileUnreadable { repository_full_name, path, cause } => true
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => true
+    HitRefNotExact { repository_full_name, path, ref, cause } => true
     HitReadRefused { repository_full_name, path, performance } => false
   }
   let coherent_admitted = match canonicalize_hit(
@@ -394,8 +414,15 @@ test fn a_response_naming_another_file_never_becomes_an_identity() -> Bool {
     read: WorkflowSourceObserved { request: coherent_request, file: response_naming_another_file },
   ) {
     HitCanonicalized { identity } => false
-    HitNotCanonicalized { repository_full_name, path, cause } =>
-      string_contains(s: cause as String, pattern: "the response reports")
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
+      match disagreement {
+        ResponsePathDiffersFromRequest { requested_path, response_path } =>
+          response_path == ".github/workflows/main.yml"
+        other => false
+      }
+    HitCanonicalized { identity } => false
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
   }
 }
@@ -417,11 +444,11 @@ test fn a_branch_name_is_refused_as_a_ref() -> Bool {
     read: WorkflowSourceObserved { request: branch_ref_request, file: observed_file },
   ) {
     HitCanonicalized { identity } => false
-    HitNotCanonicalized { repository_full_name, path, cause } =>
-      string_contains(s: cause as String, pattern: "40-character lowercase hex")
+    HitRefNotExact { repository_full_name, path, ref, cause } => ref == "main"
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
   }
-  // and a real sha still resolves, so the check is not refusing everything
   let sha_admitted = match canonicalize_hit(
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: coherent_request, file: observed_file },
