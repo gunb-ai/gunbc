@@ -21,6 +21,7 @@ import gunbc.fleet_known_hosts_anchor {
 }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.host_cli_dependency {
+  HostCliDependencyAbsence,
   first_absent_password_session_host_cli_dependency,
   host_dependency_absent_wire,
 }
@@ -178,6 +179,22 @@ type FleetPrincipalLegOutcome
 // this module observes it and never installs it. Converging the runner is the installer's job and
 // enrolling a dependency is not a licence to mutate a host mid-leg.
 //
+// THE OBSERVATION IS A PARAMETER, NOT AN AMBIENT READ, and that split is a correctness fix rather
+// than a style one. The first cut had open_fleet_password_leg observe PATH inline, which made every
+// caller of the password arm PATH-dependent -- including
+// the_bootstrap_principal_leg_reaches_the_password_transport_by_execution, a HERMETIC witness whose
+// subject is which TRANSPORT the principal derivation selects. On a host without sshpass that
+// witness refused before reaching either mock and went red, turning a session-selection witness
+// into a host-placement test: it would have passed on srv1/srv2 and failed on srv3/srv4, i.e. flaky
+// by which runner picked the job up, while appearing to measure something else entirely. Measured
+// red on this container before the split.
+//
+// fleet_password_leg_from_host_observation is therefore the pure decision, total over an injected
+// observation, and open_fleet_password_leg is the thin wet wrapper that supplies the real one. The
+// discriminator hands it a satisfied prerequisite; a separate witness hands it a present absence to
+// prove the refusal. Both are hermetic, and neither can be moved by the PATH of the host that runs
+// them.
+//
 // THE HOST PREREQUISITE IS CHECKED FIRST, and on a runner missing both binary and credential that
 // changes which cause the caller reads. That ordering is deliberate: the absent binary is the
 // unconditional one -- materializing a credential on this runner would still not let the leg run,
@@ -190,7 +207,17 @@ type FleetPasswordLegPrerequisite
 fn open_fleet_password_leg(
   credential: FleetBootstrapCredentialLocus,
 ) -> FleetPasswordLegPrerequisite {
-  match first_absent_password_session_host_cli_dependency() {
+  fleet_password_leg_from_host_observation(
+    absence: first_absent_password_session_host_cli_dependency(),
+    credential: credential,
+  )
+}
+
+fn fleet_password_leg_from_host_observation(
+  absence: HostCliDependencyAbsence?,
+  credential: FleetBootstrapCredentialLocus,
+) -> FleetPasswordLegPrerequisite {
+  match absence {
     Present { value: absence } =>
       PasswordLegPrerequisiteRefused {
         cause: join([
@@ -231,6 +258,24 @@ fn exec_as_fleet_principal_with_stdin(
   stdin_payload: String,
   credential: FleetBootstrapCredentialLocus,
 ) -> FleetPrincipalLegOutcome {
+  exec_as_fleet_principal_with_stdin_observed(
+    context: context,
+    target: target,
+    words: words,
+    stdin_payload: stdin_payload,
+    credential: credential,
+    absence: first_absent_password_session_host_cli_dependency(),
+  )
+}
+
+fn exec_as_fleet_principal_with_stdin_observed(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+  stdin_payload: String,
+  credential: FleetBootstrapCredentialLocus,
+  absence: HostCliDependencyAbsence?,
+) -> FleetPrincipalLegOutcome {
   let session = fleet_ssh_session_for_principal(principal: target.principal)
   match session {
     FleetSshKeySession =>
@@ -242,7 +287,7 @@ fn exec_as_fleet_principal_with_stdin(
         ),
       }
     FleetSshPasswordSession =>
-      match open_fleet_password_leg(credential: credential) {
+      match fleet_password_leg_from_host_observation(absence: absence, credential: credential) {
         PasswordLegPrerequisiteRefused { cause: c } => FleetPrincipalLegRefused { cause: c }
         PasswordLegPrerequisiteReady { password_file: p } => {
           let r = password_file_ssh_exec_portable_words_with_stdin(

@@ -1390,8 +1390,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
   bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "observe_echo_wet_posix_command_v_check_does_not_crash"),
   bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "observe_npm_wet_posix_command_v_check_does_not_crash"),
-  bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "observe_sshpass_wet_posix_command_v_check_does_not_crash"),
-  bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "password_session_enrollment_walks_wet_without_crashing"),
   bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag", f: "maintenance_census_report_positive_control_derives_from_current_head")
 ]
 

@@ -4,7 +4,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Absent, Present }
 import std.types { Bool, String, NonEmptyStr }
 import extdeps.tools { install_hint }
-import extdeps.tools.sshpass { sshpass_cli_tool, sshpass_binary_name }
+import extdeps.tools.sshpass { sshpass_cli_tool }
+import extdeps.exec.command { sshpass_binary_name }
 import gunbc.host_cli_dependency {
   password_session_host_cli_requirements,
   host_dependency_absent_wire,
@@ -34,7 +35,7 @@ test fn password_session_roster_carries_the_sshpass_requirement() -> Bool {
   fold_list(
     xs: password_session_host_cli_requirements,
     empty: false,
-    cons: fn(acc, r) { acc || r.tool == sshpass_cli_tool.name },
+    cons: fn(acc, r) { acc || r.tool.name == sshpass_cli_tool.name },
   )
 }
 

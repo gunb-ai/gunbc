@@ -33,14 +33,28 @@ import v2.std.optional { Optional, Present, Absent, optional_absent, optional_pr
 // cap. Batch-1 cold-control cost is a separate lane; this PR does not raise
 // deadline/swap/max-parallel.
 
+// THE REQUIREMENT CARRIES THE TOOL, NOT A NAME FOR IT. This field was a NonEmptyStr tag drawn from
+// a closed set, resolved back to a CliTool by a hand-rolled if-chain -- so "a roster row naming a
+// tool no CliTool owns" was a representable state, and the code answered it with a runtime arm. It
+// is now unwritable: a row cannot be authored without the declaration that owns the install
+// sources, so the resolver, its else arm, and the unresolved branch of the fold all delete rather
+// than grow by one arm per enrolled tool (DESIGN §5 construction over validation; §4b rung 4 -- the
+// invalid state has no constructor, so validation is unnecessary).
+//
+// THE DELETED ARM WAS ALSO A CONFLATION, which is the sharper reason it could not stay. It returned
+// a HostCliDependencyAbsence -- the type that means "this binary is not on PATH on this host" --
+// to report an AUTHORING defect in this file. Callers render that into operator-facing prose, so a
+// roster row someone forgot to finish would have reached a fleet operator as "sshpass is not
+// installed on this runner": a true-shaped sentence about the wrong subject, sending them to go
+// install something that was never missing.
 type HostCliEnrollmentRequirement {
-  tool: NonEmptyStr
+  tool: CliTool
   provision: NonEmptyStr
 }
 
 data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
   HostCliEnrollmentRequirement {
-    tool: "npm" as NonEmptyStr,
+    tool: npm_cli_tool,
     provision: "apt install npm on falsifier cadence runner image" as NonEmptyStr,
   },
 ]
@@ -71,7 +85,7 @@ data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequ
 // side belongs to.
 data password_session_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
   HostCliEnrollmentRequirement {
-    tool: sshpass_cli_tool.name,
+    tool: sshpass_cli_tool,
     provision: "apt install sshpass on every runner that executes a password-session leg" as NonEmptyStr,
   },
 ]
@@ -104,21 +118,6 @@ fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
   }
 }
 
-// A REQUIREMENT NAMES A TOOL BY THE TOOL'S OWN name FIELD, so this resolves back to the CliTool
-// that owns the install sources. The unresolved arm below is NOT a hole: an enrolled requirement
-// this function cannot map is itself reported as an absence carrying the row's own provision
-// sentence, so adding a roster row without a CliTool refuses loudly rather than silently enrolling
-// nothing (DESIGN §5 -- a failure arm refuses, never widens).
-fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement) -> CliTool? {
-  if requirement.tool == npm_cli_tool.name {
-    Present { value: npm_cli_tool }
-  } else if requirement.tool == sshpass_cli_tool.name {
-    Present { value: sshpass_cli_tool }
-  } else {
-    none
-  }
-}
-
 // THE FOLD IS PARAMETERIZED BY THE ROSTER rather than copied per roster. The second enrollment
 // answer (password sessions) would otherwise have duplicated this whole walk -- the §2 duplication
 // that a second roster invites and that the roster split does not require.
@@ -140,19 +139,9 @@ fn first_absent_host_cli_dependency(
       match acc {
         Present { value: found } => Present { value: found }
         Absent =>
-          match cli_tool_for_enrollment_requirement(requirement: requirement) {
-            Present { value: tool } =>
-              match observe_host_cli_dependency(tool: tool) {
-                HostCliDependencyAbsent { absence } => Present { value: absence }
-                HostCliDependencyPresent => none
-              }
-            Absent =>
-              Present {
-                value: HostCliDependencyAbsence {
-                  tool: requirement.tool,
-                  hint: requirement.provision as String,
-                },
-              }
+          match observe_host_cli_dependency(tool: requirement.tool) {
+            HostCliDependencyAbsent { absence } => Present { value: absence }
+            HostCliDependencyPresent => none
           }
       }
     },
