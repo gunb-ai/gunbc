@@ -23,8 +23,10 @@ import v2.compiler.compile {
   run_required_lens_gates,
   run_required_lens_gates_on_subtree,
   required_lenses_at_grain,
+  CompileLensGrain,
   CompileLensRoot,
   CompileLensSubtree,
+  RequiredLensCoverageRow,
   LensGateWitness,
   ObservationUnregistered,
   RegistrationDuplicated,
@@ -53,6 +55,47 @@ import v2.test.lens_common.infer_fixture {
 }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness { Holds, Witness }
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5, verbatim). The check
+// these replace was `length(rows) == length(roster())`, and both sides derive from the same fold
+// inside join_required_lens_coverage, which emits exactly one row per registration by construction.
+// That conjunct could not fail: it was structurally green, and it said nothing about WHICH lenses
+// were covered. A join that dropped one registration and duplicated another keeps the count exactly
+// equal and is the case a count cannot see.
+//
+// THE JOIN IS AT (IDENTITY, GRAIN) AND RUNS IN BOTH DIRECTIONS, because the two directions fail
+// differently: a registration with no row is a lens that never ran, and a row naming no registration
+// is coverage claimed for something the roster does not require. Grain is part of the key rather
+// than a separate assertion -- a lens covered at the wrong grain is a different fact from a lens
+// covered, and the join's own ObservedAtWrongGrain arm exists because that distinction matters.
+fn grain_key(g: CompileLensGrain) -> String {
+  match g {
+    CompileLensRoot => "root"
+    CompileLensSubtree => "subtree"
+  }
+}
+
+fn row_matches_registration(row: RequiredLensCoverageRow, lens: CompileLens) -> Bool {
+  declaration_ref_eq(a: row.lens, b: lens.identity)
+    && grain_key(g: row.grain) == grain_key(g: lens.grain)
+}
+
+fn some_row_covers(rows: List<RequiredLensCoverageRow>, lens: CompileLens) -> Bool {
+  fold_list(xs: rows, empty: false, cons: fn(acc, r) { acc || row_matches_registration(row: r, lens: lens) })
+}
+
+fn some_registration_claims(lenses: List<CompileLens>, row: RequiredLensCoverageRow) -> Bool {
+  fold_list(xs: lenses, empty: false, cons: fn(acc, l) { acc || row_matches_registration(row: row, lens: l) })
+}
+
+fn rows_join_the_roster_exactly(rows: List<RequiredLensCoverageRow>) -> Bool {
+  fold_list(xs: required_compile_lens_roster(), empty: true, cons: fn(acc, l) {
+    acc && some_row_covers(rows: rows, lens: l)
+  })
+    && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+      acc && some_registration_claims(lenses: required_compile_lens_roster(), row: r)
+    })
+}
 
 data coverage_join_evidence: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^required_lens_coverage_join_evidence } },
@@ -125,7 +168,7 @@ test fn required_lens_coverage_closes_on_complete_observations_holds() -> Bool {
     witnesses: complete_observations()
   ) {
     RequiredLensCoverageClosed { roster_digest: d, rows: rows } =>
-      length(xs: rows) == length(xs: required_compile_lens_roster())
+      rows_join_the_roster_exactly(rows: rows)
         && !string_is_empty(s: d)
         && d == required_lens_roster_digest()
     RequiredLensCoverageRefused { cause: _ } => false
@@ -310,7 +353,7 @@ test fn required_lens_coverage_closes_over_executed_gates_holds() -> Bool {
           ) {
             RequiredLensCoverageClosed { roster_digest: d, rows: rows } =>
               d == required_lens_roster_digest()
-                && length(xs: rows) == length(xs: required_compile_lens_roster())
+                && rows_join_the_roster_exactly(rows: rows)
             RequiredLensCoverageRefused { cause: _ } => false
           }
       }

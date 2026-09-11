@@ -41,27 +41,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // cannot pass resolve (proven by execution 2026-07-13), so the door-grain suspect red is homed
 // there, not here.
 
-// THE PROBE SOURCES ARE CUT TO THE SMALLEST FORM THAT STILL DISCRIMINATES, and what survives is
-// exactly the discriminator: the RED still copies the accumulator through list_append inside the
-// fold, the GREEN is still its non-copying twin, and the ledger probe still calls a combiner no
-// registry knows. Only the names shrank -- module names, the list binder, the lambda binders. No
-// arm, no type annotation and no call shape was removed, because each of those is what the gate
-// reads.
+// THE SNIPPET CUT IS REVERTED BECAUSE IT WAS MEASURED AND IT BOUGHT NOTHING. It shortened these
+// three sources on a model that put the marginal cost near 3ms/byte, predicting savings of 27, 30
+// and 57ms. The floor measured the same three witnesses before and after: 503 -> 516, 505 -> 508,
+// 525 -> 507. Two of the three got SLOWER after bytes were removed, and the spread is noise in both
+// directions. Cross-sectionally the same: the 88-byte source is the slowest of the three and the
+// 116-byte one the fastest. There is no size term here to cut.
 //
-// WHAT THIS IS EXPECTED TO BUY, stated before the floor measures it so the prediction is falsifiable
-// rather than fitted afterwards: the per-claim cost of these three is mostly FIXED. Two points from
-// the earlier measurement -- 88 bytes at 534ms and 116 bytes at 618ms -- put the marginal cost near
-// 3ms/byte and imply ~285ms paid before a single byte of snippet exists. These cuts remove 9, 10 and
-// 19 bytes, so the predicted saving is tens of milliseconds against a row that needs 180. If the
-// floor lands them clearly under 500ms, this model is wrong in the useful direction and the cost is
-// superlinear in source size rather than fixed; if they land near 590, 505 and 625, the budget grain
-// is the defect and not the sources. Either way the floor decides it, because claim_batch cannot
-// measure this module at all -- it fails at the serve boundary described above.
-data quad_snippet: String = "module q\n\nfn f(x: List<Int>) -> Int {\n  fold(x, init: 0, f: fn(a, i) { list_append(left: a, right: i) })\n}\n"
+// WHAT THE COST ACTUALLY IS: a ~500ms per-claim FIXED front end -- language model plus tokenize,
+// parse and normalize, rebuilt in each claim's own evaluation frame -- invariant to the
+// subject-specific work these witnesses do. It is not a defect in these witnesses, and none of them
+// is planned on an ordinary floor: this module is a DeclinedLongModule whose cadence has been
+// declared-unrealized since falsifier.yml was deleted, so no green run has ever paid that cost. The
+// line reached them only because a change touched this file, which made them changed witnesses.
+// That is closed by the FLOOR-CHANGED-COST-0 long-home arm, not here.
+//
+// The sources are therefore restored to the forms that read clearly, since a shortened spelling that
+// buys nothing is redundant work with a refuted rationale attached.
+data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 
-data identity_snippet: String = "module g\n\nfn f(x: List<Int>) -> Int {\n  fold(x, init: 0, f: fn(a, i) { a })\n}\n"
+data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
 
-data unregistered_combiner_snippet: String = "module u\n\nfn f(x: List<Int>) -> Int {\n  fold(x, init: 0, f: fn(a, i) { m(a: a, b: i) })\n}\n"
+data unregistered_combiner_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { mystery_op(a: acc, b: x) })\n}\n"
 
 type NormalizedProbe
   = ProbeStageRejected { stage: String }
