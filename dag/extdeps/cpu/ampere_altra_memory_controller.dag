@@ -100,7 +100,8 @@ data altra_memory_max_data_rate: MegatransfersPerSecond = megatransfers_per_seco
 // AVL issue 1.15 and the gated Altra PCB Layout Guidelines were not readable from this session
 // (AVL locator HTTP 403). Those remain the next documents to search, not a licence to keep the
 // uncited 2933/2400 transcription. The empty 2DPC ceiling table in product.node_power_envelope
-// is the consuming reading of this absence; a second one-arm type here would be a decoration.
+// is the consuming reading of this absence as UNRESOLVED for a 2DPC effective rate, not a
+// default of this maximum; a second one-arm type here would be a decoration.
 
 // Four terabytes, as the datasheet states it for the whole processor rather than per channel.
 data altra_memory_max_capacity: ByteSize = byte_size(count: 4398046511104)

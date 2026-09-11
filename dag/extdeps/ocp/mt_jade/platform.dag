@@ -49,8 +49,9 @@ data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherb
 }
 
 // SECTION 7.1 FEATURE LIST, DIMM SPEED LINE, VERBATIM GRAIN: "DDR4-3200 (2DPC)". This is the
-// Ampere-contributed OCP reference platform's published 2DPC operating rate, not a rank derate
-// table. It corroborates the processor datasheet: 2DPC is stated at 3200, not at 2933 or 2400.
+// Ampere-contributed OCP reference platform's published 2DPC capability ceiling, not a
+// rank-dependent operating-rate table. It corroborates the processor datasheet: 2DPC is stated
+// at 3200 as a maximum, not at 2933 or 2400. It does not admit every 1R/2R/4R fill at 3200.
 data mt_jade_dimm_speed_at_two_dpc: MegatransfersPerSecond = megatransfers_per_second(count: 3200)
 
 // THE SOCKET ROLES ARE NAMED IN THE SPEC'S POWER-ON NARRATIVE. Socket 0 is the master socket
