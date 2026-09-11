@@ -835,17 +835,10 @@ fn v1_consumers_for(partition: V1ShimPartition) -> List<V1ConsumerRow> {
 }
 
 // THE LIVE POPULATION IS READ ONCE PER QUESTION. Every derivation below takes the population as a
-// parameter; the zero-argument forms exist for the operator instrument and read the tree exactly
-// once each. A caller asking several questions of one tree binds v1_consumer_population() once
-// and hands it down -- two calls are two scans of HEAD, which DESIGN section 2 prices as authored
-// duplication at a visible ancestor rather than something to cache.
-fn v1_consumers_of(p: ConsumerPopulation) -> List<V1ConsumerRow> {
-  consumer_population_rows(p: p)
-}
-
-fn v1_uncitable_consumers_of(p: ConsumerPopulation) -> List<V1UncitableConsumer> {
-  consumer_population_uncitable(p: p)
-}
+// parameter and reads it through the population accessors; the zero-argument forms exist for the
+// operator instrument and read the tree exactly once each. A caller asking several questions of
+// one tree binds v1_consumer_population() once and hands it down -- two calls are two scans of
+// HEAD, which DESIGN section 2 prices as authored duplication at a visible ancestor.
 
 // THE POPULATION THIS ROSTER CONSTITUTES TODAY, and it is deliberately not the Complete arm. Seven
 // producers were run and none of them joins the others. Filing this as Complete would be the rung
@@ -957,8 +950,8 @@ fn v1_blocking_count_of(p: ConsumerPopulation) -> V1BlockingCount {
 
 fn v1_blocking_counted(p: ConsumerPopulation) -> V1BlockingCount {
   V1BlockingCounted {
-    blocking: count(v1_blocking_consumers(rows: v1_consumers_of(p: p))) + count(v1_blocking_uncitable(uncitable: v1_uncitable_consumers_of(p: p))),
-    members: count(v1_consumers_of(p: p)) + count(v1_uncitable_consumers_of(p: p)),
+    blocking: count(v1_blocking_consumers(rows: consumer_population_rows(p: p))) + count(v1_blocking_uncitable(uncitable: consumer_population_uncitable(p: p))),
+    members: count(consumer_population_rows(p: p)) + count(consumer_population_uncitable(p: p)),
   }
 }
 
