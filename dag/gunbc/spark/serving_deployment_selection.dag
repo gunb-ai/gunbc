@@ -340,8 +340,6 @@ data v4_1_gb10_kv_layout: KvLayoutPolicy = KvFp8DsMlaLayout
 
 data v4_1_gb10_kv_layout_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173 #11022) v41_sm12_admitted_kv_cache_dtypes / v41_sm12_kv_cache_dtype_admitted, which record DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for DeviceCapability(12,1). Until that module is importable here, this row names the serving KV layout as a frontier rather than copying the admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout. Unset/auto kv_cache_dtype is a launch refusal on this backend, not a default. nvfp4_ds_mla is not reachable on sm_12x. SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr)
 
-data v4_1_publisher_fit_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_flash_recipe (clever-bat-173) for recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash publisher figures. Do not copy v41_flash_vram_minimum or the component table into this module. That page's v41_flash_vram_minimum is schema headroom on verified GB200/H200/MI350x runs, not a GB10 floor and not a Spark reading. SUFFICIENT FOR: any publisher-fit citation in this module is a declaration ref into that recipe, never a transcribed number." as NonEmptyStr)
-
 // V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
 // extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, cited to the SM12
 // frontier above: the dtype must be set (auto is refused). Higher-precision KV does not

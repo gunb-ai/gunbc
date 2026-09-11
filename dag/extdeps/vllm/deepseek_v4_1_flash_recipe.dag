@@ -103,16 +103,13 @@ fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
 // layer with their instrument and date (gunbc.spark.v41_published_image_observation), never here.
 // An extdeps module carries what upstream publishes; a resolved digest is what we found when we
 // looked.
-// ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
+// ── WHO CONSUMES THESE ROWS (DESIGN §3c) ────────────────────────────────────────────────────
 //
-// Several declarations here have no consumer in this change, and that is a DECLARED FRONTIER with a
-// named consumer rather than dangling modelling. gunbc.spark.serving_deployment_selection's V4.1
-// candidate work (DSV41-2, #11013) states that it will import this module rather than fork the
-// figures -- its profile already refuses to copy vram_minimum_gb or the admitted-layout set -- and it
-// cannot import a module that is not on the tree. The trigger is therefore this change landing, at
-// which point that lane's frontier rows become imports and these declarations acquire their readers.
-// The rows the witnesses already exercise are the ones a reader can check today; the rest are the
-// figures that lane asked for, in the shape it asked for them.
+// Documented image: gunbc.spark.v41_published_image_observation (tag-absent observation subject).
+// Checkpoint, headroom, vram minimum, verified-hardware, figure wrappers, fit sentence:
+// test.claim.spark.serving_deployment_selection_witness_test
+// v4_1_publisher_fit_is_schema_headroom_not_a_spark_floor — publisher schema, not a Spark floor.
+// Documented engine floor and install note: named later consumer DSV41-1 (loyal-ram-346) launch argv.
 data v41_flash_documented_image: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
 data v41_flash_documented_engine_floor: NonEmptyStr = "vLLM 0.30.0+" as NonEmptyStr
 data v41_flash_documented_install_note: NonEmptyStr = "No pip wheel serves this architecture, so the Install block only offers Docker" as NonEmptyStr
