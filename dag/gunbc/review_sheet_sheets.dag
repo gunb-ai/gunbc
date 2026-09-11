@@ -41,6 +41,7 @@ import gunbc.review_sheet_operator {
   ReviewSheetOperatorAdmitted,
   ReviewSheetAwaitingHuman,
   ReviewSheetNeedsApiEnable,
+  ReviewSheetEstateUnresolved,
   ReviewSheetOperatorRefused,
 }
 
@@ -74,6 +75,10 @@ fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
       ReviewSheetLiveNotAdmitted { admission: ReviewSheetAwaitingHuman { intervention: i } }
     ReviewSheetNeedsApiEnable { plan: p } =>
       ReviewSheetLiveNotAdmitted { admission: ReviewSheetNeedsApiEnable { plan: p } }
+    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
+      ReviewSheetLiveNotAdmitted {
+        admission: ReviewSheetEstateUnresolved { subject: s, reason: r },
+      }
     ReviewSheetOperatorRefused { reason: r } =>
       ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorRefused { reason: r } }
   }
