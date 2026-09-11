@@ -51,7 +51,9 @@ import extdeps.github.actions {
   RunnerSpec,
   checkout_action, setup_rust_action,
   github_event_name_pull_request,
-  github_event_name_push
+  github_event_name_push,
+  github_event_name_merge_group,
+  github_event_name_workflow_dispatch
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_heal_credential {
@@ -226,7 +228,49 @@ data witness_floor_workflow_name: String = "witnesses"
 // producer-absent standing yields NeverSupersedeRunning, so cancel-in-progress is literal false.
 // merge_group and heal revalidation stay immutable and separately keyed (mg-{sha},
 // heal-{expected_healed_sha}); other dispatch uses run_id.
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event_name == 'merge_group' && format('mg-{0}', github.sha) || github.event_name == 'workflow_dispatch' && github.event.inputs.expected_healed_sha != '' && format('heal-{0}', github.event.inputs.expected_healed_sha) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref || format('run-{0}', github.run_id) }}"
+fn github_event_name_equals_expr(event: String) -> String {
+  concat(concat("github.event_name == '", event), "'")
+}
+
+fn witness_floor_concurrency_group() -> String {
+  concat(
+    "witness-floor-${{ ",
+    concat(
+      github_event_name_equals_expr(event: github_event_name_merge_group),
+      concat(
+        " && format('mg-{0}', github.sha) || ",
+        concat(
+          github_event_name_equals_expr(event: github_event_name_workflow_dispatch),
+          concat(
+            " && github.event.inputs.",
+            concat(
+              ci_heal_expected_healed_sha_input_name,
+              concat(
+                " != '' && format('heal-{0}', github.event.inputs.",
+                concat(
+                  ci_heal_expected_healed_sha_input_name,
+                  concat(
+                    ") || ",
+                    concat(
+                      github_event_name_equals_expr(event: github_event_name_pull_request),
+                      concat(
+                        " && format('pr-{0}', github.event.pull_request.number) || ",
+                        concat(
+                          github_event_name_equals_expr(event: github_event_name_push),
+                          " && github.ref || format('run-{0}', github.run_id) }}"
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
@@ -2689,7 +2733,7 @@ data witness_floor_workflow: Workflow = {
   concurrency: Present {
     value: concurrency_of_policy(
       policy: witness_floor_concurrency_policy,
-      group: witness_floor_concurrency_group)
+      group: witness_floor_concurrency_group())
   },
   env: Present {
     value: [
