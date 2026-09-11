@@ -15,7 +15,7 @@ import product.fabric.work {
   resolve_output_obligations, ObligationsJudgedAtJobStart,
   OutputObligationsResolution,
 }
-import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused, CasPreconditionFailed, ExpectSlotAbsent, CasReadableAbsent }
+import std.durable_compare_and_set { CasStoreRefused, CasSlotObservationRefused, CasUnreadableReadRefused, CasPreconditionFailed, ExpectSlotAbsent, CasReadableAbsent }
 import gunbc.fabric_m0_completion {
   ObservationSubject,
   ObligationSubject,
@@ -191,7 +191,7 @@ fn our_slot() -> NonEmptyStr {
 }
 
 fn store_refused() -> CommitTransportOutcome {
-  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } }
+  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } } }
 }
 
 // THE POSITIVE CONTROL: a store that answered and a read that found the intended manifest.
@@ -302,7 +302,7 @@ test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool {
         recorded_manifest: digest_a(r: r),
         transport: StoreAnswered {
           slot: "fabric-m0/v1/commit/attempt-9",
-          outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
+          outcome: CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } },
         },
         observed: ManifestRead { reading: r },
       ) {
