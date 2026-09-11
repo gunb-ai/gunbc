@@ -31081,6 +31081,22 @@ struct ExprVarClassification<'a> {
     /// reconciliation identity is over the same population as the tally; walking per-module with
     /// per-module counters against a shared tally would compare two different denominators.
     module: String,
+    /// THE VALUE-POSITION SUBSET OF THIS MODULE'S FREE REFERENCES, accumulated for the module
+    /// currently being walked and drained by the caller at its end.
+    ///
+    /// `bare` — the collector's other output — is deliberately a UNION over several question
+    /// kinds, because its consumer asks only "which modules must this scope reach": a type
+    /// annotation's `String`, a record literal's type name, a variant pattern's constructor and
+    /// an expression's callee all widen the closure equally, and over-approximating there is
+    /// harmless.
+    ///
+    /// It is NOT harmless as a refusal's population. A wall keyed on the union would refuse a
+    /// TYPE whose spelling two modules share, and would refuse it at a site where the evaluator's
+    /// shared value slot is never consulted at all. So the value positions — a free `ExprVar` and
+    /// a call's callee, the two forms the interpreter resolves through that slot — are collected
+    /// separately here rather than filtered back out of the union afterwards, which could only
+    /// ever be an approximation of the walk that already knows the answer.
+    value_refs: std::collections::BTreeSet<String>,
 }
 
 impl ExprVarClassification<'_> {
@@ -31304,12 +31320,21 @@ fn collect_node_refs_inner(
                         .map(|(_, class)| *class);
                     if classify.classify(&node.name, bound_as, chain_receiver) {
                         bare.insert(node.name.clone());
+                        // A free `ExprVar` IS a value-position read: nothing binds it here, so
+                        // the interpreter resolves it through the file's declarations, then the
+                        // author's imports, then the shared slot.
+                        classify.value_refs.insert(node.name.clone());
                     }
                 }
             }
             ExprData::ExprCall { .. } => {
                 if !node.name.is_empty() {
                     bare.insert(node.name.clone());
+                    // The callee of a call is resolved through the same three steps as a free
+                    // variable — `lookup_fn_from` — so it is a value-position read too. A callee
+                    // bound by an enclosing binder is an `ExprVar` in receiver position and is
+                    // classified by the arm above; this name is the call's own target.
+                    classify.value_refs.insert(node.name.clone());
                 }
             }
             ExprData::ExprRecordLit { .. } => {
@@ -39890,7 +39915,14 @@ pub struct ReferenceClosureIndex {
     pub module_count: usize,
     pub decl_index: HashMap<String, std::collections::BTreeSet<String>>,
     pub module_names: std::collections::HashSet<String>,
+    /// EVERY name a module reaches, in any position — the closure question. Over-approximate by
+    /// design: see `ExprVarClassification::value_refs` for why that is right here and wrong as a
+    /// refusal's population.
     pub refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
+    /// The VALUE-POSITION subset — free variables and call targets, the two forms the
+    /// interpreter resolves through the shared slot. This is the population the bare-name
+    /// ambiguity census and its wall are keyed on.
+    pub value_refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
 }
 
 /// THE PREPARED SUBJECTS ONE FLOOR PROCESS BUILDS, BY DESIGN: the policy module's own closure
@@ -40103,6 +40135,8 @@ fn reference_closure_index(
     let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
     let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut refs_by_module: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut value_refs_by_module: HashMap<String, std::collections::BTreeSet<String>> =
+        HashMap::new();
     for m in prepared.graph.modules.iter() {
         let name = m.func_env.name.clone();
         module_names.insert(name.clone());
@@ -40117,6 +40151,7 @@ fn reference_closure_index(
         tally: &mut class_tally,
         unclassified: &mut unclassified,
         module: String::new(),
+        value_refs: std::collections::BTreeSet::new(),
         occurrences: 0,
         free_reference_edges: 0,
         bound_occurrences_suppressed: 0,
@@ -40144,6 +40179,7 @@ fn reference_closure_index(
         for chain in chains {
             flat.insert(format!("\u{1f}{}", chain.join(".")));
         }
+        value_refs_by_module.insert(name.clone(), std::mem::take(&mut classify.value_refs));
         refs_by_module.insert(name, flat);
     }
     // EXACT RECONCILIATION IS ASSERTED BEFORE THE INDEX IS PUBLISHED, not reported after it is
@@ -40213,6 +40249,7 @@ fn reference_closure_index(
         decl_index,
         module_names,
         refs_by_module,
+        value_refs_by_module,
     });
     eprintln!(
         "[floor-phase] phase=reference-closure-index state=completed wall_ms={} modules={} names={} subject={}",
@@ -40489,9 +40526,13 @@ fn claim_scope_for_with_memos(
     // statically over every reference site in the scope rather than over executed lookups.
     //
     // `reference_closure_index` already classified every `ExprVar` occurrence in the corpus into
-    // bindings and free references and published the free ones per module, so the reference
-    // sites are read off that index rather than re-derived by a second walk — the same index
-    // this function already consulted to build the scope's order.
+    // bindings and free references, so the sites are read off that index rather than re-derived
+    // by a second walk — the same index this function already consulted to build the scope's
+    // order. The VALUE-POSITION projection is the one consulted: `refs_by_module` unions type
+    // annotations, record-literal type names and variant constructors into the same set, and a
+    // wall keyed on that union would refuse a TYPE collision at a site where the evaluator's
+    // shared value slot is never consulted. `value_refs_by_module` carries exactly the two forms
+    // that slot resolves — a free variable and a call's target.
     //
     // The three-step resolution the interpreter performs is the filter, in its order: the
     // referring module's OWN declarations win first, then what its author's import closure
@@ -40501,15 +40542,10 @@ fn claim_scope_for_with_memos(
     if !ambiguous.is_empty() {
         for module in modules.iter() {
             let referring = module.func_env.name.as_str();
-            let Some(refs) = ref_index.refs_by_module.get(referring) else {
+            let Some(refs) = ref_index.value_refs_by_module.get(referring) else {
                 continue;
             };
             for name in refs.iter() {
-                // Qualified chains are carried in the same set behind a unit separator, and a
-                // qualified path never reaches the bare shared slot at all.
-                if name.starts_with('\u{1f}') {
-                    continue;
-                }
                 let Some(claimants) = ambiguous.get(name) else {
                     continue;
                 };
@@ -43076,6 +43112,7 @@ mod reference_collector_binder_fixtures {
             tally: &mut tally,
             unclassified: &mut unclassified,
             module: "fixture".to_string(),
+            value_refs: std::collections::BTreeSet::new(),
             occurrences: 0,
             free_reference_edges: 0,
             bound_occurrences_suppressed: 0,

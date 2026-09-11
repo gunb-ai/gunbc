@@ -7073,6 +7073,19 @@ pub fn run_required_floor(
             read_names.len(),
             ambiguous_claimants_len
         );
+        // THE ADJACENT CLASS THIS CENSUS DELIBERATELY DOES NOT COVER, named so that a zero here
+        // can never be read as "no ambiguity in the corpus". A value-position read is what the
+        // evaluator resolves through the shared slot; a TYPE whose spelling two modules share is
+        // a real ambiguity in a different channel, and the corpus carries a large deliberate
+        // instance of it -- String, Int, List, Bool, WireContract each declared by both `std.*`
+        // and its `v2.std.*` self-host copy. That double is owned by the v2 self-host
+        // replacement migration, which ends it by ending the double, and is not a rename this
+        // wall could ask for.
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] channel=value_position_only \
+             not_covered=type_position_name_collisions \
+             owner=v2_self_host_replacement_migration"
+        );
     }
     // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
     // the mean cost of a scope that cost anything; a scope whose modules were all resident from
