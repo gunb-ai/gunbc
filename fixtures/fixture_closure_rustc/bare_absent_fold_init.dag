@@ -1,0 +1,20 @@
+module fixture.closure.rustc_bare_absent_fold_init
+
+import v2.std.optional { Absent, Optional, optional_present }
+
+// Reduced rustc-red for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target
+// component (vii): a declared Optional return whose fold accumulator is initialized with the
+// VARIANT Absent rather than optional_absent(). The interpreter accepts this. Emission has
+// rendered Option<Absent> (E0425) and then failed to infer a later binder (E0282). That is
+// constructor realization, not self-host source: #10961 repaired production folds to
+// optional_absent(); this file keeps the exact bare-constructor shape so the class does not
+// vanish because production no longer exercises it.
+//
+// Consumer: ACT realization-fidelity (fixture_closure_rustc_verdict over this path). Do not
+// "fix" this file to optional_absent() -- that would delete the subject.
+
+fn fold_init_bare_absent(xs: List<Int>) -> Optional<Int> {
+  fold(xs, init: Absent, f: fn(_acc, e) {
+    optional_present(value: e)
+  })
+}
