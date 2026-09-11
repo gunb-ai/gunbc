@@ -3,7 +3,7 @@ module gunbc.spark.device_memory_envelope
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_min, parse_nat }
 import std.algebra { trim }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.resources { Network }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.remote_execution {
@@ -74,7 +74,7 @@ type DeviceMemoryEnvelopePolicy sole_constructor {
 data glm_native_device_memory_policy: DeviceMemoryEnvelopePolicy = DeviceMemoryEnvelopePolicy {
   maximum_fraction_basis_points: 9000,
   minimum_fraction_basis_points: 8000,
-  startup_reserve_bytes: 4294967296 as ByteSize,
+  startup_reserve_bytes: byte_size(count: 4294967296),
   granularity_basis_points: 100,
 }
 
@@ -182,8 +182,8 @@ fn classify_device_memory_reading(
               node_rank: node.node_rank,
               runtime_image: image,
               attempt: attempt,
-              free_bytes: pair.free_bytes as ByteSize,
-              total_bytes: pair.total_bytes as ByteSize,
+              free_bytes: byte_size(count: pair.free_bytes),
+              total_bytes: byte_size(count: pair.total_bytes),
             },
           }
         }

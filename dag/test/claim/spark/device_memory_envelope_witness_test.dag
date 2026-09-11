@@ -2,7 +2,7 @@ module test.claim.spark.device_memory_envelope_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat, parse_nat }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
@@ -29,9 +29,9 @@ import gunbc.spark.device_memory_envelope {
 // invented numbers would pass against a policy that had learned nothing, so these are transcribed from the
 // refusal and this is the one place in the corpus that is the right thing to do: they are a FIXTURE, an
 // input the test owns, not a measurement cited as a fact about the fleet.
-data total_bytes_gb10: ByteSize = 130662273024 as ByteSize
-data peer_free_bytes_after_transfer: ByteSize = 114691373793 as ByteSize
-data head_free_bytes_when_idle: ByteSize = 128000000000 as ByteSize
+data total_bytes_gb10: ByteSize = byte_size(count: 130662273024)
+data peer_free_bytes_after_transfer: ByteSize = byte_size(count: 114691373793)
+data head_free_bytes_when_idle: ByteSize = byte_size(count: 128000000000)
 
 data expected_image: NonEmptyStr = "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
 data expected_attempt: NonEmptyStr = "glm-native-tp4-cutover-4" as NonEmptyStr
@@ -222,7 +222,7 @@ test fn a_reading_from_a_previous_attempt_is_refused_as_stale() -> Bool {
 // answer there is refusal rather than a launch at whatever fraction happens to fit.
 test fn a_rank_with_room_for_weights_alone_is_below_the_floor() -> Bool {
   match standing_of(r: observation(
-    host: operator_host_srv10, rank: 1, free: 85899345920 as ByteSize,
+    host: operator_host_srv10, rank: 1, free: byte_size(count: 85899345920),
     image: expected_image, attempt: expected_attempt,
   )) {
     RankEnvelopeBelowFloor { node_rank: _, host: _, cap_basis_points: _, floor_basis_points: _ } => true

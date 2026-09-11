@@ -1,7 +1,7 @@
 module test.claim.spark.serving_arm_launch_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_arm {
@@ -12,7 +12,7 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch,
-  render_utilization_fraction,
+  render_utilization_fraction, parse_utilization_fraction, utilization_basis_points_in_argv,
   ArmNodeLaunch, ArmNode,
   arm_node_roster, ArmNodeRoster, ArmNodesResolved, ArmNodeRosterRefused,
 }
@@ -38,6 +38,93 @@ test fn the_ceiling_renders_as_written() -> Bool {
 
 test fn a_single_digit_percentage_is_padded_rather_than_shifted() -> Bool {
   render_utilization_fraction(basis_points: 900) == "0.09"
+}
+
+// ── THE FRACTION SURVIVES A ROUND TRIP, WHICH IS WHAT MAKES THE READBACK EXACT ────────────────
+//
+// THE IDEMPOTENCE CHECK RECOVERS THE RUNNING FRACTION FROM THE RUNNING ARGV AND REBUILDS A PLAN FROM IT, so
+// the parse and the render must be inverses over the whole range the resolution can produce. If they drift,
+// a converged deployment reads as divergent and the transaction withholds against a healthy endpoint --
+// which is precisely the weakening a ceiling-built comparison plan had, and the reason it was replaced.
+test fn the_fraction_survives_a_round_trip_at_every_wire_value() -> Bool {
+  count(filter(
+    nat_range_inclusive(lo: 1, hi: 100),
+    pct => match parse_utilization_fraction(s: render_utilization_fraction(basis_points: pct * 100)) {
+      Absent => true
+      Present { value: bp } => bp != pct * 100
+    })) == 0
+}
+
+// SPELLINGS THIS REPOSITORY DOES NOT WRITE ARE NOT RECOVERED. Each of these would produce a plan built at a
+// fraction nobody chose, and comparing an observed deployment against such a plan is worse than not comparing:
+// it would report agreement or divergence about the wrong subject.
+test fn a_one_digit_fraction_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "0.9") { Absent => true, Present { value: _ } => false }
+}
+
+test fn a_three_digit_fraction_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "0.900") { Absent => true, Present { value: _ } => false }
+}
+
+test fn a_leading_dot_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: ".840") { Absent => true, Present { value: _ } => false }
+}
+
+test fn a_non_digit_body_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "0.ab") { Absent => true, Present { value: _ } => false }
+}
+
+// THE TOP OF THE DOMAIN IS A REAL VALUE AND THE FIRST TWO RENDERERS BOTH GOT IT WRONG. 10000 basis points is
+// 1.00, and the round trip above is what found that it was being emitted as "0.100" -- a value the parser then
+// refused, which is how the pair caught itself. Neither the typecheck nor reading the function found it.
+test fn the_whole_fraction_renders_and_recovers() -> Bool {
+  render_utilization_fraction(basis_points: 10000) == "1.00"
+    && match parse_utilization_fraction(s: "1.00") {
+      Absent => false
+      Present { value: bp } => bp == 10000
+    }
+}
+
+// ABOVE 1.00 IS REFUSED BECAUSE THE ENGINE'S OWN FIELD IS `le=1`, so such a line could not have been accepted
+// by any engine and recovering one would mean believing a deployment that cannot exist.
+test fn a_fraction_above_one_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "2.00") { Absent => true, Present { value: _ } => false }
+}
+
+// ── FINDING THE FLAG IN A REAL LINE ───────────────────────────────────────────────────────────
+//
+// THE VALUE IS TAKEN FROM THE ACTUAL LAUNCH ARGV THIS MODULE RENDERS, not from a hand-typed list, so the
+// scanner is exercised against the line it will really meet -- including the fact that the flag is nowhere
+// near the front of it.
+test fn the_fraction_is_recovered_from_the_rendered_launch_line() -> Bool {
+  match admissible_tp4_plan() {
+    ArmLaunchRefused { cause: _ } => false
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match ls.first() {
+        Absent => false
+        Present { value: l } =>
+          match utilization_basis_points_in_argv(argv: l.argv) {
+            Absent => false
+            Present { value: bp } => bp == witness_fraction_basis_points
+          }
+      }
+  }
+}
+
+// A LINE WITHOUT THE FLAG YIELDS NOTHING RATHER THAN A DEFAULT, and a line ENDING in the flag is malformed
+// rather than defaulted -- the scan runs off the end instead of reaching for whatever is nearby.
+test fn an_argv_without_the_flag_recovers_nothing() -> Bool {
+  match utilization_basis_points_in_argv(argv: ["vllm", "serve", "--max-num-seqs", "1"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_trailing_flag_recovers_nothing() -> Bool {
+  match utilization_basis_points_in_argv(argv: ["vllm", "serve", "--gpu-memory-utilization"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 // THE SHAPE CONTROLS RUN ON AN ADMISSIBLE ARM, AND THAT IS A CONSEQUENCE OF THE WALL LANDING.

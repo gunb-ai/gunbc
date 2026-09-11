@@ -11,6 +11,7 @@ import gunbc.spark.remote_execution {
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
   glm_native_container_name, fabric_rail_interface_name,
+  utilization_basis_points_in_argv,
 }
 import gunbc.spark.glm_canary_converge { go_template_action }
 import gunbc.spark.native_deployment_readback {
@@ -66,6 +67,34 @@ fn rank_model_path_argv() -> List<String> {
     "docker inspect -f '", go_template_action(body: "json .Args"), "' ", glm_native_container_name as String,
     " | tr ',' '\\n' | grep -oE '/weights/[^\"]*|/model' | head -1",
   ], "")]
+}
+
+// ── THE RUNNING DEPLOYMENT'S OWN MEMORY FRACTION ───────────────────────────────────────────────
+//
+// AN IDEMPOTENCE CHECK MUST COMPARE AGAINST WHAT IS RUNNING, AND THE FRACTION IS PART OF WHAT IS RUNNING.
+// It is resolved per attempt from observed device supply, so two correct launches of the same arm can carry
+// different fractions -- which means a comparison plan built at any fixed value reads a converged deployment
+// as divergent. A previous revision of gunbc.spark.native_cutover_wet built that plan at the policy ceiling
+// and declared the consequence; this is the capability that retires it.
+//
+// IT IS READ FROM THE RANK'S OWN ARGV AND NOT FROM ANY POLICY, which is the same discipline the digest, the
+// model path and the NCCL interface already follow here: a readback that reaches for a configured value
+// agrees with itself. An unparseable or absent flag is Absent -- the caller then knows it cannot establish
+// what is running, which is a different state from having established that nothing is.
+func observe_rank_utilization_basis_points(ctx: SparkRemoteExecutionContext, node: ArmNode) -> Nat?
+  uses net: Network
+{
+  let running = spark_exec(ctx: ctx, host: node.host, argv: rank_running_argv())
+  if !remote_run_succeeded(r: running) || remote_run_stdout(r: running) != "true" {
+    none
+  } else {
+    let argvjson = spark_exec(ctx: ctx, host: node.host, argv: rank_argv_json_argv())
+    if !remote_run_succeeded(r: argvjson) {
+      none
+    } else {
+      utilization_basis_points_in_argv(argv: decode_json_string_array(raw: remote_run_stdout(r: argvjson)))
+    }
+  }
 }
 
 type RankObservationAttempt

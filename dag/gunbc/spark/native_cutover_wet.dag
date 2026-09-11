@@ -38,7 +38,7 @@ import gunbc.spark.native_launch_fold {
   RankStartupStanding, RankStillRunning, RankExitedBeforeReady, RankStartupUnreadable,
   rank_startup_text, first_failed_rank_startup,
 }
-import gunbc.spark.native_rank_observer { observe_native_population }
+import gunbc.spark.native_rank_observer { observe_native_population, observe_rank_utilization_basis_points }
 import gunbc.spark.post_acquisition_memory_remedy {
   MemoryRemedyOutcome, memory_remedy_text, release_population_page_cache,
 }
@@ -308,29 +308,30 @@ func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -
   }
 }
 
-// ── THE IDEMPOTENCE CHECK CANNOT CONSULT STAGE TWO, AND SAYING WHY MATTERS MORE THAN THE CODE ──
+// ── THE IDEMPOTENCE CHECK COMPARES AGAINST THE FRACTION THAT IS ACTUALLY RUNNING ───────────────
 //
-// A RESOLVED ENVELOPE IS A READING OF IDLE MACHINES, AND THE IDEMPOTENCE CHECK RUNS WHILE SOMETHING IS
-// SERVING. Whatever occupies these four hosts -- the incumbent on the head, or an already-converged native
-// rank population -- is holding the memory the resolution would measure, so an all-rank resolution taken
-// here refuses by construction whenever there is anything to be idempotent about. Resolving before the stop
-// and reusing it after would be worse: it would launch against a supply reading taken while a 76 GiB engine
-// was still resident.
+// IT CANNOT RESOLVE ONE OF ITS OWN, AND THAT IS THE CONSTRAINT THAT SHAPES THIS. A resolved envelope is a
+// reading of idle machines, and this check runs while something is serving -- the incumbent on the head, or an
+// already-converged native population. Either is holding the memory a resolution would measure, so an
+// all-rank resolution taken here refuses by construction exactly when there is something to be idempotent
+// about. Resolving before the stop and reusing it after would be worse still: it would launch against a
+// supply reading taken while a 76 GiB engine was resident.
 //
-// SO THE COMPARISON PLAN IS BUILT AT THE POLICY CEILING, AND THE CONSEQUENCE IS DECLARED RATHER THAN HIDDEN.
-// A native deployment already serving at a resolved fraction BELOW the ceiling will not match this plan's
-// argv and will be reported divergent rather than converged. That outcome is safe and not silent: with the
-// native arm serving, the incumbent is not running, `incumbent_is_retainable` is false, and the transaction
-// WITHHOLDS -- it cannot reach a destructive step. A person then reads "the incumbent is not observed
-// running" against a serving native endpoint, which is legible.
+// SO THE FRACTION IS RECOVERED FROM THE RUNNING DEPLOYMENT RATHER THAN CHOSEN. A previous revision built the
+// comparison plan at the policy ceiling and declared the consequence honestly -- a native arm serving at any
+// lower resolved fraction read as divergent, and the transaction then withheld because the incumbent was not
+// retainable. Safe, legible, and wrong about the world. gunbc.spark.native_rank_observer now reads the
+// `--gpu-memory-utilization` value out of the argv it already captures, so the comparison is exact for every
+// fraction the resolution can produce, and the ceiling-built plan is gone.
 //
-// DISSOLUTION TRIGGER, AND IT IS A CAPABILITY RATHER THAN AN ARTIFACT: the rank observer reading the
-// `--gpu-memory-utilization` value out of the RUNNING argv it already captures, so the comparison plan is
-// built at the fraction the running deployment actually has. That makes idempotence exact for every
-// resolved fraction, and this ceiling-built plan is deleted.
-fn idempotence_reference_envelope(attempt: String) -> ResolvedDeviceMemoryEnvelope {
+// AN UNRECOVERABLE FRACTION MEANS THERE IS NOTHING TO BE IDEMPOTENT ABOUT, WHICH IS AN ANSWER RATHER THAN A
+// FAILURE. The head has no running native container, or its line does not carry a fraction this repository
+// would have written -- either way no already-converged deployment has been established, so the transaction
+// proceeds to the ordinary path, where the incumbent check and the two envelope stages each get their say. It
+// does not proceed to a destructive step on the strength of this read.
+fn recovered_envelope(basis_points: Nat, attempt: String) -> ResolvedDeviceMemoryEnvelope {
   ResolvedForAttempt {
-    basis_points: glm_native_device_memory_policy.maximum_fraction_basis_points,
+    basis_points: basis_points,
     binding_node_rank: 0,
     policy: glm_native_device_memory_policy,
     attempt: attempt as NonEmptyStr,
@@ -343,10 +344,10 @@ func cutover_after_peer_preflight(
 ) -> NativeCutoverTerminal
   uses net: Network
 {
-  let reference = glm_native_tp4_launch_plan(envelope: idempotence_reference_envelope(attempt: attempt))
-  match reference {
-    ArmLaunchRefused { cause: c } => NativeCutoverWithheld { reasons: [c] }
-    ArmLaunchPlanned { lines: _, master: _ } => {
+  match observe_rank_utilization_basis_points(ctx: ctx, node: head) {
+    Absent => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
+    Present { value: running_bp } => {
+      let reference = glm_native_tp4_launch_plan(envelope: recovered_envelope(basis_points: running_bp, attempt: attempt))
       let already = accept_deployment(inspection: inspect_native_deployment(
         subject: "the native four-rank deployment" as NonEmptyStr,
         plan: reference,
