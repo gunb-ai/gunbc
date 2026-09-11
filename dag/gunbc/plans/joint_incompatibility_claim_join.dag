@@ -1,0 +1,143 @@
+module gunbc.plans.joint_incompatibility_claim_join
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
+
+fn status_block() -> MarkdownBlock {
+  quote(blocks: [
+    p(text: "**Status: SCOPE RECORD (checkpoint 0) — nothing is built.** Answers the four questions the 2026-09-11 brief asked before any mechanism may be proposed: the cut, the cost, the placement, the refusal. The operator picks a checkpoint in §7. This record is deliberately NOT a rung drop and NOT a restatement of `gunbc.plans.ci_merge_freshness`: that record owns the class's ceiling and already carries instance 1 as its §7; this one scopes a mitigation beneath that ceiling and cites the ceiling rather than re-arguing it."),
+  ])
+}
+
+fn section_1() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The class, and where it already lives"),
+    p(text: "Two individually-correct PRs, both approved, textually disjoint, `merge-tree` clean — jointly incompatible. Each PR's CI compiles ITS head against `main` at the moment its run started, never against its siblings, and squash-merge composes the two trees for the first time at the second merge. The first evidence is a third party's inherited red, and that party's first hypothesis is that the defect is theirs. Three occurrences on 2026-09-10 in gunb-ai/gunbc cost about an hour each."),
+    p(text: "**This is the stale-green class, not a new one.** `gunbc.plans.ci_merge_freshness` §2 names the hole (freshness, not coverage), §3 names the fix (a merge-time freshness requirement), and §7 already records instance 1 (#10933 × #10934). `gunbc.merge_admission` `receipt_is_admissible` is the landed predicate — a receipt is admissible only when its base tree hash equals the merge target's and its gate-roster hash is current — and it is held at `GatingComputedDeferred` behind the `gunbc.ci_failure_class` prerequisites recorded in that plan's §6. Under that predicate the class is unwritable by construction and everything scoped here is redundant. So the honest frame is: **the ceiling exists, is landed, and is deferred by ruling; this record scopes a cheaper partial mitigation for the interval, at a lower rung, and says which subclass it covers.**"),
+    p(text: "The third occurrence in the brief (gunbc-private #49 × #50, an hour-long run computed against a base #49 had already moved) is the freshness class with NO name-level signature at all — no join over any index sees it. It is listed here so that nobody cites this mitigation as covering it; it belongs entirely to the ceiling."),
+  ]
+}
+
+fn section_2() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Q1 — the cut: not deletion-versus-import, but claim-channel-versus-surface"),
+    p(text: "The brief asked whether the deletion/import asymmetry is the right cut or whether renames, narrowed variants and signature changes make it a partial wall that will be cited as coverage. Read from the evidence rather than the proposal, all three public instances are ONE finding kind — `DeclarationIntegrityKind::ImportMemberAbsent` from the declarations rider of the parse phase — and only one of the three was a deletion:"),
+    TableBlock {
+      header: row(cells: [cell(text: "Instance"), cell(text: "Removing side"), cell(text: "Claiming side"), cell(text: "What shrank")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "#10933 × #10934"), cell(text: "#10934 deletes `DurableOriginRead`, `DisposableCacheRead` from `gunbc.fabric_m0_commit`"), cell(text: "#10933 adds `test.claim.fabric_m0_publication_witness` importing both"), cell(text: "`variants` — a DELETION")]),
+        row(cells: [cell(text: "#10865 × colo NJ census"), cell(text: "#10865 renames `grain_admits_single_cabinet` to `grain_offers_single_cabinet`"), cell(text: "`test.claim.colo_nj_central_south_census` imports the old name"), cell(text: "`declared` — a RENAME, whose removal half is what fired")]),
+        row(cells: [cell(text: "#10925 × #10923"), cell(text: "#10923 rewrites `gunbc.secret_provision_actuator` and drops its OWN import of `mutation_status_is_commit_ambiguous` from `extdeps.transports.rest`"), cell(text: "#10925 imports that name FROM `gunbc.secret_provision_actuator`, which only re-exported it"), cell(text: "`reexported` — NO declaration was deleted or renamed anywhere")]),
+      ],
+    },
+    p(text: "So the right cut is the predicate the declarations rider already applies, `declaration_index` `import_surface_has` — `declared ∪ variants ∪ reexported` at `(module, name)` grain — taken as a DELTA: a PR's **surface removals** are the pairs in `import_surface_has` at its base and not at its head, whatever the edit that produced them (deletion, rename, re-export drop, a variant narrowed away). Keying on the edit kind would have caught one instance of three. Keying on the surface catches all three with one rule, and it is the same rule that reports the red on `main` afterwards, so the advisory and the eventual failure name the same fact."),
+    h3(text: "2.1 The general case is every claim channel the index carries, not only imports"),
+    p(text: "The window's other `main` repairs are the same shape through a different consumer channel: #10769 followed a RENAMED WITNESS in the cost-debt roster (a rostered row naming a `test fn`), and #10718 repaired planted-control absences (citations naming declarations). `ModuleDeclarationRecord` already carries three cross-module name-claim channels — `imports` (member claims), `cited` (`DeclarationRef` citations, checked by `cited_symbol_findings`), and the rostered rows joined by `rostered_row_join` — and each is already an identity join against the same surface in the parse phase. The join scoped here is therefore ONE rule applied per channel: **claims one open PR ADDS in channel C, against surface entries another open PR REMOVES, minus the claims the removing PR itself retires.** Imports are the first channel because they are the channel all three instances used and the one with a located member-grain claim; citations and rostered rows are the same join with the record's other two fields and are named here so the first landing does not read as the whole."),
+    h3(text: "2.2 What the index cannot see, named as residual rather than left to be found"),
+    ul(items: [
+      li(text: "**Field removal or rename** (the `observed_digest` → `reading` half of instance 1, which the declarations run never reached because it stopped on the imports). The removed side IS derivable — `decl_fields` gives each declaration's one-level field names, base minus head. The claiming side is NOT: the record's `referenced` set is an over-collecting name-occurrence walk (binders and labels land beside references), so a field-grain join yields a candidate list, not a finding — the superset-check trap of §5. Next-rung trigger: a resolved field-access channel in the record, which is the resolver's job and out of this scope."),
+      li(text: "**Arity and signature change.** The index records no parameter lists, so a caller in PR A of a function PR B re-signed is invisible to any join over it. Not derivable at this rung; this is the type wall's subject (`gunbc.rung_drop` records the application-argument typecheck as off), and naming it here keeps this record from being cited as covering it."),
+      li(text: "**Freshness without a name signature** (private #49 × #50) — outside every join; ceiling only."),
+    ]),
+    p(text: "**Rung honesty.** With the import channel landed this is a *mechanically preventable* (rung 2) partial over the `ImportMemberAbsent` subclass, and it must be reported as exactly that — the minimum across the class's paths stays where the ceiling record puts it until `receipt_is_admissible` gates. A wall over a declared subclass is admissible under §4b; the same wall cited as coverage of the class is the inflation §4b(1) forbids."),
+  ]
+}
+
+fn section_3() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Q2 — the cost: a set intersection over deltas that already exist, not a pairwise compile"),
+    p(text: "Three facts, each established from the code or by measurement, decide this before any shape is proposed."),
+    ul(items: [
+      li(text: "**(a) The per-PR delta is already computed, per run, in the witnesses lane.** `namespace_wave_admission` `evaluate` reconstructs a BASE `DeclarationIndex` beside the head index by carrying every head record the `git diff --name-status` did not touch and re-parsing only the touched paths at the merge base (with absence established from `ls-tree`, never inferred from a read failure). A PR's surface removals and added import claims are two set differences over records that function already holds. No new parse, no new ingestion."),
+      li(text: "**(b) The join is an intersection, not a product.** For a PR D with removals R(D) and each open sibling I with added claims A(I), the hit set is `A(I) ∩ R(D)` minus the claims D's own diff retires. Cost is linear in the summed delta sizes. Nothing is compiled pairwise; nothing is compiled at all beyond what the parse phase already does. The O(N²)-compile shape the brief feared is simply not the shape the index affords."),
+      li(text: "**(c) What is NOT free is obtaining the siblings' deltas**, because no run publishes its delta and no cross-run state exists. Two routes: RECOMPUTE — fetch each open PR's head (`refs/pull/N/head`, one `git fetch`), diff each against its merge base, parse the touched `.dag` files at both sides with `base_records`, and take the two differences; 30 open PRs today, tens of touched files each, parse-only, seconds. Or READ — each run publishes its own delta as a small artifact and a later run joins the published set; cheaper per run, but cross-run state with staleness semantics of its own, and no producer for it exists. Route RECOMPUTE is the honest first cut: it reads only facts git already holds and needs no new store."),
+    ]),
+    h3(text: "3.1 Measured on the last fourteen days of `main` (the scoping instrument)"),
+    p(text: "A retrospective join was run over the 374 first-parent commits on `origin/main` since 2026-08-28, computing per commit the surface removals and added import claims from the touched `.dag` files under the three sweep roots, and joining every pair within three days of each other. The instrument is a text-level approximation of `import_surface_has` written for this scope (declaration keywords, coproduct variants, import members); its intended home is a `gunbc` entry over the real index, which checkpoint 1 supplies so the number below is re-derivable rather than transcribed."),
+    TableBlock {
+      header: row(cells: [cell(text: "Join"), cell(text: "Pair hits"), cell(text: "Reading")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "Raw: `A(I) ∩ R(D)` over all pairs"), cell(text: "207"), cell(text: "the superset-check trap: a later deletion that also deletes or edits the importer in the SAME diff is not incompatibility — the remover saw the claim on `main` and handled it. A candidate list, not a detector.")]),
+        row(cells: [cell(text: "Minus claims the removing commit itself retires"), cell(text: "5"), cell(text: "4 of 5 are exactly the three brief instances (instance 1 is two names). The fifth is an ordering artefact: a THIRD commit retired the claim between the pair, which a join over the OPEN-PR set excludes by construction because a merged PR is not open. Recall over the window's `ImportMemberAbsent` reds on `main`: 3 of 3. No false positive among co-open pairs.")]),
+      ],
+    },
+    p(text: "So the predicate is discriminating at the one exclusion, and the exclusion is not a tuning knob: it is the statement that the join asks about the MERGED tree, and a claim the remover's own head already retired is not in that tree."),
+  ]
+}
+
+fn section_4() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Q3 — where it runs: no new job; a rider on the parse phase, advisory"),
+    p(text: "The required job roster is closed to growth without operator sign-off (DESIGN, Building & checks; `gunbc.rung_drop` `required_gate_bankruptcy`). The established shape for a check that needs no job is the RIDER: `rostered_row_join` runs inside the parse phase because it reads a membership fact only that phase's ingestion carries, and `required_ci_phase_roster` records that a rider owns no lane of its own. This join reads the same index, and its base-side reconstruction is the wave wall's, so it rides where they ride — the witnesses lane, `ParsePhase` — and adds no `RequiredCiPhase` variant."),
+    TableBlock {
+      header: row(cells: [cell(text: "Option"), cell(text: "Where the verdict is read"), cell(text: "What it needs"), cell(text: "Verdict")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "A — parse-phase rider, ADVISORY"), cell(text: "the run log, plus a `::warning::` annotation on the PR's checks tab (the one surface `contents: read` can write)"), cell(text: "the open-PR set: `pull-requests: read` on the emitted witnesses job (`gunbc.witness_floor_workflow` carries `contents: read` only today — a permission row, not a job) and a fetch of `refs/pull/N/head` for each"), cell(text: "**recommended first move**")]),
+        row(cells: [cell(text: "B — dashboard-side advisory at merge readiness"), cell(text: "where the merge decision is actually made"), cell(text: "the same join, computed outside this repository; no CI cost at all"), cell(text: "the better READER, but out of this repo's authority; named so the operator can choose it")]),
+        row(cells: [cell(text: "C — required, blocking"), cell(text: "the merge"), cell(text: "a measured hit rate first"), cell(text: "**refused as a first move** (brief); the ceiling gates here instead once its prerequisites clear")]),
+      ],
+    },
+    p(text: "**The freshness caveat, stated so it is not discovered.** A rider runs at push time, so its verdict is exactly as fresh as the green beside it: it sees the siblings open at that run and cannot see one opened after the PR's last push. Each pair gets two chances (either side's later run) — every instance here had both PRs open at the later side's run — but a PR that sits for hours after its last run, which is the stale-green situation itself, is not re-joined. That residual is the reason this is beneath the ceiling and not a substitute for it."),
+    p(text: "**Hit-rate instrument.** Advisory-first is honest only if the rate is measured: the retrospective of §3.1, re-expressed over the real index as a `gunbc` entry, is that instrument — run over `main` history it answers precision and recall for any window, without log mining. A checkpoint that flips anything to blocking cites that entry's output, never a count in prose."),
+  ]
+}
+
+fn section_5() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Q4 — the refusal: typed, located, and never `conflicts with an open PR`"),
+    p(text: "Per DESIGN §5 the arm names what would break and where. One finding per (removed surface entry × claiming site), never per pair:"),
+    ul(items: [
+      li(text: "**`removed`** — the `(module, name)` this PR's head no longer exports, and WHICH surface it left (`declared`, `variants`, or `reexported`), so a re-export drop reads as what it is."),
+      li(text: "**`claimed_by`** — the sibling PR number and head sha, the claiming module, the `in_declaration` the claim sits under, and the claim's `SourceLocation` (rel_path, offset) — the same located shape `DeclarationIntegrityFinding` renders today, so the advisory and the eventual `ImportMemberAbsent` on `main` name one site."),
+      li(text: "**`channel`** — `ImportMember` first; `CitedSymbol` and `RosteredRow` are the same record with the claim taken from the other two fields (§2.1)."),
+    ]),
+    p(text: "Three arms, and only the first is a hit. **`NotEvaluated`** when the open-PR set or a sibling head is unobservable — an API failure, a missing ref, a base that does not resolve — reported as ignorance with its cause, never as an empty hit set (the wave wall's lesson: absence is established from a listing, a read failure is not news). **`Clear`** names the denominators — how many open PRs, how many claims joined — so a green is legible as a scope, not silence. Under option A a hit reports and does not push a phase failure; the phase's verdict is unchanged by it, which is what advisory means here and is written on the arm rather than left to a flag."),
+  ]
+}
+
+fn section_6() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. gunbc-private: the same exposure, and the join is public-only today"),
+    ul(items: [
+      li(text: "The private witness workflow (`strategy.private_witness_workflow`) builds the PUBLIC seed at `main`, copies the private `dag/` to `public/private_overlay/dag`, and runs `gunbc run` entries over the composed roots. It has no parse phase and no `claim_executor --required-ci`, so no `DeclarationIndex` is ever built over the private corpus; and the overlay path is outside `DAG_PARSE_SWEEP_ROOTS` (`src/v1`, `dag`, `src/v2`), so even a parse sweep there would not see it. The overlay's own annotation names the dissolution — an extra `--source-root` outside the process workspace root — and that trigger is what makes the same records derivable for private."),
+      li(text: "Private merges with MERGE COMMITS (`Merge pull request #62`), not squash; the class is the same, since a merge commit composes the trees at the same moment a squash does."),
+      li(text: "**The larger private exposure is CROSS-REPO, and no join in this record reaches it.** 113 of the 114 private modules import from 77 distinct public modules. A public PR that shrinks a surface is never compiled against private at all — not before merge, not after — and private learns of it only when its own next run resolves against a `main` that has moved. That is the join of §2 with the private corpus standing as one more open sibling whose claims are the whole overlay's import set; it is derivable the day the sweep roots admit the overlay, and it is warm-badger-62's territory (#46 against the workflow, a compiler-hole scope against the public roster), so it is named here and not touched."),
+    ]),
+  ]
+}
+
+fn section_7() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Sequencing — the operator picks a checkpoint; none is built by this record"),
+    ul(items: [
+      li(text: "**Checkpoint 1 — the instrument.** A `gunbc` entry over the real `DeclarationIndex` that computes a commit's or a PR's surface-removal and added-claim deltas and joins a set of them, with the §5 finding shape and the retrospective mode over `main` history. Positive control: the three 2026-09-10 pairs as fixtures; discriminating RED: the exclusion arm on a pair whose remover retires the claim. This is the hit-rate instrument of §4 and the only artifact that makes any later number re-derivable."),
+      li(text: "**Checkpoint 2 — option A, advisory.** The rider in the parse phase joining against the open-PR set via route RECOMPUTE; the one emitted-workflow change is the `pull-requests: read` permission row. Reports, annotates, never pushes a phase failure. Its declared population is the `ImportMember` channel; `CitedSymbol` and `RosteredRow` are the same rider with the other two fields and land as their own checkpoints so each carries its own positive control."),
+      li(text: "**Checkpoint 3 — blocking, IF EVER.** Only from the instrument's measured precision over a stated window, and only if the ceiling is still deferred; if `receipt_is_admissible` gates first, checkpoint 3 is never built and checkpoint 2 dissolves with it."),
+    ]),
+    p(text: "What is refused as a first move, so it is not re-proposed: a new required job (roster closed); blocking on the join (rate unmeasured); a pairwise compile of open PRs (the shape §3 shows is unnecessary); and any framing of this join as the class's wall — the wall is the merge-time freshness requirement, landed and deferred by ruling, and this record retires with it."),
+  ]
+}
+
+fn joint_incompatibility_claim_join_body() -> List<MarkdownBlock> {
+  concat([status_block()],
+    concat(section_1(),
+      concat(section_2(),
+        concat(section_3(),
+          concat(section_4(),
+            concat(section_5(),
+              concat(section_6(), section_7())))))))
+}
+
+data joint_incompatibility_claim_join_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "gunbc.plans.joint_incompatibility_claim_join — no markdown for this slug has ever been committed at docs/plans/joint-incompatibility-claim-join.md; the .dag carrier is the authority, as a295e17415 ruled for its siblings." },
+  slug: "joint-incompatibility-claim-join",
+  title: "[SCOPE] Jointly-incompatible open PRs — a claim-channel × surface join over the declaration index, advisory-first",
+  body: joint_incompatibility_claim_join_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this record when either holds: the merge-time freshness requirement of gunbc.plans.ci_merge_freshness §3 is in force as a witnessed property (receipt_is_admissible gating), at which point every join scoped here is redundant and any landed rider is deleted with this record; or checkpoint 2 has landed and its instrument has measured a window, at which point this scope is superseded by the rider's own carrier and the plan is redundant.")
+  }
+}
