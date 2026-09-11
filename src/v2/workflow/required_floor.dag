@@ -170,17 +170,24 @@ fn required_floor_disposition_with_changed_selection(
 // exactly one thing -- the CPU ceiling's power to convert a REACHED verdict into a floor red,
 // for an identity whose expensiveness is already declared debt and whose author is present.
 //
-// AN ORDINARY CHANGED WITNESS IS UNAFFECTED. A changed identity that is NOT enrolled in the
-// cost-debt roster keeps the ordinary policy and still reds when it exceeds the CPU line, so
-// this is not a widening of the floor: no identity gains the override by being changed alone,
-// and none gains it by being expensive alone.
+// AN ORDINARY CHANGED WITNESS IS UNAFFECTED. A changed identity that is NEITHER cost-debt
+// rostered NOR long-home classified keeps the ordinary policy and still reds when it exceeds the
+// CPU line, so this is not a widening of the floor: no identity gains the override by being
+// changed alone, and none gains it by being expensive alone. The two conditions are one question
+// asked at two grains -- `changed_witness_expensiveness_is_declared` is the authority that joins
+// them -- so this sentence names both, and a reader who finds only the roster here is reading a
+// rule the implementation stopped following.
 type ChangedWitnessCostPolicy =
     OrdinaryChangedWitnessCostPolicy
   | ChangedCostDebtVerdictOnly
 
 // THE INTERSECTION, DERIVED ONCE. Both conditions are required and neither is a name test: the
-// selection fact comes from the diff attribution the floor already owns, and the membership fact
-// from the roster module's own `floor_cost_debt_holds`. A witness that is rostered but unchanged
+// selection fact comes from the diff attribution the floor already owns, and the expensiveness
+// fact from `changed_witness_expensiveness_is_declared`, which is
+// `floor_cost_debt_holds(identity)` OR `first_module_prefix_match(module, long_home_prefixes())`.
+// That second disjunct is why this function takes a module path as well as an identity: the long
+// home declares the same expensiveness structurally, per module, and consulting only the roster
+// left a changed witness in a long module on the armed line. A witness that is rostered but unchanged
 // takes no policy here at all -- it never becomes a claim, and its disposition remains
 // `DeclinedCostDebt` through `required_floor_site_disposition` above.
 // WHAT "ALREADY DECLARED TOO EXPENSIVE FOR THE ARMED LINE" MEANS, AND WHY IT WAS TWO NAMES.

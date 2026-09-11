@@ -817,9 +817,12 @@ test fn a_route_gap_with_no_wet_facts_at_all_still_blocks() -> Bool {
 // long home is the same declaration as a cost-debt row -- "not run on an ordinary floor, the
 // 500ms line cannot carry it" -- said per module instead of per identity. Before this arm the
 // identity fell through to the armed line: measured on gunbc#11004 at 6b153bf8, where touching
-// one long module planned three witnesses that were budget-refused at 503, 505 and 525ms BEFORE
-// reaching a verdict, none of which is planned on any ordinary floor. This control is red on the
-// code that shipped that run.
+// one long module planned three witnesses that were budget-refused BEFORE reaching a verdict, none
+// of which is planned on any ordinary floor. The instrument is that run's own floor receipt -- its
+// BUDGET-REFUSED announcements and the required-floor-claim-cost artifact beside them -- and the
+// figures are read from there rather than copied to here, because a transcribed number is
+// unreachable from the producer that owns it (DESIGN section 6). This control is red on the code
+// that shipped that run.
 test fn changed_long_module_witness_takes_the_verdict_only_policy() -> Bool {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
