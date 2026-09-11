@@ -40,9 +40,19 @@
 //! CLI flag and no required phase, and it is not on the emitted seed's public surface.
 //!
 //! WHAT THIS PHASE IS NOT. No baseline, no diagnostic count, no ratchet. Cargo's exit status is
-//! the whole verdict; warnings are not errors here. Pinning a diagnostic population measured on
-//! the current tree would be the tree-copied oracle DESIGN 5 rejects; an identity-grain debt
-//! contract over the emitted population is a separate construction with a separate argument.
+//! the whole verdict. Pinning a diagnostic population measured on the current tree would be the
+//! tree-copied oracle DESIGN 5 rejects; an identity-grain debt contract over the emitted
+//! population is a separate construction with a separate argument.
+//!
+//! A WARNING IS AN ERROR HERE, AND THE INVOCATION SAYS SO ITSELF. `run_cargo` sets RUSTFLAGS to
+//! the repository's own denial row (`gunbc.repo_self_build` `repo_self_warning_denial_rustflags`)
+//! on every spawn, so the verdict is the same on a workstation and on a runner. It used to
+//! inherit: CI's toolchain step defaults RUSTFLAGS to `-D warnings` and a workstation exports
+//! none, so the emitted compiler crate compiled clean locally and refused with status 101 in
+//! CI — and the required v2-native lane's receipt could not say which environment its
+//! "compiled" was true of. The lane now records the flags, the argv and rustc's identity on its
+//! receipt (`gunbc.witness_v2_native_route` `NativeRouteEmittedBuild`) and admission compares
+//! the flags against that same row.
 
 // CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
 // its count. Until this commit the generated crate root allowed `clippy::all` plus six
@@ -150,11 +160,17 @@ pub enum CargoVerdict {
     /// alone says only WHERE a fault was reported and never WHAT rustc refused, so a caller
     /// holding only `probe_line` passes on ANY refusal reported in the attributed file. The
     /// header is what lets a caller name the error class it expects.
+    /// `warning_count` is the number of `warning` diagnostic headers on stderr — rustc's
+    /// `warning: …` and cargo's own alike, counted by the same header scan that governs
+    /// attribution. Under the denial a rustc lint arrives as an `error` and stops the build, so
+    /// a non-zero count beside status 0 is a warning nobody denied (cargo's, a build script's);
+    /// the count is carried so a receipt can name it rather than swallow it.
     Completed {
         status: i32,
         stderr_tail: String,
         probe_line: Option<String>,
         probe_diagnostic: Option<String>,
+        warning_count: usize,
     },
 }
 
@@ -190,6 +206,7 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
             stderr_tail,
             probe_line,
             probe_diagnostic,
+            warning_count: _,
         } => format!(
             "Completed status={status} diagnostic={} line={} stderr_tail={stderr_tail}",
             probe_diagnostic.as_deref().unwrap_or("unattributed"),
@@ -757,6 +774,70 @@ fn attributed_diagnostic(
     (None, None)
 }
 
+/// The number of `warning` diagnostic headers on a cargo stderr, by the same line shape
+/// `attributed_diagnostic` reads (a trimmed line starting with `warning`). Pure, for the same
+/// reason: the count is receipt content and its scan must be testable without a toolchain.
+fn warning_header_count(stderr: &str) -> usize {
+    stderr
+        .lines()
+        .filter(|line| line.trim().starts_with("warning"))
+        .count()
+}
+
+/// The exact cargo invocation `run_cargo` spawns for a probe crate, as receipt content: the
+/// argv (program first) and the RUSTFLAGS value the spawn SETS. Built by the one function that
+/// also builds the `Command`, so the receipt cannot describe a different spawn than the one
+/// that ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProbeCargoInvocation {
+    pub argv: Vec<String>,
+    pub rustflags: String,
+}
+
+/// Mirror of `gunbc.repo_self_build` `repo_self_warning_denial_rustflags`: the lint arguments
+/// `["-D", "warnings"]` joined by a space, the form cargo tokenises RUSTFLAGS in. A seed mirror
+/// like every other literal this host carries — the `.dag` row is the authority the required
+/// v2-native lane's admission compares the receipt against, so a drift here reds that lane by
+/// `emitted_build_warnings_not_denied` rather than passing silently.
+pub(crate) const WARNING_DENIAL_RUSTFLAGS: &str = "-D warnings";
+
+/// The `Command` and its receipt description, from one construction. The environment variable
+/// name is cargo's own (`extdeps.rust.cargo` `RustflagsEnv`), and it is SET, never extended:
+/// an ambient RUSTFLAGS would make the verdict a fact about the runner rather than the crate.
+fn probe_cargo_command(
+    crate_dir: &Path,
+    workspace: &Path,
+) -> (std::process::Command, ProbeCargoInvocation) {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let manifest = crate_dir.join("Cargo.toml");
+    let argv: Vec<String> = vec![
+        cargo.clone(),
+        "build".to_string(),
+        "--release".to_string(),
+        "--manifest-path".to_string(),
+        manifest.display().to_string(),
+    ];
+    let mut command = std::process::Command::new(&cargo);
+    command
+        .args(&argv[1..])
+        .env("CARGO_TARGET_DIR", workspace.join("target"))
+        .env("RUSTFLAGS", WARNING_DENIAL_RUSTFLAGS)
+        .current_dir(crate_dir);
+    (
+        command,
+        ProbeCargoInvocation {
+            argv,
+            rustflags: WARNING_DENIAL_RUSTFLAGS.to_string(),
+        },
+    )
+}
+
+/// The receipt description of the spawn `run_cargo` would make for `crate_dir` — the same
+/// construction, without spawning.
+pub(crate) fn probe_cargo_invocation(crate_dir: &Path, workspace: &Path) -> ProbeCargoInvocation {
+    probe_cargo_command(crate_dir, workspace).1
+}
+
 /// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: the
 /// lane's first step is `cargo build --release -p v1-compiler --bins`, so the seed crate is
 /// already compiled there under that profile; a `check` or a private target dir would share no
@@ -772,15 +853,8 @@ pub(crate) fn run_cargo(
     workspace: &Path,
     attribution_symbol: &str,
 ) -> CargoVerdict {
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let mut command = std::process::Command::new(&cargo);
-    command
-        .arg("build")
-        .arg("--release")
-        .arg("--manifest-path")
-        .arg(crate_dir.join("Cargo.toml"))
-        .env("CARGO_TARGET_DIR", workspace.join("target"))
-        .current_dir(crate_dir);
+    let (mut command, invocation) = probe_cargo_command(crate_dir, workspace);
+    let cargo = &invocation.argv[0];
     match command.output() {
         Err(e) => CargoVerdict::DidNotComplete {
             detail: format!("spawning {cargo} failed: {e}"),
@@ -799,6 +873,7 @@ pub(crate) fn run_cargo(
                     stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
                     probe_line,
                     probe_diagnostic,
+                    warning_count: warning_header_count(&stderr),
                 }
             }
         },
@@ -1994,6 +2069,49 @@ mod tests {
     /// A NON-ZERO COMPLETED VERDICT MUST NAME WHAT RUSTC SAID. The native lane's refusal
     /// interpolates only this summary; a status-only render is how a cargo failure reached CI
     /// as `Completed status=101` with the diagnostic sitting unread in the same verdict.
+    /// THE SPAWN SETS THE DENIAL AND THE RECEIPT DESCRIBES THE SPAWN. The `Command`'s own
+    /// environment table is read back rather than the receipt trusted: a receipt that said
+    /// `-D warnings` beside a spawn that inherited would be the fabricated provenance this
+    /// construction exists to make unwritable.
+    #[test]
+    fn the_probe_cargo_spawn_sets_the_warning_denial_and_the_receipt_names_that_spawn() {
+        let crate_dir = Path::new("/tmp/probe-crate");
+        let workspace = Path::new("/tmp/workspace");
+        let (command, invocation) = probe_cargo_command(crate_dir, workspace);
+        let set_rustflags = command
+            .get_envs()
+            .find(|(name, _)| *name == std::ffi::OsStr::new("RUSTFLAGS"))
+            .and_then(|(_, value)| value.map(|v| v.to_string_lossy().to_string()));
+        assert_eq!(
+            set_rustflags.as_deref(),
+            Some(WARNING_DENIAL_RUSTFLAGS),
+            "RUSTFLAGS is SET on the spawn, not inherited"
+        );
+        assert_eq!(invocation.rustflags, WARNING_DENIAL_RUSTFLAGS);
+        let spawned: Vec<String> =
+            std::iter::once(command.get_program().to_string_lossy().to_string())
+                .chain(command.get_args().map(|a| a.to_string_lossy().to_string()))
+                .collect();
+        assert_eq!(
+            spawned, invocation.argv,
+            "the receipt argv is the spawned argv"
+        );
+        assert_eq!(
+            &invocation.argv[1..4],
+            ["build", "--release", "--manifest-path"],
+            "the operation is the release build of the probe manifest"
+        );
+        assert_eq!(probe_cargo_invocation(crate_dir, workspace), invocation);
+    }
+
+    #[test]
+    fn warning_headers_are_counted_and_errors_are_not() {
+        let stderr = "warning: unused import: `x`\n --> src/a.rs:1:5\nerror[E0308]: mismatched types\n --> src/b.rs:2:1\nwarning: `probe` (lib) generated 1 warning\n";
+        assert_eq!(warning_header_count(stderr), 2);
+        assert_eq!(warning_header_count("error: could not compile"), 0);
+        assert_eq!(warning_header_count(""), 0);
+    }
+
     #[test]
     fn cargo_verdict_summary_renders_the_diagnostic_a_non_zero_run_already_holds() {
         let attributed = CargoVerdict::Completed {
@@ -2001,6 +2119,7 @@ mod tests {
             stderr_tail: "error: could not compile `probe`".to_string(),
             probe_line: Some("--> src/fixture.rs:1:1".to_string()),
             probe_diagnostic: Some("error[E0308]: mismatched types".to_string()),
+            warning_count: 0,
         };
         let summary = cargo_verdict_summary(&attributed);
         assert!(
@@ -2016,6 +2135,7 @@ mod tests {
             stderr_tail: "error[E0433]: failed to resolve".to_string(),
             probe_line: None,
             probe_diagnostic: None,
+            warning_count: 0,
         };
         let summary = cargo_verdict_summary(&unattributed);
         assert!(
@@ -2028,6 +2148,7 @@ mod tests {
             stderr_tail: String::new(),
             probe_line: None,
             probe_diagnostic: None,
+            warning_count: 0,
         };
         assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
     }
@@ -2383,6 +2504,7 @@ error: could not compile `probe` (lib) due to 1 previous error
                 stderr_tail: String::new(),
                 probe_line: Some("--> src/fixture_probe.rs:13:5".to_string()),
                 probe_diagnostic: diagnostic.map(|value| value.to_string()),
+                warning_count: 0,
             },
         };
         let pair_with = |diagnostic: Option<&str>| FixtureDiscrimination {
@@ -2413,6 +2535,7 @@ error: could not compile `probe` (lib) due to 1 previous error
             stderr_tail: String::new(),
             probe_line: None,
             probe_diagnostic: None,
+            warning_count: 0,
         };
         for mutation in [
             MutationVerdict::NotAttempted {

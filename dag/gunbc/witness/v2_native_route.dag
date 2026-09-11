@@ -16,6 +16,11 @@ import v2.workflow.compile_door_ledger {
 }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.host_budget_source {
+  HostBudgetObservation, HostBudgetObserved, host_budget_source_bounds_this_process, host_budget_source_label
+}
+import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -445,6 +450,70 @@ type NativeRouteOldRouteControl
   | OldRouteFalsifierArmed { falsifier_identity: String }
   | OldRouteControlAbsent
 
+// THE EMITTED COMPILER'S BUILD, AS A RECEIPT RATHER THAN AS A SIDE EFFECT OF ONE. Before this row
+// the lane recorded that the emitted binary EXISTED (its path and content digest) and nothing about
+// the compilation that produced it, so "the emitted crate compiled" was true of whatever cargo the
+// runner happened to run under whatever RUSTFLAGS the toolchain step exported. Measured: CI's
+// toolchain action defaults RUSTFLAGS to `-D warnings`, a workstation exports none, and the same
+// crate compiled on one and refused with status 101 on the other with the receipt unable to say
+// why. The five facts here are the ones that decide whether one run's "compiled" can be compared
+// with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that spawn
+// (never inherited -- the value is the repository's own row, gunbc.repo_self_build
+// repo_self_warning_denial_rustflags, applied at the invocation), rustc's self-reported identity
+// in its keyed `--version --verbose` form (extdeps.rust.rustc rustc_version_verbose), cargo's own
+// exit status, and the count of `warning` diagnostic headers on its stderr. The count is carried
+// so the receipt names it, and admission requires it zero: under the denial a lint arrives as an
+// error and stops the build, so a non-zero count on a zero status can only be a warning rustc
+// did not own (cargo's own, or a build script's), which is still a warning the receipt would
+// otherwise have swallowed.
+type NativeRouteEmittedBuild {
+  cargo_argv: List<String>
+  rustflags: String
+  rustc_identity: String
+  exit_status: Int
+  warning_count: Int
+}
+
+// THE MEMORY BOUND THE RUN EXECUTED UNDER, OBSERVED, NEVER ASSUMED. The lane's process peaks in the
+// same order of magnitude as a self-hosted runner slot (the srv2 receipt at 2fb67b411a: peak RSS
+// 14.8 GB under a 16 GiB memory.max; srv1 run 34521851736: rss_kb_before=14124724 at the
+// emission-to-build handoff), and until this row nothing on the receipt said what the slot's kill
+// line WAS, so a run that fit was indistinguishable from a run that fit by luck. The observation
+// reuses gunbc.host_budget_source's own carrier (DESIGN 3: one authority for "what bounds this
+// process"): only a source that host_budget_source_bounds_this_process -- cgroup memory.max -- is
+// an enforced bound; memory.high is a reclaim throttle allocations may cross, and a Darwin
+// physical-memory reading is a fact about the machine. A host that exposes no enforced bound
+// yields MemoryBoundUnobserved carrying the resolver's own reason, and admission refuses it by
+// name: the budget is never fabricated from a planning request or a machine total (the BuildBuddy
+// HostBudgetUnreadable refusal of 2026-08-30 is the same rule one layer down).
+type NativeRouteMemoryBound
+  = MemoryBoundEnforced { observation: HostBudgetObservation }
+  | MemoryBoundUnobserved { reason: String }
+
+// THE LANE'S DECLARED MEMORY ENVELOPE AND THE RESERVE IT REQUIRES ABOVE IT, both as ByteSize
+// (std.measure owns the carrier, as it does for the lane's timeout). The envelope is the peak the
+// lane's process declares it may reach; it is 15 GiB, the self-hosted runner slot's own
+// memory.high (the line above which the kernel begins reclaim), and above both completed
+// measurements named on NativeRouteMemoryBound. The reserve is the headroom that must separate
+// the envelope from the ENFORCED bound: 1 GiB, the distance between that slot's memory.high and
+// its memory.max, which is what the kernel has to reclaim into before it kills. Admission holds
+// when observed_bound >= envelope + reserve; the receipt's summary prints all three and the
+// headroom the bound actually leaves, so a slot that fits exactly is stated as fitting exactly.
+// These are EXECUTION ENVELOPES, ratcheted down as the measured peak falls, never targets; the
+// telemetry line the lane prints beside its receipt (process peak RSS via getrusage ru_maxrss,
+// process-scoped so it undercounts the rustc children cargo spawns) is the instrument that
+// re-derives the peak on every run. The next-rung trigger for gating the envelope against a
+// measured peak is a RUN-SCOPED whole-slot peak: the runner service cgroup's memory.peak spans the
+// service's lifetime (read 10.3 GB at floor entry before any floor work ran, srv3-10,
+// 2026-09-10), so it measures the slot's history, not this run.
+data v2_native_lane_memory_envelope: ByteSize = byte_size(count: 16106127360)
+
+data v2_native_lane_memory_reserve: ByteSize = byte_size(count: 1073741824)
+
+fn v2_native_lane_memory_requirement() -> ByteSize {
+  byte_size(count: byte_size_count(b: v2_native_lane_memory_envelope) + byte_size_count(b: v2_native_lane_memory_reserve))
+}
+
 // THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
 // seed used ONLY to prepare the emitted compiler (recorded honestly — this job does not claim
 // native bootstrap); the emitted closure's identity; the executed binary's path AND content
@@ -468,6 +537,8 @@ type NativeRouteReceipt {
   true_control: Optional<NativeTestVerdict>
   malformed_control: NativeRouteMalformedControl
   old_route_control: NativeRouteOldRouteControl
+  emitted_build: NativeRouteEmittedBuild
+  memory_bound: NativeRouteMemoryBound
 }
 
 // ADMISSION IS THE CONTRACT, ONE AUTHORITY, ONE CLAUSE PER PREDICATE. The job greens only when
@@ -505,6 +576,12 @@ type NativeRouteAdmissionRefusalCause
   | TrueControlNotObserved
   | MalformedControlAcceptedByRoute
   | OldRouteControlNeverInstalled
+  | EmittedBuildRustcUnrecorded
+  | EmittedBuildWarningsNotDenied
+  | EmittedBuildNotClean
+  | MemoryBoundUnobservedOnHost
+  | MemoryBoundNotEnforced
+  | MemoryBoundBelowRequirement
 
 type NativeRouteAdmission
   = NativeRouteAdmitted
@@ -745,6 +822,75 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   }
 }
 
+// The build clauses read the emitted-build receipt and nothing else: rustc named itself; the
+// RUSTFLAGS the lane set are exactly the repository's denial row (equality, not containment --
+// a flag string that carries the denial plus something else is a different build environment
+// and the receipt must say so); and the build completed with status 0 and no warning header.
+fn native_route_emitted_build_rustc_recorded(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_build.rustc_identity != ""
+}
+
+fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_build.rustflags == repo_self_warning_denial_rustflags()
+}
+
+fn native_route_emitted_build_clean(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_build.exit_status == 0 && receipt.emitted_build.warning_count == 0
+}
+
+// The memory clauses: an enforced bound was observed; its source is one that bounds THIS process
+// (memory.max -- memory.high and a machine total refuse by name, however large); and it covers
+// the declared envelope plus reserve.
+fn native_route_memory_bound_observed(receipt: NativeRouteReceipt) -> Bool {
+  match receipt.memory_bound {
+    MemoryBoundEnforced { observation: _ } => true
+    MemoryBoundUnobserved { reason: _ } => false
+  }
+}
+
+fn native_route_memory_bound_enforced(receipt: NativeRouteReceipt) -> Bool {
+  match receipt.memory_bound {
+    MemoryBoundEnforced { observation: o } =>
+      match o {
+        HostBudgetObserved { source: source, bytes: _ } => host_budget_source_bounds_this_process(s: source)
+      }
+    MemoryBoundUnobserved { reason: _ } => false
+  }
+}
+
+fn native_route_memory_bound_covers_requirement(receipt: NativeRouteReceipt) -> Bool {
+  match receipt.memory_bound {
+    MemoryBoundEnforced { observation: o } =>
+      match o {
+        HostBudgetObserved { source: _, bytes: b } =>
+          byte_size_count(b: b) >= byte_size_count(b: v2_native_lane_memory_requirement())
+      }
+    MemoryBoundUnobserved { reason: _ } => false
+  }
+}
+
+// The receipt's own statement of its budget, printed by the lane beside the admission summary:
+// the observed bound and its source, the declared envelope and reserve, and the headroom the
+// bound leaves above the envelope -- a slot that fits exactly prints headroom equal to the
+// reserve, and one that does not fit prints the shortfall as a negative headroom rather than
+// hiding it behind the refusal cause.
+fn native_route_memory_budget_summary(receipt: NativeRouteReceipt) -> String {
+  match receipt.memory_bound {
+    MemoryBoundEnforced { observation: o } =>
+      match o {
+        HostBudgetObserved { source: source, bytes: b } =>
+          concat(
+            "memory bound=", to_string(byte_size_count(b: b)),
+            " bytes (", host_budget_source_label(s: source) as String, ")",
+            " envelope=", to_string(byte_size_count(b: v2_native_lane_memory_envelope)),
+            " reserve=", to_string(byte_size_count(b: v2_native_lane_memory_reserve)),
+            " headroom=", to_string(byte_size_count(b: b) - byte_size_count(b: v2_native_lane_memory_envelope))
+          )
+      }
+    MemoryBoundUnobserved { reason: r } => concat("memory bound unobserved: ", r)
+  }
+}
+
 fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
   let expected_red = floor_expected_red_roster()
   let route_gap = floor_route_gap_roster()
@@ -775,7 +921,13 @@ fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
     NativeRouteClauseCheck { holds: native_route_false_control_holds(receipt: receipt), cause: FalseControlNotObserved },
     NativeRouteClauseCheck { holds: native_route_true_control_holds(receipt: receipt), cause: TrueControlNotObserved },
     NativeRouteClauseCheck { holds: native_route_malformed_control_holds(receipt: receipt), cause: MalformedControlAcceptedByRoute },
-    NativeRouteClauseCheck { holds: native_route_old_route_closed(receipt: receipt), cause: OldRouteControlNeverInstalled }
+    NativeRouteClauseCheck { holds: native_route_old_route_closed(receipt: receipt), cause: OldRouteControlNeverInstalled },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_rustc_recorded(receipt: receipt), cause: EmittedBuildRustcUnrecorded },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_warnings_denied(receipt: receipt), cause: EmittedBuildWarningsNotDenied },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_clean(receipt: receipt), cause: EmittedBuildNotClean },
+    NativeRouteClauseCheck { holds: native_route_memory_bound_observed(receipt: receipt), cause: MemoryBoundUnobservedOnHost },
+    NativeRouteClauseCheck { holds: native_route_memory_bound_enforced(receipt: receipt), cause: MemoryBoundNotEnforced },
+    NativeRouteClauseCheck { holds: native_route_memory_bound_covers_requirement(receipt: receipt), cause: MemoryBoundBelowRequirement }
   ]
   let causes = fold_list(
     xs: checks,
@@ -815,6 +967,12 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     TrueControlNotObserved => "true_control_not_observed"
     MalformedControlAcceptedByRoute => "malformed_control_accepted_by_route"
     OldRouteControlNeverInstalled => "old_route_control_never_installed"
+    EmittedBuildRustcUnrecorded => "emitted_build_rustc_unrecorded"
+    EmittedBuildWarningsNotDenied => "emitted_build_warnings_not_denied"
+    EmittedBuildNotClean => "emitted_build_not_clean"
+    MemoryBoundUnobservedOnHost => "memory_bound_unobserved_on_host"
+    MemoryBoundNotEnforced => "memory_bound_not_enforced"
+    MemoryBoundBelowRequirement => "memory_bound_below_requirement"
   }
 }
 
