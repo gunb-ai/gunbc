@@ -168,7 +168,6 @@ type V2CompileObligation {
   witnesses: List<WitnessSubject>
   discriminating_red: NonEmptyStr
   positive_control: NonEmptyStr
-  route_reach: RouteReach
   ceiling: GuaranteeRung
   next_trigger: NextRungTrigger
   seed_escape: SeedEscape
@@ -436,9 +435,26 @@ fn native_standing(o: V2CompileObligation) -> PathExecution {
   }
 }
 
-data lens_native_route_reach: RouteReach = ReachedByNativeRoute {
-  driver: "the emitted SourceRootEvalDriver on the required-v2-native lane, which executes v2.compiler.compile compile_source_root_ingest_with_admission" as NonEmptyStr,
-  upstream_refusal: "every admitted subject on that lane refuses at resolve, upstream of validate_then_compile, so the door is entered by no subject and no enrolled gate is asked" as NonEmptyStr
+// REACH IS DERIVED TOO, AND FOR ONE COMMIT IT WAS THE LAST AUTHORED COLUMN LEFT. The head that
+// followed the lane's deletion repaired native_standing and left this value -- an authored
+// NonEmptyStr naming "the required-v2-native lane" -- feeding reached_by_native_route. So one
+// published column reported reach through a lane the column beside it reported as deleted. That is
+// the class this change files, committed inside the census, and worse than the annotation form the
+// ledger row describes because a fold read it.
+//
+// WHAT REACH MEANS NOW, AND WHY IT COLLAPSES. The axis asks which EXECUTING route names this
+// obligation's door as a consumer. With the required lane deleted the answer is none: the route
+// model, harness and admission authority survive and still enter compile_source_root_ingest_with_admission
+// when someone invokes them, but an operator-invoked instrument is not an executing route in the
+// sense this axis was built to distinguish. So reach and native standing now give the same answer
+// for every row, and the axis carries no information it did not already carry -- which is stated
+// rather than hidden, because an axis that has gone constant is worth noticing. It separates again
+// the day gunbc.rung_drop v2_native_route_off_the_merge_path retires and a required route names the
+// door once more.
+fn route_reach_of(o: V2CompileObligation) -> RouteReach {
+  NotNamedByAnyExecutingRoute {
+    note: "no route on a required path names this obligation's door: the v2 native route entered it until gunbc#11003 deleted the required-v2-native lane, and what survives is an operator-invoked instrument. gunbc.rung_drop v2_native_route_off_the_merge_path owns the trigger for its return" as NonEmptyStr
+  }
 }
 
 // A RUNG-DROP CITATION IS A TYPED REFERENCE, NOT A NAME. The first cut carried these as bare
@@ -452,7 +468,7 @@ fn rung_drop_ref(identity: String) -> DeclarationRef {
 }
 
 // THE SIX ROWS WHOSE ONLY REMAINING WALL IS THE NATIVE DOOR SHARE ONE TRIGGER, for the same reason
-// lens_native_route_reach is shared data: it is one capability, and six
+// the shared native trigger is one capability, and six
 // copies of it would drift on the first correction — five sites updated, one left behind, which is
 // the failure this ledger already carries as declared_trigger_names_a_term_that_is_not_the_cause.
 data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all")
@@ -491,7 +507,6 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.claim.complexity.accumulator_copy_roster_gate"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "TWO CAPABILITIES, AND NEITHER IS A FILE MOVE. First, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Second, the native lane enters the door. Until the first lands no required run refuses on a copied-accumulator tree; until the second lands the executed rung stays Mitigatable however green the interpreted side becomes"),
   seed_escape: SeedEscapeOpen {
@@ -524,7 +539,6 @@ data determinism_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
   seed_escape: SeedEscapeOpen {
@@ -552,7 +566,6 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
   seed_escape: SeedEscapeOpen {
@@ -592,7 +605,6 @@ data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.long.mandatory_tag_extdeps_corpus_test"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "THE CAPABILITY IS AN EXECUTING HOME FOR THIS GATE'S WITNESSES, and it is guarded twice over so a single edit satisfies nothing. The twelve gate functions must leave gunbc.witness_deferral_freeze — a freeze row is a declaration that the identity executes nowhere, and deleting it while the entry stays under the 'test/claim/long/' exclusion pattern would swap one silence for another — AND that exclusion must retire on its own terms, which means the corpus-grain walk these witnesses perform becomes affordable on the fold that would run it. Only then does mandatory_tag_enrolled_in_root_roster_rejects_violating_module refuse on a required run, and only then does the WallNow this row records have any executing evidence at all"),
   seed_escape: SeedEscapeOpen {
@@ -623,7 +635,6 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
       module_path: "v2.test.claim.undecidable_verdict_collapse_wall_test"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
   seed_escape: SeedEscapeOpen {
@@ -655,7 +666,6 @@ data fact_density_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_fact_density.fact_bundle_compile_lens_passes"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
   seed_escape: SeedEscapeOpen {
@@ -683,7 +693,6 @@ data unit_modeling_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
   seed_escape: SeedEscapeOpen {
@@ -711,7 +720,6 @@ data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
   seed_escape: SeedEscapeOpen {
@@ -751,7 +759,6 @@ data compile_door_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_application.empty_required_lenses_skip_gate"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "the acceptance path that compiles the corpus routes modules through validate_then_compile, so the two rosters are asked about authored source rather than about fixtures"),
   seed_escape: SeedEscapeOpen {
@@ -777,7 +784,6 @@ data primitive_index_by_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "any call reaching index_by in a tree handed to the determinism gate, which must refuse because nobody has answered the order question" as NonEmptyStr,
   positive_control: "the same tree with sorted_map_keys in place of index_by, which must be accepted as CanonicalOrder" as NonEmptyStr,
   witnesses: [],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "index_by's realization is read and the row is replaced by a classified order, at which point this census row deletes rather than being marked closed"),
   seed_escape: SeedEscapeOpen {
@@ -805,7 +811,6 @@ data primitive_map_keys_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "a production caller hands emitting trees to validate_then_compile, so a map_keys call on an emission path refuses instead of being classified by non-membership"),
   seed_escape: SeedEscapeOpen {
@@ -828,7 +833,6 @@ data primitive_map_values_obligation: V2CompileObligation = V2CompileObligation 
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
   ],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "the same production routing that closes the map_keys row closes this one; they are one trigger and are written twice only because they are two declared primitives"),
   seed_escape: SeedEscapeOpen {
@@ -865,7 +869,6 @@ data determinism_non_primitive_fold_obligation: V2CompileObligation = V2CompileO
   discriminating_red: "a tree whose declaration calls an order-exposing fold that is not a declared primitive — v1.05_emit_core_support unique_strings is the measured specimen — which the gate must refuse rather than classify Deterministic by non-membership" as NonEmptyStr,
   positive_control: "the same fold rewritten over a sorted key list, which must be accepted; without it a gate that refused every fold would satisfy the red above" as NonEmptyStr,
   witnesses: [],
-  route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "gunbc.rung_drop determinism_transitive_reachability is retired BY ITS OWN TRIGGER — a callee-edge walk whose cost is proportional to what it reaches rather than to the pool it is handed — so a non-primitive order-exposing fold is reachable from the declaration under test"),
   seed_escape: SeedEscapeOpen {
@@ -907,9 +910,6 @@ data realization_cost_fidelity_obligation: V2CompileObligation = V2CompileObliga
   discriminating_red: "a declaration whose authority declares one cost shape and whose emitted realization has another — v2.std.algebra list_append, O(n) declared and O(n^2) emitted, is the measured specimen — which some consumer must refuse" as NonEmptyStr,
   positive_control: "a declaration whose emitted realization matches its declared shape, which must be accepted; and the second specimen, list_snoc_item, whose realization is FASTER than its authority, must also be reported rather than silently passed, or the check is a one-sided ratchet rather than a fidelity comparison" as NonEmptyStr,
   witnesses: [],
-  route_reach: NotNamedByAnyExecutingRoute {
-    note: "no door carries this obligation, so no route names it" as NonEmptyStr
-  },
   ceiling: StructurallyGuaranteed,
   next_trigger: climbs_when(capability: "a declaration is authored that joins an authority's declared CostShape to the cost shape of the realization emitted for it, at which point this row gets a home and stops being a modeling obligation"),
   seed_escape: SeedEscapeOpen {
@@ -957,7 +957,7 @@ fn obligation_executes_interpreted(o: V2CompileObligation) -> Bool {
 }
 
 fn obligation_is_reached_by_the_native_route(o: V2CompileObligation) -> Bool {
-  match o.route_reach {
+  match route_reach_of(o: o) {
     ReachedByNativeRoute { driver: _, upstream_refusal: _ } => true
     NotNamedByAnyExecutingRoute { note: _ } => false
   }

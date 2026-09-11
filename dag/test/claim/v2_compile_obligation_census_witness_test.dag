@@ -22,8 +22,6 @@ import gunbc.v2_compile_obligation_census {
   standing_carries_premise,
   unverified_entry_premise,
   RouteGapHeld,
-  RouteReach,
-  NotNamedByAnyExecutingRoute,
   Home,
   HomeAuthority,
   SeedEscapeOpen,
@@ -95,10 +93,6 @@ fn non_executing_arm() -> PathExecution {
   RouteGapHeld { stall: fixture_stall }
 }
 
-fn fixture_reach() -> RouteReach {
-  NotNamedByAnyExecutingRoute { note: "fixture reach" as NonEmptyStr }
-}
-
 fn fixture_row(subject: WitnessSubject) -> V2CompileObligation {
   V2CompileObligation {
     identity: "fixture_row" as NonEmptyStr,
@@ -108,7 +102,6 @@ fn fixture_row(subject: WitnessSubject) -> V2CompileObligation {
     witnesses: [subject],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
     next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
@@ -125,7 +118,6 @@ fn closed_escape_fixture_row() -> V2CompileObligation {
     witnesses: [discovered_subject()],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
     next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeClosed { by: fixture_home },
@@ -258,7 +250,6 @@ fn over_ceiling_fixture_row() -> V2CompileObligation {
     witnesses: [discovered_subject()],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    route_reach: fixture_reach(),
     ceiling: Mitigatable,
     next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
