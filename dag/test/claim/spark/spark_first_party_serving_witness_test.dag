@@ -7,6 +7,8 @@ import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route { CompliancePostureRevision }
 import product.fabric.provider_admission {
   ProviderUseScope, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  DispositionStanding, DispositionCleared, DispositionNotEngaged,
+  DispositionRefused, DispositionUnresolved,
   refusal_reason, admit_provider_use,
 }
 import gunbc.spark.first_party_serving {
@@ -67,24 +69,32 @@ test fn the_first_party_scope_admits_and_the_permit_names_its_posture() -> Bool 
   }
 }
 
-// THE STOP CONDITION, EXECUTED. The three programs are recorded as CLEARED because
-// admit_provider_use requires that to mint, and the danger is that a reader takes them for
-// determinations somebody made. This row asserts what the permit actually carries: each evidence
-// reference names the declaration stating the program is NOT ENGAGED under first-party self-use.
-// If anyone later swaps one for a clearance row, this goes red.
-test fn every_use_program_evidence_names_the_not_engaged_declaration() -> Bool {
+// THE STOP CONDITION, EXECUTED, AND IT ASSERTS THE ARM RATHER THAN THE REFERENCE. Review 63981 is
+// right about why that distinction is the whole test: a row comparing only a DeclarationRef says
+// which declaration was cited, not what was CLAIMED, so editing the cited row's text into a real
+// clearance would leave it green. Matching DispositionNotEngaged cannot be satisfied that way --
+// a permit admitted on a clearance takes the other arm and this goes red -- which is what makes it
+// a wall rather than a name check.
+fn t_not_engaged_naming(d: DispositionStanding, basis_decl: NonEmptyStr) -> Bool {
+  match d {
+    DispositionNotEngaged { basis: b } =>
+      declaration_ref_eq(a: b, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: basis_decl as String))
+    DispositionCleared { evidence: _ } => false
+    DispositionRefused { cause: _ } => false
+    DispositionUnresolved { obligation: _ } => false
+  }
+}
+
+test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
   match spark_first_party_admission(
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
     ProviderUseDenied { decision: _, cause: _ } => false
     ProviderUseAdmitted { permit: p } =>
-      count(filter(p.evidence.sanctions_evidence, e =>
-        declaration_ref_eq(a: e, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_sanctions_not_engaged")))) == 1
-        && count(filter(p.evidence.export_evidence, e =>
-          declaration_ref_eq(a: e, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_export_not_engaged")))) == 1
-        && count(filter(p.evidence.prohibited_use_evidence, e =>
-          declaration_ref_eq(a: e, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_prohibited_use_not_engaged")))) == 1
+      t_not_engaged_naming(d: p.evidence.sanctions_standing, basis_decl: "spark_sanctions_not_engaged" as NonEmptyStr)
+        && t_not_engaged_naming(d: p.evidence.export_standing, basis_decl: "spark_export_not_engaged" as NonEmptyStr)
+        && t_not_engaged_naming(d: p.evidence.prohibited_use_standing, basis_decl: "spark_prohibited_use_not_engaged" as NonEmptyStr)
   }
 }
 

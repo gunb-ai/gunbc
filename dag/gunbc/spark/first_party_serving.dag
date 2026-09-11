@@ -12,7 +12,7 @@ import product.fabric.provider_route {
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
-  DispositionStanding, DispositionCleared, admit_provider_use,
+  DispositionStanding, DispositionNotEngaged, admit_provider_use,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.fleet_physical_inventory { operator_site }
@@ -189,23 +189,27 @@ data spark_operator_owned_hardware_agreement: FirstPartyUseProfile = FirstPartyU
   basis: "The agreement authority for this route is the operator's ownership of the hardware. There is no third-party contract to present because there is no third party; this row is what the scope names so that an agreement is a cited authority rather than an empty field.",
 }
 
-// ── THE THREE USE PROGRAMS, AND WHY EACH READS 'NOT ENGAGED' RATHER THAN 'CLEARED' ────────────
+// ── THE THREE USE PROGRAMS, AND WHY EACH IS 'NOT ENGAGED' RATHER THAN 'CLEARED' ───────────────
 //
-// This is the point the whole wall exists to protect, so it is stated in the VALUES and not only
-// here. admit_provider_use requires the prohibited-use, sanctions and export dispositions to be
-// DispositionCleared before a permit mints, and the tempting way to satisfy that is to write three
-// clearances -- which would be fabricated legal findings, the fail-open this gate closes. Nobody has
-// run a screening, no determination has been made, and none is claimed.
+// This is the point the whole wall exists to protect. admit_provider_use requires the
+// prohibited-use, sanctions and export dispositions to ADMIT before a permit mints, and the
+// tempting way to satisfy that is to write three clearances -- which would be fabricated legal
+// findings, the fail-open this gate closes. Nobody has run a screening, no determination has been
+// made, and none is claimed.
 //
-// WHAT IS ACTUALLY TRUE is narrower and is what each row below says: under first-party self-use
-// these programs have NO SUBJECT. Nothing is supplied to any party, nothing is exported, and nothing
-// crosses a border, because the turn begins and ends inside gunbc on hardware gunbc's operator owns
-// at a site in the operator's own home. The evidence each disposition carries is THIS POSTURE
-// DECLARATION and nothing else, so a reader following the reference arrives at the statement "not
-// engaged, because first-party self-use" rather than at a clearance somebody appears to have issued.
-// The moment the posture changes -- the moment a turn is served to anyone else -- these rows stop
-// describing the route, which is why they cite the posture that goes stale rather than standing on
-// their own.
+// AND THE FIRST SPELLING OF THIS MODULE TOOK EXACTLY THAT BAIT, which is why the remedy is upstream
+// rather than in a longer comment here. It wrote DispositionCleared and carried the honesty in
+// prose fields nothing matches on -- review 63981 is right that this differs from the fabricated
+// version only in prose, and that prose cannot discharge a machine claim (DESIGN 4c). The fix is
+// product.fabric.provider_admission's new DispositionNotEngaged arm, the ProviderPathAbsent /
+// ProviderPathUnread move applied to dispositions: it ADMITS, like a clearance, and it is not one,
+// so the two are told apart by matching.
+//
+// WHAT IS ACTUALLY TRUE is what each row below says: under first-party self-use these programs have
+// NO SUBJECT. Nothing is supplied to any party, nothing is exported, and nothing crosses a border,
+// because the turn begins and ends inside gunbc on hardware the operator owns at his own site. The
+// basis each disposition carries is the row stating that, and the moment the posture changes -- the
+// moment a turn is served to anyone else -- these rows stop describing the route.
 type UseProgramStanding {
   program: NonEmptyStr
   engagement: NonEmptyStr
@@ -231,20 +235,20 @@ data spark_export_not_engaged: UseProgramStanding = UseProgramStanding {
 }
 
 fn spark_prohibited_use_disposition() -> DispositionStanding {
-  DispositionCleared {
-    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_prohibited_use_not_engaged"),
+  DispositionNotEngaged {
+    basis: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_prohibited_use_not_engaged"),
   }
 }
 
 fn spark_sanctions_disposition() -> DispositionStanding {
-  DispositionCleared {
-    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_sanctions_not_engaged"),
+  DispositionNotEngaged {
+    basis: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_sanctions_not_engaged"),
   }
 }
 
 fn spark_export_disposition() -> DispositionStanding {
-  DispositionCleared {
-    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_export_not_engaged"),
+  DispositionNotEngaged {
+    basis: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_export_not_engaged"),
   }
 }
 
