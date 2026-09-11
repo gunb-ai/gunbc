@@ -1,0 +1,346 @@
+module test.claim.materialization_store_witness
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value }
+import std.cache_identity { CacheInterfaceId }
+import std.materialization_provider {
+  DeclaredInput, ArtifactRequest, ArtifactManifest,
+  NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
+  NativeModuleVerdictBundleSubject,
+  RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
+  request_key, request_kind, request_required_outputs,
+  output_module_test_verdicts, output_module_preparation_diagnostics,
+  output_universe_test_identity_population, output_universe_module_import_closures,
+  output_native_compiler_executable,
+}
+import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolumeRoot }
+import std.materialization_object {
+  ArtifactPayload, payload_part,
+  OpenedMaterializationStore,
+  StoreFault, StoreFaultUnreachable,
+  StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
+  StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
+  StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused,
+  StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared, StoreCommitSettled, StoreCommitRefused,
+  StoreObjectPublish,
+  store_commit_prepare, store_commit_settle, store_lookup_decide,
+  store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
+  store_commit_refusal_tag, store_lookup_fold,
+  encode_store_object, percent_encode_payload, percent_decode_payload,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  FilesystemExactPathRead, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  filesystem_exact_read, filesystem_create_new,
+}
+import extdeps.realization.materialization_store_local {
+  LocalStoreOpened, LocalStoreUnavailable,
+  LocalStoreNotInitialized, LocalStoreMarkerUnrecognized, LocalStoreMarkerUnavailable,
+  local_store_open_decide, store_marker_content, materialization_store_local_id,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HERMETIC CONTROLS FOR THE PROVIDER SPINE: the native route's three request families, and the
+// store semantics of std.materialization_object driven through its OBSERVATION coproducts, so every
+// lookup and commit arm executes on the floor with no filesystem. The same decisions run against a
+// real filesystem in test.claim.materialization_store_local_wet_witness; the two files are the
+// decision's evidence and the transport's evidence, and neither stands in for the other.
+//
+// Each RED direction is paired with the positive control that makes it discriminating: a corrupted,
+// wrong-kind, wrong-artifact, incomplete, truncated or unavailable object refuses, and the SAME
+// request over the uncorrupted object hits -- so a decision that refused everything would fail the
+// hit control, and one that served everything would fail every refusal.
+
+fn h(v: String) -> Fnv1a64Structural {
+  content_hash_atom(value: v as NonEmptyStr)
+}
+
+fn subject(module: String) -> NativeModuleVerdictBundleSubject {
+  NativeModuleVerdictBundleSubject {
+    route_binary_identity: h(v: "route-binary-1"),
+    module_identity: h(v: module),
+    canonical_module_import_closure_identity: h(v: "closure-1"),
+    ordered_test_identity_population: h(v: "t1,t2"),
+    eval_interpretation_identity: h(v: "eval-1")
+  }
+}
+
+fn bundle_req() -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(subject(module: "v2.test.alpha"))
+}
+
+fn universe_req() -> ArtifactRequest {
+  UniverseArtifactRequest {
+    tested_tree_identity: h(v: "tree-1"),
+    route_binary: DeclaredInput { ref: "route_binary_identity", digest: h(v: "route-binary-1") }
+  }
+}
+
+fn compiler_req() -> ArtifactRequest {
+  NativeCompilerArtifactRequest {
+    emitted_closure_identity: h(v: "tree-1"),
+    build_toolchain: DeclaredInput { ref: "build_toolchain_identity", digest: h(v: "route-binary-1") },
+    target_platform: DeclaredInput { ref: "target_platform_identity", digest: h(v: "x86_64-unknown-linux-gnu") }
+  }
+}
+
+fn bundle_payloads() -> List<ArtifactPayload> {
+  [
+    ArtifactPayload { id: output_module_test_verdicts, content: "v2.test.alpha.t1 pass\nv2.test.alpha.t2 fail 100% sure" },
+    ArtifactPayload { id: output_module_preparation_diagnostics, content: "" },
+  ]
+}
+
+fn universe_payloads() -> List<ArtifactPayload> {
+  [
+    ArtifactPayload { id: output_universe_test_identity_population, content: "v2.test.alpha.t1\nv2.test.alpha.t2" },
+    ArtifactPayload { id: output_universe_module_import_closures, content: "v2.test.alpha: v2.std.logic" },
+  ]
+}
+
+fn witness_store() -> OpenedMaterializationStore {
+  OpenedMaterializationStore {
+    provider: materialization_store_local_id,
+    instance: content_hash_of_value(value: "witness-store-instance-1")
+  }
+}
+
+fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
+  match store_commit_prepare(req: req, payloads: payloads) {
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _ } => o
+    StoreCommitNotPrepared { commit: _ } => ""
+  }
+}
+
+fn lookup_present(req: ArtifactRequest, object: String) -> StoreLookup {
+  store_lookup_decide(store: witness_store(), req: req, read: StoreObjectPresent { content: object })
+}
+
+// ---- request families
+
+test fn every_verdict_bundle_identity_is_load_bearing_on_the_key() -> Bool {
+  let base = subject(module: "v2.test.alpha")
+  let k = request_key(req: NativeModuleVerdictBundleRequest(base))
+  let variants = [
+    NativeModuleVerdictBundleSubject { route_binary_identity: h(v: "route-binary-2"), module_identity: base.module_identity, canonical_module_import_closure_identity: base.canonical_module_import_closure_identity, ordered_test_identity_population: base.ordered_test_identity_population, eval_interpretation_identity: base.eval_interpretation_identity },
+    NativeModuleVerdictBundleSubject { route_binary_identity: base.route_binary_identity, module_identity: h(v: "v2.test.beta"), canonical_module_import_closure_identity: base.canonical_module_import_closure_identity, ordered_test_identity_population: base.ordered_test_identity_population, eval_interpretation_identity: base.eval_interpretation_identity },
+    NativeModuleVerdictBundleSubject { route_binary_identity: base.route_binary_identity, module_identity: base.module_identity, canonical_module_import_closure_identity: h(v: "closure-2"), ordered_test_identity_population: base.ordered_test_identity_population, eval_interpretation_identity: base.eval_interpretation_identity },
+    NativeModuleVerdictBundleSubject { route_binary_identity: base.route_binary_identity, module_identity: base.module_identity, canonical_module_import_closure_identity: base.canonical_module_import_closure_identity, ordered_test_identity_population: h(v: "t2,t1"), eval_interpretation_identity: base.eval_interpretation_identity },
+    NativeModuleVerdictBundleSubject { route_binary_identity: base.route_binary_identity, module_identity: base.module_identity, canonical_module_import_closure_identity: base.canonical_module_import_closure_identity, ordered_test_identity_population: base.ordered_test_identity_population, eval_interpretation_identity: h(v: "eval-2") },
+  ]
+  let keys = variants |> map(s => request_key(req: NativeModuleVerdictBundleRequest(s)))
+  let same_again = request_key(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.alpha"))) == k
+  let all_apart = (keys |> any(x => x == k)) == false
+  let pairwise_apart = (keys |> any(x => (keys |> filter(y => y == x) |> count()) > 1)) == false
+  same_again && all_apart && pairwise_apart && (variants |> count()) == 5
+}
+
+// universe_req and compiler_req carry the SAME digests in their subject and first input; the
+// kind inside the key is what keeps them apart.
+test fn native_families_key_apart_over_identical_digests() -> Bool {
+  (request_key(req: universe_req()) == request_key(req: compiler_req())) == false
+    && (request_kind(req: universe_req()) == request_kind(req: compiler_req())) == false
+    && request_required_outputs(req: compiler_req()) |> any(o => o == output_native_compiler_executable)
+}
+
+// ---- lookup: the positive control and each refusal
+
+test fn a_committed_object_reads_back_as_a_hit_with_its_payloads() -> Bool {
+  let l = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: bundle_payloads()))
+  let payload_ok = match store_lookup_payload(l: l, id: output_module_test_verdicts) {
+    Present { value: v } => v == "v2.test.alpha.t1 pass\nv2.test.alpha.t2 fail 100% sure"
+    Absent => false
+  }
+  let empty_ok = match store_lookup_payload(l: l, id: output_module_preparation_diagnostics) {
+    Present { value: v } => v == ""
+    Absent => false
+  }
+  let receipt_ok = store_lookup_fold(
+    l: l,
+    hit: (a, ps, r) => r.request_key == request_key(req: bundle_req())
+      && r.provider == materialization_store_local_id
+      && match r.disposition { RealizationServed => true, RealizationCommitted => false, RealizationConvergedOnPriorCommit => false },
+    miss: k => false,
+    refused: (k, r) => false
+  )
+  store_lookup_is_hit(l: l) && payload_ok && empty_ok && receipt_ok
+}
+
+test fn an_absent_object_is_the_only_miss() -> Bool {
+  store_lookup_is_miss(l: store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectAbsent))
+}
+
+test fn an_unavailable_object_refuses_and_is_not_a_miss() -> Bool {
+  let l = store_lookup_decide(
+    store: witness_store(),
+    req: bundle_req(),
+    read: StoreObjectUnavailable { fault: StoreFault { class: StoreFaultUnreachable, detail: "I/O error" } }
+  )
+  store_lookup_refusal_tag(l: l) == "unavailable" && store_lookup_is_miss(l: l) == false
+}
+
+test fn a_corrupted_payload_is_an_integrity_refusal() -> Bool {
+  let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
+  let flipped = replace(good, "t1%20pass", "t1%20PASS")
+  (flipped == good) == false
+    && store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: flipped)) == "contract_wrong_content"
+    && store_lookup_is_hit(l: lookup_present(req: bundle_req(), object: good))
+}
+
+// the empty diagnostics part is recorded with size 0; claim 1 instead
+test fn a_tampered_part_size_is_an_integrity_refusal() -> Bool {
+  let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
+  let parts_line = join(["part", output_module_preparation_diagnostics as String, payload_part(payload: ArtifactPayload { id: output_module_preparation_diagnostics, content: "" }).digest.digest as String], " ")
+  let tampered = replace(good, concat(parts_line, " 0"), concat(parts_line, " 1"))
+  (tampered == good) == false
+    && store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: tampered)) == "contract_wrong_content"
+}
+
+test fn a_truncated_object_is_malformed_not_incomplete() -> Bool {
+  let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
+  let torn = replace(good, "\nend", "")
+  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: torn)) == "malformed"
+}
+
+// a universe artifact's object read where the verdict bundle's object belongs
+test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
+  let foreign = prepared_object(req: universe_req(), payloads: universe_payloads())
+  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: foreign)) == "contract_kind_mismatch"
+}
+
+test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact() -> Bool {
+  let other = prepared_object(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")), payloads: bundle_payloads())
+  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: other)) == "contract_wrong_artifact"
+}
+
+test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
+  let verdicts = ArtifactPayload { id: output_module_test_verdicts, content: "v2.test.alpha.t1 pass" }
+  let incomplete = encode_store_object(
+    manifest: ArtifactManifest {
+      kind: request_kind(req: bundle_req()),
+      request_key: request_key(req: bundle_req()),
+      parts: [payload_part(payload: verdicts)]
+    },
+    payloads: [verdicts]
+  )
+  store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: incomplete)) == "contract_incomplete"
+}
+
+// ---- commit: the door, and each settle arm
+
+test fn the_write_door_refuses_before_publishing() -> Bool {
+  let missing = store_commit_prepare(req: bundle_req(), payloads: [ArtifactPayload { id: output_module_test_verdicts, content: "x" }])
+  let undeclared = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_native_compiler_executable, content: "x" }]))
+  let repeated = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_module_test_verdicts, content: "y" }]))
+  preparation_tag(p: missing) == "contract_refused" && preparation_tag(p: undeclared) == "manifest_uninterpretable"
+    && preparation_tag(p: repeated) == "manifest_uninterpretable"
+    && preparation_tag(p: store_commit_prepare(req: bundle_req(), payloads: bundle_payloads())) == "prepared"
+}
+
+fn preparation_tag(p: StoreCommitPreparation) -> String {
+  match p {
+    StoreCommitNotPrepared { commit: c } => store_commit_refusal_tag(c: c)
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _ } => "prepared"
+  }
+}
+
+fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ContentHash {
+  match store_commit_prepare(req: req, payloads: payloads) {
+    StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: d } => d
+    StoreCommitNotPrepared { commit: _ } => request_key(req: req)
+  }
+}
+
+test fn commit_settles_only_on_a_verified_read_back() -> Bool {
+  let key = request_key(req: bundle_req())
+  let offered = offered_digest(req: bundle_req(), payloads: bundle_payloads())
+  let ours = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: bundle_payloads()))
+  let theirs = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: [
+    ArtifactPayload { id: output_module_test_verdicts, content: "v2.test.alpha.t1 fail" },
+    ArtifactPayload { id: output_module_preparation_diagnostics, content: "" },
+  ]))
+  settle_tag(key: key, offered: offered, publish: StoreObjectPublished, read_back: ours) == "committed"
+    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: ours) == "converged_on_prior_commit"
+    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: theirs) == "conflict"
+    && settle_tag(key: key, offered: offered, publish: StoreObjectPublished, read_back: StoreLookupMiss { key: key }) == "read_back_refused"
+    && settle_tag(key: key, offered: offered, publish: StoreObjectOccupied, read_back: lookup_present(req: bundle_req(), object: "garbage")) == "read_back_refused"
+    && settle_tag(key: key, offered: offered, publish: StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: "ENOSPC" } }, read_back: ours) == "publish_refused"
+}
+
+fn settle_tag(key: ContentHash, offered: ContentHash, publish: StoreObjectPublish, read_back: StoreLookup) -> String {
+  store_commit_refusal_tag(c: store_commit_settle(
+    store: witness_store(), prepared_key: key, offered_digest: offered, publish: publish, read_back: read_back))
+}
+
+test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
+  let object = prepared_object(req: bundle_req(), payloads: bundle_payloads())
+  let other_store = OpenedMaterializationStore { provider: "some_other_realization" as CacheInterfaceId, instance: content_hash_of_value(value: "other-instance") }
+  let a = store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectPresent { content: object })
+  let b = store_lookup_decide(store: other_store, req: bundle_req(), read: StoreObjectPresent { content: object })
+  match a {
+    StoreLookupHit { artifact: _, payloads: _, receipt: ra } =>
+      match b {
+        StoreLookupHit { artifact: _, payloads: _, receipt: rb } =>
+          ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
+            && (ra.provider == rb.provider) == false && (ra.store_instance == rb.store_instance) == false
+        StoreLookupMiss { key: _ } => false
+        StoreLookupRefused { key: _, refusal: _ } => false
+      }
+    StoreLookupMiss { key: _ } => false
+    StoreLookupRefused { key: _, refusal: _ } => false
+  }
+}
+
+test fn payload_encoding_round_trips_its_own_delimiters() -> Bool {
+  let s = "a %0A b\n%25 %20\n\nend"
+  percent_decode_payload(s: percent_encode_payload(s: s)) == s
+    && string_contains(s: percent_encode_payload(s: s), pattern: "\n") == false
+    && string_contains(s: percent_encode_payload(s: s), pattern: " ") == false
+}
+
+// ---- the transport folds and the open decision
+
+test fn the_error_kind_channel_separates_absent_from_unreadable() -> Bool {
+  let absent = match filesystem_exact_read(path: "/p", content: "", success: false, error: "No such file", error_kind: "not_found") {
+    FilesystemExactPathAbsent { path: _ } => true
+    _ => false
+  }
+  let unreadable = match filesystem_exact_read(path: "/p", content: "", success: false, error: "denied", error_kind: "permission_denied") {
+    FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => true
+    _ => false
+  }
+  let unrecognized = match filesystem_exact_read(path: "/p", content: "", success: false, error: "?", error_kind: "") {
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => true
+    _ => false
+  }
+  let occupied = match filesystem_create_new(path: "/p", success: false, error: "exists", error_kind: "already_exists") {
+    FilesystemCreateTargetOccupied { path: _ } => true
+    _ => false
+  }
+  let refused = match filesystem_create_new(path: "/p", success: false, error: "denied", error_kind: "permission_denied") {
+    FilesystemCreateRefused { path: _, kind: _, error: _ } => true
+    _ => false
+  }
+  absent && unreadable && unrecognized && occupied && refused
+}
+
+// a durable store's marker is not an ephemeral store's marker: a scratch root holding it refuses
+test fn a_store_opens_only_on_its_own_marker() -> Bool {
+  let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
+  let marker = store_marker_content(root: root, instance_label: "witness")
+  let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }) {
+    LocalStoreOpened { root: _, store: s, durability: _ } => s.provider == materialization_store_local_id
+    LocalStoreUnavailable { root_path: _, cause: _ } => false
+  }
+  let uninitialized = match local_store_open_decide(root: root, marker_read: FilesystemExactPathAbsent { path: "/m" }) {
+    LocalStoreUnavailable { root_path: _, cause: c } => match c { LocalStoreNotInitialized { marker_path: _ } => true, _ => false }
+    LocalStoreOpened { root: _, store: _, durability: _ } => false
+  }
+  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot, instance_label: "witness") }) {
+    LocalStoreUnavailable { root_path: _, cause: c } => match c { LocalStoreMarkerUnrecognized { marker_path: _ } => true, _ => false }
+    LocalStoreOpened { root: _, store: _, durability: _ } => false
+  }
+  opened && uninitialized && foreign
+}

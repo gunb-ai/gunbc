@@ -14036,6 +14036,10 @@ mod write_file_create_new_tests {
         for r in results.iter().filter(|r| r.is_err()) {
             let e = r.as_ref().unwrap_err();
             assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+            // Every loser reaches the `error_kind` channel as the occupied arm, which is what lets
+            // a put-if-absent consumer (std.materialization_object store_commit_settle) read back
+            // and converge instead of refusing.
+            assert_eq!(super::io_error_kind_name(e), "already_exists");
         }
         assert!(path.exists(), "the winner's target must be published");
         assert_eq!(std::fs::read(&path).expect("target").len(), payload.len());
@@ -14159,7 +14163,24 @@ struct FileResult {
     byte_count: i64,
     path: String,
     error: String,
+    // The host error's kind, projected onto extdeps.filesystem.filesystem_io FilesystemFailureKind's
+    // closed names ("" on success). Carried so a consumer can separate NotFound from
+    // PermissionDenied / AlreadyExists without reading `error`'s text.
+    error_kind: String,
     content: String,
+}
+
+/// The one projection from a host `std::io::Error` onto the `error_kind` channel's closed roster
+/// (extdeps.filesystem.filesystem_io admit_filesystem_failure_kind). Every kind outside the three
+/// named ones is "other" -- the host still distinguished it, but no consumer has asked for it yet.
+fn io_error_kind_name(e: &std::io::Error) -> String {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => "not_found",
+        std::io::ErrorKind::AlreadyExists => "already_exists",
+        std::io::ErrorKind::PermissionDenied => "permission_denied",
+        _ => "other",
+    }
+    .to_string()
 }
 
 fn dispatch_file(
@@ -14212,6 +14233,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: String::new(),
+                        error_kind: String::new(),
                         content: String::new(),
                     }),
                     Err(e) => Ok(FileResult {
@@ -14219,6 +14241,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14238,6 +14261,7 @@ fn dispatch_file(
                                 byte_count: content.len() as i64,
                                 path,
                                 error: String::new(),
+                        error_kind: String::new(),
                                 content,
                             })
                         }
@@ -14246,6 +14270,7 @@ fn dispatch_file(
                             byte_count: 0,
                             path,
                             error,
+                            error_kind: "other".to_string(),
                             content: String::new(),
                         }),
                     },
@@ -14254,6 +14279,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14281,6 +14307,7 @@ fn dispatch_file(
                         byte_count,
                         path,
                         error: String::new(),
+                        error_kind: String::new(),
                         content: String::new(),
                     }),
                     Err(e) => Ok(FileResult {
@@ -14288,6 +14315,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14315,6 +14343,7 @@ fn dispatch_file(
                         byte_count,
                         path,
                         error: String::new(),
+                        error_kind: String::new(),
                         content: String::new(),
                     }),
                     // The refusal carries the host's message verbatim and does NOT classify itself.
@@ -14326,6 +14355,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14368,6 +14398,7 @@ fn dispatch_file(
                 byte_count,
                 path,
                 error: String::new(),
+                error_kind: String::new(),
                 content: String::new(),
             }),
             Err(e) => Ok(FileResult {
@@ -14375,6 +14406,7 @@ fn dispatch_file(
                 byte_count: 0,
                 path,
                 error: format!("{}", e),
+                error_kind: io_error_kind_name(&e),
                 content: String::new(),
             }),
         }
@@ -14389,6 +14421,7 @@ fn dispatch_file(
                 byte_count: s.len() as i64,
                 path,
                 error: String::new(),
+                error_kind: String::new(),
                 content: s,
             }),
             Err(e) => Ok(FileResult {
@@ -14396,6 +14429,7 @@ fn dispatch_file(
                 byte_count: 0,
                 path,
                 error: format!("{}", e),
+                error_kind: io_error_kind_name(&e),
                 content: String::new(),
             }),
         }
@@ -14434,6 +14468,7 @@ fn map_file_outputs(
             "bytes_written" | "bytes" | "byte_count" => Value::Int(result.byte_count),
             "path" => str_value(result.path.clone()),
             "error" => str_value(result.error.clone()),
+            "error_kind" => str_value(result.error_kind.clone()),
             "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
@@ -22828,7 +22863,9 @@ mod the_emitted_listing_producer_refuses_too {
             &src,
             format!(
                 "fn main() {{\n    let file_path = std::env::args().nth(1).unwrap();\n    \
-                 let (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = {}\n{}\n}}\n",
+                 {}\n    \
+                 let (file_success, file_content, file_error, file_byte_count, file_error_kind): (bool, String, String, i64, String) = {}\n{}\n}}\n",
+                crate::v1_compiler_emit_rust::file_io_error_kind_fn(),
                 crate::v1_compiler_emit_rust::file_list_match_expr(),
                 expectations
             ),

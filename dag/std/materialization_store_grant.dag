@@ -1,0 +1,120 @@
+module std.materialization_store_grant
+
+import std.types { String, Bool, List }
+import std.access { AccessDecision }
+import std.effect_grant {
+  Verb, Read, Write,
+  filesystem_position,
+  NamespacePosition,
+  RealTransport,
+  LifecycleByConvention,
+  Grant, Envelope,
+  admit_effect,
+}
+import std.filesystem_path_grant { absolute_path_position }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
+
+// THE DURABLE ROOT GRANT FOR THE MATERIALIZATION STORE, AND WHY IT IS A COPRODUCT RATHER THAN A PATH.
+//
+// std.artifact_store_scratch_grant admits /tmp/gunbc_* roots, which are frame-owned scratch: on a
+// Firecracker runner the guest /tmp dies with the attempt, so a store rooted there is a per-attempt
+// cache and can never discharge a reuse obligation whose lifetime spans runs (DESIGN section 2:
+// retention must span the obligated lifetime). The native CI job needs a store that outlives the
+// attempt, so its root is a gunbc-owned PERSISTENT HOST VOLUME reached through the declared guest
+// boundary, not guest /tmp.
+//
+// The caller does not supply that path. `DurableHostVolumeRoot` carries no field: the durable root
+// is the one declared datum below, so a consumer that asks for durability cannot be handed an
+// arbitrary directory (including /tmp) under that name. `WitnessScratchRoot` is the only arm that
+// takes a path, it admits only the existing /tmp/gunbc_* scratch grant, and its durability is
+// DERIVED as ephemeral -- so an executed control can exercise the real store realization in a
+// throwaway directory without that directory ever being able to answer "durable".
+//
+// DECLARED FRONTIER, stated so the grant is not read as the whole boundary: this module grants the
+// guest-side PATH. Attaching the gunbc-owned host volume as a Firecracker drive and mounting it at
+// that path inside the guest is the runner lane's act (gunbc.runner runner_attempt_launch attaches
+// drives today; it attaches no materialization-store volume yet). Until that attachment lands, a
+// durable-root open on a runner guest finds no initialized store and REFUSES as unavailable
+// (extdeps.realization.materialization_store_local), never falls back to scratch -- there is no
+// shadow store. TRIGGER: the runner attempt launch attaches the persistent host volume at
+// materialization_store_durable_root_path.
+//
+// LIFECYCLE GRADE: LifecycleByConvention, honestly. A durable store is not released by frame
+// teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
+// retention and eviction the provider machinery owns (std.artifact_store accounting under the
+// provider), which is a cleanup that can fail or be forgotten, i.e. the weaker grade.
+
+type MaterializationStoreRoot
+  = DurableHostVolumeRoot
+  | WitnessScratchRoot { root: String }
+
+type MaterializationStoreDurability
+  = DurableAcrossRuns
+  | EphemeralToFrame
+
+data materialization_store_frame: Frame = Frame {
+  name: "materialization-store",
+  kind: SharedStateFrame
+}
+
+data materialization_store_durable_root_path: String = "/var/lib/gunbc/materialization-store"
+
+data materialization_store_durable_root: NamespacePosition = filesystem_position(
+  path: ["var", "lib", "gunbc", "materialization-store"]
+)
+
+fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
+  match root {
+    DurableHostVolumeRoot => materialization_store_durable_root_path
+    WitnessScratchRoot { root: r } => r
+  }
+}
+
+fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
+  match root {
+    DurableHostVolumeRoot => DurableAcrossRuns
+    WitnessScratchRoot { root: _ } => EphemeralToFrame
+  }
+}
+
+fn materialization_store_durability_name(d: MaterializationStoreDurability) -> String {
+  match d {
+    DurableAcrossRuns => "durable_across_runs"
+    EphemeralToFrame => "ephemeral_to_frame"
+  }
+}
+
+fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant> {
+  [
+    Grant { verb: Read, root: root_position, binding: RealTransport, lifecycle: LifecycleByConvention },
+    Grant { verb: Write, root: root_position, binding: RealTransport, lifecycle: LifecycleByConvention },
+  ]
+}
+
+fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
+  match root {
+    DurableHostVolumeRoot =>
+      Envelope {
+        frame: materialization_store_frame,
+        grants: materialization_store_grants(root_position: materialization_store_durable_root)
+      }
+    WitnessScratchRoot { root: r } =>
+      if is_gunbc_tmp_scratch_store_root(store_root: r) {
+        Envelope {
+          frame: materialization_store_frame,
+          grants: materialization_store_grants(root_position: artifact_store_scratch_root)
+        }
+      } else {
+        Envelope { frame: materialization_store_frame, grants: [] }
+      }
+  }
+}
+
+fn materialization_store_admissible(root: MaterializationStoreRoot, verb: Verb) -> AccessDecision {
+  admit_effect(
+    env: materialization_store_envelope(root: root),
+    verb: verb,
+    target: absolute_path_position(path: materialization_store_root_path(root: root))
+  )
+}

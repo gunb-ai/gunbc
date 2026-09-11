@@ -1,0 +1,674 @@
+module std.materialization_object
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_from_structural_digest,
+  fnv1a64_structural_hex_digest,
+  serialize_content_hash,
+}
+import std.cache_identity { ArtifactKindId, CacheInterfaceId }
+import std.measure { ByteSize, byte_size, measure_count }
+import std.materialization_provider {
+  ArtifactRequest,
+  ArtifactOutputId,
+  CarriedOutput,
+  MaterializedArtifact,
+  ArtifactManifest,
+  ManifestDecode, ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated,
+  RequestArtifactBinding, BindingOk, BindingKindMismatch, BindingWrongArtifact, BindingWrongContent,
+  BindingIncomplete,
+  ProviderLookup,
+  ProbeFound,
+  RealizationReceipt, RealizationDisposition,
+  RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
+  request_key, request_kind,
+  artifact_manifest, artifact_from_manifest, artifact_content_digest, artifact_kind,
+  carried_outputs_digest, request_artifact_binding, provider_serve, lookup_fold,
+  provider_lookup_outcome_tag,
+}
+
+// THE REALIZATION-AGNOSTIC HALF OF A PERSISTENT MATERIALIZATION STORE.
+//
+// Division of authority (operator rulings 2026-09-11, design review C2/C3): the native route emits
+// typed ArtifactRequests; std.materialization_provider owns request<->artifact correctness; a
+// realization binding at the host/workflow edge selects WHERE the bytes live (local persistent
+// filesystem today; GCS and NFS later); retention, capacity and eviction stay with
+// std.artifact_store and the provider machinery under it. This module is the seam between the
+// second and third: everything a store must decide that does NOT depend on where it stores --
+// the stored OBJECT's format, what a read or a publish OBSERVED, and the lookup and commit
+// DECISIONS over those observations. A realization maps its transport onto the two observation
+// coproducts below and calls these folds; it adds no semantics of its own.
+//
+// That split is what "GCS-ready on day one" means, stated so it can be checked: no type in this
+// module or in std.materialization_provider names a path, mount, rename, directory or
+// permission. The local realization reaches the store through a file path and a create-new
+// publish; a GCS realization would reach the same observations through an object name, a GET that
+// answers 404, and an insert under the ifGenerationMatch=0 precondition that answers 412 when the
+// name is taken (extdeps.cloud.gcp.storage carries those interface facts). NFS is a third, distinct
+// realization with its own cross-host obligations -- fencing, leases, stale-writer and temp
+// cleanup, read-after-commit across hosts -- and nothing here assumes a single host: publication is
+// put-if-absent against ONE name per request key, and correctness never consults a listing.
+//
+// THE PORTABLE SEMANTICS, each carried by a construction below rather than by a promise:
+//   content addressing -- the object is named by the request key alone (store_object_name);
+//   kinds with manifests -- every object carries its ArtifactManifest, decoded only through
+//     std.materialization_provider artifact_from_manifest;
+//   put-if-absent / commit -- StoreObjectPublish has an Occupied arm and no overwrite arm;
+//   exact read-back -- a commit is not reported until a read of the committed name verifies;
+//   no prefix or existence fallback -- a lookup reads exactly one name and a present object is
+//     SERVED only by the contract's door, never because it exists;
+//   batch -- the batch folds are per-request folds over one opened store;
+//   no listing -- no observation here is a listing;
+//   typed unavailable / corrupt / incomplete -- each is its own refusal arm.
+//
+// AND THE ONE RULE THE BRIEF STATES AS SEMANTICS: a MISS may execute; unavailable, corrupt,
+// wrong-kind, incomplete or unverifiable read-back REFUSE and are never reclassified as a miss.
+// That is enforced by where StoreLookupMiss can come from: only StoreObjectAbsent reaches it.
+
+// ---------------------------------------------------------------------------------------------
+// Payloads and their parts.
+//
+// A payload is the bytes of one required output. Its PART -- the (id, digest, size) the manifest
+// and the contract carry -- is DERIVED from the payload here, and this is the only place a part is
+// minted from bytes, which is the grounding std.materialization_provider's derivation invariant
+// names for source (3): observed_digest is computed from the stored parts by this derivation, not
+// asserted by a caller. The digest is tagged so an empty payload (an empty diagnostics output is
+// ordinary) still hashes a non-empty value. The size is the payload's string_length, the same
+// measure the decode re-derives, so a size that disagrees with the bytes changes the content digest.
+
+type ArtifactPayload {
+  id: ArtifactOutputId
+  content: String
+}
+
+fn payload_part(payload: ArtifactPayload) -> CarriedOutput {
+  CarriedOutput {
+    id: payload.id,
+    digest: content_hash_atom(value: concat("materialization_payload:", payload.content) as NonEmptyStr),
+    bytes: byte_size(count: string_length(payload.content))
+  }
+}
+
+fn payload_for(payloads: List<ArtifactPayload>, id: ArtifactOutputId) -> ArtifactPayload? {
+  payloads |> filter(p => p.id == id) |> first()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The stored object: one self-describing text object per request key.
+//
+// ONE object, not a manifest beside payload files, because the publish must be ONE put-if-absent:
+// a manifest committed before its payloads is an incomplete artifact visible to readers, and a GCS
+// object or a create-new file publishes atomically only as a unit. Format (line-oriented, "\n"):
+//
+//   gunbc-materialization-object v1
+//   kind <artifact kind id>
+//   request_key <serialized request key>
+//   part <output id> <part digest hex> <part size>      (one per manifest part, manifest order)
+//   payload <output id> <percent-encoded payload>       (one per manifest part, manifest order)
+//   end
+//
+// Payload text is percent-encoded for exactly three code points -- "%" as %25, line feed as %0A,
+// space as %20 (RFC 3986 percent-encoding, restricted to the delimiters this format uses) -- so
+// every line splits into a fixed number of space-separated fields and no payload can forge a line.
+// Decoding replaces %0A and %20 before %25; since every encoded "%" is followed by "25", "0A" or
+// "20", no decoded escape can be manufactured by an earlier replacement.
+
+data store_object_magic: String = "gunbc-materialization-object v1"
+
+fn store_object_name(key: ContentHash) -> String {
+  concat(serialize_content_hash(hash: key) as String, ".materialization")
+}
+
+fn percent_encode_payload(s: String) -> String {
+  replace(replace(replace(s, "%", "%25"), "\n", "%0A"), " ", "%20")
+}
+
+fn percent_decode_payload(s: String) -> String {
+  replace(replace(replace(s, "%0A", "\n"), "%20", " "), "%25", "%")
+}
+
+fn store_object_part_line(o: CarriedOutput) -> String {
+  join(["part", o.id as String, o.digest.digest as String, to_string(measure_count(m: o.bytes))], " ")
+}
+
+fn store_object_payload_line(id: ArtifactOutputId, payloads: List<ArtifactPayload>) -> String {
+  match payload_for(payloads: payloads, id: id) {
+    Present { value: p } => join(["payload", id as String, percent_encode_payload(s: p.content)], " ")
+    Absent => join(["payload", id as String], " ")
+  }
+}
+
+fn encode_store_object(manifest: ArtifactManifest, payloads: List<ArtifactPayload>) -> String {
+  let header = [
+    store_object_magic,
+    join(["kind", manifest.kind as String], " "),
+    join(["request_key", serialize_content_hash(hash: manifest.request_key) as String], " "),
+  ]
+  let parts = manifest.parts |> map(o => store_object_part_line(o: o))
+  let bodies = manifest.parts |> map(o => store_object_payload_line(id: o.id, payloads: payloads))
+  join(concat(concat(concat(header, parts), bodies), ["end"]), "\n")
+}
+
+type StoreObjectLine
+  = StorePartLine { part: CarriedOutput }
+  | StorePayloadLine { payload: ArtifactPayload }
+  | StoreEndLine
+  | StoreMalformedLine { line: String }
+
+fn store_object_line(line: String) -> StoreObjectLine {
+  let words = split(s: line, delimiter: " ")
+  let n = words |> count()
+  match get(xs: words, index: 0) {
+    Absent => StoreMalformedLine { line: line }
+    Present { value: tag } =>
+      if tag == "end" && n == 1 {
+        StoreEndLine
+      } else if tag == "payload" && (n == 3 || n == 2) {
+        match get(xs: words, index: 1) {
+          Absent => StoreMalformedLine { line: line }
+          Present { value: id } =>
+            if id == "" { StoreMalformedLine { line: line } }
+            else {
+              let body = match get(xs: words, index: 2) {
+                Present { value: b } => b
+                Absent => ""
+              }
+              StorePayloadLine {
+                payload: ArtifactPayload { id: id as ArtifactOutputId, content: percent_decode_payload(s: body) }
+              }
+            }
+        }
+      } else if tag == "part" && n == 4 {
+        match get(xs: words, index: 1) {
+          Absent => StoreMalformedLine { line: line }
+          Present { value: id } =>
+            match get(xs: words, index: 2) {
+              Absent => StoreMalformedLine { line: line }
+              Present { value: hex } =>
+                match fnv1a64_structural_hex_digest(hex: hex) {
+                  Absent => StoreMalformedLine { line: line }
+                  Present { value: digest } =>
+                    match get(xs: words, index: 3) {
+                      Absent => StoreMalformedLine { line: line }
+                      Present { value: size_word } =>
+                        match parse_int(s: size_word) {
+                          Absent => StoreMalformedLine { line: line }
+                          Present { value: size } =>
+                            if id == "" || size < 0 { StoreMalformedLine { line: line } }
+                            else {
+                              StorePartLine {
+                                part: CarriedOutput { id: id as ArtifactOutputId, digest: digest, bytes: byte_size(count: size) }
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      } else {
+        StoreMalformedLine { line: line }
+      }
+  }
+}
+
+type StoreObjectDecode
+  = StoreObjectDecoded { manifest: ArtifactManifest, payloads: List<ArtifactPayload> }
+  | StoreObjectMalformed { cause: String }
+
+fn store_object_header_value(lines: List<String>, index: Int, tag: String) -> String? {
+  match get(xs: lines, index: index) {
+    Absent => none
+    Present { value: line } =>
+      if starts_with(s: line, prefix: concat(tag, " ")) {
+        match get(xs: split(s: line, delimiter: " "), index: 1) {
+          Present { value: v } => if split(s: line, delimiter: " ") |> count() == 2 { Present { value: v } } else { none }
+          Absent => none
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn store_object_body_lines(lines: List<String>) -> List<StoreObjectLine> {
+  lines |> skip(n: 3) |> map(l => store_object_line(line: l))
+}
+
+fn store_object_line_malformed_text(l: StoreObjectLine) -> String? {
+  match l {
+    StoreMalformedLine { line: t } => Present { value: t }
+    StorePartLine { part: _ } => none
+    StorePayloadLine { payload: _ } => none
+    StoreEndLine => none
+  }
+}
+
+fn store_object_first_malformed(body: List<StoreObjectLine>) -> String? {
+  match body |> filter(l => match store_object_line_malformed_text(l: l) { Present { value: _ } => true, Absent => false }) |> first() {
+    Present { value: l } => store_object_line_malformed_text(l: l)
+    Absent => none
+  }
+}
+
+fn store_object_end_count(body: List<StoreObjectLine>) -> Int {
+  body |> filter(l => match l {
+    StoreEndLine => true
+    StorePartLine { part: _ } => false
+    StorePayloadLine { payload: _ } => false
+    StoreMalformedLine { line: _ } => false
+  }) |> count()
+}
+
+fn store_object_last_is_end(body: List<StoreObjectLine>) -> Bool {
+  let n = body |> count()
+  if n == 0 { false } else {
+    match get(xs: body, index: n - 1) {
+      Present { value: l } => match l {
+        StoreEndLine => true
+        StorePartLine { part: _ } => false
+        StorePayloadLine { payload: _ } => false
+        StoreMalformedLine { line: _ } => false
+      }
+      Absent => false
+    }
+  }
+}
+
+fn store_object_parts(body: List<StoreObjectLine>) -> List<CarriedOutput> {
+  body |> flat_map(l => match l {
+    StorePartLine { part: p } => [p]
+    StorePayloadLine { payload: _ } => []
+    StoreEndLine => []
+    StoreMalformedLine { line: _ } => []
+  })
+}
+
+fn store_object_payloads(body: List<StoreObjectLine>) -> List<ArtifactPayload> {
+  body |> flat_map(l => match l {
+    StorePayloadLine { payload: p } => [p]
+    StorePartLine { part: _ } => []
+    StoreEndLine => []
+    StoreMalformedLine { line: _ } => []
+  })
+}
+
+// A TRUNCATED OBJECT IS MALFORMED, NOT INCOMPLETE. The trailing `end` line is required exactly once
+// and last, so an object cut anywhere is refused here rather than decoded into a shorter manifest
+// that would then read as a legitimately incomplete artifact. Incompleteness is a property of a
+// WELL-FORMED manifest that names too few parts; a torn object is corruption.
+fn decode_store_object(content: String) -> StoreObjectDecode {
+  let lines = split(s: content, delimiter: "\n")
+  let body = store_object_body_lines(lines: lines)
+  match get(xs: lines, index: 0) {
+    Absent => StoreObjectMalformed { cause: "the object is empty" }
+    Present { value: magic } =>
+      if (magic == store_object_magic) == false {
+        StoreObjectMalformed { cause: concat("the object does not begin with ", store_object_magic) }
+      } else {
+        match store_object_header_value(lines: lines, index: 1, tag: "kind") {
+          Absent => StoreObjectMalformed { cause: "line 2 is not a `kind <id>` header" }
+          Present { value: kind } =>
+            match store_object_header_value(lines: lines, index: 2, tag: "request_key") {
+              Absent => StoreObjectMalformed { cause: "line 3 is not a `request_key <key>` header" }
+              Present { value: key_text } =>
+                match content_hash_from_structural_digest(digest: key_text) {
+                  Absent => StoreObjectMalformed { cause: concat("the recorded request key is not a structural digest: ", key_text) }
+                  Present { value: key } =>
+                    match store_object_first_malformed(body: body) {
+                      Present { value: t } => StoreObjectMalformed { cause: concat("unrecognized object line: ", t) }
+                      Absent =>
+                        if store_object_end_count(body: body) == 1 && store_object_last_is_end(body: body) {
+                          StoreObjectDecoded {
+                            manifest: ArtifactManifest {
+                              kind: kind as ArtifactKindId,
+                              request_key: key,
+                              parts: store_object_parts(body: body)
+                            },
+                            payloads: store_object_payloads(body: body)
+                          }
+                        } else {
+                          StoreObjectMalformed { cause: "the object is truncated: it does not end with exactly one `end` line" }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// What a realization observed. These are the ONLY inputs the decisions take from a transport.
+
+type StoreFaultClass
+  = StoreFaultUnauthorized
+  | StoreFaultUnreachable
+  | StoreFaultTransportVocabulary
+
+type StoreFault {
+  class: StoreFaultClass
+  detail: String
+}
+
+type StoreObjectRead
+  = StoreObjectPresent { content: String }
+  | StoreObjectAbsent
+  | StoreObjectUnavailable { fault: StoreFault }
+
+type StoreObjectPublish
+  = StoreObjectPublished
+  | StoreObjectOccupied
+  | StoreObjectPublishRefused { fault: StoreFault }
+
+// An OPENED store: the realization established that the store exists and is the store it claims to
+// be before any per-key read is interpreted. This is what makes StoreObjectAbsent mean "no artifact
+// at this key" rather than "no store at all" -- a realization that cannot establish its store
+// answers unavailable at open, and no lookup is attempted.
+type OpenedMaterializationStore {
+  provider: CacheInterfaceId
+  instance: ContentHash
+}
+
+// ---------------------------------------------------------------------------------------------
+// Lookup.
+
+type StoreLookupRefusal
+  = StoreLookupObjectUnavailable { fault: StoreFault }
+  | StoreLookupObjectMalformed { cause: String }
+  | StoreLookupManifestUninterpretable { decode: ManifestDecode }
+  | StoreLookupPayloadMissing { part: ArtifactOutputId }
+  | StoreLookupPayloadUndeclared { part: ArtifactOutputId }
+  | StoreLookupContractRefused { lookup: ProviderLookup }
+
+type StoreLookup
+  = StoreLookupHit { artifact: MaterializedArtifact, payloads: List<ArtifactPayload>, receipt: RealizationReceipt }
+  | StoreLookupMiss { key: ContentHash }
+  | StoreLookupRefused { key: ContentHash, refusal: StoreLookupRefusal }
+
+fn store_payload_undeclared(manifest: ArtifactManifest, payloads: List<ArtifactPayload>) -> ArtifactOutputId? {
+  match payloads |> filter(p => !(manifest.parts |> any(o => o.id == p.id))) |> first() {
+    Present { value: p } => Present { value: p.id }
+    Absent => none
+  }
+}
+
+fn store_payload_missing(manifest: ArtifactManifest, payloads: List<ArtifactPayload>) -> ArtifactOutputId? {
+  match manifest.parts |> filter(o => !(payloads |> any(p => p.id == o.id))) |> first() {
+    Present { value: o } => Present { value: o.id }
+    Absent => none
+  }
+}
+
+// THE OBSERVED DIGEST IS RE-DERIVED FROM THE PAYLOAD BYTES, in manifest order, and the artifact the
+// door judges is decoded from the manifest's CLAIMS. The contract compares the two: a flipped payload
+// byte, a payload truncated inside its line, or a part digest or size edited in the manifest all
+// land on BindingWrongContent -- the integrity refusal -- and nothing here recomputes the artifact
+// as a fallback.
+fn store_observed_digest(manifest: ArtifactManifest, payloads: List<ArtifactPayload>) -> ContentHash {
+  carried_outputs_digest(outputs: manifest.parts |> flat_map(o =>
+    match payload_for(payloads: payloads, id: o.id) {
+      Present { value: p } => [payload_part(payload: p)]
+      Absent => []
+    }
+  ))
+}
+
+fn store_lookup_decide(
+  store: OpenedMaterializationStore,
+  req: ArtifactRequest,
+  read: StoreObjectRead
+) -> StoreLookup {
+  let key = request_key(req: req)
+  match read {
+    StoreObjectAbsent => StoreLookupMiss { key: key }
+    StoreObjectUnavailable { fault: f } =>
+      StoreLookupRefused { key: key, refusal: StoreLookupObjectUnavailable { fault: f } }
+    StoreObjectPresent { content: c } =>
+      match decode_store_object(content: c) {
+        StoreObjectMalformed { cause: cause } =>
+          StoreLookupRefused { key: key, refusal: StoreLookupObjectMalformed { cause: cause } }
+        StoreObjectDecoded { manifest: m, payloads: ps } =>
+          match store_payload_undeclared(manifest: m, payloads: ps) {
+            Present { value: p } => StoreLookupRefused { key: key, refusal: StoreLookupPayloadUndeclared { part: p } }
+            Absent =>
+              match store_payload_missing(manifest: m, payloads: ps) {
+                Present { value: p } => StoreLookupRefused { key: key, refusal: StoreLookupPayloadMissing { part: p } }
+                Absent =>
+                  match artifact_from_manifest(m: m) {
+                    ManifestDecoded { artifact: a } => {
+                      let served = provider_serve(
+                        req: req,
+                        probe: ProbeFound { artifact: a, observed_digest: store_observed_digest(manifest: m, payloads: ps) }
+                      )
+                      lookup_fold(
+                        l: served,
+                        hit: (artifact, identity) => StoreLookupHit {
+                          artifact: artifact,
+                          payloads: ps,
+                          receipt: RealizationReceipt {
+                            request_key: key,
+                            kind: artifact_kind(artifact: artifact),
+                            content_digest: artifact_content_digest(artifact: artifact),
+                            provider: store.provider,
+                            store_instance: store.instance,
+                            disposition: RealizationServed
+                          }
+                        },
+                        miss: k => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
+                        kind_mismatch: (k, r, f) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
+                        wrong_artifact: (k, fk) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
+                        wrong_content: (k, r, o) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
+                        cross_family: (k, f) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } },
+                        incomplete: (k, missing) => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } }
+                      )
+                    }
+                    ManifestKindUndeclared { kind: _ } =>
+                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: artifact_from_manifest(m: m) } }
+                    ManifestPartUndeclared { kind: _, part: _ } =>
+                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: artifact_from_manifest(m: m) } }
+                    ManifestPartRepeated { kind: _, part: _ } =>
+                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: artifact_from_manifest(m: m) } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Commit: prepare (pure), publish (the realization's one effect), read back (a lookup), settle.
+
+type StoreCommitRefusal
+  = StoreCommitManifestUninterpretable { decode: ManifestDecode }
+  | StoreCommitContractRefused { binding: RequestArtifactBinding }
+  | StoreCommitPublishRefused { fault: StoreFault }
+  | StoreCommitReadBackRefused { read_back: StoreLookup }
+  | StoreCommitConflict { committed: ContentHash, offered: ContentHash }
+
+type StoreCommit
+  = StoreCommitSettled { receipt: RealizationReceipt }
+  | StoreCommitRefused { key: ContentHash, refusal: StoreCommitRefusal }
+
+type StoreCommitPreparation
+  = StoreCommitPrepared { key: ContentHash, object_name: String, object: String, offered_digest: ContentHash }
+  | StoreCommitNotPrepared { commit: StoreCommit }
+
+// THE WRITE DOOR DERIVES EVERYTHING FROM THE REQUEST AND THE BYTES. The caller hands over payloads
+// only: the kind and the request key come from the request, the parts from the payloads, and the
+// artifact from artifact_from_manifest -- so a payload the kind does not declare, a repeated
+// payload, or a missing required output is refused here, before any byte is published, by the same
+// authorities the read side uses.
+fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> StoreCommitPreparation {
+  let key = request_key(req: req)
+  let offered = ArtifactManifest {
+    kind: request_kind(req: req),
+    request_key: key,
+    parts: payloads |> map(p => payload_part(payload: p))
+  }
+  match artifact_from_manifest(m: offered) {
+    ManifestDecoded { artifact: a } =>
+      match request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) {
+        BindingOk => StoreCommitPrepared {
+          key: key,
+          object_name: store_object_name(key: key),
+          object: encode_store_object(manifest: artifact_manifest(artifact: a), payloads: payloads),
+          offered_digest: artifact_content_digest(artifact: a)
+        }
+        BindingKindMismatch { requested: _, found: _ } =>
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+        BindingWrongArtifact { key: _, found_key: _ } =>
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+        BindingWrongContent { recorded: _, observed: _ } =>
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+        BindingIncomplete { missing: _ } =>
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+      }
+    ManifestKindUndeclared { kind: _ } =>
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: artifact_from_manifest(m: offered) } } }
+    ManifestPartUndeclared { kind: _, part: _ } =>
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: artifact_from_manifest(m: offered) } } }
+    ManifestPartRepeated { kind: _, part: _ } =>
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: artifact_from_manifest(m: offered) } } }
+  }
+}
+
+// A COMMIT IS NOT REPORTED UNTIL IT READS BACK. Both publish outcomes that can end in a stored
+// artifact -- this writer published, or the name was already taken -- are followed by a lookup of the
+// same request, and only a verified HIT settles:
+//   published + hit with the offered digest   => Committed;
+//   occupied  + hit with the offered digest   => ConvergedOnPriorCommit (concurrent or earlier writer,
+//                                                identical verified content -- the protocol working);
+//   either    + hit with a DIFFERENT digest   => Conflict: two productions of one key disagree, a
+//                                                determinism defect in the producer, refused loudly;
+//   either    + anything but a hit            => ReadBackRefused, including a MISS after a publish
+//                                                reported success -- an unverifiable commit is not a
+//                                                commit.
+// A refused publish settles as its fault; no second store is tried and nothing is retained locally.
+fn store_commit_settle(
+  store: OpenedMaterializationStore,
+  prepared_key: ContentHash,
+  offered_digest: ContentHash,
+  publish: StoreObjectPublish,
+  read_back: StoreLookup
+) -> StoreCommit {
+  match publish {
+    StoreObjectPublishRefused { fault: f } =>
+      StoreCommitRefused { key: prepared_key, refusal: StoreCommitPublishRefused { fault: f } }
+    StoreObjectPublished => store_commit_verify(store: store, key: prepared_key, offered: offered_digest, read_back: read_back, disposition: RealizationCommitted)
+    StoreObjectOccupied => store_commit_verify(store: store, key: prepared_key, offered: offered_digest, read_back: read_back, disposition: RealizationConvergedOnPriorCommit)
+  }
+}
+
+fn store_commit_verify(
+  store: OpenedMaterializationStore,
+  key: ContentHash,
+  offered: ContentHash,
+  read_back: StoreLookup,
+  disposition: RealizationDisposition
+) -> StoreCommit {
+  match read_back {
+    StoreLookupHit { artifact: a, payloads: _, receipt: r } =>
+      if artifact_content_digest(artifact: a) == offered {
+        StoreCommitSettled {
+          receipt: RealizationReceipt {
+            request_key: r.request_key,
+            kind: r.kind,
+            content_digest: r.content_digest,
+            provider: store.provider,
+            store_instance: store.instance,
+            disposition: disposition
+          }
+        }
+      } else {
+        StoreCommitRefused { key: key, refusal: StoreCommitConflict { committed: artifact_content_digest(artifact: a), offered: offered } }
+      }
+    StoreLookupMiss { key: _ } =>
+      StoreCommitRefused { key: key, refusal: StoreCommitReadBackRefused { read_back: read_back } }
+    StoreLookupRefused { key: _, refusal: _ } =>
+      StoreCommitRefused { key: key, refusal: StoreCommitReadBackRefused { read_back: read_back } }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Readers. One fold per coproduct; predicates derive from it.
+
+fn store_lookup_fold<T>(
+  l: StoreLookup,
+  hit: fn(MaterializedArtifact, List<ArtifactPayload>, RealizationReceipt) -> T,
+  miss: fn(ContentHash) -> T,
+  refused: fn(ContentHash, StoreLookupRefusal) -> T
+) -> T {
+  match l {
+    StoreLookupHit { artifact: a, payloads: p, receipt: r } => hit(a, p, r)
+    StoreLookupMiss { key: k } => miss(k)
+    StoreLookupRefused { key: k, refusal: r } => refused(k, r)
+  }
+}
+
+fn store_lookup_is_hit(l: StoreLookup) -> Bool {
+  store_lookup_fold(l: l, hit: (a, p, r) => true, miss: k => false, refused: (k, r) => false)
+}
+
+fn store_lookup_is_miss(l: StoreLookup) -> Bool {
+  store_lookup_fold(l: l, hit: (a, p, r) => false, miss: k => true, refused: (k, r) => false)
+}
+
+fn store_lookup_payload(l: StoreLookup, id: ArtifactOutputId) -> String? {
+  store_lookup_fold(
+    l: l,
+    hit: (a, ps, r) => match payload_for(payloads: ps, id: id) {
+      Present { value: p } => Present { value: p.content }
+      Absent => none
+    },
+    miss: k => none,
+    refused: (k, r) => none
+  )
+}
+
+fn store_lookup_refusal_tag(l: StoreLookup) -> String {
+  store_lookup_fold(
+    l: l,
+    hit: (a, p, r) => "hit",
+    miss: k => "miss",
+    refused: (k, r) => match r {
+      StoreLookupObjectUnavailable { fault: _ } => "unavailable"
+      StoreLookupObjectMalformed { cause: _ } => "malformed"
+      StoreLookupManifestUninterpretable { decode: _ } => "manifest_uninterpretable"
+      StoreLookupPayloadMissing { part: _ } => "payload_missing"
+      StoreLookupPayloadUndeclared { part: _ } => "payload_undeclared"
+      StoreLookupContractRefused { lookup: pl } => concat("contract_", provider_lookup_outcome_tag(l: pl))
+    }
+  )
+}
+
+fn store_commit_fold<T>(
+  c: StoreCommit,
+  settled: fn(RealizationReceipt) -> T,
+  refused: fn(ContentHash, StoreCommitRefusal) -> T
+) -> T {
+  match c {
+    StoreCommitSettled { receipt: r } => settled(r)
+    StoreCommitRefused { key: k, refusal: r } => refused(k, r)
+  }
+}
+
+fn store_commit_refusal_tag(c: StoreCommit) -> String {
+  store_commit_fold(
+    c: c,
+    settled: r => match r.disposition {
+      RealizationServed => "served"
+      RealizationCommitted => "committed"
+      RealizationConvergedOnPriorCommit => "converged_on_prior_commit"
+    },
+    refused: (k, r) => match r {
+      StoreCommitManifestUninterpretable { decode: _ } => "manifest_uninterpretable"
+      StoreCommitContractRefused { binding: _ } => "contract_refused"
+      StoreCommitPublishRefused { fault: _ } => "publish_refused"
+      StoreCommitReadBackRefused { read_back: _ } => "read_back_refused"
+      StoreCommitConflict { committed: _, offered: _ } => "conflict"
+    }
+  )
+}

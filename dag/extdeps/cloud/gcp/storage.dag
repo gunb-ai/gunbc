@@ -1,0 +1,91 @@
+module extdeps.cloud.gcp.storage
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Int, List, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/storage/docs/json_api/v1/objects"
+  }
+}
+
+// GOOGLE CLOUD STORAGE JSON API v1 -- THE INTERFACE FACTS A MATERIALIZATION-STORE REALIZATION
+// WOULD BIND TO, AND NOTHING ELSE. This module owns the upstream's shape (DESIGN section 3: the
+// interface is extdeps', the transport handler is one realization bound to it, the policy is the
+// workflow's). It carries no handler and no dispatch: the handler lands when the operator says
+// (brief of the provider-spine lane, 2026-09-11), and until then these rows are a DECLARED FRONTIER
+// -- their first consumer is a GCS realization of std.materialization_object's observations, the
+// same two observations extdeps.realization.materialization_store_local produces from a
+// filesystem. TRIGGER: the operator names the GCS realization lane.
+//
+// What the rows establish, cited:
+//   objects.get with alt=media returns the object's bytes; 404 is a typed absent object
+//     (cloud.google.com/storage/docs/json_api/v1/objects/get) -- the exact-read semantics, with no
+//     listing and no prefix fallback;
+//   objects.insert with ifGenerationMatch=0 succeeds only if no live object has that name and
+//     answers 412 Precondition Failed otherwise (cloud.google.com/storage/docs/request-preconditions)
+//     -- put-if-absent; an object becomes visible only when the upload completes, so a reader never
+//     observes a partial object;
+//   read-after-write and read-after-metadata-update are strongly consistent for objects
+//     (cloud.google.com/storage/docs/consistency) -- a commit's exact read-back is meaningful;
+//   401/403 are authorization refusals and 429/5xx are availability refusals
+//     (cloud.google.com/storage/docs/json_api/v1/status-codes) -- neither is ever an absent object.
+// The object NAME is the only locator; there is no rename and no directory, which is exactly why the
+// store's interface names neither.
+
+type GcsObjectOperation
+  = GcsObjectsGet
+  | GcsObjectsInsert
+
+type GcsObjectOperationFacts {
+  operation: GcsObjectOperation
+  method: String
+  path_template: String
+  required_query: List<String>
+  citation: String
+}
+
+data gcs_objects_get: GcsObjectOperationFacts = GcsObjectOperationFacts {
+  operation: GcsObjectsGet,
+  method: "GET",
+  path_template: "https://storage.googleapis.com/storage/v1/b/\{bucket\}/o/\{object\}",
+  required_query: ["alt=media"],
+  citation: "cloud.google.com/storage/docs/json_api/v1/objects/get"
+}
+
+data gcs_objects_insert_if_absent: GcsObjectOperationFacts = GcsObjectOperationFacts {
+  operation: GcsObjectsInsert,
+  method: "POST",
+  path_template: "https://storage.googleapis.com/upload/storage/v1/b/\{bucket\}/o",
+  required_query: ["uploadType=media", "name=\{object\}", "ifGenerationMatch=0"],
+  citation: "cloud.google.com/storage/docs/request-preconditions"
+}
+
+// The status codes the two operations answer, each with the upstream's own meaning. The mapping
+// of these meanings onto a store observation is the HANDLER's, not this module's.
+type GcsObjectStatusMeaning
+  = GcsObjectReturned
+  | GcsObjectNotFound
+  | GcsPreconditionFailed
+  | GcsUnauthenticated
+  | GcsForbidden
+  | GcsRateLimited
+  | GcsServerError
+
+type GcsObjectStatusFact {
+  status: Int
+  meaning: GcsObjectStatusMeaning
+}
+
+data gcs_object_status_facts: List<GcsObjectStatusFact> = [
+  GcsObjectStatusFact { status: 200, meaning: GcsObjectReturned },
+  GcsObjectStatusFact { status: 404, meaning: GcsObjectNotFound },
+  GcsObjectStatusFact { status: 412, meaning: GcsPreconditionFailed },
+  GcsObjectStatusFact { status: 401, meaning: GcsUnauthenticated },
+  GcsObjectStatusFact { status: 403, meaning: GcsForbidden },
+  GcsObjectStatusFact { status: 429, meaning: GcsRateLimited },
+  GcsObjectStatusFact { status: 500, meaning: GcsServerError },
+  GcsObjectStatusFact { status: 503, meaning: GcsServerError },
+]

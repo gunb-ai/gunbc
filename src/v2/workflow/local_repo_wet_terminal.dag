@@ -146,6 +146,16 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //   and it holds. Had the substrate short-circuited, that fn would be ExpectedToRefuse and the
 //   disagreement among the five would itself have been the finding.
 //
+//   EIGHT MATERIALIZATION-STORE MEMBERS (added 2026-09-11, the provider-spine lane). Their admitted
+//   effect is the evaluation-model probes' effect with one widening named here rather than folded
+//   in: shell.Mktemp.DirWithTemplate (a /tmp/gunbc_matstore.* throwaway directory, because the
+//   store grant admits only /tmp/gunbc_* scratch roots), Filesystem.Read, Filesystem.WriteCreateNew
+//   and Filesystem.Write INSIDE that directory, shell.Test.IsFile, and shell.Remove.RecursiveForce
+//   of the directory before returning. WriteCreateNew is the new admission: it stages, fsyncs and
+//   hard-links within the same directory. No network, no cargo, no remote host, no install media,
+//   nothing outside the directory the fn created. Each was executed wet through `gunbc run` over
+//   this tree and held before the rows were written.
+//
 // EACH WAS MEASURED WET BEFORE BEING SCHEDULED, not assumed runnable from its exclusion note. A
 // member the executor cannot actually run would make this lane's route claim false, which is the
 // failure the ruling that ordered this lane forbids by name. The four contract-epoch members were
@@ -434,6 +444,54 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_with_true_left_removes_file" },
       entry: "dag/test/claim/eval_model_probe_test.dag",
       function: "and_with_true_left_removes_file",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "commit_then_read_back_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "commit_then_read_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "corruption_is_an_integrity_refusal_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "corruption_is_an_integrity_refusal_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "wrong_kind_refuses_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "wrong_kind_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "incomplete_refuses_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "incomplete_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "a_second_writer_converges_on_the_committed_artifact_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "a_second_writer_converges_on_the_committed_artifact_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "a_batch_answers_each_request_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "a_batch_answers_each_request_by_real_execution",
       expectation: ExpectedToHold {}
     }
   ]

@@ -1,0 +1,360 @@
+module extdeps.realization.materialization_store_local
+
+import extdeps.filesystem.filesystem_io {
+  FilesystemFailureKind, FilesystemNotFound, FilesystemAlreadyExists, FilesystemPermissionDenied,
+  FilesystemOtherFailure,
+  FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized,
+  filesystem_exact_read, filesystem_create_new, filesystem_failure_kind_name,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  ReleasedNever,
+  CapacityUnobserved,
+  ContentAddressLookup,
+  WriteOnce,
+  MissThenCreate,
+  StructuredArtifact,
+  PerHostFilesystem,
+  WriteThenCommit,
+  FilesystemPerms,
+  LocalDiskUs,
+  Strong,
+  OperatorObserved,
+  ToolchainChange,
+  ManualPurge,
+  Org,
+}
+import v2.std.optional { Absent }
+import std.access { Permit, Deny }
+import std.effect_grant { Verb, Read, Write, NamespacePosition }
+import std.filesystem_path_grant { absolute_path_position }
+import std.materialization_ladder { Frame }
+import std.materialization_provider { ArtifactRequest, request_key }
+import std.materialization_store_grant {
+  MaterializationStoreRoot,
+  MaterializationStoreDurability,
+  materialization_store_root_path,
+  materialization_store_durability,
+  materialization_store_durability_name,
+  materialization_store_admissible,
+  materialization_store_frame,
+}
+import std.materialization_object {
+  ArtifactPayload,
+  StoreFault, StoreFaultClass, StoreFaultUnauthorized, StoreFaultUnreachable, StoreFaultTransportVocabulary,
+  StoreObjectRead, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
+  StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
+  OpenedMaterializationStore,
+  StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable,
+  StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
+  StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
+  store_object_name, store_lookup_decide, store_commit_prepare, store_commit_settle,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+// THE FIRST REAL REALIZATION OF THE MATERIALIZATION STORE: a local persistent filesystem.
+//
+// This module is a TRANSPORT HANDLER and nothing more (DESIGN section 3: interface, realization and
+// policy are three facts). The store's semantics -- object format, lookup and commit decisions,
+// integrity, completeness, kind, the miss/refuse partition -- live in std.materialization_object
+// over std.materialization_provider. What lives here is only what is true of THIS realization:
+//
+//   WHERE -- the store root is a std.materialization_store_grant MaterializationStoreRoot, and every
+//     effect is admitted by that grant before it runs; an object is <root>/<store_object_name>.
+//   HOW A READ IS OBSERVED -- Filesystem.Read's typed failure channel: NotFound is an absent
+//     object, every other kind is an unavailable one. No listing is consulted, ever.
+//   HOW A PUBLISH IS OBSERVED -- Filesystem.WriteCreateNew, whose realization stages the bytes,
+//     fsyncs them and publishes with a hard link, so the name appears complete or not at all and a
+//     second writer of the same name gets AlreadyExists: put-if-absent by construction. No rename,
+//     no overwrite, no temp file visible under the object's name.
+//   WHICH STORE -- a store is OPENED by reading its identity marker; the marker's content hash is the
+//     store INSTANCE on every receipt. A root with no marker is not a store: open refuses as
+//     unavailable, so a missing volume can never be misread as an empty store full of misses, and
+//     nothing is ever written to a substitute location (no shadow store).
+//
+// Initialization is the one act that creates a store, and it is create-new too, so two
+// initializers converge on one marker.
+
+data materialization_store_local_id: CacheInterfaceId = "materialization_store_local"
+
+data materialization_store_marker_name: String = "materialization-store.identity"
+
+data materialization_store_marker_magic: String = "gunbc-materialization-store v1"
+
+fn store_path(root_path: String, name: String) -> String {
+  if ends_with(s: root_path, suffix: "/") { concat(root_path, name) } else { concat(root_path, "/", name) }
+}
+
+fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmptyStr) -> String {
+  join([
+    materialization_store_marker_magic,
+    concat("durability ", materialization_store_durability_name(d: materialization_store_durability(root: root))),
+    concat("instance ", instance_label as String),
+    "",
+  ], "\n")
+}
+
+fn store_marker_recognized(root: MaterializationStoreRoot, content: String) -> Bool {
+  starts_with(
+    s: content,
+    prefix: join([
+      materialization_store_marker_magic,
+      concat("durability ", materialization_store_durability_name(d: materialization_store_durability(root: root))),
+      "instance ",
+    ], "\n")
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Transport observations -> the realization-agnostic observations.
+
+fn filesystem_fault(kind: FilesystemFailureKind, error: String) -> StoreFault {
+  match kind {
+    FilesystemPermissionDenied => StoreFault { class: StoreFaultUnauthorized, detail: error }
+    FilesystemNotFound => StoreFault { class: StoreFaultUnreachable, detail: error }
+    FilesystemAlreadyExists => StoreFault { class: StoreFaultUnreachable, detail: error }
+    FilesystemOtherFailure => StoreFault { class: StoreFaultUnreachable, detail: error }
+  }
+}
+
+fn store_read_observation(read: FilesystemExactRead) -> StoreObjectRead {
+  match read {
+    FilesystemExactPathRead { path: _, content: c } => StoreObjectPresent { content: c }
+    FilesystemExactPathAbsent { path: _ } => StoreObjectAbsent
+    FilesystemExactPathUnreadable { path: p, kind: k, error: e } =>
+      StoreObjectUnavailable { fault: filesystem_fault(kind: k, error: concat(p, ": ", e)) }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      StoreObjectUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: join([p, ": unrecognized error_kind ", o, ": ", e], "") } }
+  }
+}
+
+fn store_publish_observation(create: FilesystemCreateNew) -> StoreObjectPublish {
+  match create {
+    FilesystemCreated { path: _ } => StoreObjectPublished
+    FilesystemCreateTargetOccupied { path: _ } => StoreObjectOccupied
+    FilesystemCreateRefused { path: p, kind: k, error: e } =>
+      StoreObjectPublishRefused { fault: filesystem_fault(kind: k, error: concat(p, ": ", e)) }
+    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
+      StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: join([p, ": unrecognized error_kind ", o, ": ", e], "") } }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Open.
+
+type LocalStoreUnavailableCause
+  = LocalStoreGrantRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | LocalStoreNotInitialized { marker_path: String }
+  | LocalStoreMarkerUnrecognized { marker_path: String }
+  | LocalStoreMarkerUnavailable { fault: StoreFault }
+
+type LocalStoreOpening
+  = LocalStoreOpened { root: MaterializationStoreRoot, store: OpenedMaterializationStore, durability: MaterializationStoreDurability }
+  | LocalStoreUnavailable { root_path: String, cause: LocalStoreUnavailableCause }
+
+// PURE: the open decision over the marker read. Hermetic controls call this directly.
+fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: FilesystemExactRead) -> LocalStoreOpening {
+  let root_path = materialization_store_root_path(root: root)
+  let marker_path = store_path(root_path: root_path, name: materialization_store_marker_name)
+  match marker_read {
+    FilesystemExactPathAbsent { path: _ } =>
+      LocalStoreUnavailable { root_path: root_path, cause: LocalStoreNotInitialized { marker_path: marker_path } }
+    FilesystemExactPathUnreadable { path: _, kind: k, error: e } =>
+      LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: filesystem_fault(kind: k, error: e) } }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
+      LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: concat(o, ": ", e) } } }
+    FilesystemExactPathRead { path: _, content: c } =>
+      if store_marker_recognized(root: root, content: c) {
+        LocalStoreOpened {
+          root: root,
+          store: OpenedMaterializationStore {
+            provider: materialization_store_local_id,
+            instance: content_hash_of_value(value: c as NonEmptyStr)
+          },
+          durability: materialization_store_durability(root: root)
+        }
+      } else {
+        LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnrecognized { marker_path: marker_path } }
+      }
+  }
+}
+
+func local_store_read(path: String) -> FilesystemExactRead {
+  let r = Filesystem.Read(path: path)
+  filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind)
+}
+
+func local_store_create_new(path: String, content: String) -> FilesystemCreateNew {
+  let w = Filesystem.WriteCreateNew(path: path, content: content)
+  filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind)
+}
+
+func local_store_open(root: MaterializationStoreRoot) -> LocalStoreOpening {
+  let root_path = materialization_store_root_path(root: root)
+  match materialization_store_admissible(root: root, verb: Read) {
+    Deny { refusal: _ } =>
+      LocalStoreUnavailable {
+        root_path: root_path,
+        cause: LocalStoreGrantRefused { verb: Read, target: absolute_path_position(path: root_path), frame: materialization_store_frame }
+      }
+    Permit =>
+      local_store_open_decide(
+        root: root,
+        marker_read: local_store_read(path: store_path(root_path: root_path, name: materialization_store_marker_name))
+      )
+  }
+}
+
+type LocalStoreInitialization
+  = LocalStoreInitialized { opening: LocalStoreOpening }
+  | LocalStoreInitializationRefused { root_path: String, cause: LocalStoreUnavailableCause }
+
+// Initialization publishes the marker create-new and then OPENS the store it created, so the
+// returned opening is the same observation every later open makes -- a marker written by a
+// concurrent initializer with a different label opens as THAT store, never as ours.
+func local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmptyStr) -> LocalStoreInitialization {
+  let root_path = materialization_store_root_path(root: root)
+  match materialization_store_admissible(root: root, verb: Write) {
+    Deny { refusal: _ } =>
+      LocalStoreInitializationRefused {
+        root_path: root_path,
+        cause: LocalStoreGrantRefused { verb: Write, target: absolute_path_position(path: root_path), frame: materialization_store_frame }
+      }
+    Permit =>
+      match store_publish_observation(create: local_store_create_new(
+        path: store_path(root_path: root_path, name: materialization_store_marker_name),
+        content: store_marker_content(root: root, instance_label: instance_label)
+      )) {
+        StoreObjectPublishRefused { fault: f } =>
+          LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: f } }
+        StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root) }
+        StoreObjectOccupied => LocalStoreInitialized { opening: local_store_open(root: root) }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Lookup and commit over an opened store.
+
+func local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializationStore, req: ArtifactRequest) -> StoreLookup {
+  let root_path = materialization_store_root_path(root: root)
+  match materialization_store_admissible(root: root, verb: Read) {
+    Deny { refusal: _ } =>
+      StoreLookupRefused {
+        key: request_key(req: req),
+        refusal: StoreLookupObjectUnavailable { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("read grant refused for ", root_path) } }
+      }
+    Permit =>
+      store_lookup_decide(
+        store: store,
+        req: req,
+        read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(key: request_key(req: req)))))
+      )
+  }
+}
+
+func local_store_commit(
+  root: MaterializationStoreRoot,
+  store: OpenedMaterializationStore,
+  req: ArtifactRequest,
+  payloads: List<ArtifactPayload>
+) -> StoreCommit {
+  let root_path = materialization_store_root_path(root: root)
+  match store_commit_prepare(req: req, payloads: payloads) {
+    StoreCommitNotPrepared { commit: c } => c
+    StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered } =>
+      match materialization_store_admissible(root: root, verb: Write) {
+        Deny { refusal: _ } =>
+          StoreCommitRefused {
+            key: k,
+            refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } }
+          }
+        Permit => {
+          let publish = store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object))
+          store_commit_settle(
+            store: store,
+            prepared_key: k,
+            offered_digest: offered,
+            publish: publish,
+            read_back: local_store_lookup(root: root, store: store, req: req)
+          )
+        }
+      }
+  }
+}
+
+// BATCH: one open, then one exact read per request. The open is the only store-level observation;
+// if it refuses, EVERY request in the batch is refused with the same cause -- none is answered as a
+// miss, and none is answered from anywhere else.
+type LocalStoreBatchLookup
+  = LocalStoreBatchLooked { store: OpenedMaterializationStore, lookups: List<StoreLookup> }
+  | LocalStoreBatchUnavailable { root_path: String, cause: LocalStoreUnavailableCause }
+
+func local_store_lookup_batch(root: MaterializationStoreRoot, reqs: List<ArtifactRequest>) -> LocalStoreBatchLookup {
+  match local_store_open(root: root) {
+    LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreBatchUnavailable { root_path: p, cause: c }
+    LocalStoreOpened { root: r, store: s, durability: _ } =>
+      LocalStoreBatchLooked { store: s, lookups: reqs |> map(req => local_store_lookup(root: r, store: s, req: req)) }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The cache-interface row this realization's receipts name.
+
+data materialization_store_local_facts: CacheInterfaceCatalogFacts = {
+  identity: materialization_store_local_id
+  backing_surface: "gunbc-materialization-store-persistent-host-volume"
+  transport_encoding: CatalogCasContentEncoding
+  key_derivation: {
+    key_inputs: ContentAddressed
+    overwritable: false
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Org
+    invalidation_triggers: [ToolchainChange, ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: WriteOnce
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: PerHostFilesystem
+    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
+    atomicity: WriteThenCommit
+    auth: FilesystemPerms
+    read_latency: LocalDiskUs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "atomicity"
+      evidence: OperatorObserved {
+        note: "Filesystem.WriteCreateNew stages, fsyncs, and publishes with hard_link (extdeps.filesystem.rust_realization rust_file_write_create_new_fn_def): the object name appears complete or not at all, and a second writer receives AlreadyExists"
+        observed_at: Absent
+      }
+    },
+    {
+      field: "retention"
+      evidence: OperatorObserved {
+        note: "no capacity ceiling or eviction is applied by this realization yet: retention and capacity are owned by std.artifact_store under the provider, and this row stays CapacityUnobserved until that accounting binds to the store"
+        observed_at: Absent
+      }
+    },
+  ]
+}
