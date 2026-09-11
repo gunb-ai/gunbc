@@ -1,0 +1,540 @@
+module test.claim.runner_host_file_converge_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.systemd.unit_file { ExitTypeMain, KillModeProcess, serialize_systemd_drop_in }
+import extdeps.needrestart {
+  NeedrestartUnitNamePrefixAdmitted,
+  NeedrestartUnitNamePrefixRefused,
+  needrestart_unit_name_prefix,
+  needrestart_unit_name_prefix_regex,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.runner_unit {
+  RunnerUnitLifecycleIntent,
+  gunbc_runner_lifecycle_intent,
+  gunbc_runner_listener_is_main_process,
+  lifecycle_intent_cannot_orphan,
+  runner_unit_prefix,
+  runner_unit_name_of_registration,
+}
+import gunbc.runner_unit_file {
+  runner_unit_teardown_dropin,
+  runner_unit_teardown_dropin_path,
+  gunbc_runner_unit_teardown_dropin_text,
+}
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+}
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import gunbc.runner_host_file_converge {
+  RunnerHostFileDesired,
+  RunnerHostFilesDesired,
+  RunnerHostFilesDesiredRefused,
+  runner_host_file_desired_population,
+  RunnerHostFileSubject,
+  RunnerHostFileSubjectAdmitted,
+  RunnerHostFileSubjectRefused,
+  runner_host_file_subject,
+  HostFileIdentical,
+  HostFileDiffers,
+  HostFileAbsent,
+  HostFileUnobservable,
+  classify_host_file_presence,
+  RunnerHostFileStanding,
+  RunnerHostPathMetadata,
+  PathsRootOnly,
+  PathsNotRootOnly,
+  PathsUnobservable,
+  PathsNotApplicable,
+  runner_host_path_ancestors,
+  runner_host_root_only_find_argv,
+  classify_root_only_paths,
+  RunnerHostFileObservation,
+  HostFileLeaveInPlace,
+  HostFileWrite,
+  HostFileActionRefused,
+  RunnerHostFileAction,
+  runner_host_file_action,
+  RunnerSlotUnitReading,
+  RunnerSlotUnitStanding,
+  SlotTeardownEffective,
+  SlotTeardownNotEffective,
+  SlotReloadPending,
+  SlotUnitNotLoaded,
+  SlotUnitUnread,
+  classify_runner_slot_unit,
+  RunnerSlotUnitResult,
+  RunnerSlotPopulation,
+  SlotPopulationObserved,
+  SlotPopulationUnobservable,
+  runner_slot_units_from_list_units,
+  runner_slot_population_units,
+  classify_runner_slot_population,
+  runner_slot_population_owes_reload,
+  runner_slot_population_effective,
+  runner_slot_population_read_completely,
+  RunnerHostFilePlanned,
+  RunnerHostFileResult,
+  HostFileLeftInPlace,
+  HostFileConvergedByWrite,
+  HostFileWriteRefused,
+  HostFileNotAttempted,
+  HostFileNotAppliedObserveOnly,
+  RunnerHostFileRun,
+  RunnerHostFileConvergeMode,
+  RunnerHostFilesObserveOnly,
+  RunnerHostFilesApply,
+  AdministratorPrivilegeAvailable,
+  AdministratorPrivilegeRefused,
+  RunnerHostManagerReload,
+  ManagerReloadNotOwed,
+  ManagerReloaded,
+  ManagerReloadRefused,
+  ManagerReloadOwedNotAttempted,
+  runner_host_file_run_succeeded,
+  runner_host_file_write_admission,
+  run_runner_host_files,
+}
+
+// Every claim here is a function of declared rows except the route test, whose every remote leg is
+// answered by the hermetic ssh mock; nothing reads the live tree.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── The bytes, against independently authored oracles ─────────────────────────────────────────────
+
+// THE ORACLE IS WRITTEN HERE, NOT DERIVED. systemd.unit(5) drop-in grammar: a section header, one
+// directive per line, a terminating newline. If the renderer and this string ever agree because both
+// moved, the witness has become a restatement, so the literal stays literal.
+data expected_teardown_dropin_text: String = "[Service]\nExitType=cgroup\nKillMode=control-group\n"
+
+test fn the_teardown_dropin_carries_the_declared_pair_and_nothing_else() -> Bool {
+  gunbc_runner_unit_teardown_dropin_text() == expected_teardown_dropin_text
+}
+
+test fn the_teardown_dropin_lands_in_the_runner_template_dropin_directory() -> Bool {
+  (runner_unit_teardown_dropin_path() as String) == "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf"
+}
+
+// THE DISCRIMINATING RED, AS THE LIVE FLEET CARRIES IT. `KillMode=process` with systemd's default
+// `ExitType=main` is what srv1 reported on 2026-09-11. Rendering that pair through the same function
+// must produce different bytes, and the orphan predicate must refuse it, or the drop-in is a
+// decoration that would read green whatever the fleet did.
+test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
+  let live = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
+  serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: live)) != expected_teardown_dropin_text
+    && !lifecycle_intent_cannot_orphan(intent: live, listener_is_main_process: gunbc_runner_listener_is_main_process)
+    && lifecycle_intent_cannot_orphan(intent: gunbc_runner_lifecycle_intent, listener_is_main_process: gunbc_runner_listener_is_main_process)
+}
+
+// The needrestart snippet, against upstream's syntax: an assignment into the override_rc hashref,
+// keyed by a start-anchored quotemeta'd prefix, valued false so the restart is deferred. Perl `die`s
+// on a malformed conf.d file, so these bytes are not cosmetic.
+data expected_needrestart_text: String = "$nrconf\{override_rc\}->\{qr(^actions\\-runner\\@)\} = 0;\n"
+
+fn desired_content(subject: String) -> String {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => ""
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.content } else { acc })
+  }
+}
+
+fn desired_path(subject: String) -> String {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => ""
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.path as String } else { acc })
+  }
+}
+
+test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool {
+  desired_content(subject: "needrestart-runner-deferral") == expected_needrestart_text
+    && desired_path(subject: "needrestart-runner-deferral") == "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"
+}
+
+test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs } =>
+      length(fs) == 2
+        && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
+  }
+}
+
+// The deferral key is derived from the SAME prefix every slot unit name is derived from, so a rename
+// of the unit family moves both or neither.
+test fn every_slot_unit_name_begins_with_the_deferred_prefix() -> Bool {
+  starts_with(s: runner_unit_name_of_registration(registration_name: "srv1-01" as NonEmptyStr) as String, prefix: runner_unit_prefix)
+    && starts_with(s: runner_unit_name_of_registration(registration_name: "srv4-21" as NonEmptyStr) as String, prefix: runner_unit_prefix)
+}
+
+test fn quotemeta_escapes_every_non_word_character_of_the_prefix() -> Bool {
+  match needrestart_unit_name_prefix(raw: "a.b-c:d_e@f") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => false
+    NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
+      needrestart_unit_name_prefix_regex(prefix: p) == "qr(^a\\.b\\-c\\:d_e\\@f)"
+  }
+}
+
+// An empty prefix would match every service, and a character outside systemd's unit-name alphabet
+// could only come from a caller who meant something other than a unit name. Both refuse.
+test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
+  let empty = match needrestart_unit_name_prefix(raw: "") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => true
+    NeedrestartUnitNamePrefixAdmitted { prefix: _ } => false
+  }
+  let spaced = match needrestart_unit_name_prefix(raw: "actions runner") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => true
+    NeedrestartUnitNamePrefixAdmitted { prefix: _ } => false
+  }
+  let paren = match needrestart_unit_name_prefix(raw: "a)b") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => true
+    NeedrestartUnitNamePrefixAdmitted { prefix: _ } => false
+  }
+  empty && spaced && paren
+}
+
+// Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
+// would refuse at the seal rather than reaching a sudo leg.
+test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: true, f: (ok, f) => ok && match runner_host_file_write_admission(file: f) {
+        TypedRemoteFileWriteAdmitted { write: _ } => true
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+      })
+  }
+}
+
+// ── The subject ──────────────────────────────────────────────────────────────────────────────────
+
+// The subject carries EVERY desired slot unit, not a representative, and the declared administrator.
+test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_slot_unit() -> Bool {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => false
+    RunnerHostFileSubjectAdmitted { subject: s } =>
+      (s.target.principal as String) == "ubuntu"
+        && (s.target.endpoint as String) == "srv1"
+        && length(s.desired_units) > 1
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
+  }
+}
+
+test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
+  match runner_host_file_subject(host: "srv9" as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => true
+    RunnerHostFileSubjectAdmitted { subject: _ } => false
+  }
+}
+
+// ── File content and metadata judgments ──────────────────────────────────────────────────────────
+
+fn standing_is_absent(standing: RunnerHostFileStanding) -> Bool {
+  match standing {
+    HostFileAbsent => true
+    HostFileIdentical => false
+    HostFileDiffers => false
+    HostFileUnobservable { reason: _ } => false
+  }
+}
+
+fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
+  match standing {
+    HostFileUnobservable { reason: _ } => true
+    HostFileAbsent => false
+    HostFileIdentical => false
+    HostFileDiffers => false
+  }
+}
+
+test fn presence_zero_continues_one_is_absent_other_is_unobservable() -> Bool {
+  let continues = match classify_host_file_presence(exit_code: 0, stderr: "") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let absent = match classify_host_file_presence(exit_code: 1, stderr: "") {
+    Present { value: st } => standing_is_absent(standing: st)
+    Absent => false
+  }
+  let unobservable = match classify_host_file_presence(exit_code: 2, stderr: "test: extra argument") {
+    Present { value: st } => standing_is_unobservable(standing: st)
+    Absent => false
+  }
+  continues && absent && unobservable
+}
+
+// Every directory from the write scope down to the file's own, in order, and nothing above /etc.
+test fn the_ancestors_of_a_file_are_every_directory_from_the_scope_down() -> Bool {
+  runner_host_path_ancestors(path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
+    == ["/etc", "/etc/needrestart", "/etc/needrestart/conf.d"]
+    && runner_host_path_ancestors(path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
+    == ["/etc", "/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@.service.d"]
+}
+
+test fn the_root_only_predicate_is_evaluated_far_side_by_find() -> Bool {
+  runner_host_root_only_find_argv(paths: ["/etc", "/etc/needrestart"], kind: "d")
+    == ["find", "/etc", "/etc/needrestart", "-maxdepth", "0", "-type", "d", "-user", "root", "-group", "root", "-not", "-perm", "/022"]
+}
+
+// find prints the SAFE set; anything requested and not printed failed a clause.
+test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
+  let all_safe = match classify_root_only_paths(requested: ["/etc", "/etc/needrestart"], exit_code: 0, stdout: "/etc\n/etc/needrestart\n", stderr: "") {
+    PathsRootOnly => true
+    PathsNotRootOnly { paths: _, detail: _ } => false
+    PathsUnobservable { reason: _ } => false
+    PathsNotApplicable => false
+  }
+  let one_unsafe = match classify_root_only_paths(requested: ["/etc", "/etc/needrestart"], exit_code: 0, stdout: "/etc\n", stderr: "") {
+    PathsNotRootOnly { paths: ps, detail: _ } => ps == ["/etc/needrestart"]
+    PathsRootOnly => false
+    PathsUnobservable { reason: _ } => false
+    PathsNotApplicable => false
+  }
+  let missing = match classify_root_only_paths(requested: ["/etc/needrestart/conf.d"], exit_code: 1, stdout: "", stderr: "find: '/etc/needrestart/conf.d': No such file or directory") {
+    PathsNotRootOnly { paths: ps, detail: _ } => ps == ["/etc/needrestart/conf.d"]
+    PathsRootOnly => false
+    PathsUnobservable { reason: _ } => false
+    PathsNotApplicable => false
+  }
+  all_safe && one_unsafe && missing
+}
+
+fn action_of(content: RunnerHostFileStanding, file_metadata: RunnerHostPathMetadata, ancestors: RunnerHostPathMetadata) -> RunnerHostFileAction {
+  runner_host_file_action(observation: RunnerHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors })
+}
+
+fn is_leave(a: RunnerHostFileAction) -> Bool { match a { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false } }
+fn is_write(a: RunnerHostFileAction) -> Bool { match a { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false } }
+fn is_refused(a: RunnerHostFileAction) -> Bool { match a { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false } }
+
+data unsafe_file_metadata: RunnerHostPathMetadata = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"], detail: "owned by ghrunner" }
+
+// THE METADATA RED. Byte-identical content that the CI user can rewrite is NOT left in place: root
+// evaluates it, so it is rewritten, which replaces its owner and mode with root's.
+test fn identical_bytes_with_unsafe_file_metadata_are_rewritten_not_left() -> Bool {
+  is_leave(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
+    && is_write(a: action_of(content: HostFileIdentical, file_metadata: unsafe_file_metadata, ancestors: PathsRootOnly))
+    && is_refused(a: action_of(content: HostFileIdentical, file_metadata: PathsUnobservable { reason: "find exit=2" }, ancestors: PathsRootOnly))
+}
+
+// A writable ancestor cannot be repaired by writing the file, and writing into it would publish
+// root-evaluated bytes where a CI user can replace them, so it refuses whatever the content is.
+test fn an_ancestor_that_is_not_root_only_refuses_every_action() -> Bool {
+  let unsafe_dir = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d"], detail: "mode 0777" }
+  is_refused(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: unsafe_dir))
+    && is_refused(a: action_of(content: HostFileAbsent, file_metadata: PathsNotApplicable, ancestors: unsafe_dir))
+    && is_refused(a: action_of(content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsUnobservable { reason: "ssh refused" }))
+}
+
+// A failure to look plans no write: an unobservable file is refused, never overwritten on the strength
+// of not having been read.
+test fn only_a_seen_difference_or_absence_plans_a_write() -> Bool {
+  is_write(a: action_of(content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
+    && is_write(a: action_of(content: HostFileAbsent, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly))
+    && is_refused(a: action_of(content: HostFileUnobservable { reason: "permission denied" }, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly))
+}
+
+// ── Slot unit judgments ──────────────────────────────────────────────────────────────────────────
+
+fn reading(load: String, reload: String, kill: String, exit: String) -> RunnerSlotUnitReading {
+  RunnerSlotUnitReading { unit: "actions-runner@srv1-01.service" as NonEmptyStr, load_state: load, need_daemon_reload: reload, kill_mode: kill, exit_type: exit }
+}
+
+fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
+  match st {
+    SlotTeardownEffective => "effective"
+    SlotTeardownNotEffective { kill_mode: k, exit_type: e } => concat(concat("not-effective:", k), concat(":", e))
+    SlotReloadPending => "reload-pending"
+    SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
+    SlotUnitUnread => "unread"
+  }
+}
+
+test fn the_declared_pair_on_a_loaded_current_unit_is_effective() -> Bool {
+  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "effective"
+}
+
+// THE FALSE-POSITIVE RED. systemctl shows a unit it has not loaded with the manager's DEFAULTS, and the
+// default KillMode is control-group; a check reading KillMode first would certify a slot that does not
+// exist. LoadState is read first.
+test fn a_not_loaded_unit_reporting_default_values_is_not_certified() -> Bool {
+  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "not-found", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-loaded:not-found"
+}
+
+// A loaded unit whose files changed on disk still reports the OLD values; it is reload-pending, not a
+// verdict on the teardown in either direction.
+test fn a_unit_needing_reload_is_pending_whatever_it_reports() -> Bool {
+  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "yes", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
+    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "yes", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
+}
+
+// srv1's and srv2's live reading (2026-09-11), and each half alone.
+test fn the_live_reading_and_each_half_alone_are_not_effective() -> Bool {
+  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:process:main"
+    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:control-group:main"
+    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "mixed", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:mixed:cgroup"
+}
+
+// ── The slot population ──────────────────────────────────────────────────────────────────────────
+
+data list_units_fixture: String = "actions-runner@srv1-01.service loaded active running Ephemeral GitHub Actions Runner (srv1-01)\nactions-runner@srv1-02.service loaded active running Ephemeral GitHub Actions Runner (srv1-02)\nactions-runner@srv1-38.service loaded inactive dead Ephemeral GitHub Actions Runner (srv1-38)\nssh.service loaded active running OpenBSD Secure Shell server\nxactions-runner@srv1-01.service loaded active running decoy\n"
+
+test fn list_units_yields_only_runner_slot_unit_names() -> Bool {
+  runner_slot_units_from_list_units(stdout: list_units_fixture)
+    == ["actions-runner@srv1-01.service", "actions-runner@srv1-02.service", "actions-runner@srv1-38.service"]
+}
+
+// A loaded slot outside the desired roster is part of the population; a desired slot the manager does
+// not hold is kept, to be read as not-loaded rather than skipped.
+test fn the_population_is_desired_units_then_loaded_extras() -> Bool {
+  map(
+    runner_slot_population_units(
+      desired: ["actions-runner@srv1-01.service" as NonEmptyStr, "actions-runner@srv1-03.service" as NonEmptyStr],
+      loaded: runner_slot_units_from_list_units(stdout: list_units_fixture),
+    ),
+    u => u as String,
+  ) == ["actions-runner@srv1-01.service", "actions-runner@srv1-03.service", "actions-runner@srv1-02.service", "actions-runner@srv1-38.service"]
+}
+
+data show_fixture: String = "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=cgroup\nKillMode=control-group\n\nId=actions-runner@srv1-02.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=process\n\nId=actions-runner@srv1-03.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"
+
+fn population_wires(units: List<String>) -> List<String> {
+  map(
+    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
+    r => standing_wire_of(st: r.standing),
+  )
+}
+
+// Each unit is joined to the block that NAMES it -- property order within a block is not relied on --
+// and a unit with no block of its own is unread, never borrowed from a neighbour.
+test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> Bool {
+  population_wires(units: ["actions-runner@srv1-02.service", "actions-runner@srv1-01.service", "actions-runner@srv1-03.service", "actions-runner@srv1-09.service"])
+    == ["not-effective:process:main", "effective", "not-loaded:not-found", "unread"]
+}
+
+fn population_of(standings: List<RunnerSlotUnitStanding>) -> RunnerSlotPopulation {
+  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st }) }
+}
+
+// THE HOST-WIDE VERDICT IS OVER EVERY UNIT. One not-effective, not-loaded, pending or unread unit among
+// effective ones is enough to deny it, and an empty population proves nothing.
+test fn the_host_is_effective_only_when_every_unit_is() -> Bool {
+  runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotTeardownEffective]))
+    && !runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }]))
+    && !runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotUnitNotLoaded { load_state: "not-found" }]))
+    && !runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotReloadPending]))
+    && !runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotUnitUnread]))
+    && !runner_slot_population_effective(population: population_of(standings: []))
+    && !runner_slot_population_effective(population: SlotPopulationUnobservable { reason: "ssh refused" })
+}
+
+// THE RETRY RED. A reload is owed whenever the manager says a unit is stale, whether or not this run
+// wrote anything -- which is exactly the state a run finds after an earlier run landed the file and its
+// reload failed.
+test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool {
+  runner_slot_population_owes_reload(population: population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }, SlotReloadPending]))
+    && !runner_slot_population_owes_reload(population: population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }]))
+    && !runner_slot_population_owes_reload(population: SlotPopulationUnobservable { reason: "ssh refused" })
+}
+
+// ── Terminal ─────────────────────────────────────────────────────────────────────────────────────
+
+fn teardown_desired() -> RunnerHostFileDesired? {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => none
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-teardown-dropin" { Present { value: f } } else { acc })
+  }
+}
+
+fn witness_subject() -> RunnerHostFileSubject? {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectAdmitted { subject: s } => Present { value: s }
+    RunnerHostFileSubjectRefused { cause: _ } => none
+  }
+}
+
+fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload, slots: RunnerSlotPopulation) -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      match teardown_desired() {
+        Absent => false
+        Present { value: f } =>
+          runner_host_file_run_succeeded(run: RunnerHostFileRun {
+            subject: s,
+            mode: mode,
+            privilege: AdministratorPrivilegeAvailable,
+            results: [RunnerHostFileResult {
+              planned: RunnerHostFilePlanned {
+                file: f,
+                observation: RunnerHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
+                action: HostFileLeaveInPlace,
+              },
+              outcome: match mode { RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly RunnerHostFilesApply => HostFileLeftInPlace },
+            }],
+            reload: reload,
+            slots: slots,
+          })
+      }
+  }
+}
+
+// Observe succeeds on a host whose teardown is NOT yet effective -- that is what it exists to report --
+// and apply does not. Apply also refuses a reload it owed and did not perform, and a population with
+// any unit it could not read.
+test fn observe_reports_what_apply_refuses() -> Bool {
+  let old = population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }])
+  let good = population_of(standings: [SlotTeardownEffective, SlotTeardownEffective])
+  settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: old)
+    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadNotOwed, slots: old)
+    && settled_run(mode: RunnerHostFilesApply, reload: ManagerReloaded, slots: good)
+    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
+    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
+    && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
+}
+
+// ── The route, over the hermetic ssh fixture ─────────────────────────────────────────────────────
+
+// THE WHOLE APPLY ROUTE RUNS: privilege, content and metadata observation for both files, the slot
+// listing and show, the reload decision. The mock answers every leg with exit 0 and a stdout that
+// names no path and no unit, so find certifies no ancestor as root-only -- both files are REFUSED
+// before any write -- and no slot unit has a block of its own -- every desired unit reads as UNREAD.
+// Nothing is written or reloaded, and the run ends refused. A route that reported success here would
+// be certifying ownership and a teardown that no host reported.
+test fn the_apply_route_refuses_what_the_host_did_not_report() -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      match fleet_ssh_execution_context_hermetic_witness_fixture() {
+        Absent => false
+        Present { value: context } =>
+          match runner_host_file_desired_population() {
+            RunnerHostFilesDesiredRefused { cause: _ } => false
+            RunnerHostFilesDesired { files: fs } => {
+              let run = run_runner_host_files(subject: s, context: context, files: fs, mode: RunnerHostFilesApply)
+              let privileged = match run.privilege { AdministratorPrivilegeAvailable => true AdministratorPrivilegeRefused { reason: _ } => false }
+              let refused_before_write = all(run.results, r => is_refused(a: r.planned.action) && match r.outcome {
+                HostFileNotAttempted { reason: _ } => true
+                HostFileLeftInPlace => false
+                HostFileNotAppliedObserveOnly => false
+                HostFileWriteRefused { step: _, reason: _ } => false
+                HostFileConvergedByWrite { converged: _ } => false
+              })
+              let not_reloaded = match run.reload { ManagerReloadNotOwed => true ManagerReloaded => false ManagerReloadRefused { reason: _ } => false ManagerReloadOwedNotAttempted { reason: _ } => false }
+              let every_desired_unread = match run.slots {
+                SlotPopulationUnobservable { reason: _ } => false
+                SlotPopulationObserved { units: us } =>
+                  length(us) == length(s.desired_units) && all(us, r => standing_wire_of(st: r.standing) == "unread")
+              }
+              privileged && length(run.results) == 2 && refused_before_write && not_reloaded && every_desired_unread
+                && !runner_host_file_run_succeeded(run: run)
+            }
+          }
+      }
+  }
+}
