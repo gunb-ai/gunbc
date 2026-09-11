@@ -93,8 +93,8 @@ fn coverage_receipts_from(facts: List<DeclFact>) -> List<EnrollmentDiscoveryRece
       acc
     } else {
       list_append(
-        left: [live_receipt_for_contract(c: c, facts: facts, ci_entries: ci_entries, prepush_entries: prepush_entries)],
-        right: acc
+        left: acc,
+        right: [live_receipt_for_contract(c: c, facts: facts, ci_entries: ci_entries, prepush_entries: prepush_entries)]
       )
     }
   })
