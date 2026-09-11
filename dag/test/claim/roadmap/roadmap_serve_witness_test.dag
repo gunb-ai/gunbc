@@ -21,6 +21,7 @@ import gunbc.roadmap_serve {
   roadmap_serve_respond,
   roadmap_serve_respond_for_instance,
   roadmap_serve_respond_over,
+  ServedDailyBodyAuthority, DailyBodyRenderedUnderThisPlan, DailyBodyAuthorityUnknown,
   belt_dispatch_status,
 }
 import gunbc.roadmap_belt_actuate {
@@ -58,7 +59,7 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
-import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path }
+import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_lines_accepted_count }
 import gunbc.roadmap_model { RoadmapNodeId }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -429,9 +430,18 @@ fn caller_supplied_plan_fixture() -> RoadmapAuthorityProjection {
 }
 
 fn serve_over_plan(plan: RoadmapAuthorityProjection, path: String) -> ServeHttpResponse {
+  serve_over_plan_declaring(plan: plan, daily_body: DailyBodyRenderedUnderThisPlan, path: path)
+}
+
+fn serve_over_plan_declaring(
+  plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
+  path: String,
+) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: srv2_preview_dashboard_instance(),
     plan: plan,
+    daily_body: daily_body,
     method_label: "GET",
     path: path,
     body: "",
@@ -543,4 +553,38 @@ test fn witness_daily_page_answers_from_the_supplied_plan() -> Bool {
   string_contains(s: projected, pattern: v1_exit_progress_count_text(accepted_ids: []))
     && string_contains(s: refused, pattern: "the caller's plan carrier could not be read")
     && string_contains(s: refused, pattern: v1_exit_progress_count_text(accepted_ids: []))
+}
+
+// ── The route the plan parameter CANNOT reach refuses instead of answering ───────────────────────
+//
+// DESIGN 4b puts silent wrongness outside the ladder and forbids it outright, so the plan parameter
+// may not create a path where / answers 200 from a body rendered under an authority nobody can
+// name. The agreement is a declared fact of the call, and a caller that cannot declare it is
+// refused on that ONE route (review 63390). This is the executing evidence for that arm, and for
+// its other half: refusing / must not cost the routes whose plan DOES reach them.
+
+test fn witness_undeclared_daily_body_refuses_rather_than_answering() -> Bool {
+  let r = serve_over_plan_declaring(
+    plan: caller_supplied_plan_fixture(),
+    daily_body: DailyBodyAuthorityUnknown,
+    path: roadmap_site_daily_url_path as String,
+  )
+  r.status == 503
+    && string_contains(s: r.body, pattern: "carries no identity of the authority it came from")
+    && string_contains(s: r.body, pattern: "served_observation_observe_and_write_over")
+    && string_contains(s: r.body, pattern: "a_prerendered_body_carries_no_identity_of_its_source")
+}
+
+// THE POSITIVE CONTROL, without which the refusal above is satisfiable by refusing everything: a
+// caller that cannot vouch for the daily body still gets every other route answered from its own
+// plan, and the refusal is located on / alone.
+test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
+  let md = serve_over_plan_declaring(
+    plan: caller_supplied_plan_fixture(),
+    daily_body: DailyBodyAuthorityUnknown,
+    path: roadmap_site_roadmap_url_path as String,
+  )
+  md.status == 200
+    && string_contains(s: md.body, pattern: caller_supplied_plan_section_title())
+    && !string_contains(s: md.body, pattern: public_plan_section_title())
 }

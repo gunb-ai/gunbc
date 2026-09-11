@@ -238,6 +238,28 @@ type RoadmapServeTableBuild
 // a witness spelling "/roadmap.md" reaches a 404 and asserts nothing (review 63317, and the
 // operator's live check against the running instance). The rows now consume the declaration, so a
 // renamed route moves the routing table, the static artifact and every witness together.
+// THE ONE FACT THE SERVING PROCESS CANNOT OBSERVE, DECLARED SO IT CAN REFUSE.
+//
+// Route / is served from a body the BELT TICK rendered, under whatever plan that process held. The
+// stored body carries no identity of the authority it came from, so a serving process handed a
+// plan cannot check whether the body agrees with it -- the class is filed as
+// gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source.
+//
+// That made this entry's plan parameter a constructor for silent wrongness: before the parameter
+// existed no caller COULD diverge, and DESIGN 4b puts silent wrongness outside the ladder and
+// forbids it outright rather than admitting it at a low rung. A note saying so is not a refusal
+// (4c), so the honest arm available today is the one 5 names: refuse, never widen.
+//
+// The agreement is therefore a DECLARED fact of the call rather than something inferred. A caller
+// whose own tick renders the daily body under the same plan says so and is served; a caller that
+// cannot say so gets a located refusal on that ONE route, and every other route still answers from
+// its plan. This is 4b's "outside the modeled guarantee" column handled at a declared boundary --
+// observed, refused, or mitigated, never fabricated -- not a fifth rung and not a proof.
+
+type ServedDailyBodyAuthority
+  = DailyBodyRenderedUnderThisPlan
+  | DailyBodyAuthorityUnknown
+
 fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
   [
     RoadmapServeRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
@@ -636,13 +658,32 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
 fn roadmap_serve_invoke_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match handler {
-    RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
+    RoadmapDailyPageHandler =>
+      match daily_body {
+        DailyBodyRenderedUnderThisPlan => serve_daily_page_response_for_instance(instance: instance)
+        DailyBodyAuthorityUnknown =>
+          serve_text_response(
+            status: 503,
+            content_type: text_plain_utf8,
+            body: join([
+              "the daily workspace is served from a body this process did not render: the belt tick ",
+              "wrote it under the plan THAT process held, and a stored body carries no identity of ",
+              "the authority it came from, so agreement with the plan this entry was given cannot ",
+              "be decided here. Refusing rather than answering from an unknown authority ",
+              "(gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source). ",
+              "Bind the same plan at the tick entry, gunbc.roadmap_served_observation ",
+              "served_observation_observe_and_write_over, and declare it with ",
+              "DailyBodyRenderedUnderThisPlan.\n",
+            ], ""),
+          )
+      }
     RoadmapFullPageHandler =>
       serve_page_response(page: roadmap_page_for_projection_launch(
         proj: plan,
@@ -697,6 +738,7 @@ fn roadmap_serve_invoke_for_instance(
   roadmap_serve_invoke_over(
     instance: instance,
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
     request: request,
@@ -857,6 +899,7 @@ fn http_method_label_join(methods: List<HttpMethod>) -> String {
 fn roadmap_serve_selection_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
   release_revision: CommitSha,
@@ -866,6 +909,7 @@ fn roadmap_serve_selection_response_over(
       roadmap_serve_invoke_over(
         instance: instance,
         plan: plan,
+        daily_body: daily_body,
         handler: h,
         params: ps,
         request: request,
@@ -893,6 +937,7 @@ fn roadmap_serve_selection_response_for_instance(
   roadmap_serve_selection_response_over(
     instance: instance,
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
     release_revision: release_revision,
@@ -915,6 +960,7 @@ fn roadmap_serve_selection_response(
 fn roadmap_serve_respond_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   method_label: String,
   path: String,
   body: String,
@@ -945,6 +991,7 @@ fn roadmap_serve_respond_over(
           roadmap_serve_selection_response_over(
             instance: instance,
             plan: plan,
+            daily_body: daily_body,
             sel: serve_select_route(table: t, method: m, path: path),
             request: ServeHttpRequest {
               method: m,
@@ -969,6 +1016,7 @@ fn roadmap_serve_respond_for_instance(
   roadmap_serve_respond_over(
     instance: instance,
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
     body: body,
@@ -1025,6 +1073,7 @@ fn roadmap_serve_respond(
 fn roadmap_serve_handle_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   method: String,
   path: String,
   body: String,
@@ -1034,6 +1083,7 @@ fn roadmap_serve_handle_over(
   serve_wire_response(r: roadmap_serve_respond_over(
     instance: instance,
     plan: plan,
+    daily_body: daily_body,
     method_label: method,
     path: path,
     body: body,
@@ -1052,6 +1102,7 @@ fn roadmap_serve_handle(
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
@@ -1077,6 +1128,7 @@ fn roadmap_serve_handle_macbook_local(
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
@@ -1095,6 +1147,7 @@ fn roadmap_serve_handle_srv1_lab(
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
@@ -1113,6 +1166,7 @@ fn roadmap_serve_handle_srv2_preview(
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
@@ -1134,6 +1188,7 @@ fn roadmap_serve_handle_srv2_deploy(
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
@@ -1152,6 +1207,7 @@ fn roadmap_serve_handle_srv2_lab(
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
     plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
