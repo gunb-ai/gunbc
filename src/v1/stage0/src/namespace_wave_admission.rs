@@ -1765,14 +1765,14 @@ pub struct TransitionAdmission {
 /// reports them CONSUMED on the next roster-touching change, which is what deletes them.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-    label: "gunbc#10956 runner provider roster rehome",
-    subject: AdmissionSubject::Binding {
-        module: "gunbc.runner_shape_census",
-        in_declaration: "surveyed_runner_shapes",
-        spelling: "surveyed_runner_catalogs",
-        target: "gunbc.runner_provider_survey",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
+        label: "gunbc#10956 runner provider roster rehome",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_shape_census",
+            in_declaration: "surveyed_runner_shapes",
+            spelling: "surveyed_runner_catalogs",
+            target: "gunbc.runner_provider_survey",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
         label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
