@@ -63,22 +63,41 @@ fn registry_reading_for(readings: List<ArchitectureRegistryReading>, image_refer
     if reading_applies_to(r: r, desired_reference: image_reference) { Present { value: r } } else { acc })
 }
 
-// AN ASKED QUESTION IS NOT A REGISTRY DUMP. registry_reading_contains treats a miss as a measured
-// negative over the whole architecture set. A one-element list admitted as ArchitectureRegistryReading
-// would answer "no" for every architecture the probe never asked. This receipt names the one
-// architecture that was asked and whether it was present; it cannot inhabit spark_architecture_registry_readings.
-type ArchitectureAskedReceipt {
-  image_reference: NonEmptyStr
-  host: NonEmptyStr
-  observed_at: NonEmptyStr
-  instrument: NonEmptyStr
-  architecture: NonEmptyStr
-  present: Bool
+// ONE OBSERVATION, TWO COVERAGES. A get_supported_archs() dump and a single asked architecture are
+// the same fact with different coverage. Two peer records made the second roster missable.
+// registry_reading_contains remains dump-only: a miss on a dump is a measured negative.
+type ArchitectureObservation
+  = RegistryDump { reading: ArchitectureRegistryReading }
+  | ArchitectureAsked {
+      image_reference: NonEmptyStr
+      host: NonEmptyStr
+      observed_at: NonEmptyStr
+      instrument: NonEmptyStr
+      architecture: NonEmptyStr
+      present: Bool
+    }
+
+fn architecture_observation_image_reference(o: ArchitectureObservation) -> NonEmptyStr {
+  match o {
+    RegistryDump { reading: r } => r.image_reference
+    ArchitectureAsked {
+      image_reference: r,
+      host: _,
+      observed_at: _,
+      instrument: _,
+      architecture: _,
+      present: _,
+    } => r
+  }
 }
 
-fn architecture_asked_receipt_for(receipts: List<ArchitectureAskedReceipt>, image_reference: NonEmptyStr) -> ArchitectureAskedReceipt? {
-  fold(receipts, init: none, f: (acc, r) =>
-    if (r.image_reference as String) == (image_reference as String) { Present { value: r } } else { acc })
+fn architecture_observation_applies_to(o: ArchitectureObservation, desired_reference: NonEmptyStr) -> Bool {
+  (architecture_observation_image_reference(o: o) as String) == (desired_reference as String)
+}
+
+fn architecture_observation_for(observations: List<ArchitectureObservation>, image_reference: NonEmptyStr) -> ArchitectureObservation? {
+  fold(observations, init: none, f: (acc, o) =>
+    if architecture_observation_applies_to(o: o, desired_reference: image_reference) { Present { value: o } } else { acc })
 }
 
 data vllm_registry_instrument: NonEmptyStr = "python3 -c: vllm.model_executor.models.registry.ModelRegistry.get_supported_archs(), executed by `docker run --gpus all` against the pinned digest" as NonEmptyStr
@@ -1912,7 +1931,7 @@ data gunbc_vllm_dsv41_gb10_registry_reading: ArchitectureRegistryReading = Archi
 // config id inspect reported, not the pull pin sha256:d84a1232... -- those are different hashes.
 data v41_published_arm64_observed_config_id: NonEmptyStr = "sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040" as NonEmptyStr
 
-data v41_published_arm64_architecture_asked: ArchitectureAskedReceipt = ArchitectureAskedReceipt {
+data v41_published_arm64_architecture_asked: ArchitectureObservation = ArchitectureAsked {
   image_reference: v41_published_arm64_observed_config_id,
   host: srv9_gb10_host,
   observed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
@@ -1921,27 +1940,18 @@ data v41_published_arm64_architecture_asked: ArchitectureAskedReceipt = Architec
   present: true,
 }
 
-data spark_architecture_asked_receipts: List<ArchitectureAskedReceipt> = [
+data spark_architecture_observations: List<ArchitectureObservation> = [
+  RegistryDump { reading: sparkrun_vllm_ds4_gb10_registry_reading },
+  RegistryDump { reading: gitcommit90_glm_53_one_spark_registry_reading },
+  RegistryDump { reading: timothystewart6_vllm_gb10_registry_reading },
+  RegistryDump { reading: xomoxcc_dgx_spark_sglang_registry_reading },
+  RegistryDump { reading: gunbc_vllm_dsv41_gb10_registry_reading },
   v41_published_arm64_architecture_asked,
 ]
 
-// THE ROSTER EVERY DUMP CONSUMER READS. Asked receipts are not members: a miss on this list is a
-// measured negative over get_supported_archs(), which an asked-one question must not mint.
-data spark_architecture_registry_readings: List<ArchitectureRegistryReading> = [
-  sparkrun_vllm_ds4_gb10_registry_reading,
-  gitcommit90_glm_53_one_spark_registry_reading,
-  timothystewart6_vllm_gb10_registry_reading,
-  xomoxcc_dgx_spark_sglang_registry_reading,
-  gunbc_vllm_dsv41_gb10_registry_reading,
-]
-
 fn architecture_observation_exists(image_reference: NonEmptyStr) -> Bool {
-  match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: image_reference) {
+  match architecture_observation_for(observations: spark_architecture_observations, image_reference: image_reference) {
     Present { value: _ } => true
-    Absent =>
-      match architecture_asked_receipt_for(receipts: spark_architecture_asked_receipts, image_reference: image_reference) {
-        Present { value: _ } => true
-        Absent => false
-      }
+    Absent => false
   }
 }

@@ -10,8 +10,10 @@ import gunbc.spark.serving_arm {
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 import gunbc.spark.runtime_architecture_registry_reading {
-  ArchitectureRegistryReading, registry_reading_for, spark_architecture_registry_readings,
-  reading_applies_to, architecture_observation_exists, v41_published_arm64_observed_config_id,
+  spark_architecture_observations, architecture_observation_for,
+  architecture_observation_applies_to, architecture_observation_exists,
+  architecture_observation_image_reference,
+  v41_published_arm64_observed_config_id, RegistryDump, ArchitectureAsked,
 }
 
 import extdeps.gpu.types { GpuComputeCapability }
@@ -210,12 +212,7 @@ test fn every_candidate_marked_probed_has_a_registry_reading() -> Bool {
   all(v41_sm121_runtime_candidates, c =>
     match c.disposition {
       CandidateNotProbed { reason: _ } => true
-      CandidateProbed { image_reference: ref } =>
-        match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: ref) {
-          Absent => architecture_observation_exists(image_reference: ref)
-          Present { value: r } =>
-            length(r.host as String) != 0 && length(r.observed_at as String) != 0 && length(r.instrument as String) != 0
-        }
+      CandidateProbed { image_reference: ref } => architecture_observation_exists(image_reference: ref)
     })
 }
 
@@ -235,9 +232,9 @@ test fn every_runtime_row_reading_was_taken_inside_the_image_the_row_names() -> 
 // AND A READING TAKEN INSIDE A DIFFERENT DIGEST MUST NOT APPLY. The discriminating half of the same
 // wall: without it, `runtime_reading_is_current` could be a predicate that answers true for anything.
 test fn a_reading_does_not_apply_to_a_digest_it_was_not_taken_in() -> Bool {
-  all(spark_architecture_registry_readings, r =>
-    reading_applies_to(r: r, desired_reference: r.image_reference)
-      && !reading_applies_to(r: r, desired_reference: "ghcr.io/example/not-the-image@sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr))
+  all(spark_architecture_observations, o =>
+    architecture_observation_applies_to(o: o, desired_reference: architecture_observation_image_reference(o: o))
+      && !architecture_observation_applies_to(o: o, desired_reference: "ghcr.io/example/not-the-image@sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr))
 }
 
 // THE CAPABILITY LOOKUP IS KEYED ON THE HARDWARE, so a reading taken on one compute capability can
@@ -361,9 +358,17 @@ test fn every_capability_row_names_a_digest_some_reading_was_taken_in() -> Bool 
 // A ONE-ARCHITECTURE ASK IS NOT A DUMP. registry_reading_contains would mint measured negatives for
 // every architecture the published-image probe never asked.
 test fn the_published_config_id_is_not_a_registry_dump() -> Bool {
-  match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: v41_published_arm64_observed_config_id) {
-    Absent => architecture_observation_exists(image_reference: v41_published_arm64_observed_config_id)
-    Present { value: _ } => false
+  match architecture_observation_for(observations: spark_architecture_observations, image_reference: v41_published_arm64_observed_config_id) {
+    Absent => false
+    Present { value: RegistryDump { reading: _ } } => false
+    Present { value: ArchitectureAsked {
+      image_reference: _,
+      host: _,
+      observed_at: _,
+      instrument: _,
+      architecture: _,
+      present: _,
+    } } => true
   }
 }
 

@@ -7,7 +7,8 @@ import extdeps.vendor.nvidia { nvidia }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout, v41_sm12_attention_class }
 import gunbc.spark.runtime_architecture_registry_reading {
-  ArchitectureRegistryReading, ArchitectureAskedReceipt, registry_reading_contains,
+  ArchitectureRegistryReading, ArchitectureObservation, ArchitectureAsked, RegistryDump,
+  registry_reading_contains, architecture_observation_image_reference,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
   timothystewart6_vllm_gb10_registry_reading, xomoxcc_dgx_spark_sglang_registry_reading,
   gunbc_vllm_dsv41_gb10_registry_reading, v41_published_arm64_architecture_asked,
@@ -184,16 +185,31 @@ type RuntimeCapabilityProbeRow {
 // extdeps.deepseek.deepseek_v4_1_flash owns `architectures[0]` of config.json at the pinned
 // revision; spelling it again here would be a second authority for one fact, which is what this
 // import exists to prevent.
-fn architecture_asked_outcome(receipt: ArchitectureAskedReceipt) -> KernelProbeOutcome {
-  if (receipt.architecture as String) != (deepseek_v4_1_flash_architecture_class as String) {
-    KernelProbeSymbolUngrounded {
-      roster: "gunbc.spark.runtime_architecture_registry_reading ArchitectureAskedReceipt" as NonEmptyStr,
-      defect: "this capability names DeepseekV41ForCausalLM and the asked receipt is for a different architecture" as NonEmptyStr,
-    }
-  } else if receipt.present {
-    KernelObservedPresent { symbol: v41_probe_registry_symbol }
-  } else {
-    KernelObservedAbsent { symbol: v41_probe_registry_symbol }
+fn architecture_asked_outcome(observation: ArchitectureObservation) -> KernelProbeOutcome {
+  match observation {
+    RegistryDump { reading: _ } =>
+      KernelProbeSymbolUngrounded {
+        roster: "gunbc.spark.runtime_architecture_registry_reading ArchitectureObservation" as NonEmptyStr,
+        defect: "ArchitectureRegistered for an asked probe cannot be derived from a registry dump via this fold" as NonEmptyStr,
+      }
+    ArchitectureAsked {
+      image_reference: _,
+      host: _,
+      observed_at: _,
+      instrument: _,
+      architecture: a,
+      present: p,
+    } =>
+      if (a as String) != (deepseek_v4_1_flash_architecture_class as String) {
+        KernelProbeSymbolUngrounded {
+          roster: "gunbc.spark.runtime_architecture_registry_reading ArchitectureObservation" as NonEmptyStr,
+          defect: "this capability names DeepseekV41ForCausalLM and the asked observation is for a different architecture" as NonEmptyStr,
+        }
+      } else if p {
+        KernelObservedPresent { symbol: v41_probe_registry_symbol }
+      } else {
+        KernelObservedAbsent { symbol: v41_probe_registry_symbol }
+      }
   }
 }
 
@@ -434,7 +450,7 @@ data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
   RuntimeCandidateRow {
     candidate: "vllm/vllm-openai:deepseekv41-flash-0909 arm64, pulled as vllm/vllm-openai@sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr,
     discovered_via: "operator-chosen route A published image; probed on srv9 by fleet-converge 34643985099" as NonEmptyStr,
-    disposition: CandidateProbed { image_reference: v41_published_arm64_architecture_asked.image_reference },
+    disposition: CandidateProbed { image_reference: architecture_observation_image_reference(o: v41_published_arm64_architecture_asked) },
   },
 ]
 
@@ -765,7 +781,7 @@ data v41_sm121_source_build_probe_rows: List<RuntimeCapabilityProbeRow> = [
 // sha256:714a9375... (the daemon's config id for the d84a1232... pull). Every required capability
 // the probe asks, including Fp4WeightSupportedHere called on the device, returned present.
 data v41_published_arm64_probe: ProbedRuntimeImage = ProbedRuntimeImage {
-  image_reference: v41_published_arm64_architecture_asked.image_reference,
+  image_reference: architecture_observation_image_reference(o: v41_published_arm64_architecture_asked),
   framework: "vllm" as NonEmptyStr,
   framework_version: "0.1.dev20904+g179dd0fa9" as NonEmptyStr,
 }
@@ -777,7 +793,7 @@ data v41_sm121_published_image_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
     capability: ArchitectureRegistered,
-    outcome: architecture_asked_outcome(receipt: v41_published_arm64_architecture_asked),
+    outcome: architecture_asked_outcome(observation: v41_published_arm64_architecture_asked),
   },
   RuntimeCapabilityProbeRow {
     image: v41_published_arm64_probe,
