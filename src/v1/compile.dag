@@ -1216,6 +1216,27 @@ type CensusFillParse {
   annotations: SourceAnnotationGraph
 }
 
+type CensusModuleRetention
+  = RetainParsedModules
+  | RetainDeclarationHeads
+
+fn census_retain_module(module: Node, retention: CensusModuleRetention) -> Node {
+  match retention {
+    RetainParsedModules => module
+    RetainDeclarationHeads => census_heads_module_node(module: module)
+  }
+}
+
+fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetention) -> ParseResult {
+  ParseResult {
+    module: match result.module {
+      Present { value: module_node } => Present { value: census_retain_module(module: module_node, retention: retention) }
+      Absent => none
+    },
+    error: result.error
+  }
+}
+
 // Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
 // imports live in the compile closure or a different tree view; resolving against a fill-only pool
 // fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse
@@ -1251,7 +1272,14 @@ type CensusFillParse {
 // heads-only module index and is caught HERE and nowhere else. The discriminating RED is a
 // planted `fn body_probe(x: Int) -> Int { let = = = 9 }` in a module outside the entry's
 // closure: it must keep refusing with `expected name, found Eq`.
+// Singleton occurrence and namespace consumers retain their existing full-node view.
 fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
+  parse_census_fill_sources_with_retention(sources: sources, retention: RetainParsedModules)
+}
+
+// Annotation admission consumes the full parse. Both accumulator references then
+// share the selected projection so neither retains a discarded body.
+fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention: CensusModuleRetention) -> CensusFillParse {
   let parsed = sources |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
@@ -1283,9 +1311,10 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
       captures: p.annotations,
       source_length: p.source_length
     )
+    let retained_result = census_retain_parse_result(result: parsed.result, retention: retention)
     FrontendAccum {
-      parse_results: list_push(acc.parse_results, parsed.result),
-      module_inputs: match parsed.result.module {
+      parse_results: list_push(acc.parse_results, retained_result),
+      module_inputs: match retained_result.module {
         Present { value: parsed_module } =>
           list_push(acc.module_inputs, module_occurrence_input(
             module: parsed_module,
@@ -1433,7 +1462,10 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let fill = parse_census_fill_sources(sources: options.census_only_sources)
+      let fill = parse_census_fill_sources_with_retention(
+        sources: options.census_only_sources,
+        retention: RetainDeclarationHeads
+      )
       let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
       let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
       let _ = trace_mark("compile.reconcile.done")

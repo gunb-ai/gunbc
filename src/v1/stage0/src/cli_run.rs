@@ -11989,7 +11989,7 @@ fn next_index_generation() -> u64 {
 
 /// Parse-grade pool snapshot: every indexed module's declaration heads plus the
 /// pool-wide newline indexes, in deterministic (sorted module path) order.
-/// Function bodies are stripped (shared marker only) — census consumers read
+/// Function bodies are stripped (refusing marker only) — census consumers read
 /// `module_items` / `local_binding_for_item`, never bodies.
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
@@ -11997,55 +11997,21 @@ struct PoolParse {
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-// Shared per-thread stand-in so stripped fn decls keep `body.is_some()` for
-// `local_binding_for_item`'s fn discriminator. Loud-on-inference only:
-// `ExprErrorKind::CensusHeadsBodyStripped` raises a hard diagnostic in `infer_expr`;
-// it is NOT a complete guard against non-inference body-content reads (direct
-// ExprData traversal, emit, node-count, etc.). `is_census_heads_fn_stand_in` and
-// `census_heads_body_traversal_refusal` are dev-convenience query helpers, not the
-// safety mechanism.
+// The declaration-head projection and its refusing marker are modeled in
+// v1.compiler.compile and v1.compiler.parse. This query is a convenience;
+// inference's CensusHeadsBodyStripped diagnostic remains the refusal mechanism.
+// It does not guard direct body traversal.
 // 🟡 dissolve-on (B): `pool_nodes_by_file_consumers_must_not_descend_into_body` —
-// standing test forbidding any `pool.nodes_by_file` consumer from non-inference body
-// descent; lands the construction wall and retires `CensusHeadsBodyStripped` as a
-// validation-only backstop.
-const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
-
-thread_local! {
-    static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
-        occurrence_identity: Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: CENSUS_HEADS_FN_STAND_IN_NAME.to_string(),
-        span: no_span(),
-        ident_span: None,
-        children: empty_node_list(),
-        connective: Connective::NoConnective,
-        params: empty_node_list(),
-        inferred: None,
-        return_cardinality: Cardinality::Required,
-        uses: empty_node_list(),
-        body: None,
-        transport: None,
-        properties: empty_node_list(),
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-        expr_data: Rc::new(ExprData::ExprError {
-            kind: ExprErrorKind::CensusHeadsBodyStripped,
-            message: "pool census heads-only: declaration body/value stripped — refuse to interpret"
-                .to_string(),
-        }),
-        ident: None,
-    });
-}
-
-fn stripped_fn_body_marker() -> Rc<Node> {
-    STRIPPED_FN_BODY_MARKER.with(Rc::clone)
-}
-
+// a construction wall must still prevent census consumers from reading bodies;
+// the inference refusal is only a validation backstop.
 pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
-    node.name == CENSUS_HEADS_FN_STAND_IN_NAME
-        || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
+    matches!(
+        &*node.expr_data,
+        ExprData::ExprError {
+            kind: ExprErrorKind::CensusHeadsBodyStripped,
+            ..
+        }
+    )
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -15495,7 +15461,7 @@ fn parse_module_heads_for_pool_census(
     // The HEADS reading of the grammar, not the full one. Every declaration head is
     // parsed by the same productions; brace-delimited fn bodies and data initializer
     // values are skipped at token grain instead of being built, because
-    // `census_heads_module_node` below replaces every body with the shared stand-in
+    // `census_heads_module_node` below replaces every function body with the refusing stand-in
     // anyway. Building thousands of modules' bodies for a consumer that discards them
     // was the largest single term
     // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
