@@ -640,6 +640,7 @@ fn reference_sources() -> List<RustFileChangeInput> {
     reference_source(path: "dag/gunbc/instruments/planted_macro_shims/lib.rs", content: "use std::cell::RefCell;\n\nthread_local! {\n    static RT: RefCell<u32> = RefCell::new(v1_rt::seed());\n}\n"),
     reference_source(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs", content: "pub fn nothing_here() -> u32 {\n    1\n}\n"),
     reference_source(path: "fixtures/planted_unclaimed/lib.rs", content: "pub use v1_compiler::v1_rt;\n"),
+    reference_source(path: "dag/gunbc/instruments/planted_comment_shims/lib.rs", content: "// once reached v1_rt; kept as a receipt\n/// doc: v1_rt is not linked here\npub fn documented() -> u32 {\n    1\n}\n"),
   ]
 }
 
@@ -690,6 +691,17 @@ test fn a_reference_inside_a_macro_block_is_a_located_unattributed_row_not_a_dro
 
 test fn a_file_naming_no_token_yields_no_row() -> Bool {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs")) == 0
+}
+
+// A COMMENT IS NOT A REFERENCE: a token inside `//` or `///` prose yields no row and no
+// unattributed line -- the receipt a deletion leaves behind must not read as a consumer.
+test fn a_token_inside_a_comment_line_is_not_a_reference() -> Bool {
+  count(reference_row_for(path: "dag/gunbc/instruments/planted_comment_shims/lib.rs")) == 0
+    && match reference_observation() {
+         RustReferencesObserved { rows: _, unattributed: u, unscannable: _ } =>
+           !(u |> any(x => x.repo_path == "dag/gunbc/instruments/planted_comment_shims/lib.rs"))
+         RustReferenceHostRefused { detail: _ } => false
+       }
 }
 
 test fn a_reference_under_an_unclaimed_tree_refuses_at_the_projection_rather_than_being_skipped() -> Bool {

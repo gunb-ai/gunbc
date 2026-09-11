@@ -1215,7 +1215,7 @@ fn rust_reference_fold_file(
           RustReferenceLineCursor {
             line: cursor.line + 1,
             state: fold_list(
-              xs: filter(xs: tokens, predicate: fn(token) { string_contains(s: text, pattern: token) }),
+              xs: filter(xs: tokens, predicate: fn(token) { rust_line_references_token(text: text, token: token) }),
               empty: cursor.state,
               cons: fn(acc, token) {
                 rust_reference_fold_line(
@@ -1230,6 +1230,19 @@ fn rust_reference_fold_file(
       cursor.state
     }
   }
+}
+
+// A COMMENT IS NOT A REFERENCE. A `//` line naming a token is prose about the token -- the
+// receipt a deletion leaves behind, the doc comment above a renderer that no longer renders -- and
+// a population that counted it would report a consumer where there is a sentence. The check is
+// per line and precedes the token test, so a token inside a comment never reaches attribution.
+fn rust_line_is_comment(text: String) -> Bool {
+  let t = trim(s: text)
+  string_length(s: t) >= 2 && substring(s: t, start: 0, end: 2) == "//"
+}
+
+fn rust_line_references_token(text: String, token: String) -> Bool {
+  !rust_line_is_comment(text: text) && string_contains(s: text, pattern: token)
 }
 
 fn rust_source_carries_a_token(content: String, tokens: List<String>) -> Bool {
@@ -1267,10 +1280,21 @@ fn path_has_prefix(path: String, prefix: String) -> Bool {
 // THE LIVE ENTRY. The selection is NOT narrowed to the namespace-claimed trees: a token-carrying
 // file under an unclaimed tree must reach the projection and refuse there (ItemDeclarationRefRefused
 // names the path), because skipping it here would make the population a silent lower bound.
-fn observe_current_rust_references(tokens: List<String>, excluded_repo_prefix: String) -> RustReferenceObservation {
-  match head_rust_sources(select: fn(path) { !path_has_prefix(path: path, prefix: excluded_repo_prefix) }) {
+fn observe_current_rust_references_selected(tokens: List<String>, select: fn(String) -> Bool) -> RustReferenceObservation {
+  match head_rust_sources(select: select) {
     HeadRustSourcesRefused { detail: detail } => RustReferenceHostRefused { detail: detail }
     HeadRustSourcesRead { sources: sources, generated_repo_paths: generated_repo_paths } =>
       observe_rust_references(sources: sources, generated_repo_paths: generated_repo_paths, tokens: tokens, rows: rust_source_namespace_rows)
   }
+}
+
+fn observe_current_rust_references(tokens: List<String>, excluded_repo_prefix: String) -> RustReferenceObservation {
+  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { !path_has_prefix(path: path, prefix: excluded_repo_prefix) })
+}
+
+// THE DUAL SELECTION: the population UNDER a prefix rather than outside it, for a caller whose
+// subject is the deletion set itself (which of the seed's own sites mint a manifest naming the
+// seed) rather than its consumers.
+fn observe_current_rust_references_under(tokens: List<String>, repo_prefix: String) -> RustReferenceObservation {
+  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { path_has_prefix(path: path, prefix: repo_prefix) })
 }

@@ -7,7 +7,8 @@ import gunbc.v1_consumer_census {
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer,
   v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
   consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
-  v1_shim_partition_over, v1_current_rust_references, v1_claimed_successors
+  v1_shim_partition_over, v1_current_rust_references, v1_claimed_successors,
+  MintedManifestJoin, MintedManifestJoined, MintedManifestJoinUnobserved, v1_minted_manifest_join
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -74,7 +75,21 @@ fn the_live_population_carries_the_whole_roster() -> Bool {
     && count(v1_uncitable_consumers()) == count(consumer_population_uncitable(p: v1_consumer_population()))
 }
 
+// THE SEED-LINK JOIN IS OBSERVED ON THE LIVE TREE, and the two directions this census controls are
+// clean: no rostered renderer is stale and no token line is unattributed. Undisposed sites are the
+// TREE's fact, not this table's -- on a tree that still carries the pre-#10988 probe_manifest edge
+// the join reports it undisposed, and that is the true state of that tree -- so they are not
+// asserted empty here; they enter the population as Undecided consumers and block.
+fn the_live_seed_link_join_is_observed_and_the_roster_is_current() -> Bool {
+  match v1_minted_manifest_join() {
+    MintedManifestJoinUnobserved { reason: _ } => false
+    MintedManifestJoined { produced: p, undisposed_sites: _, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
+      count(p) > 0 && count(uc) > 0 && count(b) == 0 && count(c) == 0 && count(d) == 0 && count(e) == 0
+  }
+}
+
 test fn consumer_census_live_reference_population_is_produced() -> Bool { the_live_reference_population_is_produced() }
+test fn consumer_census_live_seed_link_join_is_observed_and_the_roster_is_current() -> Bool { the_live_seed_link_join_is_observed_and_the_roster_is_current() }
 test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
 test fn consumer_census_live_gate_refuses_even_with_every_successor_realized() -> Bool { the_live_gate_refuses_even_with_every_successor_realized() }
 test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }
