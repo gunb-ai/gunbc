@@ -161,11 +161,11 @@ test fn the_sudo_arm_prefixes_every_leg_non_interactively() -> Bool {
     Absent => false
     Present { value: w } =>
       remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_stage_argv(write: w))
-        == concat(["sudo", "-n"], typed_remote_file_stage_argv(write: w))
+        == concat(["/usr/bin/sudo", "-n"], typed_remote_file_stage_argv(write: w))
         && remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_rename_argv(write: w))
-        == concat(["sudo", "-n"], typed_remote_file_rename_argv(write: w))
+        == concat(["/usr/bin/sudo", "-n"], typed_remote_file_rename_argv(write: w))
         && remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_compare_argv(write: w))
-        == concat(["sudo", "-n"], typed_remote_file_compare_argv(write: w))
+        == concat(["/usr/bin/sudo", "-n"], typed_remote_file_compare_argv(write: w))
         && !string_list_contains(
           xs: remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_stage_argv(write: w)),
           wanted: "-S",

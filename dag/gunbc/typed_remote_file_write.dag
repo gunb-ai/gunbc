@@ -1,6 +1,7 @@
 module gunbc.typed_remote_file_write
 
 import extdeps.tools.chmod { chmod_path_resolved_program }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session {
@@ -106,7 +107,8 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 // against THIS target, not of the transport, and it is spelled once here rather than by each consumer
 // prefixing words onto argv it did not build.
 //
-// `-n` IS THE POINT OF THE SECOND ARM. sudo without it prompts for a password on a channel with no
+// THE SECOND ARM IS extdeps.sudo.elevation sudo_elevate, which mints only the non-interactive form.
+// sudo without -n prompts for a password on a channel with no
 // terminal, which hangs until the step times out; with it, a missing grant is an immediate nonzero exit
 // carrying sudo's own diagnostic, located at the leg that needed the privilege.
 //
@@ -120,8 +122,12 @@ type RemoteFilePrivilege
 fn remote_file_privileged_argv(privilege: RemoteFilePrivilege, argv: List<String>) -> List<String> {
   match privilege {
     RemoteFileAsSessionPrincipal => argv
-    RemoteFileViaNonInteractiveSudo => concat(["sudo", "-n"], argv)
+    RemoteFileViaNonInteractiveSudo => elevated_invocation_argv(invocation: sudo_elevate(command: argv))
   }
+}
+
+fn elevated_invocation_argv(invocation: ElevatedInvocation) -> List<String> {
+  concat([invocation.bin_path], invocation.args)
 }
 
 // The converged verdict is SEALED and the refusal is not, and the asymmetry is the whole point --

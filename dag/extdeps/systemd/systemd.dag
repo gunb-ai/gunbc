@@ -78,6 +78,9 @@ type SystemdUnitProperty
   | AccuracyUSec
   | TimersMonotonic
   | NeedDaemonReload
+  | IdProperty
+  | KillModeProperty
+  | ExitTypeProperty
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -110,6 +113,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     AccuracyUSec => "AccuracyUSec" as NonEmptyStr
     TimersMonotonic => "TimersMonotonic" as NonEmptyStr
     NeedDaemonReload => "NeedDaemonReload" as NonEmptyStr
+    IdProperty => "Id" as NonEmptyStr
+    KillModeProperty => "KillMode" as NonEmptyStr
+    ExitTypeProperty => "ExitType" as NonEmptyStr
   }
 }
 
