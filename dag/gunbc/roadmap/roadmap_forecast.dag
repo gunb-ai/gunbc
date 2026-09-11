@@ -172,6 +172,7 @@ type CycleTimeHistoryRefusal
   | HistoryPullDuplicate { node: RoadmapNodeId, pull_number: Int }
   | HistoryPullNotMergedAfterOpen { node: RoadmapNodeId, pull_number: Int }
   | HistoryAcceptanceCarrierLoadRefused { detail: String }
+  | HistorySizingAssignmentRefused { refusals: List<SizingAssignmentRefusal> }
 
 type CycleTimePopulationExclusion
   = BundledPullDelivery { pull_number: Int, nodes: List<RoadmapNodeId> }
@@ -259,7 +260,20 @@ fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
       let nodes = declared_roadmap_nodes()
       let pulls = cited_pull_timings()
       let links = accepted_node_pull_links()
-      let sizings = derived_node_sizings(nodes: nodes).assignments
+      let adaptation = derived_node_sizings(nodes: nodes)
+      let sizings = adaptation.assignments
+      // BOTH ASSIGNMENT CHECKS RUN ON THIS POPULATION TOO, and skipping them here was the defect
+      // this module's own NodeSizingAdaptation note describes: reading only `.assignments` makes a
+      // wrong-subject answer indistinguishable from an unsized node, so a SizingForAnotherSubject
+      // would have degraded silently into HistoryNodeUnsized and blamed the wrong cause. The whole
+      // build refuses rather than proceeding on a population it cannot trust, which is the shape
+      // the sibling HistoryAcceptanceCarrierLoadRefused arm already uses for a bad population.
+      let assignment_refusals = concat(adaptation.refusals, duplicate_sizing_subjects(sizings: sizings))
+      if count(assignment_refusals) > 0 {
+        return [CycleTimeHistoryRefused {
+          refusal: HistorySizingAssignmentRefused { refusals: assignment_refusals },
+        }]
+      }
       links |> map(link => observation_for_link(
         link: link,
         nodes: nodes,

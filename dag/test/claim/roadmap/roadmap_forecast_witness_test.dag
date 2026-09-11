@@ -51,6 +51,7 @@ import gunbc.roadmap_forecast {
   HistoryPullDuplicate,
   HistoryPullNotMergedAfterOpen,
   HistoryAcceptanceCarrierLoadRefused,
+  HistorySizingAssignmentRefused,
   ForecastAnchorObservation,
   ReviewCycleCount,
   OperatorMergeLatencyAssumption,
@@ -170,6 +171,7 @@ test fn witness_cited_acceptance_pr_history_refuses_every_link_as_unsized() -> B
       HistoryPullDuplicate { node: _, pull_number: _ } => false
       HistoryPullNotMergedAfterOpen { node: _, pull_number: _ } => false
       HistoryAcceptanceCarrierLoadRefused { detail: _ } => false
+      HistorySizingAssignmentRefused { refusals: _ } => false
     })
 }
 
