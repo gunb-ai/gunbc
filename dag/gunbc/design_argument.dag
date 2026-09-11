@@ -130,7 +130,7 @@ data conformance_domains: List<ConformanceDomain> = [
   ConformanceDomain {
     key: "conformance-compute",
     label: "fabric / compute",
-    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why?",
+    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why? Compute cells and inference serving are two subjects of ONE authority, not two models: a compute cell is stateless between grants and settles money, a serving seat is over a replica with loaded state and is quality-conditioned instead, so co-tenancy belongs to the serving subject and charging to the compute one -- both still inhabit the same lease algebra, seat race and priced selection fold.",
     homes: ConformanceHomes {
       first: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply"),
       rest: [
