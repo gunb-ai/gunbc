@@ -2,7 +2,7 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count }
+import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, byte_size_count }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
@@ -22,6 +22,17 @@ import std.decision {
 }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_safetensors_index_total_size,
+  deepseek_v4_1_flash_safetensors_payload_footprint,
+  deepseek_v4_1_flash_safetensors_tree_file_bytes,
+  deepseek_v4_1_flash_context_length,
+  deepseek_v4_1_flash_inference_compresses_kv_as_fp4,
+  deepseek_v4_1_flash_config_declares_kv_cache_dtype,
+  deepseek_v4_1_flash_config_declares_engram_off_accelerator,
+  deepseek_v4_1_flash_engram,
+}
+import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
 
 // ── ONE MODEL IN, A DEPLOYMENT SHAPE OR AN OBLIGATION OUT ─────────────────────────────────────
 //
@@ -88,8 +99,22 @@ data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
   label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
   footprint: FootprintReportedExternally {
-    bytes: 510286023000,
-    source: "extdeps.deepseek.deepseek_v4_1_flash at pin dba1be0a40aa45a94ad051997016db3960a90277 (DSV41-0 PR 11007): HF tree API 48 shards = 510296708312 bytes (file size, not serving RAM). Tensor payload from shard headers = 510286023000 (backbone 298309535168, Engram 203073076240, vision 970536960, draft 7932874632). FootprintReportedExternally until a fleet read; weight-fit cannot treat either quantity as GB10 resident bytes" as NonEmptyStr,
+    bytes: byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size),
+    source: join([
+      "extdeps.deepseek.deepseek_v4_1_flash CitedToAuthority payload bytes=",
+      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)),
+      " (backbone ",
+      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.backbone_bytes)),
+      ", Engram ",
+      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes)),
+      ", vision ",
+      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.vision_bytes)),
+      ", draft ",
+      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.draft_bytes)),
+      "); Hub tree file size ",
+      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)),
+      " is a different quantity. Publisher figure, not a Spark reading",
+    ], "") as NonEmptyStr,
   },
   weight_treatment: PublishedNativeWeights,
 }
@@ -153,22 +178,20 @@ type ExecutorProfile = ExecutorRayProfile | ExecutorMpProfile
 // line. This type spells the REQUEST, so it needs the spelling the request actually uses: without it,
 // describing the canary meant claiming it requested fp8_ds_mla, which is the resolved value rather
 // than the argument, and two launches sending different arguments would have shared one identity.
-type KvLayoutPolicy = KvAutoLayout | KvFp8Layout | KvFp8DsMlaLayout
+type KvLayoutPolicy = KvAutoLayout | KvFp8Layout | KvFp8DsMlaLayout | KvFp4Layout
 
-type SpeculativePolicy = SpeculationOff | SpeculationOn
+type SpeculativePolicy = SpeculationOff | SpeculationOn | SpeculationDraft { algorithm: SpeculativeDraftAlgorithm }
 
 fn speculative_policy_wire(s: SpeculativePolicy) -> NonEmptyStr {
   match s {
     SpeculationOff => "mtp-off" as NonEmptyStr
     SpeculationOn => "mtp-on" as NonEmptyStr
+    SpeculationDraft { algorithm: a } => speculative_draft_algorithm_wire(a: a)
   }
 }
 
 fn speculative_policy_eq(a: SpeculativePolicy, b: SpeculativePolicy) -> Bool {
-  match a {
-    SpeculationOff => match b { SpeculationOff => true, SpeculationOn => false }
-    SpeculationOn => match b { SpeculationOff => false, SpeculationOn => true }
-  }
+  (speculative_policy_wire(s: a) as String) == (speculative_policy_wire(s: b) as String)
 }
 
 fn executor_wire(e: ExecutorProfile) -> NonEmptyStr {
@@ -183,6 +206,7 @@ fn kv_layout_wire(k: KvLayoutPolicy) -> NonEmptyStr {
     KvAutoLayout => "auto" as NonEmptyStr
     KvFp8Layout => "fp8" as NonEmptyStr
     KvFp8DsMlaLayout => "fp8_ds_mla" as NonEmptyStr
+    KvFp4Layout => "fp4" as NonEmptyStr
   }
 }
 
@@ -285,18 +309,27 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
+// V4.1 PARAMETER SET. Do not inherit V4 Flash's 300k window, fp8_ds_mla KV, or MTP-off.
+// Context is the yarn-scaled ceiling from extdeps.deepseek.deepseek_v4_1_flash. Compressed KV
+// is fp4 in the reference inference; config.json does not declare a kv-cache-dtype (CSA2 source
+// layers are a config fact, not this V4 Flash layout). Speculation is DeepSeek DSpark, not V4's
+// SpeculationOff. Memory fraction and batching stay the fleet envelope until DSV41-1 names others.
+// DSV41-1 has not enumerated supported TP widths; the field enumerates every fleet-admitted
+// (tp, replicas) and does not prune to a guessed set.
 fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
   serving_decision_parameters(
-    max_model_len: serving_parameters_current.max_model_len,
+    max_model_len: deepseek_v4_1_flash_context_length,
     memory_request: serving_parameters_current.memory_request,
     max_num_batched_tokens: serving_parameters_current.max_num_batched_tokens,
     max_num_seqs: serving_parameters_current.max_num_seqs,
     executor: serving_parameters_current.executor,
-    kv_layout: serving_parameters_current.kv_layout,
-    speculative: serving_parameters_current.speculative,
+    kv_layout: KvFp4Layout,
+    speculative: SpeculationDraft { algorithm: DSpark },
     runtime: runtime,
   )
 }
+
+data v4_1_runtime_supported_tp_widths_unestablished: NonEmptyStr = "DSV41-1 has not shown which tensor-parallel widths the GB10 vLLM lead accepts. The V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1" as NonEmptyStr
 
 data v4_1_declared_profiles: List<ServingDecisionParameters> = [
   v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
@@ -700,7 +733,20 @@ type EngramAcceleratorStanding
   | EngramOffloadZeroPoolGainOnUnifiedMemory { how: NonEmptyStr }
 
 data deepseek_v4_1_engram_standing: EngramAcceleratorStanding = EngramOffloadZeroPoolGainOnUnifiedMemory {
-  how: "DSV41-0: Engram tables are config layers 1 and 14 (payload 203073076240 of 510286023000); config does not declare off-accelerator placement. Even if a runtime offers UVA offload, GB10 host and GPU are one unified pool, so offload cannot add capacity. Engram payload bytes are not a serving-memory discount and are not a TP width" as NonEmptyStr,
+  how: join([
+    "config.json does not declare off-accelerator Engram (deepseek_v4_1_flash_config_declares_engram_off_accelerator=",
+    if deepseek_v4_1_flash_config_declares_engram_off_accelerator { "true" } else { "false" },
+    "); tables at layers ",
+    to_string(deepseek_v4_1_flash_engram.layer_a),
+    " and ",
+    to_string(deepseek_v4_1_flash_engram.layer_b),
+    "; payload ",
+    to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes)),
+    " bytes. UVA offload cannot add the GB10 unified pool. inference_compresses_kv_as_fp4=",
+    if deepseek_v4_1_flash_inference_compresses_kv_as_fp4 { "true" } else { "false" },
+    " config_declares_kv_cache_dtype=",
+    if deepseek_v4_1_flash_config_declares_kv_cache_dtype { "true" } else { "false" },
+  ], "") as NonEmptyStr,
 }
 
 fn engram_standing(art: ModelArtifact) -> EngramAcceleratorStanding {
@@ -1496,6 +1542,10 @@ fn admit_shape(s: ServingDeploymentSelection) -> ShapeAdmission {
 // axes and would have answered the moment two of them filled; this one names every dimension that
 // could change the decision, so the answer stays an obligation until they are measured. No weights
 // are guessed and no axis is dropped to obtain a winner.
+data glm_selection_policy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_selection_policy")
+data deepseek_v4_flash_selection_policy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_flash_selection_policy")
+data deepseek_v4_1_selection_policy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_selection_policy")
+
 data eight_host_topologies: List<TopologyShape> = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
 
 // THE WORKLOAD IS A SCENARIO AND SAYS SO. 300,000 tokens was authored as a working window with no
@@ -1597,7 +1647,7 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
   field: glm_candidate_field,
   evidence: serving_evidence_current,
   quality_requirement: glm_quality_requirement,
-  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_quality_requirement"),
+  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_selection_policy"),
   constraints: serving_selection_constraints,
   constraint_authority: id_constraint_authority,
 )
@@ -1647,7 +1697,7 @@ data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_
   field: deepseek_candidate_field,
   evidence: serving_evidence_current,
   quality_requirement: deepseek_quality_requirement,
-  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_quality_requirement"),
+  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_flash_selection_policy"),
   constraints: serving_selection_constraints,
   constraint_authority: id_constraint_authority,
 )
@@ -1694,7 +1744,7 @@ data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = serving_deci
   field: deepseek_v4_1_candidate_field,
   evidence: serving_evidence_current,
   quality_requirement: deepseek_v4_1_quality_requirement,
-  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_quality_requirement"),
+  selection_policy: deepseek_v4_1_selection_policy,
   constraints: v4_1_selection_constraints,
   constraint_authority: id_v4_1_constraint_authority,
 )
