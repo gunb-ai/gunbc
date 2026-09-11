@@ -94,9 +94,9 @@ test fn a_refused_positive_control_is_below_floor() -> Bool {
 
 test fn the_two_below_floor_directions_are_named_apart() -> Bool {
   match below_floor_cause(evidence: evidence(red: AcceptedClean, green: AcceptedClean)) {
-    PlantedRedAccepted =>
+    Present { value: PlantedRedAccepted } =>
       match below_floor_cause(evidence: evidence(red: refused(), green: refused())) {
-        PositiveControlRefused => true
+        Present { value: PositiveControlRefused } => true
         _ => false
       }
     _ => false
@@ -129,7 +129,7 @@ test fn a_diverged_observation_is_below_floor_and_named() -> Bool {
     red: ExecutionDiverged { description: "harness crashed" as NonEmptyStr },
     green: AcceptedClean
   )) {
-    ObservationDiverged => true
+    Present { value: ObservationDiverged } => true
     _ => false
   }
 }
@@ -279,4 +279,38 @@ test fn the_disposition_predicates_are_mutually_exclusive() -> Bool {
 
 fn count_true(bs: List<Bool>) -> Int {
   fold(bs, init: 0, f: fn(acc, b) { if b { acc + 1 } else { acc } })
+}
+
+
+// ---- THE CAUSE AGREES WITH THE DISPOSITION, OVER THE WHOLE PRODUCT OF OBSERVATIONS ----
+
+// THE RED THIS CONTROL IS FOR IS THE ONE THIS MODULE SHIPPED. below_floor_cause was total: it named
+// PlantedRedAccepted for a red probe that could not RUN, and PositiveControlRefused for a green
+// probe that was ACCEPTED -- paths whose disposition is Unmeasured and OnLadder. A caller asking
+// for the repair location of a passing path got a plausible, named, false one. The check is not a
+// sample: it is every pair the two observation universes can form, so a future arm cannot slip
+// through a combination nobody wrote a case for.
+fn every_observation() -> List<ProbeObservation> {
+  [
+    refused(),
+    AcceptedClean,
+    accepted_with_residue(),
+    ExecutionDiverged { description: "harness crashed" as NonEmptyStr },
+    ProbeNotRunnable { cause: "toolchain absent" as NonEmptyStr },
+  ]
+}
+
+fn cause_is_present(evidence: PathEvidence) -> Bool {
+  match below_floor_cause(evidence: evidence) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn below_floor_cause_agrees_with_the_disposition() -> Bool {
+  !any(every_observation(), r =>
+    any(every_observation(), g => {
+      let e = evidence(red: r, green: g)
+      cause_is_present(evidence: e) != disposition_is_below_floor(d: disposition_for_path(evidence: e))
+    }))
 }

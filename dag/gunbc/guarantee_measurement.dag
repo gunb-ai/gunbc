@@ -354,7 +354,17 @@ fn disposition_for_path(evidence: PathEvidence) -> GuaranteeDisposition {
 // different places. A RED that was accepted means the wall is missing or misaimed; a GREEN that was
 // refused means the wall is wrong about correct programs, which is the more expensive defect
 // because it stops honest work. Folded the same way, for the same reason.
-fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause {
+//
+// THE CAUSE IS OPTIONAL BECAUSE NOT EVERY PATH HAS ONE, and the earlier total version of this
+// function is the exact defect this module exists to refuse. It answered PlantedRedAccepted for a
+// red probe that was NOT RUNNABLE and PositiveControlRefused for a green probe that was ACCEPTED --
+// paths that disposition_for_path calls Unmeasured and OnLadder. Nothing guarded it and nothing in
+// this language hides it from a caller, so a reader asking for the cause of a passing path got a
+// named, plausible, false repair location: a fabricated answer at the precise grain the carrier is
+// supposed to make honest (DESIGN section 5). Absent is the only true answer there, and
+// below_floor_cause_agrees_with_the_disposition pins Present exactly to the below-floor arm over
+// every one of the twenty-five observation pairs.
+fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause? {
   probe_observation_fold(
     o: evidence.red_probe,
     fold: ProbeObservationFold {
@@ -362,18 +372,18 @@ fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause {
         probe_observation_fold(
           o: evidence.green_probe,
           fold: ProbeObservationFold {
-            refused: fn(_d2, _c2) { PositiveControlRefused }
-            accepted_clean: PositiveControlRefused
-            accepted_counted: fn(_d2, _c2) { PositiveControlRefused }
-            diverged: fn(_r) { ObservationDiverged }
-            not_runnable: fn(_c2) { PositiveControlRefused }
+            refused: fn(_d2, _c2) { Present { value: PositiveControlRefused } }
+            accepted_clean: none
+            accepted_counted: fn(_d2, _c2) { none }
+            diverged: fn(_r) { Present { value: ObservationDiverged } }
+            not_runnable: fn(_c2) { none }
           }
         )
       }
-      accepted_clean: PlantedRedAccepted
-      accepted_counted: fn(_d, _c) { PlantedRedAccepted }
-      diverged: fn(_reason) { ObservationDiverged }
-      not_runnable: fn(_cause) { PlantedRedAccepted }
+      accepted_clean: Present { value: PlantedRedAccepted }
+      accepted_counted: fn(_d, _c) { Present { value: PlantedRedAccepted } }
+      diverged: fn(_reason) { Present { value: ObservationDiverged } }
+      not_runnable: fn(_cause) { none }
     }
   )
 }
@@ -454,21 +464,38 @@ fn disposition_rung_index(d: GuaranteeDisposition) -> Int {
   })
 }
 
+// THE MINIMUM IS A CHOICE OF CARRIER OVER THE ONE ELIMINATOR, not a sixth match. Written as a pair
+// of hand-matches with wildcard defaults it forked the fold declared directly above it, and the
+// wildcards defeated the property the fold exists to give: a sixth disposition arm would have
+// compiled silently into the accumulator here while every other question in this module refused
+// until it was answered.
+fn lower_of_two_dispositions(acc: GuaranteeDisposition, d: GuaranteeDisposition) -> GuaranteeDisposition {
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: acc
+    below_floor: acc
+    frontier_accepted: acc
+    on_ladder: fn(r) {
+      guarantee_disposition_fold(d: acc, fold: GuaranteeDispositionFold {
+        unmeasured: OnLadder { rung: r }
+        below_floor: OnLadder { rung: r }
+        frontier_accepted: OnLadder { rung: r }
+        on_ladder: fn(current) {
+          if guarantee_rung_index(r: r) < guarantee_rung_index(r: current) {
+            OnLadder { rung: r }
+          } else {
+            acc
+          }
+        }
+        outside_modeled: OnLadder { rung: r }
+      })
+    }
+    outside_modeled: acc
+  })
+}
+
 fn minimum_on_ladder(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
   fold(dispositions, init: OutsideModeledGuarantee, f: fn(acc, d) {
-    match d {
-      OnLadder { rung: r } =>
-        match acc {
-          OnLadder { rung: current } =>
-            if guarantee_rung_index(r: r) < guarantee_rung_index(r: current) {
-              OnLadder { rung: r }
-            } else {
-              acc
-            }
-          _ => OnLadder { rung: r }
-        }
-      _ => acc
-    }
+    lower_of_two_dispositions(acc: acc, d: d)
   })
 }
 
