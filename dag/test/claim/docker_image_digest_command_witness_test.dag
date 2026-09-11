@@ -20,10 +20,6 @@ data digest_pinned_fixture: NonEmptyStr = "example.invalid/repo:tag@sha256:01234
 data tagged_fixture: NonEmptyStr = "example.invalid/repo:tag" as NonEmptyStr
 data inspect_id_fixture: NonEmptyStr = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr
 
-fn argv_has_exact_word(words: List<String>, want: String) -> Bool {
-  fold(words, init: false, f: (acc, w) => acc || w == want)
-}
-
 fn digest_listing_words(image: NonEmptyStr) -> List<String> {
   argv_words(command: docker_image_digest_command(image: image))
 }
