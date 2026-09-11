@@ -44,7 +44,7 @@ data iso_32000_2_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, March 2017) specifies PDF Open Parameters for fragment identifiers and OBSOLETES RFC 3778. Where RFC 8118 and ISO 32000-2 disagree on PDF document semantics, ISO 32000-2 controls — cited as iso_32000_2_authority in rfc_8118_model_scope.further_citations. This module models the upstream RFC 8118 section-3 vocabulary and wire semantics only. gunbc product admission policy lives in gunbc.citation.pdf_safe_profile."
+data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, March 2017) specifies PDF Open Parameters for fragment identifiers and OBSOLETES RFC 3778. Where RFC 8118 and ISO 32000-2 disagree on PDF document semantics, ISO 32000-2 controls — cited as iso_32000_2_authority in extdeps_model_scope.further_citations. This module models the upstream RFC 8118 section-3 vocabulary and wire semantics only. gunbc product admission policy lives in gunbc.citation.pdf_safe_profile."
 
 // RFC 8118 section 3: PDF fragment parameters are an ORDERED sequence separated by ampersand; later parameters override earlier ones. Parameter values may be URI-encoded (RFC 8118); wire serialization routes through extdeps.uri uri_percent_encode_component.
 data citation_cit1_witness_split_note: String = "CIT-1 witnesses split across citation_cit1_witness_test and citation_cit1_consumer_witness_test because the former generic external-authority anchor was not module-scoped in v1-seed. dissolve-on: namespace-only resolution lane gives declarations module-scoped identity so one witness file can import both rfc_8118 and sysv_amd64 without homonym shadowing."
@@ -76,7 +76,19 @@ data rfc_8118_section_3_locator: NonEmptyStr = "www.rfc-editor.org/rfc/rfc8118#s
 
 data rfc_8118: NonEmptyStr = "RFC 8118"
 
-data rfc_8118_model_scope: ExternalModelScope = ExternalModelScope {
+// THE SCOPE DECLARATION CARRIES THE NAME THE FRONTIER LOOKS FOR, and it carries it as its only name.
+// This module had called it `rfc_8118_model_scope`, module-prefixed the way its authority anchor is,
+// and it has been on scope_carrier_paths since #10439 while carriers_declare_scope_on_disk failed --
+// because gunbc.extdeps_scope_frontier carrier_content_declares_scope reads the file's bytes for
+// `data extdeps_model_scope:`. An earlier revision of this change added an alias beside the old name
+// to satisfy that check, which is a second name for one concept written to pass a grep: the fix for
+// a check you cannot satisfy is not a second spelling. The declaration is renamed instead, and its
+// references move with it.
+//
+// THE CHECK ITSELF IS STILL THE DEEPER DEFECT and is not this change's to fix: reading bytes for a
+// declaration the namespace tree already carries is the positional citation DESIGN section 3 rules
+// out, and it is why a correctly scoped module could sit red for a week without anyone noticing.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.standards.rfc_8118",
@@ -88,14 +100,6 @@ data rfc_8118_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [iso_32000_2_authority],
 }
 
-// THE COVER CHECK READS BYTES, AND IT READS FOR ONE NAME. gunbc.extdeps_scope_frontier
-// carrier_content_declares_scope asks whether a carrier file contains `data extdeps_model_scope:`,
-// so this module -- which declares its scope under a module-prefixed name, exactly as it does for
-// its authority anchor two declarations above -- was a carrier that the check could not see. It has
-// been on scope_carrier_paths and failing carriers_declare_scope_on_disk since 2026-09-04. The alias
-// is the same move the anchor already makes, and it is deliberately an alias rather than a second
-// ExternalModelScope: one scope, two names, and the module-scoped one stays the authority.
-data extdeps_model_scope: ExternalModelScope = rfc_8118_model_scope
 
 type PdfOpenPage {
   page: PositiveInt
