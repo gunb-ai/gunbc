@@ -438,7 +438,10 @@ fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
   ).exit_code == 0
 }
 
-// THE TEXT ENTRIES ARE WRITTEN THROUGH THE TYPED FILESYSTEM SURFACE, not through a shell. Rendering a subject into a shell command means the subject's own bytes become part of a command line -- a quoting question at a runtime-present site, where a typed write exists and answers it structurally. The write's own report is not consulted because the hash immediately after it is the stronger observation: hash-object refuses on a file that is not there, so a failed write cannot pass for a staged entry.
+// THE TEXT ENTRIES GO TO GIT AS BYTES ON STDIN, through gunbc.devboot.transport
+// devboot_hash_text_blob: never through a file, whose bytes another producer of the same token can
+// replace between the write and the hash, and never through argv, where the subject's own bytes
+// would become part of a command line.
 fn stage_text_blob(repo_root: String, text: String) -> GitOidOutcome {
   devboot_hash_text_blob(address: devboot_repo_address(repo_root: repo_root), text: text)
 }
