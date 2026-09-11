@@ -1111,13 +1111,13 @@ fn roadmap_serve_handle(
   )
 }
 
-// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function -- the shape
-// gunbc.roadmap_dashboard_instance declares and srv1_lab already follows -- so serving the
-// workspace from the development checkout is one row here rather than a resolver that reads the
-// process's own working directory. The alternative was tempting and worse: observing the repo root
-// at request time would make the served identity depend on where the binary happened to be
-// launched, which is an ambient fact, and it would re-answer per request a question that is fixed
-// for a process's whole life.
+// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function. That is a
+// constraint of `gunbc serve`, not a dual: the Serve verb binds method/path/body from the socket
+// and has no `--arg` (handle_serve; Serve flags are function/host/port/release-revision only).
+// `gunbc run --arg name=value` exists for ProcessExit entries and does not apply here. Observing
+// the repo root at request time would make the served identity depend on where the binary happened
+// to be launched, which is an ambient fact, and it would re-answer per request a question that is
+// fixed for a process's whole life.
 fn roadmap_serve_handle_macbook_local(
   method: String,
   path: String,
