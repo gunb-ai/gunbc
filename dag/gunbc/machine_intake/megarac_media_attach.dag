@@ -1,10 +1,12 @@
 module gunbc.machine_intake_megarac_media_attach
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { Second, second }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.megarac
 import extdeps.languages.json.parse {
   JsonArray,
-  JsonDocumentParse,
   JsonDocumentParsed,
   JsonDocumentUnreadable,
   JsonMemberFound,
@@ -16,69 +18,17 @@ import extdeps.languages.json.parse {
   some_json_value,
 }
 
-// ATTACHING A REMOTE IMAGE, AS A MODELED OPERATION RATHER THAN A SHELL SCRIPT. extdeps.bmc.megarac
-// described this API in prose for months and carried no transport, so the first attach against a
-// Mt. Collins unit was driven by hand-written curl — the unmodeled realization DESIGN §6 names, and
-// the reason the netboot lane could not claim its image was procured through .dag. The service rows
-// made the surface reachable; this module is the caller that makes it reached.
+// ATTACHING A REMOTE IMAGE, AS A MODELED OPERATION. The effect is adjudicated only by the
+// configurations read-back. HTTP status is not an effect oracle on this firmware: PUT and POST
+// requests have returned HTTP 500 both when their writes applied and when they did not.
 //
-// EVERY STEP READS BACK, AND THAT IS FORCED BY THE CONTROLLER'S OWN BEHAVIOUR rather than chosen for
-// rigour. gunbc.machine_intake_mtcollins1_diskless_boot_receipt records two measured cases of this
-// firmware answering HTTP 500 WHILE THE WRITE TOOK EFFECT: PUT media/general (code 16425) with the
-// share re-mounting anyway, and stop-media (code 1411) with the following attach succeeding. An
-// operation that treated a non-zero exit as refusal would refuse a write that worked, and the caller
-// would then retry or abort against a controller whose state had already moved. So success here is
-// never an exit status; it is the configurations listing naming the image.
-//
-// THE IMAGE INDEX IS RESOLVED, NEVER ASSUMED. start-media takes an image_index, and the controller
-// assigns indices by its own enumeration of the share — the same file was index 0 on one scan and
-// index 1 after another image appeared. A baked index attaches whatever now occupies that slot,
-// which on a share holding a memtest ISO and an installer ISO is a silent wrong-boot rather than a
-// failure. The index is read from the images listing by matching the image NAME.
-//
-// THE IMAGES LISTING ENUMERATES WHAT IS AVAILABLE TO ATTACH, NOT WHAT THE SHARE HOLDS, and an
-// earlier revision of this module got that exactly backwards in a way worth recording because the
-// wrong diagnosis had a dangerous remedy attached to it. Measured on this unit 2026-09-06: with two
-// ISOs in the export, /remote/images listed both; after start-media attached one, the listing
-// returned ONLY THE OTHER, and the survivor's image_index moved from 1 to 0. The attached image had
-// not vanished — it had moved to /remote/configurations, which is where a presented image lives.
-//
-// THE EARLIER READING WAS THAT THE LISTING IS A CACHE THAT GOES STALE, with the remedy "re-assert
-// mount_cd". That remedy appeared to work, and the reason it appeared to work is the problem:
-// toggling mount_cd DETACHES EVERYTHING, which is what returns the image to the available pool. A
-// remedy that works by undoing the desired state is worse than no remedy, and it was written into
-// an operator-facing message on a lane whose entire purpose is hosts booted from that medium.
-//
-// WHAT THE HAZARD IS, AT THE STRENGTH IT WAS ACTUALLY MEASURED, because an earlier revision of this
-// paragraph overstated it in the same breath as retracting an overstatement. It claimed the toggle
-// pulls the running root out from under a booted host. That is the MECHANISM — the presented medium
-// is withdrawn, and casper reads the read-only lower layer from it on demand rather than from RAM,
-// per this lane's own boot receipt — but it is not what was observed. The toggle WAS performed on
-// this unit while it was booted from the medium, and the running installer survived it: measured
-// afterwards over serial console, still interactive at its own menu. The controller is configured
-// rmedia_retry_count 3 / rmedia_retry_interval 15, and the system was idle at a prompt rather than
-// reading, either of which may explain the survival.
-//
-// SO THE HONEST STATEMENT IS THAT THE BLAST RADIUS IS UNQUANTIFIED, not that it is catastrophic and
-// not that it is safe. One observation of one idle host is not evidence that a toggle during heavy
-// reads is survivable, and the remedy is still wrong for the reason that does not depend on any of
-// this: it "fixes" the listing by undoing the attachment the caller asked for.
-//
-// SO THE ORDER OF READS IS LOAD-BEARING AND CONFIGURATIONS COMES FIRST. Asking the available list
-// whether an already-attached image is present is asking the wrong authority a question it answers
-// "no" for the one reason that means SUCCESS. That is what made the operation non-idempotent: a
-// second converge against a correctly-attached host refused, which for a converge step is the
-// failure mode that matters most, since converge is run repeatedly by construction.
-// THE CLEANUP OUTCOME IS CARRIED BESIDE THE ATTACH OUTCOME, never folded into it. Whether the
-// image attached and whether the session was released are different facts with different owners: a
-// successful attach that leaked a session is still a successful attach, and reporting it as a
-// failure would hide the thing that worked while a caller retried it and leaked another. The
-// controller's session table is finite — this lane exhausted one service's sessions by opening one
-// per probe and closing none — so the release has to be observable rather than assumed.
-//
-// SessionReleaseUncertain EXISTS BECAUSE A LOST RESPONSE IS NOT A KNOWN STATE. A DELETE whose reply
-// never arrived may have released the session or may not; treating that as released would
-// under-count leaks exactly when the transport is already misbehaving, which is when leaks matter.
+// THE STATUS ENUM IS THE CONTROLLER'S OWN, recovered from source.min.js served by the live BMC and
+// then exercised on mtcollins1. 0 is idle; 100 is connecting; 1 is the healthy steady state
+// (frontend: Started / Connection Accepted); 2,3,4,5 are Connection Denied, Login Failed,
+// MAX Session Reached and Permission Denied. The old predicate `status != 0` therefore accepted
+// every known refusal as success and also treated connecting as ready. Only status 1 with a real
+// session index is ready.
+
 type SessionRelease
   = SessionReleased
   | SessionReleaseRefused { detail: String }
@@ -93,19 +43,22 @@ type MegaRacAttachOutcome
   = MegaRacAttached { image_name: NonEmptyStr, image_index: String }
   | MegaRacAlreadyAttached { image_name: NonEmptyStr }
   | MegaRacConfigurationsUnreadable { detail: String }
+  | MegaRacConfigurationAmbiguous { image_name: NonEmptyStr, matches: Int }
+  | MegaRacWrongMediaType { image_name: NonEmptyStr, observed: String }
+  | MegaRacSessionIndexUnavailable { image_name: NonEmptyStr, configurations: String }
+  | MegaRacConnectionDenied { image_name: NonEmptyStr, configurations: String }
+  | MegaRacLoginFailed { image_name: NonEmptyStr, configurations: String }
+  | MegaRacMaxSessionReached { image_name: NonEmptyStr, configurations: String }
+  | MegaRacPermissionDenied { image_name: NonEmptyStr, configurations: String }
+  | MegaRacStopped { image_name: NonEmptyStr, status: String, configurations: String }
+  | MegaRacAttachTimedOut { image_name: NonEmptyStr, samples: Nat, configurations: String }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
   | MegaRacImagesUnreadable { detail: String }
   | MegaRacImageListingEmpty
   | MegaRacImageListingUnparseable { detail: String }
   | MegaRacImageNotEnumerated { image_name: NonEmptyStr }
-  | MegaRacStartRefused { detail: String }
-  | MegaRacAttachUnconfirmed { image_name: NonEmptyStr, configurations: String }
 
-// THE CSRF TOKEN IS READ FROM THE PARSED DOCUMENT, not scraped. The shell version matched a regex
-// over the response body, which is a second reading of JSON beside the one this repository already
-// owns; extdeps.languages.json.parse is the single recognition authority and a document it cannot
-// parse is unreadable rather than partially believed.
 fn json_string_member(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
@@ -128,9 +81,6 @@ fn json_number_member(doc: JsonValue, key: String) -> String? {
   }
 }
 
-// THE INDEX OF A NAMED IMAGE, folded over the parsed array. Returns the FIRST match and the fold
-// keeps it, because a controller enumerating one name twice is a state this module has never
-// observed and would rather report as the index it acted on than silently prefer the last.
 fn image_index_named(elements: List<JsonValue>, image_name: String) -> String? {
   fold(elements, init: none, f: (acc, element) =>
     match acc {
@@ -156,11 +106,8 @@ fn images_array_elements(doc: JsonValue) -> List<JsonValue>? {
   }
 }
 
-// THE START-MEDIA BODY, rendered here rather than by the caller so image_redirection cannot be
-// omitted by a caller who does not know it is required. extdeps.bmc.megarac records that omitting
-// it makes the firmware refuse with opaque codes 13410/13460, recovered from the firmware's own UI
-// bundle rather than from documentation — exactly the kind of fact that is lost when a body is
-// assembled at a call site.
+// THE REQUIRED FIELD IS ENCODED HERE AND HAS NO CALLER-SUPPLIED ABSENT FORM. Omitting
+// image_redirection:1 was measured to produce opaque 13410/13460 refusals.
 fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr {
   join([
     "{\"image_name\":\"", image_name as String,
@@ -169,23 +116,6 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
   ], "") as NonEmptyStr
 }
 
-// THE EFFECT SEQUENCE. Session, list, resolve, start, confirm — and the confirmation is a separate
-// read rather than the start call's own answer, for the reason given at the top of this module.
-//
-// THE CREDENTIAL IS A VALUE HERE AND A FILE PATH EVERYWHERE ELSE IN THIS LANE, and that asymmetry is
-// forced rather than chosen: OpenSession is form-encoded, and curl offers no netrc equivalent for a
-// form body, so the password reaches argv for exactly one call. Every subsequent operation carries
-// no credential at all because the cookie is the bearer. The ipmi operations beside this take a
-// password FILE for the same threat and can, because -f exists there. Naming the asymmetry is the
-// point; hiding it behind a wrapper would make one call's exposure look like none.
-//
-// AN OPENED SESSION WHOSE TOKEN CANNOT BE READ IS STILL AN ALLOCATED SESSION. An earlier
-// revision returned SessionReleaseNotAttempted here, which is the leak that saturated this
-// controller: OpenSession succeeded, the cookie was written, and CloseSession never ran because
-// the renderer treated the arm as "never opened". The DELETE still needs an X-CSRFTOKEN header
-// by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
-// rather than inventing a second CloseSession shape. A refused or uncertain close remains
-// SessionReleaseRefused, never NotAttempted.
 func megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
@@ -252,9 +182,6 @@ func megarac_release_unreadable_session(
   }
 }
 
-// THE RELEASE RUNS ON EVERY PATH THROUGH THE ATTACH, which is why the attach outcome is computed
-// first and the close follows it unconditionally rather than sitting inside a success arm. A
-// refusal allocated the same session a success does.
 func megarac_attach_then_release(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -282,14 +209,219 @@ func megarac_attach_then_release(
   }
 }
 
-// CONFIGURATIONS IS CONSULTED BEFORE ANYTHING IS WRITTEN, so the converged case performs no write
-// at all. This is not an optimisation: start-media against an already-presented image is a write
-// whose effect on a booted host is unmodelled, and the point of reading first is to not make it.
-//
-// MALFORMED PRESENTED STATE IS UNKNOWN, NOT "NOT ATTACHED". An earlier revision collapsed a
-// JSON parse failure or a non-array document to false, then walked the available-images list
-// and could StartMedia over a controller whose current attachment was unreadable. That is the
-// absorbing-fallback DESIGN §5 forbids: ignorance rendered as the empty case.
+fn configuration_row_names(row: JsonValue, image_name: NonEmptyStr) -> Bool {
+  match json_string_member(doc: row, key: "image_name") {
+    Absent => false
+    Present { value: n } => n == (image_name as String)
+  }
+}
+
+// ONE NAMED ROW'S EXACT STATE. Session index 255 is the controller's N/A sentinel and cannot be
+// promoted into a serving session even beside status 1.
+type PresentedMediaStanding
+  = PresentedMediaUnreadable { detail: String }
+  | PresentedMediaNotAttached
+  | PresentedMediaIdle
+  | PresentedMediaConnecting { session_index: String }
+  | PresentedMediaReady { session_index: String }
+  | PresentedMediaConnectionDenied
+  | PresentedMediaLoginFailed
+  | PresentedMediaMaxSessionReached
+  | PresentedMediaPermissionDenied
+  | PresentedMediaStopped { status: String }
+  | PresentedMediaSessionIndexUnavailable
+  | PresentedMediaWrongType { observed: String }
+  | PresentedMediaAmbiguous { matches: Int }
+
+fn configuration_row_standing(row: JsonValue) -> PresentedMediaStanding {
+  let media_type = match json_number_member(doc: row, key: "media_type") {
+    Absent => "unreadable"
+    Present { value: mt } => mt
+  }
+  if media_type != "1" {
+    return PresentedMediaWrongType { observed: media_type }
+  }
+
+  let session_index = match json_number_member(doc: row, key: "session_index") {
+    Absent => "unreadable"
+    Present { value: idx } => idx
+  }
+  return match json_number_member(doc: row, key: "redirection_status") {
+    Absent => PresentedMediaUnreadable { detail: "named configuration has no numeric redirection_status" }
+    Present { value: status } =>
+      if status == "0" {
+        PresentedMediaIdle
+      } else if status == "100" {
+        PresentedMediaConnecting { session_index: session_index }
+      } else if status == "1" {
+        if session_index == "255" || session_index == "unreadable" {
+          PresentedMediaSessionIndexUnavailable
+        } else {
+          PresentedMediaReady { session_index: session_index }
+        }
+      } else if status == "2" {
+        PresentedMediaConnectionDenied
+      } else if status == "3" {
+        PresentedMediaLoginFailed
+      } else if status == "4" {
+        PresentedMediaMaxSessionReached
+      } else if status == "5" {
+        PresentedMediaPermissionDenied
+      } else {
+        PresentedMediaStopped { status: status }
+      }
+  }
+}
+
+fn presented_media_standing(body: String, image_name: NonEmptyStr) -> PresentedMediaStanding {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => PresentedMediaUnreadable { detail: body }
+    JsonDocumentParsed { value: v } =>
+      match images_array_elements(doc: v) {
+        Absent => PresentedMediaUnreadable { detail: body }
+        Present { value: rows } => {
+          let named = rows |> filter(r => configuration_row_names(row: r, image_name: image_name))
+          let matches = count(named)
+          if matches == 0 {
+            PresentedMediaNotAttached
+          } else if matches > 1 {
+            PresentedMediaAmbiguous { matches: matches }
+          } else {
+            match named.first() {
+              Absent => PresentedMediaNotAttached
+              Present { value: row } => configuration_row_standing(row: row)
+            }
+          }
+        }
+      }
+  }
+}
+
+fn presented_terminal_outcome(
+  standing: PresentedMediaStanding,
+  image_name: NonEmptyStr,
+  configurations: String,
+) -> MegaRacAttachOutcome? {
+  match standing {
+    PresentedMediaConnectionDenied => Present { value: MegaRacConnectionDenied { image_name: image_name, configurations: configurations } }
+    PresentedMediaLoginFailed => Present { value: MegaRacLoginFailed { image_name: image_name, configurations: configurations } }
+    PresentedMediaMaxSessionReached => Present { value: MegaRacMaxSessionReached { image_name: image_name, configurations: configurations } }
+    PresentedMediaPermissionDenied => Present { value: MegaRacPermissionDenied { image_name: image_name, configurations: configurations } }
+    PresentedMediaStopped { status: s } => Present { value: MegaRacStopped { image_name: image_name, status: s, configurations: configurations } }
+    PresentedMediaSessionIndexUnavailable => Present { value: MegaRacSessionIndexUnavailable { image_name: image_name, configurations: configurations } }
+    PresentedMediaWrongType { observed: mt } => Present { value: MegaRacWrongMediaType { image_name: image_name, observed: mt } }
+    PresentedMediaAmbiguous { matches: n } => Present { value: MegaRacConfigurationAmbiguous { image_name: image_name, matches: n } }
+    PresentedMediaUnreadable { detail: d } => Present { value: MegaRacConfigurationsUnreadable { detail: d } }
+    PresentedMediaNotAttached => none
+    PresentedMediaIdle => none
+    PresentedMediaConnecting { session_index: _ } => none
+    PresentedMediaReady { session_index: _ } => none
+  }
+}
+
+// 100->1 was measured at twelve seconds. Thirty one-second samples bound the asynchronous window
+// without turning "keep polling" into an unbounded success search.
+data megarac_media_ready_sample_cadence: Second = second(count: 1)
+data megarac_media_ready_max_samples: Nat = 30
+
+type MediaReadyPollFold {
+  outcome: MegaRacAttachOutcome?
+  samples: Nat
+  last_configurations: String
+}
+
+func media_ready_poll_step(
+  acc: MediaReadyPollFold,
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+  started_image_index: String?,
+) -> MediaReadyPollFold
+  uses net: std.resources.Network
+{
+  match acc.outcome {
+    Present { value: _ } => return acc
+    Absent => none
+  }
+
+  configurations = megarac.Media.GetRemoteConfigurations(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  if configurations.success == false {
+    return MediaReadyPollFold {
+      outcome: Present { value: MegaRacConfigurationsUnreadable { detail: configurations.body } },
+      samples: acc.samples + 1,
+      last_configurations: configurations.body,
+    }
+  }
+
+  let standing = presented_media_standing(body: configurations.body, image_name: image_name)
+  return match standing {
+    PresentedMediaReady { session_index: _ } =>
+      MediaReadyPollFold {
+        outcome: Present {
+          value: match started_image_index {
+            Absent => MegaRacAlreadyAttached { image_name: image_name }
+            Present { value: idx } => MegaRacAttached { image_name: image_name, image_index: idx }
+          }
+        },
+        samples: acc.samples + 1,
+        last_configurations: configurations.body,
+      }
+    _ =>
+      match presented_terminal_outcome(standing: standing, image_name: image_name, configurations: configurations.body) {
+        Present { value: terminal } =>
+          MediaReadyPollFold {
+            outcome: Present { value: terminal },
+            samples: acc.samples + 1,
+            last_configurations: configurations.body,
+          }
+        Absent => {
+          let _delay = sleep_delay_seconds_second_carrier_projection(duration: megarac_media_ready_sample_cadence)
+          MediaReadyPollFold {
+            outcome: none,
+            samples: acc.samples + 1,
+            last_configurations: configurations.body,
+          }
+        }
+      }
+  }
+}
+
+func await_media_ready(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+  started_image_index: String?,
+) -> MegaRacAttachOutcome
+  uses net: std.resources.Network
+{
+  let folded = fold(
+    nat_range_inclusive(lo: 1, hi: megarac_media_ready_max_samples),
+    init: MediaReadyPollFold { outcome: none, samples: 0, last_configurations: "no read-back yet" },
+    f: (acc, _sample) => media_ready_poll_step(
+      acc: acc,
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: csrf_token,
+      image_name: image_name,
+      started_image_index: started_image_index,
+    ),
+  )
+  return match folded.outcome {
+    Present { value: outcome } => outcome
+    Absent => MegaRacAttachTimedOut {
+      image_name: image_name,
+      samples: folded.samples,
+      configurations: folded.last_configurations,
+    }
+  }
+}
+
 func megarac_attach_with_token(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -306,12 +438,24 @@ func megarac_attach_with_token(
   if presented.success == false {
     return MegaRacConfigurationsUnreadable { detail: presented.body }
   }
-  match presented_media_standing(body: presented.body, image_name: image_name) {
-    PresentedMediaUnreadable { detail: d } =>
-      return MegaRacConfigurationsUnreadable { detail: d }
-    PresentedMediaAttached =>
+
+  let initial = presented_media_standing(body: presented.body, image_name: image_name)
+  match initial {
+    PresentedMediaReady { session_index: _ } =>
       return MegaRacAlreadyAttached { image_name: image_name }
-    PresentedMediaNotAttached => none
+    PresentedMediaConnecting { session_index: _ } =>
+      return await_media_ready(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_token: csrf_token,
+        image_name: image_name,
+        started_image_index: none,
+      )
+    _ =>
+      match presented_terminal_outcome(standing: initial, image_name: image_name, configurations: presented.body) {
+        Present { value: terminal } => return terminal
+        Absent => none
+      }
   }
 
   images = megarac.Media.GetRemoteImages(
@@ -323,25 +467,16 @@ func megarac_attach_with_token(
     return MegaRacImagesUnreadable { detail: images.body }
   }
 
-  match parse_json_document(s: images.body) {
+  let elements = match parse_json_document(s: images.body) {
     JsonDocumentUnreadable { gap: _ } =>
       return MegaRacImageListingUnparseable { detail: images.body }
     JsonDocumentParsed { value: v } =>
       match images_array_elements(doc: v) {
-        Absent =>
-          return MegaRacImageListingUnparseable { detail: images.body }
-        Present { value: _ } => none
-      }
-  }
-  let elements = match parse_json_document(s: images.body) {
-    JsonDocumentParsed { value: v } =>
-      match images_array_elements(doc: v) {
+        Absent => return MegaRacImageListingUnparseable { detail: images.body }
         Present { value: es } => es
-        Absent => []
       }
-    JsonDocumentUnreadable { gap: _ } => []
   }
-  if (elements |> count) == 0 {
+  if count(elements) == 0 {
     return MegaRacImageListingEmpty
   }
 
@@ -358,70 +493,9 @@ func megarac_attach_with_token(
   }
 }
 
-// THE CONFIRMATION READS ONE EXACT ACTIVE ROW, not a substring of a body. An earlier form asked
-// whether the configurations text CONTAINED the image name, which admits a stopped configuration
-// that still names it, and admits an error body that happens to mention it.
-//
-// THE INDEX IS DELIBERATELY NOT COMPARED, and an earlier revision of this check did compare it —
-// first reading image_index, which is absent here so every genuine attachment was reported
-// unconfirmed, then reading media_index, which is present and agrees. The second spelling passed,
-// and it was still wrong: media_index is the VIRTUAL CD DEVICE SLOT, alongside session_index, not a
-// position in the image enumeration. It agreed with the resolved image_index only because this unit
-// presents a single CD device, so both are 0. Comparing them is the §3 nicknaming failure — two
-// unrelated concepts joined because they share a coincidence and half a name — and it would have
-// started refusing the moment a controller offered a second slot, with a message blaming the image.
-//
-// WHAT IS COMPARED IS WHAT THE ROW ACTUALLY ASSERTS: this device is presenting THIS NAME, as CD
-// media, with redirection active. That is the whole of the desired state.
-fn configuration_row_confirms(row: JsonValue, image_name: NonEmptyStr) -> Bool {
-  let name_ok = match json_string_member(doc: row, key: "image_name") {
-    Absent => false
-    Present { value: n } => n == (image_name as String)
-  }
-  let active = match json_number_member(doc: row, key: "redirection_status") {
-    Absent => false
-    Present { value: st } => st != "0"
-  }
-  let cd_media = match json_number_member(doc: row, key: "media_type") {
-    Absent => false
-    Present { value: mt } => mt == "1"
-  }
-  name_ok && active && cd_media
-}
-
-type PresentedMediaStanding
-  = PresentedMediaUnreadable { detail: String }
-  | PresentedMediaAttached
-  | PresentedMediaNotAttached
-
-fn presented_media_standing(body: String, image_name: NonEmptyStr) -> PresentedMediaStanding {
-  match parse_json_document(s: body) {
-    JsonDocumentUnreadable { gap: _ } => PresentedMediaUnreadable { detail: body }
-    JsonDocumentParsed { value: v } =>
-      match images_array_elements(doc: v) {
-        Absent => PresentedMediaUnreadable { detail: body }
-        Present { value: rows } =>
-          if rows |> any(r => configuration_row_confirms(row: r, image_name: image_name)) {
-            PresentedMediaAttached
-          } else {
-            PresentedMediaNotAttached
-          }
-      }
-  }
-}
-
-// A NON-ZERO START FOLLOWED BY NO CONFIRMATION IS PENDING, NOT REFUSED, and this firmware is why:
-// the same controller answers HTTP 500 on writes that take effect, and its mount daemon is
-// asynchronous. Reporting MegaRacStartRefused on a status code would refuse an attach that is
-// merely still mounting. The bounded read-back decides; the status code only distinguishes which
-// unconfirmed state is reported.
-//
-// THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. This firmware answers HTTP 500
-// on writes that take effect; mapping start.success == false to MegaRacStartRefused refused an
-// attach that was merely still mounting, and contradicted the comment this function already
-// carried. A missing confirmation after any start response is pending (Unconfirmed). StartRefused
-// is reserved for a start that failed AND whose configurations document is itself unreadable
-// as JSON — that is, when we cannot even ask the read-back.
+// START-MEDIA'S EXIT STATUS IS RECORDED BY THE TRANSPORT BUT DOES NOT SELECT AN OUTCOME HERE.
+// Whether the HTTP response was 2xx or 500, the bounded configurations read-back above is the sole
+// effect authority.
 func megarac_start_and_confirm(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -431,32 +505,17 @@ func megarac_start_and_confirm(
 ) -> MegaRacAttachOutcome
   uses net: std.resources.Network
 {
-  start = megarac.Media.StartMedia(
+  let _start = megarac.Media.StartMedia(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
     json_body: start_media_body(image_name: image_name, image_index: image_index),
   )
-
-  configurations = megarac.Media.GetRemoteConfigurations(
+  return await_media_ready(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
+    image_name: image_name,
+    started_image_index: Present { value: image_index },
   )
-  if configurations.success == false {
-    return MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
-  }
-
-  return match presented_media_standing(body: configurations.body, image_name: image_name) {
-    PresentedMediaAttached =>
-      MegaRacAttached { image_name: image_name, image_index: image_index }
-    PresentedMediaNotAttached =>
-      MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
-    PresentedMediaUnreadable { detail: d } =>
-      if start.success == false {
-        MegaRacStartRefused { detail: start.body }
-      } else {
-        MegaRacAttachUnconfirmed { image_name: image_name, configurations: d }
-      }
-  }
 }
