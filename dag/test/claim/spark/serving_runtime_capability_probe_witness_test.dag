@@ -13,9 +13,11 @@ import gunbc.spark.serving_runtime_capability_probe {
   RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4KvCacheKernels,
   Csa2CompressorKernels, DSparkSpeculator,
   KernelProbeOutcome, KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused,
+  runtime_kernel_capability_label,
   V41RuntimeVerdict, V41RuntimeAdmissible, V41RuntimeMissing, V41RuntimeIncompletelyProbed,
   v41_sm121_capability_probe_rows, v41_sm121_runtime_candidates, v41_runtime_verdict,
   v41_admissible_images, capability_outcome, v41_required_capabilities,
+  v41_sm121_build_obligation, v41_capability_probe_symbol,
 }
 
 // THE ARCHITECTURE SET IS ASKED BY MEMBERSHIP AND THE TWO RUNTIMES ANSWER DIFFERENTLY, which is the
@@ -98,4 +100,17 @@ test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> B
         KernelObservedAbsent { symbol: _ } => false
       }
   }
+}
+
+// THE BUILD OBLIGATION ASKS FOR EXACTLY WHAT THE PROBE ASKED, which is the property that makes it a
+// specification rather than a wish: if a capability were added to the probe and not to the
+// obligation, a build could be declared discharged while one of the five questions was never put to
+// it. Asserted as an identity join over the required list, not a count.
+test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool {
+  length(v41_sm121_build_obligation.required) == length(v41_required_capabilities)
+    && all(v41_required_capabilities, c =>
+         any(v41_sm121_build_obligation.required, r =>
+           runtime_kernel_capability_label(c: r) == runtime_kernel_capability_label(c: c)))
+    && all(v41_sm121_build_obligation.required, r =>
+         length(v41_capability_probe_symbol(c: r) as String) != 0)
 }

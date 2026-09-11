@@ -2,20 +2,26 @@ module gunbc.spark.serving_runtime_capability_probe
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import gunbc.spark.runtime_architecture_registry_reading {
+  ArchitectureRegistryReading, registry_reading_contains,
+  sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
+  timothystewart6_vllm_gb10_registry_reading, xomoxcc_dgx_spark_sglang_registry_reading,
+}
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
-  sparkrun_vllm_ds4_gb10_registered_architectures, sparkrun_vllm_ds4_gb10_pinned_reference,
+  sparkrun_vllm_ds4_gb10_pinned_reference,
   sparkrun_vllm_ds4_gb10_vllm_version, sparkrun_vllm_ds4_gb10_tag, sparkrun_vllm_ds4_gb10_repository,
 }
 import extdeps.docker.images.gitcommit90_glm_53_one_spark {
-  gitcommit90_glm_53_one_spark_registered_architectures, gitcommit90_glm_53_one_spark_pinned_reference,
+  gitcommit90_glm_53_one_spark_pinned_reference,
   gitcommit90_glm_53_one_spark_vllm_version, gitcommit90_glm_53_one_spark_repository,
 }
 import extdeps.docker.images.timothystewart6_vllm_gb10 {
-  timothystewart6_vllm_gb10_registered_architectures, timothystewart6_vllm_gb10_pinned_reference,
+  timothystewart6_vllm_gb10_pinned_reference,
   timothystewart6_vllm_gb10_framework_version, timothystewart6_vllm_gb10_tag, timothystewart6_vllm_gb10_repository,
 }
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang {
-  xomoxcc_dgx_spark_sglang_registered_architectures, xomoxcc_dgx_spark_sglang_pinned_reference,
+  xomoxcc_dgx_spark_sglang_pinned_reference,
   xomoxcc_dgx_spark_sglang_framework_version, xomoxcc_dgx_spark_sglang_tag, xomoxcc_dgx_spark_sglang_repository,
 }
 
@@ -113,32 +119,25 @@ type RuntimeCapabilityProbeRow {
 
 // ── THE ARCHITECTURE QUESTION IS DERIVED, NOT RESTATED ─────────────────────────────────────────
 //
-// Each probed image's complete registry lives in that image's own extdeps module, read by executing
-// the framework's own call inside the digest. The ArchitectureRegistered rows below therefore ask
-// those lists rather than carrying a second hand-written answer: one registry per image, one place
-// it is written, and a row that could not drift away from the list it summarises.
-data v41_probe_subject_architecture: NonEmptyStr = "DeepseekV41ForCausalLM" as NonEmptyStr
-
-// THIS NAME HAS AN AUTHORITY AND IT IS NOT THIS MODULE. It is `architectures[0]` of config.json at
-// deepseek-ai/DeepSeek-V4.1-Flash revision dba1be0a40aa45a94ad051997016db3960a90277, fetched
-// 2026-09-11, and extdeps.deepseek.deepseek_v4_1_flash is the module that owns it. That module is
-// still in flight (DSV41-0), so the name is declared here to keep the probe rows derivable, and this
-// declaration is replaced by an import of it the moment it lands -- a second spelling of a model's
-// architecture name is exactly the fork this repository consolidates later at interest.
-data v41_probe_registry_symbol: NonEmptyStr = "ModelRegistry.get_supported_archs() contains DeepseekV41ForCausalLM" as NonEmptyStr
-
-fn registry_contains(archs: List<NonEmptyStr>, architecture: NonEmptyStr) -> Bool {
-  fold(archs, init: false, f: (acc, a) =>
-    if acc { true } else { a as String == architecture as String })
-}
-
-fn architecture_registered_outcome(archs: List<NonEmptyStr>) -> KernelProbeOutcome {
-  if registry_contains(archs: archs, architecture: v41_probe_subject_architecture) {
+// Each probed image's registry reading -- the answer, the host, the date and the instrument -- lives
+// in gunbc.spark.runtime_architecture_registry_reading, because it is a receipt this repository
+// produced rather than anything the image's publisher declares. The ArchitectureRegistered rows
+// below ask those readings rather than carrying a second hand-written answer: one reading per
+// digest, one place it is written, and a row that cannot drift away from what it summarises.
+//
+// THE NAME BEING LOOKED FOR IS THE MODEL'S AUTHORITY, NOT THIS MODULE'S.
+// extdeps.deepseek.deepseek_v4_1_flash owns `architectures[0]` of config.json at the pinned
+// revision; spelling it again here would be a second authority for one fact, which is what this
+// import exists to prevent.
+fn architecture_registered_outcome(reading: ArchitectureRegistryReading) -> KernelProbeOutcome {
+  if registry_reading_contains(r: reading, architecture: deepseek_v4_1_flash_architecture_class) {
     KernelObservedPresent { symbol: v41_probe_registry_symbol }
   } else {
     KernelObservedAbsent { symbol: v41_probe_registry_symbol }
   }
 }
+
+data v41_probe_registry_symbol: NonEmptyStr = "the image's own model registry, asked whether it answers for extdeps.deepseek.deepseek_v4_1_flash deepseek_v4_1_flash_architecture_class" as NonEmptyStr
 
 // ── THE EXECUTED ROWS ──────────────────────────────────────────────────────────────────────────
 //
@@ -173,7 +172,7 @@ data v41_sm121_vllm_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: ArchitectureRegistered,
-    outcome: architecture_registered_outcome(archs: sparkrun_vllm_ds4_gb10_registered_architectures),
+    outcome: architecture_registered_outcome(reading: sparkrun_vllm_ds4_gb10_registry_reading),
   },
   RuntimeCapabilityProbeRow {
     image: sparkrun_vllm_ds4_gb10_probe,
@@ -213,7 +212,7 @@ data v41_sm121_vllm_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: ArchitectureRegistered,
-    outcome: architecture_registered_outcome(archs: gitcommit90_glm_53_one_spark_registered_architectures),
+    outcome: architecture_registered_outcome(reading: gitcommit90_glm_53_one_spark_registry_reading),
   },
   RuntimeCapabilityProbeRow {
     image: gitcommit90_glm_53_one_spark_probe,
@@ -253,7 +252,7 @@ data v41_sm121_vllm_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: ArchitectureRegistered,
-    outcome: architecture_registered_outcome(archs: timothystewart6_vllm_gb10_registered_architectures),
+    outcome: architecture_registered_outcome(reading: timothystewart6_vllm_gb10_registry_reading),
   },
   RuntimeCapabilityProbeRow {
     image: timothystewart6_vllm_gb10_probe,
@@ -459,7 +458,7 @@ data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
     compute_capability: gb10_observed_compute_capability,
     probed_at: "2026-09-11" as NonEmptyStr,
     capability: ArchitectureRegistered,
-    outcome: architecture_registered_outcome(archs: xomoxcc_dgx_spark_sglang_registered_architectures),
+    outcome: architecture_registered_outcome(reading: xomoxcc_dgx_spark_sglang_registry_reading),
   },
   RuntimeCapabilityProbeRow {
     image: dgx_spark_sglang_probe,
@@ -499,4 +498,43 @@ data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
 // the SGLang ones or the other way round.
 fn v41_sm121_capability_probe_rows() -> List<RuntimeCapabilityProbeRow> {
   fold(v41_sm121_sglang_probe_rows, init: v41_sm121_vllm_probe_rows, f: (acc, r) => append(acc, r))
+}
+
+// ── THE BUILD OBLIGATION THIS SWEEP PRODUCED ───────────────────────────────────────────────────
+//
+// The sweep's result is not merely "no image works": it is a specification for the image that would.
+// Every published candidate was measured against the five capabilities, and the only candidate whose
+// SOURCE is known to contain the V4.1 path at all is a GB10 build of vLLM at
+// 07b75534651a0dd584c6f3be75d8c62fb8426397. What that build must satisfy is exactly what the probe
+// asked, so the obligation is stated in the probe's own symbols rather than in prose about "V4.1
+// support" -- a build that satisfies a differently worded requirement has not been measured.
+//
+// AND THE OBLIGATION IS NOT A PREDICTION. Nothing here says the build succeeds on sm_121: the SM12
+// branch in vllm/models/deepseek_v4_1/nvidia/model.py names FlashInfer kernel requirements, and
+// whether those compile and load for compute capability 12.1 is decided by running this same probe
+// inside the built image. The row below is what to ask it, not what it will answer.
+type RuntimeBuildObligation {
+  subject: NonEmptyStr
+  source_revision: NonEmptyStr
+  required: List<RuntimeKernelCapability>
+  discharge: NonEmptyStr
+}
+
+data v41_sm121_build_obligation: RuntimeBuildObligation = RuntimeBuildObligation {
+  subject: "a GB10 (sm_121) container image able to serve DeepSeek V4.1 Flash" as NonEmptyStr,
+  source_revision: "vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+  required: v41_required_capabilities,
+  discharge: "run the same five-capability probe inside the built image's exact digest on a GB10 and append its rows here. The build is discharged only when every required capability reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree" as NonEmptyStr,
+}
+
+// WHAT EACH CAPABILITY MEANS IS THE SYMBOL THE PROBE ASKED FOR, carried beside the obligation so the
+// lane that takes the build does not have to reconstruct the questions from the rows.
+fn v41_capability_probe_symbol(c: RuntimeKernelCapability) -> NonEmptyStr {
+  match c {
+    ArchitectureRegistered => v41_probe_registry_symbol
+    Fp4WeightKernels => "torch.ops.* : cutlass_scaled_fp4_mm and cutlass_scaled_mm_supports_fp4. scaled_fp4_quant alone is the quantiser, not the FP4 GEMM, and every image probed so far had exactly that partial surface" as NonEmptyStr
+    Fp4KvCacheKernels => "torch.ops.* : nvfp4_ds_mla_cache, concat_and_cache_ds_mla_nvfp4, indexer_k_quant_and_cache_fp4; and the module vllm.models.deepseek_v4_1.common.ops.fused_compress_quant_cache, which is what the indexer K cache is written through when the indexer is MXFP4" as NonEmptyStr
+    Csa2CompressorKernels => "the modules vllm.models.deepseek_v4_1.compressor and vllm.models.deepseek_v4_1.sparse_mla -- the compressed sparse attention path, whose compressor pools compress_ratio tokens into one KV latent" as NonEmptyStr
+    DSparkSpeculator => "the modules vllm.models.deepseek_v4_1.nvidia.dspark and vllm.v1.worker.gpu.spec_decode.dspark" as NonEmptyStr
+  }
 }

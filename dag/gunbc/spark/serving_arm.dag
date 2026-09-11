@@ -5,8 +5,10 @@ import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627 }
-import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_registered_architectures }
-import extdeps.docker.images.gitcommit90_glm_53_one_spark { gitcommit90_glm_53_one_spark_registered_architectures }
+import gunbc.spark.runtime_architecture_registry_reading {
+  ArchitectureRegistryReading, registry_reading_contains,
+  sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
+}
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
 }
@@ -161,7 +163,7 @@ type ServingRuntimeRow {
   image_reference: NonEmptyStr
   hub_cli_path: NonEmptyStr
   vllm_version: NonEmptyStr
-  registered_architectures: List<NonEmptyStr>
+  registry_reading: ArchitectureRegistryReading
   reasoning_projection: ReasoningResponseProjection
   provenance: NonEmptyStr
   claimed_defaults_revision: ModelledVllmDefaultsRevision
@@ -183,7 +185,7 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   image_reference: "ghcr.io/gitcommit90/glm-5.3-one-spark@sha256:ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr,
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: "0.1.dev20051+g487ecf187" as NonEmptyStr,
-  registered_architectures: gitcommit90_glm_53_one_spark_registered_architectures,
+  registry_reading: gitcommit90_glm_53_one_spark_registry_reading,
   reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`. The full registry carried here was re-read inside the same digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 377 entries, the three Glm5Next entries among them and DeepseekV41ForCausalLM not" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
@@ -194,7 +196,7 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   image_reference: "aidendle94/sparkrun-vllm-ds4-gb10 (digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10)" as NonEmptyStr,
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
   vllm_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr,
-  registered_architectures: sparkrun_vllm_ds4_gb10_registered_architectures,
+  registry_reading: sparkrun_vllm_ds4_gb10_registry_reading,
   reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present. The full registry carried here was read inside the pinned digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 361 entries, no Glm5 entry and no DeepseekV41ForCausalLM" as NonEmptyStr,
   claimed_defaults_revision: Vllm1967a5627,
@@ -238,13 +240,12 @@ fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
 // exist when either runtime row was authored, and under the Bool both rows were silent about it
 // while looking complete.
 //
-// THE SET IS THE IMAGE'S COMPLETE REGISTRY, so a miss is a measured negative rather than an absence
-// of modelling, and neither arm of the membership test is inferred. Comparison is over `String`
-// because a NonEmptyStr equality between two differently-derived values is the cross-type comparison
-// that silently answers false.
+// THE SET IS A READING WE TOOK, NOT A FIELD THE IMAGE PUBLISHES, so the row carries the whole
+// receipt -- host, date, instrument and answer -- rather than a bare list whose provenance would
+// have to be restated in prose beside it. A miss is then a measured negative with a date on it
+// rather than an absence of modelling, and the membership test itself is the receipt's own fold.
 fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool {
-  fold(rrow.registered_architectures, init: false, f: (acc, a) =>
-    if acc { true } else { a as String == architecture as String })
+  registry_reading_contains(r: rrow.registry_reading, architecture: architecture)
 }
 
 fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
@@ -257,8 +258,9 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
           if !runtime_registers(rrow: rrow, architecture: crow.architecture) {
             ServingArmRefused { cause: join([
               "the runtime does not register ", crow.architecture as String, " (vLLM ",
-              rrow.vllm_version as String, " reports ", to_string(length(rrow.registered_architectures)),
-              " architectures and this is not one of them); no amount of weight transfer makes this tuple start",
+              rrow.vllm_version as String, " answered for ", to_string(length(rrow.registry_reading.architectures)),
+              " architectures when its registry was read on ", rrow.registry_reading.observed_at as String,
+              " and this is not one of them); no amount of weight transfer makes this tuple start",
             ], "") as NonEmptyStr }
           } else if !serving_arm_fits(c: crow, t: topology) {
             ServingArmRefused { cause: join([
