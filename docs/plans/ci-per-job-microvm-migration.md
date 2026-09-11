@@ -15,6 +15,25 @@ This is not an infrastructure detour competing with the year-end plan. **Public 
 
 The 2026-09-10 motive is independent and already declared. gunbc-private PR #50 went red on "Build gunbc from the public seed" with exit 126 (~15s, command found but not executable). Public `gunbc.witness_floor_workflow` `toolchain_filesystem_probe_dissolution_condition` is the named cure for that shared-FS eviction class. **gunbc#10985** (still-bear-335) rewrites that row so the probe dissolves only on **both** conjuncts this plan already named — public `selected_ci_runner_target` / `gunbc_ci_selected_runner_spec` and private `witnesses_job()` `SelfHosted` custom labels, not the empty-custom fleet slot — and identifying a deleter on the shared slot is **not** a substitute. Typed env-vs-code (POSIX 126/127, BMC/host/JIT) does not dissolve here. This PR does not flip `runs-on`; #10985 does not either.
 
+## The class caught in the act (2026-09-11)
+
+The deleter is **not a sweeper**. It is **runner re-registration on a slot that already has a job in flight**: two runner processes, one `_work` / `_temp`. The `actions-runner@` unit teardown class was already on the model; the gap was **host application** (operator), not a missing constructor. Host repair of srv slots is not this lane.
+
+**Specimen, so the timeline re-derives.** gunbc actions run [34562801087](https://github.com/gunb-ai/gunbc/actions/runs/34562801087). Warm-badger-62's phase=`end` join on that job: cargo shim mtime **06:37:33Z** inside a job that **installed at 06:03Z**. Another job's `Isolate toolchain homes` (`gunbc.toolchain_workflow_steps`) wiped and reinstalled into the **same** `_work`/`_temp` while this job was still running. Built at 06:03, ran successfully at 06:06, **gone at 06:48**, same job, same workspace. That is a real mid-job eviction 127, not a start-time miss — still-bear-335 owns the taxonomy of 126/127 states; this plan only carries the isolation consequence.
+
+**Registration census, same window (named as a count of slots, not as an oracle).** Across srv1–srv4, **34 slots** showed **two to four** runner registrations between **06:22Z and 06:48Z** with **overlapping job intervals**. `srv4-19`: three registrations, jobs concurrent, **one** `_work` directory. Producer: the fleet registration-epoch join that warm-badger-62 and root used on that window — not a number copied from chat without a job.
+
+One mechanism, four presentations already seen tonight:
+
+- rustup "detected conflict" (two installs into one `RUSTUP_HOME`)
+- vanished `claim_executor` (POSIX 127)
+- vanished registry src / dep-info (rustc 101)
+- host `loadavg` 115
+
+**What Y makes unwritable.** A job in its own Firecracker guest **cannot** have another job's runner re-register into its workspace: there is no shared `_work` to re-register into. That is the microVM arm of `toolchain_filesystem_probe_dissolution_condition` read as §4b: the class climbs from *instrumented on a shared slot* to **structurally impossible** under per-attempt guests. It does **not** dissolve the probe on the srv slot today. Identification of this deleter is still **not** a substitute for the two `runs-on` conjuncts in #10985.
+
+**Not asserted here.** A deterministic double-occupancy could also produce near-identical `MemoryStallRefusedPageThrash` fault rates (cool-badger-34's two specimens). That join is a question for whoever owns the thrash reading. This plan does not treat thrash as the deleter, and it does not scope a `--entry` compile to "fix" a problem that may never have been the compile.
+
 ## 1. What must be true for `host_boot_cutover_frontier` to fire
 
 Authority: `gunbc.runner_attempt_launch` `host_boot_cutover_frontier`. It is an unbound `DissolutionCondition`.
@@ -122,7 +141,7 @@ Named lower-bound dispatch (not a guest): `ctrl-build --remote -- bash -lc '… 
 
 ## 4. What is lost, and the staged carve-out
 
-**X (authority that must end in one motion):** the shared-filesystem self-hosted slot — persistent `jit-runner.sh` on srvN, jobs sharing a host kernel and a toolchain tree that another job can `unlink`. Also the recovered host-boot script once Y is PID1.
+**X (authority that must end in one motion):** the shared-filesystem self-hosted slot — persistent `jit-runner.sh` on srvN, jobs sharing a host kernel, a `_work` directory, and a toolchain tree that another **runner process on the same slot** can re-register into and `unlink` mid-job (run 34562801087). Also the recovered host-boot script once Y is PID1.
 
 **Y:** per-job guest from `runner_attempt_launch` executed at host boot, image built from Y, JIT minted only after grant re-read.
 
@@ -146,7 +165,7 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 |---|---|---|
 | **still-bear-335** (`adhoc-3b2f737a-7b8`, gunbc#10985) | Typed env-vs-code; public filesystem probe | **Mitigation.** Probe dissolves only on this plan's two conjuncts (their rewrite of `toolchain_filesystem_probe_dissolution_condition`). Typed BMC/host/JIT vs code stays. Private probe copy is follow-on STEPS with the same bind rule. They do not edit `strategy.private_witness_workflow`. |
 | **warm-badger-62** (private #46) | Process count: stop re-acquiring the composed world 34 times | **DESIGN §2.** MicroVMs do not replace it. After #46 the seed build dominates; whole-job arithmetic against runs 34462653642 and 34512318040 says even a cold seed still crushes the pre-#46 job wall. Do not edit `strategy.private_witness_workflow`. Per-attempt label: `self_hosted_labels(…, custom: …)`. |
-| This plan | Per-job guest; FCI-3 before jailer; host image from Y | **Cure of the shared-FS eviction class.** Does not shorten the 3341 s roster-dominated job. Does not classify failures. |
+| This plan | Per-job guest; FCI-3 before jailer; host image from Y | **Cure of the shared-FS eviction class.** Specimen: run 34562801087 (re-registration into an in-flight job's `_work`). Does not shorten the 3341 s roster-dominated job. Does not classify 126/127. Does not dissolve the probe by naming the deleter. |
 
 **Retirement of the probe instrument (home: #10985's `toolchain_filesystem_probe_dissolution_condition`, bind when both hold):**
 
@@ -164,7 +183,7 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 | `host_image_placeability_wet_probe_frontier` | Unbound; BMC HTTPS 200; standing still access-refused |
 | `jit_mint_http_realization_frontier` | Unbound; #10923 merged; named performer module still absent |
 | `jail_jit_device_staging_frontier` | Unbound |
-| `toolchain_filesystem_probe_dissolution_condition` | Unbound. Proposed home of the two-conjunct bind is gunbc#10985; identifying a deleter on the shared slot is not a substitute. |
+| `toolchain_filesystem_probe_dissolution_condition` | Unbound. Proposed home of the two-conjunct bind is gunbc#10985. The 2026-09-11 specimen (run 34562801087, 34-slot overlapping registration window) **identifies** the deleter and does **not** bind this row. |
 | `dogfood-started` | Not started (public CI still on srv slots) |
 | This plan's cutover | **Not taken** — operator decision |
 | Seed-build cache as a cutover gate | **Retired as a gate.** Working assumption: accepted-cold. Trigger to reopen: Aarch64 + wiped `CARGO_HOME` whole-job near the cancel class of run 34523487941. |
