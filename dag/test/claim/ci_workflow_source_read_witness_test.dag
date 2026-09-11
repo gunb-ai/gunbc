@@ -1,7 +1,7 @@
 module test.claim.ci_workflow_source_read_witness_test
 
 import std.logic { Bool }
-import std.types { Int, List, String, Secret }
+import std.types { Int, String, Secret }
 import std.measure { byte_size }
 import extdeps.github.code_search {
   CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
@@ -52,40 +52,22 @@ test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool {
   }
 }
 
-// THE DEFECT IS A PROPERTY OF A PAGE WALK, NOT OF A SINGLE PAGE, and an earlier version of this
-// claim did not know the difference. It asserted total_count != hits_read on one mocked page —
-// 250 beside one item — which is TRUE OF EVERY PAGINATED RESPONSE EVER RETURNED. A first page of
-// 100 out of 250 also satisfies it. The claim was green for a reason that had nothing to do with
-// the anomaly it was named for, which is the same shape as a roster-size oracle: an assertion whose
-// truth is guaranteed by the shape of the data rather than by the property under test.
+// NO CLAIM ABOUT THE CROSS-PAGE ANOMALY LIVES HERE, AND THE ABSENCE IS DELIBERATE.
 //
-// THE ACTUAL ANOMALY IS A SUM. Measured 2026-09-10 on the depot-arm query: three pages reported
-// total_count 250 apiece and delivered 100 + 100 + 91 = 291 items. The population handed over
-// EXCEEDED the total the same responses declared, which ordinary pagination cannot do. So the claim
-// folds page receipts and compares the SUM, and the fixture carries all three real page sizes
-// rather than one item standing in for a walk.
-data observed_page_sizes: List<Int> = [100, 100, 91]
-
-fn pages_total_delivered() -> Int {
-  fold(observed_page_sizes, init: 0, f: (acc, n) => acc + n)
-}
-
-test fn the_pages_delivered_more_than_the_reported_total() -> Bool {
-  let delivered = pages_total_delivered()
-  delivered == 291
-    && count(observed_page_sizes) == 3
-    && delivered > hermetic_code_search_total_count
-    && hermetic_code_search_total_count == 250
-}
-
-// AND THE ORDINARY CASE MUST NOT SATISFY IT, which is what the old claim lacked. A first page of
-// 100 out of a genuine 250 is normal pagination and this property must stay FALSE for it —
-// otherwise the claim is once again true of every response and says nothing about the anomaly.
-test fn ordinary_pagination_does_not_satisfy_the_anomaly() -> Bool {
-  let ordinary_first_page = 100
-  ordinary_first_page < hermetic_code_search_total_count
-    && pages_total_delivered() > hermetic_code_search_total_count
-}
+// Two revisions of this witness tried to assert it and both were green for the wrong reason. The
+// first compared total_count to the hits on ONE page - true of every paginated response ever
+// returned, since a first page of 100 out of a genuine 250 satisfies it. The second replaced that
+// with a transcribed [100, 100, 91], summed it, and compared the sum to 291 and to 250: every
+// conjunct a literal against the sum of literals, executing no production code at all. Automating
+// those literals collapses the assertion to measure() == measure(), which is section 5's own tell
+// for a change detector.
+//
+// THE ANOMALY IS A PROPERTY OF A WALK AND THIS MODULE DOES NOT WALK. It classifies ONE page; the
+// pagination is the caller's, and the receipt that records how many pages were read and how many
+// hits each delivered belongs to the scan that performed them. A claim here could only ever
+// re-type numbers produced somewhere else. So the reading is asserted where its carrier is, over
+// page receipts a production fold sums, and this witness asserts what it can actually drive: that
+// a page upstream marked incomplete is not a complete one, and that an ordinary page is.
 
 // -------------------------------------------------------------------------------------
 // THE FILE READ, AND THE TWO ARMS THAT EXIST BECAUSE 200 IS NOT ALWAYS AN ANSWER.

@@ -77,14 +77,18 @@ type CodeSearchHit {
 // disagreement runs in the direction that UNDER-counts: a population size taken from it is
 // smaller than the population actually handed over, with nothing in the response saying so.
 //
-// THE INSTRUMENT, NOT ITS OUTPUT. The reading that establishes this is the published mock below -
-// hermetic_code_search_total_count beside a single delivered item - and the claim that asserts
-// the disagreement is total_count_disagrees_with_the_hits_actually_read in
-// test.claim.ci_workflow_source_read_witness_test. So the fixture EXHIBITS the defect rather than
-// describing it, and the claim goes red the day the two are made to agree. The page-by-page
-// figures from a real scan belong to that scan's own receipt, which is where a reader who wants
-// the numbers re-derives them; copying them here would put them beyond reach of the thing that
-// produces them.
+// THE DISAGREEMENT IS NOT OBSERVABLE FROM ONE PAGE, AND THIS MODULE ONLY EVER HOLDS ONE. A single
+// item beside a total of 250 is ordinary pagination, not the anomaly; the anomaly is that a WALK
+// delivered more than the total its own responses declared, which needs the pages counted. So no
+// citation to a local instrument belongs in this block. An earlier revision named a witness claim
+// here and said the published mock "exhibits the defect" - the claim has since been deleted for
+// being green by construction, and the exhibits sentence was never true. Both are gone rather than
+// repaired.
+//
+// The page-by-page figures from a real scan belong to that scan's own receipt, where a fold over
+// the page receipts computes the count. Copying them into this module would put them beyond reach
+// of the thing that produces them, which is what section 6 forbids: name the instrument, never
+// transcribe its output.
 //
 // This is the same class the workload census already found on actions/runs, where total_count
 // reported a cap wearing the shape of a total. The rule both instances teach is the same: a
