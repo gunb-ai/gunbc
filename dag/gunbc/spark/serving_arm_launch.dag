@@ -21,6 +21,13 @@ import gunbc.spark.serving_arm {
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
   ArmIntent, ArmNormalServing, serving_arm_admits_for,
 }
+import gunbc.spark.serving_compatibility {
+  RuntimeCompatibilityStanding, CompatibilityUnknown, StaticallyPlausible,
+  ExecutionCompatible, ExecutionIncompatible,
+  CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing,
+  compatibility_admits, measured_serving_compatibility,
+  serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+}
 import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
 
 // ── WHY THIS IS A SECOND MULTI-HOST LAUNCHER AND NOT A FORK ────────────────────────────────────
@@ -461,7 +468,58 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
   plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, utilization_basis_points: utilization_basis_points)
 }
 
+// ── A TUPLE EXECUTION HAS ALREADY REFUSED MAY NOT BE PLANNED AGAIN ─────────────────────────────
+//
+// THIS IS THE WALL WHOSE ABSENCE COST NINE ATTEMPTS. `serving_arm_admits_for` asks whether a tuple is
+// PLAUSIBLE -- does the image register the architecture, does the checkpoint fit the pool -- and nothing asked
+// whether this exact tuple had already been run and refused. So a subject stayed launchable after execution
+// had settled the question, and attempts 8 and 9 were the same subject.
+//
+// THE GATE LIVES HERE RATHER THAN IN THE ARM WALL BECAUSE OF ACYCLICITY. gunbc.spark.serving_compatibility
+// imports gunbc.spark.serving_arm for the checkpoint, runtime and topology vocabularies; making the arm wall
+// consult the roster would close a cycle, which is the one structural law the import graph has. A first
+// revision of this change did exactly that. The plan renderer already imports both, so it is the earliest
+// acyclic point at which the refusal can bind -- and binding it to the PLAN is the stronger placement anyway,
+// because gunbc.spark.device_memory_envelope makes this the only producer of a native launch.
+//
+// A SUBJECT ABSENT FROM THE ROSTER IS UNKNOWN AND STAYS LAUNCHABLE, which is how a new tuple is measured at
+// all. The topology is part of the match, so a different rank count is a different subject; a patched image
+// would be a different runtime and likewise uncovered by the old refusal. That is the point of the relational
+// grain rather than a per-image flag.
+fn measured_subject_refuses(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> Bool {
+  count(refusing_standings(checkpoint: checkpoint, runtime: runtime, topology: topology)) > 0
+}
+
+fn refusing_standings(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> List<RuntimeCompatibilityStanding> {
+  filter(measured_serving_compatibility, st => standing_refuses_tuple(
+    standing: st, checkpoint: checkpoint, runtime: runtime, topology: topology))
+}
+
+fn standing_refuses_tuple(standing: RuntimeCompatibilityStanding, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> Bool {
+  match standing {
+    ExecutionIncompatible { subject: sub, failure: _, receipt: _ } =>
+      serving_checkpoint_wire(c: sub.checkpoint) == serving_checkpoint_wire(c: checkpoint)
+        && serving_runtime_wire(r: sub.runtime) == serving_runtime_wire(r: runtime)
+        && serving_topology_wire(t: sub.topology) == serving_topology_wire(t: topology)
+    ExecutionCompatible { subject: _, receipt: _ } => false
+    StaticallyPlausible { subject: _, evidence: _ } => false
+    CompatibilityUnknown { subject: _ } => false
+  }
+}
+
+fn measured_refusal_cause(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> NonEmptyStr {
+  join(map(refusing_standings(checkpoint: checkpoint, runtime: runtime, topology: topology),
+    st => match compatibility_admits(s: st) {
+      AdmitsNothing { because: b } => b as String
+      AdmitsNormalServing => ""
+      AdmitsBoundedExperimentOnly => ""
+    }), "; ") as NonEmptyStr
+}
+
 fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, utilization_basis_points: Nat) -> ArmLaunchPlan {
+  if measured_subject_refuses(checkpoint: checkpoint, runtime: runtime, topology: topology) {
+    ArmLaunchRefused { cause: measured_refusal_cause(checkpoint: checkpoint, runtime: runtime, topology: topology) }
+  } else {
   match serving_arm_admits_for(checkpoint: checkpoint, runtime: runtime, topology: topology, intent: intent) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
     ServingArmAdmitted =>
@@ -484,6 +542,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
           }
       }
   }
+}
 }
 
 // ── THE PLAN AS TEXT, FOR READING BEFORE ANYTHING RUNS ────────────────────────────────────────

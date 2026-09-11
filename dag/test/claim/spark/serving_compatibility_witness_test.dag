@@ -1,0 +1,61 @@
+module test.claim.spark.serving_compatibility_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, Glm53Exl3_205, VllmOpenaiGlm53Flash, Gitcommit90Sm121Exl3,
+  FourSparkTp4, SparkPairTp2, ArmBoundedExperiment, ArmNormalServing,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_for,
+}
+
+// ── THE REFUSAL GATE, EXERCISED THROUGH THE PRODUCT PRODUCER ──────────────────────────────────
+//
+// THESE ROWS CALL `plan_arm_launch_for` AND NOT THE ROSTER, which is the whole point. A control that asked
+// `compatibility_admits` directly would establish that the standing says AdmitsNothing and nothing about
+// whether a launch can still be planned -- the same shape as the readback control that authored its own
+// endpoint alias and thereby hid an unreachable acceptance through nine attempts.
+//
+// THE MIDDLE ROW IS THE ONE THAT MATTERS MOST. A roster that refused on the image or the checkpoint alone
+// would also satisfy the first row, and would block the actual repair: a patched image is a different
+// runtime, and a different rank count is a different subject. Over-refusing is the failure mode that would
+// make this wall worse than its absence.
+//
+// AND THE THIRD ROW IS WHY THE FIRST TWO MEAN ANYTHING. A gate that refused every subject would pass the
+// first row vacuously.
+//
+// The refused subject must have no plan at all.
+test fn the_refused_native_subject_cannot_be_planned() -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8, runtime: VllmOpenaiGlm53Flash, topology: FourSparkTp4,
+    group: FabricGroupB, intent: ArmBoundedExperiment, utilization_basis_points: 8400,
+  ) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// A DIFFERENT topology of the same pair is a different subject and must remain reachable, so the
+// roster cannot be refusing on the image or the checkpoint alone.
+test fn a_different_topology_is_not_covered_by_the_refusal() -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8, runtime: VllmOpenaiGlm53Flash, topology: SparkPairTp2,
+    group: FabricGroupB, intent: ArmBoundedExperiment, utilization_basis_points: 8400,
+  ) {
+    ArmLaunchRefused { cause: c } => !string_contains(s: c as String, pattern: "already been refused by execution")
+    ArmLaunchPlanned { lines: _, master: _ } => true
+  }
+}
+
+// And the compatible subject is still plannable, so the gate has not simply refused everything.
+test fn the_compatible_exl3_subject_is_still_plannable() -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4,
+    group: FabricGroupB, intent: ArmNormalServing, utilization_basis_points: 8400,
+  ) {
+    ArmLaunchPlanned { lines: _, master: _ } => true
+    ArmLaunchRefused { cause: _ } => false
+  }
+}
