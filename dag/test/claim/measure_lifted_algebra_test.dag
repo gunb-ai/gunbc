@@ -56,10 +56,16 @@ test fn scale_fraction_ceil_generic_over_quantity_holds() -> Bool {
 }
 
 test fn measure_sub_exact_holds() -> Bool {
-  byte_size_count(b: measure_sub(a: byte_size(10), b: byte_size(4))) == 6
+  match measure_sub(a: byte_size(10), b: byte_size(4)) {
+    MeasureDifference { value: d } => byte_size_count(b: d) == 6
+    MeasureSubtrahendExceedsMinuend => false
+  }
 }
 
-test fn measure_sub_floors_at_zero_holds() -> Bool {
-  byte_size_count(b: measure_sub(a: byte_size(3), b: byte_size(10))) == 0
+test fn measure_sub_underflow_is_its_own_arm() -> Bool {
+  match measure_sub(a: byte_size(3), b: byte_size(10)) {
+    MeasureSubtrahendExceedsMinuend => true
+    MeasureDifference { value: _ } => false
+  }
 }
 

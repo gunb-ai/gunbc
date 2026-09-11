@@ -2,7 +2,7 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le, measure_sub }
+import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
@@ -820,10 +820,15 @@ fn requested_utilisation_basis_points(r: VllmMemoryRequest) -> Nat? {
 fn weight_fit_against_envelope(fleet: FleetSnapshot, per_rank: ByteSize, basis_points: Nat) -> WeightFit {
   let usable = usable_bytes_per_rank(fleet: fleet, utilisation_basis_points: basis_points)
   if measure_le(a: per_rank, b: usable) {
-    WeightsNotRuledOutByLowerBound {
-      per_rank_bytes: per_rank,
-      usable_bytes: usable,
-      slack_bytes: measure_sub(a: usable, b: per_rank),
+    match measure_sub(a: usable, b: per_rank) {
+      MeasureDifference { value: slack } =>
+        WeightsNotRuledOutByLowerBound {
+          per_rank_bytes: per_rank,
+          usable_bytes: usable,
+          slack_bytes: slack,
+        }
+      MeasureSubtrahendExceedsMinuend =>
+        WeightsImpossibleByLowerBound { per_rank_bytes: per_rank, usable_bytes: usable }
     }
   } else {
     WeightsImpossibleByLowerBound { per_rank_bytes: per_rank, usable_bytes: usable }
@@ -1951,18 +1956,6 @@ data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement
   rationale: "operator policy 2026-09-11: native quality always. Only the published V4.1 Flash checkpoint is admissible; a requantised or quality-degrading substitute is other weights and is excluded by constraint_native_quality before dominance, not ranked" as NonEmptyStr,
 )
 
-data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = serving_deployment_domain_over_standings(
-  artifacts: [artifact_deepseek_v4_1_flash_native],
-  topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
-  standings: v4_1_declared_profile_standings,
-)
-
-data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_candidate_field"),
-  domain: deepseek_v4_1_domain,
-  candidates: derived_candidates_for(stem: "deepseek_v4_1", domain: deepseek_v4_1_domain),
-)
-
 fn v4_1_candidate_field_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentCandidateField {
   let standings = v4_1_profile_standings_from(standing: sm12_kv_layout_standing(wire: wire, admitted: admitted))
   let domain = serving_deployment_domain_over_standings(
@@ -1989,12 +1982,14 @@ fn v4_1_decision_input_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>)
   )
 }
 
-data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
-  field: deepseek_v4_1_candidate_field,
-  evidence: serving_evidence_current,
-  quality_requirement: deepseek_v4_1_quality_requirement,
-  selection_policy: deepseek_v4_1_selection_policy,
-  constraints: v4_1_selection_constraints,
-  constraint_authority: id_v4_1_constraint_authority,
-  axes: v4_1_selection_axes,
+data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = v4_1_candidate_field_from_sm12(
+  wire: v41_sm12_kv_layout,
+  admitted: v41_sm12_admitted_kv_cache_dtypes,
+)
+
+data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = deepseek_v4_1_candidate_field.domain
+
+data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = v4_1_decision_input_from_sm12(
+  wire: v41_sm12_kv_layout,
+  admitted: v41_sm12_admitted_kv_cache_dtypes,
 )

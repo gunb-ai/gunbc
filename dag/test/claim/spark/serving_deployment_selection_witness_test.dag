@@ -115,6 +115,11 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
       ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
       _ => false
     }
+    && decision_snapshot_key(input: deepseek_v4_1_decision_input)
+      == decision_snapshot_key(input: v4_1_decision_input_from_sm12(
+        wire: v41_sm12_kv_layout,
+        admitted: v41_sm12_admitted_kv_cache_dtypes,
+      ))
 }
 
 // ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────

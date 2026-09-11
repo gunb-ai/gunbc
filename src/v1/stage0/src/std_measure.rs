@@ -5,6 +5,7 @@ use self::ClockBasis::*;
 use self::ClockDomain::*;
 use self::FiniteByteSizeBuild::*;
 use self::InstantOrder::*;
+use self::MeasureSubtraction::*;
 use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
@@ -301,18 +302,27 @@ pub fn measure_add<Q, S>(
     })
 }
 
+pub enum MeasureSubtraction<Q, S> {
+    MeasureDifference {
+        value: Rc<Measure<Q, S, i64>>,
+    },
+    MeasureSubtrahendExceedsMinuend,
+}
+
 pub fn measure_sub<Q, S>(
     a: Rc<Measure<Q, S, i64>>,
     b: Rc<Measure<Q, S, i64>>,
-) -> Rc<Measure<Q, S, i64>> {
-    Rc::new(Measure {
-        count: if a.count.clone() < b.count.clone() {
-            0
-        } else {
-            a.count.clone() - b.count.clone()
-        },
-        _phantom: std::marker::PhantomData,
-    })
+) -> MeasureSubtraction<Q, S> {
+    if a.count.clone() < b.count.clone() {
+        MeasureSubtraction::MeasureSubtrahendExceedsMinuend
+    } else {
+        MeasureSubtraction::MeasureDifference {
+            value: Rc::new(Measure {
+                count: a.count.clone() - b.count.clone(),
+                _phantom: std::marker::PhantomData,
+            }),
+        }
+    }
 }
 
 pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
