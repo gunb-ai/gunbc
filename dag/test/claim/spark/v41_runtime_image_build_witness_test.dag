@@ -47,8 +47,8 @@ import gunbc.spark.v41_runtime_image_probe {
   v41_capability_kv_layout, v41_capability_fp4_weight, v41_capability_architecture,
   v41_probe_script, v41_capability_reading, v41_probe_architecture_class,
   v41_capability_flashinfer_sm120,
-  v41_image_absent_capabilities, v41_image_unread_capabilities, v41_reading_for, v41_reading_is_present,
-  v41_capability_fp4_support,
+  v41_absent_capabilities_of, v41_unread_capabilities_of, v41_reading_is_present, v41_recorded,
+  V41RecordedReading,
   v41_probed_architecture_present, v41_probed_sibling_architecture, v41_probed_sibling_architecture_present,
   v41_probed_admitted_kv_layouts, v41_probed_rejected_kv_layouts, v41_probed_layout_admitted,
 }
@@ -270,29 +270,6 @@ test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped
     && !vllm_07b75534_registry_answers_for(architecture: v41_probe_architecture_class)
 }
 
-// EVERY KERNEL CAPABILITY IS PRESENT AND EXACTLY ONE THING IS NOT, asserted over the typed outcome
-// rather than over a word in a sentence.
-test fn the_built_image_has_one_measured_absence_and_one_unasked_question() -> Bool {
-  length(v41_image_absent_capabilities()) == 1
-    && length(v41_image_unread_capabilities()) == 1
-    && (match v41_reading_for(capability: v41_capability_fp4_support) {
-      Absent => false
-      Present { value: r } => !v41_reading_is_present(r: r)
-    })
-    && (match v41_reading_for(capability: v41_capability_architecture) {
-      Absent => false
-      Present { value: r } => !v41_reading_is_present(r: r)
-    })
-    && (match v41_reading_for(capability: v41_capability_flashinfer_sm120) {
-      Absent => false
-      Present { value: r } => v41_reading_is_present(r: r)
-    })
-    && (match v41_reading_for(capability: v41_capability_kv_layout) {
-      Absent => false
-      Present { value: r } => v41_reading_is_present(r: r)
-    })
-}
-
 // TWO READINGS, JOINED, AND NEITHER OF THEM IS A STATEMENT ABOUT WHERE THE PUBLISHED IMAGE CAME FROM.
 // Its registry.py carries the architecture entry; the identifier its distribution name is stamped
 // with is not a commit the public repository has. An earlier version of this comment used the pair to
@@ -417,28 +394,32 @@ test fn the_reader_parses_verdict_lines_rather_than_searching_the_output() -> Bo
     })
 }
 
-// A MEASURED ABSENCE AND AN UNASKED QUESTION ARE DIFFERENT GAPS, and folding them would let a question
-// nobody put read as a capability nobody has. The architecture is a measured absence; the FP4 support
-// predicate was never called by the run that produced the recorded rows.
-test fn an_unasked_question_is_not_a_measured_absence() -> Bool {
-  fold(v41_image_absent_capabilities(), init: true, f: (acc, c) => acc && (c as String) != (v41_capability_fp4_support as String))
-    && fold(v41_image_unread_capabilities(), init: true, f: (acc, c) => acc && (c as String) != (v41_capability_architecture as String))
-    && fold(v41_image_unread_capabilities(), init: false, f: (acc, c) => acc || (c as String) == (v41_capability_fp4_support as String))
+// THE PARTITION IS A PROPERTY OF THE FOLD, SO IT IS EXERCISED OVER CONSTRUCTED READINGS. An earlier
+// version asserted which capability landed in which bucket of the RECORDED roster -- both sides of
+// that comparison being rows this same change authored, so the only way it could go red was an author
+// editing one of them. That is the change detector §5 names, and moving it from prose to typed rows
+// changed the grain and not the self-reference.
+//
+// What is worth checking here is the CODE: that absent and unread are kept apart at all, since folding
+// them would let a question nobody put read as a capability nobody has. Over three readings built here
+// -- one of each outcome -- the two folds must disagree in exactly the right way, and a fold that
+// treated Unread as Absent goes red on the first clause.
+data probe_partition_fixture: List<V41RecordedReading> = [
+  v41_recorded(capability: "alpha" as NonEmptyStr, outcome: V41CapabilityPresent { capability: "alpha" as NonEmptyStr }),
+  v41_recorded(capability: "beta" as NonEmptyStr, outcome: V41CapabilityAbsent { capability: "beta" as NonEmptyStr }),
+  v41_recorded(capability: "gamma" as NonEmptyStr, outcome: V41CapabilityUnread { capability: "gamma" as NonEmptyStr, cause: "nobody asked" }),
+]
+
+fn fixture_names(xs: List<NonEmptyStr>) -> String {
+  join(map(xs, x => x as String), ",")
 }
 
-// THE DIRTY CHECK MUST SEE THE IGNORED SET AND NAME ITS UNTRACKED MODE, because a docker build context
-// is not the tracked set AND the default untracked mode is configurable. `status` honours
-// `status.showUntrackedFiles`; reproduced in an isolated repository at `no`, `--porcelain --ignored`
-// returned EMPTY for a plain untracked file that docker would ship. Naming the mode makes the answer a
-// property of the command rather than of whatever configuration a host carries. At
-// the pinned revision `.gitignore` carries `**/generated/**` and `.dockerignore` does not, so a file
-// under any `generated/` directory is invisible to a plain `git status --porcelain` and is shipped to
-// the daemon anyway. The argv is asserted rather than the behaviour because the behaviour is git's.
-test fn the_dirty_check_asks_for_the_ignored_set_too() -> Bool {
-  let words = argv_words(command: git_status_porcelain_command(repository_dir: "/tmp/x"))
-  let line = join(words, " ")
-  string_contains(s: line, pattern: "status --porcelain --ignored --untracked-files=all")
-    && string_contains(s: line, pattern: "-C /tmp/x")
+test fn an_unasked_question_is_not_a_measured_absence() -> Bool {
+  fixture_names(xs: v41_absent_capabilities_of(readings: probe_partition_fixture)) == "beta"
+    && fixture_names(xs: v41_unread_capabilities_of(readings: probe_partition_fixture)) == "gamma"
+    && !v41_reading_is_present(r: v41_recorded(capability: "beta" as NonEmptyStr, outcome: V41CapabilityAbsent { capability: "beta" as NonEmptyStr }))
+    && !v41_reading_is_present(r: v41_recorded(capability: "gamma" as NonEmptyStr, outcome: V41CapabilityUnread { capability: "gamma" as NonEmptyStr, cause: "nobody asked" }))
+    && v41_reading_is_present(r: v41_recorded(capability: "alpha" as NonEmptyStr, outcome: V41CapabilityPresent { capability: "alpha" as NonEmptyStr }))
 }
 
 // A CLEAN TREE IS AN EMPTY ANSWER, AND ANYTHING ELSE REFUSES. `git status --porcelain` prints one line

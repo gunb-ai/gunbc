@@ -610,11 +610,6 @@ data v41_image_capability_readings: List<V41RecordedReading> = [
   v41_recorded(capability: v41_capability_flashinfer_sm120, outcome: V41CapabilityPresent { capability: v41_capability_flashinfer_sm120 }),
 ]
 
-fn v41_reading_for(capability: NonEmptyStr) -> V41RecordedReading? {
-  fold(v41_image_capability_readings, init: none, f: (acc, r) =>
-    if (r.capability as String) == (capability as String) { Present { value: r } } else { acc })
-}
-
 fn v41_reading_is_present(r: V41RecordedReading) -> Bool {
   match r.outcome {
     V41CapabilityPresent { capability: _ } => true
@@ -626,8 +621,8 @@ fn v41_reading_is_present(r: V41RecordedReading) -> Bool {
 // MEASURED ABSENCE AND UNASKED QUESTION ARE REPORTED SEPARATELY, because they rank an image out for
 // different reasons and only the first is a fact about the image. An earlier revision folded both
 // into one "unmet" list, which made a question nobody asked look like a capability nobody has.
-fn v41_image_absent_capabilities() -> List<NonEmptyStr> {
-  fold(v41_image_capability_readings, init: [], f: (acc, r) =>
+fn v41_absent_capabilities_of(readings: List<V41RecordedReading>) -> List<NonEmptyStr> {
+  fold(readings, init: [], f: (acc, r) =>
     match r.outcome {
       V41CapabilityAbsent { capability: c } => append(acc, c)
       V41CapabilityPresent { capability: _ } => acc
@@ -635,8 +630,17 @@ fn v41_image_absent_capabilities() -> List<NonEmptyStr> {
     })
 }
 
-fn v41_image_unread_capabilities() -> List<NonEmptyStr> {
-  fold(v41_image_capability_readings, init: [], f: (acc, r) =>
+// THE FOLDS TAKE A ROSTER so their behaviour can be exercised against readings a witness builds,
+// rather than against the recorded ones -- asserting which capability the RECORDED roster puts in
+// which bucket compares this change's rows to this change's rows, and goes red only when an author
+// edits one of them. What is worth checking is that the two buckets stay disjoint at all, and that is
+// a property of these folds.
+//
+// THE WRAPPERS BELOW APPLY THEM TO THE RECEIPT, and their consumer is the one already named for the
+// receipt itself: gunbc.spark.serving_runtime_capability_probe's roster, which these rows move to when
+// #11016 lands. No witness asserts their VALUES, deliberately.
+fn v41_unread_capabilities_of(readings: List<V41RecordedReading>) -> List<NonEmptyStr> {
+  fold(readings, init: [], f: (acc, r) =>
     match r.outcome {
       V41CapabilityUnread { capability: c, cause: _ } => append(acc, c)
       V41CapabilityPresent { capability: _ } => acc
@@ -830,4 +834,12 @@ func v41_published_image_probe_ci_wet() -> ProcessExit
       }
       }
   }
+}
+
+fn v41_image_absent_capabilities() -> List<NonEmptyStr> {
+  v41_absent_capabilities_of(readings: v41_image_capability_readings)
+}
+
+fn v41_image_unread_capabilities() -> List<NonEmptyStr> {
+  v41_unread_capabilities_of(readings: v41_image_capability_readings)
 }
