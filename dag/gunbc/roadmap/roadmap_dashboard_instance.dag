@@ -657,7 +657,7 @@ fn dashboard_execution_environment(
 // diagnostic.
 //
 // THE SET IS ONE ROSTER. Named constructors remain so a witness can name srv1-live without walking
-// a list, but membership is declared_dashboard_instances, and every lookup folds that list. Adding
+// a list, but membership is public_builtin_dashboard_instances, and every lookup folds that list. Adding
 // an instance is a constructor plus one row on that roster; host, repo-root and id resolution do
 // not get a second spelling.
 
@@ -706,7 +706,7 @@ fn dashboard_instance_answers_host_lookup(instance: HostDashboardInstance) -> Bo
 }
 
 fn dashboard_instance_for_host(host: String) -> DashboardInstanceByHost {
-  match declared_dashboard_instances()
+  match public_builtin_dashboard_instances()
     |> filter(i =>
       i.host_identity as String == host && dashboard_instance_answers_host_lookup(instance: i)
     )
@@ -718,7 +718,7 @@ fn dashboard_instance_for_host(host: String) -> DashboardInstanceByHost {
 }
 
 fn dashboard_instance_for_repo_root(repo_root: String) -> DashboardInstanceLookup {
-  match declared_dashboard_instances()
+  match public_builtin_dashboard_instances()
     |> filter(i => i.repo_root as String == repo_root)
     |> first
   {
@@ -728,7 +728,7 @@ fn dashboard_instance_for_repo_root(repo_root: String) -> DashboardInstanceLooku
 }
 
 fn dashboard_instance_for_id(instance_id: String) -> DashboardInstanceById {
-  match declared_dashboard_instances()
+  match public_builtin_dashboard_instances()
     |> filter(i => i.instance_id as String == instance_id)
     |> first
   {
@@ -1161,11 +1161,22 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
   )
 }
 
-// THE DECLARED SET. Lookups fold this; they do not restate membership. Isolated labs belong
-// here because they have repo roots a belt tick can land in — omitting them made those roots
-// DashboardInstanceRootUnknown while the constructors existed, which is the same fork as
-// enumerating production three times.
-fn declared_dashboard_instances() -> List<HostDashboardInstance> {
+// THE PUBLIC BUILT-IN SET, and the name says PUBLIC BUILT-IN because the set is not "every
+// instance capable of consuming this machinery". It is the instances THIS REPOSITORY declares.
+// A deployment declared in another repository consumes the same generic folds and is deliberately
+// absent here: listing it would require the public repo to name a private one.
+//
+// WHAT FOLDS THIS, AND WHAT DOES NOT. The three lookups fold it to RESOLVE an instance from a host,
+// a repo root or an id. Resolution is not admission: no fold checks membership before acting, so a
+// generic effectful fold that RECEIVES an instance serves it whether or not it is listed here, and
+// that is the property a caller-supplied instance depends on. The safety obligation membership used
+// to carry travels separately, as dashboard_instance_is_disjoint_from_public_builtins, which an
+// outside caller applies to itself against this set.
+//
+// Isolated labs belong here because they have repo roots a belt tick can land in — omitting them
+// made those roots DashboardInstanceRootUnknown while the constructors existed, which is the same
+// fork as enumerating production three times.
+fn public_builtin_dashboard_instances() -> List<HostDashboardInstance> {
   [
     srv1_live_dashboard_instance(),
     srv1_lab_dashboard_instance(),
@@ -1177,12 +1188,12 @@ fn declared_dashboard_instances() -> List<HostDashboardInstance> {
 }
 
 fn dashboard_declared_instance_ids_are_unique() -> Bool {
-  let xs = declared_dashboard_instances()
+  let xs = public_builtin_dashboard_instances()
   all(xs, a => count(xs |> filter(b => b.instance_id == a.instance_id)) == 1)
 }
 
 fn dashboard_declared_repo_roots_are_unique() -> Bool {
-  let xs = declared_dashboard_instances()
+  let xs = public_builtin_dashboard_instances()
   all(xs, a => count(xs |> filter(b => b.repo_root == a.repo_root)) == 1)
 }
 
@@ -1190,29 +1201,52 @@ fn dashboard_declared_repo_roots_are_unique() -> Bool {
 // do not discharge this: two deployments on srv1 can have different ids and still both claim
 // the hostname.
 fn dashboard_host_lookup_subjects_are_unique() -> Bool {
-  let xs = declared_dashboard_instances()
+  let xs = public_builtin_dashboard_instances()
     |> filter(i => dashboard_instance_answers_host_lookup(instance: i))
   all(xs, a =>
     count(xs |> filter(b => b.host_identity == a.host_identity)) == 1
   )
 }
 
-// THE DISJOINTNESS LAW OVER THE SET, not over the pairs a witness remembered. The pairwise
-// predicate is the judgment; this is the quantification. A new roster row is in the cross
-// product the moment it is declared, so a lab that overlaps production cannot sit green until
-// someone writes a second call. Identity equality is the diagonal skip — a record is consistent
-// with itself, and the safety property is about distinct members.
-fn dashboard_declared_instances_owned_paths_are_pairwise_consistent() -> Bool {
-  let xs = declared_dashboard_instances()
+// ONE CANDIDATE AGAINST A SET, which is the shape BOTH callers need and the reason it is factored
+// out rather than written twice. The public law below quantifies it over its own roster; a caller
+// holding an instance that is NOT in that roster -- a deployment declared in another repository --
+// asks the same question against the same judgment instead of coining a second disjointness rule.
+// Identity equality is the diagonal skip: a record is consistent with itself, and the safety
+// property is about distinct members, so this is correct whether or not the candidate is in others.
+fn dashboard_instance_is_disjoint_from_each(
+  candidate: HostDashboardInstance,
+  others: List<HostDashboardInstance>,
+) -> Bool {
   all(
-    xs,
-    a => all(
-      xs,
-      b =>
-        a.instance_id == b.instance_id
-          || dashboard_instances_have_disjoint_owned_paths(a: a, b: b),
-    ),
+    others,
+    b =>
+      candidate.instance_id == b.instance_id
+        || dashboard_instances_have_disjoint_owned_paths(a: candidate, b: b),
   )
+}
+
+// THE CROSS-REPOSITORY ENTRY. An instance declared outside this repository cannot be a member of
+// the roster below -- membership would require the public repo to name a private one, reversing a
+// dependency direction that is not negotiable -- so admission cannot be membership. It is this
+// join: the caller's own instance against the public built-ins, on the public judgment.
+fn dashboard_instance_is_disjoint_from_public_builtins(
+  candidate: HostDashboardInstance,
+) -> Bool {
+  dashboard_instance_is_disjoint_from_each(
+    candidate: candidate,
+    others: public_builtin_dashboard_instances(),
+  )
+}
+
+// THE DISJOINTNESS LAW OVER THE SET, not over the pairs a witness remembered. The pairwise
+// predicate is the judgment and dashboard_instance_is_disjoint_from_each is one candidate against
+// the set; this is the quantification over the roster. A new roster row is in the cross product the
+// moment it is declared, so a lab that overlaps production cannot sit green until someone writes a
+// second call.
+fn dashboard_declared_instances_owned_paths_are_pairwise_consistent() -> Bool {
+  let xs = public_builtin_dashboard_instances()
+  all(xs, a => dashboard_instance_is_disjoint_from_each(candidate: a, others: xs))
 }
 
 fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {
@@ -1362,7 +1396,7 @@ fn dashboard_instances_have_disjoint_owned_paths(
 // production, so disjointness is exactly right there.\n\nThis is the pairwise law. The population
 // law it serves — every declared instance is path-consistent with every other — is
 // dashboard_declared_instances_owned_paths_are_pairwise_consistent, which folds this predicate
-// over declared_dashboard_instances rather than asking a witness to name the pairs.
+// over public_builtin_dashboard_instances rather than asking a witness to name the pairs.
 
 fn dashboard_instances_dispatch_state_is_consistent(
   a: HostDashboardInstance,

@@ -60,7 +60,10 @@ import gunbc.roadmap_dashboard_instance {
   srv2_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
   macbook_local_dashboard_instance,
-  declared_dashboard_instances,
+  public_builtin_dashboard_instances,
+  dashboard_instance_is_disjoint_from_public_builtins,
+  isolated_dashboard_instance,
+  srv1_dashboard_lab_root,
   dashboard_declared_instance_ids_are_unique,
   dashboard_declared_repo_roots_are_unique,
   dashboard_host_lookup_subjects_are_unique,
@@ -966,7 +969,7 @@ test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
 }
 
 fn roster_has_id(id: NonEmptyStr) -> Bool {
-  any(declared_dashboard_instances(), i => i.instance_id == id)
+  any(public_builtin_dashboard_instances(), i => i.instance_id == id)
 }
 
 test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
@@ -981,14 +984,14 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
     && roster_has_id(id: srv2_deploy_dashboard_instance().instance_id)
     && roster_has_id(id: macbook_local_dashboard_instance().instance_id)
     && all(
-      declared_dashboard_instances(),
+      public_builtin_dashboard_instances(),
       i => match dashboard_instance_for_repo_root(repo_root: i.repo_root as String) {
         DashboardInstanceResolved { instance } => instance.instance_id == i.instance_id
         DashboardInstanceRootUnknown { repo_root: _ } => false
       },
     )
     && all(
-      declared_dashboard_instances(),
+      public_builtin_dashboard_instances(),
       i => match dashboard_instance_for_id(instance_id: i.instance_id as String) {
         DashboardInstanceForId { instance } => instance.instance_id == i.instance_id
         DashboardInstanceIdUnknown { instance_id: _ } => false
@@ -1027,4 +1030,54 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
       DashboardInstanceRootUnknown { repo_root } => repo_root == "/typo/gunbc"
       DashboardInstanceResolved { instance: _ } => false
     }
+}
+
+
+// ── A caller-supplied instance is admitted by a JOIN, never by membership ────────────────────────
+//
+// An instance declared in another repository cannot be a member of public_builtin_dashboard_instances
+// -- membership would make the public repo name a private one -- so its safety obligation cannot be
+// membership either. It is dashboard_instance_is_disjoint_from_public_builtins: the caller's own
+// instance against the public built-ins, on the public judgment, with no second disjointness rule
+// coined for the outside case.
+//
+// BOTH ARMS, because a predicate that only ever answers true is decoration. The two candidates
+// differ ONLY in their root, so the root is what the verdict turns on and nothing else can explain
+// the difference.
+
+fn outside_instance_at(root: FilePath) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: "outside-repository-candidate" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root,
+    serve_function: "outside_serve_handle" as NonEmptyStr,
+    listen_port: 18099,
+    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+test fn an_outside_instance_on_its_own_root_joins_clean() -> Bool {
+  dashboard_instance_is_disjoint_from_public_builtins(
+    candidate: outside_instance_at(
+      root: "/home/briansrls/.local/share/gunbc-dashboard-instances/outside-repository-v0" as FilePath,
+    ),
+  )
+}
+
+// THE RED, and the first cut of it was wrong in a way worth recording. It rooted the candidate
+// INSIDE srv1_dashboard_lab_root and expected refusal; it got admission, because the judgment is
+// over OWNED PATHS -- local_origin_root, repo_root, serve_binary -- and not over instance_root.
+// A nested root yields <lab>/nested/origin.git against <lab>/origin.git, which are genuinely
+// disjoint leaves. The witness was failing on the wrong axis: it asserted a claim about roots
+// against a predicate about files.
+//
+// The real overlap is a candidate on the SAME root, where all three footprint paths collide
+// exactly. The two candidates now differ only in that root, so the root is what the verdict turns
+// on, and this arm goes green only because the join actually refuses.
+test fn an_outside_instance_on_a_public_root_is_refused() -> Bool {
+  !dashboard_instance_is_disjoint_from_public_builtins(
+    candidate: outside_instance_at(root: srv1_dashboard_lab_root),
+  )
 }
