@@ -62,6 +62,7 @@ import gunbc.guarantee_rung {
   OutsideTheLadder,
   StructurallyGuaranteed,
 }
+import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, CommitSha, NonEmptyStr, String }
 
 fn path_id() -> NonEmptyStr {
@@ -91,15 +92,61 @@ fn anchor() -> MeasurementAnchor {
 }
 
 fn receipt(probe: String, observed: ProbeObservation) -> GuaranteeMeasurementReceipt {
-  let a = anchor()
   GuaranteeMeasurementReceipt {
-    class: a.class,
-    path: a.path,
+    anchor: anchor(),
     probe: probe as GuaranteeProbeId,
-    subject_revision: a.subject_revision,
-    harness_revision: a.harness_revision,
-    probe_set_digest: a.probe_set_digest,
     observed: observed,
+  }
+}
+
+// EACH DISAGREEMENT FIXTURE VARIES ONE ANCHOR COMPONENT AND NOTHING ELSE, which is what makes the
+// controls below discriminate between causes rather than merely producing a refusal.
+fn receipt_anchored(a: MeasurementAnchor, probe: String, observed: ProbeObservation) -> GuaranteeMeasurementReceipt {
+  GuaranteeMeasurementReceipt { anchor: a, probe: probe as GuaranteeProbeId, observed: observed }
+}
+
+fn anchor_with_class(c: String) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: c as GuaranteeClassId, path: a.path,
+    subject_revision: a.subject_revision, harness_revision: a.harness_revision,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_path(q: String) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: q as GuaranteePathId,
+    subject_revision: a.subject_revision, harness_revision: a.harness_revision,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_subject_revision(r: MeasurementRevision) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: a.path,
+    subject_revision: r, harness_revision: a.harness_revision,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_harness_revision(r: MeasurementRevision) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: a.path,
+    subject_revision: a.subject_revision, harness_revision: r,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_probe_set(d: Fnv1a64Structural) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: a.path,
+    subject_revision: a.subject_revision, harness_revision: a.harness_revision,
+    probe_set_digest: d,
   }
 }
 
@@ -430,28 +477,20 @@ fn other_revision() -> MeasurementRevision {
 }
 
 test fn receipts_from_different_classes_do_not_join() -> Bool {
-  let red = receipt(probe: "red-probe", observed: refused())
-  let green = receipt(probe: "green-probe", observed: AcceptedClean)
-  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
-    class: "other-class" as GuaranteeClassId,
-    path: green.path, probe: green.probe,
-    subject_revision: green.subject_revision, harness_revision: green.harness_revision,
-    probe_set_digest: green.probe_set_digest, observed: green.observed,
-  }) {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_class(c: "other-class"), probe: "green-probe", observed: AcceptedClean),
+  ) {
     PathEvidenceRefused { cause: ReceiptClassesDisagree } => true
     _ => false
   }
 }
 
 test fn receipts_from_different_paths_do_not_join() -> Bool {
-  let red = receipt(probe: "red-probe", observed: refused())
-  let green = receipt(probe: "green-probe", observed: AcceptedClean)
-  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
-    class: green.class,
-    path: "other-path" as GuaranteePathId, probe: green.probe,
-    subject_revision: green.subject_revision, harness_revision: green.harness_revision,
-    probe_set_digest: green.probe_set_digest, observed: green.observed,
-  }) {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_path(q: "other-path"), probe: "green-probe", observed: AcceptedClean),
+  ) {
     PathEvidenceRefused { cause: ReceiptPathsDisagree } => true
     _ => false
   }
@@ -460,40 +499,30 @@ test fn receipts_from_different_paths_do_not_join() -> Bool {
 // THE SUBJECT REVISION IS THE ONE THAT LOOKS HARMLESS AND IS NOT: a red refused on yesterday's
 // compiler and a green accepted on today's is the pair that reports a wall which may no longer fire.
 test fn receipts_at_different_subject_revisions_do_not_join() -> Bool {
-  let red = receipt(probe: "red-probe", observed: refused())
-  let green = receipt(probe: "green-probe", observed: AcceptedClean)
-  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
-    class: green.class, path: green.path, probe: green.probe,
-    subject_revision: other_revision(), harness_revision: green.harness_revision,
-    probe_set_digest: green.probe_set_digest, observed: green.observed,
-  }) {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_subject_revision(r: other_revision()), probe: "green-probe", observed: AcceptedClean),
+  ) {
     PathEvidenceRefused { cause: SubjectRevisionsDisagree } => true
     _ => false
   }
 }
 
 test fn receipts_from_different_harnesses_do_not_join() -> Bool {
-  let red = receipt(probe: "red-probe", observed: refused())
-  let green = receipt(probe: "green-probe", observed: AcceptedClean)
-  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
-    class: green.class, path: green.path, probe: green.probe,
-    subject_revision: green.subject_revision, harness_revision: other_revision(),
-    probe_set_digest: green.probe_set_digest, observed: green.observed,
-  }) {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_harness_revision(r: other_revision()), probe: "green-probe", observed: AcceptedClean),
+  ) {
     PathEvidenceRefused { cause: HarnessRevisionsDisagree } => true
     _ => false
   }
 }
 
 test fn receipts_over_different_probe_sets_do_not_join() -> Bool {
-  let red = receipt(probe: "red-probe", observed: refused())
-  let green = receipt(probe: "green-probe", observed: AcceptedClean)
-  match joined_with(red: red, green: GuaranteeMeasurementReceipt {
-    class: green.class, path: green.path, probe: green.probe,
-    subject_revision: green.subject_revision, harness_revision: green.harness_revision,
-    probe_set_digest: probe_set_digest(probe_ids: ["only-one" as GuaranteeProbeId]),
-    observed: green.observed,
-  }) {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_probe_set(d: probe_set_digest(probe_ids: ["only-one" as GuaranteeProbeId])), probe: "green-probe", observed: AcceptedClean),
+  ) {
     PathEvidenceRefused { cause: ProbeSetsDisagree } => true
     _ => false
   }

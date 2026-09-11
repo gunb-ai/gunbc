@@ -138,13 +138,25 @@ type MeasurementRevision
 // SyntheticProgram witnesses until real revision anchors land; it must never be cast to CommitSha.
 // Downstream consumers discriminate by variant rather than inferring family from hex width.
 
-type GuaranteeMeasurementReceipt {
+// WHAT A MEASUREMENT IS ANCHORED TO, declared ONCE and carried by everything that needs it. The five
+// fields are one fact -- they travel together or the anchor means nothing -- and holding them inline
+// here while a second record re-listed them made the identity two declarations and its comparison
+// two more. Adding a sixth component would then have to be remembered in four places, and the one
+// that fails silently is the comparison: a dropped field stops being compared, so two receipts
+// measuring different things join into one pair and yield a rung. That is the same law this module
+// already applies to ProbeObservation and GuaranteeDisposition, applied to the identity tuple
+// instead of to the sums (DESIGN section 3).
+type MeasurementAnchor {
   class: GuaranteeClassId
   path: GuaranteePathId
-  probe: GuaranteeProbeId
   subject_revision: MeasurementRevision
   harness_revision: MeasurementRevision
   probe_set_digest: Fnv1a64Structural
+}
+
+type GuaranteeMeasurementReceipt {
+  anchor: MeasurementAnchor
+  probe: GuaranteeProbeId
   observed: ProbeObservation
 }
 
@@ -190,7 +202,7 @@ type ReceiptJoin
   | ReceiptPathDuplicate { receipt_path: GuaranteePathId, matches: Int }
 
 fn join_receipt_to_path(receipt: GuaranteeMeasurementReceipt, paths: List<GuaranteePath>) -> ReceiptJoin {
-  match resolve_guarantee_path(paths: paths, wanted: receipt.path) {
+  match resolve_guarantee_path(paths: paths, wanted: receipt.anchor.path) {
     PathResolved { path: p } => ReceiptJoined { path: p }
     PathUnknown { wanted: w } => ReceiptPathUnknown { receipt_path: w }
     PathDuplicate { wanted: w, matches: m } => ReceiptPathDuplicate { receipt_path: w, matches: m }
@@ -303,18 +315,6 @@ type GuaranteeDisposition
 //   - the RED was ACCEPTED  => the wall did not fire on the state it exists for.
 //   - the GREEN was REFUSED => the wall refuses a correct program.
 // Both are BelowFloor, and both are worth distinguishing to a reader, which is what the cause is for.
-// WHAT A PAIR OF OBSERVATIONS IS ANCHORED TO, carried as one value because the five fields travel
-// together or the anchor means nothing. This is the receipt's identity half: the class and path the
-// pair speaks for, and the three revisions that answer the ambiguity receipt_identity_note names --
-// without all three, "the baseline at commit X" names three different measurements.
-type MeasurementAnchor {
-  class: GuaranteeClassId
-  path: GuaranteePathId
-  subject_revision: MeasurementRevision
-  harness_revision: MeasurementRevision
-  probe_set_digest: Fnv1a64Structural
-}
-
 type PathEvidence {
   anchor: MeasurementAnchor
   red_probe: ProbeObservation
@@ -363,44 +363,57 @@ fn measurement_revision_eq(left: MeasurementRevision, right: MeasurementRevision
   }
 }
 
-fn path_evidence_from_receipts(
-  red: GuaranteeMeasurementReceipt,
-  green: GuaranteeMeasurementReceipt,
-) -> PathEvidenceJoin {
-  if (red.class as String) != (green.class as String) {
-    PathEvidenceRefused { cause: ReceiptClassesDisagree }
+// THE ANCHORS ARE COMPARED ONCE, BY THE TYPE THAT DECLARES THEM. Field-by-field comparison here
+// would be the identity tuple's fourth copy -- the record, the receipt, the copy-out and the compare
+// -- and the copy is the one that fails silently: a sixth component added to the anchor would stop
+// being compared without anything refusing, so two receipts measuring different things would join
+// and yield a rung. One function over MeasurementAnchor means adding a field breaks HERE, at a
+// match the compiler checks, rather than passing quietly.
+//
+// It returns the named disagreement rather than a bare Bool because the causes are the substance:
+// a class or path mismatch is a wiring error, a revision mismatch is a stale measurement, and a
+// probe-set mismatch means two runs under one name ran different probes. Same repair vocabulary,
+// one traversal.
+fn anchor_disagreement(left: MeasurementAnchor, right: MeasurementAnchor) -> PathEvidenceJoinCause? {
+  if (left.class as String) != (right.class as String) {
+    Present { value: ReceiptClassesDisagree }
   } else {
-    if (red.path as String) != (green.path as String) {
-      PathEvidenceRefused { cause: ReceiptPathsDisagree }
+    if (left.path as String) != (right.path as String) {
+      Present { value: ReceiptPathsDisagree }
     } else {
-      if (red.probe as String) == (green.probe as String) {
-        PathEvidenceRefused { cause: OneProbeUsedForBothDirections }
+      if !measurement_revision_eq(left: left.subject_revision, right: right.subject_revision) {
+        Present { value: SubjectRevisionsDisagree }
       } else {
-        if !measurement_revision_eq(left: red.subject_revision, right: green.subject_revision) {
-          PathEvidenceRefused { cause: SubjectRevisionsDisagree }
+        if !measurement_revision_eq(left: left.harness_revision, right: right.harness_revision) {
+          Present { value: HarnessRevisionsDisagree }
         } else {
-          if !measurement_revision_eq(left: red.harness_revision, right: green.harness_revision) {
-            PathEvidenceRefused { cause: HarnessRevisionsDisagree }
+          if (left.probe_set_digest.digest as String) != (right.probe_set_digest.digest as String) {
+            Present { value: ProbeSetsDisagree }
           } else {
-            if (red.probe_set_digest.digest as String) != (green.probe_set_digest.digest as String) {
-              PathEvidenceRefused { cause: ProbeSetsDisagree }
-            } else {
-              PathEvidenceJoined { evidence: PathEvidence {
-                anchor: MeasurementAnchor {
-                  class: red.class,
-                  path: red.path,
-                  subject_revision: red.subject_revision,
-                  harness_revision: red.harness_revision,
-                  probe_set_digest: red.probe_set_digest,
-                },
-                red_probe: red.observed,
-                green_probe: green.observed,
-              } }
-            }
+            none
           }
         }
       }
     }
+  }
+}
+
+fn path_evidence_from_receipts(
+  red: GuaranteeMeasurementReceipt,
+  green: GuaranteeMeasurementReceipt,
+) -> PathEvidenceJoin {
+  match anchor_disagreement(left: red.anchor, right: green.anchor) {
+    Present { value: cause } => PathEvidenceRefused { cause: cause }
+    Absent =>
+      if (red.probe as String) == (green.probe as String) {
+        PathEvidenceRefused { cause: OneProbeUsedForBothDirections }
+      } else {
+        PathEvidenceJoined { evidence: PathEvidence {
+          anchor: red.anchor,
+          red_probe: red.observed,
+          green_probe: green.observed,
+        } }
+      }
   }
 }
 
