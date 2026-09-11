@@ -75,6 +75,7 @@ import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_cache_dtype_admitted,
   v41_sm12_admitted_kv_cache_dtypes,
 }
+import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
 //
@@ -672,7 +673,7 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
         }
         && match v4_1_runtime_vllm_gb10_lead.vllm_source {
           VllmSourceRevisionEstablished { git: g } =>
-            (g as String) == "07b75534651a0dd584c6f3be75d8c62fb8426397"
+            (g as String) == (vllm_deepseek_v4_1_sm12_revision.full_revision as String)
           VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => false
         }
         && (v4_1_runtime_vllm_gb10_lead.image as String)

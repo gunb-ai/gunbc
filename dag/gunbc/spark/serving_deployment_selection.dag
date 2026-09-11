@@ -10,6 +10,7 @@ import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
   v41_sm12_admitted_kv_cache_dtypes,
 }
+import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -422,7 +423,7 @@ data serving_parameters_current: ServingDecisionParameters = serving_decision_pa
 // (v41_gb10_source_build_probe). The published arm64 image is a separate RuntimeRevision.
 data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   image: gunbc_vllm_dsv41_gb10_registry_reading.image_reference,
-  vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+  vllm_revision: vllm_deepseek_v4_1_sm12_revision.full_revision,
 )
 
 data v4_1_gb10_kv_layout: Sm12KvLayoutStanding = sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes)
@@ -460,7 +461,9 @@ data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
     obligation: join([
       "source revision unestablished: v41_published_stamped_identifier_lookup=",
       public_commit_lookup_wire(l: v41_published_stamped_identifier_lookup) as String,
-      "; 07b75534651a0dd584c6f3be75d8c62fb8426397 is this fleet's public-source fallback (#11022 route B), not this image",
+      "; ",
+      vllm_deepseek_v4_1_sm12_revision.full_revision as String,
+      " is this fleet's public-source fallback (#11022 route B), not this image",
     ], "") as NonEmptyStr,
   },
 }
