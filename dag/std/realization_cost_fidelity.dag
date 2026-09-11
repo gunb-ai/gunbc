@@ -90,8 +90,11 @@ type CostFidelity
   | RealizationCostUnknown
   | ModeledCostNotStructured
 
-// SIX ARMS WHERE THE BRIEF ASKED FOR FOUR, and every addition exists to keep an honest answer from
-// being reported as one of the other five. RealizationCostBodyDependent is the newest: when two
+// EVERY ARM BEYOND THE OBVIOUS TWO EXISTS TO KEEP AN HONEST ANSWER FROM BEING REPORTED AS ONE OF
+// THE OTHERS, and the roster is the declaration above rather than a count in this sentence -- a
+// counted annotation goes stale the moment an arm lands, which is what happened to the number that
+// used to open this paragraph (DESIGN section 4c: an annotation must not restate what the
+// declaration structurally says). RealizationCostBodyDependent is the newest: when two
 // costs agree on growth in every operand and differ in whether a caller-supplied body runs per
 // element, neither is known to be worse -- the body may be O(1) -- so the comparison is UNDECIDED
 // on evidence, which std.pareto already separates from Incomparable. Answering preserved there
@@ -199,16 +202,52 @@ fn param_axis_comparison(
   }
 }
 
-fn rank_axis_comparison(realized: GrowthRank, modeled: GrowthRank) -> AxisComparison {
-  match param_growth_order(a: realized, b: modeled) {
-    Equal =>
-      if realized.bodies != modeled.bodies {
-        UndecidedOnEvidence
-      } else {
-        Same
-      }
+// THE BODY IS HELD OUT OF THE ORDER, SO IT HAS TO BE CONSULTED BESIDE IT. param_growth_order ranks
+// on (degree, logs) alone, deliberately -- a caller-supplied body is real work this carrier cannot
+// bound, so it has no position on that lattice. What follows from that is not "ignore it": a body
+// delta that OPPOSES the growth delta can outweigh it by any amount, because the body is unbounded.
+// Reporting the growth winner there answers with confidence in a direction the evidence does not
+// support -- n x body(n) against n log n is SLOWER only if the body is below logarithmic, and
+// nothing here knows that.
+//
+// So the axis is decided exactly when the two deltas agree or the body delta is zero, and is
+// UndecidedOnEvidence when they oppose. That subsumes the equal-growth case rather than sitting
+// beside it: growths equal with bodies differing is the opposition rule at a growth delta of zero,
+// which is why this is one rule and not two. The ignorance is std.pareto's own word for it, and it
+// reaches CostFidelity as RealizationCostBodyDependent -- a repair that names the body as the thing
+// nobody modeled, which is the true finding.
+fn body_order(realized: GrowthRank, modeled: GrowthRank) -> Ordering {
+  if realized.bodies < modeled.bodies {
+    Less
+  } else {
+    if realized.bodies > modeled.bodies { Greater } else { Equal }
+  }
+}
+
+fn decided_axis(growth: Ordering) -> AxisComparison {
+  match growth {
+    Equal => Same
     Less => axis_comparison(goal: LowerIsBetter, value_order: Less)
     Greater => axis_comparison(goal: LowerIsBetter, value_order: Greater)
+  }
+}
+
+fn rank_axis_comparison(realized: GrowthRank, modeled: GrowthRank) -> AxisComparison {
+  let growth = param_growth_order(a: realized, b: modeled)
+  match body_order(realized: realized, modeled: modeled) {
+    Equal => decided_axis(growth: growth)
+    Less =>
+      match growth {
+        Less => decided_axis(growth: Less)
+        Equal => UndecidedOnEvidence
+        Greater => UndecidedOnEvidence
+      }
+    Greater =>
+      match growth {
+        Greater => decided_axis(growth: Greater)
+        Equal => UndecidedOnEvidence
+        Less => UndecidedOnEvidence
+      }
   }
 }
 

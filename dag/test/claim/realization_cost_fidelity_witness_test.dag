@@ -242,18 +242,63 @@ test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
   }
 }
 
-test fn a_body_does_not_outrank_a_real_growth_difference() -> Bool {
+// THIS CONTROL WAS AUTHORED ASSERTING THE WRONG ANSWER, and the correction is the point of it.
+// It used to require RealizationSlowerThanModeled for n x body(n) against n log n, on the reasoning
+// that a real growth difference outranks a body. That reasoning is false in exactly one direction
+// and this is it: the body is unbounded by anything this carrier knows, so a body delta OPPOSING
+// the growth delta can outweigh it by any amount. With a body of O(n^2) the modeled side is n^3 and
+// the realization is dramatically FASTER, and the module was answering "slower" with confidence --
+// the same fabrication class as sqrt-ordered-as-constant, one arm over.
+test fn an_opposing_body_and_growth_delta_is_body_dependent() -> Bool {
   match cost_fidelity_of(modeled: cost_iterate_body(param: "n"), realized: cost_nlogn(param: "n")) {
-    RealizationSlowerThanModeled => true
+    RealizationCostBodyDependent => true
+    RealizationSlowerThanModeled => false
     CostShapePreserved => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
-    RealizationCostBodyDependent => false
     CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
 }
+
+// THE MIRROR, and it is the more dangerous direction because the answer flatters the realization:
+// a realization that runs an unbounded caller body per element, against a modeled quadratic, used
+// to report FASTER on the strength of a degree it wins while the body it runs is unbounded.
+test fn an_opposing_body_does_not_make_a_realization_faster() -> Bool {
+  match cost_fidelity_of(modeled: quadratic(param: "n"), realized: cost_iterate_body(param: "n")) {
+    RealizationCostBodyDependent => true
+    RealizationFasterThanModeled => false
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationDivergesByOperand => false
+    CostGrowthNotOrderable => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// THE OTHER SIDE OF THE RULE, so the repair is not a blanket retreat into undecided: when the body
+// delta AGREES with the growth delta, or is zero, nothing opposes and the axis stays decided. A
+// realization that is worse on growth AND runs a body the model does not is worse, full stop.
+test fn an_agreeing_body_and_growth_delta_stays_decided() -> Bool {
+  let worse = ProductBound { factors: [
+    PolyCost { param: "n", exponent: poly_exp_degree_one() },
+    LogCost { param: "n" },
+    CallerBodyCost { param: "n" },
+  ] }
+  match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: worse) {
+    RealizationSlowerThanModeled => true
+    RealizationCostBodyDependent => false
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    CostGrowthNotOrderable => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
 
 // THE BODY SURVIVES A LOSING TERM. Growth comes from the largest term; a body is a fact about the
 // COST, not about the winning term, and taking the winner whole dropped it.
