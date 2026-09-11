@@ -1707,69 +1707,22 @@ pub struct TransitionAdmission {
 /// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
 /// empty was the resting state and one change authoring rows back into it is the ordinary motion.
 ///
-/// gunbc#11071 LinuxKernelRelease rehome (2026-09-11). `gunbc.served_surface_browser_observation`
-/// authored `LinuxKernelRelease`, the brand for what `uname -r` answers. That is a fact the Linux
-/// kernel owns, and it was declared inside a downstream RECEIPT module — so when
-/// `extdeps.linux.edac` needed to key its GHES/APEI topology facts to a kernel release it could not
-/// reach the brand at all: an extdeps module may not import a gunbc one. The only two landings were
-/// re-coining the brand upstream, which is the §3 fork, or moving it. It moved, to the new
-/// `extdeps.linux.kernel`, and both prior consumers import it from there.
+/// TWENTY-SECOND DISSOLUTION (2026-09-11). #11071 merged, and the required floor on this change
+/// (run 34652558033) reported all three of its rows as `CONSUMED ADMISSION ... already satisfied at
+/// the base`. The base now authors `LinuxKernelRelease` in `extdeps.linux.kernel`, so the
+/// `TargetChanged` delta those rows admitted has stopped being producible -- the rows would now
+/// admit nothing, and a row that admits nothing is a standing claim with no subject.
 ///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `LinuxKernelRelease` is authored
-/// on both sides in all three declarations below, and what changed is which declaration it admits:
-/// base `{gunbc.served_surface_browser_observation}`, head `{extdeps.linux.kernel}`. That is the
-/// motion this wall exists to make an author say out loud. It is not `AuthoredReferenceResolution`:
-/// the name was bound to a real declaration that this change deliberately relocated.
+/// THIS CHANGE IS THE TOUCHER THE RULE CHARGES. The deletion comes due on the roster's next touch
+/// rather than at merge time, because nothing scans for consumed rows on a change that leaves the
+/// roster alone; this change edits the roster, so it pays. That is the same bargain the twenty-first
+/// dissolution paid one change earlier, and the predecessor row said so in advance: "these rows go
+/// when #11071 merges ... CONSUMED comes due on the roster's next touch."
 ///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. The moved declaration is
-/// byte-identical to the one it replaces — same name, same `NonEmptyStr where brand(...)` body, same
-/// brand STRING, so every `as LinuxKernelRelease` ascription in the corpus denotes the same brand it
-/// did at the base; a changed brand string would have changed what the ascriptions mean and this row
-/// would be admitting a semantic change under a relocation's name. The two consumers are the
-/// complete population: `LinuxKernelRelease` resolved to exactly
-/// `gunbc.served_surface_browser_observation` and
-/// `test.claim.served_surface_browser_observation_witness` at the base, and both are edited here, so
-/// no third site is left resolving through a module that no longer authors the name. The witness
-/// suite over the consuming module passes on this head. The closure blast radius the same run
-/// measured is 4 modules — `extdeps.linux.kernel` imports only the citation vocabulary the base
-/// consumer already reached (`std.types`, `std.decl_ref`, `extdeps.external_authority`,
-/// `extdeps.uri`), so nothing downstream gained reach it did not have.
-///
-/// TRIGGER: these rows go when #11071 merges. The base then authors `LinuxKernelRelease` in
-/// `extdeps.linux.kernel`, the delta stops being producible, and CONSUMED comes due on the roster's
-/// next touch — adjudicated by the declaring-module join, not by this sentence.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.served_surface_browser_observation",
-            in_declaration: "ContainerVisibleHostKernel",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.served_surface_browser_observation",
-            in_declaration: "playwright_chromium_151_linux_arm64_headless_navigation_run",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.served_surface_browser_observation_witness",
-            in_declaration: "witness_run_owns_one_execution_identity",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// EMPTY IS THE RESTING STATE, NOT A WEAKENED WALL. An empty roster admits nothing: a run carrying
+/// any delta no row names still refuses it as UNADJUDICATED. The deletion removes three satisfied
+/// claims, not a guarantee.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2672,14 +2625,26 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
 /// unreadable base sealed the transition that only moves `//` onto the declaration the grain
 /// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
-pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
-    let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
-        vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-            path: rel.to_string(),
-            content: content.to_string(),
-        })]
-        .into(),
-    ));
+/// THE ENVIRONMENT IS REQUIRED, NOT DEFAULTED. A default would be the HEAD grammar, and this
+/// function's entire job is reading the BASE revision -- so a forgetful caller would read base text
+/// under head rules and answer confidently, which is
+/// `gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change` itself. A caller
+/// that genuinely means the head environment says so at the call site.
+pub fn base_records(
+    rel: &str,
+    content: &str,
+    environment: std::rc::Rc<crate::std_syntax::ParseEnvironment>,
+) -> Result<Vec<ModuleDeclarationRecord>, String> {
+    let fill = crate::v1_compiler_compile::parse_census_fill_sources_with_environment(
+        std::rc::Rc::new(
+            vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: rel.to_string(),
+                content: content.to_string(),
+            })]
+            .into(),
+        ),
+        environment,
+    );
     let annotation_erased_readable = !fill.modules.is_empty()
         && !fill.diagnostics.is_empty()
         && fill.diagnostics.iter().all(|d| {
@@ -2740,6 +2705,48 @@ pub fn run_required_wave_admission(
         return Ok(WaveAdmissionOutcome::NoSubject { head });
     }
 
+    // WHICH GRAMMAR DOES THE BASE SPEAK? Everything below reads base-side declarations, and reading
+    // them under the head's grammar is the defect this phase kept tripping over: a change that edits
+    // the language refuses in proportion to how thoroughly it succeeded
+    // (gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change).
+    //
+    // The cheap answer comes first. Object identity over the files declaring the environment settles
+    // "same grammar?" in a few `rev-parse` calls, so the ordinary pull request -- which changes no
+    // grammar -- pays nothing, and only a real grammar change pays to materialize and evaluate the
+    // base corpus.
+    let agreement = match environment_agreement(&base, &head) {
+        Ok(a) => a,
+        // A REFUSAL HERE IS NOT A LICENCE TO USE THE HEAD'S. Not knowing which grammar the base
+        // speaks makes every base-side declaration unreadable, which is ignorance, and ignorance is
+        // NotEvaluated rather than a confident answer under the wrong rules.
+        Err(e) => {
+            return Ok(WaveAdmissionOutcome::NotEvaluated {
+                reason: format!(
+                    "the base revision's parse environment could not be established ({e}), so its                      declarations cannot be read under any grammar this run can justify"
+                ),
+            })
+        }
+    };
+
+    // THE KERNEL HALF, GUARDED NARROWLY. `declaring_candidates` consults this binary's own
+    // `kernel_type_set`, a head fact. Equal declaring blobs mean both revisions name the same kernel
+    // and one map serves; different blobs leave the question open, and an open question refuses.
+    match kernel_set_serves_both(&base, &head) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(WaveAdmissionOutcome::NotEvaluated {
+                reason: format!(
+                    "{KERNEL_TYPES_PATH} differs between {base} and {head}, so the kernel-name set                      this binary carries cannot speak for the base side"
+                ),
+            })
+        }
+        Err(e) => {
+            return Ok(WaveAdmissionOutcome::NotEvaluated {
+                reason: format!("the kernel declaring file could not be compared ({e})"),
+            })
+        }
+    }
+
     let name_status = git_stdout(
         &workspace,
         &["diff", "--name-status", "-z", "-M", &base, &head],
@@ -2761,13 +2768,42 @@ pub fn run_required_wave_admission(
     // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
     // BASE's. Its base side is not read from git either (the tree does not carry it); it is
     // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
+    //
+    // CARRYING UNTOUCHED HEAD RECORDS IS VALID ONLY WHILE THE GRAMMARS AGREE. The reconstruction
+    // below keeps every head record the diff did not touch, which assumes an untouched FILE has an
+    // untouched PARSE. That holds when both revisions speak one grammar and fails exactly when they
+    // do not: a keyword, literal, operator or item-form change gives an untouched file a different
+    // parse, so its head records are not its base records. When the environments differ, nothing is
+    // carried and every base-side file in sweep scope is read under the base's own environment.
+    let (base_environment, full_base_parse, differing) = match &agreement {
+        EnvironmentAgreement::Identical => (
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+            false,
+            Vec::new(),
+        ),
+        EnvironmentAgreement::Differs {
+            base_environment,
+            differing_paths,
+        } => (base_environment.clone(), true, differing_paths.clone()),
+    };
+    if full_base_parse {
+        eprintln!(
+            "namespace-wave-admission: the base and head parse environments differ ({}), so the \
+             baseline is read in full under the base's own grammar rather than reconstructed from \
+             untouched head records",
+            differing.join(", ")
+        );
+    }
+
     let mut base_index = DeclarationIndex::default();
-    for record in index_records(head_index) {
-        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
-            continue;
-        }
-        if !head_parsed.iter().any(|c| *c == &record.rel_path) {
-            crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+    if !full_base_parse {
+        for record in index_records(head_index) {
+            if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+                continue;
+            }
+            if !head_parsed.iter().any(|c| *c == &record.rel_path) {
+                crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+            }
         }
     }
     // ABSENCE AT THE BASE IS ESTABLISHED FROM AN AUTHORITATIVE LISTING, NEVER INFERRED FROM A
@@ -2780,7 +2816,23 @@ pub fn run_required_wave_admission(
     // and a failure to obtain the listing is a refusal, not an empty answer.
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
     let base_paths: BTreeSet<String> = base_paths.lines().map(|l| l.trim().to_string()).collect();
-    for rel in &base_parsed {
+    // WHEN THE GRAMMARS DIFFER THE READ SET IS THE WHOLE BASE SIDE, not the diff's. The diff is a
+    // statement about bytes; a grammar change is a statement about every file's parse.
+    let owned_full: Vec<String> = if full_base_parse {
+        base_paths
+            .iter()
+            .filter(|p| in_sweep_scope(p))
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let read_set: Vec<&String> = if full_base_parse {
+        owned_full.iter().collect()
+    } else {
+        base_parsed.clone()
+    };
+    for rel in &read_set {
         if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
             continue;
@@ -2797,7 +2849,7 @@ pub fn run_required_wave_admission(
             Ok(c) => c,
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
-        match base_records(rel, &content) {
+        match base_records(rel, &content, base_environment.clone()) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
@@ -2832,7 +2884,7 @@ pub fn run_required_wave_admission(
         ) else {
             continue;
         };
-        match base_records(&record.rel_path, &content) {
+        match base_records(&record.rel_path, &content, base_environment.clone()) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
@@ -3181,4 +3233,98 @@ pub fn load_parse_environment_at(
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
+}
+
+/// The repo-relative files that declare the parse environment's closure, per the real resolver.
+///
+/// ASKED OF THE RESOLVER, NOT LISTED. The closure is 13 modules today and that number appears
+/// nowhere: a hardcoded roster would be a second authority for what the grammar depends on and would
+/// go stale, silently, the first time `std.syntax` gained an import -- a stale roster still resolves.
+/// The resolved graph's own span files ARE the closure.
+pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let root = super::workspace_root();
+    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    let dag_root = root.join(DAG_SOURCE_ROOT);
+    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
+    let (graph, _indices) =
+        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.display().to_string())
+            .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: "live-tree".to_string(),
+                cause: e,
+            })?;
+    let mut paths = BTreeSet::new();
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            let file = item.span.file.clone();
+            if let Some(idx) = file.find(&format!("{DAG_SOURCE_ROOT}/")) {
+                paths.insert(file[idx..].to_string());
+            }
+        }
+    }
+    if paths.is_empty() {
+        return Err(EnvironmentLoadRefusal::ClosureNotEvaluable {
+            revision: "live-tree".to_string(),
+            cause: "the resolved environment closure named no files, so no agreement check is \
+                    possible"
+                .to_string(),
+        });
+    }
+    Ok(paths)
+}
+
+/// Whether two revisions share a parse environment, and the base's environment when they do not.
+#[derive(Debug, Clone)]
+pub enum EnvironmentAgreement {
+    /// Every file declaring the environment is byte-identical across the two revisions.
+    ///
+    /// Equal object ids are equal content, so the environments are identical BY CONSTRUCTION rather
+    /// than by a comparison that could be wrong. Nothing needs loading, and the changed-file
+    /// baseline reconstruction stays valid.
+    Identical,
+    /// The declaring files differ, so the base must be read under its own environment.
+    Differs {
+        base_environment: std::rc::Rc<crate::std_syntax::ParseEnvironment>,
+        differing_paths: Vec<String>,
+    },
+}
+
+/// Decide whether the base and head grammars agree, loading the base's environment only if not.
+///
+/// THE CHEAP CHECK COMES FIRST because the expensive one must not be paid on every run: object
+/// identity over the closure's files answers "same grammar?" with a handful of `rev-parse` calls,
+/// and only a real difference pays for materializing and evaluating the base corpus. The ordinary
+/// pull request changes no grammar and therefore costs nothing here.
+pub fn environment_agreement(
+    base: &str,
+    head: &str,
+) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
+    let closure = environment_closure_paths()?;
+    let mut differing = Vec::new();
+    for path in &closure {
+        if blob_id_at(base, path)? != blob_id_at(head, path)? {
+            differing.push(path.clone());
+        }
+    }
+    if differing.is_empty() {
+        return Ok(EnvironmentAgreement::Identical);
+    }
+    Ok(EnvironmentAgreement::Differs {
+        base_environment: load_parse_environment_at(base)?,
+        differing_paths: differing,
+    })
+}
+
+/// The path whose declarations the kernel-name set is derived from.
+const KERNEL_TYPES_PATH: &str = "dag/std/types.dag";
+
+/// Whether the kernel type set this binary carries can speak for both revisions.
+///
+/// NARROW ON PURPOSE. `declaring_candidates` consults the RUNNING compiler's `kernel_type_set`,
+/// which is a fact about the head. Threading distinct base and head kernel maps is the general
+/// repair and is not this change's subject; what is needed here is honesty about when the single map
+/// is adequate. Equal blobs for the declaring file means both revisions name the same kernel, so one
+/// map serves. Different blobs means the question is open, and an open question is `NotEvaluated` --
+/// not a guess that the head's map is close enough.
+pub fn kernel_set_serves_both(base: &str, head: &str) -> Result<bool, EnvironmentLoadRefusal> {
+    Ok(blob_id_at(base, KERNEL_TYPES_PATH)? == blob_id_at(head, KERNEL_TYPES_PATH)?)
 }

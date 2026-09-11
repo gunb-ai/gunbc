@@ -2,7 +2,7 @@ module v1.compiler.compile
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
 
-import std.syntax { LiteralValue, BinOp }
+import std.syntax { LiteralValue, BinOp, ParseEnvironment }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
@@ -1104,7 +1104,8 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
         p.newline_index
       ),
       intern_table: acc.intern_table,
-      occurrence_allocator: acc.occurrence_allocator
+      occurrence_allocator: acc.occurrence_allocator,
+      env: dag_parse_environment
     )
     let bound = admit_source_annotations(
       transport: parsed.occurrence_transport,
@@ -1199,7 +1200,16 @@ type CensusFillParse {
 // heads-only module index and is caught HERE and nowhere else. The discriminating RED is a
 // planted `fn body_probe(x: Int) -> Int { let = = = 9 }` in a module outside the entry's
 // closure: it must keep refusing with `expected name, found Eq`.
-fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
+// THE ENVIRONMENT-EXPLICIT CENSUS FOLD. Reading one revision's sources means reading them under
+// THAT revision's grammar; this form takes the environment so a base-side caller can supply the
+// base's own. The wrapper below keeps every ordinary head caller unchanged, and is the ONLY place
+// `dag_parse_environment` is named on this path -- a base-reading caller that reached the wrapper
+// would be reading base text under head rules, which is the defect
+// gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change names.
+fn parse_census_fill_sources_with_environment(
+  sources: List<SourceFile>,
+  environment: ParseEnvironment
+) -> CensusFillParse {
   let parsed = sources |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
@@ -1209,7 +1219,7 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     annotations: source_annotation_graph_empty(),
     annotation_diagnostics: [],
   }, f: (acc, s) =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path, env: dag_parse_environment)
+    let artifact = tokenize_artifact(source: s.content, file: s.path, env: environment)
     let p = FrontendPrepared {
       tokens: artifact.tokens,
       annotations: artifact.annotations,
@@ -1224,7 +1234,8 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
         p.newline_index
       ),
       intern_table: pre_intern_tokens(tokens: p.tokens, table: acc.intern_table),
-      occurrence_allocator: acc.occurrence_allocator
+      occurrence_allocator: acc.occurrence_allocator,
+      env: environment
     )
     let bound = admit_source_annotations(
       transport: parsed.occurrence_transport,
@@ -1266,6 +1277,18 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     ),
     annotations: parsed.annotations,
   }
+}
+
+// THE HEAD-GRAMMAR WRAPPER. Every ordinary consumer parses the running binary's own corpus, so
+// naming the environment at each site would be noise; this is the single place that names
+// `dag_parse_environment` on the census path. A caller reading ANOTHER revision must call the
+// explicit form above -- reaching this wrapper with base-side sources is precisely the silent
+// head-rules read the parameter exists to prevent.
+fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
+  parse_census_fill_sources_with_environment(
+    sources: sources,
+    environment: dag_parse_environment
+  )
 }
 
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
