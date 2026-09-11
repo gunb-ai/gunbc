@@ -873,3 +873,78 @@ test fn every_long_prefix_selects_the_verdict_only_policy() -> Bool {
       )
     ) != "verdict-only")
 }
+
+// ---- THE POLICY THE ARM SELECTS MUST BE THE POLICY THE STANDING CARRIES ----
+
+// THE RED FOR A DEFECT THAT LIVED BETWEEN TWO CORRECT HALVES. The policy fold answered
+// verdict-only for a long-module changed witness, and the standing fold projected verdict-only
+// readings correctly -- and the seed still greened such a row as an ordinary planned-and-passed,
+// because its projection REBUILT the policy from a set the long-home identity never entered
+// rather than carrying the policy its claim executed under. Both folds were right; the seam
+// between them was not, so neither fold's own controls could see it.
+//
+// This composes them: the policy is taken from changed_witness_cost_policy for a long-module
+// identity rather than written in by hand, so the control goes red if EITHER the arm stops
+// selecting verdict-only or the standing stops carrying the cost fact. A hand-written
+// ChangedCostDebtVerdictOnly here would have tested the standing fold twice and the join not at
+// all, which is what left the gap open.
+fn standing_under_selected_policy(
+  module_path: String,
+  identity: String,
+  terminal: ChangedWitnessTerminalReading,
+  cost: ChangedWitnessCostReading,
+) -> ChangedWitnessExecutionStanding {
+  changed_standing_of(
+    reading: DispositionRow {
+      disposition: PlannedAsChangedWitness {},
+      terminal: terminal,
+      cost_policy: changed_witness_cost_policy(
+        selected_as_changed_witness: true,
+        module_path: module_path,
+        identity: identity,
+      ),
+      cost: cost
+    }
+  )
+}
+
+test fn a_long_module_changed_pass_carries_its_cost_debt_observation() -> Bool {
+  standing_kind(
+    s: standing_under_selected_policy(
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+      terminal: TerminalOutcome { outcome: Passed {} },
+      cost: over_line_observation()
+    )
+  ) == "planned-and-passed-with-cost-debt-observed"
+}
+
+// THE OTHER HALF OF THE SAME JOIN: standing the CPU gate down and publishing nothing is the one
+// new red, and it must reach a long-module row too. If a long-home witness projected as ordinary,
+// this arm could never fire for it -- the gate would be stood down with no measurement in its
+// place and the run would still read green.
+test fn a_long_module_changed_pass_without_a_measurement_is_red() -> Bool {
+  standing_kind(
+    s: standing_under_selected_policy(
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+      terminal: TerminalOutcome { outcome: Passed {} },
+      cost: CostUnobserved {}
+    )
+  ) == "cost-observation-missing-under-verdict-only"
+}
+
+// THE BOUNDARY, composed the same way: a NON-long changed witness off the roster takes the
+// ordinary policy, so its pass is an ordinary pass and carries no cost-debt observation. Without
+// this, the two controls above would be satisfied by an arm that made every changed witness
+// verdict-only.
+test fn a_short_module_changed_pass_is_an_ordinary_pass() -> Bool {
+  standing_kind(
+    s: standing_under_selected_policy(
+      module_path: "v2.test.floor_changed_witness",
+      identity: "v2.test.floor_changed_witness.some_ordinary_witness",
+      terminal: TerminalOutcome { outcome: Passed {} },
+      cost: over_line_observation()
+    )
+  ) == "planned-and-passed"
+}

@@ -5064,13 +5064,21 @@ pub fn run_required_floor(
                 // authored-name prefix match `required_floor_site_disposition` folds to reach
                 // `DeclinedLongModule`, so this is one classification read twice, not a second one.
                 //
-                // ONLY A ROSTERED IDENTITY ENTERS THE COST-DEBT SEEN SET. A long-module witness is
-                // not a roster member, and inserting it would make a row look exercised that no
-                // roster line names -- which is precisely how a stale roster line hides.
-                let cost_policy = if cost_debt_roster.contains(&identity) {
+                // TWO SETS, AND THEY ANSWER DIFFERENT QUESTIONS -- the distinction this arm got
+                // wrong on its first draft. `cost_debt_seen` is ROSTER ACCOUNTING: it feeds
+                // reconcile_withheld_against_dispositions, so only a rostered identity may enter
+                // it, and inserting a long-module witness there would make a row look exercised
+                // that no roster line names, which is how a stale roster line hides.
+                // `cost_debt_verdict_only` is the PROJECTION's policy source, read by
+                // changed_witness_projection_rows and by nothing else. Every identity whose claim
+                // executed under the override must enter it, or execution and standing disagree:
+                // the CPU gate stands down and the row then projects as an ordinary
+                // planned-and-passed, laundering the cost fact into a pass that never happened
+                // that way, and CostObservationMissingUnderVerdictOnly can never fire for it.
+                // v2.workflow.floor_changed_witness says it directly -- the override "keeps the
+                // COST FACT in the standing rather than laundering it into an ordinary pass".
+                let cost_policy = if cost_debt_roster.contains(&identity) || long_home {
                     cost_debt_verdict_only.insert(identity.clone());
-                    ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
-                } else if long_home {
                     ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
                 } else {
                     ChangedWitnessCostPolicy::Ordinary
