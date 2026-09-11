@@ -29,7 +29,7 @@ import gunbc.spark.serving_arm_launch {
 import gunbc.spark.device_memory_envelope {
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, NoFeasibleDeviceMemoryEnvelope,
   glm_native_tp4_launch_plan, glm_native_tp4_nodes, glm_native_tp4_resolve_envelope,
-  resolved_envelope_text,
+  resolved_envelope_text, RankEnvelopeStanding, rank_envelope_standing_text,
 }
 import gunbc.spark.native_launch_fold {
   LaunchPopulationOutcome, EveryRankStarted, LaunchPopulationIncomplete, LaunchPopulationHadNoPlan,
@@ -79,10 +79,11 @@ data native_claim_path: NonEmptyStr = "/home/briansrls/acq/glm-native-cutover.cl
 // about a machine whose containers have since been removed. Reusing one across attempts would make both of
 // those checks vacuous at exactly the moment they matter, which is a retry after a failure.
 //
-// -4 IS THE FIRST ATTEMPT UNDER THE RESOLVED ENVELOPE. Attempts 1 through 3 launched against a fraction
-// derived from total capacity; this is a different plan built from observed supply, so it is a different
-// subject and not a repeat of the same one.
-data native_attempt_raw: String = "glm-native-tp4-cutover-4"
+// -5 IS THE FIRST ATTEMPT WHOSE PREFLIGHT MEASURES THE STATE THE LAUNCH WILL MEET. Attempts 1 through 3 ran
+// against a fraction derived from total capacity. Attempt 4 resolved from observed supply but read its peers
+// before releasing their page cache, so it withheld on srv12 -- correctly refusing a reading it should never
+// have taken. Each is a different subject rather than a repeat of the previous one.
+data native_attempt_raw: String = "glm-native-tp4-cutover-5"
 
 // THE READINESS BUDGET IS UPSTREAM'S FIGURE FOR THIS MODEL, and the poll interval is chosen so the budget
 // is spent in observations rather than in one long blind wait.
@@ -277,19 +278,45 @@ fn plan_peer_nodes(nodes: List<ArmNode>, head: HostIdentity) -> List<ArmNode> {
   filter(nodes, n => !host_identity_eq(a: n.host, b: head))
 }
 
+// THE PEERS ARE PREPARED BEFORE THEY ARE MEASURED, AND THE FIRST REVISION OF THIS FUNCTION WAS NOT.
+//
+// IT REPRODUCED THE DEFECT IT EXISTS TO CATCH. The page-cache release ran only in stage two, after the
+// incumbent was stopped, so stage one read peers that were still cache-warm and refused on exactly the
+// condition this repository had just PROVEN is not a shortage. On attempt 4 it reported srv12 supplying 500
+// basis points -- a host holding 106 GB of reclaimable cache, 117 GB available, that would have served the
+// launch perfectly. The check was over-conservative in precisely the way vLLM's own check is, which is the
+// bug it was written to compensate for.
+//
+// RELEASING THE PEERS' CACHE HERE IS SAFE IN THE WAY THAT MATTERS: they are the three hosts NOT running the
+// incumbent, so nothing is serving from what is dropped, and this happens before any authorisation or any
+// destructive step. If the transaction then withholds, the only trace it leaves is three hosts with colder
+// caches, which is a cost measured in one re-read and not in an outage.
+//
+// A MEASUREMENT MUST BE TAKEN OF THE STATE THE THING WILL ACTUALLY MEET. Stage one asks whether these peers
+// can supply the arm at launch; the launch happens after a release; so the reading has to be taken after a
+// release too. Measuring a different state and calling the answer a preflight is how a check comes to refuse
+// good hosts.
 func stage_one_peer_envelope(
   ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, head: HostIdentity, attempt: String,
 ) -> ResolvedDeviceMemoryEnvelope
   uses net: Network
 {
+  let peers = plan_peer_nodes(nodes: nodes, head: head)
+  let prepared = release_population_page_cache(ctx: ctx, nodes: peers)
   glm_native_tp4_resolve_envelope(
     ctx: ctx,
-    nodes: plan_peer_nodes(nodes: nodes, head: head),
+    nodes: peers,
     attempt: attempt as NonEmptyStr,
   )
 }
 
 // ── THE TRANSACTION ───────────────────────────────────────────────────────────────────────────
+//
+// A WITHHELD TERMINAL RENDERS ITS STANDINGS RATHER THAN COUNTING THEM. A first revision emitted the literal
+// "peer standing recorded" once per standing, which concatenated into "peer standing recordedpeer standing
+// recorded..." -- a string asserting that evidence exists while carrying none of it, the same defect as the
+// Bool that once claimed a log had been captured and then discarded the log. The per-rank text IS the value
+// of a preflight refusal: which host, what it supplied, against which floor.
 //
 // THE PLAN IS NOW THE LAST THING BUILT RATHER THAN THE FIRST. Its memory fraction is a resolved fact about
 // four machines at one moment, so there is nothing to plan until that fact exists -- and the roster the
@@ -305,11 +332,10 @@ func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -
         Present { value: head } =>
           match stage_one_peer_envelope(ctx: ctx, nodes: ns, head: head.host, attempt: attempt) {
             NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss } => NativeCutoverWithheld {
-              reasons: [
-                join(["the non-incumbent peers cannot supply this arm's memory floor, so nothing was stopped: ",
-                      c as String], "") as NonEmptyStr,
-                join(map(ss, x => "peer standing recorded" as String), "") as NonEmptyStr,
-              ],
+              reasons: concat(
+                [join(["the non-incumbent peers cannot supply this arm's memory floor, so nothing was stopped: ",
+                       c as String], "") as NonEmptyStr],
+                map(ss, x => rank_envelope_standing_text(s: x) as NonEmptyStr)),
             }
             ResolvedForAttempt { basis_points: _, binding_node_rank: _, policy: _, attempt: _, standings: _ } =>
               cutover_after_peer_preflight(ctx: ctx, nodes: ns, head: head, attempt: attempt)

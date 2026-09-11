@@ -233,6 +233,47 @@ test fn a_rank_with_room_for_weights_alone_is_below_the_floor() -> Bool {
   }
 }
 
+// ── THE CACHE-WARM READING, WHICH IS THE ONE THAT ACTUALLY HAPPENED ───────────────────────────
+//
+// THIS IS THE POPULATION ATTEMPT 4 MET, AND THE RESOLUTION IS RIGHT TO REFUSE IT. srv12 was holding 106 GB
+// of page cache and reported 11.36 GiB free; the fold declines, which is correct, because the ENGINE would
+// have declined too -- the envelope's job is to predict the engine's refusal, not to judge the hardware.
+//
+// WHAT WAS WRONG WAS WHERE THE READING WAS TAKEN, NOT WHAT IT SAID. The caller measured peers that had not
+// yet had their cache released, so a preflight whose whole purpose is to predict the launch was predicting a
+// state the launch would never see. This row pins the arithmetic so the repair stays in the CALLER, where
+// the defect was: if someone later "fixes" this refusal by loosening the floor or by counting reclaimable
+// memory here, this control goes red and says so.
+test fn a_cache_warm_rank_is_refused_and_that_is_correct() -> Bool {
+  match standing_of(r: observation(
+    host: operator_host_srv12, rank: 2, free: byte_size(count: 12200000000),
+    image: expected_image, attempt: expected_attempt,
+  )) {
+    RankEnvelopeBelowFloor { node_rank: _, host: _, cap_basis_points: _, floor_basis_points: _ } => true
+    RankEnvelopeSupplies { node_rank: _, host: _, cap_basis_points: _, free_bytes: _ } => false
+    RankEnvelopeUnread { node_rank: _, host: _, cause: _ } => false
+    RankEnvelopeForeignImage { node_rank: _, host: _, observed_image: _, expected_image: _ } => false
+    RankEnvelopeStaleAttempt { node_rank: _, host: _, observed_attempt: _, expected_attempt: _ } => false
+  }
+}
+
+// AND THE SAME HOST AFTER ITS CACHE IS RELEASED SUPPLIES THE CEILING. The pair is the point: one rank, two
+// readings, and the difference is entirely whether the release ran first. A preflight that takes the first
+// reading and calls it a prediction of the launch has measured the wrong moment.
+test fn the_same_rank_supplies_once_its_cache_is_released() -> Bool {
+  match standing_of(r: observation(
+    host: operator_host_srv12, rank: 2, free: byte_size(count: 125718261760),
+    image: expected_image, attempt: expected_attempt,
+  )) {
+    RankEnvelopeSupplies { node_rank: _, host: _, cap_basis_points: c, free_bytes: _ } =>
+      c >= glm_native_device_memory_policy.maximum_fraction_basis_points
+    RankEnvelopeBelowFloor { node_rank: _, host: _, cap_basis_points: _, floor_basis_points: _ } => false
+    RankEnvelopeUnread { node_rank: _, host: _, cause: _ } => false
+    RankEnvelopeForeignImage { node_rank: _, host: _, observed_image: _, expected_image: _ } => false
+    RankEnvelopeStaleAttempt { node_rank: _, host: _, observed_attempt: _, expected_attempt: _ } => false
+  }
+}
+
 // THE RESOLUTION NEVER EXCEEDS THE OPERATOR'S CEILING even when every rank is idle and could supply more.
 // The ceiling is a policy and the supply is a fact; the fold consults both and the smaller wins.
 test fn an_idle_population_is_still_capped_at_the_ceiling() -> Bool {
