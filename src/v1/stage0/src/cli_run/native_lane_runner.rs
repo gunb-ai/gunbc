@@ -311,12 +311,12 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     );
     commit_phase(
         seed_clock,
-        serde_json::json!({
-            "written_files": written,
-            "rss_kb_before_trim": rss_before_kb,
-            "trim_reclaimed_kb": trim_reclaimed_kb,
-            "rss_kb_after_trim": rss_after_kb,
-        }),
+        &[
+            ("written_files", written as u128),
+            ("rss_kb_before_trim", rss_before_kb.unwrap_or(0) as u128),
+            ("trim_reclaimed_kb", trim_reclaimed_kb.unwrap_or(0) as u128),
+            ("rss_kb_after_trim", rss_after_kb.unwrap_or(0) as u128),
+        ],
     );
     let cargo_clock = begin(PHASE_CARGO_BUILD);
     let verdict = super::emitted_closure_compile_host::run_cargo(
@@ -326,10 +326,12 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     );
     commit_phase(
         cargo_clock,
-        serde_json::json!({
-            "compiled": super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict),
-            "summary": super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
-        }),
+        &[(
+            "compiled",
+            u128::from(super::emitted_closure_compile_host::cargo_verdict_compiled(
+                &verdict,
+            )),
+        )],
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(format!(
@@ -856,10 +858,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         "required-ci: v2-native universe derived — {} v2.test.* identities",
         universe.len()
     );
-    commit_phase(
-        universe_clock,
-        serde_json::json!({ "identities": universe.len() }),
-    );
+    commit_phase(universe_clock, &[("identities", universe.len() as u128)]);
     // THE MODULE-SOURCE INDEX THE RECEIPT CARRIES, restricted to the universe's own modules —
     // the domain the context reclassification can touch and the admission join reasons over.
     // Built here, where a missing row is a located refusal, rather than inside receipt minting
@@ -930,9 +929,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     )?;
     commit_phase(
         malformed_clock,
-        serde_json::json!({
-            "file_refusals": control_output.file_refusals.len(),
-        }),
+        &[("file_refusals", control_output.file_refusals.len() as u128)],
     );
     drop(withdrawal);
     eprintln!("required-ci: v2-native old route restored");
@@ -1048,10 +1045,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         }
     };
     eprintln!("required-ci: v2-native admission {summary_text}");
-    commit_phase(
-        admission_clock,
-        serde_json::json!({ "admitted": admitted, "summary": summary_text }),
-    );
+    commit_phase(admission_clock, &[("admitted", u128::from(admitted))]);
     if admitted {
         Ok(())
     } else {

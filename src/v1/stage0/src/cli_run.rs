@@ -14220,9 +14220,12 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `resolve_span_exit`, the `resolve_entry_with_parse_cache` timing wrapper (fold back into
 // `_inner`), `CostPartitionRow`, `InclusiveCostRow`, `CostAccountingVerdict`,
 // `CostAccountingRefusal`, `ExclusiveCostPartition`, `exclusive_cost_partition`,
-// `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
-// `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
-// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
+// `exclusive_cost_partition_from`, `exclusive_cost_partition_from_rows`,
+// `render_exclusive_cost_partition_json`, `json_num`, the
+// `exclusive_cost_partition_law` test module, the three `[cost-partition]` emissions
+// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`),
+// `native_lane_phase_cost` / its `commit_phase` host emissions, and the
+// `emit_source_root_eval_driver_main_rs` `[cost-partition]` eprintln blocks — ~900 LOC incl. tests.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
@@ -14646,42 +14649,12 @@ pub fn exclusive_cost_partition_from(
     ];
 
     let sum_exclusive: u128 = exclusive.iter().map(|r| r.nanos).sum();
-    let (remainder_nanos, verdict) = if account.spans == 0 {
-        (
-            0,
-            CostAccountingVerdict::Refused {
-                cause: CostAccountingRefusal::NoSpans,
-            },
-        )
-    } else if account.nested_spans > 0 {
-        (
-            0,
-            CostAccountingVerdict::Refused {
-                cause: CostAccountingRefusal::NestedSpanAttribution {
-                    nested_spans: account.nested_spans,
-                },
-            },
-        )
-    } else if sum_exclusive > account.span_nanos {
-        (
-            0,
-            CostAccountingVerdict::Refused {
-                cause: CostAccountingRefusal::OverAttributed {
-                    sum_exclusive_nanos: sum_exclusive,
-                    parent_span_nanos: account.span_nanos,
-                },
-            },
-        )
-    } else {
-        let remainder = account.span_nanos - sum_exclusive;
-        (
-            remainder,
-            CostAccountingVerdict::Reconciled {
-                residual_nanos: 0,
-                tolerance_nanos: 0,
-            },
-        )
-    };
+    let (remainder_nanos, verdict) = exclusive_partition_verdict(
+        account.span_nanos,
+        account.spans,
+        account.nested_spans,
+        sum_exclusive,
+    );
 
     ExclusiveCostPartition {
         basis,
@@ -14704,6 +14677,81 @@ pub fn exclusive_cost_partition_from(
         pool_parse_modules: st.pool_parse_modules,
         load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
+    }
+}
+
+fn exclusive_partition_verdict(
+    parent_span_nanos: u128,
+    spans: u64,
+    nested_spans: u64,
+    sum_exclusive: u128,
+) -> (u128, CostAccountingVerdict) {
+    if spans == 0 {
+        (
+            0,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::NoSpans,
+            },
+        )
+    } else if nested_spans > 0 {
+        (
+            0,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::NestedSpanAttribution { nested_spans },
+            },
+        )
+    } else if sum_exclusive > parent_span_nanos {
+        (
+            0,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::OverAttributed {
+                    sum_exclusive_nanos: sum_exclusive,
+                    parent_span_nanos,
+                },
+            },
+        )
+    } else {
+        (
+            parent_span_nanos - sum_exclusive,
+            CostAccountingVerdict::Reconciled {
+                residual_nanos: 0,
+                tolerance_nanos: 0,
+            },
+        )
+    }
+}
+
+/// The same exclusive law over caller-named rows (native-lane phases), not the resolve-stage roster.
+pub fn exclusive_cost_partition_from_rows(
+    basis: &'static str,
+    parent_span_nanos: u128,
+    exclusive: Vec<CostPartitionRow>,
+    inclusive: Vec<InclusiveCostRow>,
+) -> ExclusiveCostPartition {
+    let sum_exclusive: u128 = exclusive.iter().map(|r| r.nanos).sum();
+    let (remainder_nanos, verdict) =
+        exclusive_partition_verdict(parent_span_nanos, 1, 0, sum_exclusive);
+    ExclusiveCostPartition {
+        basis,
+        parent_span_nanos,
+        spans: 1,
+        nested_spans: 0,
+        exclusive,
+        inclusive,
+        remainder_nanos,
+        verdict,
+        load_reference_scan_bytes: 0,
+        load_reference_scan_calls: 0,
+        edge_index_builds: 0,
+        edge_index_source_files: 0,
+        edge_index_bare_eligible: 0,
+        edge_index_closure_expand_calls: 0,
+        edge_index_tree_census_misses: 0,
+        edge_index_tree_census_calls: 0,
+        pool_parse_builds: 0,
+        pool_parse_modules: 0,
+        load_fixpoint_rounds: 0,
+        span_rows_by_entry: Vec::new(),
     }
 }
 
@@ -38561,6 +38609,32 @@ mod exclusive_cost_partition_law {
             p.sum_exclusive_nanos() + p.remainder_nanos
         );
         assert_eq!(p.share_of_parent("load"), Some(0.6));
+    }
+
+    #[test]
+    fn from_rows_refuses_when_named_phases_sum_past_the_parent() {
+        let p = exclusive_cost_partition_from_rows(
+            "required_v2_native_phase_wall",
+            10,
+            vec![
+                CostPartitionRow {
+                    name: "identity_evaluation",
+                    nanos: 8,
+                },
+                CostPartitionRow {
+                    name: "module_preparation",
+                    nanos: 8,
+                },
+            ],
+            Vec::new(),
+        );
+        assert!(matches!(
+            p.verdict,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::OverAttributed { .. }
+            }
+        ));
+        assert!(p.share_of_parent("identity_evaluation").is_none());
     }
 
     /// The shared pool parse is subtracted from the row that happened to force it.
