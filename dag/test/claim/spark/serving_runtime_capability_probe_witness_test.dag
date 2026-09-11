@@ -1,0 +1,101 @@
+module test.claim.spark.serving_runtime_capability_probe_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.spark.serving_arm {
+  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
+  Glm53Exl3_205, Glm53NativeFp8, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3,
+  SingleSparkTp1, SparkPairTp2, FourSparkTp4,
+  serving_arm_admits, runtime_registers, serving_runtime_row, gitcommit90_sm121_exl3_row, gunbc_sparkrun_ds4_row,
+}
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
+import gunbc.spark.serving_runtime_capability_probe {
+  RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4KvCacheKernels,
+  Csa2CompressorKernels, DSparkSpeculator,
+  KernelProbeOutcome, KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused,
+  V41RuntimeVerdict, V41RuntimeAdmissible, V41RuntimeMissing, V41RuntimeIncompletelyProbed,
+  v41_sm121_capability_probe_rows, v41_sm121_runtime_candidates, v41_runtime_verdict,
+  v41_admissible_images, capability_outcome, v41_required_capabilities,
+}
+
+// THE ARCHITECTURE SET IS ASKED BY MEMBERSHIP AND THE TWO RUNTIMES ANSWER DIFFERENTLY, which is the
+// discriminating pair: a membership test that always said true, or a set that had silently become
+// the same for both images, would fail here rather than pass quietly.
+test fn each_runtime_answers_the_membership_question_from_its_own_measured_registry() -> Bool {
+  runtime_registers(rrow: gitcommit90_sm121_exl3_row, architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr)
+    && !runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr)
+    && runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "DeepseekV4ForCausalLM" as NonEmptyStr)
+    && !runtime_registers(rrow: gitcommit90_sm121_exl3_row, architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
+    && !runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
+}
+
+// THE REFUSAL THE SET REPLACED A BOOL WITH STILL FIRES, AND IT NAMES THE ARCHITECTURE IT LOOKED FOR.
+// The pre-change field could only refuse GLM on the DeepSeek image; the cause text is asserted here
+// because a refusal that named the wrong architecture would be indistinguishable from a correct one
+// by the verdict arm alone.
+test fn the_deepseek_image_still_refuses_the_glm_checkpoint_and_names_the_architecture() -> Bool {
+  match serving_arm_admits(checkpoint: Glm53Exl3_205, runtime: GunbcSparkrunVllmDs4Gb10, topology: SingleSparkTp1) {
+    ServingArmAdmitted => false
+    ServingArmRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "does not register Glm5NextForConditionalGeneration")
+  }
+}
+
+// AND THE ADMISSION THAT MUST SURVIVE THE CHANGE: the community image plus the EXL3 checkpoint on one
+// Spark was admitted before the membership rewrite and has to stay admitted, or the rewrite tightened
+// the wall by accident rather than generalising it.
+test fn the_community_image_still_admits_the_exl3_checkpoint_on_one_spark() -> Bool {
+  match serving_arm_admits(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1) {
+    ServingArmAdmitted => true
+    ServingArmRefused { cause: _ } => false
+  }
+}
+
+// THE FOOTPRINT WALL IS UNTOUCHED BY THE ARCHITECTURE WALL, asserted on the tuple where the
+// architecture registers and the weights do not fit: if the membership rewrite had swallowed the
+// second wall this would read as admitted.
+test fn an_architecture_the_runtime_registers_still_fails_the_footprint_wall() -> Bool {
+  match serving_arm_admits(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1) {
+    ServingArmAdmitted => false
+    ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "does not fit the topology")
+  }
+}
+
+// NO IMAGE PROBED ON A GB10 ADMITS DEEPSEEK V4.1, and this is the sweep's standing rather than a
+// statement about images in general -- the candidate roster it folds over is what makes that
+// denominator readable. The day an image does admit it, this witness goes red and that is the signal.
+test fn no_probed_image_admits_deepseek_v41_on_this_compute_capability() -> Bool {
+  length(v41_admissible_images(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates)) == 0
+}
+
+// THE VERDICT FOR THE PRODUCTION IMAGE NAMES EVERY REQUIRED CAPABILITY AS MISSING, which is a
+// different claim from "not admissible" and is the one that says what a replacement must supply.
+test fn the_production_image_is_missing_every_capability_v41_requires() -> Bool {
+  match v41_runtime_verdict(
+    rows: v41_sm121_capability_probe_rows(),
+    image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+  ) {
+    V41RuntimeAdmissible { image_reference: _ } => false
+    V41RuntimeIncompletelyProbed { image_reference: _, unprobed: _ } => false
+    V41RuntimeMissing { image_reference: _, missing: m } => length(m) == length(v41_required_capabilities)
+  }
+}
+
+// A REFUSED PROBE IS NOT A MISSING CAPABILITY. The SGLang image answers the registry question and
+// refuses the other four, so its four vLLM-vocabulary questions must read as unprobed while its one
+// measured negative reads as missing -- the distinction the outcome type exists for.
+test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> Bool {
+  match capability_outcome(
+    rows: v41_sm121_capability_probe_rows(),
+    image_reference: xomoxcc_dgx_spark_sglang_pinned_reference(),
+    capability: DSparkSpeculator,
+  ) {
+    Absent => false
+    Present { value: o } =>
+      match o {
+        KernelProbeRefused { reason: _ } => true
+        KernelObservedPresent { symbol: _ } => false
+        KernelObservedAbsent { symbol: _ } => false
+      }
+  }
+}
