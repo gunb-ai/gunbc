@@ -132,6 +132,29 @@ test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with
         })
 }
 
+// THE ADMITTED ID IS THE ONE THE ROUTE ANSWERS TO, AND IT IS NOT THE UNIT'S CANONICAL ID.
+//
+// THIS IS THE CONTROL FOR A DEFECT THAT SHIPPED IN THIS BRANCH AND WAS CAUGHT IN REVIEW. A consumer
+// held the resolved UNIT and re-derived the request's model field from it by name, which is correct
+// for group A by coincidence and wrong for group B in the way that matters: its engine is launched
+// with --served-model-name glm-5.3-flash-exl3-canary and answers to that alias alone, so a turn
+// naming the unit's canonical Zhipu id is refused at the request -- the exact failure this branch
+// exists to remove, reintroduced one layer further in.
+//
+// The assertion is therefore that the two strings DIFFER and that resolution keeps the advertised
+// one. An equality against the alias alone would stay green on a build that had gone back to
+// deriving the id from the unit, if the two ever coincided.
+test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -> Bool {
+  (match serving_admits_id(id: "glm-5.3-flash-exl3-canary") {
+     ServingModelAdmitted { id: i, unit: u } =>
+       (i as String) == "glm-5.3-flash-exl3-canary"
+         && (i as String) != (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
+         && (match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false })
+     ServingModelNotAdmitted { advertised: _ } => false
+   })
+    && (harness_unit_model_id(unit: Glm53FlashOnVllm) as String) != "glm-5.3-flash-exl3-canary"
+}
+
 // ── 4. MEMBERSHIP IS OBSERVED: A ROUTE THAT DOES NOT ANSWER IS NOT SELECTABLE ─────────────────
 //
 // A declared route that is down must not reach an offer. The readiness fold is where that is

@@ -27,7 +27,7 @@ import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, rev
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
 }
@@ -57,14 +57,19 @@ import extdeps.filesystem.filesystem_io
 // extdeps.ollama.api already owns how a model reference is spelled on the wire, and a second
 // spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
 // backend carried a structured cause; that is the argument for keeping the body on a failed post.
-// THE MODEL IS THE ONE THE PLACED ROUTE WAS OBSERVED SERVING, NOT A GLOBAL ROW. It used to be the
-// harness's single selector, which is why a route serving anything else was unusable: the id in the
-// request would have named a model that route does not have. The seat now carries the unit and the
-// id its own probe read, so the request is shaped for the engine that granted it -- which is what
-// makes "take whatever is up" a placement fact rather than a hope.
-fn harness_bound_model(unit: HarnessServingUnit) -> String {
-  harness_unit_model_id(unit: unit) as String
-}
+// THE MODEL FIELD CARRIES THE ID THE ROUTE ADVERTISED, AND RE-DERIVING IT FROM THE UNIT IS A
+// SILENT WRONG ANSWER. A helper stood here that answered harness_unit_model_id(unit) -- the unit's
+// canonical upstream id -- and it was wrong for exactly the route this branch exists to reach:
+// group B's engine is launched with --served-model-name glm-5.3-flash-exl3-canary and answers to
+// THAT alias and nothing else, so a turn placed there would have named the Zhipu id and been refused
+// at the request. The id and the alias are two names for one thing (DESIGN section 3), and the
+// consumer was picking the one that was not observed.
+//
+// SO BOTH TRAVEL FROM THE SEAT AND NEITHER IS RECOMPUTED. The binding carries the id its own probe
+// read and the unit that id resolved to; the id goes in the request's model field, the unit shapes
+// the request around it. gunbc.serving.admitted_model says this in its own annotation -- a consumer
+// that kept only one would have to re-derive the other from a name -- and this is the consumer it
+// was written about.
 
 // THE MACBOOK'S TOOL ENVIRONMENT. The timeout program is the GNU build, for the reason
 // harness_timeout_kill_exit_code records: the 124 exit is what makes "the harness killed this"
@@ -219,10 +224,10 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 // field the way it takes the worktree, the timeout program and its two paths -- so the same loop
 // runs against a different serving surface by being handed a different number, not by importing a
 // different authority.
-fn harness_macbook_config(backend_url: String, unit: HarnessServingUnit) -> HarnessTurnConfig {
+fn harness_macbook_config(backend_url: String, model: NonEmptyStr, unit: HarnessServingUnit) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_bound_model(unit: unit),
+    model: model as String,
     max_tokens: harness_default_max_tokens,
     serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
@@ -244,9 +249,9 @@ fn harness_macbook_config(backend_url: String, unit: HarnessServingUnit) -> Harn
 // posted, received a tool_use, executed it, posted the result back, and received a terminal.
 data harness_probe_prompt: String = "How many files in the dag/gunbc/harness directory of this repository end in .dag? Use run_command to find out, then state the number."
 
-fn harness_probe_outcome(backend_url: String, unit: HarnessServingUnit) -> HarnessTurnOutcome {
+fn harness_probe_outcome(backend_url: String, model: NonEmptyStr, unit: HarnessServingUnit) -> HarnessTurnOutcome {
   harness_run_turn(
-    config: harness_macbook_config(backend_url: backend_url, unit: unit),
+    config: harness_macbook_config(backend_url: backend_url, model: model, unit: unit),
     prompt: harness_probe_prompt,
     step_budget: harness_default_step_budget,
   )
@@ -424,8 +429,8 @@ fn harness_probe_cli() -> ProcessExit {
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
-      let outcome = harness_probe_outcome(backend_url: url, unit: bound_unit)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       harness_turn_exit_released(outcome: outcome, seat: seat_release)
     }
@@ -462,13 +467,14 @@ fn harness_worker_config(
   request_scratch_path: FilePath,
   events_path: FilePath,
   backend_url: String,
+  model: NonEmptyStr,
   unit: HarnessServingUnit,
   repo_root: String,
   gunbc_program: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_bound_model(unit: unit),
+    model: model as String,
     max_tokens: harness_default_max_tokens,
     serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
@@ -521,7 +527,7 @@ fn harness_worker_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -529,6 +535,7 @@ fn harness_worker_cli(
           request_scratch_path: request_scratch_path as FilePath,
           events_path: events_path as FilePath,
           backend_url: url,
+          model: bound_model,
           unit: bound_unit,
           repo_root: repo_root,
           gunbc_program: gunbc_program,
@@ -568,12 +575,13 @@ fn harness_reviewer_config(
   verdict_dir: String,
   verdict_name: String,
   backend_url: String,
+  model: NonEmptyStr,
   unit: HarnessServingUnit,
 ) -> HarnessTurnConfig {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_bound_model(unit: unit),
+    model: model as String,
     max_tokens: harness_default_max_tokens,
     serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
@@ -606,7 +614,7 @@ fn harness_reviewer_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
@@ -616,6 +624,7 @@ fn harness_reviewer_cli(
           verdict_dir: verdict_dir,
           verdict_name: verdict_name,
           backend_url: url,
+          model: bound_model,
           unit: bound_unit,
         ),
         prompt: brief,
@@ -640,12 +649,13 @@ fn harness_auditor_config(
   verdict_dir: String,
   verdict_name: String,
   backend_url: String,
+  model: NonEmptyStr,
   unit: HarnessServingUnit,
 ) -> HarnessTurnConfig {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
-    model: harness_bound_model(unit: unit),
+    model: model as String,
     max_tokens: harness_default_max_tokens,
     serving_unit: unit,
     reasoning_mode: harness_reasoning_mode,
@@ -678,7 +688,7 @@ fn harness_auditor_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
@@ -688,6 +698,7 @@ fn harness_auditor_cli(
           verdict_dir: verdict_dir,
           verdict_name: verdict_name,
           backend_url: url,
+          model: bound_model,
           unit: bound_unit,
         ),
         prompt: brief,
@@ -706,8 +717,8 @@ fn harness_probe_report() -> String {
   match binding {
     HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: _, unit: bound_unit, class: _ } => {
-      let outcome = harness_probe_outcome(backend_url: url, unit: bound_unit)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       join([
         "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",
