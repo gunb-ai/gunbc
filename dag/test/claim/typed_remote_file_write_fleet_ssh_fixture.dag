@@ -75,6 +75,7 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.typed_remote_file_write_witness", decl_name: "w_over_fleet_ssh_hermetic_mock_exec_accepted"),
     decl_ref(module_path: "test.claim.typed_remote_file_converge_witness_test", decl_name: "the_converge_route_yields_a_receipt_naming_the_exact_write_and_target"),
     decl_ref(module_path: "test.claim.runner_host_file_converge_witness_test", decl_name: "the_apply_route_refuses_what_the_host_did_not_report"),
+    decl_ref(module_path: "test.claim.fleet_bootstrap_principal_session_witness", decl_name: "witness_leg_stdout"),
   ]
 {
   match fixture_attempt() {
