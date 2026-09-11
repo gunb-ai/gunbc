@@ -744,10 +744,6 @@ fn v1_current_head_rust_sources() -> HeadRustSources {
   head_rust_sources(select: fn(path) { true })
 }
 
-fn v1_current_rust_references() -> RustReferenceObservation {
-  v1_rust_references_over(sources: v1_current_head_rust_sources())
-}
-
 type V1ShimPartition {
   cited: List<V1ConsumerRow>
   uncitable: List<V1UncitableConsumer>
@@ -1720,7 +1716,12 @@ fn v1_consumers_for(partition: V1ShimPartition, join: MintedManifestJoin) -> Lis
 // reads this field and an inflated Complete would let the transaction execute against a population
 // that was never closed.
 fn v1_consumer_population_for(observation: RustReferenceObservation, seed_links: RustReferenceObservation) -> ConsumerPopulation {
-  let join = v1_minted_manifest_join_over(observation: seed_links)
+  v1_consumer_population_with(observation: observation, join: v1_minted_manifest_join_over(observation: seed_links))
+}
+
+// THE JOIN IS A PARAMETER HERE so a caller that also renders it (the report entry) computes it
+// once and hands the same value to both demands.
+fn v1_consumer_population_with(observation: RustReferenceObservation, join: MintedManifestJoin) -> ConsumerPopulation {
   match v1_shim_population_of(observation: observation) {
     V1ShimPopulationRefused { reason: r } => PopulationUnmeasured { reason: r }
     V1ShimPopulationObserved { partition: partition } =>
@@ -2032,13 +2033,13 @@ fn v1_blocking_consumer_count() -> V1BlockingCount {
 // renders as its reason, never as a number.
 func v1_blocking_consumer_count_report() -> ProcessExit {
   let head = v1_current_head_rust_sources()
-  let seed_links = v1_seed_link_sites_over(sources: head)
-  let population = v1_consumer_population_for(observation: v1_rust_references_over(sources: head), seed_links: seed_links)
+  let join = v1_minted_manifest_join_over(observation: v1_seed_link_sites_over(sources: head))
+  let population = v1_consumer_population_with(observation: v1_rust_references_over(sources: head), join: join)
   ExitFailure {
     code: 1,
     reason: concat(
       v1_blocking_count_rendered(c: v1_blocking_count_of(p: population)),
-      concat(" | seed-link join: ", minted_manifest_join_rendered(j: v1_minted_manifest_join_over(observation: seed_links)))
+      concat(" | seed-link join: ", minted_manifest_join_rendered(j: join))
     )
   }
 }
