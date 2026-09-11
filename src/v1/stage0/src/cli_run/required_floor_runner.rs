@@ -1189,6 +1189,12 @@ pub(crate) enum EnrolmentMarginStanding {
     NotMeasured {
         cause: String,
     },
+    /// The runner itself withheld this identity, so no measurement was ever going to exist and no
+    /// edit to the witness could produce one. Does NOT block here — it defers to
+    /// `changed_witness_blocking`, which refuses it carrying the disposition's own name.
+    OutsideThisRunsExecution {
+        disposition: String,
+    },
 }
 
 impl EnrolmentMarginStanding {
@@ -1199,6 +1205,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OverMargin { .. } => true,
             EnrolmentMarginStanding::CeilingCensored { .. } => true,
             EnrolmentMarginStanding::NotMeasured { .. } => true,
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
         }
     }
 
@@ -1211,16 +1218,23 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OverMargin { .. } => "enrolment_measured_over_margin",
             EnrolmentMarginStanding::CeilingCensored { .. } => "enrolment_censored_at_ceiling",
             EnrolmentMarginStanding::NotMeasured { .. } => "enrolment_not_measured",
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
         }
     }
 
-    /// The standing as the projection line names it. `admitted` rather than an empty string,
-    /// because a blank field in a per-identity line reads as a missing value rather than as a
-    /// verdict — and this line is the only per-identity evidence that the gate LOOKED at a row.
-    fn cause_or_admitted(&self) -> &'static str {
+    /// Mirror of `enrolment_margin_standing_name`. Every standing has a NAME; only the refusing
+    /// ones have a CAUSE. The projection line prints the name, because a blank field reads as a
+    /// missing value rather than as a verdict — and that line is the only per-identity evidence
+    /// that the gate LOOKED at a row.
+    fn name(&self) -> &'static str {
         match self {
             EnrolmentMarginStanding::WithinMargin { .. } => "admitted",
-            other => other.cause(),
+            EnrolmentMarginStanding::OverMargin { .. } => "measured_over_margin",
+            EnrolmentMarginStanding::CeilingCensored { .. } => "censored_at_ceiling",
+            EnrolmentMarginStanding::NotMeasured { .. } => "not_measured",
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
+                "outside_this_runs_execution"
+            }
         }
     }
 
@@ -1243,6 +1257,10 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::NotMeasured { cause } => {
                 format!("cost=UNMEASURED absence_cause={cause}")
             }
+            EnrolmentMarginStanding::OutsideThisRunsExecution { disposition } => format!(
+                "not adjudicated here: this run withheld the identity (disposition={disposition}); \
+                 changed_witness_blocking owns it"
+            ),
         }
     }
 }
@@ -1313,11 +1331,48 @@ fn claim_cost_by_identity(
 /// produced a cost row for has not been shown to be cheap; it has not been shown to be anything.
 /// Defaulting it to a zero cost would classify it `WithinMargin` and admit it silently, which is
 /// the absorbing fallback DESIGN section 5 forbids in its most ordinary costume.
+/// Whether THIS RUN undertook to execute one identity, from the disposition receipt that is the
+/// single authority on that question.
+///
+/// A MISSING ROW IS NOT PLANNED. `changed_witness_standing_blocks` already refuses a changed
+/// identity with no disposition row (`MissingDisposition`), so deferring here loses no refusal —
+/// and asserting "planned" about an identity the receipt never mentions would be the count-equality
+/// reasoning DESIGN section 5 refuses in favour of an identity join.
+fn enrolment_gate_execution_disposition<'a>(
+    identity: &str,
+    dispositions: &'a HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> Option<&'a crate::cli_run::RequiredFloorDisposition> {
+    dispositions.get(identity).copied()
+}
+
 pub(crate) fn enrolment_margin_standing_for(
     identity: &str,
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
     budget_ms: u64,
 ) -> EnrolmentMarginStanding {
+    // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
+    //
+    // The enrolled population is derived from the DIFF and is root-agnostic; the executed
+    // population is bounded by the discovery roots. Without this join a wholly-added test file
+    // homed outside those roots is enrolled, declined by the runner, absent from the cost
+    // population, and refused here as `not_measured` — demanding a measurement that no edit inside
+    // the offending PR could ever produce. That is the class the seed's own `undeclarable_changed`
+    // block exists to repair, and asking the cost population first rebuilds it one gate over.
+    match enrolment_gate_execution_disposition(identity, dispositions) {
+        Some(crate::cli_run::RequiredFloorDisposition::Planned)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        Some(other) => {
+            return EnrolmentMarginStanding::OutsideThisRunsExecution {
+                disposition: required_floor_disposition_label(other).to_string(),
+            };
+        }
+        None => {
+            return EnrolmentMarginStanding::OutsideThisRunsExecution {
+                disposition: "no_disposition_row".to_string(),
+            };
+        }
+    }
     let Some(row) = claim_cost.get(identity) else {
         return EnrolmentMarginStanding::NotMeasured {
             cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
@@ -8030,14 +8085,31 @@ pub fn run_required_floor(
     if let Some(newly_enrolled) = newly_enrolled_witnesses {
         let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
+        let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
+            .required_floor_disposition
+            .iter()
+            .map(|row| (row.identity.as_str(), &row.disposition))
+            .collect();
         let mut refused: Vec<ChangedWitnessBlocker> = Vec::new();
+        let mut deferred = 0usize;
         for identity in &newly_enrolled {
-            let standing = enrolment_margin_standing_for(identity, &cost_by_identity, budget_ms);
+            let standing = enrolment_margin_standing_for(
+                identity,
+                &cost_by_identity,
+                &dispositions,
+                budget_ms,
+            );
             eprintln!(
                 "[enrolment-margin] identity={identity} standing={} {}",
-                standing.cause_or_admitted(),
+                standing.name(),
                 standing.detail()
             );
+            if matches!(
+                standing,
+                EnrolmentMarginStanding::OutsideThisRunsExecution { .. }
+            ) {
+                deferred += 1;
+            }
             if standing.blocks() {
                 refused.push(ChangedWitnessBlocker {
                     identity: identity.clone(),
@@ -8045,11 +8117,18 @@ pub fn run_required_floor(
                 });
             }
         }
+        // THE DEFERRED COUNT IS PRINTED, NEVER SILENTLY SUBTRACTED (DESIGN section 5: no silent
+        // caps). `adjudicated + deferred == newly_enrolled` is checkable on the line itself, so a
+        // gate that quietly stopped looking at most of its population cannot render as one that
+        // looked and found nothing.
         eprintln!(
-            "required-floor: newly_enrolled={} enrolment_margin_blocking={} budget_ms={budget_ms} \
-             (p90 runner envelope over 12 runs / 3 hosts / 398 identities at identical eval_steps; \
-             authority v2.workflow.floor_enrolment_margin)",
+            "required-floor: newly_enrolled={} adjudicated={} deferred_outside_execution={} \
+             enrolment_margin_blocking={} budget_ms={budget_ms} (p90 runner envelope over 12 runs \
+             / 3 hosts / 398 identities at identical eval_steps; authority \
+             v2.workflow.floor_enrolment_margin)",
             newly_enrolled.len(),
+            newly_enrolled.len() - deferred,
+            deferred,
             refused.len()
         );
         outcome.enrolment_margin_blocking = refused;

@@ -132,9 +132,25 @@ fn floor_enrolment_margin_budget_ms() -> Millisecond {
 // reader knows this is the established shape for "the run may have no reading" rather than a new
 // idea. It carries the absence CAUSE so the refusal can say why nothing was measured instead of
 // only that nothing was.
+// THE THIRD ARM IS NOT A THIRD KIND OF ABSENCE, AND CONFLATING IT WITH THE SECOND IS THE DEFECT
+// THIS TYPE WAS REWORKED TO CLOSE (review 64022).
+//
+// `EnrolmentCostAbsent` means THE RUN UNDERTOOK TO EXECUTE THIS IDENTITY AND NO MEASUREMENT CAME
+// BACK -- the remedy is to produce one, and it blocks. `EnrolmentNotPlanned` means THE RUNNER
+// ITSELF WITHHELD THE IDENTITY: it was declined, so no measurement was ever going to exist, and
+// no edit to the witness can produce one.
+//
+// THE SELECTOR AND THE ENUMERATOR RANGE OVER DIFFERENT UNIVERSES, which is why this arm is
+// reachable at all. Changed-witness selection ranges over the whole DIFF; the declared population
+// ranges over the DISCOVERY ROOTS. A wholly-added `.dag` test file homed outside those roots is
+// therefore selectable and undeclarable, and the seed already gives it a typed decline
+// (`DeclinedChangedWitnessOutsideDiscovery`). Treating that as "not measured" would refuse the run
+// for a state NO EDIT INSIDE THE OFFENDING PR COULD EVER SATISFY -- the exact class the seed's own
+// `undeclarable_changed` block was written to repair, rebuilt one gate over.
 type EnrolmentCostReading =
     EnrolmentCostMeasured { reading: ClaimCostReading }
   | EnrolmentCostAbsent { witness_identity: String, cause: String }
+  | EnrolmentNotPlanned { witness_identity: String, disposition: String }
 
 // THE HOST READ POINT. The seed evaluates its policy figures out of the model rather than
 // mirroring them as Rust literals -- `floor_required_int` does exactly this for the CPU and wall
@@ -159,6 +175,7 @@ type EnrolmentMarginStanding =
   | EnrolmentOverMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
   | EnrolmentCeilingCensored { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
   | EnrolmentNotMeasured { witness_identity: String, cause: String }
+  | EnrolmentOutsideThisRunsExecution { witness_identity: String, disposition: String }
 
 // THE CLASSIFICATION. Total over both coproducts, so neither a new reading arm nor a new absence
 // can be absorbed into a neighbour.
@@ -169,6 +186,8 @@ fn enrolment_margin_standing(
   match reading {
     EnrolmentCostAbsent { witness_identity: i, cause: k } =>
       EnrolmentNotMeasured { witness_identity: i, cause: k }
+    EnrolmentNotPlanned { witness_identity: i, disposition: d } =>
+      EnrolmentOutsideThisRunsExecution { witness_identity: i, disposition: d }
     EnrolmentCostMeasured { reading: r } =>
       match r {
         ObservedCpuReading { cpu_ms: c } =>
@@ -187,14 +206,24 @@ fn enrolment_margin_standing(
 }
 
 // THE REFUSING POLARITY, STATED ONCE. Only a row MEASURED and measured INSIDE the margin is
-// green. The two over arms block because the row is over; the not-measured arm blocks because
-// nothing established that it is not.
+// admitted by this gate. The two over arms block because the row is over; the not-measured arm
+// blocks because nothing established that it is not.
+//
+// `EnrolmentOutsideThisRunsExecution` DOES NOT BLOCK HERE, AND THAT IS A DEFERRAL TO A GATE THAT
+// DOES -- never an exemption, which would be this section's own absorbing fallback. A newly
+// enrolled identity is by construction a CHANGED identity, so an identity the runner declined
+// reaches `v2.workflow.floor_changed_witness` `changed_witness_standing_blocks` through its
+// `Declined` arm and refuses the run there, carrying the disposition's own wire name as its cause.
+// The run still stops; it stops with the remedy the author can act on ("this file is outside the
+// discovery roots") instead of one they cannot ("produce a measurement"). Two gates refusing one
+// row with two causes, one of them wrong, is worse than one gate refusing it with the right one.
 fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
   match standing {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => false
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => true
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => true
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => false
   }
 }
 
@@ -212,6 +241,20 @@ fn enrolment_margin_blocking_cause(standing: EnrolmentMarginStanding) -> String 
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "enrolment_measured_over_margin"
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "enrolment_censored_at_ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "enrolment_not_measured"
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => ""
+  }
+}
+
+// THE WIRE NAME OF ONE STANDING, homed with the coproduct it names so the projection line and any
+// later reader cannot spell the same standing two ways. Distinct from the blocking cause: every
+// standing has a name, only the refusing ones have a cause.
+fn enrolment_margin_standing_name(standing: EnrolmentMarginStanding) -> String {
+  match standing {
+    EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => "admitted"
+    EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "measured_over_margin"
+    EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "censored_at_ceiling"
+    EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not_measured"
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside_this_runs_execution"
   }
 }
 

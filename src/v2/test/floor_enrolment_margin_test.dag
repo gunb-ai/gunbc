@@ -3,9 +3,11 @@ module v2.test.floor_enrolment_margin
 import v2.workflow.floor_enrolment_margin {
   floor_enrolment_margin_envelope_permille,
   floor_enrolment_margin_budget_ms,
-  EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent,
+  EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent, EnrolmentNotPlanned,
   EnrolmentMarginStanding,
   EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentNotMeasured,
+  EnrolmentOutsideThisRunsExecution,
+  enrolment_margin_standing_name,
   enrolment_margin_standing,
   enrolment_margin_standing_blocks,
   enrolment_margin_blocking_cause,
@@ -61,6 +63,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "over-margin"
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "ceiling-censored"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not-measured"
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside-this-run"
   }
 }
 
@@ -194,6 +197,64 @@ test fn the_fold_reports_only_blocking_rows_with_their_causes() -> Bool {
     EnrolmentMarginRow { identity: "fixture.cheap", standing: standing_of(reading: observed(cpu_ms: 1)) },
     EnrolmentMarginRow { identity: "fixture.over", standing: standing_of(reading: observed(cpu_ms: 450)) },
     EnrolmentMarginRow { identity: "fixture.also_cheap", standing: standing_of(reading: observed(cpu_ms: 2)) },
+  ])
+  fold(blockers, init: "", f: fn(acc, b) {
+    concat(acc, concat(b.identity, concat("=", concat(b.cause, ";"))))
+  }) == "fixture.over=enrolment_measured_over_margin;"
+}
+
+// AN IDENTITY THE RUNNER WITHHELD IS NOT THIS GATE'S TO REFUSE, and this is the arm review 64022
+// required. The changed-witness selector ranges over the whole diff while the declared population
+// ranges over the discovery roots, so a wholly-added test file outside those roots is selectable
+// and undeclarable. Refusing it here would demand a measurement that no edit to the witness could
+// ever produce.
+test fn an_identity_the_runner_withheld_is_not_refused_by_this_gate() -> Bool {
+  let s = standing_of(
+    reading: EnrolmentNotPlanned {
+      witness_identity: "outside.roots.some_witness_holds",
+      disposition: "declined_changed_witness_outside_discovery",
+    }
+  )
+  standing_kind(s: s) == "outside-this-run"
+    && !enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_standing_name(standing: s) == "outside_this_runs_execution"
+}
+
+// THE TWO ABSENCES STAY DISTINCT, which is the whole content of the repair. A planned identity
+// that produced no measurement still blocks; a withheld identity does not, because the two have
+// different remedies and only one of them is reachable by editing the witness.
+test fn a_withheld_identity_and_an_unmeasured_planned_one_are_different_standings() -> Bool {
+  let withheld = standing_of(
+    reading: EnrolmentNotPlanned {
+      witness_identity: "outside.roots.some_witness_holds",
+      disposition: "declined_changed_witness_outside_discovery",
+    }
+  )
+  let unmeasured = standing_of(
+    reading: EnrolmentCostAbsent {
+      witness_identity: "planned.but.untimed_holds",
+      cause: "lane_cancelled_before_measurement",
+    }
+  )
+  standing_kind(s: withheld) != standing_kind(s: unmeasured)
+    && !enrolment_margin_standing_blocks(standing: withheld)
+    && enrolment_margin_standing_blocks(standing: unmeasured)
+}
+
+// THE FOLD DOES NOT CARRY A WITHHELD ROW INTO THE BLOCKING POPULATION. Stated over the fold and
+// not only over the predicate, because the fold is what the merge gate actually reads.
+test fn the_fold_omits_withheld_rows_and_keeps_over_margin_ones() -> Bool {
+  let blockers = enrolment_margin_blockers(rows: [
+    EnrolmentMarginRow {
+      identity: "outside.roots.withheld",
+      standing: standing_of(
+        reading: EnrolmentNotPlanned {
+          witness_identity: "outside.roots.withheld",
+          disposition: "declined_changed_witness_outside_discovery",
+        }
+      )
+    },
+    EnrolmentMarginRow { identity: "fixture.over", standing: standing_of(reading: observed(cpu_ms: 450)) },
   ])
   fold(blockers, init: "", f: fn(acc, b) {
     concat(acc, concat(b.identity, concat("=", concat(b.cause, ";"))))
