@@ -124,11 +124,16 @@ type Home
 // caller-supplied lenses — which is what required_lens_grain_note says. The emitted
 // SourceRootEvalDriver on the required-v2-native lane executes the first of those.
 //
-// WHY THE NATIVE ZERO STILL STANDS, AND WHY IT IS A DIFFERENT ZERO. Executing-natively is 0 because
-// every admitted subject on that lane refuses UPSTREAM of the door, at resolve, so no gate is asked
-// and no gate RED is refused there. Unreached and reached-but-never-arrived-at are the same number
-// and different facts: the second flips the day the closure refusals repair; the first would need a
-// routing change nobody has planned.
+// REACHED AND EXECUTING ARE STILL TWO NUMBERS, AND THEY NO LONGER AGREE. Reached-by-route counts the
+// obligations whose door an executing route names as a consumer; executing-natively counts the ones
+// the lane's population actually contains. The gap between them is the rows the exclusion frontier
+// carves out of discovery, which the native harness therefore never sees.
+//
+// THIS PARAGRAPH SAID "executing-natively is 0" UNTIL THE LANE LANDED, and that sentence is deleted
+// rather than softened: it was true of a tree where the only native evidence was the self-host
+// receipt family, and it became a present-tense coverage claim about a fold that had started
+// answering differently. Read census_counts for the current pair; this annotation does not carry
+// either number, for the reason DESIGN section 6 gives.
 type RouteReach
   = ReachedByNativeRoute { driver: NonEmptyStr, upstream_refusal: NonEmptyStr }
   | NotNamedByAnyExecutingRoute { note: NonEmptyStr }
@@ -354,12 +359,13 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
 // native standing is ExecutedPendingVerification carrying unread_native_verdict_premise, never
 // ExecutedOnPath, and the rung this census reports stays route coverage rather than qualification.
 //
-// THE NATIVE RECEIPT IS WEAKER THAN ITS ROUTE GAP, WHICH IS WHY THIS VALUE IS RouteGapHeld AND NOT
-// SOMETHING SOFTER. The only behavioral receipt the emitted crate publishes for v2.compiler.compile
-// is the self_host_00_compile shim, and its case list has ONE entry: required_lens_grain_note, the
-// prose string describing the two roster grains, compared against a nine-line seed module whose
-// whole content is that same string. Not one gate is invoked, so even a spendable receipt would not
-// move if every gate were deleted.
+// THE SELF-HOST RECEIPT FAMILY IS WHY THE NON-MEMBER ARM IS RouteGapHeld AND NOT SOMETHING SOFTER —
+// and it is now the arm for rows the lane does NOT reach, rather than for every row. The only
+// behavioral receipt the emitted crate publishes for v2.compiler.compile is the self_host_00_compile
+// shim, and its case list has ONE entry: required_lens_grain_note, the prose string describing the
+// two roster grains, compared against a nine-line seed module whose whole content is that same
+// string. Not one gate is invoked, so even a spendable receipt would not move if every gate were
+// deleted. A row outside the lane's population has that and nothing else.
 data unread_native_verdict_premise: DeclarationRef = decl_ref(
   module_path: "gunbc.v2_compile_obligation_census",
   decl_name: "native_verdict_receipt_trigger"
@@ -1002,12 +1008,17 @@ fn obligations_without_a_home() -> Int {
 // paths, per DESIGN section 4b(1) — and NOT whether the right lens ran, whether its discriminating
 // red went red, whether its positive control stayed green, on the compiler closure, in the current
 // generation. discriminating_red and positive_control are prose on the row, joined to nothing, and
-// the native standing is an authored field because no per-lens native receipt authority exists to
-// ask. Today the gap is harmless because native execution is 0 everywhere, so the fold bottoms out
-// at Mitigatable regardless; the moment someone flips a native standing to executing, the old name
-// would have called the obligation MechanicallyPreventable on the strength of a route running,
-// having proved nothing about the lens. Renaming is the cheap honest half — the fold's answer did
-// not change, only the claim its name makes about that answer.
+// the native standing is derived from LANE MEMBERSHIP rather than from a verdict, because no per-lens
+// native receipt authority exists to ask.
+//
+// THE GAP IS NOT HARMLESS ANY MORE, AND THIS PARAGRAPH SAID IT WAS. Before the required-v2-native
+// lane landed the native arm never executed, so the fold bottomed out at Mitigatable whatever the
+// name promised, and the rename was the cheap honest half of a problem with no teeth. Now lane
+// members report route coverage at MechanicallyPreventable on the strength of membership plus an
+// unread verdict — which is exactly the reading the old name would have licensed, arrived at
+// honestly through a named pending premise instead. That premise is counted by
+// obligations_on_an_unread_native_verdict, and closing it is what turns coverage into
+// qualification.
 //
 // WHY INFLATION FINDINGS ARE STILL SOUND UNDER THE WEAKER READING. Route coverage is an UPPER BOUND
 // on any qualified rung: an obligation cannot be qualified on a route that does not execute it. So
