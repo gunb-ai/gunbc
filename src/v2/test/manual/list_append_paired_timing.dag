@@ -19,6 +19,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SAME emitted fold_list_right, in one process of one vintage. Invoke natively on a
 // HostBudget-capable host (not the interpreter): gunbc run --source-root dag --source-root src/v2
 // --entry src/v2/test/manual/list_append_paired_timing.dag --function paired_timing
+// Depth is pow2_ones(k: 8) = 256, not 2^18: the reconstructed arm is non-tail fold_list_right
+// at left-length depth, and this entry has not yet been shown green by a native run. 256 is
+// the stack the reconstructed arm can plausibly survive; a larger k waits on that execution.
 
 fn list_append_from_fold_list_right<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
   fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
