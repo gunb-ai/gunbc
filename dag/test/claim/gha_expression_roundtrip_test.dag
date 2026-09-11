@@ -254,3 +254,22 @@ test fn witness_not_equals_evaluates_false_when_equal() -> Bool {
     }
 }
 
+fn and_literals(left: String, right: String) -> Expression {
+  LogicalAnd { left: StringLiteral { value: left }, right: StringLiteral { value: right } }
+}
+
+test fn witness_string_false_and_zero_are_truthy() -> Bool {
+  match evaluate_expression(expression: and_literals(left: "false", right: "x"), github_path: unused_github_path) {
+    ExpressionValue { value: v } => v == "x"
+    ExpressionEvaluationRefused { cause: _ } => false
+  }
+    && match evaluate_expression(expression: and_literals(left: "0", right: "x"), github_path: unused_github_path) {
+      ExpressionValue { value: v } => v == "x"
+      ExpressionEvaluationRefused { cause: _ } => false
+    }
+    && match evaluate_expression(expression: and_literals(left: "", right: "x"), github_path: unused_github_path) {
+      ExpressionValue { value: v } => v == ""
+      ExpressionEvaluationRefused { cause: _ } => false
+    }
+}
+

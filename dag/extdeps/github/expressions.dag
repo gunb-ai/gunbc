@@ -554,12 +554,14 @@ fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>)
     acc || template_accesses_runner_var_via_env(template: template))
 }
 
-// GITHUB ACTIONS TRUTHINESS (github_expression_operators_authority, operators): false, 0, and
-// empty string are falsy. This evaluator's string encoding of a Boolean false is the empty
-// string; "false" and "0" are also falsy. format() substitution is github_expression_format_authority
-// `format` with replaceValue0 as `{0}`.
+// GITHUB ACTIONS TRUTHINESS (github_expression_operators_authority, operators): the falsy
+// values are the boolean false, the numbers 0 and -0, empty string, and null. Non-empty strings
+// are truthy, including the strings "false" and "0" — `${{ 'false' && 'x' }}` is `'x'`. This
+// evaluator is string-only; Equals/NotEquals encode a boolean false as the empty string, so
+// treating the string "false" as falsy would invent a string-typed boolean GitHub does not have.
+// format() substitution is github_expression_format_authority `format` with replaceValue0 as `{0}`.
 fn gha_value_is_truthy(s: String) -> Bool {
-  s != "" && s != "false" && s != "0"
+  s != ""
 }
 
 fn github_path_key(path: List<String>) -> String {
