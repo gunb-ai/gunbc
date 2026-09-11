@@ -1112,6 +1112,18 @@ pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub fn token_count_remaining_in_window(window: TokenCount, used: TokenCount) -> TokenCount {
+    {
+        let w = token_count_value(window.clone());
+        let u = token_count_value(used.clone());
+        if (u.clone() >= w.clone()) {
+            token_count(0)
+        } else {
+            token_count((w.clone() - u.clone()))
+        }
+    }
+}
+
 pub fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
     Rc::new(Measure {
         count: count.clone(),

@@ -27,11 +27,11 @@ import gunbc.spark.grant_privileged_operation {
   CredentialRejected,
   PrivilegedCommandFailed,
   PrivilegedCommandSucceeded,
-  spark_grant_credential_path_env,
   classify_credential_read,
   BootstrapCredentialReady,
   BootstrapCredentialNotMaterialized,
 }
+import gunbc.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 
 // A CARRIED name, never a derived one -- the fixture supplies it exactly as an operator would.
 fn enrolled() -> SparkCredentialStanding {
@@ -282,9 +282,9 @@ test fn a_rejected_credential_is_read_from_sudos_diagnostic_not_its_exit_code() 
 // environment -- and this repository's receipts do dump argv. A path is not the secret: whoever
 // cannot read the file learns nothing from knowing where it was.
 test fn the_environment_carries_a_path_and_not_a_credential() -> Bool {
-  string_contains(spark_grant_credential_path_env as String, "FILE")
-    && !string_contains(spark_grant_credential_path_env as String, "PASSWORD")
-    && !string_contains(spark_grant_credential_path_env as String, "SECRET")
+  string_contains(fleet_bootstrap_credential_path_env as String, "FILE")
+    && !string_contains(fleet_bootstrap_credential_path_env as String, "PASSWORD")
+    && !string_contains(fleet_bootstrap_credential_path_env as String, "SECRET")
 }
 
 // A read that failed is its own cause, distinct from a file that was there and empty: one is a

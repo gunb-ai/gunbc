@@ -18,29 +18,7 @@ import extdeps.ci_runner.types {
   runner_shape_rows,
   shape_is_architecture,
 }
-import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog }
-import extdeps.ci_runner.circleci { circleci_runner_catalog }
-import extdeps.ci_runner.depot { depot_runner_catalog }
-import extdeps.ci_runner.github_actions { github_actions_runner_catalog }
-import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog }
-import extdeps.cloud.ubicloud { ubicloud_runner_catalog_shapes }
-
-// THE ROSTER AND THE DISPATCH LIVE HERE, not in the extdeps hub. Which
-// providers this repository has looked at is an observation this repository
-// made — a receipt in the observing layer — and DESIGN's external-upstream
-// decomposition rule is explicit that a generic hub may not enumerate
-// concrete products or dispatch among their authorities. Adding a provider
-// adds a module beside its peers and one line here; it edits no shared shape.
-fn surveyed_runner_catalogs() -> List<RunnerCatalogAvailability> {
-  [
-    ubicloud_runner_catalog_shapes,
-    blacksmith_runner_catalog,
-    github_actions_runner_catalog,
-    depot_runner_catalog,
-    warpbuild_runner_catalog,
-    circleci_runner_catalog,
-  ]
-}
+import gunbc.runner_provider_survey { surveyed_runner_catalogs }
 
 fn surveyed_runner_shapes() -> List<RunnerShapeRow> {
   fold(surveyed_runner_catalogs(), init: [], f: (acc, c) => concat(acc, runner_shape_rows(availability: c)))

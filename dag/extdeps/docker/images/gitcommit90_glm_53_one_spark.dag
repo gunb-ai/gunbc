@@ -1,0 +1,44 @@
+module extdeps.docker.images.gitcommit90_glm_53_one_spark
+
+import std.types { String, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ghcr.io/gitcommit90/glm-5.3-one-spark"
+  },
+}
+
+// THE SUBJECT THIS MODULE SPEAKS FOR IS THE PUBLISHED IMAGE, named by the repository the publisher
+// owns. Everything else here -- the digest, the tag, the version the image declares -- is that
+// publisher's statement about that subject. What this repository OBSERVED inside the image is not
+// in this module at all; readings live in gunbc.spark.runtime_architecture_registry_reading.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.docker.images.gitcommit90_glm_53_one_spark",
+      decl_name: "gitcommit90_glm_53_one_spark_repository",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE COMMUNITY SM121 IMAGE THE GLM-5.3 ARM RUNS, PINNED BY REGISTRY DIGEST. It had no module of its
+// own while the DeepSeek runtime did, so the arm carried its identity as a bare string. This module
+// is the image's upstream identity in the shape extdeps.docker.images already uses, and it carries
+// ONLY what the publisher declares: what this repository has OBSERVED about the image -- which
+// architectures its registry answers for -- is a receipt of ours and lives in
+// gunbc.spark.runtime_architecture_registry_reading, keyed by this digest.
+data gitcommit90_glm_53_one_spark_repository: NonEmptyStr = "ghcr.io/gitcommit90/glm-5.3-one-spark" as NonEmptyStr
+data gitcommit90_glm_53_one_spark_digest_sha256_hex: NonEmptyStr = "ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr
+data gitcommit90_glm_53_one_spark_vllm_version: NonEmptyStr = "0.1.dev20051+g487ecf187" as NonEmptyStr
+
+// The pinned reference every probe and every create names: repository@sha256:digest, never the tag.
+fn gitcommit90_glm_53_one_spark_pinned_reference() -> NonEmptyStr {
+  join([gitcommit90_glm_53_one_spark_repository as String, "@sha256:", gitcommit90_glm_53_one_spark_digest_sha256_hex as String], "") as NonEmptyStr
+}
