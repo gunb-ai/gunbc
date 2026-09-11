@@ -39,6 +39,7 @@ import gunbc.fleet_workflow_steps {
   ci_fleet_key_agent_cleanup_step,
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_runner_guest_image_step_timeout_minutes,
+  gunbc_ci_runner_host_file_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
   gunbc_ci_fleet_job_backstop_timeout_minutes,
@@ -64,6 +65,8 @@ import gunbc.ci_spec {
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
   gunbc_ci_runner_microvm_host_converge_invoke,
+  gunbc_ci_runner_host_file_observe_invoke,
+  gunbc_ci_runner_host_file_converge_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_grant_install_invoke,
@@ -163,6 +166,8 @@ type FleetConvergeWorkflowMode
   | DashboardDeploy
   | RlmLaunchDeploymentReceipt
   | HostResetReturn
+  | RunnerHostFileObserve
+  | RunnerHostFileConverge
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -183,6 +188,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     DashboardDeploy => "dashboard_deploy"
     RlmLaunchDeploymentReceipt => "rlm_launch_deployment_receipt"
     HostResetReturn => "host_reset_return"
+    RunnerHostFileObserve => "runner_host_file_observe"
+    RunnerHostFileConverge => "runner_host_file_converge"
   }
 }
 
@@ -207,7 +214,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -251,6 +258,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     DashboardDeploy => none
     RlmLaunchDeploymentReceipt => none
     HostResetReturn => none
+    RunnerHostFileObserve => none
+    RunnerHostFileConverge => none
   }
 }
 
@@ -636,6 +645,12 @@ data fleet_converge_microvm_host_converge_step_if: String = fleet_converge_mode_
 
 
 
+data fleet_converge_runner_host_file_observe_step_if: String = fleet_converge_mode_step_if(mode: RunnerHostFileObserve)
+
+data fleet_converge_runner_host_file_converge_step_if: String = fleet_converge_mode_step_if(mode: RunnerHostFileConverge)
+
+data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mode_step_if(modes: [RunnerHostFileObserve, RunnerHostFileConverge])
+
 data fleet_converge_spark_grants_step_if: String = fleet_converge_mode_step_if(mode: SparkGrants)
 
 data fleet_converge_spark_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: SparkBootstrap)
@@ -871,6 +886,64 @@ fn fleet_converge_microvm_host_standing_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_host_converge_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE RUNNER HOST FILES: the teardown drop-in and the needrestart deferral (gunbc.runner_host_file_converge).
+// Observe and converge are two modes rather than one flag so an operator can dispatch the read alone
+// and see what a converge would write before any root-evaluated file changes. Both reach the target
+// over the job's fleet-key agent as the declared administrator; the job user gains no grant.
+fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String, if_condition: String) -> Step {
+  RunStep {
+    name: Present { value: name },
+    id: Present { value: id },
+    run: invoke,
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_runner_host_file_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_runner_host_file_observe_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "runner_host_file_observe",
+    name: "Runner host files: observe the teardown drop-in, the needrestart deferral and the loaded teardown (no writes)",
+    invoke: gunbc_ci_runner_host_file_observe_invoke(),
+    if_condition: fleet_converge_runner_host_file_observe_step_if,
+  )
+}
+
+fn fleet_converge_runner_host_file_converge_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "runner_host_file_converge",
+    name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back",
+    invoke: gunbc_ci_runner_host_file_converge_invoke(),
+    if_condition: fleet_converge_runner_host_file_converge_step_if,
+  )
+}
+
+fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload runner host file converge receipt" },
+    id: Present { value: "runner_host_file_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-host-file-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/runner-host-file-converge-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_host_file_any_step_if, ")")) },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -1280,6 +1353,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_bootstrap_step(),
         fleet_converge_spark_serving_apply_step(),
         fleet_converge_spark_runtime_image_probe_step(),
+        fleet_converge_runner_host_file_observe_step(),
+        fleet_converge_runner_host_file_converge_step(),
+        fleet_converge_runner_host_file_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
@@ -1423,7 +1499,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },

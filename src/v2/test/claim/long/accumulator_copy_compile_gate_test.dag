@@ -62,7 +62,7 @@ fn normalized_of(source: String) -> NormalizedProbe {
           match normalize(parse_tree: parse_tree) {
             Rejected { diagnostics: _ } => ProbeStageRejected { stage: "normalize" }
             Accepted { value: normalized, diagnostics: _ } =>
-              ProbeNormalized { root: normalized }
+              ProbeNormalized { root: normalized.root }
           }
       }
   }

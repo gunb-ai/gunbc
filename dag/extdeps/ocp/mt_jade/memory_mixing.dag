@@ -1,0 +1,247 @@
+module extdeps.ocp.mt_jade.memory_mixing
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.ocp.mt_jade.subject {
+  mt_jade_subject_authority_anchor,
+  internet_archive_mt_jade_capture_authority,
+  mt_jade_reference_platform,
+  MtJadeReferencePlatform,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_subject_authority_anchor
+
+data mt_jade_memory_mixing_subject: MtJadeReferencePlatform = mt_jade_reference_platform
+
+// SECTION 7.4, TABLE 3 "SUPPORTED MIXED DIMM CONFIGURATIONS", ON PAGE 16 OF THE OCP MT. JADE
+// MOTHERBOARD SPECIFICATION REV 1.0 (2021-09-17). This is the same-channel memory compatibility
+// rule, and it is NOT the one-sentence rule it is usually quoted as. The specification states it as
+// a TWO-BY-SEVEN MATRIX over a four-valued support vocabulary: seven named ways two DIMMs may
+// differ, crossed with whether they sit in DIFFERENT channels or the SAME channel, and each cell
+// carrying Yes, No, Not Preferred or TBD. Modelling it as "a channel may not mix 1R and 2R" would
+// keep one cell of fourteen and silently answer Yes for the other thirteen.
+//
+// THE SPECIFICATION ATTRIBUTES THE TABLE TO THE PROCESSOR, NOT TO THE BOARD: "Altra / AltraMax
+// supports mixed DIMM configuration listed in Table 3." It is carried here because this document is
+// where gunbc read it; that it is a processor-level constraint is a fact about the rule, recorded
+// below rather than left to a reader to infer from the module path.
+
+// THE FOUR-VALUED VERDICT IS THE SPECIFICATION'S OWN VOCABULARY. Collapsing it to a Bool would
+// destroy two distinctions the table draws deliberately: "Not Preferred" is neither a permission nor
+// a refusal, and "TBD" is an upstream admission that the answer is not stated - which is not the
+// same fact as "No" and must never be read as one.
+type MtJadeMixedDimmSupport
+  = MixingSupported
+  | MixingNotSupported
+  | MixingNotPreferred
+  | MixingUndetermined
+
+fn mt_jade_mixed_dimm_support_printed_label(support: MtJadeMixedDimmSupport) -> NonEmptyStr {
+  match support {
+    MixingSupported => "Yes"
+    MixingNotSupported => "No"
+    MixingNotPreferred => "Not Preferred"
+    MixingUndetermined => "TBD"
+  }
+}
+
+// THE SEVEN COLUMNS, IN PRINTED LEFT-TO-RIGHT ORDER. The axis set is closed because the table is:
+// a way two DIMMs might differ that Table 3 does not name is UNENUMERATED BY THIS TABLE, not
+// permitted by it, and a consumer that needs such an axis must find another authority rather than
+// widen this one.
+type MtJadeDimmMixingAxis
+  = DifferentRcd
+  | DifferentDramDies
+  | MixingX4AndX8
+  | DifferentDensity
+  | DifferentSpeed
+  | DifferentVendor
+  | Mixing1rAnd2r
+
+fn mt_jade_dimm_mixing_axis_printed_label(axis: MtJadeDimmMixingAxis) -> NonEmptyStr {
+  match axis {
+    DifferentRcd => "Different RCD"
+    DifferentDramDies => "Different DRAM DIES"
+    MixingX4AndX8 => "Mixing x4 & x8"
+    DifferentDensity => "Different Density"
+    DifferentSpeed => "Different Speed"
+    DifferentVendor => "Different Vendor"
+    Mixing1rAnd2r => "Mixing 1R & 2R"
+  }
+}
+
+// THE TWO ROWS. The table's discriminator is where the two differing DIMMs SIT relative to each
+// other, which is a relation between two connectors and not a property of either one.
+type MtJadeDimmMixingPlacement
+  = DifferentChannel
+  | SameChannel
+
+fn mt_jade_dimm_mixing_placement_printed_label(placement: MtJadeDimmMixingPlacement) -> NonEmptyStr {
+  match placement {
+    DifferentChannel => "Different Channel"
+    SameChannel => "Same Channel"
+  }
+}
+
+// THE AXIS AND PLACEMENT ROSTERS EXIST SO COMPLETENESS IS AN IDENTITY JOIN RATHER THAN A COUNT.
+// The substrate offers no way to enumerate a coproduct's arms, so the roster is written out; what
+// stops it being a second authority is that nothing may read it without also reading the enum -
+// every entry is a constructor of the type beside it, and a consumer folding the roster against the
+// table establishes that all fourteen printed cells are present at coordinate grain, which counting
+// fourteen rows would not.
+data mt_jade_dimm_mixing_axes: List<MtJadeDimmMixingAxis> = [
+  DifferentRcd,
+  DifferentDramDies,
+  MixingX4AndX8,
+  DifferentDensity,
+  DifferentSpeed,
+  DifferentVendor,
+  Mixing1rAnd2r,
+]
+
+data mt_jade_dimm_mixing_placements: List<MtJadeDimmMixingPlacement> = [
+  DifferentChannel,
+  SameChannel,
+]
+
+type MtJadeMixedDimmSupportCell {
+  placement: MtJadeDimmMixingPlacement
+  axis: MtJadeDimmMixingAxis
+  support: MtJadeMixedDimmSupport
+}
+
+// ROW 1 OF TABLE 3, TRANSCRIBED CELL BY CELL IN PRINTED COLUMN ORDER.
+data mt_jade_different_channel_mixing_row: List<MtJadeMixedDimmSupportCell> = [
+  MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: DifferentRcd, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: DifferentDramDies, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: MixingX4AndX8, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: DifferentDensity, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: DifferentSpeed, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: DifferentVendor, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: Mixing1rAnd2r, support: MixingUndetermined },
+]
+
+// ROW 2 OF TABLE 3. THIS ROW IS THE SAME-CHANNEL COMPATIBILITY RULE IN FULL.
+data mt_jade_same_channel_mixing_row: List<MtJadeMixedDimmSupportCell> = [
+  MtJadeMixedDimmSupportCell { placement: SameChannel, axis: DifferentRcd, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: SameChannel, axis: DifferentDramDies, support: MixingSupported },
+  MtJadeMixedDimmSupportCell { placement: SameChannel, axis: MixingX4AndX8, support: MixingNotSupported },
+  MtJadeMixedDimmSupportCell { placement: SameChannel, axis: DifferentDensity, support: MixingNotSupported },
+  MtJadeMixedDimmSupportCell { placement: SameChannel, axis: DifferentSpeed, support: MixingNotPreferred },
+  MtJadeMixedDimmSupportCell { placement: SameChannel, axis: DifferentVendor, support: MixingNotPreferred },
+  MtJadeMixedDimmSupportCell { placement: SameChannel, axis: Mixing1rAnd2r, support: MixingNotSupported },
+]
+
+data mt_jade_mixed_dimm_support_table: List<MtJadeMixedDimmSupportCell> = concat(mt_jade_different_channel_mixing_row, mt_jade_same_channel_mixing_row)
+
+fn mt_jade_dimm_mixing_axis_eq(a: MtJadeDimmMixingAxis, b: MtJadeDimmMixingAxis) -> Bool {
+  match a {
+    DifferentRcd => match b { DifferentRcd => true, _ => false }
+    DifferentDramDies => match b { DifferentDramDies => true, _ => false }
+    MixingX4AndX8 => match b { MixingX4AndX8 => true, _ => false }
+    DifferentDensity => match b { DifferentDensity => true, _ => false }
+    DifferentSpeed => match b { DifferentSpeed => true, _ => false }
+    DifferentVendor => match b { DifferentVendor => true, _ => false }
+    Mixing1rAnd2r => match b { Mixing1rAnd2r => true, _ => false }
+  }
+}
+
+fn mt_jade_dimm_mixing_placement_eq(a: MtJadeDimmMixingPlacement, b: MtJadeDimmMixingPlacement) -> Bool {
+  match a {
+    DifferentChannel => match b { DifferentChannel => true, _ => false }
+    SameChannel => match b { SameChannel => true, _ => false }
+  }
+}
+
+// THE LOOKUP REFUSES RATHER THAN DEFAULTING. A cell this table does not carry is an UNMODELLED
+// CELL, and the honest answer is to say which coordinate was asked for. Returning MixingSupported,
+// MixingNotSupported or MixingUndetermined for a missing cell would each be a fabricated plausible
+// output (DESIGN section 5) - and MixingUndetermined in particular would be the worst of the three,
+// because it is a value the table itself prints, so a manufactured one would be indistinguishable
+// from the real TBD that Table 3 states for different-channel 1R/2R mixing.
+type MtJadeMixedDimmSupportQuery {
+  placement: MtJadeDimmMixingPlacement
+  axis: MtJadeDimmMixingAxis
+}
+
+// A DUPLICATED COORDINATE REFUSES TOO, not just a missing one: two rows answering for one cell is
+// exactly the fork this lookup exists to make decidable, and taking the first match would hide it.
+// So the outcome carries three arms and the fold never overwrites a resolved cell.
+type MtJadeMixedDimmSupportOutcome
+  = MixedDimmSupportResolved { cell: MtJadeMixedDimmSupportCell }
+  | MixedDimmSupportUnmodelled { query: MtJadeMixedDimmSupportQuery }
+  | MixedDimmSupportAmbiguous { query: MtJadeMixedDimmSupportQuery }
+
+fn mt_jade_accumulate_mixing_cell(acc: MtJadeMixedDimmSupportOutcome, query: MtJadeMixedDimmSupportQuery, cell: MtJadeMixedDimmSupportCell) -> MtJadeMixedDimmSupportOutcome {
+  if mt_jade_dimm_mixing_placement_eq(a: cell.placement, b: query.placement) && mt_jade_dimm_mixing_axis_eq(a: cell.axis, b: query.axis) {
+    match acc {
+      MixedDimmSupportUnmodelled { query: _ } => MixedDimmSupportResolved { cell: cell }
+      MixedDimmSupportResolved { cell: _ } => MixedDimmSupportAmbiguous { query: query }
+      MixedDimmSupportAmbiguous { query: _ } => MixedDimmSupportAmbiguous { query: query }
+    }
+  } else {
+    acc
+  }
+}
+
+fn mt_jade_mixed_dimm_support(placement: MtJadeDimmMixingPlacement, axis: MtJadeDimmMixingAxis) -> MtJadeMixedDimmSupportOutcome {
+  let query = MtJadeMixedDimmSupportQuery { placement: placement, axis: axis }
+  fold(mt_jade_mixed_dimm_support_table, init: MixedDimmSupportUnmodelled { query: query }, f: (acc, cell) => mt_jade_accumulate_mixing_cell(acc: acc, query: query, cell: cell))
+}
+
+// THE PROSE SENTENCE IS A SECOND STATEMENT OF THE SAME-CHANNEL ROW, AND IT DOES NOT AGREE WITH IT.
+// The paragraph introducing Table 3 says that in the same channel "only RCD or SDRAM Die variations
+// are allowed", which would make Different Speed and Different Vendor refusals. The table prints
+// "Not Preferred" for both. Upstream is carried as upstream states it, so the TABLE rows above are
+// the authority and this divergence is recorded as its own fact rather than resolved by an editor's
+// judgement: a consumer that must act on same-channel speed or vendor mixing is reading a cell its
+// own source contradicts, and should know that before it acts.
+type MtJadeSameChannelProseDivergence {
+  prose_sentence: NonEmptyStr
+  divergence: NonEmptyStr
+  authority_taken: NonEmptyStr
+}
+
+data mt_jade_same_channel_prose_divergence: MtJadeSameChannelProseDivergence = MtJadeSameChannelProseDivergence {
+  prose_sentence: "Most of mixed DIMM configurations are supported when the different DIMMs are installed in different channels. When different DIMMs are installed in same channel, only RCD or SDRAM Die variations are allowed.",
+  divergence: "The sentence admits exactly two same-channel variations, RCD and SDRAM die. Table 3's Same Channel row agrees for those two and for Mixing x4 & x8, Different Density and Mixing 1R & 2R, but prints Not Preferred - not No - for Different Speed and Different Vendor. The sentence is therefore strictly stronger than the table it introduces on two of seven axes.",
+  authority_taken: "The transcribed table rows are what this module answers with. The sentence is carried as a divergence, not merged into the rows and not used to overwrite two cells.",
+}
+
+// THE ATTRIBUTION AND THE TRANSCRIPTION BASIS, kept as declared facts because both are things a
+// later reader would otherwise have to re-derive from the PDF.
+//
+// THE GEOMETRY IS THE DISCRIMINATING BASIS, NOT THE FLATTENED TEXT STREAM. The same class of
+// merged-header table misread the Mt. Collins channel mapping once already, so the columns here
+// were checked against the rendered text positions rather than against reading order alone: the
+// seven column headers sit at x = 185, 230, 284, 329, 374, 437 and 500, the Different Channel
+// values at y = 299 sit at x = 195, 245, 294, 339, 393, 456 and 507, and the Same Channel values at
+// y = 288 sit at x = 195, 245, 295, 340, 374, 437 and 509. Each value's x is within one column
+// pitch of its own header and monotone across the row, and each row carries exactly seven values
+// against exactly seven headers, so the column assignment is forced rather than assumed.
+type MtJadeMixedDimmTableBasis {
+  attribution: NonEmptyStr
+  geometry_basis: NonEmptyStr
+  scope_limit: NonEmptyStr
+}
+
+data mt_jade_mixed_dimm_table_basis: MtJadeMixedDimmTableBasis = MtJadeMixedDimmTableBasis {
+  attribution: "Table 3 is introduced as what the processor supports - 'Altra / AltraMax supports mixed DIMM configuration listed in Table 3' - and is printed in section 7.4 of the Mt. Jade motherboard specification. It is a processor-level platform constraint carried by this board document, not a Mt. Jade board-specific rule, and it is stated for Altra and Altra Max jointly with no per-part split.",
+  geometry_basis: "Transcribed from the rendered text positions of page 16, not from the flattened content-stream reading order: seven headers at x = 185/230/284/329/374/437/500, the Different Channel values at y = 299 at x = 195/245/294/339/393/456/507, the Same Channel values at y = 288 at x = 195/245/295/340/374/437/509. Seven values against seven headers in monotone x order in both rows forces the column assignment.",
+  scope_limit: "Table 3 states support for a PAIR of differing DIMMs at a placement. It does not state a fill order, does not state which member of a channel pair is populated first, and does not derate data rate per configuration. It also says nothing about a channel whose two DIMMs are identical, which is not a mixed configuration and is outside this table.",
+}
+
+data mt_jade_memory_mixing_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ocp.mt_jade.memory_mixing",
+      decl_name: "mt_jade_mixed_dimm_support_table",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: mt_jade_subject_authority_anchor,
+  further_citations: [internet_archive_mt_jade_capture_authority],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_jade_memory_mixing_model_scope

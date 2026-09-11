@@ -1,0 +1,108 @@
+module gunbc.serving.admitted_model
+
+import std.types { String, NonEmptyStr, List }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
+  harness_unit_model_id, harness_serving_unit_wire,
+}
+import gunbc.spark.glm_canary_converge { glm_canary_arm }
+
+// ── WHICH MODELS A TURN MAY BE ANSWERED BY, AND WHY THAT IS A SET RATHER THAN A ROW ───────────
+//
+// WHAT THIS REPLACES. The harness demanded ONE model id -- the one its global selector named -- and
+// a route advertising anything else was reported as absent, so a perfectly good engine serving a
+// different model was invisible to placement. The operator's ruling is that the harness should take
+// what is up ("I don't care which model we use for now"), and the honest expression of that is
+// neither the old exact demand nor its opposite.
+//
+// A BLANKET "ACCEPT WHATEVER ANSWERS" IS THE FAILURE MODE ON THE OTHER SIDE, and it is not
+// hypothetical: the routes on this fleet have answered with an Ollama daemon holding an empty store
+// and with an error document quoting a model name back. An arriving reasoning turn placed on
+// whatever happened to be listening is the fabricated-plausible-output arm DESIGN section 5 forbids,
+// arriving through the model field.
+//
+// SO THE SET IS DERIVED FROM WHAT THE HARNESS CAN ACTUALLY ASK FOR. A turn is not a model id; it is
+// a reasoning level, a tool-call parser, a reasoning-response projection and a context window, and
+// gunbc.harness.harness_reasoning_wire is the authority that knows those per SERVING UNIT. A model
+// with no unit is a model this harness cannot express a turn for at all -- not one it declines on
+// taste -- so the admitted set is exactly the set of advertised ids that resolve to a unit. That is
+// a derivation rather than a preference, and it is what stops a small model wandering into a
+// reasoning turn: nobody has said how to ask it anything.
+//
+// AND ADMITTING A MODEL IS NOT PROMOTING IT. There is no global selector left to promote anything
+// INTO: the row that named one unit for every caller is deleted with this cut, and a placed turn
+// takes the unit of the route that answered, evidenced by that route's own probe. The canary is
+// admitted here as a model this harness can speak to; it becomes a default nowhere, because nothing
+// inherits a model any more. Widening an admitted set and promoting a canary to default are two
+// different acts, and only the first is performed here -- which is a stronger statement than the one
+// this annotation made while a selector still stood.
+
+// THE ADVERTISED IDS A UNIT MAY ANSWER TO, EXHAUSTIVE OVER THE UNITS. A unit added to the seam
+// without a row here fails to compile rather than silently becoming unadmittable, which is the
+// direction that matters: an unroutable unit is a modelling gap, not a safety property.
+//
+// A UNIT CAN ANSWER TO MORE THAN ONE ID, AND THE SECOND ONE IS NOT A NICKNAME. GLM's own model id is
+// what Zhipu's API answers to; the canary route advertises the SERVED-MODEL ALIAS its launch was
+// given, which is a route name for a particular deployment of that model. Both are cited from the
+// authority that owns them -- the model's upstream module and the canary arm respectively -- so
+// neither is spelled here.
+fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {
+  match unit {
+    DeepseekV4FlashOnVllm => [harness_unit_model_id(unit: DeepseekV4FlashOnVllm)]
+    Glm53FlashOnVllm => [harness_unit_model_id(unit: Glm53FlashOnVllm), glm_canary_arm.served_model_alias]
+  }
+}
+
+data serving_admitted_units: List<HarnessServingUnit> = [DeepseekV4FlashOnVllm, Glm53FlashOnVllm]
+
+// ── THE RESOLUTION, AND WHAT IT REFUSES ───────────────────────────────────────────────────────
+//
+// Two arms and no third. An id that resolves carries BOTH the id and the unit forward, because the
+// two answer different questions downstream -- the id is what goes in the request's model field, the
+// unit is how the request is shaped -- and a consumer that kept only one would have to re-derive the
+// other from a name.
+//
+// THE REFUSAL CARRIES WHAT WAS ADVERTISED, not merely the fact of a mismatch, because that string is
+// the whole remedy: it says whether the route is serving something we could admit by writing a unit
+// row, something that is not a model at all, or nothing.
+type ServingModelAdmission
+  = ServingModelAdmitted { id: NonEmptyStr, unit: HarnessServingUnit }
+  | ServingModelNotAdmitted { advertised: String }
+
+fn serving_admits_id(id: String) -> ServingModelAdmission {
+  fold(serving_admitted_units, init: ServingModelNotAdmitted { advertised: id }, f: (acc, u) =>
+    match acc {
+      ServingModelAdmitted { id: i, unit: v } => ServingModelAdmitted { id: i, unit: v }
+      ServingModelNotAdmitted { advertised: _ } =>
+        fold(serving_admitted_ids(unit: u), init: ServingModelNotAdmitted { advertised: id }, f: (inner, candidate) =>
+          match inner {
+            ServingModelAdmitted { id: i, unit: v } => ServingModelAdmitted { id: i, unit: v }
+            ServingModelNotAdmitted { advertised: _ } =>
+              if (candidate as String) == id { ServingModelAdmitted { id: candidate, unit: u } } else { ServingModelNotAdmitted { advertised: id } }
+          })
+    })
+}
+
+// THE FIRST ADMITTED ID WINS AND THE ORDER IS THE ROUTE'S, NOT OURS. A route advertising several
+// models is answered with the first of ITS list that this harness can speak to, so the choice is
+// made by what the engine reports rather than by a preference ranking authored here -- a ranking
+// would be a placement policy, and placement is not this module's question. A route advertising two
+// admitted models is a route whose launch is not the single-model shape everything downstream
+// assumes, and the honest reading of that is the first admitted one plus the whole advertised list
+// carried on the refusal path when none matches.
+// THERE IS NO RENDERER HERE, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT. One stood here and
+// nothing called it: the consumer it was written for -- the not-admitted branch of
+// gunbc.harness.harness_backend harness_observe_replica -- builds its own sentence from the standing
+// it already holds, which is the arm that knows the route and the url as well as the advertised
+// list. A second renderer would have been one fact spelled twice and the less informed of the two.
+fn serving_admit_advertised(advertised: List<String>) -> ServingModelAdmission {
+  fold(advertised, init: ServingModelNotAdmitted { advertised: join(advertised, ", ") }, f: (acc, id) =>
+    match acc {
+      ServingModelAdmitted { id: i, unit: v } => ServingModelAdmitted { id: i, unit: v }
+      ServingModelNotAdmitted { advertised: a } =>
+        match serving_admits_id(id: id) {
+          ServingModelAdmitted { id: i, unit: v } => ServingModelAdmitted { id: i, unit: v }
+          ServingModelNotAdmitted { advertised: _ } => ServingModelNotAdmitted { advertised: a }
+        }
+    })
+}

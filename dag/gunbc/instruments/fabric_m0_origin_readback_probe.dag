@@ -70,10 +70,15 @@ import gunbc.fabric_m0_origin_readback {
 //     --entry dag/gunbc/instruments/fabric_m0_origin_readback_probe.dag --function probe
 // Run from the repository root -- the fixture paths are repository-relative.
 //
-// STANDING, STATED PLAINLY: no required lane executes this. It is a hand-run instrument, the same
-// standing every other real-effect probe in this directory carries, and the compile-refusal half in
-// test.claim.fabric_m0_origin_readback_seal is what runs per PR. Calling this covered would be the
-// proxy-assertion class.
+// STANDING, STATED POSITIVELY AND THEN DATED. Its consumer is the recipe above, run by hand: that
+// is the whole executing route, and it is the same standing every other real-effect probe in this
+// directory carries. What runs per PR is the compile-refusal half, test.claim
+// .fabric_m0_origin_readback_seal. Calling this file covered would be the proxy-assertion class.
+//
+// The complement -- that NO required lane enrolled it -- was true when measured at gunbc#10972 and
+// is recorded as of that commit rather than as a live claim. Enrolling it would happen in a CI
+// roster, a different file from this one, so nothing here would be invalidated or recomputed by the
+// edit that falsifies it; a dated observation cannot rot, and a live open-world negative would.
 //
 // The expected digests are a CONTROLLED FIXTURE oracle, not a measurement copied off the current
 // tree: the two files are committed beside this module and their content is chosen there, so
@@ -89,9 +94,16 @@ fn expected_other_object_digest() -> Sha256Digest {
   Sha256Digest { hex: "087a9dd54ce8aef4192f5b49cf09666244a10dd5751370d6e7295e968e77642f" as Sha256DigestHex }
 }
 
-// The parameter is named `staged` and not `path`: under whole-corpus preparation a parameter
-// spelled `path` did not bind at all and the probe errored `undefined variable: path` while the
-// same source ran green under a scoped entry compile. Measured on gunbc#10934, run 34441858589.
+// CORRECTION, kept rather than quietly edited because the first version of this comment asserted a
+// cause it had not isolated. It read: the parameter is named `staged` and not `path` because a
+// parameter spelled `path` did not bind under whole-corpus preparation. THAT WAS WRONG. The
+// `undefined variable: path` on gunbc#10934 run 34441858589 came from extdeps.crypto.hash's
+// crypto.Sha256Sum.File mock_response, which interpolated the input path into its canned line and so
+// refused on every hermetic call -- the only such interpolation in any extdeps mock, and one that
+// had therefore never replayed. Two changes went in together (a rename and a move out of hermetic
+// discovery) and the rename got the credit. Isolated afterwards by running a consumer with NO
+// identifier `path` anywhere in it under --dry-run: same refusal. The mock is repaired at its own
+// authority; the parameter name here is now merely a name.
 fn digest_of(staged: NonEmptyStr, expected: Sha256Digest) -> Bool {
   match read_origin_staged_file(staged_path: staged) {
     OriginReadingTaken { reading: r } =>
