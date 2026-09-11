@@ -1,28 +1,31 @@
 module test.claim.spark.v41_runtime_image_build_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
 import std.content_hash { serialize_content_hash }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_build_spec_command }
 import extdeps.vllm.source_build {
   vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
   vllm_recipe_targeting, vllm_cuda_arch_supported,
+  vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
 }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_fp4_weight_surface, v41_fp4_kv_cache_surface, v41_csa2_surface, v41_dspark_surface,
   v41_sm12_demand_symbols, v41_sm12_kv_cache_dtype_admitted,
   v41_fp4_sm120_block, v41_fp4_sm100_block,
 }
-import extdeps.vllm.deepseek_v4_1_flash_recipe {
-  v41_flash_published_registry_entries, v41_flash_published_revision_public_standing,
-  v41_flash_published_distribution, v41_flash_published_torch_cuda_arch_list,
-  v41_flash_documented_tag_standing, v41_flash_hardware_verified,
+import extdeps.vllm.deepseek_v4_1_flash_recipe { v41_flash_hardware_verified, v41_flash_vram_minimum_gb }
+import gunbc.spark.v41_published_image_observation {
+  v41_published_revision_public_standing,
+  v41_published_distribution_observation, v41_published_arm64_config_observations,
+  v41_published_tag_absent, v41_published_registers_architecture, v41_published_observations,
 }
-import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint }
-import gunbc.spark.v41_runtime_image_build {
-  v41_build_host,
+import gunbc.spark.vllm_runtime_image_build {
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
-  v41_gb10_recipe, v41_build_key, v41_image_tag, v41_build_spec, v41_recipe_arch_is_buildable,
+  v41_gb10_recipe, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
+  admissible_spark_build_hosts, spark_build_host_admissible, admit_spark_build_host,
+  SparkBuildHostAdmitted, SparkBuildHostRefused,
 }
 import gunbc.spark.v41_runtime_image_probe {
   V41CapabilityPresent, V41CapabilityAbsent, V41CapabilityUnread,
@@ -46,8 +49,8 @@ test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parall
     && (fleet.torch_version as String) == (upstream.torch_version as String)
     && (fleet.flashinfer_version as String) == (upstream.flashinfer_version as String)
     && (fleet.build_target as String) == (upstream.build_target as String)
-    && (fleet.torch_cuda_arch_list as String) != (upstream.torch_cuda_arch_list as String)
-    && (fleet.torch_cuda_arch_list as String) == (v41_gb10_torch_cuda_arch_list as String)
+    && vllm_torch_cuda_arch_list_wire(archs: fleet.torch_cuda_arch_list) != vllm_torch_cuda_arch_list_wire(archs: upstream.torch_cuda_arch_list)
+    && vllm_torch_cuda_arch_list_targets(archs: fleet.torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
 }
 
 // THE REASON A BUILD IS NEEDED AT ALL, ASSERTED RATHER THAN ASSUMED: neither upstream recipe targets
@@ -61,11 +64,11 @@ test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parall
 // gunbc.spark.serving_runtime_capability_probe gb10_observed_compute_capability when #11016 lands,
 // which is the declared home for that measurement.
 test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> Bool {
-  (v41_gb10_torch_cuda_arch_list as String) == "12.1"
-    && !string_contains(s: vllm_07b75534_default_recipe.torch_cuda_arch_list as String, pattern: "12.1")
-    && !string_contains(s: vllm_07b75534_aarch64_release_recipe.torch_cuda_arch_list as String, pattern: "12.1")
-    && vllm_cuda_arch_supported(arch: v41_gb10_torch_cuda_arch_list)
-    && v41_recipe_arch_is_buildable()
+  vllm_torch_cuda_arch_list_targets(archs: v41_gb10_torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
+    && !vllm_torch_cuda_arch_list_targets(archs: vllm_07b75534_default_recipe.torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
+    && !vllm_torch_cuda_arch_list_targets(archs: vllm_07b75534_aarch64_release_recipe.torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
+    && vllm_cuda_arch_supported(arch: "12.1" as NonEmptyStr)
+    && vllm_recipe_arch_is_buildable(r: v41_gb10_recipe())
 }
 
 // THE BUILD KEY IS A FUNCTION OF THE INPUTS AND THE TAG IS A FUNCTION OF THE KEY. The discriminating
@@ -75,28 +78,28 @@ test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bo
   let fleet = v41_gb10_recipe()
   let other_arch = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
-    torch_cuda_arch_list: "12.0" as NonEmptyStr,
+    torch_cuda_arch_list: ["12.0" as NonEmptyStr],
     max_jobs: v41_build_max_jobs,
     nvcc_threads: v41_build_nvcc_threads,
   )
   let other_jobs = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
-    max_jobs: "1" as NonEmptyStr,
-    nvcc_threads: "1" as NonEmptyStr,
+    max_jobs: 1,
+    nvcc_threads: 1,
   )
-  let fleet_key = serialize_content_hash(hash: v41_build_key(r: fleet)) as String
-  (serialize_content_hash(hash: v41_build_key(r: other_arch)) as String) != fleet_key
-    && (serialize_content_hash(hash: v41_build_key(r: other_jobs)) as String) == fleet_key
-    && string_contains(s: v41_image_tag(r: fleet) as String, pattern: fleet_key)
-    && (v41_image_tag(r: other_arch) as String) != (v41_image_tag(r: fleet) as String)
+  let fleet_key = serialize_content_hash(hash: vllm_image_build_key(r: fleet)) as String
+  (serialize_content_hash(hash: vllm_image_build_key(r: other_arch)) as String) != fleet_key
+    && (serialize_content_hash(hash: vllm_image_build_key(r: other_jobs)) as String) == fleet_key
+    && string_contains(s: vllm_image_tag(r: fleet) as String, pattern: fleet_key)
+    && (vllm_image_tag(r: other_arch) as String) != (vllm_image_tag(r: fleet) as String)
 }
 
 // THE RENDERED INVOCATION CARRIES THE THREE FACTS THAT DECIDE WHAT IS BUILT, and ends with the
 // context. A --build-arg whose name and value were separate argv words would be a different command
 // line that the engine reads differently, so the joined spelling is asserted.
 test fn the_build_argv_carries_the_arch_list_the_aarch64_base_and_the_context_last() -> Bool {
-  let words = argv_words(command: docker_build_spec_command(spec: v41_build_spec(r: v41_gb10_recipe())))
+  let words = argv_words(command: docker_build_spec_command(spec: vllm_image_build_spec(r: v41_gb10_recipe())))
   let line = join(words, " ")
   string_contains(s: line, pattern: "--build-arg torch_cuda_arch_list=12.1")
     && string_contains(s: line, pattern: "--build-arg BUILD_BASE_IMAGE=pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042")
@@ -215,18 +218,6 @@ test fn the_fp4_kv_roster_carries_the_registered_operators_and_not_the_names_tha
 }
 
 
-// THE BUILD HOST MUST RESOLVE TO AN ENDPOINT THAT IS NOT ITS OWN NAME, and this witness exists
-// because the first modeled run refused for exactly the lack of it. fleet_probe_endpoint_for folds
-// the router bindings and, finding no match, RETURNS ITS INPUT rather than refusing -- so a host
-// named by a vendor label instead of a fleet identity yields a "endpoint" that is the label itself,
-// which no anchor has a key for. That fallback is upstream of this lane and is not fixed here; what
-// is fixed is that this lane cannot ship a host whose endpoint resolution silently did nothing.
-test fn the_build_host_resolves_to_an_endpoint_other_than_its_own_name() -> Bool {
-  match spark_reach_endpoint(host: v41_build_host, path: ReachManagementLan) {
-    Absent => false
-    Present { value: endpoint } => endpoint != (v41_build_host as String) && string_contains(s: endpoint, pattern: ".")
-  }
-}
 
 // THE RECORDED READINGS ARE ASSERTED AT THE GRAIN THEY WERE TAKEN, so the one absence cannot be
 // tidied into a pass and the five presences cannot drift into a claim nobody measured. The
@@ -259,12 +250,44 @@ test fn the_built_image_meets_every_kernel_capability_and_registers_no_v41_archi
 // revision that is not in the public repository. Either alone would be a curiosity; together they say
 // the gap is wiring held outside public main rather than anything about this fleet's build.
 test fn the_published_image_registers_the_architecture_from_a_revision_public_main_does_not_have() -> Bool {
-  fold(v41_flash_published_registry_entries, init: false, f: (acc, e) =>
-    acc || string_contains(s: e as String, pattern: "DeepseekV41ForCausalLM -> (vllm.models.deepseek_v4_1"))
-    && string_contains(s: v41_flash_published_revision_public_standing as String, pattern: "No commit found for SHA: 179dd0fa9")
-    && string_contains(s: v41_flash_published_distribution as String, pattern: "g179dd0fa9")
-    && string_contains(s: v41_flash_published_torch_cuda_arch_list as String, pattern: "12.1")
+  v41_published_registers_architecture(architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
+    && !v41_published_registers_architecture(architecture: "DeepseekV4ForCausalLM" as NonEmptyStr)
+    && string_contains(s: v41_published_revision_public_standing.reading as String, pattern: "No commit found for SHA: 179dd0fa9")
+    && string_contains(s: v41_published_distribution_observation.reading as String, pattern: "g179dd0fa9")
+    && string_contains(s: v41_published_tag_absent.reading as String, pattern: "404")
     && !v41_flash_hardware_verified(hardware: "gb10" as NonEmptyStr)
     && v41_flash_hardware_verified(hardware: "gb200" as NonEmptyStr)
-    && string_contains(s: v41_flash_documented_tag_standing as String, pattern: "404")
+    && v41_flash_vram_minimum_gb == 614
+}
+
+// EVERY OBSERVATION NAMES AN INSTRUMENT AND A DATE, which is the property that separates a reading
+// this repository took from a fact the publisher asserted. An unattributed row is how the second kind
+// quietly becomes the first.
+test fn every_published_image_observation_carries_its_instrument_and_date() -> Bool {
+  let rows = v41_published_observations()
+  length(rows) == 7
+    && fold(rows, init: true, f: (acc, o) =>
+      acc && (o.instrument as String) != "" && (o.observed_at as String) == "2026-09-11")
+    && fold(v41_published_arm64_config_observations, init: true, f: (acc, o) =>
+      acc && string_contains(s: o.instrument as String, pattern: "registry-1.docker.io"))
+}
+
+// NO HOST IS NAMED IN THE BUILD MODULE, AND THE ROSTER IS A SUBTRACTION. The serving pair members and
+// the RPC-reserved members are excluded by derivation, so this goes red the moment someone writes a
+// literal back in or the fleet model changes under it -- which is the whole point of taking the host
+// as an argument.
+test fn the_admissible_build_hosts_exclude_the_serving_pair_and_the_rpc_reservation() -> Bool {
+  !spark_build_host_admissible(host: "srv5" as HostIdentity)
+    && !spark_build_host_admissible(host: "srv6" as HostIdentity)
+    && !spark_build_host_admissible(host: "srv7" as HostIdentity)
+    && !spark_build_host_admissible(host: "srv8" as HostIdentity)
+    && length(admissible_spark_build_hosts()) != 0
+    && (match admit_spark_build_host(raw: "srv5") {
+      SparkBuildHostRefused { cause: why } => string_contains(s: why, pattern: "not an admissible build host")
+      SparkBuildHostAdmitted { host: _ } => false
+    })
+    && (match admit_spark_build_host(raw: "") {
+      SparkBuildHostRefused { cause: why } => string_contains(s: why, pattern: "does not pick")
+      SparkBuildHostAdmitted { host: _ } => false
+    })
 }

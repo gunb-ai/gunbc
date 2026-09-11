@@ -1,6 +1,8 @@
 module extdeps.vllm.deepseek_v4_1_sm12
 
 import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision }
@@ -275,23 +277,21 @@ data v41_sm12_kv_layout: NonEmptyStr = "fp8_ds_mla" as NonEmptyStr
 // RoPE + 8B fp8 scale, per the comment beside it), with alignment=576 applied to the whole page
 // rather than to a state. Carrying another model's stride as this model's cost is the fork this
 // repository consolidates later at interest, and it would have been consumed as a capacity figure.
-data v41_sm12_kv_state_content_bytes: NonEmptyStr = "584" as NonEmptyStr
-data v41_sm12_kv_page_alignment_bytes: NonEmptyStr = "576" as NonEmptyStr
+data v41_sm12_kv_state_content_bytes: ByteSize = byte_size(count: 584)
+data v41_sm12_kv_page_alignment_bytes: ByteSize = byte_size(count: 576)
 
-// A STATE IS NOT A TOKEN, WHICH IS WHY A BYTES-PER-TOKEN FIGURE CANNOT BE READ OFF THE ROW ABOVE. In
+// A STATE IS NOT A TOKEN, WHICH IS WHY NO BYTES-PER-TOKEN FIGURE IS DECLARED HERE. In
 // vllm/v1/kv_cache_interface.py a page holds num_heads * num_states * state_content_size_bytes, and
 // num_states is block_size // tokens_per_state, where V4.1 passes tokens_per_state = the layer's
-// compress_ratio. So one layer's cost is state_content_bytes / compress_ratio per token, and a
-// whole-model figure is that summed over the layers that OWN a cache -- which for V4.1 is the
-// kv_source_layer_ids subset, not every layer, plus the indexer and sliding-window caches, which are
-// separate specs with their own head sizes.
+// compress_ratio. So one layer costs state_content_bytes / compress_ratio per token, and a
+// whole-model figure sums that over the layers that OWN a cache -- which for V4.1 is the
+// kv_source_layer_ids subset rather than every layer, plus the indexer and sliding-window caches,
+// which are separate specs with their own head sizes.
 //
-// THIS MODULE DELIBERATELY STOPS SHORT OF THE SUM. The per-layer facts above are upstream's and
-// belong here; which layers a particular checkpoint gives a cache to is a fact about THAT CHECKPOINT's
-// config, and joining the two is a capacity derivation that belongs to whichever lane owns capacity.
-// Publishing a half-derived per-token number here is how a per-layer stride gets compared against a
-// whole-model figure and a ratio comes out of two different units.
-data v41_sm12_kv_per_token_bytes_formula: NonEmptyStr = "per owning layer: state_content_bytes / tokens_per_state, where tokens_per_state is that layer's compress_ratio; whole-model bytes per token is that summed over the layers that own a cache, plus the indexer and sliding-window specs" as NonEmptyStr
+// The derivation belongs to whichever lane owns capacity, and it needs a CHECKPOINT's layer sets to
+// join against these per-layer facts. Publishing a half-derived number here is how a per-layer stride
+// comes to be compared against a whole-model figure and a ratio comes out of two different units --
+// which happened once in this lane already, with a stride that turned out to belong to another model.
 
 // CSA2 -- the V4.1 compressed sparse attention path. Pure python at this revision, so an image built
 // from this tree carries it whatever architectures were compiled, which is exactly why it is a

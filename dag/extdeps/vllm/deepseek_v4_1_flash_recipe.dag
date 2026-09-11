@@ -1,6 +1,7 @@
 module extdeps.vllm.deepseek_v4_1_flash_recipe
 
 import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -37,6 +38,8 @@ data v41_flash_checkpoint_on_disk: VllmPublishedFigure = VllmPublishedFigure {
 // recipe schema's 1.2 headroom factor, which is a publishing convention rather than an observed
 // floor -- so a fleet that wants a real floor measures one, and a fleet that wants to know whether it
 // is even in range compares against this.
+data v41_flash_vram_minimum_gb: Nat = 614
+
 data v41_flash_vram_minimum: VllmPublishedFigure = VllmPublishedFigure {
   subject: "vram_minimum_gb" as NonEmptyStr,
   value: "614" as NonEmptyStr,
@@ -64,51 +67,14 @@ fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
     if acc { true } else { h as String == hardware as String })
 }
 
-// ── THE PUBLISHED IMAGE ───────────────────────────────────────────────────────────────────────
+// ── WHAT THE PAGE SAYS ABOUT THE IMAGE ────────────────────────────────────────────────────────
 //
-// THE TAG THE RECIPE NAMES DOES NOT EXIST, AND THE ONES THAT DO ARE DATED. The page's Prerequisites
-// section says to use `vllm/vllm-openai:deepseekv41-flash` (vLLM 0.30.0+); Docker Hub answers 404 for
-// that tag. What is published, on 2026-09-10, is a dated family -- deepseekv41-flash-0909 and its
-// -cu129 and per-architecture variants. A consumer that copied the documented tag gets nothing, which
-// is why the resolved reference is carried here rather than the documented one.
-data v41_flash_documented_tag: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
-data v41_flash_documented_tag_standing: NonEmptyStr = "absent from the registry: Docker Hub returns `httperror 404: tag 'deepseekv41-flash' not found` for vllm/vllm-openai, checked 2026-09-11" as NonEmptyStr
-
-data v41_flash_published_repository: NonEmptyStr = "vllm/vllm-openai" as NonEmptyStr
-data v41_flash_published_tag: NonEmptyStr = "deepseekv41-flash-0909" as NonEmptyStr
-data v41_flash_published_manifest_list_digest: NonEmptyStr = "sha256:00d577a6a63281e15336029d5bcee4e9a2cf182214a4f20ba6111b1c8e79893d" as NonEmptyStr
-data v41_flash_published_arm64_digest: NonEmptyStr = "sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr
-data v41_flash_published_amd64_digest: NonEmptyStr = "sha256:4f3c8bcf6328305b8cb6f61146dbfa125b0b04ae98eef3d091019ec30f564a9b" as NonEmptyStr
-data v41_flash_published_at: NonEmptyStr = "2026-09-10T06:47:50Z" as NonEmptyStr
-
-fn v41_flash_published_arm64_reference() -> NonEmptyStr {
-  join([v41_flash_published_repository as String, "@", v41_flash_published_arm64_digest as String], "") as NonEmptyStr
-}
-
-// THE IMAGE'S OWN BUILD METADATA, READ FROM ITS CONFIG BLOB THROUGH THE REGISTRY API RATHER THAN BY
-// PULLING IT. Two things it says and one it does not: it targets sm_121 explicitly, it was built
-// against CUDA 13.0.1, and it states NO provenance -- ai.vllm.build.commit and
-// org.opencontainers.image.revision both read `unknown`, ai.vllm.build.pipeline reads `local`, and
-// the image tag label reads `local/vllm-openai:dev`. A published artifact whose own labels decline to
-// name its source is exactly the case extdeps.vllm.runtime_defaults ImageSourceEquivalence exists for.
-data v41_flash_published_torch_cuda_arch_list: NonEmptyStr = "8.7 8.9 9.0 10.0+PTX 12.0 12.1" as NonEmptyStr
-data v41_flash_published_cuda_version: NonEmptyStr = "13.0.1" as NonEmptyStr
-data v41_flash_published_build_commit_label: NonEmptyStr = "unknown" as NonEmptyStr
-
-// THE REVISION IT WAS ACTUALLY BUILT FROM, AND WHY THAT SETTLES THE REGISTRATION QUESTION. The
-// installed distribution in the arm64 image is vllm-0.1.dev20904+g179dd0fa9, so the wheel's own
-// setuptools-scm stamp names commit 179dd0fa9 -- and the GitHub API answers `No commit found for SHA`
-// for that id against vllm-project/vllm. The image is therefore built from a revision that is not in
-// the public repository, which is why its registry.py carries entries public main does not.
-data v41_flash_published_distribution: NonEmptyStr = "vllm-0.1.dev20904+g179dd0fa9" as NonEmptyStr
-data v41_flash_published_revision_public_standing: NonEmptyStr = "not present in vllm-project/vllm: the GitHub commits API answers `No commit found for SHA: 179dd0fa9`, checked 2026-09-11" as NonEmptyStr
-
-// HOW IT MAPS THE ARCHITECTURE, READ OUT OF THE IMAGE'S OWN registry.py. It is an ORDINARY REGISTRY
-// ENTRY -- not a plugin entry point, not hf-overrides, not a launch-time registration. Two entries
-// point at vllm.models.deepseek_v4_1, and neither exists in public main at 07b75534. That is the
-// whole difference between the image this repository built from public source and the published one:
-// the same model code, wired in.
-data v41_flash_published_registry_entries: List<NonEmptyStr> = [
-  "DeepseekV41ForCausalLM -> (vllm.models.deepseek_v4_1, DeepseekV41ForCausalLM)" as NonEmptyStr,
-  "DSparkV41DraftModel -> (vllm.models.deepseek_v4_1, DSparkDeepseekV4ForCausalLM)" as NonEmptyStr,
-]
+// THE PREREQUISITE THE RECIPE STATES, and only that. Whether a registry actually serves this
+// reference, at what digest, for which architectures, and from which source revision, are questions
+// answered by ASKING A REGISTRY -- observations this repository makes, which live in the observing
+// layer with their instrument and date (gunbc.spark.v41_published_image_observation), never here.
+// An extdeps module carries what upstream publishes; a resolved digest is what we found when we
+// looked.
+data v41_flash_documented_image: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
+data v41_flash_documented_engine_floor: NonEmptyStr = "vLLM 0.30.0+" as NonEmptyStr
+data v41_flash_documented_install_note: NonEmptyStr = "No pip wheel serves this architecture, so the Install block only offers Docker" as NonEmptyStr

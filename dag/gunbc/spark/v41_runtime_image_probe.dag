@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
+import std.nat { Nat }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
@@ -39,10 +40,11 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal, converge_typed_remote_file,
 }
 import gunbc.file_access { FileTreeScope }
-import gunbc.spark.v41_runtime_image_build {
-  V41ImageBuild, V41ImageBuilt, V41ImageBuildRefused, V41ImageIdentity,
-  v41_build_host, v41_build_root, v41_gb10_recipe, v41_image_tag,
-  converge_v41_runtime_image,
+import gunbc.spark.vllm_runtime_image_build {
+  VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
+  SparkBuildHostAdmitted, SparkBuildHostRefused, admit_spark_build_host,
+  vllm_build_root, v41_gb10_recipe, vllm_image_tag,
+  converge_vllm_runtime_image,
 }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
@@ -242,7 +244,7 @@ fn v41_probe_script() -> String {
 // argument is refused before it reaches the host; extdeps.docker.cli docker_short_mount_flag renders
 // the CLI's own documented short form of the same mount.
 fn v41_probe_mounts() -> List<DockerMount> {
-  [BindMount { host_path: v41_build_root as FilePath, container_path: v41_build_root as FilePath, readonly: true }]
+  [BindMount { host_path: vllm_build_root as FilePath, container_path: vllm_build_root as FilePath, readonly: true }]
 }
 
 fn v41_probe_command(image: NonEmptyStr) -> ArgvCommand {
@@ -311,7 +313,7 @@ fn v41_capability_reading_line(r: V41CapabilityReading) -> String {
 }
 
 type V41ProbeOutcome
-  = V41ProbeRead { image: V41ImageIdentity, stdout: String, readings: List<V41CapabilityReading> }
+  = V41ProbeRead { image: VllmImageIdentity, stdout: String, readings: List<V41CapabilityReading> }
   | V41ProbeRefused { step: NonEmptyStr, cause: String }
 
 func converge_v41_probe_script(target: SshTarget, context: FleetSshExecutionContext) -> TypedRemoteFileConvergence
@@ -323,13 +325,13 @@ func converge_v41_probe_script(target: SshTarget, context: FleetSshExecutionCont
     admission: typed_remote_file_write_seal(
       path: v41_probe_script_path as FilePath,
       content: v41_probe_script(),
-      allowed_scope: FileTreeScope { root_path: v41_build_root },
+      allowed_scope: FileTreeScope { root_path: vllm_build_root },
     ),
     mode: v41_probe_script_mode,
   )
 }
 
-func v41_probe_image(target: SshTarget, context: FleetSshExecutionContext, identity: V41ImageIdentity) -> V41ProbeOutcome
+func v41_probe_image(target: SshTarget, context: FleetSshExecutionContext, identity: VllmImageIdentity) -> V41ProbeOutcome
   uses net: Network
 {
   match converge_v41_probe_script(target: target, context: context) {
@@ -394,10 +396,17 @@ data v41_probe_receipt_path: String = "target/v41-runtime-image-probe-receipt.tx
 // entry and this one ask the same question -- does an image with this tag exist -- and an image that
 // is already there is inspected, not rebuilt. What it will not do is probe an image it could not
 // identify, because a reading whose subject is unknown is not a reading.
-func v41_runtime_image_probe_wet() -> ProcessExit
+// THE HOST IS AN ARGUMENT HERE FOR THE SAME REASON IT IS ONE FOR THE BUILD: `gunbc run --arg
+// host=<identity>`, admitted against the derived roster before anything else runs. A probe is
+// read-only, but "which member may this lane reach" is still a fleet decision rather than a property
+// of the question being asked.
+func v41_runtime_image_probe_wet(host: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
+  match admit_spark_build_host(raw: host) {
+    SparkBuildHostRefused { cause: why } => exit_failure(reason: why)
+    SparkBuildHostAdmitted { host: probe_host } =>
   match fleet_ssh_attempt_identity(raw: v41_probe_attempt_raw) {
     Absent => exit_failure(reason: "attempt identity is not a safe path segment")
     Present { value: attempt } =>
@@ -411,19 +420,19 @@ func v41_runtime_image_probe_wet() -> ProcessExit
           match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
             Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
             Present { value: context } =>
-              match spark_reach_endpoint(host: v41_build_host, path: ReachManagementLan) {
-                Absent => exit_failure(reason: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", v41_build_host as String], ""))
+              match spark_reach_endpoint(host: probe_host, path: ReachManagementLan) {
+                Absent => exit_failure(reason: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", probe_host as String], ""))
                 Present { value: endpoint } => {
                   let target = SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_operator_bootstrap_login as NonEmptyStr }
-                  let outcome = match converge_v41_runtime_image(target: target, context: context) {
-                    V41ImageBuildRefused { step: st, cause: why } => V41ProbeRefused { step: st, cause: why }
-                    V41ImageBuilt { identity: i, already_present: _ } => v41_probe_image(target: target, context: context, identity: i)
+                  let outcome = match converge_vllm_runtime_image(target: target, context: context, r: v41_gb10_recipe()) {
+                    VllmImageBuildRefused { step: st, cause: why } => V41ProbeRefused { step: st, cause: why }
+                    VllmImageBuilt { identity: i, already_present: _ } => v41_probe_image(target: target, context: context, identity: i)
                   }
                   let body = join([
-                    join(["v41 runtime image probe probed_at=", probed_at_word(reading: now) as String, " host=", v41_build_host as String, " endpoint=", endpoint, "\n"], ""),
+                    join(["v41 runtime image probe probed_at=", probed_at_word(reading: now) as String, " host=", probe_host as String, " endpoint=", endpoint, "\n"], ""),
                     known_hosts_materialization_receipt(outcome: materialization),
                     join(["credential ", fleet_ssh_credential_locus_label(binding: binding), " public_material_identity=", serialize_content_hash(hash: fleet_ssh_credential_identity(binding: binding)) as String, "\n"], ""),
-                    join(["subject tag=", v41_image_tag(r: v41_gb10_recipe()) as String, "\n"], ""),
+                    join(["subject tag=", vllm_image_tag(r: v41_gb10_recipe()) as String, "\n"], ""),
                     v41_probe_body(o: outcome),
                   ], "")
                   let w = Filesystem.Write(path: v41_probe_receipt_path, content: body)
@@ -439,6 +448,7 @@ func v41_runtime_image_probe_wet() -> ProcessExit
           }
         }
       }
+  }
   }
 }
 
@@ -464,7 +474,7 @@ data v41_probed_at: NonEmptyStr = "2026-09-11" as NonEmptyStr
 data v41_probed_on_host: NonEmptyStr = "srv5" as NonEmptyStr
 data v41_probed_compute_capability: NonEmptyStr = "12.1" as NonEmptyStr
 data v41_probed_framework_version: NonEmptyStr = "0.1.dev1+g07b755346" as NonEmptyStr
-data v41_probed_registry_count: NonEmptyStr = "383" as NonEmptyStr
+data v41_probed_registry_count: Nat = 383
 
 // THE ONE ABSENCE, AND IT IS THE ONE THE LANE EXISTED TO SETTLE. The image built from the lead commit
 // does not register DeepseekV41ForCausalLM. This is not a build failure and not an arch gate: the

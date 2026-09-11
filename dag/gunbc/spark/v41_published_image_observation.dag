@@ -1,0 +1,117 @@
+module gunbc.spark.v41_published_image_observation
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.vllm.deepseek_v4_1_flash_recipe { v41_flash_documented_image }
+
+// WHAT WE FOUND WHEN WE ASKED, AS OPPOSED TO WHAT THE PUBLISHER SAYS.
+//
+// WHY THESE ROWS ARE NOT IN extdeps.vllm.*. A resolved digest, an absent tag, a commit the public
+// repository does not have, a registry.py read out of a layer -- every one of those is a READING THIS
+// REPOSITORY TOOK with an instrument on a date, not a fact the upstream publishes about itself. The
+// same rule DESIGN states for observed facts generally: an observation belongs to the observing
+// layer, and backfilling it into the dependency's module makes it look like the vendor asserted it.
+// The distinction is load-bearing here because two of these readings CONTRADICT the published page.
+//
+// EVERY ROW NAMES ITS INSTRUMENT, so a reader can re-take the reading rather than trust this one.
+type PublishedImageObservation sole_constructor {
+  subject: NonEmptyStr
+  reading: NonEmptyStr
+  instrument: NonEmptyStr
+  observed_at: NonEmptyStr
+}
+
+data v41_published_image_observed_at: NonEmptyStr = "2026-09-11" as NonEmptyStr
+
+fn v41_published_observation(subject: NonEmptyStr, reading: NonEmptyStr, instrument: NonEmptyStr) -> PublishedImageObservation {
+  PublishedImageObservation {
+    subject: subject,
+    reading: reading,
+    instrument: instrument,
+    observed_at: v41_published_image_observed_at,
+  }
+}
+
+// THE DOCUMENTED TAG IS NOT SERVED, AND THE SERVED ONES ARE DATED. This is the first contradiction
+// with the page, and it is the one a consumer hits first: copying the documented reference gets a
+// 404.
+data v41_published_tag_absent: PublishedImageObservation = v41_published_observation(
+  subject: v41_flash_documented_image,
+  reading: "httperror 404: tag 'deepseekv41-flash' not found -- what is served is a dated family: deepseekv41-flash-0909 and its -cu129 and per-architecture variants, published 2026-09-10T06:47:50Z" as NonEmptyStr,
+  instrument: "Docker Hub tag API, hub.docker.com/v2/repositories/vllm/vllm-openai/tags/" as NonEmptyStr,
+)
+
+data v41_published_repository: NonEmptyStr = "vllm/vllm-openai" as NonEmptyStr
+data v41_published_tag: NonEmptyStr = "deepseekv41-flash-0909" as NonEmptyStr
+data v41_published_manifest_list_digest: NonEmptyStr = "sha256:00d577a6a63281e15336029d5bcee4e9a2cf182214a4f20ba6111b1c8e79893d" as NonEmptyStr
+data v41_published_arm64_digest: NonEmptyStr = "sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr
+data v41_published_amd64_digest: NonEmptyStr = "sha256:4f3c8bcf6328305b8cb6f61146dbfa125b0b04ae98eef3d091019ec30f564a9b" as NonEmptyStr
+
+// THE PINNED REFERENCE ANY CONSUMER SHOULD NAME: repository@digest, never the tag, and never the
+// documented tag that does not resolve.
+fn v41_published_arm64_reference() -> NonEmptyStr {
+  join([v41_published_repository as String, "@", v41_published_arm64_digest as String], "") as NonEmptyStr
+}
+
+// READ FROM THE arm64 IMAGE'S CONFIG BLOB THROUGH THE REGISTRY API -- no pull, nothing on any fleet
+// host. It targets sm_121 explicitly, and it states NO provenance of its own.
+data v41_published_arm64_config_observations: List<PublishedImageObservation> = [
+  v41_published_observation(
+    subject: "TORCH_CUDA_ARCH_LIST" as NonEmptyStr,
+    reading: "8.7 8.9 9.0 10.0+PTX 12.0 12.1 -- sm_121 is an explicit target of the published arm64 image" as NonEmptyStr,
+    instrument: "registry-1.docker.io config blob for sha256:d84a1232..." as NonEmptyStr,
+  ),
+  v41_published_observation(
+    subject: "CUDA_VERSION" as NonEmptyStr,
+    reading: "13.0.1" as NonEmptyStr,
+    instrument: "registry-1.docker.io config blob for sha256:d84a1232..." as NonEmptyStr,
+  ),
+  v41_published_observation(
+    subject: "build provenance labels" as NonEmptyStr,
+    reading: "ai.vllm.build.commit and org.opencontainers.image.revision both read `unknown`; ai.vllm.build.pipeline reads `local`; ai.vllm.image.tag reads `local/vllm-openai:dev`. The image declines to name its own source" as NonEmptyStr,
+    instrument: "registry-1.docker.io config blob for sha256:d84a1232..." as NonEmptyStr,
+  ),
+]
+
+// THE REVISION, AND THE SECOND CONTRADICTION. The installed distribution's setuptools-scm stamp names
+// a commit, and the public repository does not have it -- which is what explains everything else: the
+// published image is built from source that is not on main.
+data v41_published_distribution_observation: PublishedImageObservation = v41_published_observation(
+  subject: "installed vLLM distribution" as NonEmptyStr,
+  reading: "vllm-0.1.dev20904+g179dd0fa9, so setuptools-scm stamped commit 179dd0fa9" as NonEmptyStr,
+  instrument: "tar listing of the site-packages layer, streamed from the registry API" as NonEmptyStr,
+)
+
+data v41_published_revision_public_standing: PublishedImageObservation = v41_published_observation(
+  subject: "179dd0fa9 in vllm-project/vllm" as NonEmptyStr,
+  reading: "No commit found for SHA: 179dd0fa9 -- the revision the published image is built from is not in the public repository" as NonEmptyStr,
+  instrument: "GitHub commits API, api.github.com/repos/vllm-project/vllm/commits/179dd0fa9" as NonEmptyStr,
+)
+
+// HOW IT MAPS THE ARCHITECTURE, read out of the image's OWN registry.py. An ordinary registry entry:
+// not a plugin entry point, not hf-overrides, not a launch-time registration. Two entries point at
+// vllm.models.deepseek_v4_1 and neither exists in public main at 07b75534, which is the entire
+// difference between the image this fleet built from public source and the published one -- the same
+// model code, wired in.
+data v41_published_registry_entries: List<NonEmptyStr> = [
+  "DeepseekV41ForCausalLM -> (vllm.models.deepseek_v4_1, DeepseekV41ForCausalLM)" as NonEmptyStr,
+  "DSparkV41DraftModel -> (vllm.models.deepseek_v4_1, DSparkDeepseekV4ForCausalLM)" as NonEmptyStr,
+]
+
+data v41_published_registry_observation: PublishedImageObservation = v41_published_observation(
+  subject: "vllm/model_executor/models/registry.py inside the arm64 image" as NonEmptyStr,
+  reading: "carries DeepseekV41ForCausalLM and DSparkV41DraftModel, both mapping to vllm.models.deepseek_v4_1; public main at 07b75534 maps no name to that module" as NonEmptyStr,
+  instrument: "site-packages layer extracted from the registry API and read directly" as NonEmptyStr,
+)
+
+fn v41_published_observations() -> List<PublishedImageObservation> {
+  concat(
+    [v41_published_tag_absent, v41_published_distribution_observation, v41_published_revision_public_standing, v41_published_registry_observation],
+    v41_published_arm64_config_observations,
+  )
+}
+
+fn v41_published_registers_architecture(architecture: NonEmptyStr) -> Bool {
+  fold(v41_published_registry_entries, init: false, f: (acc, e) =>
+    if acc { true } else { starts_with(s: e as String, prefix: join([architecture as String, " ->"], "")) })
+}
