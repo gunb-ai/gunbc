@@ -53,8 +53,8 @@ test fn observe_sshpass_wet_posix_command_v_check_does_not_crash() -> Bool {
 // THE ENROLLED ROSTER WALKS WET, and what this row proves is narrower than what stood here before.
 // The earlier annotation called it "the discriminating part: if a roster row resolves to no
 // CliTool, this returns an absence carrying the row's provision sentence". That case no longer
-// exists: HostCliEnrollmentRequirement.tool carries the CliTool itself, so a row without its tool
-// has no constructor, and an annotation describing how a witness catches an unwritable state is
+// exists: the roster is a List<CliTool>, so a row without its tool has no constructor at all, and
+// an annotation describing how a witness catches an unwritable state is
 // worse than none -- it would be cited as coverage for a class that cannot occur (§4b: ask whether
 // the check's RED is authorable before claiming the check).
 //

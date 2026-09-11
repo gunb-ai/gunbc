@@ -35,7 +35,7 @@ test fn password_session_roster_carries_the_sshpass_requirement() -> Bool {
   fold_list(
     xs: password_session_host_cli_requirements,
     empty: false,
-    cons: fn(acc, r) { acc || r.tool.name == sshpass_cli_tool.name },
+    cons: fn(acc, t) { acc || t.name == sshpass_cli_tool.name },
   )
 }
 

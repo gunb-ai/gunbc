@@ -33,31 +33,26 @@ import v2.std.optional { Optional, Present, Absent, optional_absent, optional_pr
 // cap. Batch-1 cold-control cost is a separate lane; this PR does not raise
 // deadline/swap/max-parallel.
 
-// THE REQUIREMENT CARRIES THE TOOL, NOT A NAME FOR IT. This field was a NonEmptyStr tag drawn from
-// a closed set, resolved back to a CliTool by a hand-rolled if-chain -- so "a roster row naming a
-// tool no CliTool owns" was a representable state, and the code answered it with a runtime arm. It
-// is now unwritable: a row cannot be authored without the declaration that owns the install
-// sources, so the resolver, its else arm, and the unresolved branch of the fold all delete rather
-// than grow by one arm per enrolled tool (DESIGN §5 construction over validation; §4b rung 4 -- the
-// invalid state has no constructor, so validation is unnecessary).
+// A ROSTER IS A LIST OF THE TOOLS ITSELF, and getting here took two removals in two commits.
+// First the enrolled tool was a NonEmptyStr tag resolved back to a CliTool by a hand-rolled
+// if-chain, so "a row naming a tool no CliTool owns" was representable and answered by a runtime
+// arm; carrying the CliTool made that unwritable and deleted the arm (§5, §4b rung 4).
 //
-// THE DELETED ARM WAS ALSO A CONFLATION, which is the sharper reason it could not stay. It returned
-// a HostCliDependencyAbsence -- the type that means "this binary is not on PATH on this host" --
-// to report an AUTHORING defect in this file. Callers render that into operator-facing prose, so a
-// roster row someone forgot to finish would have reached a fleet operator as "sshpass is not
-// installed on this runner": a true-shaped sentence about the wrong subject, sending them to go
-// install something that was never missing.
-type HostCliEnrollmentRequirement {
-  tool: CliTool
-  provision: NonEmptyStr
-}
+// What survived that climb was its own residue: a HostCliEnrollmentRequirement wrapper whose other
+// field, `provision`, existed ONLY to feed the deleted arm. Nothing read it afterwards -- a data
+// row no fold reads, which §3c calls dangling and §4b(4) says a climb must dissolve along with the
+// machinery it obsoletes. It was also a SECOND INSTALL NARRATIVE beside CliTool.installable_via:
+// the row said "apt install sshpass on every runner that executes a password-session leg" while
+// every live refusal took its hint from install_hint(sources: tool.installable_via), so the two
+// could disagree and only one was ever read.
+//
+// Dropping it left a single-field wrapper around a type that already exists, which is a concept
+// re-invented rather than reused, so the wrapper goes too. THE POPULATION FACT IS NOT LOST: it was
+// never in `provision` in any load-bearing way -- it is carried by WHICH ROSTER a tool appears in,
+// which is exactly what the separate rosters below are for, and the prose restated their identity
+// rather than adding to it.
 
-data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
-  HostCliEnrollmentRequirement {
-    tool: npm_cli_tool,
-    provision: "apt install npm on falsifier cadence runner image" as NonEmptyStr,
-  },
-]
+data codex_wet_materialization_host_cli_requirements: List<CliTool> = [npm_cli_tool]
 
 // SECOND ENROLLMENT ANSWER, and it is a SEPARATE roster rather than a row appended to the one
 // above, because the two answer about different runner populations: the codex roster is about the
@@ -83,12 +78,7 @@ data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequ
 // argv also begins `sshpass -d 0 ssh`. "Executes a password-session leg" is the membership test,
 // and it is about the TRANSPORT the runner must be able to spawn, not about which fleet the far
 // side belongs to.
-data password_session_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
-  HostCliEnrollmentRequirement {
-    tool: sshpass_cli_tool,
-    provision: "apt install sshpass on every runner that executes a password-session leg" as NonEmptyStr,
-  },
-]
+data password_session_host_cli_requirements: List<CliTool> = [sshpass_cli_tool]
 
 // The absence is its own type, not a variant used in type position. Before this split,
 // first_absent_codex_wet_materialization_host_cli_dependency named HostCliDependencyAbsent as its
@@ -122,24 +112,24 @@ fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
 // answer (password sessions) would otherwise have duplicated this whole walk -- the §2 duplication
 // that a second roster invites and that the roster split does not require.
 fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDependencyAbsence? {
-  first_absent_host_cli_dependency(requirements: codex_wet_materialization_host_cli_requirements)
+  first_absent_host_cli_dependency(tools: codex_wet_materialization_host_cli_requirements)
 }
 
 fn first_absent_password_session_host_cli_dependency() -> HostCliDependencyAbsence? {
-  first_absent_host_cli_dependency(requirements: password_session_host_cli_requirements)
+  first_absent_host_cli_dependency(tools: password_session_host_cli_requirements)
 }
 
 fn first_absent_host_cli_dependency(
-  requirements: List<HostCliEnrollmentRequirement>,
+  tools: List<CliTool>,
 ) -> HostCliDependencyAbsence? {
   fold_list(
-    xs: requirements,
+    xs: tools,
     empty: none,
-    cons: fn(acc, requirement) {
+    cons: fn(acc, tool) {
       match acc {
         Present { value: found } => Present { value: found }
         Absent =>
-          match observe_host_cli_dependency(tool: requirement.tool) {
+          match observe_host_cli_dependency(tool: tool) {
             HostCliDependencyAbsent { absence } => Present { value: absence }
             HostCliDependencyPresent => none
           }
