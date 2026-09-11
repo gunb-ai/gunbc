@@ -5054,7 +5054,30 @@ pub fn run_required_floor(
                 // deadline stays armed. A changed identity the roster does not enroll takes the
                 // ordinary policy and still reds when it crosses that line, so this is one
                 // intersection rather than a widening of the floor.
-                let cost_policy = if cost_debt_roster.contains(&identity) {
+                // THE LONG HOME IS THE SAME DECLARATION AS A COST-DEBT ROW (operator ruling A,
+                // 2026-09-11). Both say this identity is not run on an ordinary floor because the
+                // CPU line cannot carry it -- the roster per identity after measuring, the long
+                // home per module structurally. Reading only the roster left a changed witness in
+                // a long module on the armed line: the floor's own per-claim cost receipt for
+                // gunbc#11004 at 6b153bf8 reports three such witnesses refused at the line before
+                // reaching a verdict, none of them planned on any ordinary floor. `long_home` above is the same
+                // authored-name prefix match `required_floor_site_disposition` folds to reach
+                // `DeclinedLongModule`, so this is one classification read twice, not a second one.
+                //
+                // TWO SETS, AND THEY ANSWER DIFFERENT QUESTIONS -- the distinction this arm got
+                // wrong on its first draft. `cost_debt_seen` is ROSTER ACCOUNTING: it feeds
+                // reconcile_withheld_against_dispositions, so only a rostered identity may enter
+                // it, and inserting a long-module witness there would make a row look exercised
+                // that no roster line names, which is how a stale roster line hides.
+                // `cost_debt_verdict_only` is the PROJECTION's policy source, read by
+                // changed_witness_projection_rows and by nothing else. Every identity whose claim
+                // executed under the override must enter it, or execution and standing disagree:
+                // the CPU gate stands down and the row then projects as an ordinary
+                // planned-and-passed, laundering the cost fact into a pass that never happened
+                // that way, and CostObservationMissingUnderVerdictOnly can never fire for it.
+                // v2.workflow.floor_changed_witness says it directly -- the override "keeps the
+                // COST FACT in the standing rather than laundering it into an ordinary pass".
+                let cost_policy = if cost_debt_roster.contains(&identity) || long_home {
                     cost_debt_verdict_only.insert(identity.clone());
                     ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
                 } else {
