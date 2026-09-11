@@ -1,0 +1,25 @@
+#!/bin/busybox sh
+# busybox udhcpc OBTAINS a lease and APPLIES NOTHING without this script -- the first bridged boot
+# reported host-dhcp=ok with no address, which reads exactly like a working client and is not one.
+#
+# AND THE VARIABLE NAMES ARE NOT GUESSED TWICE. A second attempt used "$mask" and applied nothing
+# either: busybox supplies the dotted netmask as $subnet, and $mask only in some builds. So the
+# lease is RECORDED before it is applied, both spellings are tried, and errors are not discarded --
+# a silent failure here is indistinguishable from no lease at all.
+{
+  echo "udhcpc-event=$1 ip=$ip subnet=$subnet mask=$mask router=$router iface=$interface"
+} >> /run/dhcp.log 2>&1
+case "$1" in
+  bound|renew)
+    /bin/busybox ip addr flush dev "$interface" 2>>/run/dhcp.log
+    if [ -n "$mask" ]; then
+      /bin/busybox ip addr add "$ip/$mask" dev "$interface" 2>>/run/dhcp.log
+    elif [ -n "$subnet" ]; then
+      /bin/busybox ifconfig "$interface" "$ip" netmask "$subnet" 2>>/run/dhcp.log
+    fi
+    if [ -n "$router" ]; then
+      /bin/busybox ip route add default via "$router" dev "$interface" 2>>/run/dhcp.log
+    fi
+    ;;
+esac
+exit 0
