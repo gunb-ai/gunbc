@@ -37,6 +37,9 @@ import gunbc.v2_compile_obligation_census {
   obligation_route_coverage_rung,
   obligation_rung_is_inflated,
   obligation_executes_on_an_unverified_entry,
+  obligation_is_pending_on,
+  obligation_is_pending_on_native,
+  unread_native_verdict_premise,
   obligation_claim_exceeds_its_ceiling,
   witness_subject_in_native_lane,
   obligation_seed_escape_is_open,
@@ -369,4 +372,30 @@ fn both_premises_pending_standing() -> PathExecution {
     instrument: "fixture instrument" as NonEmptyStr,
     unverified_premises: [unverified_entry_premise, unread_native_verdict_premise]
   }
+}
+
+// THE NATIVE PREMISE IS READ OFF THE NATIVE ARM, NOT THE INTERPRETED ONE. For one cut
+// unread_native_verdict_premise was attached to every native standing and folded by nothing, so the
+// coverage and inflation counts spent it as if the verdict had been read. The fold that fixes it
+// has to reach native_standing specifically, and the second conjunct is what pins that: the SAME row
+// asked through obligation_is_pending_on -- the interpreted fold -- answers false for this premise,
+// because the interpreted arm does not carry it. So a fold that read the wrong standing would look
+// exactly like a correct one on the first conjunct and fail here.
+//
+// THE FIRST CUT OF THIS ARM CONTRASTED THE WRONG THING. It asserted the native arm does NOT carry
+// the entry premise, and the native arm carries both -- the premises co-occur, which is why they are
+// a list. The arm went red and the contrast moved to the fold, which is where the defect was.
+test fn v2_compile_obligation_native_verdict_premise_is_counted_holds() -> Bool {
+  obligation_is_pending_on_native(
+    o: fixture_row(subject: discovered_subject()),
+    premise: unread_native_verdict_premise
+  )
+    && !obligation_is_pending_on(
+      o: fixture_row(subject: discovered_subject()),
+      premise: unread_native_verdict_premise
+    )
+    && !obligation_is_pending_on_native(
+      o: fixture_row(subject: frozen_and_excluded_subject()),
+      premise: unread_native_verdict_premise
+    )
 }
