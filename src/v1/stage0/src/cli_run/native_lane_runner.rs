@@ -103,41 +103,6 @@ struct EmittedBuildObserved {
     warning_count: i64,
 }
 
-/// The enforced memory bound the lane's process runs under — mirror of
-/// `gunbc.witness_v2_native_route` `NativeRouteMemoryBound`. Only cgroup `memory.max` is an
-/// enforced bound (`gunbc.host_budget_source` `host_budget_source_bounds_this_process`), and it
-/// is read through the governor's own leaf-to-root walk (`binding_cap_cgroup_dir`), the same
-/// reader the OOM-kill line is derived from everywhere else. Anything else — `memory.high`
-/// alone, a Darwin machine total, an operator planning request, nothing — is `Unobserved`
-/// carrying the resolver's reason, and the receipt never turns it into a number.
-enum MemoryBoundObserved {
-    Enforced { cgroup_dir: String, bytes: u64 },
-    Unobserved { reason: String },
-}
-
-fn observe_memory_bound() -> MemoryBoundObserved {
-    match crate::memory_governor::binding_cap_cgroup_dir() {
-        Some(dir) => match crate::memory_governor::read_cgroup_u64(&dir, "memory.max") {
-            Some(bytes) => MemoryBoundObserved::Enforced {
-                cgroup_dir: dir.display().to_string(),
-                bytes,
-            },
-            None => MemoryBoundObserved::Unobserved {
-                reason: format!(
-                    "{} names a memory.max that could not be read as a byte count",
-                    dir.display()
-                ),
-            },
-        },
-        None => MemoryBoundObserved::Unobserved {
-            reason: format!(
-                "no cgroup memory.max binds this process; planning resolution: {}",
-                crate::memory_governor::read_host_budget_resolution().label()
-            ),
-        },
-    }
-}
-
 /// rustc's self-reported identity in its keyed `--version --verbose` form
 /// (`extdeps.rust.rustc` `rustc_version_verbose`): the release line plus every `key: value`
 /// line, joined by `; `. The binary asked is the one cargo will spawn — `RUSTC` when set, else
@@ -828,7 +793,6 @@ fn receipt_value(
     true_control: Option<&NativeVerdictObserved>,
     malformed_control: Value,
     withdrawn_executable: &str,
-    memory_bound: &MemoryBoundObserved,
 ) -> Value {
     let emitted_build = Value::Record {
         type_name: ctx.sym("NativeRouteEmittedBuild"),
@@ -861,49 +825,6 @@ fn receipt_value(
                 Value::Int(preparation.build.warning_count),
             ),
         ]),
-    };
-    // `HostBudgetObserved { source: BudgetSourceCgroupMemoryMax { cgroup_dir }, bytes }` with
-    // `bytes` a `std.measure` `ByteSize`, whose runtime shape is `Measure { count }`.
-    let memory_bound_value = match memory_bound {
-        MemoryBoundObserved::Enforced { cgroup_dir, bytes } => Value::Variant {
-            type_name: ctx.sym("NativeRouteMemoryBound"),
-            variant_name: ctx.sym("MemoryBoundEnforced"),
-            fields: Rc::new(vec![(
-                ctx.sym("observation"),
-                Value::Variant {
-                    type_name: ctx.sym("HostBudgetObservation"),
-                    variant_name: ctx.sym("HostBudgetObserved"),
-                    fields: Rc::new(vec![
-                        (
-                            ctx.sym("source"),
-                            Value::Variant {
-                                type_name: ctx.sym("HostBudgetSource"),
-                                variant_name: ctx.sym("BudgetSourceCgroupMemoryMax"),
-                                fields: Rc::new(vec![(
-                                    ctx.sym("cgroup_dir"),
-                                    str_value(cgroup_dir),
-                                )]),
-                            },
-                        ),
-                        (
-                            ctx.sym("bytes"),
-                            Value::Record {
-                                type_name: ctx.sym("Measure"),
-                                fields: Rc::new(vec![(
-                                    ctx.sym("count"),
-                                    Value::Int(i64::try_from(*bytes).unwrap_or(i64::MAX)),
-                                )]),
-                            },
-                        ),
-                    ]),
-                },
-            )]),
-        },
-        MemoryBoundObserved::Unobserved { reason } => Value::Variant {
-            type_name: ctx.sym("NativeRouteMemoryBound"),
-            variant_name: ctx.sym("MemoryBoundUnobserved"),
-            fields: Rc::new(vec![(ctx.sym("reason"), str_value(reason))]),
-        },
     };
     let universe_values: Vec<Value> = universe
         .iter()
@@ -1001,7 +922,6 @@ fn receipt_value(
                 },
             ),
             (ctx.sym("emitted_build"), emitted_build),
-            (ctx.sym("memory_bound"), memory_bound_value),
         ]),
     }
 }
@@ -1016,21 +936,6 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     let tested_tree = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
-
-    // 0. THE MEMORY BOUND, OBSERVED BEFORE THE FIRST LARGE ALLOCATION. It is a fact about the
-    // slot, not about the run, so it is read once here and carried to the receipt; admission
-    // compares it against the lane's declared envelope plus reserve
-    // (`v2_native_lane_memory_requirement`). An unobserved bound is minted as such — the
-    // authority refuses it by name — never replaced by a planning request or a machine total.
-    let memory_bound = observe_memory_bound();
-    match &memory_bound {
-        MemoryBoundObserved::Enforced { cgroup_dir, bytes } => eprintln!(
-            "required-ci: v2-native memory bound observed — cgroup memory.max ({cgroup_dir}) = {bytes} bytes"
-        ),
-        MemoryBoundObserved::Unobserved { reason } => eprintln!(
-            "required-ci: v2-native memory bound UNOBSERVED — {reason}; the receipt will refuse memory_bound_unobserved_on_host"
-        ),
-    }
 
     // 1. THE UNIVERSE, DERIVED. The floor's producer over the full module inventory, filtered
     // to the universe prefix, plus both directions of the module/path relation: the entry join
@@ -1182,11 +1087,9 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         true_control.as_ref(),
         malformed_value,
         &withdrawn_executable,
-        &memory_bound,
     );
 
     // 8. ADMISSION, BY THE AUTHORITY. The lane prints the authority's own summary either way.
-    let receipt_for_summary = receipt.clone();
     let admission = v1_interpreter::run_in_context_with_args(
         &route_ctx,
         "gunbc.witness_v2_native_route.native_route_admission",
@@ -1223,29 +1126,13 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
             ))
         }
     };
-    // THE RECEIPT'S BUDGET STATEMENT, rendered by the authority from the same receipt value
-    // admission read, then the realization TELEMETRY on its own line: process peak RSS
+    // REALIZATION TELEMETRY, ON ITS OWN LINE AND ON NO RECEIPT FIELD: process peak RSS
     // (getrusage ru_maxrss, process-scoped — the rustc children cargo spawned are not in it),
     // current RSS, the slot cgroup's memory.current/memory.peak (peak spans the runner service's
-    // lifetime, not this run), and the lane's wall. None of it is on the receipt: it re-derives
-    // the envelope's evidence, it does not decide admission.
-    let budget_summary = v1_interpreter::run_in_context_with_args(
-        &route_ctx,
-        "gunbc.witness_v2_native_route.native_route_memory_budget_summary",
-        &[(Some("receipt".to_string()), receipt_for_summary)],
-        false,
-    )
-    .map_err(|e| format!("V2-NATIVE REFUSAL cause=AdmissionUnevaluable — budget summary: {e}"))?;
-    let budget_text = match &budget_summary {
-        Value::Str(s) => s.to_string(),
-        other => {
-            return Err(format!(
-            "V2-NATIVE REFUSAL cause=AdmissionUnevaluable — the budget summary returned {}, not a \
-                 String",
-            super::output_policy_value_shape(other)
-        ))
-        }
-    };
+    // lifetime, not this run), and the lane's wall. It re-derives the run's cost; it decides
+    // nothing. Resource preflight (predicted critical path and memory envelope against
+    // gunbc.runner_slot_allocation's slot rows) is std.realization cost vocabulary and lands
+    // with route integration, not here.
     let (cgroup_current, cgroup_peak) = super::p1_cohort::p1_cohort_cgroup_memory();
     eprintln!(
         "required-ci: v2-native telemetry peak_rss_bytes={:?} rss_bytes={:?} cgroup_current_bytes={cgroup_current:?} \
@@ -1254,7 +1141,6 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         super::current_rss_bytes(),
         lane_started.elapsed().as_secs()
     );
-    eprintln!("required-ci: v2-native receipt {budget_text}");
     eprintln!("required-ci: v2-native admission {summary_text}");
     if admitted {
         Ok(())
