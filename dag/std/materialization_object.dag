@@ -11,6 +11,7 @@ import std.content_hash {
 }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.measure { ByteSize, byte_size, measure_count }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.materialization_provider {
   ArtifactRequest,
   ArtifactOutputId,
@@ -76,8 +77,10 @@ import std.materialization_provider {
 // minted from bytes, which is the grounding std.materialization_provider's derivation invariant
 // names for source (3): observed_digest is computed from the stored parts by this derivation, not
 // asserted by a caller. The digest is tagged so an empty payload (an empty diagnostics output is
-// ordinary) still hashes a non-empty value. The size is the payload's string_length, the same
-// measure the decode re-derives, so a size that disagrees with the bytes changes the content digest.
+// ordinary) still hashes a non-empty value. The size is the payload's UTF-8 BYTE count
+// (std.bytes utf8_encode_bytes, then bytes_octets) -- not string_length, which counts code points
+// and would put a different quantity in a ByteSize (review 63888). The decode re-derives it the same
+// way, so a size that disagrees with the bytes changes the content digest.
 
 type ArtifactPayload {
   id: ArtifactOutputId
@@ -88,7 +91,7 @@ fn payload_part(payload: ArtifactPayload) -> CarriedOutput {
   CarriedOutput {
     id: payload.id,
     digest: content_hash_atom(value: concat("materialization_payload:", payload.content) as NonEmptyStr),
-    bytes: byte_size(count: string_length(payload.content))
+    bytes: byte_size(count: bytes_octets(b: utf8_encode_bytes(s: payload.content)) |> count())
   }
 }
 
@@ -237,13 +240,29 @@ fn store_object_body_lines(lines: List<String>) -> List<StoreObjectLine> {
   lines |> skip(n: 3) |> map(l => store_object_line(line: l))
 }
 
-fn store_object_line_malformed_text(l: StoreObjectLine) -> String? {
+// ONE fold over StoreObjectLine; every projection below derives from it and carries no match of
+// its own, so a fifth line kind is a type error at exactly one site.
+fn store_object_line_fold<T>(
+  l: StoreObjectLine,
+  part: fn(CarriedOutput) -> T,
+  payload: fn(ArtifactPayload) -> T,
+  end: T,
+  malformed: fn(String) -> T
+) -> T {
   match l {
-    StoreMalformedLine { line: t } => Present { value: t }
-    StorePartLine { part: _ } => none
-    StorePayloadLine { payload: _ } => none
-    StoreEndLine => none
+    StorePartLine { part: p } => part(p)
+    StorePayloadLine { payload: p } => payload(p)
+    StoreEndLine => end
+    StoreMalformedLine { line: t } => malformed(t)
   }
+}
+
+fn store_object_line_malformed_text(l: StoreObjectLine) -> String? {
+  store_object_line_fold(l: l, part: p => none, payload: p => none, end: none, malformed: t => Present { value: t })
+}
+
+fn store_object_line_is_end(l: StoreObjectLine) -> Bool {
+  store_object_line_fold(l: l, part: p => false, payload: p => false, end: true, malformed: t => false)
 }
 
 fn store_object_first_malformed(body: List<StoreObjectLine>) -> String? {
@@ -254,45 +273,25 @@ fn store_object_first_malformed(body: List<StoreObjectLine>) -> String? {
 }
 
 fn store_object_end_count(body: List<StoreObjectLine>) -> Int {
-  body |> filter(l => match l {
-    StoreEndLine => true
-    StorePartLine { part: _ } => false
-    StorePayloadLine { payload: _ } => false
-    StoreMalformedLine { line: _ } => false
-  }) |> count()
+  body |> filter(l => store_object_line_is_end(l: l)) |> count()
 }
 
 fn store_object_last_is_end(body: List<StoreObjectLine>) -> Bool {
   let n = body |> count()
   if n == 0 { false } else {
     match get(xs: body, index: n - 1) {
-      Present { value: l } => match l {
-        StoreEndLine => true
-        StorePartLine { part: _ } => false
-        StorePayloadLine { payload: _ } => false
-        StoreMalformedLine { line: _ } => false
-      }
+      Present { value: l } => store_object_line_is_end(l: l)
       Absent => false
     }
   }
 }
 
 fn store_object_parts(body: List<StoreObjectLine>) -> List<CarriedOutput> {
-  body |> flat_map(l => match l {
-    StorePartLine { part: p } => [p]
-    StorePayloadLine { payload: _ } => []
-    StoreEndLine => []
-    StoreMalformedLine { line: _ } => []
-  })
+  body |> flat_map(l => store_object_line_fold(l: l, part: p => [p], payload: p => [], end: [], malformed: t => []))
 }
 
 fn store_object_payloads(body: List<StoreObjectLine>) -> List<ArtifactPayload> {
-  body |> flat_map(l => match l {
-    StorePayloadLine { payload: p } => [p]
-    StorePartLine { part: _ } => []
-    StoreEndLine => []
-    StoreMalformedLine { line: _ } => []
-  })
+  body |> flat_map(l => store_object_line_fold(l: l, part: p => [], payload: p => [p], end: [], malformed: t => []))
 }
 
 // A TRUNCATED OBJECT IS MALFORMED, NOT INCOMPLETE. The trailing `end` line is required exactly once

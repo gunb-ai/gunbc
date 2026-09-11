@@ -3,6 +3,7 @@ module test.claim.materialization_store_witness
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value }
 import std.cache_identity { CacheInterfaceId }
+import std.measure { byte_size }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, ArtifactManifest,
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
@@ -343,4 +344,11 @@ test fn a_store_opens_only_on_its_own_marker() -> Bool {
     LocalStoreOpened { root: _, store: _, durability: _ } => false
   }
   opened && uninitialized && foreign
+}
+
+// A part's size is its UTF-8 BYTE count, not its code-point count: "é€" is 2 code points and 5
+// bytes, so a ByteSize filled from string_length would answer 2 here (review 63888).
+test fn a_part_size_counts_utf8_bytes_not_code_points() -> Bool {
+  payload_part(payload: ArtifactPayload { id: output_module_test_verdicts, content: "é€" }).bytes == byte_size(count: 5)
+    && string_length("é€") == 2
 }

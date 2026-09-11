@@ -14346,10 +14346,10 @@ fn dispatch_file(
                         error_kind: String::new(),
                         content: String::new(),
                     }),
-                    // The refusal carries the host's message verbatim and does NOT classify itself.
-                    // Deciding "already existed" from the error TEXT would be a heuristic standing in
-                    // for an observation; the caller learns the create did not happen and why the
-                    // host said so, which is what it needs to refuse.
+                    // The refusal carries the host's message verbatim in `error` and the host
+                    // error's KIND in `error_kind`, so "already existed" is classified by the host's
+                    // own io::ErrorKind -- never by matching the error TEXT, which would be a
+                    // heuristic standing in for an observation.
                     Err(e) => Ok(FileResult {
                         success: false,
                         byte_count: 0,
