@@ -1046,8 +1046,7 @@ fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
 // refuse against. Declared, servable, and unreachable in the same value.\n\nThis row is the
 // actuating peer: same isolated layout, its own root and named tmux server, DashboardActuating so
 // dispatch is admitted, DashboardLocalProvision because srv2 provisions itself rather than over
-// SSH. It listens on 18082 — 18080 is the preview's declared port and 18081 is srv1's lab, and a
-// port collision resolved by passing a different --port on the command line is how the last
+// SSH. A port collision resolved by passing a different --port on the command line is how the last
 // deployment ended up serving one instance's page under another instance's identity.\n\nThe preview
 // row is deliberately kept rather than repointed. It is the observe-only posture's only live
 // specimen, several witnesses discriminate against it, and deleting a row because a better one
@@ -1147,13 +1146,17 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
+// Operator statement, 2026-09-11 (relayed by bright-eagle-728): "srv2:18082 is like a dev
+// instance, i'm not sure who/what is using it". The operator directed this lab to 18083,
+// unused by the declared roster, leaving srv2-deploy at 18082. This resolves the declaration
+// collision; it is not an ownership determination or an observation of either live listener.
 fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv2_dashboard_lab_id,
     layout: srv2_host_layout(),
     root: srv2_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv2_lab" as NonEmptyStr,
-    listen_port: 18082,
+    listen_port: 18083,
     source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
@@ -1257,6 +1260,26 @@ fn dashboard_declared_instances_owned_paths_are_pairwise_consistent() -> Bool {
         candidate: a,
         others: xs |> filter(b => b.instance_id != a.instance_id),
       ),
+  )
+}
+
+// Endpoint ownership is independent of instance id and owned paths. Count the diagonal
+// exactly once rather than exempting rows by a caller-authored id. This checks declared
+// endpoints; it cannot establish which process is currently listening on the host.
+fn dashboard_instances_listen_endpoints_are_unique(
+  instances: List<HostDashboardInstance>,
+) -> Bool {
+  all(
+    instances,
+    a => count(instances |> filter(b =>
+      b.host_identity == a.host_identity && b.listen_port == a.listen_port
+    )) == 1,
+  )
+}
+
+fn dashboard_declared_instances_listen_endpoints_are_unique() -> Bool {
+  dashboard_instances_listen_endpoints_are_unique(
+    instances: public_builtin_dashboard_instances(),
   )
 }
 
