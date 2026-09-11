@@ -25,7 +25,9 @@ use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_infer_env::{lookup_binding_by_name_local, lookup_type};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
 use crate::v1_compiler_infer_types::normalize_access_type_node;
-use crate::v1_interpreter::{sorted_fields, str_value, InterpContext, InterpResult, Value};
+use crate::v1_interpreter::{
+    sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
+};
 use crate::v1_std_core::{
     authored_name_at, field_init_node_name_at, field_init_node_value, field_node_name_at,
     field_node_type_expr, find_child_named, inferred_to_node, Connective, ExprData, InferredNode,
@@ -591,23 +593,6 @@ fn projection_atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
     }
 }
 
-fn projection_edge_positional(ctx: &InterpContext, target: Value) -> Value {
-    Value::Record {
-        type_name: ctx.sym("Edge"),
-        fields: Rc::new(sorted_fields(vec![
-            (
-                ctx.sym("label"),
-                Value::Variant {
-                    type_name: ctx.sym("EdgeLabel"),
-                    variant_name: ctx.sym("Positional"),
-                    fields: Rc::new(vec![]),
-                },
-            ),
-            (ctx.sym("target"), target),
-        ])),
-    }
-}
-
 fn collect_authored_string_literals(node: &Rc<Node>, out: &mut Vec<String>) {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } | ExprData::ExprElaboratedLiteral { value, .. } => {
@@ -625,15 +610,17 @@ fn collect_authored_string_literals(node: &Rc<Node>, out: &mut Vec<String>) {
     }
 }
 
+const AUTHORED_STRING_LITERAL_EDGE: &str = "authored_string_literal";
+
 /// Attach every authored `LitStr` in a DataItem initializer (literal, record field,
 /// list element, concat argument, string-interp fragment — the parse tree, not the
-/// typechecked projection) as positional atom children so lexeme-keyed discovery can
-/// read them even when `lookup_fn_node` is absent.
+/// typechecked projection) as named `authored_string_literal` edges. Constructor-spelling
+/// atom walks skip that label; lexeme-keyed discovery still reads the target atoms.
 pub fn with_authored_string_literals(
     ctx: &InterpContext,
     item: &Rc<Node>,
     projection: Value,
-) -> Value {
+) -> InterpResult<Value> {
     let mut lexemes = Vec::new();
     if let Some(body) = item.body.as_ref() {
         collect_authored_string_literals(body, &mut lexemes);
@@ -641,10 +628,12 @@ pub fn with_authored_string_literals(
         collect_authored_string_literals(item, &mut lexemes);
     }
     if lexemes.is_empty() {
-        return projection;
+        return Ok(projection);
     }
     let Value::Record { type_name, fields } = projection else {
-        return projection;
+        return Err(InterpError::TypeError {
+            msg: "decl_facts DataItem projection is not a Node record; cannot attach authored string literals".to_string(),
+        });
     };
     let children_key = ctx.sym("children");
     let mut new_fields = Vec::with_capacity(fields.len());
@@ -654,11 +643,16 @@ pub fn with_authored_string_literals(
             replaced = true;
             let mut kids: Vec<Value> = match v {
                 Value::List(xs) => xs.iter().cloned().collect(),
-                _ => Vec::new(),
+                _ => {
+                    return Err(InterpError::TypeError {
+                        msg: "decl_facts DataItem projection children is not a List; refusing rather than dropping existing edges".to_string(),
+                    });
+                }
             };
             for lex in &lexemes {
-                kids.push(projection_edge_positional(
+                kids.push(projection_edge_named(
                     ctx,
+                    AUTHORED_STRING_LITERAL_EDGE,
                     projection_atom_identity_node(ctx, lex),
                 ));
             }
@@ -668,12 +662,14 @@ pub fn with_authored_string_literals(
         }
     }
     if !replaced {
-        return Value::Record { type_name, fields };
+        return Err(InterpError::TypeError {
+            msg: "decl_facts DataItem projection has no children field; cannot attach authored string literals".to_string(),
+        });
     }
-    Value::Record {
+    Ok(Value::Record {
         type_name,
         fields: Rc::new(sorted_fields(new_fields)),
-    }
+    })
 }
 
 fn projection_edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {

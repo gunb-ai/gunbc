@@ -81,22 +81,27 @@ fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexem
   }
 }
 
-fn node_skeleton_edge_targets(node: Node) -> List<Node> {
-  list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
-    Cons { head: e.target, tail: acc }
-  }))
+fn skeleton_edge_is_authored_string_literal(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^authored_string_literal
+    Positional => false
+  }
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
   let child_lexemes = fold_list_right(
-    xs: node_skeleton_edge_targets(node: node),
+    xs: node.children,
     empty: Empty,
-    snoc: fn(acc, child) {
-      fold_list_right(
-        xs: node_skeleton_marshal_atom_lexemes(node: child),
-        empty: acc,
-        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
-      )
+    snoc: fn(acc, e) {
+      if skeleton_edge_is_authored_string_literal(e: e) {
+        acc
+      } else {
+        fold_list_right(
+          xs: node_skeleton_marshal_atom_lexemes(node: e.target),
+          empty: acc,
+          snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
+        )
+      }
     }
   )
   match node.kind {
@@ -132,6 +137,32 @@ fn skeleton_outer_record_constructor_lexeme_count(
   lexeme: OuterRecordConstructorLexeme
 ) -> Int {
   skeleton_marshal_atom_lexeme_count(node: node, lexeme: lexeme)
+}
+
+fn node_skeleton_authored_string_literals(node: Node) -> List<String> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    let from_child = node_skeleton_authored_string_literals(node: e.target)
+    let acc_with_nested = fold_list_right(
+      xs: from_child,
+      empty: acc,
+      snoc: fn(inner, lex) { Cons { head: lex, tail: inner } }
+    )
+    if skeleton_edge_is_authored_string_literal(e: e) {
+      match skeleton_marshal_atom_lexeme_optional(node: e.target) {
+        Present { value: lex } => Cons { head: lex, tail: acc_with_nested }
+        Absent => acc_with_nested
+      }
+    } else {
+      acc_with_nested
+    }
+  })
+}
+
+fn skeleton_contains_authored_string_literal(node: Node, lexeme: String) -> Bool {
+  count_where(
+    xs: node_skeleton_authored_string_literals(node: node),
+    predicate: fn(lex) { lex == lexeme }
+  ) > 0
 }
 
 fn decl_fact_skeleton_for_resolution(
@@ -207,18 +238,22 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
         }
       },
       step: fn(acc, e, child) {
-        AtomLexemeCensus {
-          all_atom_lexemes: concat(acc.all_atom_lexemes, child.all_atom_lexemes),
-          construction_spelling_lexemes: concat(
-            acc.construction_spelling_lexemes,
-            if skeleton_edge_is_construction_spelling(e: e) && child.self_is_atom {
-              Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
-            } else {
-              child.construction_spelling_lexemes
-            }
-          ),
-          self_is_atom: acc.self_is_atom,
-          self_lexeme: acc.self_lexeme
+        if skeleton_edge_is_authored_string_literal(e: e) {
+          acc
+        } else {
+          AtomLexemeCensus {
+            all_atom_lexemes: concat(acc.all_atom_lexemes, child.all_atom_lexemes),
+            construction_spelling_lexemes: concat(
+              acc.construction_spelling_lexemes,
+              if skeleton_edge_is_construction_spelling(e: e) && child.self_is_atom {
+                Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
+              } else {
+                child.construction_spelling_lexemes
+              }
+            ),
+            self_is_atom: acc.self_is_atom,
+            self_lexeme: acc.self_lexeme
+          }
         }
       }
     }

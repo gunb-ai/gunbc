@@ -1939,11 +1939,7 @@ fn marshal_decl_fact_node(
                 ctx,
                 qualified_name,
             )?;
-            Ok(
-                crate::data_initializer_identity::with_authored_string_literals(
-                    ctx, item, projection,
-                ),
-            )
+            crate::data_initializer_identity::with_authored_string_literals(ctx, item, projection)
         }
         _ => Ok(unit_type_node(ctx)),
     }

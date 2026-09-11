@@ -9,8 +9,9 @@ import v2.std.optional { optional_present, optional_absent }
 // name locator grain (not occurrence identity). Host bridge marshals projection Node trees from
 // typechecked subjects; parse-pool decl_facts rows use PoolDeclarationIdentity only.
 // Authored LitStr values in the initializer (every shape: bare literal, record field, list
-// element, concat argument, string-interp fragment) are attached as positional atom children
-// on that projection so lexeme-keyed discovery can see them without a second literal reader.
+// element, concat argument, string-interp fragment) are attached as named
+// `authored_string_literal` edges so constructor-spelling atom walks stay structural
+// while lexeme-keyed discovery still reads the target atoms.
 
 fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
   match node.kind {
