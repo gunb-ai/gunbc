@@ -218,44 +218,14 @@ data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 // admission comparing against a name nothing produces, refusing every candidate forever.
 data witness_floor_workflow_name: String = "witnesses"
 
-// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling 2026-08-17:
-// every push to main must finish; only pull-request runs may be superseded. The predecessor
-// collapsed both axes into one group keyed on `github.ref` with an unconditional `true`, so
-// consecutive pushes to main landed in the single group `witness-floor-refs/heads/main` and each
-// new push killed the previous commit's run -- main's floor coverage was decided by push arrival,
-// the empty-observation narrow section 5 forbids: a cancelled run reports no verdict, and no
-// verdict was being read as nothing to report.
-//
-// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels PENDING
-// runs in a group regardless of that flag -- it only protects a run that has already started -- so
-// a main run queued behind a busy fleet could still be superseded before it executed. The group
-// must therefore be unique per main run, which `github.run_id` gives, and the flag must
-// additionally be false there so the two mechanisms agree rather than one relying on the other.
-//
-// The cost is that N concurrent main runs may execute where one used to. That is the intended
-// trade -- coverage of every landed commit, at fleet occupancy -- and the reason the dep-info race
-// under `target/` is worth identifying before this is widened further.
-//
-// AND QUEUEING IS NOT THE THIRD ARM IT LOOKS LIKE. Sharing one main group with cancellation off
-// makes GitHub QUEUE same-group runs rather than drop them, which reads as coverage without
-// concurrency cost -- but the floor's merge-critical wall runs hours against a main push gap of
-// minutes (run 31672107941, the last main run to complete before the 2026-08-13 measurement), so a
-// queued policy accumulates an unbounded backlog and delivers each verdict long after the commit it
-// judges. A unique key runs them concurrently instead, which is the only arm that yields a verdict
-// per main commit at this arrival rate. This paragraph is carried here because it was the only
-// record of that measurement, and it lived in `gunbc.ci_workflow_expressions` -- a SECOND
-// concurrency authority left behind when the floor cut deleted the workflow it fed. That module's
-// note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
-// its rows are deleted with this one standing as the single authority.
-//
-// GROUPING IS THE OCCUPANCY AXIS. pull_request shares one group per PR number so a newer head
-// replaces the PENDING predecessor in that group; push to main shares github.ref so main is
-// bounded to one running plus one pending. merge_group is an immutable candidate (sha). Heal
-// revalidation is workflow_dispatch with expected_healed_sha and groups on that sha so an
-// unrelated main push cannot share the group. Other dispatch is the requested run_id. Running
-// cancellation is a different fact: it is refused while fleet_compile_cancellation_standing is
-// producer-absent, so a started job is not SIGKILLed by the successor. A cancelled predecessor is
-// not a green result.
+// GROUPING AND RUNNING CANCEL ARE TWO AXES. The 2026-09-10 occupancy ruling supersedes the
+// 2026-08-17 per-main-commit grouping policy (unique github.run_id so every main push finished).
+// PRs group by PR identity; main pushes group by github.ref. GitHub may replace obsolete PENDING
+// members of those mutable-head groups; a replaced pending run is not a green verdict. Running
+// cancellation is derived independently from fleet_compile_cancellation_standing: the live
+// producer-absent standing yields NeverSupersedeRunning, so cancel-in-progress is literal false.
+// merge_group and heal revalidation stay immutable and separately keyed (mg-{sha},
+// heal-{expected_healed_sha}); other dispatch uses run_id.
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event_name == 'merge_group' && format('mg-{0}', github.sha) || github.event_name == 'workflow_dispatch' && github.event.inputs.expected_healed_sha != '' && format('heal-{0}', github.event.inputs.expected_healed_sha) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref || format('run-{0}', github.run_id) }}"
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
