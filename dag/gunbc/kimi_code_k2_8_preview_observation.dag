@@ -90,10 +90,3 @@ fn kimi_k28_local_construction(
       KimiK28LocalConstructionUnconstructible { kind: kind, standing: standing }
   }
 }
-
-fn kimi_k28_local_construction_is_unconstructible(attempt: KimiK28LocalConstruction) -> Bool {
-  match attempt {
-    KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
-    KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
-  }
-}

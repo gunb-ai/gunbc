@@ -90,13 +90,6 @@ data kimi_for_coding_k28_preview_assignment_citation: FactCitation = FactCitatio
   authority: kimi_code_whats_new_authority,
 }
 
-fn kimi_code_is_request_model_id(spelling: NonEmptyStr) -> Bool {
-  (spelling as String) == (kimi_for_coding_wire_id as String)
-    || (spelling as String) == (kimi_k3_wire_id as String)
-    || (spelling as String) == (kimi_k3_256k_wire_id as String)
-    || (spelling as String) == (kimi_for_coding_highspeed_wire_id as String)
-}
-
 type KimiCodeRequestId
   = KimiForCoding
   | KimiK3
@@ -110,6 +103,17 @@ fn kimi_code_request_id_wire(id: KimiCodeRequestId) -> NonEmptyStr {
     KimiK3_256k => kimi_k3_256k_wire_id
     KimiForCodingHighspeed => kimi_for_coding_highspeed_wire_id
   }
+}
+
+data kimi_code_request_id_wires: List<NonEmptyStr> = [
+  kimi_code_request_id_wire(id: KimiForCoding),
+  kimi_code_request_id_wire(id: KimiK3),
+  kimi_code_request_id_wire(id: KimiK3_256k),
+  kimi_code_request_id_wire(id: KimiForCodingHighspeed),
+]
+
+fn kimi_code_is_request_model_id(spelling: NonEmptyStr) -> Bool {
+  kimi_code_request_id_wires |> any(w => (w as String) == (spelling as String))
 }
 
 type KimiK28ThinkingEffort
@@ -271,5 +275,10 @@ data kimi_code_k28_preview_provider_integration_frontier: List<FrontierRow> = [
     ref: kimi_code_k28_preview_fact(decl_name: "kimi_code_route" as NonEmptyStr),
     reason: "KIMI28-1 provider integration binds routing; this change does not",
     dissolution: unbound_dissolution(description: "KIMI28-1 provider integration consumes kimi_code_route on a live request path"),
+  ),
+  frontier_row_decl(
+    ref: kimi_code_k28_preview_fact(decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr),
+    reason: "effective_from is a cited Gregorian day carried as NonEmptyStr; v2.std.datetime CalendarDate has no corpus constructor (zero CalendarDate constructors in use; pin.dag pin_currency_gap dissolve names the same gap)",
+    dissolution: unbound_dissolution(description: "this assignment's effective_from is a v2.std.datetime CalendarDate constructed from the cited YMD 2026-09-11"),
   ),
 ]

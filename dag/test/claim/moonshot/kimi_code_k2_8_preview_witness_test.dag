@@ -12,6 +12,7 @@ import extdeps.moonshot.kimi_code_k2_8_preview {
   AliasEndNotPublished,
   AliasEndPublished,
   kimi_code_is_request_model_id,
+  kimi_code_request_id_wires,
   kimi_k28_thinking_effort_wire,
   kimi_k28_thinking_effort_wires,
   kimi_k28_default_thinking_effort,
@@ -41,10 +42,11 @@ import gunbc.kimi_code_k2_8_preview_observation {
   OfficialCheckpointNotLocated,
   OfficialCheckpointLocated,
   kimi_k28_local_construction,
+  KimiK28LocalConstructionUnconstructible,
+  KimiK28LocalConstructionDeferredToLocatedWeights,
   KimiK28LocalModelArtifact,
   KimiK28VllmCandidate,
   KimiK28FitCalculation,
-  kimi_k28_local_construction_is_unconstructible,
   kimi_code_executed_version_without_receipt,
   ExecutedVersionUnobserved,
   ExecutedVersionObserved,
@@ -73,6 +75,8 @@ test fn kimi_for_coding_wire_is_unchanged_while_served_version_changes() -> Bool
 test fn k2_8_preview_name_is_not_a_request_model_id() -> Bool {
   !kimi_code_is_request_model_id(spelling: kimi_k28_preview_served_version_name)
     && kimi_code_is_request_model_id(spelling: kimi_for_coding_wire_id)
+    && (kimi_code_request_id_wires |> count) == 4
+    && (kimi_code_request_id_wires |> any(w => (w as String) == (kimi_for_coding_wire_id as String)))
 }
 
 test fn k2_8_preview_declares_low_high_max_and_defaults_to_max() -> Bool {
@@ -172,24 +176,27 @@ test fn unlocated_k2_8_checkpoint_cannot_construct_a_local_model_artifact() -> B
       (at as String) == "2026-09-11" && (surfaces |> count) == 2
     OfficialCheckpointLocated { locator: _, observed_at: _ } => false
   }
-    && kimi_k28_local_construction_is_unconstructible(
-      attempt: kimi_k28_local_construction(
-        standing: kimi_k28_artifact_standing,
-        kind: KimiK28LocalModelArtifact,
-      ),
-    )
-    && kimi_k28_local_construction_is_unconstructible(
-      attempt: kimi_k28_local_construction(
-        standing: kimi_k28_artifact_standing,
-        kind: KimiK28VllmCandidate,
-      ),
-    )
-    && kimi_k28_local_construction_is_unconstructible(
-      attempt: kimi_k28_local_construction(
-        standing: kimi_k28_artifact_standing,
-        kind: KimiK28FitCalculation,
-      ),
-    )
+    && match kimi_k28_local_construction(
+      standing: kimi_k28_artifact_standing,
+      kind: KimiK28LocalModelArtifact,
+    ) {
+      KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
+      KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
+    }
+    && match kimi_k28_local_construction(
+      standing: kimi_k28_artifact_standing,
+      kind: KimiK28VllmCandidate,
+    ) {
+      KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
+      KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
+    }
+    && match kimi_k28_local_construction(
+      standing: kimi_k28_artifact_standing,
+      kind: KimiK28FitCalculation,
+    ) {
+      KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
+      KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
+    }
 }
 
 test fn executed_version_stays_unobserved_without_a_receipt() -> Bool {
@@ -219,5 +226,5 @@ test fn executed_version_stays_unobserved_without_a_receipt() -> Bool {
 }
 
 test fn provider_integration_frontier_names_the_route() -> Bool {
-  (kimi_code_k28_preview_provider_integration_frontier |> count) == 1
+  (kimi_code_k28_preview_provider_integration_frontier |> count) == 2
 }
