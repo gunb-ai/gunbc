@@ -1,14 +1,8 @@
 module gunbc.runner.runner_cpu_bandwidth_receipt
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { ByteSize }
+import std.types { Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_guest_egress_attempt {
   cpu_bound_write_refused, CpuBoundStanding, CpuBoundInterfacePresent,
-}
-import gunbc.runner.runner_cgroup_placement_receipt {
-  placement_verdict, PlacementBidirectional, PlacementForwardOnly,
-  PlacementReverseOnly, PlacementNotEstablished,
-  placement_accounting,
 }
 
 // cpu.max NOW EXISTS ON THE ATTEMPT CGROUP, and that is a smaller claim than it sounds.
@@ -33,29 +27,12 @@ data receipt_subject_build: NonEmptyStr = "filtered-egress-4"
 // consistent throughout and misleading throughout: WEIGHT control is not BANDWIDTH control.
 data cause_established: NonEmptyStr = "CONFIG_CFS_BANDWIDTH was unset, so cpu.max did not exist and cgroupfs refused its creation; the cpu controller being delegated established weight control only"
 
-// THE CAUSE AND THE PLACEMENT RECEIPT ARE IMPORTED, not restated from annotation. The 88 MiB
-// memory.current figure this module used to carry as prose is placement_accounting's field; writing
-// it here a second time was a meaning fork of one observation. cpu_bound_write_refused is the same
-// refusal this rebuild closes -- folded once, next to cpu_bound_failure, not again here.
-fn placement_was_bidirectional() -> Bool {
-  match placement_verdict {
-    PlacementBidirectional { cgroup_path: _, pid: _ } => true
-    PlacementForwardOnly { detail: _ } => false
-    PlacementReverseOnly { detail: _ } => false
-    PlacementNotEstablished { detail: _ } => false
-  }
-}
-
-data placement_established_from_both_ends: Bool = placement_was_bidirectional()
-
-data memory_current_at_placement: ByteSize = placement_accounting.memory_current
-
-data memory_max_at_placement: ByteSize = placement_accounting.memory_max
-
 // ── what the run shows ─────────────────────────────────────────────────────────────────────────
 
-// CpuBoundStanding lives on the attempt receipt. This row is the later standing: the interface
-// exists; enforcement does not.
+// CpuBoundStanding lives on the attempt receipt. This row is the later standing on
+// filtered-egress-4: the interface exists; enforcement does not. It is not derived from
+// the earlier cgroup-placement run (that run's cpu bound was written and unread). 
+// cpu_bound_write_refused is the EPERM this rebuild closes.
 data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
   value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
   what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
@@ -69,6 +46,6 @@ data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
 data next_rung_trigger: NonEmptyStr = "a guest running a controlled CPU load above quota, with nr_throttled and throttled_usec advancing in the attempt leaf's cpu.stat"
 
 // AND THE MEMORY BOUND IS IN THE SAME STATE, which is worth saying beside this rather than leaving
-// implicit. The observed current and max bytes are placement_accounting's fields, imported above;
-// no run has yet driven a guest into the limit.
+// implicit. Memory current and max were observed on the earlier placement run; no run has yet
+// driven a guest into the limit.
 data memory_bound_standing: NonEmptyStr = "memory.max is set and memory.current tracks real usage, but no run has driven an attempt to the limit, so reclaim and kill behaviour at the boundary are unobserved"
