@@ -2783,14 +2783,6 @@ pub struct CensusFillParse {
 
 pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
     {
-        // Hand-synced mirror of `compile.dag` `parse_census_fill_sources`; the reasoning for
-        // tokenizing INSIDE the fold rather than into a `prepared` list ahead of it lives there.
-        // In one line: the census population is the whole indexed pool minus the compile closure,
-        // so `prepared` held ~5.4k modules' token streams resident at once for a fold that
-        // consumes each exactly once, in order. Fusing frees each module's tokens before the next
-        // is read. Full-body parsing and every parse diagnostic are UNCHANGED -- a body-level
-        // parse break in a non-closure module is invisible to the heads-only module index and is
-        // caught here and nowhere else.
         let parsed = sources.iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
