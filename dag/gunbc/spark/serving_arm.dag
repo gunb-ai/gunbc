@@ -12,7 +12,7 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
   gitcommit90_glm_53_one_spark_pinned_reference, gitcommit90_glm_53_one_spark_vllm_version,
 }
 import gunbc.spark.runtime_architecture_registry_reading {
-  ArchitectureRegistryReading, registry_reading_contains,
+  ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
@@ -261,6 +261,21 @@ fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool
   registry_reading_contains(r: rrow.registry_reading, architecture: architecture)
 }
 
+// THE ROW'S DESIRED IMAGE AND ITS READING'S OBSERVED IMAGE ARE TWO FACTS, AND A REPIN SEPARATES THEM.
+// `image_reference` is what this arm intends to run and comes from the image module; the reading is
+// what someone executed a registry call inside, frozen at the digest it was taken in. They agree
+// today. The moment extdeps repins the image, they stop agreeing, and the old architecture list
+// stops being evidence about the thing this arm would launch.
+//
+// SO THE ARM REFUSES RATHER THAN INHERITING. The alternative -- carrying the reading forward onto a
+// digest nobody probed -- is the shape of every silent-wrongness failure this repository files: the
+// row still looks measured, the provenance string still reads convincingly, and the fact underneath
+// it has moved. A refusal here costs one probe; the other arm costs an engine that will not start
+// and a receipt claiming it should.
+fn runtime_reading_is_current(rrow: ServingRuntimeRow) -> Bool {
+  reading_applies_to(r: rrow.registry_reading, desired_reference: rrow.image_reference)
+}
+
 fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
   match serving_checkpoint_row(c: checkpoint) {
     Absent => ServingArmRefused { cause: "no checkpoint row: this checkpoint's repo, revision and footprint are unmodelled, so neither fit nor acquisition can be decided" as NonEmptyStr }
@@ -268,7 +283,14 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
       match serving_runtime_row(r: runtime) {
         Absent => ServingArmRefused { cause: "no runtime row: this image's architecture registry has not been probed, so whether it can load the checkpoint is unknown" as NonEmptyStr }
         Present { value: rrow } =>
-          if !runtime_registers(rrow: rrow, architecture: crow.architecture) {
+          if !runtime_reading_is_current(rrow: rrow) {
+            ServingArmRefused { cause: join([
+              "the runtime's architecture reading was taken inside ",
+              rrow.registry_reading.image_reference as String,
+              " and this arm now names ", rrow.image_reference as String,
+              ": the image was repinned without a new registry probe, so nothing here has looked inside the image this arm would launch",
+            ], "") as NonEmptyStr }
+          } else if !runtime_registers(rrow: rrow, architecture: crow.architecture) {
             ServingArmRefused { cause: join([
               "the runtime does not register ", crow.architecture as String, " (vLLM ",
               rrow.vllm_version as String, " answered for ", to_string(length(rrow.registry_reading.architectures)),

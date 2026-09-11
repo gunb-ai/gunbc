@@ -392,62 +392,127 @@ data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
 
 // ── READING THE ROWS ───────────────────────────────────────────────────────────────────────────
 //
-// The fold answers for ONE image and ONE capability and returns the outcome the probe recorded, or
-// nothing when no probe row exists for that pair. `none` is deliberately not an absence arm of
-// KernelProbeOutcome: an unprobed pair is a fact about this roster, while KernelProbeRefused is a
-// fact about an attempt that was made and failed, and only the second one says anything about the
-// image.
-fn probe_row_matches(r: RuntimeCapabilityProbeRow, image_reference: NonEmptyStr, capability: RuntimeKernelCapability) -> Bool {
-  let same_image = r.image.image_reference as String == image_reference as String
-  let same_capability = runtime_kernel_capability_label(c: r.capability) == runtime_kernel_capability_label(c: capability)
-  same_image && same_capability
+// THE LOOKUP IS KEYED ON THE HARDWARE TOO, because a kernel question has no answer apart from the
+// device it was asked on. An earlier revision matched on image and capability alone and took the
+// LAST matching row, which is two defects wearing one shape: readings taken at different compute
+// capabilities could combine into a single positive verdict, and two disagreeing readings of the
+// same subject resolved silently by list order. Every row in this module happens to be sm_121 today,
+// so neither would have shown up as a wrong answer -- it would have shown up the first time someone
+// appended a GB200 reading, as a verdict that had quietly stopped being about one machine.
+//
+// AND DISAGREEMENT IS ITS OWN ANSWER. Two rows for one (image, capability, device) that say
+// different things are not a value to pick between; they are a receipt set that has lost its
+// single-valuedness, and the remedy is to re-probe rather than to choose. `OutcomeConflicted` is
+// counted as unprobed by the folds below, never as missing and never as present.
+type CapabilityOutcomeLookup
+  = OutcomeFound { outcome: KernelProbeOutcome }
+  | OutcomeUnrecorded
+  | OutcomeConflicted { distinct_answers: Nat }
+
+fn kernel_probe_outcome_label(o: KernelProbeOutcome) -> String {
+  match o {
+    KernelObservedPresent { symbol: _ } => "present"
+    KernelObservedAbsent { symbol: _ } => "absent"
+    KernelProbeRefused { reason: _ } => "refused"
+    KernelProbeSymbolUngrounded { roster: _, defect: _ } => "symbol-ungrounded"
+  }
 }
 
-fn capability_outcome(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, capability: RuntimeKernelCapability) -> KernelProbeOutcome? {
-  fold(rows, init: none, f: (acc, r) =>
-    if probe_row_matches(r: r, image_reference: image_reference, capability: capability) {
-      Present { value: r.outcome }
+fn same_device(a: GpuComputeCapability, b: GpuComputeCapability) -> Bool {
+  a.major == b.major && a.minor == b.minor
+}
+
+fn probe_row_matches(r: RuntimeCapabilityProbeRow, image_reference: NonEmptyStr, capability: RuntimeKernelCapability, device: GpuComputeCapability) -> Bool {
+  let same_image = r.image.image_reference as String == image_reference as String
+  let same_capability = runtime_kernel_capability_label(c: r.capability) == runtime_kernel_capability_label(c: capability)
+  let same_hardware = same_device(a: r.compute_capability, b: device)
+  same_image && same_capability && same_hardware
+}
+
+fn matching_probe_rows(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, capability: RuntimeKernelCapability, device: GpuComputeCapability) -> List<RuntimeCapabilityProbeRow> {
+  fold(rows, init: [], f: (acc, r) =>
+    if probe_row_matches(r: r, image_reference: image_reference, capability: capability, device: device) {
+      append(acc, r)
     } else { acc })
 }
 
-// THE CAPABILITIES DEEPSEEK V4.1 REQUIRES OF A RUNTIME, declared as a list so the verdict below is a
-// join over it rather than a hand-written conjunction that silently stops checking when a new
-// capability is modelled.
-data v41_required_capabilities: List<RuntimeKernelCapability> = [
-  ArchitectureRegistered,
-  Fp4WeightKernels,
-  MlaKvCacheLayoutAdmitted,
-  Csa2CompressorKernels,
-  DSparkSpeculator,
-]
+fn distinct_outcome_labels(rows: List<RuntimeCapabilityProbeRow>) -> List<String> {
+  fold(rows, init: [], f: (acc, r) =>
+    if any(acc, l => l == kernel_probe_outcome_label(o: r.outcome)) { acc }
+    else { append(acc, kernel_probe_outcome_label(o: r.outcome)) })
+}
 
-// A VERDICT NAMES WHAT IS MISSING, AND SEPARATES MISSING FROM UNASKED. An image with one unprobed
-// required capability is not admissible and is also not refused: it is incompletely probed, and the
-// remedy is another probe rather than another image.
+fn capability_outcome(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, capability: RuntimeKernelCapability, device: GpuComputeCapability) -> CapabilityOutcomeLookup {
+  let matched = matching_probe_rows(rows: rows, image_reference: image_reference, capability: capability, device: device)
+  let answers = distinct_outcome_labels(rows: matched)
+  if length(matched) == 0 {
+    OutcomeUnrecorded
+  } else if length(answers) != 1 {
+    OutcomeConflicted { distinct_answers: length(answers) }
+  } else {
+    fold(matched, init: OutcomeUnrecorded, f: (acc, r) => OutcomeFound { outcome: r.outcome })
+  }
+}
+
+// THE CAPABILITIES A RUNTIME MUST CARRY DEPEND ON WHAT YOU INTEND TO RUN, and an earlier revision
+// of this module made all five mandatory for everyone. That overstated the requirement in a specific
+// way: DSpark is the speculative-decode path, and an image without it cannot speculate but can serve
+// perfectly well without speculating. A requirement list that does not name the profile it belongs
+// to converts a deployment CHOICE into a hardware VERDICT, and rules out images that would have
+// served the thing actually wanted.
+type V41ServingProfile
+  = V41SpeculativeDecode
+  | V41BaselineDecode
+
+fn v41_serving_profile_label(p: V41ServingProfile) -> String {
+  match p {
+    V41SpeculativeDecode => "speculative-decode"
+    V41BaselineDecode => "baseline-decode"
+  }
+}
+
+fn v41_required_capabilities(profile: V41ServingProfile) -> List<RuntimeKernelCapability> {
+  match profile {
+    V41BaselineDecode => [ArchitectureRegistered, Fp4WeightKernels, MlaKvCacheLayoutAdmitted, Csa2CompressorKernels]
+    V41SpeculativeDecode => [ArchitectureRegistered, Fp4WeightKernels, MlaKvCacheLayoutAdmitted, Csa2CompressorKernels, DSparkSpeculator]
+  }
+}
+
+// WHAT A CLEAN SWEEP OF THESE QUESTIONS ESTABLISHES IS INVENTORY, NOT THAT THE ENGINE RUNS. Every
+// probe here asks whether a symbol is registered or a module imports. That is a prerequisite check:
+// it can rule an image OUT decisively, and it cannot rule one IN. An architecture in the registry
+// with kernels on disk still has to load weights, allocate a KV cache at the requested context, and
+// answer a request -- none of which this module observes. The positive arm is therefore named for
+// what it establishes, and the step that would establish serving is stated beside it rather than
+// implied by a friendlier word.
 type V41RuntimeVerdict
-  = V41RuntimeAdmissible { image_reference: NonEmptyStr }
+  = V41RuntimePrerequisitesPresent { image_reference: NonEmptyStr, profile: NonEmptyStr, remaining: NonEmptyStr }
   | V41RuntimeMissing { image_reference: NonEmptyStr, missing: List<NonEmptyStr> }
   | V41RuntimeIncompletelyProbed { image_reference: NonEmptyStr, unprobed: List<NonEmptyStr> }
 
-fn v41_missing_capabilities(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr) -> List<NonEmptyStr> {
-  fold(v41_required_capabilities, init: [], f: (acc, c) =>
-    match capability_outcome(rows: rows, image_reference: image_reference, capability: c) {
-      Present { value: o } =>
+data v41_prerequisites_are_not_feasibility: NonEmptyStr = "every capability required by this profile reads present in this exact image on this exact compute capability. That is prerequisite inventory: it rules the image IN as a candidate and establishes nothing about serving. Executable feasibility is a separate observation -- the engine started with this checkpoint at a declared context and answered a request -- and it belongs to gunbc.spark.serving_deployment_selection RuntimeFeasibility, whose witness is a launch receipt rather than a symbol lookup" as NonEmptyStr
+
+fn v41_missing_capabilities(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, device: GpuComputeCapability, profile: V41ServingProfile) -> List<NonEmptyStr> {
+  fold(v41_required_capabilities(profile: profile), init: [], f: (acc, c) =>
+    match capability_outcome(rows: rows, image_reference: image_reference, capability: c, device: device) {
+      OutcomeFound { outcome: o } =>
         match o {
           KernelObservedPresent { symbol: _ } => acc
           KernelObservedAbsent { symbol: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
           KernelProbeRefused { reason: _ } => acc
           KernelProbeSymbolUngrounded { roster: _, defect: _ } => acc
         }
-      Absent => acc
+      OutcomeUnrecorded => acc
+      OutcomeConflicted { distinct_answers: _ } => acc
     })
 }
 
-fn v41_unprobed_capabilities(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr) -> List<NonEmptyStr> {
-  fold(v41_required_capabilities, init: [], f: (acc, c) =>
-    match capability_outcome(rows: rows, image_reference: image_reference, capability: c) {
-      Absent => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
-      Present { value: o } =>
+fn v41_unprobed_capabilities(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, device: GpuComputeCapability, profile: V41ServingProfile) -> List<NonEmptyStr> {
+  fold(v41_required_capabilities(profile: profile), init: [], f: (acc, c) =>
+    match capability_outcome(rows: rows, image_reference: image_reference, capability: c, device: device) {
+      OutcomeUnrecorded => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
+      OutcomeConflicted { distinct_answers: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
+      OutcomeFound { outcome: o } =>
         match o {
           KernelProbeRefused { reason: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
           KernelProbeSymbolUngrounded { roster: _, defect: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
@@ -459,25 +524,32 @@ fn v41_unprobed_capabilities(rows: List<RuntimeCapabilityProbeRow>, image_refere
 
 // MISSING IS REPORTED BEFORE UNPROBED because a measured absence rules the image out whatever else is
 // unknown about it, while an incompletely probed image with nothing missing is a question still open.
-fn v41_runtime_verdict(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr) -> V41RuntimeVerdict {
-  if length(v41_missing_capabilities(rows: rows, image_reference: image_reference)) != 0 {
-    V41RuntimeMissing { image_reference: image_reference, missing: v41_missing_capabilities(rows: rows, image_reference: image_reference) }
-  } else if length(v41_unprobed_capabilities(rows: rows, image_reference: image_reference)) != 0 {
-    V41RuntimeIncompletelyProbed { image_reference: image_reference, unprobed: v41_unprobed_capabilities(rows: rows, image_reference: image_reference) }
+fn v41_runtime_verdict(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, device: GpuComputeCapability, profile: V41ServingProfile) -> V41RuntimeVerdict {
+  let missing = v41_missing_capabilities(rows: rows, image_reference: image_reference, device: device, profile: profile)
+  let unprobed = v41_unprobed_capabilities(rows: rows, image_reference: image_reference, device: device, profile: profile)
+  if length(missing) != 0 {
+    V41RuntimeMissing { image_reference: image_reference, missing: missing }
+  } else if length(unprobed) != 0 {
+    V41RuntimeIncompletelyProbed { image_reference: image_reference, unprobed: unprobed }
   } else {
-    V41RuntimeAdmissible { image_reference: image_reference }
+    V41RuntimePrerequisitesPresent {
+      image_reference: image_reference,
+      profile: v41_serving_profile_label(p: profile) as NonEmptyStr,
+      remaining: v41_prerequisites_are_not_feasibility,
+    }
   }
 }
 
-// THE STANDING OF THE SWEEP AS A WHOLE, so the answer a reader gets is "none of THESE three" rather
-// than "none", and the roster that produced that denominator is one declaration away.
-fn v41_admissible_images(rows: List<RuntimeCapabilityProbeRow>, candidates: List<RuntimeCandidateRow>) -> List<NonEmptyStr> {
+// THE STANDING OF THE SWEEP AS A WHOLE, so the answer a reader gets is "none of THESE four, for this
+// profile, on this device" rather than "none", and the roster that produced that denominator is one
+// declaration away.
+fn v41_images_with_prerequisites(rows: List<RuntimeCapabilityProbeRow>, candidates: List<RuntimeCandidateRow>, device: GpuComputeCapability, profile: V41ServingProfile) -> List<NonEmptyStr> {
   fold(candidates, init: [], f: (acc, c) =>
     match c.disposition {
       CandidateNotProbed { reason: _ } => acc
       CandidateProbed { image_reference: ref } =>
-        match v41_runtime_verdict(rows: rows, image_reference: ref) {
-          V41RuntimeAdmissible { image_reference: r } => append(acc, r)
+        match v41_runtime_verdict(rows: rows, image_reference: ref, device: device, profile: profile) {
+          V41RuntimePrerequisitesPresent { image_reference: r, profile: _, remaining: _ } => append(acc, r)
           V41RuntimeMissing { image_reference: _, missing: _ } => acc
           V41RuntimeIncompletelyProbed { image_reference: _, unprobed: _ } => acc
         }
@@ -560,15 +632,19 @@ fn v41_sm121_capability_probe_rows() -> List<RuntimeCapabilityProbeRow> {
 type RuntimeBuildObligation {
   subject: NonEmptyStr
   source_revision: NonEmptyStr
+  profile: V41ServingProfile
+  device: GpuComputeCapability
   required: List<RuntimeKernelCapability>
   discharge: NonEmptyStr
 }
 
 data v41_sm121_build_obligation: RuntimeBuildObligation = RuntimeBuildObligation {
-  subject: "a GB10 (sm_121) container image able to serve DeepSeek V4.1 Flash" as NonEmptyStr,
+  subject: "a GB10 (sm_121) container image carrying the prerequisites DeepSeek V4.1 Flash needs, under the speculative-decode profile -- which is a narrower claim than `able to serve`, because nothing in this module observes an engine serving anything" as NonEmptyStr,
   source_revision: "vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
-  required: v41_required_capabilities,
-  discharge: "run the same five-capability probe inside the built image's exact digest on a GB10 and append its rows here. The build is discharged only when every required capability reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree. One of the five cannot be asked yet: the FP4 KV-cache question awaits its operator roster, and a discharge claimed while that capability reads KernelProbeSymbolUngrounded would be four answers and one blind spot" as NonEmptyStr,
+  profile: V41SpeculativeDecode,
+  device: gb10_observed_compute_capability,
+  required: v41_required_capabilities(profile: V41SpeculativeDecode),
+  discharge: "run the same capability probe inside the built image's exact digest on a GB10 and append its rows here. The build's PREREQUISITE half is discharged only when every capability this profile requires reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree. That half is inventory; the build is FIT for service only once an engine has started from this image with the V4.1 checkpoint at a declared context and answered a request, which is a RuntimeFeasibility receipt in gunbc.spark.serving_deployment_selection and is not observed here. One of the five cannot be asked yet: the FP4 KV-cache question awaits its operator roster, and a discharge claimed while that capability reads KernelProbeSymbolUngrounded would be four answers and one blind spot" as NonEmptyStr,
 }
 
 // WHAT EACH CAPABILITY MEANS IS THE SYMBOL THE PROBE ASKED FOR, carried beside the obligation so the
