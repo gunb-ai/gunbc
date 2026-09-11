@@ -50,8 +50,10 @@ import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
 //
-// WHY THE BUILD DOES NOT ANSWER THIS. gunbc.spark.v41_runtime_image_build ends with a digest, and a
-// digest is provenance: it says which inputs produced these bytes. It cannot say whether a kernel
+// WHY THE BUILD DOES NOT ANSWER THIS. A build ends with a DIGEST, and a digest is an identity for
+// bytes -- it says which bytes, not which inputs produced them. Even taken together with the recipe
+// that requested the build, it does not establish that those inputs are what the daemon compiled;
+// that is why the identity record carries provenance as its own field with an unestablished arm. It cannot say whether a kernel
 // compiled, because upstream's own build silently omits a kernel set whose architecture block found
 // no compatible arch -- it prints a `Not building ...` line and exits zero. So a green build log is
 // not a capability reading, which is exactly what gunbc.spark.serving_runtime_capability_probe's
