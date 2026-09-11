@@ -307,8 +307,8 @@ type FederationGenerationHypothesis
 fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
   GithubPoolIsPriorGenerationUngrounded {
     auto_github_pool_condition: observed_gunbai_auto_github_provider.attribute_condition,
-    secrets_github_pool_condition: "assertion.repository_owner=='https:'",
-    modeled_github_actions_condition: "assertion.repository == 'gunb-ai/gunbc'",
+    secrets_github_pool_condition: observed_secrets_github_pool_attribute_condition,
+    modeled_github_actions_condition: observed_github_actions_attribute_condition,
   }
 }
 
@@ -480,6 +480,44 @@ data observed_gunbai_auto_named_service_accounts: List<ObservedNamedServiceAccou
   observed_gunbai_auto_compute_default_sa,
 ]
 
+data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAccount> = [
+  ObservedNamedServiceAccount {
+    email: fleet_cloud_convergence_sa_email,
+    display_name: "",
+  },
+  ObservedNamedServiceAccount {
+    email: gunbai_ci_secrets_sa_email,
+    display_name: "",
+  },
+  ObservedNamedServiceAccount {
+    email: gunbai_ci_iap_sa_email,
+    display_name: "",
+  },
+  ObservedNamedServiceAccount {
+    email: fleet_automation_sa_email,
+    display_name: "",
+  },
+]
+
+data observed_secrets_github_pool_attribute_condition: String = "assertion.repository_owner=='https:'"
+
+data observed_github_actions_attribute_condition: String = "assertion.repository == 'gunb-ai/gunbc'"
+
+data gunb_ci_named_present_service_ids: List<NonEmptyStr> = [
+  "cloudbuild.googleapis.com" as NonEmptyStr,
+  "cloudfunctions.googleapis.com" as NonEmptyStr,
+  "cloudquotas.googleapis.com" as NonEmptyStr,
+  "cloudscheduler.googleapis.com" as NonEmptyStr,
+  "containerregistry.googleapis.com" as NonEmptyStr,
+  "geminicloudassist.googleapis.com" as NonEmptyStr,
+  "orgpolicy.googleapis.com" as NonEmptyStr,
+  "pubsub.googleapis.com" as NonEmptyStr,
+  "run.googleapis.com" as NonEmptyStr,
+  "source.googleapis.com" as NonEmptyStr,
+  "telemetry.googleapis.com" as NonEmptyStr,
+  "sts.googleapis.com" as NonEmptyStr,
+]
+
 fn named_sas_as_coverage(
   sas: List<ObservedNamedServiceAccount>,
 ) -> List<GcpEstateCoverage<ObservedNamedServiceAccount>> {
@@ -500,7 +538,10 @@ fn append_named_sas(
 fn all_observed_named_service_accounts() -> List<ObservedNamedServiceAccount> {
   append_named_sas(
     left: append_named_sas(
-      left: observed_gunbai_auto_named_service_accounts,
+      left: append_named_sas(
+        left: observed_gunbai_secrets_named_service_accounts,
+        right: observed_gunbai_auto_named_service_accounts,
+      ),
       right: observed_gunb_ci_named_service_accounts,
     ),
     right: observed_gunb_test_named_service_accounts,
@@ -871,6 +912,24 @@ data gap_workspace_admin_iam_roles_keys_refs: EstateCoverageGap = EstateCoverage
   federated_repo: Absent,
 }
 
+data gap_gunbai_secrets_remaining_service_accounts: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunbai-secrets/serviceAccounts/remaining-of-eight" as NonEmptyStr,
+  cause: "operator reported eight service accounts in gunbai-secrets; four emails are named observations; the remaining identities were not relayed and are not invented",
+  discharge: "gcloud iam service-accounts list --project=gunbai-secrets",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
+data gap_gunb_ci_enabled_service_identity_list: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunb-ci/services/identity-list" as NonEmptyStr,
+  cause: "operator reported forty enabled services including STS and excluding Sheets, and named twelve present ids; the identity join of the full roster is unread and the count is not treated as a closed list",
+  discharge: "gcloud services list --enabled --project=gunb-ci",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
 data gap_gemini_project_beyond_identity: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "projects/gen-lang-client-0162760657/beyond-identity" as NonEmptyStr,
   cause: "Default Gemini Project identity is observed; enabled services, service accounts, and WIF pools are unread",
@@ -912,6 +971,8 @@ fn operator_audit_census() -> GcpEstateCensus {
       gap_gunb_ci_github_pool_providers,
       gap_gunb_test_github_pool_providers,
       gap_workspace_admin_iam_roles_keys_refs,
+      gap_gunbai_secrets_remaining_service_accounts,
+      gap_gunb_ci_enabled_service_identity_list,
       gap_gemini_project_beyond_identity,
     ],
   }

@@ -50,6 +50,8 @@ import gunbc.gcp_estate_observation {
   gap_gunb_test_github_pool_providers,
   gap_workspace_admin_iam_roles_keys_refs,
   gap_gemini_project_beyond_identity,
+  gap_gunbai_secrets_remaining_service_accounts,
+  gap_gunb_ci_enabled_service_identity_list,
   fleet_automation_sa_email,
   gunb_test_project_id,
   gunbai_auto_project_id,
@@ -102,6 +104,17 @@ import gunbc.gcp_estate_adoption {
   DriftApplyUpdate,
   DriftRefuse,
 }
+import gunbc.gcp_estate_read_instrument {
+  estate_rows_are_hand_observed,
+  HandObserved,
+  MachineObserved,
+  every_named_instrument_is_a_gcloud_read,
+  hand_observed_becomes_machine_observed_by_executing_the_named_instrument,
+  estate_readonly_credential_intervention,
+  estate_observation_observed_at,
+  estate_observation_observed_by,
+}
+import std.human_intervention { FleetOnce }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -344,7 +357,9 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && !gunbai_auto_has_sts()
     && gunb_ci_has_sts
     && gunbai_auto_enabled_service_ids.length() == 32
-    && census.service_accounts.length() == 17
+    && census.service_accounts.length() == 21
+    && census_subject_is_named_gap(census: census, subject: gap_gunbai_secrets_remaining_service_accounts.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_enabled_service_identity_list.subject_identity as String)
     && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
     && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_github_pool_providers.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_gunb_test_github_pool_providers.subject_identity as String)
@@ -377,5 +392,18 @@ test fn unread_pool_rows_do_not_classify_desired_pool_as_absent() -> Bool {
     UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } } =>
       (r as String).contains("not readable")
     _ => false
+  }
+}
+
+test fn estate_rows_name_their_producer_and_stay_hand_observed() -> Bool {
+  match estate_rows_are_hand_observed() {
+    HandObserved { observed_at: at, observed_by: by } =>
+      at == estate_observation_observed_at
+        && by == estate_observation_observed_by
+        && every_named_instrument_is_a_gcloud_read()
+        && hand_observed_becomes_machine_observed_by_executing_the_named_instrument()
+        && estate_readonly_credential_intervention().frequency == FleetOnce
+        && (estate_readonly_credential_intervention().instruction as String).contains("MachineObserved")
+    MachineObserved { producer_identity: _ } => false
   }
 }

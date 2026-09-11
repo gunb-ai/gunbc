@@ -1,0 +1,206 @@
+module gunbc.gcp_estate_read_instrument
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  NoDischargeSiteModeled,
+}
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+
+// Named instruments that re-derive estate observation rows. These are not facts in
+// extdeps.cloud.gcp (DESIGN §3: observations and their refresh live in the observing layer).
+// A human can execute the argv today. A credentialed runner executing the same argv is what
+// flips HandObserved to MachineObserved without rewriting the receipt types.
+//
+// THIS MODULE DOES NOT ACTUATE. The argv are reads.
+
+type EstateObservationStanding
+  = HandObserved {
+      observed_at: NonEmptyStr
+      observed_by: NonEmptyStr
+    }
+  | MachineObserved { producer_identity: NonEmptyStr }
+
+type EstateReadInstrument {
+  identity: NonEmptyStr
+  argv: List<String>
+  refreshes: NonEmptyStr
+}
+
+data estate_observation_observed_at: NonEmptyStr = "2026-09-11"
+
+data estate_observation_observed_by: NonEmptyStr = "operator-run"
+
+fn estate_rows_are_hand_observed() -> EstateObservationStanding {
+  HandObserved {
+    observed_at: estate_observation_observed_at,
+    observed_by: estate_observation_observed_by,
+  }
+}
+
+fn gcloud_projects_list_instrument() -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: "gcloud-projects-list" as NonEmptyStr,
+    argv: ["gcloud", "projects", "list", "--format=json"],
+    refreshes: "GcpProject roster (id, number, name) for every project the credential can see" as NonEmptyStr,
+  }
+}
+
+fn gcloud_services_list_instrument(project_id: String) -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: concat("gcloud-services-list-", project_id) as NonEmptyStr,
+    argv: ["gcloud", "services", "list", "--enabled", concat("--project=", project_id), "--format=json"],
+    refreshes: concat("enabled service ids for ", project_id) as NonEmptyStr,
+  }
+}
+
+fn gcloud_service_accounts_list_instrument(project_id: String) -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: concat("gcloud-iam-service-accounts-list-", project_id) as NonEmptyStr,
+    argv: [
+      "gcloud",
+      "iam",
+      "service-accounts",
+      "list",
+      concat("--project=", project_id),
+      "--format=json",
+    ],
+    refreshes: concat("named service accounts for ", project_id) as NonEmptyStr,
+  }
+}
+
+fn gcloud_wif_pools_list_instrument(project_id: String) -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: concat("gcloud-wif-pools-list-", project_id) as NonEmptyStr,
+    argv: [
+      "gcloud",
+      "iam",
+      "workload-identity-pools",
+      "list",
+      "--location=global",
+      concat("--project=", project_id),
+      "--format=json",
+    ],
+    refreshes: concat("WIF pool ids keyed by project for ", project_id) as NonEmptyStr,
+  }
+}
+
+fn gcloud_wif_providers_list_instrument(project_id: String, pool_id: String) -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: concat("gcloud-wif-providers-list-", concat(project_id, concat("-", pool_id))) as NonEmptyStr,
+    argv: [
+      "gcloud",
+      "iam",
+      "workload-identity-pools",
+      "providers",
+      "list",
+      "--location=global",
+      concat("--workload-identity-pool=", pool_id),
+      concat("--project=", project_id),
+      "--format=json",
+    ],
+    refreshes: concat("WIF provider issuer and attribute condition for ", concat(project_id, concat("/", pool_id))) as NonEmptyStr,
+  }
+}
+
+fn gcloud_sa_get_iam_policy_instrument(email: String) -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: concat("gcloud-sa-get-iam-policy-", email) as NonEmptyStr,
+    argv: ["gcloud", "iam", "service-accounts", "get-iam-policy", email, "--format=json"],
+    refreshes: concat("principalSet bindings on ", email) as NonEmptyStr,
+  }
+}
+
+fn estate_readonly_credential_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "gcp-estate-readonly-runner-credential" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "readonly credential that can execute the estate read instruments" as NonEmptyStr,
+    instruction: "Establish one FleetOnce readonly runner credential (ADC or WIF) that can execute gcloud-projects-list, services-list, service-accounts-list, wif pool/provider list, and get-iam-policy. Until that lands, every census row stays HandObserved and the operator is the producer. Discharging this intervention is what makes the same rows MachineObserved without rewriting their types." as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn hand_observed_becomes_machine_observed_by_executing_the_named_instrument() -> Bool {
+  match estate_rows_are_hand_observed() {
+    HandObserved { observed_at: at, observed_by: by } =>
+      at == estate_observation_observed_at
+        && by == estate_observation_observed_by
+        && (estate_readonly_credential_intervention().instruction as String).contains("MachineObserved")
+    MachineObserved { producer_identity: _ } => false
+  }
+}
+
+fn instrument_argv_is_gcloud_read(instrument: EstateReadInstrument) -> Bool {
+  fold(
+    instrument.argv,
+    init: false,
+    f: fn(acc, word) { acc || word == "gcloud" },
+  )
+}
+
+fn secrets_project_read_instruments() -> List<EstateReadInstrument> {
+  [
+    gcloud_projects_list_instrument(),
+    gcloud_services_list_instrument(project_id: fleet_secrets_gcp_project as String),
+    gcloud_service_accounts_list_instrument(project_id: fleet_secrets_gcp_project as String),
+    gcloud_wif_pools_list_instrument(project_id: fleet_secrets_gcp_project as String),
+    gcloud_wif_providers_list_instrument(
+      project_id: fleet_secrets_gcp_project as String,
+      pool_id: "github-pool",
+    ),
+    gcloud_wif_providers_list_instrument(
+      project_id: fleet_secrets_gcp_project as String,
+      pool_id: "github-actions",
+    ),
+    gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-secrets@gunbai-secrets.iam.gserviceaccount.com"),
+    gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-iap@gunbai-secrets.iam.gserviceaccount.com"),
+  ]
+}
+
+fn sandbox_project_read_instruments() -> List<EstateReadInstrument> {
+  [
+    gcloud_services_list_instrument(project_id: "gunbai-auto"),
+    gcloud_service_accounts_list_instrument(project_id: "gunbai-auto"),
+    gcloud_wif_pools_list_instrument(project_id: "gunbai-auto"),
+    gcloud_wif_providers_list_instrument(
+      project_id: "gunbai-auto",
+      pool_id: "github-pool",
+    ),
+    gcloud_services_list_instrument(project_id: "gunb-ci"),
+    gcloud_service_accounts_list_instrument(project_id: "gunb-ci"),
+    gcloud_wif_pools_list_instrument(project_id: "gunb-ci"),
+    gcloud_wif_providers_list_instrument(
+      project_id: "gunb-ci",
+      pool_id: "github-pool",
+    ),
+    gcloud_services_list_instrument(project_id: "gunb-test"),
+    gcloud_service_accounts_list_instrument(project_id: "gunb-test"),
+    gcloud_wif_pools_list_instrument(project_id: "gunb-test"),
+    gcloud_wif_providers_list_instrument(
+      project_id: "gunb-test",
+      pool_id: "github-pool",
+    ),
+    gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com"),
+  ]
+}
+
+fn every_named_instrument_is_a_gcloud_read() -> Bool {
+  fold(
+    append_instruments(
+      left: secrets_project_read_instruments(),
+      right: sandbox_project_read_instruments(),
+    ),
+    init: true,
+    f: fn(acc, i) { acc && instrument_argv_is_gcloud_read(instrument: i) },
+  )
+}
+
+fn append_instruments(
+  left: List<EstateReadInstrument>,
+  right: List<EstateReadInstrument>,
+) -> List<EstateReadInstrument> {
+  fold(right, init: left, f: fn(acc, i) { acc |> list_push(i) })
+}
