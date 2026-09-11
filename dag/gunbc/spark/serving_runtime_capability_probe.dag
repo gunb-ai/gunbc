@@ -414,9 +414,9 @@ data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
     disposition: CandidateProbed { image_reference: xomoxcc_dgx_spark_sglang_pinned_reference() },
   },
   RuntimeCandidateRow {
-    candidate: "a GB10 image built from vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
-    discovered_via: "the upstream commit that carries vllm/models/deepseek_v4_1/nvidia/model.py with its SM12 branch" as NonEmptyStr,
-    disposition: CandidateNotProbed { reason: "no such image is published: this is a BUILD obligation rather than a probe target, and it is the only candidate identified so far whose source is known to contain the V4.1 code at all. Nothing here says the build would succeed on sm_121 -- the FlashInfer kernel requirements that branch names are exactly what a probe inside the built image would have to settle" as NonEmptyStr },
+    candidate: "a GB10 image built from vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397, built by gunbc.spark.vllm_runtime_image_build and probed inside its own digest" as NonEmptyStr,
+    discovered_via: "the upstream commit that carries vllm/models/deepseek_v4_1/nvidia/model.py with its SM12 branch. It was a BUILD OBLIGATION when this roster was written and nothing published answered it; the obligation was taken, the image exists, and the same probe was run inside it -- so it is a probed candidate here and the obligation it discharges is stated separately below, where what it did and did not settle can be read" as NonEmptyStr,
+    disposition: CandidateProbed { image_reference: gunbc_vllm_dsv41_gb10_registry_reading.image_reference },
   },
 ]
 

@@ -184,6 +184,23 @@ test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool 
 // that keeps "probed" from being a label: a candidate could be marked CandidateProbed while no
 // receipt of that digest existed anywhere, and the sweep's denominator would then count an image
 // nobody read. Asserted against the reading roster by image reference, not by counting either side.
+// AND THE OTHER DIRECTION, WHICH IS THE ONE A UNIFIED ROSTER CAN STILL FAIL. The wall below keeps a
+// candidate from CLAIMING a reading it does not have. This one keeps a reading from being INVISIBLE
+// to the sweep: v41_images_with_prerequisites walks CANDIDATES, so an image with a full set of
+// capability rows whose candidate row still says CandidateNotProbed is silently outside the
+// denominator -- the roster unified one layer down while the sweep stayed split. That is exactly
+// what happened when this fleet built its own image: the rows landed here and the candidate row
+// still described a build nobody had taken. Asserted as an identity join from the ROWS to the
+// candidates, so a new probed subject with no candidate row goes red rather than going unnoticed.
+test fn every_image_with_capability_rows_is_a_probed_candidate() -> Bool {
+  all(v41_sm121_capability_probe_rows(), r =>
+    any(v41_sm121_runtime_candidates, c =>
+      match c.disposition {
+        CandidateNotProbed { reason: _ } => false
+        CandidateProbed { image_reference: ref } => ref as String == r.image.image_reference as String
+      }))
+}
+
 test fn every_candidate_marked_probed_has_a_registry_reading() -> Bool {
   all(v41_sm121_runtime_candidates, c =>
     match c.disposition {
