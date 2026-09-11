@@ -82,12 +82,12 @@ test fn an_architecture_the_runtime_registers_still_fails_the_footprint_wall() -
   }
 }
 
-// THE PUBLISHED ROUTE-A IMAGE ADMITS DEEPSEEK V4.1 ON THIS DEVICE. The previous standing was that
-// no probed candidate did; fleet-converge 34643985099 on srv9 is the discriminating run.
+// THE PUBLISHED ROUTE-A IMAGE ADMITS DEEPSEEK V4.1 ON THIS DEVICE. fleet-converge 34643985099
+// on srv9 is the discriminating run. Membership is an identity join, not a count of how many
+// images currently admit (DESIGN §5).
 test fn the_published_v41_image_admits_deepseek_v41_on_this_compute_capability() -> Bool {
   let hits = v41_images_with_prerequisites(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)
-  length(hits) == 1
-    && any(hits, h => h as String == v41_published_arm64_probe.image_reference as String)
+  any(hits, h => h as String == v41_published_arm64_probe.image_reference as String)
 }
 
 // THE VERDICT FOR THE PRODUCTION IMAGE NAMES ONLY THE CAPABILITIES THAT WERE MEASURED MISSING, which
