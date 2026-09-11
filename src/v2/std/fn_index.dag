@@ -292,15 +292,12 @@ fn callee_text_from_call(node: Node) -> String? {
 // are calls; what it still does, and the paragraph below says why, is scan its own accumulator on
 // every hit to deduplicate.
 //
-// THE ACCUMULATOR IS BUILT REVERSED AND TURNED ONCE, and that is the whole reason
-// callee_texts_in_subtree_reversed exists as its own function rather than being inlined. fold_node's
-// step receives a child's ALREADY-FOLDED result, so the only way to combine is a concat. THIS FILE
-// READS THAT CONCAT AS COSTING ITS LEFT ARGUMENT and therefore concatenates child then accumulator
-// (`list_append(left: sub, right: acc)`). The executing bridge `v1_rt::rc_list_concat` make_muts the
-// left and clones the RIGHT; std.nat states that same direction. The two readings are the class
-// `gunbc.recurring_failure_mode.lens_prices_the_authority_while_the_lane_runs_the_realization`
-// catalogues. The construction is not rewritten here: swapping operands to match the realization
-// would reorder callee_texts, which this function's callers observe.
+// fold_node's step receives a child's ALREADY-FOLDED result. `list_append` is concat; the executing
+// bridge `v1_rt::rc_list_concat` make_muts the left and clones the RIGHT. Combining
+// `list_append(left: acc, right: sub)` therefore copies only that child's callee list, the same
+// combine `node_subtree_nodes` uses, and the walk is already preorder (self, then children left to
+// right). The previous child-then-acc combine assumed concat charged the left; after the primitive
+// routing that cloned the growing acc on every sibling (DESIGN 6).
 //
 // DEDUPLICATION IS A LIST SCAN AND NOT A KEYED MAP. The rationale a reader cannot recover from the
 // code is that the keyed arm was WRITTEN and measured SLOWER here: a map is the one repair in this
@@ -322,7 +319,7 @@ fn callee_text_from_call(node: Node) -> String? {
 // The cost figures that motivated this shape are not transcribed here. They are re-derived by the
 // arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
 // produces them.
-fn callee_texts_in_subtree_reversed(node: Node) -> List<String> {
+fn callee_texts_in_subtree(node: Node) -> List<String> {
   fold_node(
     n: node,
     algebra: NodeFold {
@@ -332,13 +329,9 @@ fn callee_texts_in_subtree_reversed(node: Node) -> List<String> {
           Absent => empty_fn_arrow_string_list
         }
       },
-      step: fn(acc, _edge, sub) { list_append(left: sub, right: acc) }
+      step: fn(acc, _edge, sub) { list_append(left: acc, right: sub) }
     }
   )
-}
-
-fn callee_texts_in_subtree(node: Node) -> List<String> {
-  list_reverse(xs: callee_texts_in_subtree_reversed(node: node))
 }
 
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
