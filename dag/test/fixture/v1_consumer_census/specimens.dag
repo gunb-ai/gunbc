@@ -6,7 +6,7 @@ import gunbc.replacement_cut { BoundaryConsumer, ConsumerDisposition, RetainSame
 import gunbc.v1_consumer_census {
   V1ConsumerRow, V1UncitableConsumer, ConsumerPopulation, DiscoveryProducer, discovery_producer,
   PopulationMeasuredComplete, PopulationMeasuredLowerBound, PopulationUnmeasured,
-  WorkflowArgv, RustUseEdge, V1HostedCiBinary, V1RuntimeBridge, V1CompilerCrate
+  WorkflowArgv, RustSourceReference, V1HostedCiBinary, V1RuntimeBridge, V1CompilerCrate
 }
 
 // CONTROLLED POPULATIONS FOR THE CONSUMER CENSUS'S REFUSALS. Every assertion in the paired witness
@@ -70,7 +70,7 @@ data clean_realized: List<String> = [ fixture_native_successor ]
 
 data clean_population: ConsumerPopulation = PopulationMeasuredComplete {
   rows: clean_rows,
-  joined_media: [ WorkflowArgv, RustUseEdge ],
+  joined_media: [ WorkflowArgv, RustSourceReference ],
 }
 
 // PLANT ONE -- a discovered relation with no row. The roster is unchanged; the discovery population
