@@ -1,0 +1,97 @@
+module test.claim.machine_intake_bmc_rotation_route_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.decl_ref { NamedField, decl_field_eq }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
+import gunbc.machine_intake_bmc_secure {
+  CredentialRotationApplication, AccountManagementUnavailable,
+  RotationApplied, RotationNotAttempted,
+}
+import gunbc.bmc_implementation_dispatch {
+  BmcRotationRoute, RotationRouteRedfishAccountService, RotationRouteUnavailable,
+  rotation_route_for_family,
+}
+import gunbc.machine_intake_bmc_rotation_route { rotation_application_for_route }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING PAIR. Both arms are exercised against the SAME fold, because a witness that
+// only ever asks the unavailable arm cannot tell a correct route table from one that refuses
+// everything -- and refusing everything would also make a MegaRAC unit fail Arrival, for the wrong
+// reason, invisibly.
+
+test fn megarac_has_no_rotation_route_today() -> Bool {
+  match rotation_route_for_family(family: AmiMegaRac) {
+    RotationRouteUnavailable { family_note: _, detail: _ } => true
+    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => false
+  }
+}
+
+test fn openbmc_routes_to_redfish_account_service() -> Bool {
+  match rotation_route_for_family(family: OpenBmc) {
+    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => true
+    RotationRouteUnavailable { family_note: _, detail: _ } => false
+  }
+}
+
+// THE AVAILABLE ARM'S PAYLOAD IS READ, NOT MERELY CARRIED. Review 63263 found the arm holding a
+// prose path_note that no consumer touched -- dead data by §4c's own test. Replacing the sentence
+// with DeclarationRefs only fixes half of that: a reference nothing reads is still unconsumed. So
+// the witness destructures the arm and asserts the operation it names.
+//
+// AND THE FIRST VERSION OF THIS CHECK DID NOT CHECK THE OPERATION (review 63271). It asserted
+// module_path and decl_name on both refs and never touched `field` -- which is the ONLY position
+// the operation name lives in. So a table returning NamedField { field_name: "DeleteAccount" }
+// would have GREENED, while the comment above it claimed a wrong operation would red. That is a
+// check whose subject is narrower than its stated claim, which is the §4b(1) inflation this PR has
+// now corrected three times in three different rows: the claim must equal what the evidence
+// executes. The field is now compared through std.decl_ref decl_field_eq, so the assertion and the
+// sentence describe the same test.
+//
+// AND THE FIRST FIX RE-INVENTED THE COMPARISON IT NEEDED (review 63521). It hand-rolled a
+// decl_field_name fold over DeclField when std.decl_ref already owns decl_field_eq, whose module
+// states the rule in its own annotation: a module needing a DeclarationRef imports the constructor
+// from the type's own module and never re-mints it. DESIGN §2 -- net concepts must not grow by
+// re-invention. The WholeDeclaration arm compounded it by returning "" , a fabricated plausible
+// value where the canonical surface refuses to conflate the two shapes (§5); it compared false and
+// stayed fail-closed here, which was luck of the call site rather than a property of the helper.
+
+test fn the_openbmc_route_names_the_set_account_password_operation() -> Bool {
+  match rotation_route_for_family(family: OpenBmc) {
+    RotationRouteRedfishAccountService { transport_operation: op, action_shape: act } =>
+      op.module_path == "extdeps.bmc.http"
+        && op.decl_name == "redfish.Http"
+        && decl_field_eq(a: op.field, b: NamedField { field_name: "SetAccountPassword" as NonEmptyStr })
+        && act.module_path == "extdeps.bmc.types"
+        && act.decl_name == "RedfishSystemAction"
+        && decl_field_eq(a: act.field, b: NamedField { field_name: "SetAccountPassword" as NonEmptyStr })
+    RotationRouteUnavailable { family_note: _, detail: _ } => false
+  }
+}
+
+// THE ARM THAT MATTERS FOR SAFETY: an unavailable route must yield the application arm the
+// adjudication refuses on, so a MegaRAC unit cannot reach a controller write at all. A route table
+// that returned `none` here would let the caller proceed with RotationNotAttempted and adjudicate
+// into a DIFFERENT refusal, which would read as "nobody tried" rather than "there is no way to try".
+test fn an_unavailable_route_yields_account_management_unavailable() -> Bool {
+  match rotation_application_for_route(route: rotation_route_for_family(family: AmiMegaRac)) {
+    Present { value: app } =>
+      match app {
+        AccountManagementUnavailable { detail: _ } => true
+        RotationApplied { reference: _, applied_at: _, evidence: _ } => false
+        RotationNotAttempted => false
+      }
+    Absent => false
+  }
+}
+
+// AND THE POSITIVE CONTROL ON THAT SAME FOLD: a route that EXISTS must not manufacture a refusal.
+// Without this, an implementation that returned AccountManagementUnavailable unconditionally would
+// pass the test above and silently block the OpenBMC fleet too.
+test fn an_available_route_yields_no_refusal_application() -> Bool {
+  match rotation_application_for_route(route: rotation_route_for_family(family: OpenBmc)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

@@ -485,7 +485,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/vendor/cloudflare.dag",
   "dag/extdeps/cloudflare/client_v4.dag",
   "dag/extdeps/cloudflare/account_api_tokens.dag",
-  "dag/extdeps/cloudflare/r2.dag"
+  "dag/extdeps/cloudflare/r2.dag",
+  "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
+  "dag/extdeps/vllm/recipe_deepseek_v4_1_flash.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
