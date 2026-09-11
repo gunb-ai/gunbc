@@ -20,8 +20,13 @@ import gunbc.review_sheet_projection {
   write_plan_touches_column,
   decide_review_sheet,
   judgement_for_listing,
-  listing_standing_gone,
-  listing_standing_observed,
+  listing_standing_label,
+  read_listing_standing,
+  StandingObserved,
+  StandingGone,
+  StandingKnown,
+  StandingBlank,
+  StandingForeign,
 }
 import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
@@ -69,6 +74,10 @@ fn w_headers() -> List<String> {
   ["listing_id", "title", "standing", "judgement"]
 }
 
+fn w_standing_observed() -> String {
+  listing_standing_label(state: StandingObserved)
+}
+
 fn w_value_range(rows: List<List<String>>) -> ValueRange {
   ValueRange {
     range: "Review!A1:D4",
@@ -81,7 +90,7 @@ test fn converge_twice_unchanged_is_noop() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
-    rows: [["L1", "alpha", listing_standing_observed, ""]],
+    rows: [["L1", "alpha", w_standing_observed(), ""]],
   )
   match decide_review_sheet(observed: observed, projection: projection) {
     Noop =>
@@ -99,7 +108,7 @@ test fn converge_preserves_populated_human_column() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
-    rows: [["L1", "", listing_standing_observed, "buy"]],
+    rows: [["L1", "", w_standing_observed(), "buy"]],
   )
   match decide_review_sheet(observed: observed, projection: projection) {
     Apply { plan: p } =>
@@ -120,7 +129,7 @@ test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> B
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
-    rows: [["L1", "hand-edited", listing_standing_observed, ""]],
+    rows: [["L1", "hand-edited", w_standing_observed(), ""]],
   )
   match decide_review_sheet(observed: observed, projection: projection) {
     Refuse { reason: r } =>
@@ -140,15 +149,15 @@ test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
   let sorted = w_observed(
     headers: w_headers(),
     rows: [
-      ["L1", "alpha", listing_standing_observed, "buy"],
-      ["L2", "beta", listing_standing_observed, "skip"],
+      ["L1", "alpha", w_standing_observed(), "buy"],
+      ["L2", "beta", w_standing_observed(), "skip"],
     ],
   )
   let resorted = w_observed(
     headers: w_headers(),
     rows: [
-      ["L2", "beta", listing_standing_observed, "skip"],
-      ["L1", "alpha", listing_standing_observed, "buy"],
+      ["L2", "beta", w_standing_observed(), "skip"],
+      ["L1", "alpha", w_standing_observed(), "buy"],
     ],
   )
   match decide_review_sheet(observed: sorted, projection: projection) {
@@ -179,7 +188,7 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
   let projection = w_projection(rows: [])
   let observed = w_observed(
     headers: w_headers(),
-    rows: [["L1", "alpha", listing_standing_observed, "buy"]],
+    rows: [["L1", "alpha", w_standing_observed(), "buy"]],
   )
   match decide_review_sheet(observed: observed, projection: projection) {
     Apply { plan: p } =>
@@ -194,7 +203,7 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
         && fold(p.patches, init: false, f: fn(acc, w) {
           acc || (w.listing_id == ("L1" as NonEmptyStr)
             && w.column == ("standing" as NonEmptyStr)
-            && w.value == listing_standing_gone)
+            && w.value == listing_standing_label(state: StandingGone))
         })
     Noop => false
     Refuse { reason: _ } => false
@@ -203,7 +212,7 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
 
 test fn ensure_over_unchanged_readback_is_noop() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
-  let range = w_value_range(rows: [["L1", "alpha", listing_standing_observed, "buy"]])
+  let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
   match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
     Noop =>
       match review_sheet_from_readback(range: range, projection: projection) {
@@ -222,8 +231,8 @@ test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
     w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
   ])
   let range = w_value_range(rows: [
-    ["L2", "beta", listing_standing_observed, "skip"],
-    ["L1", "alpha", listing_standing_observed, "buy"],
+    ["L2", "beta", w_standing_observed(), "skip"],
+    ["L1", "alpha", w_standing_observed(), "buy"],
   ])
   let observed = observed_sheet_from_value_range(range: range)
   match review_sheet_from_readback(range: range, projection: projection) {
@@ -244,4 +253,42 @@ test fn sheets_api_is_v4_with_published_read_quota_and_scope() -> Bool {
     && (sheets_spreadsheets_oauth_scope as String) == "https://www.googleapis.com/auth/spreadsheets"
     && sheets_read_requests_per_minute_per_project.requests == 300
     && (sheets_workspace_suite() as String) == "Google Workspace"
+}
+
+test fn standing_is_a_sum_projected_at_emit() -> Bool {
+  match read_listing_standing(cell: listing_standing_label(state: StandingObserved)) {
+    StandingKnown { state: s } => match s {
+      StandingObserved => match read_listing_standing(cell: listing_standing_label(state: StandingGone)) {
+        StandingKnown { state: g } => match g {
+          StandingGone => match read_listing_standing(cell: "") {
+            StandingBlank => true
+            StandingKnown { state: _ } => false
+            StandingForeign { raw: _ } => false
+          }
+          StandingObserved => false
+        }
+        StandingBlank => false
+        StandingForeign { raw: _ } => false
+      }
+      StandingGone => false
+    }
+    StandingBlank => false
+    StandingForeign { raw: _ } => false
+  }
+}
+
+test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", "Obsered", ""]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "column=standing")
+        && string_contains(s: r as String, pattern: "cell=C2")
+    Noop => false
+    Apply { plan: _ } => false
+  }
 }
