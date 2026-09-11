@@ -374,23 +374,29 @@ test fn an_unchanged_input_keeps_its_decision_identity() -> Bool {
     == decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
 }
 
-test fn candidate_identity_includes_the_complete_profile() -> Bool {
-  let t = topology_shape(tensor_parallel_degree: 4, replica_count: 1)
-  let p = v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead)
-  let q = serving_decision_parameters(
+fn profile_with_layout(p: ServingDecisionParameters, k: KvLayoutPolicy) -> ServingDecisionParameters {
+  serving_decision_parameters(
     max_model_len: p.max_model_len,
     memory_request: p.memory_request,
     max_num_batched_tokens: p.max_num_batched_tokens,
     max_num_seqs: p.max_num_seqs,
     executor: p.executor,
-    kv_layout: KvFp4Layout,
+    kv_layout: k,
     speculative: p.speculative,
     runtime: p.runtime,
   )
-  !declaration_ref_eq(
-    a: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: p),
-    b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: q),
-  )
+}
+
+test fn candidate_identity_includes_the_complete_profile() -> Bool {
+  let t = topology_shape(tensor_parallel_degree: 4, replica_count: 1)
+  match v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead) {
+    Absent => false
+    Present { value: p } =>
+      !declaration_ref_eq(
+        a: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: p),
+        b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: profile_with_layout(p: p, k: KvFp4Layout)),
+      )
+  }
 }
 
 test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
@@ -639,13 +645,17 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
           KvFp4Layout => false
         })
     && match v4_1_gb10_kv_layout {
-      KvFp8DsMlaLayout => true
-      KvAutoLayout => false
-      KvFp8Layout => false
-      KvFp4Layout => false
+      Present { value: k } =>
+        match k {
+          KvFp8DsMlaLayout => true
+          KvAutoLayout => false
+          KvFp8Layout => false
+          KvFp4Layout => false
+        }
+        && (kv_layout_wire(k: k) as String) == (v41_sm12_kv_layout as String)
+        && v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: k))
+      Absent => false
     }
-    && (kv_layout_wire(k: v4_1_gb10_kv_layout) as String) == (v41_sm12_kv_layout as String)
-    && v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: v4_1_gb10_kv_layout))
     && !v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: KvAutoLayout))
     && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
     && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {

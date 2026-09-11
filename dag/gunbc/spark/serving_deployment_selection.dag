@@ -228,17 +228,13 @@ fn kv_layout_policies() -> List<KvLayoutPolicy> {
 }
 
 // THE SM12 MODULE OWNS THE WIRE SPELLING AND THE ADMIT SET. This fold is the join, not a second
-// list: it selects the KvLayoutPolicy whose wire equals v41_sm12_kv_layout, and only if that
-// spelling is admitted on major 12. Absent is KvAutoLayout, which that admit set refuses, so a
-// broken join cannot inhabit the GB10 request.
-fn kv_layout_from_sm12_wire(wire: NonEmptyStr) -> KvLayoutPolicy {
+// list: it selects the KvLayoutPolicy whose wire equals the given spelling, and only if that
+// spelling is admitted on major 12. Miss is Absent — not Auto, not a fabricated inhabitant.
+fn kv_layout_from_sm12_wire(wire: NonEmptyStr) -> KvLayoutPolicy? {
   if !v41_sm12_kv_cache_dtype_admitted(dtype: wire) {
-    KvAutoLayout
+    none
   } else {
-    match (filter(kv_layout_policies(), k => (kv_layout_wire(k: k) as String) == (wire as String))).first() {
-      Present { value: k } => k
-      Absent => KvAutoLayout
-    }
+    (filter(kv_layout_policies(), k => (kv_layout_wire(k: k) as String) == (wire as String))).first()
   }
 }
 
@@ -361,24 +357,37 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
-data v4_1_gb10_kv_layout: KvLayoutPolicy = kv_layout_from_sm12_wire(wire: v41_sm12_kv_layout)
+data v4_1_gb10_kv_layout: KvLayoutPolicy? = kv_layout_from_sm12_wire(wire: v41_sm12_kv_layout)
 
 // V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
 // extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, the KvLayoutPolicy
 // whose wire is extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_kv_layout and which
-// v41_sm12_kv_cache_dtype_admitted accepts. Higher-precision KV does not violate native quality.
-// Speculation is DSpark. Per-token KV bytes stay an obligation; the card's 890 does not apply.
-fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
-  serving_decision_parameters(
-    max_model_len: deepseek_v4_1_flash_context_length,
-    memory_request: spark_host_memory_request,
-    max_num_batched_tokens: spark_host_max_num_batched_tokens,
-    max_num_seqs: spark_host_max_num_seqs,
-    executor: ExecutorRayProfile,
-    kv_layout: v4_1_gb10_kv_layout,
-    speculative: SpeculationDraft { algorithm: DSpark },
-    runtime: runtime,
-  )
+// v41_sm12_kv_cache_dtype_admitted accepts. A failed join yields no profile, not Auto.
+// Higher-precision KV does not violate native quality. Speculation is DSpark. Per-token KV
+// bytes stay an obligation; the card's 890 does not apply.
+fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters? {
+  match v4_1_gb10_kv_layout {
+    Present { value: k } => Present {
+      value: serving_decision_parameters(
+        max_model_len: deepseek_v4_1_flash_context_length,
+        memory_request: spark_host_memory_request,
+        max_num_batched_tokens: spark_host_max_num_batched_tokens,
+        max_num_seqs: spark_host_max_num_seqs,
+        executor: ExecutorRayProfile,
+        kv_layout: k,
+        speculative: SpeculationDraft { algorithm: DSpark },
+        runtime: runtime,
+      )
+    }
+    Absent => none
+  }
+}
+
+fn v4_1_profile_list(p: ServingDecisionParameters?) -> List<ServingDecisionParameters> {
+  match p {
+    Present { value: v } => [v]
+    Absent => []
+  }
 }
 
 data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
@@ -393,11 +402,11 @@ data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
   },
 }
 
-data v4_1_declared_profiles: List<ServingDecisionParameters> = [
-  v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
-  v4_1_profile_at(runtime: v4_1_runtime_published_arm64),
-  v4_1_profile_at(runtime: spark_runtime),
-]
+data v4_1_declared_profiles: List<ServingDecisionParameters> = concat([
+  v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead)),
+  v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_published_arm64)),
+  v4_1_profile_list(p: v4_1_profile_at(runtime: spark_runtime)),
+])
 
 // ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
 type TopologyShape sole_constructor {
@@ -1145,10 +1154,15 @@ fn key_occurrences(keys: List<CombinationKey>, k: CombinationKey) -> Nat {
 }
 
 fn domain_profiles_defect(d: ServingDeploymentChoiceDomain) -> List<NonEmptyStr> {
-  flat_map(d.profiles, p => match parameters_defect(p: p) {
-    Present { value: d } => [d]
-    Absent => []
-  })
+  concat(
+    if count(d.profiles) == 0 {
+      ["the declared domain carries no serving profiles, so no candidate can inhabit it" as NonEmptyStr]
+    } else { [] },
+    flat_map(d.profiles, p => match parameters_defect(p: p) {
+      Present { value: d } => [d]
+      Absent => []
+    }),
+  )
 }
 
 fn domain_key_render(d: ServingDeploymentChoiceDomain) -> String {
