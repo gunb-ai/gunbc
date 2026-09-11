@@ -78,10 +78,10 @@ import gunbc.review_sheet_operator {
   fleet_secrets_wif_is_not_assumed_live,
   SpreadsheetAwaitingCreation,
   SpreadsheetIdentified,
-  ReviewSheetGcpProjectUnresolved,
+  ReviewSheetGcpProjectAwaitingIdentification,
   ReviewSheetGcpProjectIdentified,
   ReviewSheetGcpProjectStanding,
-  ReviewSheetWriterUnresolved,
+  ReviewSheetWriterAwaitingIdentification,
   ReviewSheetWriterIdentified,
   ReviewSheetWriterStanding,
   ReviewSheetWorkspaceDomain,
@@ -553,19 +553,18 @@ test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bo
   match fleet_review_sheet_operator_admission() {
     ReviewSheetEstateUnresolved { subject: s, reason: r } =>
       (s as String) == "review_sheet_gcp_project"
-        && string_contains(s: r as String, pattern: "gunbai-secrets")
-        && string_contains(s: r as String, pattern: "custody")
+        && string_contains(s: r as String, pattern: "awaiting identification")
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorRefused { reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
     && match review_sheet_gcp_project {
-      ReviewSheetGcpProjectUnresolved => true
+      ReviewSheetGcpProjectAwaitingIdentification => true
       ReviewSheetGcpProjectIdentified { project: _ } => false
     }
     && match review_sheet_writer {
-      ReviewSheetWriterUnresolved => true
+      ReviewSheetWriterAwaitingIdentification => true
       ReviewSheetWriterIdentified { email: _ } => false
     }
     && match buyer_review_spreadsheet {
@@ -606,12 +605,11 @@ test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bo
 
 test fn committed_enablement_decision_refuses_unresolved_project() -> Bool {
   match sheets_api_enablement_decision(
-    project: ReviewSheetGcpProjectUnresolved,
+    project: ReviewSheetGcpProjectAwaitingIdentification,
     observed: w_observed_disabled(),
   ) {
     Refuse { reason: r } =>
-      string_contains(s: r as String, pattern: "unresolved")
-        && string_contains(s: r as String, pattern: "gunbai-secrets")
+      string_contains(s: r as String, pattern: "awaiting identification")
     Apply { plan: _ } => false
     Noop => false
   }
@@ -646,10 +644,10 @@ test fn enablement_converge_never_disables() -> Bool {
   }
 }
 
-test fn writer_unresolved_is_not_fleet_automation() -> Bool {
+test fn writer_awaiting_identification_does_not_name_an_sa() -> Bool {
   match admit_review_sheet_operator(
     project: w_project_identified(),
-    writer: ReviewSheetWriterUnresolved,
+    writer: ReviewSheetWriterAwaitingIdentification,
     enablement: w_observed_disabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
@@ -657,7 +655,8 @@ test fn writer_unresolved_is_not_fleet_automation() -> Bool {
   ) {
     ReviewSheetEstateUnresolved { subject: s, reason: r } =>
       (s as String) == "review_sheet_writer"
-        && string_contains(s: r as String, pattern: "fleet-automation")
+        && string_contains(s: r as String, pattern: "awaiting identification")
+        && !string_contains(s: r as String, pattern: "@")
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorRefused { reason: _ } => false
