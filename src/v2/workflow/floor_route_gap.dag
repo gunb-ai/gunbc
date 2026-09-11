@@ -596,6 +596,10 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_npm_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_sshpass_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.password_session_enrollment_walks_wet_without_crashing", operation: "Check", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.interpreter_dispatch_bijection_real_roster_witness_test.interpreter_dispatch_bijection_real_roster_red_holds", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_largest_protocol_schema_only", operation: "Check", ground: NoMockResponse {} },
@@ -634,6 +638,8 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_reaches_path_derived_verdict", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Empty {}
+  }
+  }
   }
   }
   }
