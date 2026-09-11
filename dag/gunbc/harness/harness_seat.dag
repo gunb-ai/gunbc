@@ -1,7 +1,7 @@
 module gunbc.harness.harness_seat
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
-import std.nat { Nat, nat_range_inclusive }
+import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.serving.serving_enrollment {
@@ -249,7 +249,7 @@ fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, layout:
             SeatStandingUnobserved { step: _, reason: _ } => none
             SeatFullObserved { generation: _ } => Present { value: ceiling }
             SeatRoomObserved { headroom: h, generation: _ } =>
-              if h >= ceiling { Present { value: 0 } } else { Present { value: ceiling - h } }
+              Present { value: ceiling - nat_min(a: h, b: ceiling) }
           }
       }
   }

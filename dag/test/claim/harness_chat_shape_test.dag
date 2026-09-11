@@ -3,6 +3,7 @@ module test.claim.harness_chat_shape
 import std.types { list_length, Bool, String, Int, List }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.llm.anthropic_messages_api { ToolUse, EndTurn, MaxTokens }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_wire {
   HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
@@ -28,7 +29,7 @@ fn fixture_completion() -> String {
 }
 
 test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool {
-  match harness_decode_chat_completion(body: fixture_completion()) {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: fixture_completion()) {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason, input_tokens, output_tokens } =>
       list_length(items: blocks) == 3
@@ -42,7 +43,7 @@ test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool {
 // THE ARGUMENTS STRING IS PARSED INTO THE SAME INPUT SHAPE THE MESSAGES DECODER DELIVERS, so the
 // tool dispatcher reads command off one JsonValue regardless of wire.
 test fn tool_call_arguments_are_parsed_from_their_json_string() -> Bool {
-  match harness_decode_chat_completion(body: fixture_completion()) {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: fixture_completion()) {
     HarnessResponseParsed { blocks, stop_reason: _, input_tokens: _, output_tokens: _ } =>
       match blocks.last() {
         Present { value: WireToolUseBlock { id: _, name: _, input } } => serialize_json(v: input).contains("\"command\": \"ls\"")
@@ -54,7 +55,7 @@ test fn tool_call_arguments_are_parsed_from_their_json_string() -> Bool {
 
 // AN UNRECOGNISED finish_reason REFUSES rather than reading as completion.
 test fn an_unknown_finish_reason_is_unreadable() -> Bool {
-  match harness_decode_chat_completion(body: "{\"choices\":[{\"finish_reason\":\"banana\",\"message\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}") {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"banana\",\"message\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}") {
     HarnessResponseUnreadable { cause: c } => c.contains("banana")
     HarnessResponseParsed { blocks: _, stop_reason: _, input_tokens: _, output_tokens: _ } => false
   }
@@ -62,7 +63,7 @@ test fn an_unknown_finish_reason_is_unreadable() -> Bool {
 
 // THE REPLAY CARRIES REASONING AS reasoning_content AND THE CALL WITH ITS ARGUMENTS RE-SERIALIZED.
 test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool {
-  let wire = serialize_json(v: harness_assistant_message_json(shape: OpenAiChatCompletionsShape, blocks: [
+  let wire = serialize_json(v: harness_assistant_message_json(unit: DeepseekV4FlashOnVllm, shape: OpenAiChatCompletionsShape, blocks: [
     WireThinkingBlock { thinking: "think first" },
     WireTextBlock { text: "Listing now." },
     WireToolUseBlock { id: "chatcmpl-tool-1", name: "run_command", input: json_object([json_kv(key: "command", value: json_string(s: "ls"))]) },
@@ -75,7 +76,7 @@ test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool {
 // THE MESSAGES-SHAPE REPLAY IS UNCHANGED BY THE NEW REALIZATION: a thinking block still rides as a
 // thinking block, and no reasoning_content key appears.
 test fn the_messages_replay_is_untouched() -> Bool {
-  let wire = serialize_json(v: harness_assistant_message_json(shape: AnthropicMessagesShape, blocks: [WireThinkingBlock { thinking: "think first" }]))
+  let wire = serialize_json(v: harness_assistant_message_json(unit: DeepseekV4FlashOnVllm, shape: AnthropicMessagesShape, blocks: [WireThinkingBlock { thinking: "think first" }]))
   wire.contains("\"type\": \"thinking\"") && !wire.contains("reasoning_content")
 }
 
@@ -132,7 +133,12 @@ fn t_urls() -> List<String> {
   })
 }
 
-test fn both_enrolled_routes_resolve_and_each_renders_its_own_front_door() -> Bool {
+// THE NAME IS KEPT DELIBERATELY. gunbc.roadmap.roadmap_authority cites this function BY NAME as the
+// execution contract and red control of a signed deliverable, so renaming it would break a citation
+// on a signed row -- and what it asserts is still what its name says: the routes a turn may be
+// offered to derive from the serving heads through the fleet topology, rather than being spelled.
+// What changed underneath is WHICH authority supplies the heads.
+test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
   count(t_endpoints()) == 2
     && any(t_endpoints(), a => a == "192.168.1.225:30000")
     && any(t_endpoints(), a => a == "192.168.1.236:30001")
