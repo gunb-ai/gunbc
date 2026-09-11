@@ -247,6 +247,15 @@ data floor_parse_list_separator_green_probe: GuaranteeProbeId = "floor-parse-lis
 data floor_parse_list_separator_hole_probe: GuaranteeProbeId = "floor-parse-list-separator-omitted-hole" as GuaranteeProbeId
 data floor_record_completeness_green_probe: GuaranteeProbeId = "floor-record-field-completeness-green-control" as GuaranteeProbeId
 data floor_record_completeness_red_probe: GuaranteeProbeId = "floor-record-field-completeness-missing-field-red" as GuaranteeProbeId
+// THE ZERO-FIELD FORMS. `floor_record_completeness_red_probe` supplies SOME fields and omits one,
+// which is the case the wall already holds. Supplying NONE is a different question and the answer
+// differs by declaration kind: `Pair { }` on a product refuses with one MissingField per declared
+// field, while `Circle { }` on a coproduct variant and a bare name in either kind are accepted with
+// zero diagnostics. The product-empty probe is a GREEN CONTROL for a wall that stands; the other two
+// are below-floor holes. Filed with gunbc.recurring_failure_mode.zero_field_construction_escapes_the_field_set_check.
+data floor_record_completeness_zero_field_product_control_probe: GuaranteeProbeId = "floor-record-field-completeness-zero-field-product-empty-braces-control" as GuaranteeProbeId
+data floor_record_completeness_zero_field_variant_hole_probe: GuaranteeProbeId = "floor-record-field-completeness-zero-field-variant-empty-braces-hole" as GuaranteeProbeId
+data floor_record_completeness_bare_name_hole_probe: GuaranteeProbeId = "floor-record-field-completeness-bare-name-no-literal-hole" as GuaranteeProbeId
 
 data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
 data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
@@ -671,6 +680,28 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: floor_record_field_completeness_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_record_completeness_zero_field_product_control_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_record_completeness_zero_field_variant_hole_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "an empty brace pair for a COPRODUCT VARIANT declaring one or more fields compiles with zero diagnostics, and each declared field then reads as null" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_record_completeness_bare_name_hole_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "a BARE NAME used as a construction for a product type or coproduct variant declaring one or more fields compiles with zero diagnostics, presenting no field set for the completeness check to read" as NonEmptyStr,
+      },
     },
     GuaranteeProbeRow {
       probe: floor_record_completeness_red_probe,

@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data declared_type_wall_keyed_on_the_value_being_a_kernel: RecurringFailureMode = RecurringFailureMode {
+  identity: "declared_type_wall_keyed_on_the_value_being_a_kernel" as NonEmptyStr,
+
+  receipts: [
+    "**the declared-type inhabitance wall decides on the KIND OF THE OFFENDING VALUE rather than on inhabitance, so it refuses a kernel literal at a declared type and admits a WRONG COPRODUCT ARM at the same position.** DESIGN section 4b puts `values inhabit declared types` in the ordinary compiler floor, so a breach is a below-baseline safety regression and not a rung on the ladder. ",
+
+    "READ FROM THE RELATION, NOT INFERRED FROM ITS NAME. `v1.compiler.infer` `kernel_value_declared_type_mismatch_bounded` short-circuits at its second guard: `if is_kernel_type(name: actual_name) == false || actual_name == \"Unit\" { false }`. A `false` there is `no mismatch`, so an actual value whose authored name is not a kernel type leaves the relation before any formal type is consulted. Every position that consults this relation inherits that exit. ",
+
+    "WHY THIS IS NOT `one more declared-type position needs a member`, which is the natural reading and the wrong one. `test.claim.declared_type_kernel_inhabitance_witness_test` records that the census enumerated fourteen declared-type positions from the grammar -- every `parse_type_expr` call site in `v1.compiler.parse` -- and that seven admitted an `Int` where a coproduct was declared. Those seven were closed. But the guard above sits INSIDE the relation those positions now consult, so closing a position does nothing for a non-kernel wrong value: the record-literal field seam was ALREADY closed for kernels (that witness cites `KHold { subject: 5 }` refusing there) and still admits a wrong coproduct arm. The uncovered half is not a position, it is every position. ",
+
+    "MEASURED SPECIMEN ONE (2026-08-25, `gentle-eagle-360`, controlled fixture): with `AlphaRefusal` and `BetaRefusal` distinct coproducts and `Wrapper = WrapsBeta { cause: BetaRefusal }`, a fn returning `WrapsBeta { cause: c }` for `c: AlphaRefusal` is ACCEPTED, while the same field given an `Int` is refused and given an undeclared constructor is refused. The two refusals are what make the acceptance a measurement rather than an absence of checking. ",
+
+    "MEASURED SPECIMEN TWO (2026-09-10, gunbc#10952, found by review 63271): `data bmc_rotation_route_disposition: Disposition = SingleAuthority`, where `SingleAuthority` is an arm of `ConstructionMechanism` and `Disposition` declares only `Terminal` and `Scaffold`. It rode FOUR GREEN REQUIRED CHECKS. Two independent observations that it compiled rather than being skipped: a `gunbc run` over that closure resolved it and failed only on a wrong function name, and the pull request was green on all four required checks with the row present. ",
+
+    "HARM, AND IT IS THE SECOND SPECIMEN THAT SHOWS THE SHAPE. The review that found it concluded `the module therefore does not compile, and with it the whole witness closure` -- reasonable, and false. So the defect does not merely admit a wrong value: it makes a reader who assumes the floor holds derive a WRONG CONSEQUENCE from a correct observation. The author had four green checks saying the row was fine and a reviewer saying the module was absent, and neither was true. ",
+
+    "DISTINGUISHING FACTS: this is NOT the evidence-overreach family (a receipt supporting more than its instrument established) -- nothing here is a receipt, and the claim is not about coverage. It is NOT `check_subject_shape_cannot_represent_the_state_the_check_detects` -- the relation can represent the state perfectly; it declines to look. The tell is a wall whose guard names a property of the OFFENDING VALUE (`is_kernel_type`) where the property under test is a RELATION between the value and its declared type. ",
+
+    "RUNG FOUND AT: below the floor, which is not a rung. The class is decidable and the authority exists -- `lookup_type_by_name` and the declared-type env are already in hand at the guard that exits -- so this is DESIGN section 5's `wall after grounding` with the grounding already present. CEILING: structurally guaranteed; a wrong-typed literal is authorable in source, so impossibility is not available, but no `Accepted` program need contain one. NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: an inhabitance judgment that decides from the FORMAL type's declaration for an actual value of ANY kind -- kernel, coproduct arm, record literal, alias -- SUFFICIENT FOR removing `is_kernel_type` from the guard entirely rather than adding a second relation beside it. A second relation keyed on coproducts would be the fork this row exists to prevent. ",
+
+    "NOT CLAIMED HERE: how many of the fourteen positions admit a wrong coproduct. The guard's placement implies all of them, and I did not measure them one at a time. A census across the fourteen positions with a non-kernel wrong value is the honest next measurement, and it is probably worth more than any single new witness member. ",
+  ],
+
+  evidence: [],
+}
