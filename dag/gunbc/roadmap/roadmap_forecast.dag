@@ -98,7 +98,7 @@ data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod
 // unbundling that projection has nothing to strip: gunbc.roadmap_sizing NodeSizing IS the cell, and
 // keeping both would be the section 3 nickname. Calibration now keys on the DERIVED size, which is
 // why this module's population is empty until the deriver lands -- see the declared drop
-// gunbc.rung_drop roadmap_forecast_calibration_population_empty.
+// gunbc.rung_drop.roadmap_sizing_authored_to_derived.
 
 type AcceptedNodePullLink {
   node: RoadmapNodeId
@@ -256,10 +256,11 @@ fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
       let nodes = declared_roadmap_nodes()
       let pulls = cited_pull_timings()
       let links = accepted_node_pull_links()
+      let sizings = derived_node_sizings(nodes: nodes)
       links |> map(link => observation_for_link(
         link: link,
         nodes: nodes,
-        sizings: derived_node_sizings(nodes: nodes),
+        sizings: sizings,
         receipts: receipts,
         pulls: pulls,
         links: links,
@@ -909,9 +910,10 @@ fn live_roadmap_schedule_forecast(
       match accepted_roadmap_node_ids_projection() {
         AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
           let builds = roadmap_cycle_time_observation_builds()
+          let active_nodes = active_roadmap_nodes_for_accepted(accepted: accepted)
           schedule_forecast(
-            nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
-            sizings: derived_node_sizings(nodes: active_roadmap_nodes_for_accepted(accepted: accepted)),
+            nodes: active_nodes,
+            sizings: derived_node_sizings(nodes: active_nodes),
             edges: active_roadmap_edges_for_accepted(accepted: accepted),
             observations: accepted_cycle_time_observations(builds: builds),
             history_refusals: cycle_time_history_refusals(builds: builds),
