@@ -35,11 +35,15 @@ import extdeps.systemd.unit_file {
   WantedBy,
   systemd_instance_name_specifier,
   serialize_systemd_unit_file,
+  SystemdDropIn,
+  DropInServiceSection,
+  serialize_systemd_drop_in,
 }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
   runner_unit_template_name,
+  runner_unit_dropin_path,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, GithubAppRunnerConfig, github_app_runner_org }
 import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
@@ -347,3 +351,36 @@ fn runner_unit_text(rendering: RunnerUnitFileRendering) -> RunnerUnitTextRenderi
 }
 
 data runner_unit_system_path: String = join(["/etc/systemd/system/", runner_unit_template_name as String], "")
+
+// THE TEARDOWN REACHES THE FLEET AS A DROP-IN, AND THE WHOLE UNIT STILL DOES NOT, for a reason that is
+// about the other drop-ins rather than about this one. The live unit on every runner host is ctrl's
+// fragment plus a hand-placed `depriv.conf` that carries `User=root`, `CTRL_RUNNER_JOB_USER`, the
+// shared sccache environment and `DOCKER_HOST` -- facts no module in this repository declares. Installing
+// runner_unit_text as the fragment would keep those facts in force only because a drop-in the model has
+// never read happens to override the render, so the modeled unit would be correct by accident on some
+// hosts and wrong on any host missing that file. Modeling depriv's facts is the cut that lets the
+// fragment be delivered; the teardown does not wait on it, because systemd merges drop-ins over the
+// fragment and no present drop-in sets either directive (read on srv1, 2026-09-11).
+//
+// ONE AUTHORITY, TWO ARTIFACTS. The directive pair comes from runner_unit_teardown_directives, the same
+// function the fragment render uses, so the drop-in and the eventual fragment cannot disagree about the
+// teardown. When the fragment is delivered the drop-in becomes a restatement of it and deletes with that
+// change.
+//
+// The `70-` prefix sorts after every numbered drop-in the fleet carries (10- through 60-) so a later
+// numbered file cannot silently re-set the pair; `depriv.conf` sorts later still and sets neither.
+data runner_unit_teardown_dropin_file_name: NonEmptyStr = "70-fleet-teardown.conf" as NonEmptyStr
+
+fn runner_unit_teardown_dropin(intent: RunnerUnitLifecycleIntent) -> SystemdDropIn {
+  SystemdDropIn {
+    sections: [DropInServiceSection { directives: runner_unit_teardown_directives(intent: intent) }],
+  }
+}
+
+fn runner_unit_teardown_dropin_path() -> NonEmptyStr {
+  runner_unit_dropin_path(file_name: runner_unit_teardown_dropin_file_name)
+}
+
+fn gunbc_runner_unit_teardown_dropin_text() -> String {
+  serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: gunbc_runner_lifecycle_intent))
+}

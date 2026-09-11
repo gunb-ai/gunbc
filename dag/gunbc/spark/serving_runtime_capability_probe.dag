@@ -1,0 +1,814 @@
+module gunbc.spark.serving_runtime_capability_probe
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout, v41_sm12_attention_class }
+import gunbc.spark.runtime_architecture_registry_reading {
+  ArchitectureRegistryReading, registry_reading_contains,
+  sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
+  timothystewart6_vllm_gb10_registry_reading, xomoxcc_dgx_spark_sglang_registry_reading,
+  gunbc_vllm_dsv41_gb10_registry_reading,
+}
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
+  sparkrun_vllm_ds4_gb10_pinned_reference,
+  sparkrun_vllm_ds4_gb10_vllm_version, sparkrun_vllm_ds4_gb10_tag, sparkrun_vllm_ds4_gb10_repository,
+}
+import extdeps.docker.images.gitcommit90_glm_53_one_spark {
+  gitcommit90_glm_53_one_spark_pinned_reference,
+  gitcommit90_glm_53_one_spark_vllm_version, gitcommit90_glm_53_one_spark_repository,
+}
+import extdeps.docker.images.timothystewart6_vllm_gb10 {
+  timothystewart6_vllm_gb10_pinned_reference,
+  timothystewart6_vllm_gb10_framework_version, timothystewart6_vllm_gb10_tag, timothystewart6_vllm_gb10_repository,
+}
+import extdeps.docker.images.xomoxcc_dgx_spark_sglang {
+  xomoxcc_dgx_spark_sglang_pinned_reference,
+  xomoxcc_dgx_spark_sglang_framework_version, xomoxcc_dgx_spark_sglang_tag, xomoxcc_dgx_spark_sglang_repository,
+}
+
+// WHAT A CONTAINER IMAGE CAN ACTUALLY RUN IS MEASURED INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
+//
+// WHY THIS MODULE EXISTS. gunbc.spark.serving_arm carries one measured runtime property -- the
+// architecture registry -- and that is enough to decide whether an engine will START. It is not
+// enough to decide whether a checkpoint will RUN WELL, or at all, on a specific compute capability:
+// DeepSeek V4.1 asks for an FP4 weight path, an FP4-quantised indexer KV cache, the V4.1 compressed
+// sparse attention (CSA2) path and the DSpark speculator, and each of those is a separate body of
+// kernels that an image either ships compiled for this SM or does not. An image can register the
+// architecture and still be missing every one of them.
+//
+// THE UPSTREAM SOURCE IS NOT THE ANSWER, AND THIS IS THE WHOLE DISCIPLINE OF THIS MODULE. vLLM at
+// 07b75534651a0dd584c6f3be75d8c62fb8426397 carries vllm/models/deepseek_v4_1/nvidia/model.py with an
+// explicit SM12 branch, so the CODE exists upstream. Every image probed below is built from an
+// earlier commit and ships none of it. Reading the upstream tree tells you what COULD be in an
+// image; only executing inside the image tells you what IS.
+//
+// SO EVERY ROW HERE IS A RECEIPT OF AN EXECUTED PROBE, and an image nobody ran the probe in has no
+// row -- it has a roster entry saying so, with the reason. The distinction is the point: a missing
+// capability and an unasked question have different remedies, and fusing them is how a partial sweep
+// comes to read as a complete one.
+
+// ── THE SUBJECT: ONE EXACT IMAGE ON ONE EXACT COMPUTE CAPABILITY ───────────────────────────────
+//
+// Both halves are load-bearing. A digest without a compute capability is a claim about an image in
+// general, and an image that ships sm_100 kernels answers differently on a GB200 than on a GB10; a
+// compute capability without a digest is a claim about hardware that no engine can act on.
+//
+// THE CAPABILITY IS extdeps.gpu.types GpuComputeCapability, WHICH ALREADY EXISTS. An earlier
+// revision of this module minted a second major/minor carrier of its own, which is the concept
+// re-invention DESIGN section 2 measures a change by: the vendor-qualified type already models this
+// fact and already derives the sm_ label, so a second one would have been one more thing to keep in
+// agreement for no answer the first could not give.
+//
+// GB10, AS THE ACCELERATOR ITSELF REPORTS IT. `torch.cuda.get_device_capability(0)` returned (12, 1)
+// inside every container probed below, on spark-a3ee, 2026-09-11. It is recorded here as a fleet
+// OBSERVATION and not as a property of extdeps.systems.nvidia's GB10 catalog row, which deliberately
+// leaves compute_capability none because the cited NVIDIA pages do not state it: an observation this
+// repository made is a receipt in the observing layer, never a fact backfilled into the vendor's.
+data gb10_observed_compute_capability: GpuComputeCapability = GpuComputeCapability { vendor: nvidia, major: 12, minor: 1 }
+
+type ProbedRuntimeImage sole_constructor {
+  image_reference: NonEmptyStr
+  framework: NonEmptyStr
+  framework_version: NonEmptyStr
+}
+
+// ── THE CAPABILITIES, ONE PER BODY OF KERNELS ──────────────────────────────────────────────────
+//
+// These are not degrees of one capability and must not be collapsed into a score. An image with the
+// architecture registered and no FP4 weight path is a different situation from one with the kernels
+// and no registry entry: the first needs a checkpoint in another quantisation, the second needs a
+// newer engine. A single "supported" Bool cannot distinguish them, which is the same defect that
+// made `registers_glm5_next` unable to say anything about DeepSeek V4.1.
+// THE THIRD CAPABILITY WAS RENAMED AFTER ITS SYMBOLS WERE READ FROM UPSTREAM, and the rename is the
+// substance of a correction rather than tidying. It was `Fp4KvCacheKernels`, and on this compute
+// capability that question cannot decide anything: the four KV operators that DO exist
+// (concat_and_cache_mla, indexer_k_quant_and_cache, cp_gather_and_upconvert_nvfp4_kv_cache,
+// cp_gather_indexer_k_quant_cache) are present in any image that ships the compiled extension at
+// all, while the nvfp4 DS-MLA layout they were taken to stand for is reached only through a build
+// that defined ENABLE_NVFP4_SM100 -- and DeepseekV4FlashInferMLASparseBackend.supports_combination
+// admits, at device capability major 12, exactly fp8, fp8_e4m3 and fp8_ds_mla, refusing anything
+// else with "kv_cache_dtype not supported". So on sm_12x that layout is never selected, kernels or
+// no kernels, and a capability named for its kernels would have read GREEN in every image while
+// implying a KV path this hardware cannot take. Green readings that mean nothing are worse than the
+// absent ones this module already had to retract.
+//
+// WHAT THE CAPABILITY ASKS NOW is the layout the backend actually admits here, which is the fact
+// that decides whether the engine starts: fp8_ds_mla, gated additionally on FlashInfer's sparse MLA
+// SM120 decode API being importable (`has_flashinfer_sparse_mla_sm120`, the second arm of that same
+// branch). Both the layout and the symbols that answer for it live in the upstream roster named
+// below, never spelled here.
+// TWO MORE QUESTIONS ARRIVED WITH THE FIRST IMAGE THIS FLEET BUILT ITSELF, and they are here rather
+// than in the lane that asked them because a capability vocabulary with two homes is the fork this
+// module exists to prevent. Both are refinements of questions already on this list, and neither
+// collapses into the row it refines.
+//
+// Fp4WeightSupportedHere IS A CALL, NOT A LOOKUP. Fp4WeightKernels asks whether the FP4 GEMM entry
+// points were compiled into the extension. `cutlass_scaled_mm_supports_fp4(capability)` is the
+// PREDICATE vLLM itself calls to decide whether that GEMM can run on the device in front of it, and
+// an entry point that exists can still answer no here -- which is precisely the sm_121 question. A
+// probe that found the symbol and stopped has measured the build, not the device.
+//
+// FlashInferSparseMlaSm120Symbols IS THE SECOND ARM OF THE KV BRANCH. MlaKvCacheLayoutAdmitted asks
+// what the backend admits; on the major-12 arm that admission also requires FlashInfer's sparse MLA
+// SM120 decode entry points to be importable, and a package that lacks them fails the layout
+// question for a reason that has nothing to do with the layout. Kept apart, a refusal says which of
+// the two it was.
+type RuntimeKernelCapability
+  = ArchitectureRegistered
+  | Fp4WeightKernels
+  | Fp4WeightSupportedHere
+  | MlaKvCacheLayoutAdmitted
+  | FlashInferSparseMlaSm120Symbols
+  | Csa2CompressorKernels
+  | DSparkSpeculator
+
+fn runtime_kernel_capability_label(c: RuntimeKernelCapability) -> String {
+  match c {
+    ArchitectureRegistered => "architecture-registered"
+    Fp4WeightKernels => "fp4-weight-kernels"
+    Fp4WeightSupportedHere => "fp4-weight-kernels-supported-here"
+    MlaKvCacheLayoutAdmitted => "mla-kv-cache-layout-admitted"
+    FlashInferSparseMlaSm120Symbols => "flashinfer-sparse-mla-sm120-symbols"
+    Csa2CompressorKernels => "csa2-compressor-kernels"
+    DSparkSpeculator => "dspark-speculator"
+  }
+}
+
+// A THIRD WAY TO LEARN NOTHING, AND IT IS THE ONE THAT LOOKS MOST LIKE AN ANSWER: THE QUESTION WAS
+// MALFORMED. A probe that asks whether a symbol is present, using a name no version of the software
+// ever registered, returns "absent" for every image on earth and returns it confidently. The run
+// succeeded, the row is well typed, the verdict is wrong, and nothing in a present/absent/refused
+// vocabulary can say so -- which is exactly how this module recorded three FP4-KV absences that
+// measured nothing. `KernelProbeSymbolUngrounded` is that state: the instrument was blind, the
+// remedy is a corrected symbol roster rather than a different image, and until the roster exists the
+// capability is UNPROBED rather than missing.
+//
+// AND THE CORRECTED NAMES ARE DELIBERATELY NOT WRITTEN HERE. The upstream op roster at the pinned
+// revision is one fact with one home, extdeps.vllm.deepseek_v4_1_sm12; spelling it a second time in
+// this module is how the first wrong spelling got in. A frontier naming the roster is worth more
+// than a corrected string of our own.
+//
+// ABSENT AND UNPROBEABLE ARE DIFFERENT ANSWERS. A capability the probe looked for and did not find
+// is a measured negative that ranks the image out. A probe that could not execute -- no interpreter
+// at the expected path, an image that will not start, a host with no accelerator -- establishes
+// NOTHING about the image, and an arm that reported it as absent would turn a broken probe into
+// evidence against a candidate that might be the right one.
+type KernelProbeOutcome
+  = KernelObservedPresent { symbol: NonEmptyStr }
+  | KernelObservedAbsent { symbol: NonEmptyStr }
+  | KernelProbeRefused { reason: NonEmptyStr }
+  | KernelProbeSymbolUngrounded { roster: NonEmptyStr, defect: NonEmptyStr }
+
+type RuntimeCapabilityProbeRow {
+  image: ProbedRuntimeImage
+  host: NonEmptyStr
+  compute_capability: GpuComputeCapability
+  probed_at: NonEmptyStr
+  capability: RuntimeKernelCapability
+  outcome: KernelProbeOutcome
+}
+
+
+// ── THE ARCHITECTURE QUESTION IS DERIVED, NOT RESTATED ─────────────────────────────────────────
+//
+// Each probed image's registry reading -- the answer, the host, the date and the instrument -- lives
+// in gunbc.spark.runtime_architecture_registry_reading, because it is a receipt this repository
+// produced rather than anything the image's publisher declares. The ArchitectureRegistered rows
+// below ask those readings rather than carrying a second hand-written answer: one reading per
+// digest, one place it is written, and a row that cannot drift away from what it summarises.
+//
+// THE NAME BEING LOOKED FOR IS THE MODEL'S AUTHORITY, NOT THIS MODULE'S.
+// extdeps.deepseek.deepseek_v4_1_flash owns `architectures[0]` of config.json at the pinned
+// revision; spelling it again here would be a second authority for one fact, which is what this
+// import exists to prevent.
+fn architecture_registered_outcome(reading: ArchitectureRegistryReading) -> KernelProbeOutcome {
+  if registry_reading_contains(r: reading, architecture: deepseek_v4_1_flash_architecture_class) {
+    KernelObservedPresent { symbol: v41_probe_registry_symbol }
+  } else {
+    KernelObservedAbsent { symbol: v41_probe_registry_symbol }
+  }
+}
+
+data v41_probe_registry_symbol: NonEmptyStr = "the image's own model registry, asked whether it answers for extdeps.deepseek.deepseek_v4_1_flash deepseek_v4_1_flash_architecture_class" as NonEmptyStr
+
+// ── THE EXECUTED ROWS ──────────────────────────────────────────────────────────────────────────
+//
+// THE SUBJECT OF A CAPABILITY ROW IS THE DIGEST IT WAS EXECUTED IN, and it is taken from that
+// image's frozen registry reading rather than from the image module's current pin -- the same
+// correction the readings themselves already carry, applied to the receipts that cite them. Left on
+// `*_pinned_reference()`, a repin would have moved every capability row in this module onto a digest
+// nobody probed, which is worse than the reading case: a kernel absence is what rules an image out,
+// so an inherited absence rules out an image nobody looked inside. The observed digest has exactly
+// one home, the reading, and these rows read it from there.
+//
+// Every row below was produced by one script executed inside the named digest on spark-a3ee with
+// `docker run --gpus all` on 2026-09-11. The script imports the framework, loads the compiled
+// operator libraries, reads the architecture registry, and then asks each capability question by
+// its own symbol -- no capability is derived from another, so an image that registered the
+// architecture but shipped no FP4 path would be recorded exactly that way.
+
+data sparkrun_vllm_ds4_gb10_probe: ProbedRuntimeImage = ProbedRuntimeImage {
+  image_reference: sparkrun_vllm_ds4_gb10_registry_reading.image_reference,
+  framework: "vllm" as NonEmptyStr,
+  framework_version: sparkrun_vllm_ds4_gb10_vllm_version,
+}
+
+data gitcommit90_glm_53_one_spark_probe: ProbedRuntimeImage = ProbedRuntimeImage {
+  image_reference: gitcommit90_glm_53_one_spark_registry_reading.image_reference,
+  framework: "vllm" as NonEmptyStr,
+  framework_version: gitcommit90_glm_53_one_spark_vllm_version,
+}
+
+data timothystewart6_vllm_gb10_probe: ProbedRuntimeImage = ProbedRuntimeImage {
+  image_reference: timothystewart6_vllm_gb10_registry_reading.image_reference,
+  framework: "vllm" as NonEmptyStr,
+  framework_version: timothystewart6_vllm_gb10_framework_version,
+}
+
+data v41_sm121_vllm_probe_rows: List<RuntimeCapabilityProbeRow> = [
+  RuntimeCapabilityProbeRow {
+    image: sparkrun_vllm_ds4_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: ArchitectureRegistered,
+    outcome: architecture_registered_outcome(reading: sparkrun_vllm_ds4_gb10_registry_reading),
+  },
+  RuntimeCapabilityProbeRow {
+    image: sparkrun_vllm_ds4_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: KernelObservedAbsent { symbol: "torch.ops.* : cutlass_scaled_fp4_mm and cutlass_scaled_mm_supports_fp4 are both absent. scaled_fp4_quant IS present in this image, and it is the quantiser rather than the FP4 GEMM -- a partial FP4 surface is not the weight path, and recording the found subset here is what keeps that from reading as a total absence" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: sparkrun_vllm_ds4_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: MlaKvCacheLayoutAdmitted,
+    outcome: KernelProbeSymbolUngrounded {
+      roster: "extdeps.vllm.deepseek_v4_1_sm12, the upstream operator roster read at the pinned revision (DSV41-4)" as NonEmptyStr,
+      defect: "this row was taken with operator names that are not registered at vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397 -- two were never ops at all and one names a C++ header, which Python cannot ask for. A name that cannot be present answers `absent` for every image, so the reading that stood here measured the instrument rather than the image. Reading the real roster then showed the QUESTION was wrong as well as the spelling: the operators that exist are present in any image with the compiled extension, and the nvfp4 DS-MLA layout they stood for is not selectable at device capability major 12 at all. So this is not re-asked with corrected op names; it is re-asked, from the roster above, as the layout the backend admits here" as NonEmptyStr,
+    },
+  },
+  RuntimeCapabilityProbeRow {
+    image: sparkrun_vllm_ds4_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Csa2CompressorKernels,
+    outcome: KernelObservedAbsent { symbol: "modules vllm.models.deepseek_v4_1.compressor, .sparse_mla" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: sparkrun_vllm_ds4_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: DSparkSpeculator,
+    outcome: KernelObservedAbsent { symbol: "modules vllm.models.deepseek_v4_1.nvidia.dspark, vllm.v1.worker.gpu.spec_decode.dspark" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: gitcommit90_glm_53_one_spark_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: ArchitectureRegistered,
+    outcome: architecture_registered_outcome(reading: gitcommit90_glm_53_one_spark_registry_reading),
+  },
+  RuntimeCapabilityProbeRow {
+    image: gitcommit90_glm_53_one_spark_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: KernelObservedAbsent { symbol: "torch.ops.* : cutlass_scaled_fp4_mm and cutlass_scaled_mm_supports_fp4 are both absent. scaled_fp4_quant IS present in this image, and it is the quantiser rather than the FP4 GEMM -- a partial FP4 surface is not the weight path, and recording the found subset here is what keeps that from reading as a total absence" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: gitcommit90_glm_53_one_spark_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: MlaKvCacheLayoutAdmitted,
+    outcome: KernelProbeSymbolUngrounded {
+      roster: "extdeps.vllm.deepseek_v4_1_sm12, the upstream operator roster read at the pinned revision (DSV41-4)" as NonEmptyStr,
+      defect: "this row was taken with operator names that are not registered at vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397 -- two were never ops at all and one names a C++ header, which Python cannot ask for. A name that cannot be present answers `absent` for every image, so the reading that stood here measured the instrument rather than the image. Reading the real roster then showed the QUESTION was wrong as well as the spelling: the operators that exist are present in any image with the compiled extension, and the nvfp4 DS-MLA layout they stood for is not selectable at device capability major 12 at all. So this is not re-asked with corrected op names; it is re-asked, from the roster above, as the layout the backend admits here" as NonEmptyStr,
+    },
+  },
+  RuntimeCapabilityProbeRow {
+    image: gitcommit90_glm_53_one_spark_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Csa2CompressorKernels,
+    outcome: KernelObservedAbsent { symbol: "modules vllm.models.deepseek_v4_1.compressor, .sparse_mla" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: gitcommit90_glm_53_one_spark_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: DSparkSpeculator,
+    outcome: KernelObservedAbsent { symbol: "modules vllm.models.deepseek_v4_1.nvidia.dspark, vllm.v1.worker.gpu.spec_decode.dspark" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: timothystewart6_vllm_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: ArchitectureRegistered,
+    outcome: architecture_registered_outcome(reading: timothystewart6_vllm_gb10_registry_reading),
+  },
+  RuntimeCapabilityProbeRow {
+    image: timothystewart6_vllm_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: KernelObservedAbsent { symbol: "torch.ops.* : cutlass_scaled_fp4_mm and cutlass_scaled_mm_supports_fp4 are both absent. scaled_fp4_quant IS present in this image, and it is the quantiser rather than the FP4 GEMM -- a partial FP4 surface is not the weight path, and recording the found subset here is what keeps that from reading as a total absence" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: timothystewart6_vllm_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: MlaKvCacheLayoutAdmitted,
+    outcome: KernelProbeSymbolUngrounded {
+      roster: "extdeps.vllm.deepseek_v4_1_sm12, the upstream operator roster read at the pinned revision (DSV41-4)" as NonEmptyStr,
+      defect: "this row was taken with operator names that are not registered at vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397 -- two were never ops at all and one names a C++ header, which Python cannot ask for. A name that cannot be present answers `absent` for every image, so the reading that stood here measured the instrument rather than the image. Reading the real roster then showed the QUESTION was wrong as well as the spelling: the operators that exist are present in any image with the compiled extension, and the nvfp4 DS-MLA layout they stood for is not selectable at device capability major 12 at all. So this is not re-asked with corrected op names; it is re-asked, from the roster above, as the layout the backend admits here" as NonEmptyStr,
+    },
+  },
+  RuntimeCapabilityProbeRow {
+    image: timothystewart6_vllm_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Csa2CompressorKernels,
+    outcome: KernelObservedAbsent { symbol: "modules vllm.models.deepseek_v4_1.compressor, .sparse_mla" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: timothystewart6_vllm_gb10_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: DSparkSpeculator,
+    outcome: KernelObservedAbsent { symbol: "modules vllm.models.deepseek_v4_1.nvidia.dspark, vllm.v1.worker.gpu.spec_decode.dspark" as NonEmptyStr },
+  },
+]
+
+// ── THE CANDIDATE ROSTER IS THE DENOMINATOR ────────────────────────────────────────────────────
+//
+// A sweep that returns no admissible image is a claim about the candidates that were CONSIDERED, and
+// the reader cannot check it unless the considered set is written down beside the result. So every
+// candidate that was looked at appears here, whether or not a probe ran in it, and a candidate that
+// was not probed carries the reason it was not. The reason is never "it would not have worked":
+// that is the question the probe answers.
+type RuntimeCandidateDisposition
+  = CandidateProbed { image_reference: NonEmptyStr }
+  | CandidateNotProbed { reason: NonEmptyStr }
+
+type RuntimeCandidateRow {
+  candidate: NonEmptyStr
+  discovered_via: NonEmptyStr
+  disposition: RuntimeCandidateDisposition
+}
+
+data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
+  RuntimeCandidateRow {
+    candidate: join([sparkrun_vllm_ds4_gb10_repository as String, ":", sparkrun_vllm_ds4_gb10_tag as String], "") as NonEmptyStr,
+    discovered_via: "the image the Spark pair serves from today, pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10" as NonEmptyStr,
+    disposition: CandidateProbed { image_reference: sparkrun_vllm_ds4_gb10_pinned_reference() },
+  },
+  RuntimeCandidateRow {
+    candidate: gitcommit90_glm_53_one_spark_repository,
+    discovered_via: "the community SM121 image the GLM-5.3 arm names, pinned in extdeps.docker.images.gitcommit90_glm_53_one_spark" as NonEmptyStr,
+    disposition: CandidateProbed { image_reference: gitcommit90_glm_53_one_spark_pinned_reference() },
+  },
+  RuntimeCandidateRow {
+    candidate: join([timothystewart6_vllm_gb10_repository as String, ":", timothystewart6_vllm_gb10_tag as String], "") as NonEmptyStr,
+    discovered_via: "Docker Hub search for gb10 and sm121 on 2026-09-11; the most recently published GB10-targeted vLLM image found, pushed 2026-08-28" as NonEmptyStr,
+    disposition: CandidateProbed { image_reference: timothystewart6_vllm_gb10_pinned_reference() },
+  },
+  RuntimeCandidateRow {
+    candidate: "hellohal2064/vllm-dgx-spark-gb10:latest" as NonEmptyStr,
+    discovered_via: "Docker Hub search for gb10 on 2026-09-11" as NonEmptyStr,
+    disposition: CandidateNotProbed { reason: "its newest tag was published 2026-03-17 and timothystewart6/vllm-gb10 is a strictly newer build of the same thing (vLLM on GB10, arm64, sm_121), so probe effort went to the newer one first. This is a scheduling decision, not a verdict: if the newer image had admitted V4.1 this one would still be worth probing for a different reason, and nothing here says what it contains" as NonEmptyStr },
+  },
+  RuntimeCandidateRow {
+    candidate: "lharillo/vllm-blackwell-gb10-spark:2.0.0" as NonEmptyStr,
+    discovered_via: "Docker Hub search for gb10 on 2026-09-11" as NonEmptyStr,
+    disposition: CandidateNotProbed { reason: "newest tag published 2026-02-20; same reason as hellohal2064 -- unprobed, not ruled out" as NonEmptyStr },
+  },
+  RuntimeCandidateRow {
+    candidate: "stoykostoykov/vllm-0.22.1-openai-sm121:forward-compatible" as NonEmptyStr,
+    discovered_via: "Docker Hub search for sm121 on 2026-09-11" as NonEmptyStr,
+    disposition: CandidateNotProbed { reason: "newest tag published 2026-06-11, and it pins vLLM 0.22.1, older than the 0.28.1 build that was probed; unprobed, not ruled out" as NonEmptyStr },
+  },
+  RuntimeCandidateRow {
+    candidate: join([xomoxcc_dgx_spark_sglang_repository as String, ":", xomoxcc_dgx_spark_sglang_tag as String], "") as NonEmptyStr,
+    discovered_via: "Docker Hub search for sm121 on 2026-09-11; the newest SGLang build targeting GB10, pushed 2026-08-28" as NonEmptyStr,
+    disposition: CandidateProbed { image_reference: xomoxcc_dgx_spark_sglang_pinned_reference() },
+  },
+  RuntimeCandidateRow {
+    candidate: "a GB10 image built from vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397, built by gunbc.spark.vllm_runtime_image_build and probed inside its own digest" as NonEmptyStr,
+    discovered_via: "the upstream commit that carries vllm/models/deepseek_v4_1/nvidia/model.py with its SM12 branch. It was a BUILD OBLIGATION when this roster was written and nothing published answered it; the obligation was taken, the image exists, and the same probe was run inside it -- so it is a probed candidate here and the obligation it discharges is stated separately below, where what it did and did not settle can be read" as NonEmptyStr,
+    disposition: CandidateProbed { image_reference: gunbc_vllm_dsv41_gb10_registry_reading.image_reference },
+  },
+]
+
+// ── READING THE ROWS ───────────────────────────────────────────────────────────────────────────
+//
+// THE LOOKUP IS KEYED ON THE HARDWARE TOO, because a kernel question has no answer apart from the
+// device it was asked on. An earlier revision matched on image and capability alone and took the
+// LAST matching row, which is two defects wearing one shape: readings taken at different compute
+// capabilities could combine into a single positive verdict, and two disagreeing readings of the
+// same subject resolved silently by list order. Every row in this module happens to be sm_121 today,
+// so neither would have shown up as a wrong answer -- it would have shown up the first time someone
+// appended a GB200 reading, as a verdict that had quietly stopped being about one machine.
+//
+// AND DISAGREEMENT IS ITS OWN ANSWER. Two rows for one (image, capability, device) that say
+// different things are not a value to pick between; they are a receipt set that has lost its
+// single-valuedness, and the remedy is to re-probe rather than to choose. `OutcomeConflicted` is
+// counted as unprobed by the folds below, never as missing and never as present.
+type CapabilityOutcomeLookup
+  = OutcomeFound { outcome: KernelProbeOutcome }
+  | OutcomeUnrecorded
+  | OutcomeConflicted { distinct_answers: Nat }
+
+fn kernel_probe_outcome_label(o: KernelProbeOutcome) -> String {
+  match o {
+    KernelObservedPresent { symbol: _ } => "present"
+    KernelObservedAbsent { symbol: _ } => "absent"
+    KernelProbeRefused { reason: _ } => "refused"
+    KernelProbeSymbolUngrounded { roster: _, defect: _ } => "symbol-ungrounded"
+  }
+}
+
+// THE DEVICE KEY INCLUDES THE VENDOR, because a compute-capability number is meaningless without the
+// vendor whose numbering scheme it belongs to. GpuComputeCapability carries the vendor precisely so
+// that (12, 1) cannot be asked as though it were a universal coordinate: extdeps.gpu.types renders
+// NVIDIA's as sm_121 and AMD's as gfx121, two unrelated devices that a major/minor comparison alone
+// would have treated as one. Nothing in this module has an AMD row today, which is exactly why the
+// omission was invisible and why the control below asks the question anyway.
+fn same_device(a: GpuComputeCapability, b: GpuComputeCapability) -> Bool {
+  a.vendor == b.vendor && a.major == b.major && a.minor == b.minor
+}
+
+fn probe_row_matches(r: RuntimeCapabilityProbeRow, image_reference: NonEmptyStr, capability: RuntimeKernelCapability, device: GpuComputeCapability) -> Bool {
+  let same_image = r.image.image_reference as String == image_reference as String
+  let same_capability = runtime_kernel_capability_label(c: r.capability) == runtime_kernel_capability_label(c: capability)
+  let same_hardware = same_device(a: r.compute_capability, b: device)
+  same_image && same_capability && same_hardware
+}
+
+fn matching_probe_rows(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, capability: RuntimeKernelCapability, device: GpuComputeCapability) -> List<RuntimeCapabilityProbeRow> {
+  fold(rows, init: [], f: (acc, r) =>
+    if probe_row_matches(r: r, image_reference: image_reference, capability: capability, device: device) {
+      append(acc, r)
+    } else { acc })
+}
+
+fn distinct_outcome_labels(rows: List<RuntimeCapabilityProbeRow>) -> List<String> {
+  fold(rows, init: [], f: (acc, r) =>
+    if any(acc, l => l == kernel_probe_outcome_label(o: r.outcome)) { acc }
+    else { append(acc, kernel_probe_outcome_label(o: r.outcome)) })
+}
+
+fn capability_outcome(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, capability: RuntimeKernelCapability, device: GpuComputeCapability) -> CapabilityOutcomeLookup {
+  let matched = matching_probe_rows(rows: rows, image_reference: image_reference, capability: capability, device: device)
+  let answers = distinct_outcome_labels(rows: matched)
+  if length(matched) == 0 {
+    OutcomeUnrecorded
+  } else if length(answers) != 1 {
+    OutcomeConflicted { distinct_answers: length(answers) }
+  } else {
+    fold(matched, init: OutcomeUnrecorded, f: (acc, r) => OutcomeFound { outcome: r.outcome })
+  }
+}
+
+// THE CAPABILITIES A RUNTIME MUST CARRY DEPEND ON WHAT YOU INTEND TO RUN, and an earlier revision
+// of this module made every capability mandatory for everyone. That overstated the requirement in a specific
+// way: DSpark is the speculative-decode path, and an image without it cannot speculate but can serve
+// perfectly well without speculating. A requirement list that does not name the profile it belongs
+// to converts a deployment CHOICE into a hardware VERDICT, and rules out images that would have
+// served the thing actually wanted.
+type V41ServingProfile
+  = V41SpeculativeDecode
+  | V41BaselineDecode
+
+fn v41_serving_profile_label(p: V41ServingProfile) -> String {
+  match p {
+    V41SpeculativeDecode => "speculative-decode"
+    V41BaselineDecode => "baseline-decode"
+  }
+}
+
+// THE TWO REFINED QUESTIONS ARE REQUIRED BY BOTH PROFILES, AND THAT IS A TIGHTENING. Speculation is
+// the only thing these profiles disagree about; the FP4 weight path running on THIS device, and the
+// FlashInfer entry points the major-12 KV branch reaches through, are needed to decode at all. An
+// image probed before those questions existed now reads UNPROBED for them rather than passing -- which
+// is the correct answer to a question nobody put to it, and the reason the verdict keeps unprobed
+// apart from missing.
+fn v41_required_capabilities(profile: V41ServingProfile) -> List<RuntimeKernelCapability> {
+  match profile {
+    V41BaselineDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels]
+    V41SpeculativeDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator]
+  }
+}
+
+// WHAT A CLEAN SWEEP OF THESE QUESTIONS ESTABLISHES IS INVENTORY, NOT THAT THE ENGINE RUNS. Every
+// probe here asks whether a symbol is registered or a module imports. That is a prerequisite check:
+// it can rule an image OUT decisively, and it cannot rule one IN. An architecture in the registry
+// with kernels on disk still has to load weights, allocate a KV cache at the requested context, and
+// answer a request -- none of which this module observes. The positive arm is therefore named for
+// what it establishes, and the step that would establish serving is stated beside it rather than
+// implied by a friendlier word.
+type V41RuntimeVerdict
+  = V41RuntimePrerequisitesPresent { image_reference: NonEmptyStr, profile: NonEmptyStr, remaining: NonEmptyStr }
+  | V41RuntimeMissing { image_reference: NonEmptyStr, missing: List<NonEmptyStr> }
+  | V41RuntimeIncompletelyProbed { image_reference: NonEmptyStr, unprobed: List<NonEmptyStr> }
+
+data v41_prerequisites_are_not_feasibility: NonEmptyStr = "every capability required by this profile reads present in this exact image on this exact compute capability. That is prerequisite inventory: it rules the image IN as a candidate and establishes nothing about serving. Executable feasibility is a separate observation -- the engine started with this checkpoint at a declared context and answered a request -- and it belongs to gunbc.spark.serving_deployment_selection RuntimeFeasibility, whose witness is a launch receipt rather than a symbol lookup" as NonEmptyStr
+
+fn v41_missing_capabilities(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, device: GpuComputeCapability, profile: V41ServingProfile) -> List<NonEmptyStr> {
+  fold(v41_required_capabilities(profile: profile), init: [], f: (acc, c) =>
+    match capability_outcome(rows: rows, image_reference: image_reference, capability: c, device: device) {
+      OutcomeFound { outcome: o } =>
+        match o {
+          KernelObservedPresent { symbol: _ } => acc
+          KernelObservedAbsent { symbol: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
+          KernelProbeRefused { reason: _ } => acc
+          KernelProbeSymbolUngrounded { roster: _, defect: _ } => acc
+        }
+      OutcomeUnrecorded => acc
+      OutcomeConflicted { distinct_answers: _ } => acc
+    })
+}
+
+fn v41_unprobed_capabilities(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, device: GpuComputeCapability, profile: V41ServingProfile) -> List<NonEmptyStr> {
+  fold(v41_required_capabilities(profile: profile), init: [], f: (acc, c) =>
+    match capability_outcome(rows: rows, image_reference: image_reference, capability: c, device: device) {
+      OutcomeUnrecorded => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
+      OutcomeConflicted { distinct_answers: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
+      OutcomeFound { outcome: o } =>
+        match o {
+          KernelProbeRefused { reason: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
+          KernelProbeSymbolUngrounded { roster: _, defect: _ } => append(acc, runtime_kernel_capability_label(c: c) as NonEmptyStr)
+          KernelObservedPresent { symbol: _ } => acc
+          KernelObservedAbsent { symbol: _ } => acc
+        }
+    })
+}
+
+// MISSING IS REPORTED BEFORE UNPROBED because a measured absence rules the image out whatever else is
+// unknown about it, while an incompletely probed image with nothing missing is a question still open.
+fn v41_runtime_verdict(rows: List<RuntimeCapabilityProbeRow>, image_reference: NonEmptyStr, device: GpuComputeCapability, profile: V41ServingProfile) -> V41RuntimeVerdict {
+  let missing = v41_missing_capabilities(rows: rows, image_reference: image_reference, device: device, profile: profile)
+  let unprobed = v41_unprobed_capabilities(rows: rows, image_reference: image_reference, device: device, profile: profile)
+  if length(missing) != 0 {
+    V41RuntimeMissing { image_reference: image_reference, missing: missing }
+  } else if length(unprobed) != 0 {
+    V41RuntimeIncompletelyProbed { image_reference: image_reference, unprobed: unprobed }
+  } else {
+    V41RuntimePrerequisitesPresent {
+      image_reference: image_reference,
+      profile: v41_serving_profile_label(p: profile) as NonEmptyStr,
+      remaining: v41_prerequisites_are_not_feasibility,
+    }
+  }
+}
+
+// THE STANDING OF THE SWEEP AS A WHOLE, so the answer a reader gets is "none of THE CANDIDATES THIS
+// ROSTER CARRIES, for this profile, on this device" rather than "none", and the roster that produced
+// that denominator is one declaration away. The denominator is named by shape rather than by count on
+// purpose: a sentence carrying the number of candidates goes stale the next time one is added, and a
+// stale denominator is how a sweep reports a clean result over half its subjects.
+fn v41_images_with_prerequisites(rows: List<RuntimeCapabilityProbeRow>, candidates: List<RuntimeCandidateRow>, device: GpuComputeCapability, profile: V41ServingProfile) -> List<NonEmptyStr> {
+  fold(candidates, init: [], f: (acc, c) =>
+    match c.disposition {
+      CandidateNotProbed { reason: _ } => acc
+      CandidateProbed { image_reference: ref } =>
+        match v41_runtime_verdict(rows: rows, image_reference: ref, device: device, profile: profile) {
+          V41RuntimePrerequisitesPresent { image_reference: r, profile: _, remaining: _ } => append(acc, r)
+          V41RuntimeMissing { image_reference: _, missing: _ } => acc
+          V41RuntimeIncompletelyProbed { image_reference: _, unprobed: _ } => acc
+        }
+    })
+}
+
+// THE SGLANG CANDIDATE ANSWERS THE REGISTRY QUESTION AND REFUSES THE KERNEL ONES, which is the
+// distinction the outcome type exists to carry. Its architecture registry is its own and was read
+// the same way -- 247 entries, DeepseekV4ForCausalLM and even DeepseekV4ForCausalLMDSpark among
+// them, DeepseekV41ForCausalLM not. The kernel probes are asked in vLLM's vocabulary and that
+// vocabulary does not exist in this image, so they refuse rather than answer.
+//
+// AND CAPABILITIES ADDED AFTER THIS RUN ARE NOT AMONG THE REFUSALS. The rows below are the questions
+// that were put to this image; a question the vocabulary gained later was never asked of it, and it
+// reads UNRECORDED rather than refused -- a refusal is something a run did, and a run cannot have
+// refused a question that did not exist when it happened. The lookup keeps the two apart, which is
+// why nothing here needs a row saying "not asked".
+data dgx_spark_sglang_probe: ProbedRuntimeImage = ProbedRuntimeImage {
+  image_reference: xomoxcc_dgx_spark_sglang_registry_reading.image_reference,
+  framework: "sglang" as NonEmptyStr,
+  framework_version: xomoxcc_dgx_spark_sglang_framework_version,
+}
+
+data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
+  RuntimeCapabilityProbeRow {
+    image: dgx_spark_sglang_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: ArchitectureRegistered,
+    outcome: architecture_registered_outcome(reading: xomoxcc_dgx_spark_sglang_registry_reading),
+  },
+  RuntimeCapabilityProbeRow {
+    image: dgx_spark_sglang_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: dgx_spark_sglang_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: MlaKvCacheLayoutAdmitted,
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: dgx_spark_sglang_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Csa2CompressorKernels,
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: dgx_spark_sglang_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: DSparkSpeculator,
+    outcome: KernelProbeRefused { reason: "the kernel questions are asked by vLLM symbol -- torch operator names registered by vllm._C and modules under vllm.models.deepseek_v4_1 -- and this image is SGLang, which has neither. Reporting them absent would record a category error as evidence against the image. The SGLang symbols that answer the same questions are not modelled yet; modelling them is what this refusal is asking for" as NonEmptyStr },
+  },
+]
+
+// ── THE IMAGE THIS FLEET BUILT ITSELF ──────────────────────────────────────────────────────────
+//
+// The sweep above measured images someone else published. This one was built on spark-a3ee from
+// vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397 by the modeled build in
+// gunbc.spark.vllm_runtime_image_build, and probed inside its own digest by the executable probe in
+// gunbc.spark.v41_runtime_image_probe -- the discharge the build obligation below asks for, taken on
+// the same accelerator with the same questions.
+//
+// THE REFERENCE IS AN IMAGE ID AND NOT A REPOSITORY PATH, because this image was never pushed
+// anywhere: it exists in one daemon's local store, and what identifies it there is the config digest
+// that daemon reported. Spelling the derived build tag here instead would have made the subject of a
+// receipt move whenever the recipe changed, which is the defect the readings above already corrected
+// once -- an observation's subject is whatever was observed, permanently.
+//
+// ITS ARCHITECTURE ROW DERIVES FROM A READING LIKE EVERY ROW ABOVE. The full list the registry
+// answered for is in gunbc.spark.runtime_architecture_registry_reading with its host, date and
+// instrument, so this row asks that reading rather than carrying a second hand-written answer about
+// the same run -- and the subject of both is the digest, not the derived build tag.
+data v41_gb10_source_build_probe: ProbedRuntimeImage = ProbedRuntimeImage {
+  image_reference: gunbc_vllm_dsv41_gb10_registry_reading.image_reference,
+  framework: "vllm" as NonEmptyStr,
+  framework_version: "0.1.dev1+g07b755346" as NonEmptyStr,
+}
+
+data v41_sm121_source_build_probe_rows: List<RuntimeCapabilityProbeRow> = [
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: ArchitectureRegistered,
+    outcome: architecture_registered_outcome(reading: gunbc_vllm_dsv41_gb10_registry_reading),
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: KernelObservedPresent { symbol: "every operator extdeps.vllm.deepseek_v4_1_sm12 v41_fp4_weight_surface declares, looked up in torch.ops inside this digest. This is the FULL weight surface and not the partial one the published candidates had: the GEMM and its support predicate are both registered here" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightSupportedHere,
+    outcome: KernelProbeRefused { reason: "the run that produced these rows found the predicate in the operator table and did not CALL it -- the probe asked the lookup question twice rather than asking the runtime. The probe has since been corrected to call it with the capability the interpreter reports, and this digest has not been re-probed since: the image lives on a host this lane is no longer permitted to run work on. Recording this as absent would turn a question nobody asked into evidence against the build" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: MlaKvCacheLayoutAdmitted,
+    outcome: KernelObservedPresent { symbol: join(["the backend's own supports_combination, called inside this digest at the device capability the image reported, admitted ", v41_sm12_kv_layout as String, " -- and rejected nvfp4_ds_mla, which is the layout the FP4 KV operators were once taken to stand for. The admitted and rejected sets it returned are recorded in gunbc.spark.v41_runtime_image_probe and joined there against extdeps.vllm.deepseek_v4_1_sm12's reading of the same rule at the pinned revision"], "") as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: FlashInferSparseMlaSm120Symbols,
+    outcome: KernelObservedPresent { symbol: "every entry point extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_demand_symbols declares, imported inside this digest. Symbol inventory only: the scoped dispatch-table question for this checkpoint's shapes was not asked, and upstream says the unscoped answer can pass where the scoped one refuses" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Csa2CompressorKernels,
+    outcome: KernelObservedPresent { symbol: "the modules extdeps.vllm.deepseek_v4_1_sm12 v41_csa2_surface declares, each resolved inside this digest" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: DSparkSpeculator,
+    outcome: KernelObservedPresent { symbol: "the modules extdeps.vllm.deepseek_v4_1_sm12 v41_dspark_surface declares, each resolved inside this digest" as NonEmptyStr },
+  },
+]
+
+// THE ONE ROSTER EVERY READER SHOULD CONSUME, so no consumer can pick up the vLLM receipts and miss
+// the SGLang ones, the source-built one, or any other -- a sweep whose denominator splits is a sweep
+// that can report a clean result over half its subjects.
+fn v41_sm121_capability_probe_rows() -> List<RuntimeCapabilityProbeRow> {
+  fold(
+    concat(v41_sm121_sglang_probe_rows, v41_sm121_source_build_probe_rows),
+    init: v41_sm121_vllm_probe_rows,
+    f: (acc, r) => append(acc, r),
+  )
+}
+
+// ── THE BUILD OBLIGATION THIS SWEEP PRODUCED ───────────────────────────────────────────────────
+//
+// The sweep's result is not merely "no image works": it is a specification for the image that would.
+// Every published candidate was measured against the capabilities this profile requires, and the only candidate whose
+// SOURCE is known to contain the V4.1 path at all is a GB10 build of vLLM at
+// 07b75534651a0dd584c6f3be75d8c62fb8426397. What that build must satisfy is exactly what the probe
+// asked, so the obligation is stated in the probe's own symbols rather than in prose about "V4.1
+// support" -- a build that satisfies a differently worded requirement has not been measured.
+//
+// AND THE OBLIGATION IS NOT A PREDICTION. Nothing here says the build succeeds on sm_121: the SM12
+// branch in vllm/models/deepseek_v4_1/nvidia/model.py names FlashInfer kernel requirements, and
+// whether those compile and load for compute capability 12.1 is decided by running this same probe
+// inside the built image. The row below is what to ask it, not what it will answer.
+type RuntimeBuildObligation {
+  subject: NonEmptyStr
+  source_revision: NonEmptyStr
+  profile: V41ServingProfile
+  device: GpuComputeCapability
+  required: List<RuntimeKernelCapability>
+  discharge: NonEmptyStr
+}
+
+data v41_sm121_build_obligation: RuntimeBuildObligation = RuntimeBuildObligation {
+  subject: "a GB10 (sm_121) container image carrying the prerequisites DeepSeek V4.1 Flash needs, under the speculative-decode profile -- which is a narrower claim than `able to serve`, because nothing in this module observes an engine serving anything" as NonEmptyStr,
+  source_revision: "vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+  profile: V41SpeculativeDecode,
+  device: gb10_observed_compute_capability,
+  required: v41_required_capabilities(profile: V41SpeculativeDecode),
+  discharge: "run the same capability probe inside the built image's exact digest on a GB10 and append its rows here. The build's PREREQUISITE half is discharged only when every capability this profile requires reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree. That half is inventory; the build is FIT for service only once an engine has started from this image with the V4.1 checkpoint at a declared context and answered a request, which is a RuntimeFeasibility receipt in gunbc.spark.serving_deployment_selection and is not observed here. THIS OBLIGATION IS NOT DISCHARGED, AND FOR TWO REASONS RATHER THAN ONE. extdeps.vllm.deepseek_v4_1_sm12 has landed, so the KV question is asked as the layout the backend admits rather than by ungrounded operator names, and the image built from that revision answered PRESENT to every kernel question that was PUT to it. The registry question came back ABSENT: the architecture this profile needs is not registered in it, and a build carrying the kernels and not the entry point is ruled out by the same list that would have ruled it in. The FP4 runtime predicate is the second reason and it is a different kind of gap -- the run FOUND cutlass_scaled_mm_supports_fp4 and never CALLED it, so that capability stands at KernelProbeRefused and its answer for this device is unknown. Discharge needs both settled: re-probe for the predicate, and an image whose registry answers for the architecture. Reading the absence as the only thing outstanding would leave a required capability unasked behind a discharge that named a different defect" as NonEmptyStr,
+}
+
+// WHAT EACH CAPABILITY MEANS IS THE SYMBOL THE PROBE ASKED FOR, carried beside the obligation so the
+// lane that takes the build does not have to reconstruct the questions from the rows -- and carried
+// as a TYPE rather than a string, because a capability can arrive before the upstream roster that
+// names what to look for. A plain string field would force either a corrected spelling of our own or
+// an empty value that reads as "no symbol needed"; neither is true of a question whose vocabulary is
+// still being read from upstream.
+//
+// NO CAPABILITY IS IN THAT STATE TODAY, AND THE VARIANT STAYS. The one that was --
+// MlaKvCacheLayoutAdmitted, while extdeps.vllm.deepseek_v4_1_sm12 was unlanded -- is grounded in that
+// roster's own value now that it is on the tree. The frontier arm is not scaffolding that has served
+// its purpose: it is what a capability added ahead of its roster must land as, and deleting it would
+// make the next one land as a spelling instead.
+type CapabilityProbeSymbol
+  = ProbeSymbolGrounded { symbol: NonEmptyStr }
+  | ProbeSymbolAwaitingRoster { roster: NonEmptyStr, trigger: NonEmptyStr }
+
+fn v41_capability_probe_symbol(c: RuntimeKernelCapability) -> CapabilityProbeSymbol {
+  match c {
+    ArchitectureRegistered => ProbeSymbolGrounded { symbol: v41_probe_registry_symbol }
+    Fp4WeightKernels => ProbeSymbolGrounded { symbol: "torch.ops.* : cutlass_scaled_fp4_mm and cutlass_scaled_mm_supports_fp4, both registered at the pinned upstream revision. scaled_fp4_quant alone is the quantiser, not the FP4 GEMM, and every image probed so far had exactly that partial surface" as NonEmptyStr }
+    Fp4WeightSupportedHere => ProbeSymbolGrounded { symbol: "torch.ops._C.cutlass_scaled_mm_supports_fp4, CALLED with the compute capability the interpreter itself reported inside the image, and its return value read as the answer. The symbol's presence is the Fp4WeightKernels question; this one is what the runtime says about this device" as NonEmptyStr }
+    MlaKvCacheLayoutAdmitted => ProbeSymbolGrounded { symbol: join(["the layout ", v41_sm12_kv_layout as String, ", as extdeps.vllm.deepseek_v4_1_sm12 reads it out of the pinned revision, asked of the backend itself: supports_combination is CALLED once per candidate dtype at the device capability the image reports, and returns none for an admitted combination. No operator name is looked up, because the operators that exist are present in any image with the compiled extension and decide nothing here"], "") as NonEmptyStr }
+    FlashInferSparseMlaSm120Symbols => ProbeSymbolGrounded { symbol: join(["the FlashInfer sparse MLA SM120 decode entry points extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_demand_symbols declares, each imported inside the image. They are what ", v41_sm12_attention_class as String, " requires on the major-12 arm, and they are asked separately from the layout so a missing package does not read as a rejected layout. The SCOPED question -- has_flashinfer_sparse_mla_sm120_config, which asks whether the dispatch table carries a specialization for this checkpoint's head count and top-k -- is not this capability, and upstream's own docstring says the unscoped one can pass where the scoped one refuses"], "") as NonEmptyStr }
+    Csa2CompressorKernels => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.compressor and vllm.models.deepseek_v4_1.sparse_mla -- the compressed sparse attention path, whose compressor pools compress_ratio tokens into one KV latent. Both paths exist in the upstream tree at the pinned revision" as NonEmptyStr }
+    DSparkSpeculator => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.nvidia.dspark and vllm.v1.worker.gpu.spec_decode.dspark, both present in the upstream tree at the pinned revision" as NonEmptyStr }
+  }
+}
