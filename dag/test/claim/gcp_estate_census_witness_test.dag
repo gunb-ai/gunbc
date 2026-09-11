@@ -13,7 +13,6 @@ import gunbc.gcp_estate_observation {
   gunbai_ci_iap_sa_email,
   census_gap_count,
   fleet_automation_has_no_principal_set_binding,
-  gap_github_pool_provider_id,
   operator_prose_project_name_slip,
   unread_project_number_314501921854,
   principal_set_pool_project_number,
@@ -50,8 +49,10 @@ import gunbc.gcp_estate_observation {
   gap_gunb_test_github_pool_providers,
   gap_workspace_admin_iam_roles_keys_refs,
   gap_gemini_project_beyond_identity,
-  gap_gunbai_secrets_remaining_service_accounts,
-  gap_gunb_ci_enabled_service_identity_list,
+  gap_gunbai_secrets_enabled_services_partial,
+  gap_pool_creation_timestamps,
+  gap_token_creator_binding_members,
+  custody_sas_with_no_wif_bindings,
   fleet_automation_sa_email,
   gunb_test_project_id,
   gunbai_auto_project_id,
@@ -71,10 +72,13 @@ import gunbc.gcp_estate_observation {
   gunbai_auto_legacy_federation_hygiene,
   CorrectlyScopedPossiblyInertUndeclared,
   secrets_github_pool_condition_is_the_malformed_one,
+  observed_secrets_github_pool_provider,
+  observed_github_oidc_provider,
   observed_gunbai_auto_github_provider,
   gunbai_auto_enabled_service_ids,
+  gunb_ci_enabled_service_ids,
   sheets_leading_candidate_is_not_selected,
-  gunb_ci_is_the_only_sts_candidate,
+  gunbai_auto_lacks_sts_while_ci_and_test_have_it,
   gunb_test_is_deranked_scratch_not_a_sheets_candidate,
   workspace_admin_display_name_says_test,
 }
@@ -149,10 +153,10 @@ test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
 }
 
 test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
-  (gap_github_pool_provider_id.cause as String).contains("assertion.repository_owner=='https:'")
-    && (gap_github_pool_provider_id.cause as String).contains("malformed")
-    && operator_audit_census().wif_providers.length() == 1
-    && observed_gunbai_auto_github_provider.provider_id as String == "github"
+  secrets_github_pool_condition_is_the_malformed_one()
+    && observed_secrets_github_pool_provider.provider_id as String == "github"
+    && observed_github_oidc_provider.provider_id as String == "github-oidc"
+    && operator_audit_census().wif_providers.length() == 3
 }
 
 test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
@@ -238,12 +242,14 @@ test fn desired_pool_is_noop_provider_unread_binding_absent() -> Bool {
   match classify_desired_wif_pool(desired: gcp_estate_desired_github_actions_pool(), census: census) {
     UpsertClassification { verdict: Converged, decision: Noop } =>
       match classify_desired_wif_provider(desired: gcp_estate_desired_github_oidc_provider(), census: census) {
-        UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } } =>
-          (r as String).contains("not readable")
-            && classify_desired_binding_is_absent_create(
-              desired: gcp_estate_desired_convergence_binding(),
-              census: census,
-            )
+        UpsertClassification { verdict: Converged, decision: Noop } =>
+          match classify_desired_binding(
+            desired: gcp_estate_desired_convergence_binding(),
+            census: census,
+          ) {
+            UpsertClassification { verdict: Converged, decision: Noop } => true
+            _ => false
+          }
         _ => false
       }
     _ => false
@@ -351,22 +357,26 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   gunb_test_is_enumerated_not_selected(census: census)
     && observed_project_roster_count(census: census) == 5
     && gunb_test_sheets_is_absent()
-    && gunb_test_sts_is_absent()
+    && !gunb_test_sts_is_absent()
     && none_of_the_three_sandboxes_has_sheets()
     && sheets_calling_strategy_is_create_not_adopt()
     && !gunbai_auto_has_sts()
-    && gunb_ci_has_sts
+    && gunb_ci_has_sts()
     && gunbai_auto_enabled_service_ids.length() == 32
-    && census.service_accounts.length() == 21
-    && census_subject_is_named_gap(census: census, subject: gap_gunbai_secrets_remaining_service_accounts.subject_identity as String)
-    && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_enabled_service_identity_list.subject_identity as String)
+    && gunb_ci_enabled_service_ids.length() == 40
+    && gunb_test_enabled_service_ids.length() == 27
+    && census.service_accounts.length() == 25
+    && custody_sas_with_no_wif_bindings(census: census)
     && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
     && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_github_pool_providers.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_gunb_test_github_pool_providers.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_workspace_admin_iam_roles_keys_refs.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_gemini_project_beyond_identity.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gunbai_secrets_enabled_services_partial.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_pool_creation_timestamps.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_token_creator_binding_members.subject_identity as String)
     && sheets_leading_candidate_is_not_selected()
-    && gunb_ci_is_the_only_sts_candidate()
+    && gunbai_auto_lacks_sts_while_ci_and_test_have_it()
     && gunb_test_is_deranked_scratch_not_a_sheets_candidate()
     && workspace_admin_display_name_says_test()
 }

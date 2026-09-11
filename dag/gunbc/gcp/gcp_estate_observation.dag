@@ -9,6 +9,8 @@ import extdeps.cloud.gcp.gcp {
 }
 import gunbc.auth.github_gcp_federation {
   fleet_secrets_project_number,
+  github_wif_principal_set,
+  github_wif_issuer_uri,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 
@@ -36,6 +38,20 @@ data gunbai_ci_iap_sa_email: ServiceAccountEmail = "gunbai-ci-iap@gunbai-secrets
 data fleet_cloud_convergence_sa_email: ServiceAccountEmail = "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com"
 
 data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
+
+data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
+
+data gunbai_dev_secrets_sa_email: ServiceAccountEmail = "gunbai-dev-secrets@gunbai-secrets.iam.gserviceaccount.com"
+
+data secrets_ci_integration_tests_sa_email: ServiceAccountEmail = "ci-integration-tests@gunbai-secrets.iam.gserviceaccount.com"
+
+data secrets_compute_default_sa_email: ServiceAccountEmail = "582015116396-compute@developer.gserviceaccount.com"
+
+data gcp_org_number: String = "266638272282"
+
+data gunbai_auto_create_time: String = "2025-12-13T06:40:26.933288Z"
+
+data gunbai_auto_lifecycle_state: String = "ACTIVE"
 
 data role_iam_workload_identity_user: String = "roles/iam.workloadIdentityUser"
 
@@ -77,6 +93,7 @@ type GcpEstateCoverage<T>
 type ObservedWifPool {
   project_number: String
   pool_id: NonEmptyStr
+  display_name: String
   disabled: Bool
 }
 
@@ -209,6 +226,7 @@ data observed_gunbai_secrets_project: GcpProject = GcpProject {
 data observed_github_actions_pool: ObservedWifPool = ObservedWifPool {
   project_number: fleet_secrets_project_number,
   pool_id: "github-actions" as NonEmptyStr,
+  display_name: "GitHub Actions OIDC",
   disabled: false,
 }
 
@@ -224,24 +242,28 @@ data gunb_test_project_number: String = "895190113964"
 data observed_github_pool: ObservedWifPool = ObservedWifPool {
   project_number: fleet_secrets_project_number,
   pool_id: github_pool_id,
+  display_name: "GitHub Actions Pool",
   disabled: false,
 }
 
 data observed_gunbai_auto_github_pool: ObservedWifPool = ObservedWifPool {
   project_number: unread_project_number_314501921854 as String,
   pool_id: github_pool_id,
+  display_name: "GitHub Actions pool",
   disabled: false,
 }
 
 data observed_gunb_ci_github_pool: ObservedWifPool = ObservedWifPool {
   project_number: gunb_ci_project_number,
   pool_id: github_pool_id,
+  display_name: "GitHub Actions Pool",
   disabled: false,
 }
 
 data observed_gunb_test_github_pool: ObservedWifPool = ObservedWifPool {
   project_number: gunb_test_project_number,
   pool_id: github_pool_id,
+  display_name: "GitHub Actions Pool",
   disabled: false,
 }
 
@@ -264,6 +286,29 @@ data observed_gunbai_auto_github_provider: ObservedWifProvider = ObservedWifProv
   provider_id: "github" as NonEmptyStr,
   issuer_uri: "https://token.actions.githubusercontent.com/",
   attribute_condition: "assertion.repository=='gunb-ai/gunb.ai'",
+}
+
+data observed_github_oidc_provider: ObservedWifProvider = ObservedWifProvider {
+  project_number: fleet_secrets_project_number,
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: github_wif_issuer_uri as String,
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
+data observed_secrets_github_pool_provider: ObservedWifProvider = ObservedWifProvider {
+  project_number: fleet_secrets_project_number,
+  pool_id: github_pool_id,
+  provider_id: "github" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_condition: "assertion.repository_owner=='https:'",
+}
+
+fn secrets_github_pool_legacy_principal_set_member() -> String {
+  concat(
+    concat("principalSet://iam.googleapis.com/projects/", fleet_secrets_project_number),
+    "/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunb.ai",
+  )
 }
 
 fn gunbai_auto_legacy_principal_set_member() -> String {
@@ -339,37 +384,42 @@ data observed_ci_iap_cross_project_binding: ObservedPrincipalSetBinding = Observ
   pool_project_number: Present { value: unread_project_number_314501921854 as String },
 }
 
-data gap_third_legacy_sa: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "gunbai-secrets/third-sa-bound-to-gunb.ai" as NonEmptyStr,
-  cause: "operator audit stated three service accounts bound to gunb-ai/gunb.ai; two are named (gunbai-ci-secrets, gunbai-ci-iap); the third identity was not recorded",
-  discharge: "IAM policy scan of every service account in gunbai-secrets for principalSet members containing gunb-ai/gunb.ai",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Present { value: legacy_federated_repo },
+data observed_secrets_ci_integration_tests_legacy_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
+  account: secrets_ci_integration_tests_sa_email,
+  role: role_iam_workload_identity_user,
+  member: Present { value: secrets_github_pool_legacy_principal_set_member() },
+  pool_project_number: Present { value: fleet_secrets_project_number },
 }
 
-data gap_service_account_records_unconstructible: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "gunbai-secrets/serviceAccounts" as NonEmptyStr,
-  cause: "audit named four SA prefixes (fleet-cloud-convergence@, gunbai-ci-secrets@, gunbai-ci-iap@, fleet-automation@) and not unique_id or disabled; a GcpServiceAccount is unconstructible without inventing required fields",
-  discharge: "iam.googleapis.com serviceAccounts.list on gunbai-secrets",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
+data observed_fleet_cloud_convergence_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
+  account: fleet_cloud_convergence_sa_email,
+  role: role_iam_workload_identity_user,
+  member: Present { value: github_wif_principal_set() },
+  pool_project_number: Present { value: fleet_secrets_project_number },
 }
 
-data gap_github_oidc_issuer_unrelayed: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers" as NonEmptyStr,
-  cause: "audit named the github-actions provider condition and not provider id or issuer_uri; WifProvider is unconstructible from the relay",
-  discharge: "iam.googleapis.com list providers on pool github-actions",
+data gap_token_creator_binding_members: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "gunbai-secrets/roles/iam.serviceAccountTokenCreator/members" as NonEmptyStr,
+  cause: "gunbai-dev-secrets, gunbai-ci-secrets, and gunbai-ci-iap carry roles/iam.serviceAccountTokenCreator; the members of those bindings were not captured",
+  discharge: "gcloud iam service-accounts get-iam-policy on those three accounts for roles/iam.serviceAccountTokenCreator",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
 }
 
-data gap_github_pool_provider_id: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/582015116396/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
-  cause: "operator audit recorded attribute condition assertion.repository_owner=='https:' and not the provider resource id; among the conditions that have been read this is the only malformed one and it lives in the custody project",
-  discharge: "iam.googleapis.com list providers on pool github-pool in gunbai-secrets",
+data gap_pool_creation_timestamps: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "workloadIdentityPools/createTime" as NonEmptyStr,
+  cause: "pool createTime is unread on every observed pool; project createTime is observed only for gunbai-auto",
+  discharge: "iam workloadIdentityPools.get createTime on each observed pool",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
+data gap_gunbai_secrets_enabled_services_partial: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunbai-secrets/services" as NonEmptyStr,
+  cause: "enabled-service read on gunbai-secrets was a three-name filter (iamcredentials, secretmanager, sts), not a complete list",
+  discharge: "gcloud services list --enabled --project=gunbai-secrets",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -482,12 +532,16 @@ data observed_gunbai_auto_named_service_accounts: List<ObservedNamedServiceAccou
 
 data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAccount> = [
   ObservedNamedServiceAccount {
-    email: fleet_cloud_convergence_sa_email,
+    email: secrets_ci_integration_tests_sa_email,
+    display_name: "",
+  },
+  ObservedNamedServiceAccount {
+    email: gunbai_dev_secrets_sa_email,
     display_name: "",
   },
   ObservedNamedServiceAccount {
     email: gunbai_ci_secrets_sa_email,
-    display_name: "",
+    display_name: "gunb.ai CI secrets reader",
   },
   ObservedNamedServiceAccount {
     email: gunbai_ci_iap_sa_email,
@@ -495,7 +549,19 @@ data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAc
   },
   ObservedNamedServiceAccount {
     email: fleet_automation_sa_email,
-    display_name: "",
+    display_name: "Fleet automation SSH (keyless, fleet-automation-ssh-key only)",
+  },
+  ObservedNamedServiceAccount {
+    email: bmc_assimilator_sa_email,
+    display_name: "BMC assimilator (keyless, srv3 secret only)",
+  },
+  ObservedNamedServiceAccount {
+    email: secrets_compute_default_sa_email,
+    display_name: "Compute Engine default",
+  },
+  ObservedNamedServiceAccount {
+    email: fleet_cloud_convergence_sa_email,
+    display_name: "Fleet cloud convergence (CONVERGE probe/collect; WIF-only, no keys)",
   },
 ]
 
@@ -503,18 +569,52 @@ data observed_secrets_github_pool_attribute_condition: String = "assertion.repos
 
 data observed_github_actions_attribute_condition: String = "assertion.repository == 'gunb-ai/gunbc'"
 
-data gunb_ci_named_present_service_ids: List<NonEmptyStr> = [
+data gunb_ci_enabled_service_ids: List<NonEmptyStr> = [
+  "analyticshub.googleapis.com" as NonEmptyStr,
+  "artifactregistry.googleapis.com" as NonEmptyStr,
+  "bigquery.googleapis.com" as NonEmptyStr,
+  "bigqueryconnection.googleapis.com" as NonEmptyStr,
+  "bigquerydatapolicy.googleapis.com" as NonEmptyStr,
+  "bigquerydatatransfer.googleapis.com" as NonEmptyStr,
+  "bigquerymigration.googleapis.com" as NonEmptyStr,
+  "bigqueryreservation.googleapis.com" as NonEmptyStr,
+  "bigquerystorage.googleapis.com" as NonEmptyStr,
+  "cloudaicompanion.googleapis.com" as NonEmptyStr,
+  "cloudapis.googleapis.com" as NonEmptyStr,
   "cloudbuild.googleapis.com" as NonEmptyStr,
   "cloudfunctions.googleapis.com" as NonEmptyStr,
   "cloudquotas.googleapis.com" as NonEmptyStr,
   "cloudscheduler.googleapis.com" as NonEmptyStr,
+  "cloudtrace.googleapis.com" as NonEmptyStr,
+  "compute.googleapis.com" as NonEmptyStr,
   "containerregistry.googleapis.com" as NonEmptyStr,
+  "dataform.googleapis.com" as NonEmptyStr,
+  "dataplex.googleapis.com" as NonEmptyStr,
+  "datastore.googleapis.com" as NonEmptyStr,
   "geminicloudassist.googleapis.com" as NonEmptyStr,
+  "iam.googleapis.com" as NonEmptyStr,
+  "iamcredentials.googleapis.com" as NonEmptyStr,
+  "logging.googleapis.com" as NonEmptyStr,
+  "monitoring.googleapis.com" as NonEmptyStr,
   "orgpolicy.googleapis.com" as NonEmptyStr,
+  "oslogin.googleapis.com" as NonEmptyStr,
   "pubsub.googleapis.com" as NonEmptyStr,
   "run.googleapis.com" as NonEmptyStr,
+  "secretmanager.googleapis.com" as NonEmptyStr,
+  "servicemanagement.googleapis.com" as NonEmptyStr,
+  "serviceusage.googleapis.com" as NonEmptyStr,
   "source.googleapis.com" as NonEmptyStr,
+  "sql-component.googleapis.com" as NonEmptyStr,
+  "storage-api.googleapis.com" as NonEmptyStr,
+  "storage-component.googleapis.com" as NonEmptyStr,
+  "storage.googleapis.com" as NonEmptyStr,
+  "sts.googleapis.com" as NonEmptyStr,
   "telemetry.googleapis.com" as NonEmptyStr,
+]
+
+data gunbai_secrets_enabled_service_ids_partial: List<NonEmptyStr> = [
+  "iamcredentials.googleapis.com" as NonEmptyStr,
+  "secretmanager.googleapis.com" as NonEmptyStr,
   "sts.googleapis.com" as NonEmptyStr,
 ]
 
@@ -598,6 +698,7 @@ data gunb_test_enabled_service_ids: List<NonEmptyStr> = [
   "storage.googleapis.com" as NonEmptyStr,
   "storage-api.googleapis.com" as NonEmptyStr,
   "storage-component.googleapis.com" as NonEmptyStr,
+  "sts.googleapis.com" as NonEmptyStr,
   "telemetry.googleapis.com" as NonEmptyStr,
 ]
 
@@ -658,30 +759,40 @@ fn gunbai_auto_enables_service(service: NonEmptyStr) -> Bool {
 
 data sts_api_service_id: NonEmptyStr = "sts.googleapis.com"
 
-data gunb_ci_enabled_service_count: Int = 40
+fn gunb_ci_enables_service(service: NonEmptyStr) -> Bool {
+  fold(
+    gunb_ci_enabled_service_ids,
+    init: false,
+    f: fn(acc, s) { acc || s == service },
+  )
+}
 
 fn gunbai_auto_has_sts() -> Bool {
   gunbai_auto_enables_service(service: sts_api_service_id)
 }
 
-data gunb_ci_has_sts: Bool = true
+fn gunb_ci_has_sts() -> Bool {
+  gunb_ci_enables_service(service: sts_api_service_id)
+}
 
 fn gunbai_auto_has_sheets() -> Bool {
   gunbai_auto_enables_service(service: sheets_api_service_id)
 }
 
-data gunb_ci_has_sheets: Bool = false
+fn gunb_ci_has_sheets() -> Bool {
+  gunb_ci_enables_service(service: sheets_api_service_id)
+}
 
 fn gunb_test_sts_is_absent() -> Bool {
   !gunb_test_enables_service(service: sts_api_service_id)
 }
 
 fn none_of_the_three_sandboxes_has_sheets() -> Bool {
-  gunb_test_sheets_is_absent() && !gunbai_auto_has_sheets() && !gunb_ci_has_sheets
+  gunb_test_sheets_is_absent() && !gunbai_auto_has_sheets() && !gunb_ci_has_sheets()
 }
 
-fn gunb_ci_is_the_only_sts_candidate() -> Bool {
-  !gunbai_auto_has_sts() && gunb_ci_has_sts && gunb_test_sts_is_absent()
+fn gunbai_auto_lacks_sts_while_ci_and_test_have_it() -> Bool {
+  !gunbai_auto_has_sts() && gunb_ci_has_sts() && !gunb_test_sts_is_absent()
 }
 
 type TokenExchangeStsHypothesis
@@ -790,7 +901,7 @@ fn sheets_leading_candidate_is_not_selected() -> Bool {
         && scratch == gunb_test_project_id
         && former == gunbai_auto_project_id
         && !selected
-        && gunb_ci_is_the_only_sts_candidate()
+        && gunbai_auto_lacks_sts_while_ci_and_test_have_it()
   }
 }
 
@@ -912,24 +1023,6 @@ data gap_workspace_admin_iam_roles_keys_refs: EstateCoverageGap = EstateCoverage
   federated_repo: Absent,
 }
 
-data gap_gunbai_secrets_remaining_service_accounts: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/gunbai-secrets/serviceAccounts/remaining-of-eight" as NonEmptyStr,
-  cause: "operator reported eight service accounts in gunbai-secrets; four emails are named observations; the remaining identities were not relayed and are not invented",
-  discharge: "gcloud iam service-accounts list --project=gunbai-secrets",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
-}
-
-data gap_gunb_ci_enabled_service_identity_list: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/gunb-ci/services/identity-list" as NonEmptyStr,
-  cause: "operator reported forty enabled services including STS and excluding Sheets, and named twelve present ids; the identity join of the full roster is unread and the count is not treated as a closed list",
-  discharge: "gcloud services list --enabled --project=gunb-ci",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
-}
-
 data gap_gemini_project_beyond_identity: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "projects/gen-lang-client-0162760657/beyond-identity" as NonEmptyStr,
   cause: "Default Gemini Project identity is observed; enabled services, service accounts, and WIF pools are unread",
@@ -958,22 +1051,25 @@ fn operator_audit_census() -> GcpEstateCensus {
       EstateObserved { value: observed_gunb_ci_github_pool },
       EstateObserved { value: observed_gunb_test_github_pool },
     ],
-    wif_providers: [EstateObserved { value: observed_gunbai_auto_github_provider }],
+    wif_providers: [
+      EstateObserved { value: observed_github_oidc_provider },
+      EstateObserved { value: observed_secrets_github_pool_provider },
+      EstateObserved { value: observed_gunbai_auto_github_provider },
+    ],
     principal_set_bindings: [
+      EstateObserved { value: observed_secrets_ci_integration_tests_legacy_binding },
       EstateObserved { value: observed_ci_secrets_cross_project_binding },
       EstateObserved { value: observed_ci_iap_cross_project_binding },
+      EstateObserved { value: observed_fleet_cloud_convergence_binding },
     ],
     coverage_gaps: [
-      gap_third_legacy_sa,
-      gap_service_account_records_unconstructible,
-      gap_github_oidc_issuer_unrelayed,
-      gap_github_pool_provider_id,
       gap_gunb_ci_github_pool_providers,
       gap_gunb_test_github_pool_providers,
       gap_workspace_admin_iam_roles_keys_refs,
-      gap_gunbai_secrets_remaining_service_accounts,
-      gap_gunb_ci_enabled_service_identity_list,
       gap_gemini_project_beyond_identity,
+      gap_gunbai_secrets_enabled_services_partial,
+      gap_pool_creation_timestamps,
+      gap_token_creator_binding_members,
     ],
   }
 }
@@ -1017,16 +1113,26 @@ fn unread_project_gap_names_role_and_repo(gap: EstateCoverageGap) -> Bool {
 }
 
 fn fleet_automation_has_no_principal_set_binding(census: GcpEstateCensus) -> Bool {
+  account_has_no_principal_set_binding(census: census, email: fleet_automation_sa_email)
+}
+
+fn account_has_no_principal_set_binding(census: GcpEstateCensus, email: ServiceAccountEmail) -> Bool {
   fold(
     census.principal_set_bindings,
     init: true,
     f: fn(acc, row) {
       match row {
         EstateUnread { gap: _ } => acc
-        EstateObserved { value: b } => acc && b.account != fleet_automation_sa_email
+        EstateObserved { value: b } => acc && b.account != email
       }
     },
   )
+}
+
+fn custody_sas_with_no_wif_bindings(census: GcpEstateCensus) -> Bool {
+  account_has_no_principal_set_binding(census: census, email: fleet_automation_sa_email)
+    && account_has_no_principal_set_binding(census: census, email: bmc_assimilator_sa_email)
+    && account_has_no_principal_set_binding(census: census, email: secrets_compute_default_sa_email)
 }
 
 fn census_project_identifier_strings(census: GcpEstateCensus) -> List<String> {
@@ -1182,9 +1288,15 @@ fn operator_audit_census_without_unread_project_gap() -> GcpEstateCensus {
 }
 
 fn census_github_actions_provider_is_unread(census: GcpEstateCensus) -> Bool {
-  census_subject_is_named_gap(
-    census: census,
-    subject: gap_github_oidc_issuer_unrelayed.subject_identity as String,
+  !fold(
+    census.wif_providers,
+    init: false,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } => acc || p.provider_id as String == "github-oidc"
+      }
+    },
   )
 }
 
