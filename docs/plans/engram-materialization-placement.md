@@ -103,16 +103,41 @@ The arithmetic that makes the ordering fall out, stated so it can be checked and
 
 Usable pool per host at the 82% memory fraction the canary route uses: 130,663,231,488 × 0.82 = 107,143,849,820 B (99.8 GiB).
 
-- **Route A (all-resident).** Whole payload 510,286,023,000 B ÷ usable = 4.76 → **5 ranks minimum, so TP8** on this fleet, since a tensor-parallel degree of 5 is not expressible for an 8-head layout. One replica consumes all 8 hosts.
-- **Routes B/D (Engram off the pool).** Non-Engram payload 307,212,946,760 B ÷ usable = 2.87 → **3 ranks minimum, so TP4**. Two independent replicas fit on the same 8 hosts.
+- **Route A (all-resident).** Whole payload 510,286,023,000 B ÷ usable = 4.76 → **5 ranks minimum, so TP8**, since a tensor-parallel degree of 5 is not expressible for an 8-head layout.
+- **Routes B/D (Engram off the pool).** Non-Engram payload 307,212,946,760 B ÷ usable = 2.87 → **3 ranks minimum, so TP4**.
 
-So the placement decision **doubles or halves replica count on a fixed fleet**, and it does so through axes `gunbc.spark.serving_deployment_selection` *already funds*: `ax_independent_replicas` and `ax_replica_capacity_share_lost` (one replica = 100% capacity lost on a single failure; two = 50%). No new axis is needed to carry the payoff — which is itself evidence the decomposition is inhabiting the existing model rather than forking it.
+### 8.1 The payoff is feasibility against the admissible host set, not a replica axis
 
-Against that, route A's price for 189 GiB of the scarcest resource on the fleet buys 12.4 KiB/token of access. The RAM opportunity-cost axis is what states that; without it, A is simply "faster" and wins.
+An earlier draft of this section read the 8-vs-4 rank difference as "one replica versus two" and landed it on `ax_independent_replicas` and `ax_replica_capacity_share_lost`. **That reading is wrong and the correction matters more than the arithmetic.** The operator's standing ruling is **no redundancy**: replica count is pinned to 1 by a hard constraint in the in-flight #11013 (`constraint_no_redundancy`; not on `main` at this writing, so it is cited as in flight rather than as a resolvable declaration). Under that constraint there is no second replica for a placement decision to buy, and an axis that counts replicas reads identically for every candidate — a permanently-flat axis, which is a decoration, not a funded dimension.
 
-**And it still does not conclude.** What is missing, named as the obligations §12 tracks: this fleet's measured per-step added latency for B, C and D; the page-cache RAM a B/D route actually retains; the row-size ground read; the workload's reuse locality; and the §11 runtime question, which is a hard constraint and can refuse every non-resident route outright. Today the honest output is `NeedsEvidence`, and a plan that shipped `Selected` off published third-party figures would be the fabricated-plausible-output failure with a receipt attached.
+With replica count fixed at 1, the difference is **whether the shape fits the hosts that are actually available at all**:
 
-**Rung honesty (§4b) for each claim above:** the byte partitions and fleet pool are read facts (`FootprintObservedOnFleet`, `torch.cuda` on a GB10). The 48-reads/token count is *derived from declared config*, which is as strong as the config. The 264 B row is an inference with a stated read obligation. The rank arithmetic is a consequence of the first two and the declared memory fraction. The ordering of routes is **unestablished** and typed as such.
+- Route A: TP8 × 1 — needs **all eight** Sparks, which means taking the serving cells and the RPC-reserved pair.
+- Routes B/D: TP4 × 1 — fits the **four** Sparks that are admissible without disturbing either.
+
+So placement is not trading a redundancy property against a latency property. It decides **feasibility inside a host set the fabric, not this decision, controls** — which is a hard constraint screened before Pareto, exactly where §7 puts things that can make a candidate unservable rather than merely expensive.
+
+### 8.2 How "admissible hosts" enters, and the silent assumption it removes
+
+This is the part the corrected reading forces into the open, because **`spark_fleet_snapshot` carries `host_count: 8` and no host identities.** A bare count cannot distinguish eight free hosts from eight hosts of which four are spoken for, so any fit test run against it silently assumes the whole fleet is available — generous in precisely the direction §5 forbids, on the screen whose job is ruling shapes out.
+
+The fleet already says otherwise, in declarations that exist today:
+
+- `gunbc.spark.cell_role` `spark_cell_role_assignments` assigns `SparkServingCell` to **srv5 and srv6**.
+- **srv7/srv8** hold an undischarged llama.cpp RPC peer reservation (`gunbc.spark.llama_cpp_rpc_observed`), and `test.claim.spark_llama_cpp_rpc_witness` carries a disjointness wall forbidding them from entering the serving roster until a release receipt exists. That is a wall, not a preference: a candidate that binds them is refused.
+- **srv9–srv12** carry no cell role and no reservation.
+
+So the admissible set for a new serving shape today is four hosts, and it is four *because the fabric says so*, not because this document counted. The repair is to make the fit screen consume the **host binding** rather than a scalar: the count a candidate is screened against is derived from the roster minus role assignments minus undischarged reservations, with each exclusion naming its authority. A shape needing more admissible hosts than exist is `Refused` with the exclusions named — never silently fitted against 8.
+
+Two consequences worth stating because they are the reason this is not a cosmetic change. First, the admissible count is **not a constant**: a release receipt on the RPC reservation moves it from four to six, and that is a legitimate future state which must move the decision rather than being baked in here. Second, it makes route A's cost concrete and attributable — A is not "expensive", it is *infeasible without displacing two named subjects*, and if it is ever taken, the displacement is what it costs.
+
+Against that, route A's price for 189 GiB of the scarcest resource on the fleet buys 12.4 KiB/token of access. The RAM opportunity-cost axis of §7 is what states that; without it, A is simply "faster" and wins.
+
+### 8.3 Why it still does not conclude
+
+Missing, and tracked as the obligations §12 carries: this fleet's measured per-step added latency for B, C and D; the page-cache RAM a B/D route actually retains; the row-size ground read; the workload's reuse locality; and the §11 runtime question, which is a hard constraint and can refuse every non-resident route outright. Today the honest output is `NeedsEvidence`, and a plan that shipped `Selected` off published third-party figures would be the fabricated-plausible-output failure with a receipt attached.
+
+**Rung honesty (§4b) for each claim above:** the byte partitions and fleet pool are read facts (`FootprintObservedOnFleet`, `torch.cuda` on a GB10). The 48-reads/token count is *derived from declared config*, which is as strong as the config. The 264 B row is an inference with a stated read obligation. The rank arithmetic is a consequence of the first two and the declared memory fraction. The role assignments and the RPC reservation are declared fleet state. The admissible-host derivation is **proposed, not built** — today no screen consumes it, which is why §14 lands it. The ordering of routes is **unestablished** and typed as such.
 
 ## 9. Homes, per new concept
 
@@ -137,7 +162,7 @@ The change is that the quantity fed to the fit screen becomes **the resident sha
 - `weight_fit_of` sums only the resident components. `FootprintUnread` on any resident component still yields `WeightFitUnderivable`, unchanged.
 - A component placed on a non-resident route contributes **zero resident bytes and one hard constraint** — the runtime-capability constraint of §11 — so a route that the runtime cannot serve does not quietly shrink the footprint.
 
-For #11013's candidate field: a candidate's `topology` is derived, not authored, so the Spark count **follows from** the placement rather than being chosen beside it. `EngramPlacement` is an input to candidate generation; the minimum rank count is a consequence of the resident sum (§8: 3 vs 5 → TP4 vs TP8); and the derived replica count follows from the fleet host count. The candidate field therefore does not gain a placement dimension to be searched independently — placement is selected by its own subject, and the deployment subject consumes the result. Two selections, two receipts, one direction of flow, no joint search space.
+For #11013's candidate field: a candidate's `topology` is derived, not authored, so the Spark count **follows from** the placement rather than being chosen beside it. `EngramPlacement` is an input to candidate generation; the minimum rank count is a consequence of the resident sum (§8: 3 vs 5 → TP4 vs TP8); and with `constraint_no_redundancy` pinning replica count to 1, that rank count **is** the host demand. It is screened against the admissible set of §8.2, not against `spark_fleet_snapshot.host_count` — the one place this integration could otherwise reintroduce the eight-free-hosts assumption, since `fleet_fits` today compares `hosts_consumed` directly to that scalar. The candidate field does not gain a placement dimension to be searched independently: placement is selected by its own subject, and the deployment subject consumes the result. Two selections, two receipts, one direction of flow, no joint search space.
 
 ## 11. The open fact, as an obligation with a hard constraint attached
 
@@ -170,7 +195,8 @@ The prediction and the measurement are separate rows with a stated relation, so 
 1. Component facts: immutability/layout rows and the row-size read obligation in `extdeps.deepseek.deepseek_v4_1_flash`.
 2. `gunbc.fabric.engram_materialization`: `ComponentAccessDemand`, `MaterializationRoute` over the existing ladder vocabulary, the four candidate routes, and the selection consuming `select_realization`. Consumed by execution in the same change — the module produces a `RealizationSelectionResult` a witness exercises, not a declaration set nothing reads (§3c).
 3. The runtime capability probe row against `sha256:d84a1232…`, which is what moves the hard constraint from unfunded to funded.
-4. Component decomposition on `ModelArtifact` and the resident-sum change to `weight_fit_of`, with the existing witness rows unchanged in meaning.
-5. `RoutePerformanceReading` and the receipt join, when a launch exists to read.
+4. The **admissible host binding** (§8.2): the fit screen consumes a host set derived from the roster minus role assignments minus undischarged reservations, each exclusion naming its authority, replacing the comparison against `spark_fleet_snapshot.host_count`. This is separable from the rest and worth landing on its own merits — it removes a silent eight-free-hosts assumption that is wrong today independent of anything about Engram.
+5. Component decomposition on `ModelArtifact` and the resident-sum change to `weight_fit_of`, with the existing witness rows unchanged in meaning.
+6. `RoutePerformanceReading` and the receipt join, when a launch exists to read.
 
 Steps 1–2 can land before any measurement exists; their correct output is `NeedsEvidence`, and that is the deliverable, not a placeholder.
