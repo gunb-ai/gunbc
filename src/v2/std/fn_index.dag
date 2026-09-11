@@ -294,12 +294,13 @@ fn callee_text_from_call(node: Node) -> String? {
 //
 // THE ACCUMULATOR IS BUILT REVERSED AND TURNED ONCE, and that is the whole reason
 // callee_texts_in_subtree_reversed exists as its own function rather than being inlined. fold_node's
-// step receives a child's ALREADY-FOLDED result, so the only way to combine is a concat, and a
-// concat costs its LEFT argument. Appending the child onto the accumulator therefore copies
-// everything gathered so far on every edge; appending the accumulator onto the child copies only
-// that child's subtree. Each sub arrives reversed, so the reversed concatenations compose into
-// exact reverse preorder and one list_reverse at the top restores preorder. The named split is what
-// keeps the reversal from being invisible to a reader of either half.
+// step receives a child's ALREADY-FOLDED result, so the only way to combine is a concat. THIS FILE
+// READS THAT CONCAT AS COSTING ITS LEFT ARGUMENT and therefore concatenates child then accumulator
+// (`list_append(left: sub, right: acc)`). The executing bridge `v1_rt::rc_list_concat` make_muts the
+// left and clones the RIGHT; std.nat states that same direction. The two readings are the class
+// `gunbc.recurring_failure_mode.lens_prices_the_authority_while_the_lane_runs_the_realization`
+// catalogues. The construction is not rewritten here: swapping operands to match the realization
+// would reorder callee_texts, which this function's callers observe.
 //
 // DEDUPLICATION IS A LIST SCAN AND NOT A KEYED MAP. The rationale a reader cannot recover from the
 // code is that the keyed arm was WRITTEN and measured SLOWER here: a map is the one repair in this
@@ -311,8 +312,8 @@ fn callee_text_from_call(node: Node) -> String? {
 // re-derives the figures.
 //
 // The two repairs in this function that DO strictly remove work -- extracting during traversal
-// instead of materializing and filtering, and the concat that costs its left argument -- are kept,
-// because neither can be slower than what it replaced.
+// instead of materializing and filtering, and concatenating at the fold_node step rather than
+// materializing a full subtree list -- are kept, because neither can be slower than what it replaced.
 //
 // FIRST-OCCURRENCE ORDER IS PRESERVED EXACTLY, which is not incidental: the walk seeds its worklist
 // from this list, so a different order would reorder `reached` and change what every caller

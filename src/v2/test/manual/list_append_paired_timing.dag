@@ -51,8 +51,8 @@ fn pow2_ones(k: Int) -> FreeMonoid<Int> {
 }
 
 func paired_timing() -> String {
-  let left = pow2_ones(k: 18)
-  let right = ones(n: 100)
+  let left = pow2_ones(k: 8)
+  let right = ones(n: 20)
   let left_n = length(xs: left)
   let right_n = length(xs: right)
   let new_start = observed_monotonic_nanos("list-append-concat-start")
