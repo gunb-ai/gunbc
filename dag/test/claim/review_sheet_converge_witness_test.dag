@@ -464,6 +464,45 @@ test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool 
   }
 }
 
+test fn absent_listing_appends_a_located_row() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "beta")])
+  let observed = w_observed(headers: w_headers(), rows: [])
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Apply { plan: p } =>
+      (p.patches |> count) == 0
+        && match p.appends |> first {
+          Present { value: a } =>
+            (a.listing_id as String) == "L2"
+              && a.sheet_row == 2
+              && match a.cells |> first {
+                Present { value: id } =>
+                  id == "L2"
+                    && match value_ranges_from_write_plan(plan: p, tab: "Review" as NonEmptyStr) |> first {
+                      Present { value: vr } =>
+                        vr.range == "Review!A2:D2"
+                          && match vr.values {
+                            Present { value: rows } =>
+                              match rows |> first {
+                                Present { value: cells } =>
+                                  match cells.skip(n: 1).first() {
+                                    Present { value: title } => title == "beta"
+                                    Absent => false
+                                  }
+                                Absent => false
+                              }
+                            Absent => false
+                          }
+                      Absent => false
+                    }
+                Absent => false
+              }
+          Absent => false
+        }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
 test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool {
   let projection = w_projection(rows: [
     ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },

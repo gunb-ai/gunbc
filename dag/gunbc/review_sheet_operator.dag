@@ -170,6 +170,20 @@ type ReviewSheetOperatorAdmission
   | ReviewSheetEstateUnresolved { subject: NonEmptyStr, reason: NonEmptyStr }
   | ReviewSheetOperatorRefused { reason: NonEmptyStr }
 
+fn review_sheet_estate_unresolved_gcp_project() -> ReviewSheetOperatorAdmission {
+  ReviewSheetEstateUnresolved {
+    subject: "review_sheet_gcp_project" as NonEmptyStr,
+    reason: "API project awaiting identification; estate inventory settles the automation project (not a custody-project default)." as NonEmptyStr,
+  }
+}
+
+fn review_sheet_estate_unresolved_writer() -> ReviewSheetOperatorAdmission {
+  ReviewSheetEstateUnresolved {
+    subject: "review_sheet_writer" as NonEmptyStr,
+    reason: "calling identity awaiting identification; estate inventory names the SA. This PR does not pick one." as NonEmptyStr,
+  }
+}
+
 fn admit_review_sheet_operator(
   project: ReviewSheetGcpProjectStanding,
   writer: ReviewSheetWriterStanding,
@@ -181,18 +195,10 @@ fn admit_review_sheet_operator(
   tenancy: ReviewSheetAccountTenancy,
 ) -> ReviewSheetOperatorAdmission {
   match project {
-    ReviewSheetGcpProjectAwaitingIdentification =>
-      ReviewSheetEstateUnresolved {
-        subject: "review_sheet_gcp_project" as NonEmptyStr,
-        reason: "API project awaiting identification; estate inventory settles the automation project (not a custody-project default)." as NonEmptyStr,
-      }
+    ReviewSheetGcpProjectAwaitingIdentification => review_sheet_estate_unresolved_gcp_project()
     ReviewSheetGcpProjectIdentified { project: p } =>
       match writer {
-        ReviewSheetWriterAwaitingIdentification =>
-          ReviewSheetEstateUnresolved {
-            subject: "review_sheet_writer" as NonEmptyStr,
-            reason: "calling identity awaiting identification; estate inventory names the SA. This PR does not pick one." as NonEmptyStr,
-          }
+        ReviewSheetWriterAwaitingIdentification => review_sheet_estate_unresolved_writer()
         ReviewSheetWriterIdentified { email: sa } =>
           if intervention_is_discharged(intervention: serviceusage_enable_iam) {
             match decide_service_enablement(
@@ -263,18 +269,10 @@ fn share_intervention_for_spreadsheet(
 
 fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
   match review_sheet_gcp_project {
-    ReviewSheetGcpProjectAwaitingIdentification =>
-      ReviewSheetEstateUnresolved {
-        subject: "review_sheet_gcp_project" as NonEmptyStr,
-        reason: "API project awaiting identification; estate inventory settles the automation project (not a custody-project default)." as NonEmptyStr,
-      }
+    ReviewSheetGcpProjectAwaitingIdentification => review_sheet_estate_unresolved_gcp_project()
     ReviewSheetGcpProjectIdentified { project: p } =>
       match review_sheet_writer {
-        ReviewSheetWriterAwaitingIdentification =>
-          ReviewSheetEstateUnresolved {
-            subject: "review_sheet_writer" as NonEmptyStr,
-            reason: "calling identity awaiting identification; estate inventory names the SA. This PR does not pick one." as NonEmptyStr,
-          }
+        ReviewSheetWriterAwaitingIdentification => review_sheet_estate_unresolved_writer()
         ReviewSheetWriterIdentified { email: sa } =>
           admit_review_sheet_operator(
             project: ReviewSheetGcpProjectIdentified { project: p },
