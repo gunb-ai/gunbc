@@ -18,6 +18,7 @@ import gunbc.auth.github_gcp_federation {
   github_wif_provider_id,
   github_wif_attribute_condition,
   github_wif_principal_set,
+  github_wif_issuer_uri,
   fleet_secrets_project_number,
 }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
@@ -78,6 +79,7 @@ type DesiredWifProvider {
   project_number: String
   pool_id: NonEmptyStr
   provider_id: NonEmptyStr
+  issuer_uri: String
   attribute_condition: String
 }
 
@@ -126,6 +128,7 @@ fn gcp_estate_desired_github_oidc_provider() -> DesiredWifProvider {
     project_number: fleet_secrets_project_number,
     pool_id: github_wif_pool_id,
     provider_id: github_wif_provider_id,
+    issuer_uri: github_wif_issuer_uri as String,
     attribute_condition: github_wif_attribute_condition(),
   }
 }
@@ -201,7 +204,8 @@ fn classify_desired_wif_provider(
           if p.project_number == desired.project_number
             && p.pool_id == desired.pool_id
             && p.provider_id == desired.provider_id {
-            if p.attribute_condition == desired.attribute_condition {
+            if p.attribute_condition == desired.attribute_condition
+              && p.issuer_uri == desired.issuer_uri {
               Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
             } else {
               match drift_policy_for(kind: KindWifProvider) {

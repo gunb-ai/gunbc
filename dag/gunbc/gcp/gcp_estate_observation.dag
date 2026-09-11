@@ -9,8 +9,6 @@ import extdeps.cloud.gcp.gcp {
 }
 import gunbc.auth.github_gcp_federation {
   fleet_secrets_project_number,
-  github_wif_principal_set,
-  github_wif_issuer_uri,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 
@@ -292,7 +290,7 @@ data observed_github_oidc_provider: ObservedWifProvider = ObservedWifProvider {
   project_number: fleet_secrets_project_number,
   pool_id: "github-actions" as NonEmptyStr,
   provider_id: "github-oidc" as NonEmptyStr,
-  issuer_uri: github_wif_issuer_uri as String,
+  issuer_uri: "https://token.actions.githubusercontent.com",
   attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
 }
 
@@ -393,6 +391,13 @@ fn gunbai_auto_legacy_principal_set_member() -> String {
   )
 }
 
+fn observed_github_actions_gunbc_principal_set() -> String {
+  concat(
+    concat("principalSet://iam.googleapis.com/projects/", fleet_secrets_project_number),
+    "/locations/global/workloadIdentityPools/github-actions/attribute.repository/gunb-ai/gunbc",
+  )
+}
+
 fn gunbai_auto_provider_condition_is_tight_legacy_repo() -> Bool {
   (observed_gunbai_auto_github_provider.attribute_condition).contains(legacy_federated_repo)
     && observed_gunbai_auto_github_provider.attribute_condition
@@ -422,14 +427,14 @@ type FederationGenerationHypothesis
   = GithubPoolIsPriorGenerationUngrounded {
       auto_github_pool_condition: String
       secrets_github_pool_condition: String
-      modeled_github_actions_condition: String
+      observed_github_actions_condition: String
     }
 
 fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
   GithubPoolIsPriorGenerationUngrounded {
     auto_github_pool_condition: observed_gunbai_auto_github_provider.attribute_condition,
-    secrets_github_pool_condition: observed_secrets_github_pool_attribute_condition,
-    modeled_github_actions_condition: observed_github_actions_attribute_condition,
+    secrets_github_pool_condition: observed_secrets_github_pool_provider.attribute_condition,
+    observed_github_actions_condition: observed_github_oidc_provider.attribute_condition,
   }
 }
 
@@ -439,7 +444,7 @@ fn copied_malformed_condition_and_auto_escaped_well_formed() -> Bool {
       GithubPoolIsPriorGenerationUngrounded {
         auto_github_pool_condition: auto_c,
         secrets_github_pool_condition: secrets_c,
-        modeled_github_actions_condition: _,
+        observed_github_actions_condition: _,
       } =>
         (secrets_c).contains("repository_owner=='https:'")
           && (auto_c).contains(legacy_federated_repo)
@@ -478,7 +483,7 @@ data observed_workspace_admin_legacy_binding: ObservedPrincipalSetBinding = Obse
 data observed_fleet_cloud_convergence_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: fleet_cloud_convergence_sa_email,
   role: role_iam_workload_identity_user,
-  member: Present { value: github_wif_principal_set() },
+  member: Present { value: observed_github_actions_gunbc_principal_set() },
   pool_project_number: Present { value: fleet_secrets_project_number },
 }
 
@@ -739,10 +744,6 @@ data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAc
     display_name: "Fleet cloud convergence (CONVERGE probe/collect; WIF-only, no keys)",
   },
 ]
-
-data observed_secrets_github_pool_attribute_condition: String = copied_malformed_github_pool_attribute_condition
-
-data observed_github_actions_attribute_condition: String = "assertion.repository == 'gunb-ai/gunbc'"
 
 data gunb_ci_enabled_service_ids: List<NonEmptyStr> = [
   "analyticshub.googleapis.com" as NonEmptyStr,

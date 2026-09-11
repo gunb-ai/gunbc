@@ -3,7 +3,7 @@ module test.claim.gcp_estate_census_witness
 import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible }
+import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible, Drifted, Apply }
 import gunbc.gcp_estate_observation {
   operator_audit_census,
   operator_prose_disagrees_with_sa_derived_project_id,
@@ -116,6 +116,7 @@ import gunbc.gcp_estate_adoption {
   classify_desired_wif_provider,
   classify_desired_binding,
   classify_desired_binding_is_absent_create,
+  UpdateSubject,
   undeclared_findings,
   classify_undeclared,
   undeclared_decision_never_applies,
@@ -331,6 +332,31 @@ test fn editing_an_attribute_condition_changes_the_census_identity() -> Bool {
     && !census_measured_fingerprint_eq(left: before, right: same_ids_other_project)
     && copied_malformed_condition_has_three_instances()
     && copied_malformed_instance_count_in_census(census: after) == 0
+}
+
+data fixture_oidc_issuer_drift: ObservedWifProvider = ObservedWifProvider {
+  project_number: "582015116396",
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://example.invalid/oidc",
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
+test fn issuer_uri_drift_is_observable_against_desire() -> Bool {
+  match classify_desired_wif_provider(
+    desired: gcp_estate_desired_github_oidc_provider(),
+    census: census_with_observed_provider(provider: fixture_oidc_issuer_drift),
+  ) {
+    UpsertClassification { verdict: Drifted, decision: Apply { plan: UpdateSubject } } =>
+      match classify_desired_wif_provider(
+        desired: gcp_estate_desired_github_oidc_provider(),
+        census: census_with_observed_provider(provider: fixture_oidc_narrow),
+      ) {
+        UpsertClassification { verdict: Converged, decision: Noop } => true
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn a_gap_and_an_observation_under_one_key_are_different_measurements() -> Bool {
