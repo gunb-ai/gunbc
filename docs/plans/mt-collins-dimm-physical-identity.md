@@ -99,8 +99,15 @@ also inspected at native resolution. No document PDFs or photographs are committ
 
 The 2U document has its own `extdeps.ampere.mt_collins_2u_user_guide.subject`
 authority, including its publisher URL, separately named mirror URL, issue,
-date, digest and Figure 19 citation. The mirror fetch result is a gunbc receipt,
-not an Ampere-owned fact. It is not called a publisher locator.
+date, digest and Figure 19 citation. The two independent read receipts live in
+`gunbc.specification_citation_read_provenance`; the publisher uses the
+publisher-fetch arm and the live third-party mirror uses
+`DocumentMirrorLocatorFetchedAndTextIngested`. Its observation date is not an
+invented archive-capture date. `mt_collins_2u_citation_read_comparison` derives
+agreement from subject identity, response status, byte count and digest, and
+retains both receipts. Unread or wrong-subject records are incomparable;
+different recorded bytes/digests differ. No mirror read is called a publisher
+read, and no agreement is an authored boolean beside the DIMM join.
 
 ## Consumption and remaining boundary
 
@@ -125,7 +132,7 @@ when the operator cannot read the markings.
 
 Dashboard message `msg_ecd92656-ea35-4746-9e3f-f67d12706ec5`, relayed by
 `eager-owl-205` on 2026-09-11, reports the operator's by-eye inspection of
-**unit 1, a 1U chassis**: physical blue connectors are the odd-J set used at
+**unit 1, a Foxconn Mt. Collins 1U chassis**: physical blue connectors are the odd-J set used at
 1DPC; the silkscreen supplied no useful slot-identification information.
 No photograph accompanied the report to this session. We did not independently
 inspect the chassis, and the report is not an Ampere statement.

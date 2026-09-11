@@ -1,6 +1,16 @@
 module test.claim.mt_collins_dimm_physical_identity_witness
 
 import std.logic { Bool }
+import std.measure { byte_size }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ampere.mt_collins_2u_user_guide.subject { doslab_mirror_authority }
+import gunbc.specification_citation_read_provenance {
+  SpecificationCitationReadReceipt, DocumentMirrorLocatorFetchedAndTextIngested,
+  DocumentLocatorFetchRefused,
+  RecordedReadBytesAgree, RecordedReadBytesDiffer, ReadBytesNotComparable,
+  mt_collins_2u_user_guide_subject_ref, mt_collins_2u_publisher_citation_read_receipt,
+  mt_collins_2u_mirror_citation_read_receipt, specification_citation_read_byte_standing,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.machine_intake_mtcollins1_dimm_connector_observation {
   observed_unit, colour_evidence_for_unit,
@@ -84,7 +94,7 @@ test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool {
       && o.left_processor_socket == 0 && o.right_processor_socket == 1
       && list_length(items: gaps) == 2
       && colours.first() == "blue" && colours.last() == "black"
-      && citation.figure == 19 && citation.page == 52 && mirror.matches_publisher_bytes
+      && citation.figure == 19 && citation.page == 52 && mirror.standing == RecordedReadBytesAgree
       && fold(slots, init: true, f: (acc, i) => acc && i.legend.slot_number == 0 && i.legend.drawing_colour == "yellow")
     PopulationDiagramRefused { unresolved: _ } => false
     PopulationCountDisagrees { declared: _, listed: _ } => false
@@ -141,6 +151,32 @@ test fn w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps()
   actual && another
 }
 
+// Agreement is a comparison of separate observations, not an authored constant.
+test fn w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts() -> Bool {
+  let different = SpecificationCitationReadReceipt {
+    subject: mt_collins_2u_user_guide_subject_ref,
+    provenance: DocumentMirrorLocatorFetchedAndTextIngested {
+      mirror: doslab_mirror_authority,
+      observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 11 },
+      http_status: 200,
+      byte_count: byte_size(count: 16148131),
+      content_digest: "sha256 deliberately-different-fixture-digest",
+      detail: "Controlled fixture, not an observed document.",
+    },
+  }
+  let unread = SpecificationCitationReadReceipt {
+    subject: mt_collins_2u_user_guide_subject_ref,
+    provenance: DocumentLocatorFetchRefused { http_status: 403, detail: "Controlled refusal fixture." },
+  }
+  let wrong_subject = SpecificationCitationReadReceipt {
+    subject: observed_unit,
+    provenance: mt_collins_2u_mirror_citation_read_receipt.provenance,
+  }
+  specification_citation_read_byte_standing(publisher: mt_collins_2u_publisher_citation_read_receipt, mirror: different) == RecordedReadBytesDiffer
+  && specification_citation_read_byte_standing(publisher: unread, mirror: mt_collins_2u_mirror_citation_read_receipt) == ReadBytesNotComparable
+  && specification_citation_read_byte_standing(publisher: mt_collins_2u_publisher_citation_read_receipt, mirror: wrong_subject) == ReadBytesNotComparable
+}
+
 fn main() -> Bool {
   w_missing_and_duplicate_identities_refuse()
   && w_socket_disagreement_and_role_deficit_refuse()
@@ -149,4 +185,5 @@ fn main() -> Bool {
   && w_sixteen_dimm_join_keeps_orientation_and_physical_gaps()
   && w_bad_population_never_returns_partial_slots()
   && w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps()
+  && w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts()
 }

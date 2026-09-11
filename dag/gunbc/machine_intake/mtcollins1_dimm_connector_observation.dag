@@ -51,7 +51,7 @@ data mtcollins1_blue_connector_observation: MtCollinsDimmOperatorObservation = M
   observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 11 },
   observer: "operator",
   relay_message: "msg_ecd92656-ea35-4746-9e3f-f67d12706ec5 (eager-owl-205 to wise-heron-626)",
-  method: "Operator report of by-eye inspection of unit 1, relayed in the session dashboard. No photograph supplied to this session and no independent inspection performed here.",
+  method: "Operator report of by-eye inspection of Foxconn Mt. Collins unit 1 (1U chassis), relayed in the session dashboard. No photograph supplied to this session and no independent inspection performed here.",
   physical_colour: "blue",
   colour_population: mt_collins_population_16_dimms,
   silkscreen_report: "Operator found zero useful slot-identification information in the silkscreen; colour was the distinguishable rack-facing identifier. This reports what the operator could identify, not a universal claim that the board has no printed markings.",

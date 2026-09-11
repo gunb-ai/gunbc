@@ -1,13 +1,9 @@
 module gunbc.mt_collins_dimm_physical_identity
 
 import std.types { NonEmptyStr, List, list_length }
-import std.logic { Bool }
-import std.measure { byte_size }
-import extdeps.publication { SpecificationDocumentDate }
-import gunbc.specification_citation_read_provenance { SpecificationCitationReadReceipt, DocumentLocatorFetchedAndTextIngested }
-import extdeps.external_authority { ExternalAuthority }
+import gunbc.specification_citation_read_provenance { SpecificationCitationReadByteComparison, mt_collins_2u_citation_read_comparison }
 import extdeps.ampere.mt_collins_2u_user_guide.subject {
-  MtCollins2uMemoryTopologyCitation, memory_topology_citation, doslab_mirror_authority,
+  MtCollins2uMemoryTopologyCitation, memory_topology_citation,
 }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -23,30 +19,6 @@ import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
   MtCollinsDimmFigureBank, MtCollinsDimmDiagramLegend, MtCollinsChassisFigureOrientation,
   dimm_figure_banks, dimm_figure_connector_label_prefix, one_dpc_diagram_legend, additional_two_dpc_diagram_legend,
   chassis_figure_orientation, motherboard_photo_colours,
-}
-
-// The locator here is explicitly the third-party mirror, never Ampere's publisher URL.
-// The same byte digest was independently obtained from the publisher locator.
-type MtCollins2uMirrorRead {
-  mirror: ExternalAuthority
-  read_on: SpecificationDocumentDate
-  receipt: SpecificationCitationReadReceipt
-  matches_publisher_bytes: Bool
-}
-
-data mt_collins_2u_mirror_read: MtCollins2uMirrorRead = MtCollins2uMirrorRead {
-  mirror: doslab_mirror_authority,
-  read_on: SpecificationDocumentDate { year: 2026, month: 9, day: 11 },
-  receipt: SpecificationCitationReadReceipt {
-    subject: DeclarationRef { module_path: "extdeps.ampere.mt_collins_2u_user_guide.subject", decl_name: "mt_collins_2u_user_guide", field: WholeDeclaration },
-    provenance: DocumentLocatorFetchedAndTextIngested {
-      http_status: 200,
-      byte_count: byte_size(count: 16148131),
-      content_digest: "sha256 a8102a2a661fca508c079ba460da2f701360216517ee090a036e533bbf078bbf",
-      detail: "Fetched from the separately carried Doslab third-party mirror using curl; byte-identical to the separately fetched Ampere publisher copy. Full text decoded and Figures 19-20 and 42-43 visually inspected. Mirror identity is not publisher identity.",
-    },
-  },
-  matches_publisher_bytes: true,
 }
 
 // These are results of a bounded documentation survey, not properties of the board.
@@ -137,7 +109,7 @@ type MtCollinsDimmPopulationIdentity
       physical_gaps: List<MtCollinsPhysicalIdentificationGap>,
       photographed_colours: List<NonEmptyStr>,
       user_guide_citation: MtCollins2uMemoryTopologyCitation,
-      mirror_read: MtCollins2uMirrorRead,
+      mirror_read: SpecificationCitationReadByteComparison,
     }
   | PopulationDiagramRefused { unresolved: List<MtCollinsDimmIdentityOutcome> }
   | PopulationCountDisagrees { declared: Nat, listed: Nat }
@@ -171,7 +143,7 @@ fn population_diagram_identity(population: MtCollinsDimmPopulationRow) -> MtColl
       physical_gaps: physical_identification_gaps,
       photographed_colours: motherboard_photo_colours.visible_connector_colours,
       user_guide_citation: memory_topology_citation,
-      mirror_read: mt_collins_2u_mirror_read,
+      mirror_read: mt_collins_2u_citation_read_comparison,
     }
   } else {
     PopulationDiagramRefused { unresolved: tally.unresolved }
