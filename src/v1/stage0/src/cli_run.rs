@@ -39764,15 +39764,21 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
 /// import closure that declares it either — so the reference falls through to the shared slot,
 /// and the slot holds one of several declarations that nothing the author wrote ranks.
 ///
-/// COUNTED STATICALLY, over every reference site in the scope's closure, not over the lookups a
-/// fold happens to EXECUTE. An execution-keyed census omits a reference on a path no witness
-/// runs, which is precisely the site that would be refused later — or, if the wall were placed
-/// at runtime lookup, never refused at all.
+/// COUNTED STATICALLY, over the scope's whole closure rather than over the lookups a fold
+/// happens to EXECUTE. An execution-keyed census omits a reference on a path no witness runs,
+/// which is precisely the site that would be refused later — or, if the wall were placed at
+/// runtime lookup, never refused at all.
+///
+/// THE GRAIN IS (name, referring module), NOT the occurrence. `refs_by_module` publishes a
+/// module's free references as a deduped set, so three references to one name from one module
+/// are one row here. That is the grain a rename is written at — a module either resolves the
+/// name through the shared slot or it does not, and fixing it fixes every occurrence in it — but
+/// it is not an occurrence count and must not be reported as one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AmbiguousBareRead {
     pub name: String,
-    /// The module whose body carries the reference — the site a rename or a qualification has
-    /// to be written at, or whose declaring side has to move.
+    /// The module whose body carries the reference(s) — where a qualification would be written,
+    /// or whose declaring side has to move.
     pub referring_module: String,
     /// The out-of-region declarations the shared slot is choosing between for this read.
     pub claimants: Vec<(String, &'static str)>,

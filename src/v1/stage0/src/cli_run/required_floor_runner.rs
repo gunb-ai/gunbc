@@ -7047,9 +7047,11 @@ pub fn run_required_floor(
     // harmless, and the corpus deliberately carries per-module convention rows that hundreds of
     // modules each declare — so the population a refusal has to dissolve is not that one, it is
     // the set of reference SITES that actually fall through to the ambiguous shared slot.
-    // Counted statically over every reference site in each scope's closure, never over the
-    // lookups this fold happened to execute: a reference on a path no witness runs is exactly
-    // the site a later refusal would surprise.
+    // Counted statically over each scope's whole closure, never over the lookups this fold
+    // happened to execute: a reference on a path no witness runs is exactly the site a later
+    // refusal would surprise. The grain is (name, referring module), which is the grain a fix is
+    // written at — `refs_by_module` publishes a module's free references deduped, so this is a
+    // count of referencing modules per name and NOT a count of occurrences.
     {
         let mut read_names: BTreeMap<String, usize> = BTreeMap::new();
         for ((name, referring_module), claimants) in ambiguous_read_sites.iter() {
@@ -7065,8 +7067,8 @@ pub fn run_required_floor(
             );
         }
         eprintln!(
-            "[floor-bare-name-ambiguity-reads] read_sites={} read_names_distinct={} \
-             declared_names_distinct={}",
+            "[floor-bare-name-ambiguity-reads] read_name_module_pairs={} \
+             read_names_distinct={} declared_names_distinct={}",
             ambiguous_read_sites.len(),
             read_names.len(),
             ambiguous_claimants_len
