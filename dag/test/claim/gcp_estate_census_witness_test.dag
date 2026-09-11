@@ -1,6 +1,6 @@
 module test.claim.gcp_estate_census_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible }
@@ -17,15 +17,34 @@ import gunbc.gcp_estate_observation {
   gap_project_314501921854,
   fleet_automation_has_no_principal_set_binding,
   principal_set_pool_project_number,
+  principal_set_citation,
+  PrincipalSetCitesProject,
+  PrincipalSetUnparsed,
+  MemberIsNotAPrincipalSet,
   gap_github_pool_provider_id,
   operator_prose_project_name_slip,
   unread_project_number_314501921854,
+  census_subject_is_enumerated_project_number,
+  census_subject_is_observed_project_number,
+  census_subject_is_named_gap,
+  census_cited_but_unenumerated_projects,
+  operator_audit_census_without_unread_project_gap,
+  census_unparsed_principal_set_members,
+  census_with_unparsed_principal_set_binding,
+  census_with_observed_provider,
+  census_with_observed_pool,
+  census_with_unread_pool_gap,
+  census_with_refused_pool_gap,
+  census_measured_fingerprint_eq,
+  ObservedWifProvider,
+  observed_github_pool,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
   census_edges,
   census_cross_project_binding_count,
   edge_is_cross_project,
+  edge_is_unparsed_principal_set,
 }
 import gunbc.gcp_estate_adoption {
   gcp_estate_desired_roster,
@@ -35,6 +54,7 @@ import gunbc.gcp_estate_adoption {
   classify_desired_wif_pool,
   classify_desired_wif_provider,
   classify_desired_binding,
+  classify_desired_binding_is_absent_create,
   undeclared_findings,
   classify_undeclared,
   undeclared_decision_never_applies,
@@ -57,7 +77,7 @@ test fn sa_email_derives_gunbai_secrets_and_operator_prose_slipped() -> Bool {
 
 test fn unread_project_is_a_named_gap_not_an_absence() -> Bool {
   let census = operator_audit_census()
-  census_gap_count(census: census) >= 1
+  census_gap_count(census: census) != 0
     && unread_project_gap_names_trusting_accounts(gap: gap_project_314501921854)
     && unread_project_gap_names_role_and_repo(gap: gap_project_314501921854)
     && (gap_project_314501921854.discharge as String).contains("projects.get")
@@ -71,7 +91,63 @@ test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
 test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
   (gap_github_pool_provider_id.cause as String).contains("assertion.repository_owner=='https:'")
     && (gap_github_pool_provider_id.cause as String).contains("not the provider resource id")
-    && operator_audit_census().wif_providers.length() == 1
+    && operator_audit_census().wif_providers.length() == 0
+}
+
+test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
+  let census = operator_audit_census()
+  let number = unread_project_number_314501921854 as String
+  census_subject_is_enumerated_project_number(census: census, number: number)
+    && !census_subject_is_observed_project_number(census: census, number: number)
+    && census_subject_is_named_gap(census: census, subject: concat("projects/", number))
+}
+
+test fn observed_project_is_enumerated_observed_and_not_a_gap() -> Bool {
+  let census = operator_audit_census()
+  census_subject_is_enumerated_project_number(census: census, number: "582015116396")
+    && census_subject_is_observed_project_number(census: census, number: "582015116396")
+    && !census_subject_is_named_gap(census: census, subject: "projects/582015116396")
+}
+
+test fn a_project_outside_the_census_is_not_enumerated() -> Bool {
+  let census = operator_audit_census()
+  !census_subject_is_enumerated_project_number(census: census, number: "999999999999")
+    && !census_subject_is_observed_project_number(census: census, number: "999999999999")
+    && !census_subject_is_named_gap(census: census, subject: "projects/999999999999")
+}
+
+test fn cited_project_enumerated_as_gap_is_not_outstanding() -> Bool {
+  census_cited_but_unenumerated_projects(census: operator_audit_census()).length() == 0
+}
+
+test fn cited_project_without_gap_is_outstanding() -> Bool {
+  let outstanding = census_cited_but_unenumerated_projects(
+    census: operator_audit_census_without_unread_project_gap(),
+  )
+  outstanding.length() == 1
+    && fold(
+      outstanding,
+      init: false,
+      f: fn(acc, n) { acc || n as String == unread_project_number_314501921854 as String },
+    )
+}
+
+test fn undecomposable_principal_set_is_unparsed_not_a_non_set() -> Bool {
+  match principal_set_citation(member: "principalSet://iam.googleapis.com/some/unfamiliar/shape") {
+    PrincipalSetUnparsed { member: _ } => true
+    MemberIsNotAPrincipalSet { member: _ } => false
+    PrincipalSetCitesProject { project_number: _, pool_id: _ } => false
+  }
+}
+
+test fn undecomposable_principal_set_is_rostered() -> Bool {
+  census_unparsed_principal_set_members(census: census_with_unparsed_principal_set_binding()).length() == 1
+}
+
+test fn undecomposable_principal_set_is_not_a_same_project_edge() -> Bool {
+  let edges = census_edges(census: census_with_unparsed_principal_set_binding())
+  fold(edges, init: false, f: fn(acc, e) { acc || edge_is_unparsed_principal_set(edge: e) })
+    && !fold(edges, init: false, f: fn(acc, e) { acc || edge_is_cross_project(edge: e) })
 }
 
 test fn principal_set_parser_extracts_cross_project_number() -> Bool {
@@ -96,20 +172,55 @@ test fn census_edges_make_the_cross_project_bindings_loud() -> Bool {
     )
 }
 
-test fn desired_github_actions_pool_and_oidc_provider_are_noop() -> Bool {
+test fn desired_pool_is_noop_provider_unread_binding_absent() -> Bool {
   let census = operator_audit_census()
   match classify_desired_wif_pool(desired: gcp_estate_desired_github_actions_pool(), census: census) {
     UpsertClassification { verdict: Converged, decision: Noop } =>
       match classify_desired_wif_provider(desired: gcp_estate_desired_github_oidc_provider(), census: census) {
-        UpsertClassification { verdict: Converged, decision: Noop } =>
-          match classify_desired_binding(desired: gcp_estate_desired_convergence_binding(), census: census) {
-            UpsertClassification { verdict: Converged, decision: Noop } => true
-            _ => false
-          }
+        UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } } =>
+          (r as String).contains("not readable")
+            && classify_desired_binding_is_absent_create(
+              desired: gcp_estate_desired_convergence_binding(),
+              census: census,
+            )
         _ => false
       }
     _ => false
   }
+}
+
+data fixture_oidc_narrow: ObservedWifProvider = ObservedWifProvider {
+  project_number: "582015116396",
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
+data fixture_oidc_wide: ObservedWifProvider = ObservedWifProvider {
+  project_number: "582015116396",
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  attribute_condition: "true",
+}
+
+test fn editing_an_attribute_condition_changes_the_census_identity() -> Bool {
+  let before = census_with_observed_provider(provider: fixture_oidc_narrow)
+  let after = census_with_observed_provider(provider: fixture_oidc_wide)
+  census_measured_fingerprint_eq(left: before, right: before)
+    && !census_measured_fingerprint_eq(left: before, right: after)
+}
+
+test fn a_gap_and_an_observation_under_one_key_are_different_measurements() -> Bool {
+  let observed = census_with_observed_pool(pool: observed_github_pool)
+  let gapped = census_with_unread_pool_gap()
+  !census_measured_fingerprint_eq(left: observed, right: gapped)
+}
+
+test fn two_gap_causes_under_one_key_are_different_measurements() -> Bool {
+  !census_measured_fingerprint_eq(
+    left: census_with_unread_pool_gap(),
+    right: census_with_refused_pool_gap(),
+  )
 }
 
 test fn github_pool_and_cross_project_bindings_are_undeclared_and_refused() -> Bool {

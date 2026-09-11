@@ -8,7 +8,10 @@ import gunbc.gcp_estate_observation {
   EstateObserved,
   EstateUnread,
   ObservedPrincipalSetBinding,
-  principal_set_pool_project_number,
+  principal_set_citation,
+  PrincipalSetCitesProject,
+  PrincipalSetUnparsed,
+  MemberIsNotAPrincipalSet,
   fleet_secrets_project_number,
 }
 
@@ -32,6 +35,10 @@ type GcpEstateEdge
       pool_project_number: String
       member: String?
     }
+  | BindingPrincipalSetUnparsed {
+      account: ServiceAccountEmail
+      member: String
+    }
 
 fn binding_pool_edge(
   binding: ObservedPrincipalSetBinding,
@@ -52,17 +59,21 @@ fn binding_pool_edge(
           member: Absent,
         }
         Present { value: m } =>
-          match principal_set_pool_project_number(member: m) {
-            Absent => BindingDependsOnAccount {
+          match principal_set_citation(member: m) {
+            MemberIsNotAPrincipalSet { member: _ } => BindingDependsOnAccount {
               account: binding.account,
               role: binding.role,
               member: Present { value: m },
             }
-            Present { value: pool_project } =>
+            PrincipalSetUnparsed { member: member } => BindingPrincipalSetUnparsed {
+              account: binding.account,
+              member: member,
+            }
+            PrincipalSetCitesProject { project_number: pool_project, pool_id: _ } =>
               binding_pool_edge_from_numbers(
                 binding: binding,
                 account_project_number: account_project_number,
-                pool_project_number: pool_project,
+                pool_project_number: pool_project as String,
               )
           }
       }
@@ -93,6 +104,13 @@ fn binding_pool_edge_from_numbers(
 fn edge_is_cross_project(edge: GcpEstateEdge) -> Bool {
   match edge {
     BindingDependsOnCrossProjectPool { account: _, account_project_number: _, pool_project_number: _, member: _ } => true
+    _ => false
+  }
+}
+
+fn edge_is_unparsed_principal_set(edge: GcpEstateEdge) -> Bool {
+  match edge {
+    BindingPrincipalSetUnparsed { account: _, member: _ } => true
     _ => false
   }
 }
