@@ -16,8 +16,7 @@ import gunbc.gcp_estate_observation {
   gap_project_314501921854,
   fleet_automation_has_no_principal_set_binding,
   principal_set_pool_project_number,
-  github_pool_provider_id_is_unconfirmed,
-  observed_github_pool_provider_pasted_url_fragment,
+  gap_github_pool_provider_id,
   operator_prose_project_name_slip,
   unread_project_number_314501921854,
 }
@@ -26,7 +25,6 @@ import gunbc.gcp_estate_dependency {
   census_edges,
   census_cross_project_binding_count,
   edge_is_cross_project,
-  BindingDependsOnCrossProjectPool,
 }
 import gunbc.gcp_estate_adoption {
   gcp_estate_desired_roster,
@@ -68,10 +66,10 @@ test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
   fleet_automation_has_no_principal_set_binding(census: operator_audit_census())
 }
 
-test fn github_pool_provider_condition_is_the_pasted_url_fragment() -> Bool {
-  observed_github_pool_provider_pasted_url_fragment.attribute_condition
-    == "assertion.repository_owner=='https:'"
-    && github_pool_provider_id_is_unconfirmed(p: observed_github_pool_provider_pasted_url_fragment)
+test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
+  (gap_github_pool_provider_id.cause as String).contains("assertion.repository_owner=='https:'")
+    && (gap_github_pool_provider_id.cause as String).contains("not the provider resource id")
+    && operator_audit_census().wif_providers.length() == 1
 }
 
 test fn principal_set_parser_extracts_cross_project_number() -> Bool {

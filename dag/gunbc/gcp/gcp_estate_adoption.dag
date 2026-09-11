@@ -221,7 +221,7 @@ fn classify_desired_binding(
       match row {
         EstateUnread { gap: _ } => acc
         EstateObserved { value: b } =>
-          if b.account == desired.account && b.role == desired.role && b.member == desired.member {
+          if b.account == desired.account && b.role == desired.role && observed_member_eq(b: b, member: desired.member) {
             UpsertClassification { verdict: Converged, decision: Noop }
           } else {
             acc
@@ -229,6 +229,13 @@ fn classify_desired_binding(
       }
     },
   )
+}
+
+fn observed_member_eq(b: ObservedPrincipalSetBinding, member: String) -> Bool {
+  match b.member {
+    Present { value: m } => m == member
+    Absent => false
+  }
 }
 
 fn observed_pool_subject(p: ObservedWifPool) -> GcpEstateSubject {
@@ -264,7 +271,7 @@ fn binding_is_desired(b: ObservedPrincipalSetBinding, roster: GcpEstateDesiredRo
     roster.principal_set_bindings,
     init: false,
     f: fn(acc, d) {
-      acc || (d.account == b.account && d.role == b.role && d.member == b.member)
+      acc || (d.account == b.account && d.role == b.role && observed_member_eq(b: b, member: d.member))
     },
   )
 }

@@ -20,17 +20,17 @@ import gunbc.gcp_estate_observation {
 type GcpEstateEdge
   = ProjectHostsPool { project_number: String, pool_id: NonEmptyStr }
   | PoolHostsProvider { project_number: String, pool_id: NonEmptyStr, provider_id: NonEmptyStr }
-  | BindingDependsOnAccount { account: ServiceAccountEmail, role: String, member: String }
+  | BindingDependsOnAccount { account: ServiceAccountEmail, role: String, member: String? }
   | BindingDependsOnSameProjectPool {
       account: ServiceAccountEmail
       pool_project_number: String
-      member: String
+      member: String?
     }
   | BindingDependsOnCrossProjectPool {
       account: ServiceAccountEmail
       account_project_number: String
       pool_project_number: String
-      member: String
+      member: String?
     }
 
 fn binding_pool_edge(
@@ -38,26 +38,34 @@ fn binding_pool_edge(
   account_project_number: String,
 ) -> GcpEstateEdge {
   match binding.pool_project_number {
-    Absent =>
-      match principal_set_pool_project_number(member: binding.member) {
-        Absent => BindingDependsOnAccount {
-          account: binding.account,
-          role: binding.role,
-          member: binding.member,
-        }
-        Present { value: pool_project } =>
-          binding_pool_edge_from_numbers(
-            binding: binding,
-            account_project_number: account_project_number,
-            pool_project_number: pool_project,
-          )
-      }
     Present { value: pool_project } =>
       binding_pool_edge_from_numbers(
         binding: binding,
         account_project_number: account_project_number,
         pool_project_number: pool_project,
       )
+    Absent =>
+      match binding.member {
+        Absent => BindingDependsOnAccount {
+          account: binding.account,
+          role: binding.role,
+          member: Absent,
+        }
+        Present { value: m } =>
+          match principal_set_pool_project_number(member: m) {
+            Absent => BindingDependsOnAccount {
+              account: binding.account,
+              role: binding.role,
+              member: Present { value: m },
+            }
+            Present { value: pool_project } =>
+              binding_pool_edge_from_numbers(
+                binding: binding,
+                account_project_number: account_project_number,
+                pool_project_number: pool_project,
+              )
+          }
+      }
   }
 }
 

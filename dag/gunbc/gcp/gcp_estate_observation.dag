@@ -59,7 +59,7 @@ type GcpEstateSubject
   | EstateIamBindingCell {
       account: ServiceAccountEmail
       role: String
-      member: String
+      member: String?
     }
 
 type EstateCoverageGap {
@@ -89,7 +89,7 @@ type ObservedWifProvider {
 type ObservedPrincipalSetBinding {
   account: ServiceAccountEmail
   role: String
-  member: String
+  member: String?
   pool_project_number: String?
 }
 
@@ -228,17 +228,6 @@ data observed_github_oidc_provider: ObservedWifProvider = ObservedWifProvider {
   attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
 }
 
-data observed_github_pool_provider_pasted_url_fragment: ObservedWifProvider = ObservedWifProvider {
-  project_number: fleet_secrets_project_number,
-  pool_id: "github-pool" as NonEmptyStr,
-  provider_id: "github-pool-provider-id-unconfirmed" as NonEmptyStr,
-  attribute_condition: "assertion.repository_owner=='https:'",
-}
-
-fn github_pool_provider_id_is_unconfirmed(p: ObservedWifProvider) -> Bool {
-  p.provider_id as String == "github-pool-provider-id-unconfirmed"
-}
-
 fn fleet_cloud_convergence_principal_set_member() -> String {
   concat(
     concat(
@@ -249,34 +238,24 @@ fn fleet_cloud_convergence_principal_set_member() -> String {
   )
 }
 
-fn legacy_principal_set_member_in_unread_project() -> String {
-  concat(
-    concat(
-      concat(principal_set_member_prefix, unread_project_number_314501921854 as String),
-      "/locations/global/workloadIdentityPools/",
-    ),
-    "UNREAD_POOL/attribute.repository/gunb-ai/gunb.ai",
-  )
-}
-
 data observed_convergence_wif_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: fleet_cloud_convergence_sa_email,
   role: role_iam_workload_identity_user,
-  member: fleet_cloud_convergence_principal_set_member(),
+  member: Present { value: fleet_cloud_convergence_principal_set_member() },
   pool_project_number: Present { value: fleet_secrets_project_number },
 }
 
 data observed_ci_secrets_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: gunbai_ci_secrets_sa_email,
   role: role_iam_workload_identity_user,
-  member: legacy_principal_set_member_in_unread_project(),
+  member: Absent,
   pool_project_number: Present { value: unread_project_number_314501921854 as String },
 }
 
 data observed_ci_iap_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: gunbai_ci_iap_sa_email,
   role: role_iam_workload_identity_user,
-  member: legacy_principal_set_member_in_unread_project(),
+  member: Absent,
   pool_project_number: Present { value: unread_project_number_314501921854 as String },
 }
 
@@ -296,9 +275,16 @@ data gap_third_legacy_sa: EstateCoverageGap = EstateCoverageGap {
 
 data gap_github_pool_provider_id: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "projects/582015116396/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
-  cause: "operator audit recorded the provider attribute condition and not the provider resource id",
+  cause: "operator audit recorded attribute condition assertion.repository_owner=='https:' and not the provider resource id; minting an id would be a guess wearing observation standing",
   discharge: "iam.googleapis.com list providers on pool github-pool",
   trusting_accounts: [],
+}
+
+data gap_cross_project_principal_set_member: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/314501921854/principalSet-member-uri" as NonEmptyStr,
+  cause: "audit named the pool project number and the federated repo gunb-ai/gunb.ai but not the principalSet member URI or pool id",
+  discharge: "getIamPolicy on gunbai-ci-secrets and gunbai-ci-iap; parse principalSet members verbatim",
+  trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
 }
 
 fn operator_audit_census() -> GcpEstateCensus {
@@ -318,7 +304,6 @@ fn operator_audit_census() -> GcpEstateCensus {
     ],
     wif_providers: [
       EstateObserved { value: observed_github_oidc_provider },
-      EstateObserved { value: observed_github_pool_provider_pasted_url_fragment },
     ],
     principal_set_bindings: [
       EstateObserved { value: observed_convergence_wif_binding },
@@ -329,6 +314,7 @@ fn operator_audit_census() -> GcpEstateCensus {
       gap_project_314501921854,
       gap_third_legacy_sa,
       gap_github_pool_provider_id,
+      gap_cross_project_principal_set_member,
     ],
   }
 }
