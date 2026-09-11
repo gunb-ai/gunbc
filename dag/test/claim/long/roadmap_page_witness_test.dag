@@ -355,7 +355,7 @@ test fn witness_unsized_open_sizing_expectation_refused_size_missing() -> Bool {
   }
 }
 
-data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, sizing codes, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
+data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, the repository, any derived sizing cell, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. The pin below expects a repo fact and NO sizing fact: sizing is derived now (gunbc.roadmap_sizing) and the deriver is a stub that refuses, so the badge the fused NodeSizing used to render is absent rather than empty — a sizing span reappearing here means the deriver started answering, which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
 
 test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
@@ -364,8 +364,9 @@ test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
       string_contains(s: h, pattern: "<span class=\"node-mid\"><span class=\"title\">dispatch-me</span></span>")
         && string_contains(
           s: h,
-          pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>facts</summary><div class=\"item-body\"><div class=\"item-facts\"><span class=\"sizing\">i:low v:small gunbc</span></div></div></details>")
-        && !string_contains(s: h, pattern: "class=\"title\">dispatch-me</span><span class=\"sizing\"")
+          pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>facts</summary><div class=\"item-body\"><div class=\"item-facts\"><span class=\"repo\">gunbc</span></div></div></details>")
+        && !string_contains(s: h, pattern: "class=\"sizing\"")
+        && !string_contains(s: h, pattern: "class=\"title\">dispatch-me</span><span class=\"repo\"")
   }
 }
 
