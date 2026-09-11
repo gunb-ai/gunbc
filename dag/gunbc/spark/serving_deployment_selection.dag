@@ -402,11 +402,13 @@ data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
   },
 }
 
-data v4_1_declared_profiles: List<ServingDecisionParameters> = concat([
-  v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead)),
-  v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_published_arm64)),
+data v4_1_declared_profiles: List<ServingDecisionParameters> = concat(
+  concat(
+    v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead)),
+    v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_published_arm64)),
+  ),
   v4_1_profile_list(p: v4_1_profile_at(runtime: spark_runtime)),
-])
+)
 
 // ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
 type TopologyShape sole_constructor {
