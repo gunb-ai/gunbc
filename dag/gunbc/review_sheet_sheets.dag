@@ -25,7 +25,18 @@ import gunbc.review_sheet_projection {
   AppendListingRow,
   classify_review_sheet,
   conflict_reason,
-  a1_column_letter,
+  a1_column,
+  a1_cell_eq,
+  a1_cell_wire,
+  a1_origin_cell,
+  a1_row_span_wire,
+  a1_from_wire,
+  A1Column,
+  A1Cell,
+  A1RowSpan,
+  A1WireOpenColumn,
+  A1WireCell,
+  A1WireUnreadable,
   ReviewSheetSchema,
 }
 import extdeps.google.sheets {
@@ -114,82 +125,52 @@ fn review_sheet_get_value_render_option() -> SheetsValueRenderOption {
   RenderFormattedValue
 }
 
-fn sheet_qualified_a1(tab: NonEmptyStr, a1: NonEmptyStr) -> NonEmptyStr {
-  concat(tab as String, concat("!", a1 as String)) as NonEmptyStr
+type SheetA1End
+  = A1EndOpen { column: A1Column }
+  | A1EndClosed { cell: A1Cell }
+
+type SheetA1Range {
+  tab: NonEmptyStr
+  origin: A1Cell
+  end: SheetA1End
+}
+
+fn sheet_a1_end_wire(end: SheetA1End) -> String {
+  match end {
+    A1EndOpen { column: c } => c.letter as String
+    A1EndClosed { cell: c } => a1_cell_wire(cell: c)
+  }
+}
+
+fn sheet_a1_range_wire(range: SheetA1Range) -> String {
+  concat(
+    range.tab as String,
+    concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", sheet_a1_end_wire(end: range.end)))),
+  )
+}
+
+fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> String {
+  concat(tab as String, concat("!", a1_cell_wire(cell: cell)))
+}
+
+fn sheet_qualified_span(tab: NonEmptyStr, span: A1RowSpan) -> String {
+  concat(tab as String, concat("!", a1_row_span_wire(span: span)))
 }
 
 type A1ReadbackStanding
-  = A1ReadbackAnchored { tab: NonEmptyStr }
+  = A1ReadbackAnchored { range: SheetA1Range }
   | A1ReadbackUnreadable { reason: NonEmptyStr }
 
-fn a1_start_cell(cells: String) -> String {
-  match cells.split(delimiter: ":") |> first {
-    Present { value: start } => start
-    Absent => cells
+fn review_sheet_get_values_request(tab: NonEmptyStr, last_column: A1Column) -> SheetA1Range {
+  SheetA1Range {
+    tab: tab,
+    origin: a1_origin_cell(),
+    end: A1EndOpen { column: last_column },
   }
 }
 
-fn a1_contains_digit(s: String) -> Bool {
-  string_contains(s: s, pattern: "0")
-    || string_contains(s: s, pattern: "1")
-    || string_contains(s: s, pattern: "2")
-    || string_contains(s: s, pattern: "3")
-    || string_contains(s: s, pattern: "4")
-    || string_contains(s: s, pattern: "5")
-    || string_contains(s: s, pattern: "6")
-    || string_contains(s: s, pattern: "7")
-    || string_contains(s: s, pattern: "8")
-    || string_contains(s: s, pattern: "9")
-}
-
-fn a1_cells_open_ended_from_a1(cells: String) -> Bool {
-  let segs = cells.split(delimiter: ":")
-  if (segs |> count) != 2 {
-    false
-  } else {
-    match segs.skip(n: 1).first() {
-      Absent => false
-      Present { value: end } =>
-        (end != "") && !a1_contains_digit(s: end)
-    }
-  }
-}
-
-type A1RequestStanding
-  = A1RequestOpenEnded { tab: NonEmptyStr }
-  | A1RequestUnreadable { reason: NonEmptyStr }
-
-fn a1_request_standing(range: String) -> A1RequestStanding {
-  match a1_readback_standing(range: range) {
-    A1ReadbackUnreadable { reason: r } => A1RequestUnreadable { reason: r }
-    A1ReadbackAnchored { tab: tab } => {
-      match range.split(delimiter: "!").skip(n: 1).first() {
-        Absent => A1RequestUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
-        Present { value: cells } =>
-          if a1_cells_open_ended_from_a1(cells: cells) {
-            A1RequestOpenEnded { tab: tab }
-          } else {
-            A1RequestUnreadable {
-              reason: concat(
-                "bounded GetValues request; append would write past unobserved rows: ",
-                range,
-              ) as NonEmptyStr
-            }
-          }
-      }
-    }
-  }
-}
-
-fn review_sheet_get_values_request(tab: NonEmptyStr, last_column: NonEmptyStr) -> NonEmptyStr {
-  sheet_qualified_a1(tab: tab, a1: concat("A1:", last_column as String) as NonEmptyStr)
-}
-
-fn review_sheet_get_values_last_column(schema: ReviewSheetSchema) -> NonEmptyStr? {
-  match a1_column_letter(index: schema.columns |> count) {
-    Absent => none
-    Present { value: letter } => Present { value: letter as NonEmptyStr }
-  }
+fn review_sheet_get_values_last_column(schema: ReviewSheetSchema) -> A1Column? {
+  a1_column(index: schema.columns |> count)
 }
 
 fn a1_readback_standing(range: String) -> A1ReadbackStanding {
@@ -211,17 +192,64 @@ fn a1_readback_standing(range: String) -> A1ReadbackStanding {
           match parts.skip(n: 1).first() {
             Absent =>
               A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
-            Present { value: cells } =>
-              if a1_start_cell(cells: cells) == "A1" {
-                A1ReadbackAnchored { tab: tab as NonEmptyStr }
-              } else {
+            Present { value: cells } => {
+              let segs = cells.split(delimiter: ":")
+              if (segs |> count) != 2 {
                 A1ReadbackUnreadable {
-                  reason: concat(
-                    "readback not A1-anchored; write A1 would not match the compared cells: ",
-                    range,
-                  ) as NonEmptyStr
+                  reason: concat("A1 range is not start:end: ", range) as NonEmptyStr
+                }
+              } else {
+                match segs.first() {
+                  Absent =>
+                    A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+                  Present { value: start_tok } =>
+                    match segs.skip(n: 1).first() {
+                      Absent =>
+                        A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+                      Present { value: end_tok } =>
+                        match a1_from_wire(token: start_tok) {
+                          A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
+                          A1WireOpenColumn { column: _ } =>
+                            A1ReadbackUnreadable {
+                              reason: concat(
+                                "readback not A1-anchored; write A1 would not match the compared cells: ",
+                                range,
+                              ) as NonEmptyStr
+                            }
+                          A1WireCell { cell: origin } =>
+                            if a1_cell_eq(a: origin, b: a1_origin_cell()) {
+                              match a1_from_wire(token: end_tok) {
+                                A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
+                                A1WireOpenColumn { column: c } =>
+                                  A1ReadbackAnchored {
+                                    range: SheetA1Range {
+                                      tab: tab as NonEmptyStr,
+                                      origin: origin,
+                                      end: A1EndOpen { column: c },
+                                    }
+                                  }
+                                A1WireCell { cell: end } =>
+                                  A1ReadbackAnchored {
+                                    range: SheetA1Range {
+                                      tab: tab as NonEmptyStr,
+                                      origin: origin,
+                                      end: A1EndClosed { cell: end },
+                                    }
+                                  }
+                              }
+                            } else {
+                              A1ReadbackUnreadable {
+                                reason: concat(
+                                  "readback not A1-anchored; write A1 would not match the compared cells: ",
+                                  range,
+                                ) as NonEmptyStr
+                              }
+                            }
+                        }
+                    }
                 }
               }
+            }
           }
         }
     }
@@ -230,7 +258,7 @@ fn a1_readback_standing(range: String) -> A1ReadbackStanding {
 
 fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> ValueRange {
   ValueRange {
-    range: sheet_qualified_a1(tab: tab, a1: write.a1) as String,
+    range: sheet_qualified_cell(tab: tab, cell: write.a1),
     majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
     values: Present { value: [[write.value]] },
   }
@@ -238,7 +266,7 @@ fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> 
 
 fn value_range_from_append(row: AppendListingRow, tab: NonEmptyStr) -> ValueRange {
   ValueRange {
-    range: sheet_qualified_a1(tab: tab, a1: row.a1) as String,
+    range: sheet_qualified_span(tab: tab, span: row.a1),
     majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
     values: Present { value: [row.cells] },
   }
@@ -304,8 +332,8 @@ fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheetFromReadba
 fn observed_sheet_from_row_major_range(range: ValueRange) -> ObservedSheetFromReadback {
   match a1_readback_standing(range: range.range) {
     A1ReadbackUnreadable { reason: r } => ReadbackUnreadable { reason: r }
-    A1ReadbackAnchored { tab: tab } =>
-      ReadbackObserved { observed: grid_from_value_rows(values: range.values), tab: tab }
+    A1ReadbackAnchored { range: parsed } =>
+      ReadbackObserved { observed: grid_from_value_rows(values: range.values), tab: parsed.tab }
   }
 }
 
@@ -325,21 +353,27 @@ fn review_sheet_ensure_plan(
 
 fn review_sheet_ensure(
   policy: EnsurePolicy,
-  requested_range: String,
+  requested: SheetA1Range,
   range: ValueRange,
   projection: ReviewSheetProjection,
 ) -> UpsertDecision<TabBoundWritePlan> {
-  match a1_request_standing(range: requested_range) {
-    A1RequestUnreadable { reason: r } => Refuse { reason: r }
-    A1RequestOpenEnded { tab: requested_tab } =>
+  match requested.end {
+    A1EndClosed { cell: _ } =>
+      Refuse {
+        reason: concat(
+          "bounded GetValues request; append would write past unobserved rows: ",
+          sheet_a1_range_wire(range: requested),
+        ) as NonEmptyStr
+      }
+    A1EndOpen { column: _ } =>
       match observed_sheet_from_value_range(range: range) {
         ReadbackUnreadable { reason: r } => Refuse { reason: r }
         ReadbackObserved { observed: observed, tab: tab } =>
-          if (tab as String) != (requested_tab as String) {
+          if (tab as String) != (requested.tab as String) {
             Refuse {
               reason: concat(
                 "readback tab ",
-                concat(tab as String, concat(" is not the requested tab ", requested_tab as String)),
+                concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
               ) as NonEmptyStr
             }
           } else {
@@ -359,7 +393,7 @@ fn review_sheet_ensure(
                 ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
                 ReviewSheetUnreadable { reason: r } => r as String
               },
-              plan: review_sheet_ensure_plan(classified: classified, tab: requested_tab),
+              plan: review_sheet_ensure_plan(classified: classified, tab: requested.tab),
             )
           }
       }
