@@ -44,6 +44,29 @@ service gcp.ServiceUsage {
     }
   }
 
+  operation EnableService {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      service_id: String
+    }
+    output { operation_name: String from "name" }
+
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/projects/\{project_id\}/services/\{service_id\}:enable"
+    }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
   operation GetService {
     input {
       access_token: Secret

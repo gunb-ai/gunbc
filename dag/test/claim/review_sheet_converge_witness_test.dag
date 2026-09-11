@@ -77,16 +77,17 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.review_sheet_operator {
   admit_review_sheet_operator,
   fleet_review_sheet_operator_admission,
-  fleet_secrets_sheets_api_enablement,
   buyer_review_spreadsheet,
   buyer_review_workspace_domain_sharing,
   spreadsheet_share_intervention,
   sheets_api_enablement_from_service_state,
+  sheets_api_enablement_decision,
+  sheets_api_desired_enablement,
+  sheets_api_enablement_observation,
+  review_sheet_gcp_project,
   review_sheet_uses_fleet_secrets_project,
   review_sheet_writer_service_account,
-  SheetsApiEnabled,
-  SheetsApiDisabled,
-  SheetsApiEnablementUnobserved,
+  serviceusage_enable_iam_grant_intervention,
   SpreadsheetAwaitingCreation,
   SpreadsheetIdentified,
   DomainSharingPolicyUnobserved,
@@ -94,7 +95,17 @@ import gunbc.review_sheet_operator {
   DomainSharingAllowsServiceAccountShare,
   ReviewSheetOperatorAdmitted,
   ReviewSheetAwaitingHuman,
+  ReviewSheetNeedsApiEnable,
   ReviewSheetOperatorRefused,
+}
+import gunbc.gcp_service_enablement {
+  decide_service_enablement,
+  ServiceEnablementObservation,
+  ServiceDesiredEnabled,
+  ServiceDesiredDisabled,
+  ServiceObservedEnabled,
+  ServiceObservedDisabled,
+  ServiceEnablementUnobserved,
 }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
 
@@ -484,20 +495,46 @@ fn w_discharged_wif() -> HumanIntervention {
   }
 }
 
-test fn committed_operator_path_refuses_unobserved_sheets_enablement() -> Bool {
+fn w_discharged_iam() -> HumanIntervention {
+  HumanIntervention {
+    identity: concat("gcp-serviceusage-enable-iam-", review_sheet_gcp_project as String) as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "test-only discharged serviceusage enable iam",
+    instruction: "fixture",
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "test.claim.review_sheet_converge_witness",
+        decl_name: "w_discharged_iam",
+        field: WholeDeclaration,
+      }
+    },
+  }
+}
+
+fn w_observed_enabled() -> ServiceEnablementObservation {
+  ServiceObservedEnabled { project: review_sheet_gcp_project, service_id: sheets_serviceusage_api_id }
+}
+
+fn w_observed_disabled() -> ServiceEnablementObservation {
+  ServiceObservedDisabled { project: review_sheet_gcp_project, service_id: sheets_serviceusage_api_id }
+}
+
+test fn committed_operator_path_awaits_per_project_serviceusage_iam() -> Bool {
   match fleet_review_sheet_operator_admission() {
-    ReviewSheetOperatorRefused { reason: r } =>
-      string_contains(s: r as String, pattern: "sheets.googleapis.com enablement unobserved")
-        && string_contains(s: r as String, pattern: "gunbai-secrets")
-        && !string_contains(s: r as String, pattern: "HTTP 403")
-    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      string_contains(s: i.identity as String, pattern: "gcp-serviceusage-enable-iam-")
+        && string_contains(s: i.identity as String, pattern: "gunb-test")
+        && match i.frequency {
+          FleetOnce => true
+          DeviceOnce => false
+          EveryProvision => false
+          BreakGlassOnly => false
+        }
+        && string_contains(s: i.instruction as String, pattern: "serviceusage.services.enable")
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
-    && match fleet_secrets_sheets_api_enablement {
-      SheetsApiEnablementUnobserved => true
-      SheetsApiEnabled { project: _ } => false
-      SheetsApiDisabled { project: _ } => false
-    }
     && match buyer_review_spreadsheet {
       SpreadsheetAwaitingCreation => true
       SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
@@ -507,6 +544,7 @@ test fn committed_operator_path_refuses_unobserved_sheets_enablement() -> Bool {
       DomainSharingForbidsExternalPrincipals => false
       DomainSharingAllowsServiceAccountShare => false
     }
+    && (review_sheet_gcp_project as String) == "gunb-test"
     && (review_sheet_uses_fleet_secrets_project() as String) == "gunbai-secrets"
     && string_contains(s: review_sheet_writer_service_account() as String, pattern: "fleet-automation@gunbai-secrets")
     && match review_sheet_live_access(
@@ -519,34 +557,92 @@ test fn committed_operator_path_refuses_unobserved_sheets_enablement() -> Bool {
     ) {
       ReviewSheetLiveNotAdmitted { admission: a } =>
         match a {
-          ReviewSheetOperatorRefused { reason: r } =>
-            string_contains(s: r as String, pattern: "enablement unobserved")
-          ReviewSheetAwaitingHuman { intervention: _ } => false
+          ReviewSheetAwaitingHuman { intervention: i } =>
+            string_contains(s: i.identity as String, pattern: "gcp-serviceusage-enable-iam-")
+          ReviewSheetOperatorRefused { reason: _ } => false
+          ReviewSheetNeedsApiEnable { plan: _ } => false
           ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
         }
       ReviewSheetLiveOpen { access: _ } => false
     }
 }
 
-test fn disabled_sheets_api_refuses_without_calling_sheets() -> Bool {
+test fn disabled_sheets_api_on_gunb_test_is_apply_enable() -> Bool {
+  match sheets_api_enablement_decision() {
+    Apply { plan: p } =>
+      (p.project as String) == "gunb-test"
+        && (p.service_id as String) == "sheets.googleapis.com"
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+    && match sheets_api_enablement_observation {
+      ServiceObservedDisabled { project: p, service_id: s } =>
+        (p as String) == "gunb-test" && (s as String) == "sheets.googleapis.com"
+      ServiceObservedEnabled { project: _, service_id: _ } => false
+      ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    }
+}
+
+test fn enablement_converge_never_disables() -> Bool {
+  match decide_service_enablement(
+    desired: ServiceDesiredDisabled {
+      project: review_sheet_gcp_project,
+      service_id: sheets_serviceusage_api_id,
+    },
+    observed: w_observed_enabled(),
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "never disables")
+        && string_contains(s: r as String, pattern: "sheets.googleapis.com")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn enabled_readback_is_noop_then_wif_is_awaiting_human() -> Bool {
   match admit_review_sheet_operator(
-    enablement: SheetsApiDisabled { project: "gunbai-secrets" },
+    desired: sheets_api_desired_enablement,
+    enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     wif_binding: gcp_fleet_secrets_wif_binding_intervention(),
+    serviceusage_enable_iam: w_discharged_iam(),
   ) {
-    ReviewSheetOperatorRefused { reason: r } =>
-      string_contains(s: r as String, pattern: "DISABLED")
-        && string_contains(s: r as String, pattern: "BatchEnableServices")
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      (i.identity as String) == "gcp-fleet-secrets-wif-binding"
+        && match i.completion_evidence {
+          NoDischargeSiteModeled => true
+          DischargedAt { evidence: _ } => false
+        }
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> Bool {
+  match admit_review_sheet_operator(
+    desired: sheets_api_desired_enablement,
+    enablement: w_observed_disabled(),
+    spreadsheet: SpreadsheetAwaitingCreation,
+    wif_binding: gcp_fleet_secrets_wif_binding_intervention(),
+    serviceusage_enable_iam: w_discharged_iam(),
+  ) {
+    ReviewSheetNeedsApiEnable { plan: p } =>
+      (p.project as String) == "gunb-test"
+        && (p.service_id as String) == "sheets.googleapis.com"
     ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
 }
 
 test fn unverified_wif_is_awaiting_human_not_assumed_live() -> Bool {
   match admit_review_sheet_operator(
-    enablement: SheetsApiEnabled { project: "gunbai-secrets" },
+    desired: sheets_api_desired_enablement,
+    enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     wif_binding: gcp_fleet_secrets_wif_binding_intervention(),
+    serviceusage_enable_iam: w_discharged_iam(),
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       (i.identity as String) == "gcp-fleet-secrets-wif-binding"
@@ -561,15 +657,18 @@ test fn unverified_wif_is_awaiting_human_not_assumed_live() -> Bool {
           BreakGlassOnly => false
         }
     ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
 }
 
 test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Bool {
   match admit_review_sheet_operator(
-    enablement: SheetsApiEnabled { project: "gunbai-secrets" },
+    desired: sheets_api_desired_enablement,
+    enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     wif_binding: w_discharged_wif(),
+    serviceusage_enable_iam: w_discharged_iam(),
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       (i.identity as String) == "buyer-review-spreadsheet-create"
@@ -580,6 +679,7 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
           BreakGlassOnly => false
         }
     ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
 }
@@ -587,9 +687,11 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
 test fn sharing_is_device_once_editor_with_the_fleet_sa() -> Bool {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
-    enablement: SheetsApiEnabled { project: "gunbai-secrets" },
+    desired: sheets_api_desired_enablement,
+    enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     wif_binding: w_discharged_wif(),
+    serviceusage_enable_iam: w_discharged_iam(),
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       match i.frequency {
@@ -608,14 +710,29 @@ test fn sharing_is_device_once_editor_with_the_fleet_sa() -> Bool {
         BreakGlassOnly => false
       }
     ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
 }
 
 test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
-  match sheets_api_enablement_from_service_state(project: "gunbai-secrets", state_wire: "ENABLED") {
-    SheetsApiEnabled { project: p } => (p as String) == "gunbai-secrets"
-    SheetsApiDisabled { project: _ } => false
-    SheetsApiEnablementUnobserved => false
+  match sheets_api_enablement_from_service_state(project: review_sheet_gcp_project, state_wire: "ENABLED") {
+    ServiceObservedEnabled { project: p, service_id: s } =>
+      (p as String) == "gunb-test" && (s as String) == "sheets.googleapis.com"
+    ServiceObservedDisabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+  }
+}
+
+test fn iam_grant_is_fleet_once_per_project_not_per_api() -> Bool {
+  match serviceusage_enable_iam_grant_intervention(project: review_sheet_gcp_project).frequency {
+    FleetOnce =>
+      string_contains(
+        s: serviceusage_enable_iam_grant_intervention(project: review_sheet_gcp_project).instruction as String,
+        pattern: "One grant per project",
+      )
+    DeviceOnce => false
+    EveryProvision => false
+    BreakGlassOnly => false
   }
 }
