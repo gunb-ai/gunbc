@@ -3,7 +3,8 @@ module extdeps.memory.sk_hynix
 import std.measure { ByteSize, byte_size, bit_width }
 import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, MonolithicDie }
 import extdeps.vendor.sk_hynix { sk_hynix }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -11,6 +12,32 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "en.wikipedia.org/wiki/DDR4_SDRAM"
   }
+}
+
+// SK hynix 288pin DDR4 SDRAM Registered DIMM Based on 8Gb C-die, Rev. 1.7 / Aug.2019.
+// Publisher filename computing_ds_8Gb_DDR4(C-ver)based_RDIMMs(Rev.1.7).pdf, served as the
+// manufacturer's own product-portal attachment (checked 2026-09-11 against
+// product.skhynix.com/products/dram/module/ddr4dm.go detail for HMA82GR7CJR8N-VKTN).
+data c_die_rdimm_datasheet_rev_1_7: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "mis-prod-koce-producthomepage-cdn-01-blob-ep.azureedge.net/web/TR-20210526142848304.pdf"
+  }
+}
+
+// Module scope is the A-die family this file already carried. Wikipedia only: the C-die
+// datasheet does not list AFR4N/AFR8N, so it is not a citation of this subject. The C-die
+// SKU is attested per-fact by hma82gr7cjr8n_vk_catalog_citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.memory.sk_hynix",
+      decl_name: "hma82gr7afr4n_vk_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data stick_capacity_bytes_16g: ByteSize = byte_size(17179869184)
@@ -41,4 +68,28 @@ data hma82gr7afr8n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   chip_width: bit_width(8),
 
   rank_count: 2,
+}
+
+// Ordering Information of c_die_rdimm_datasheet_rev_1_7 (Rev. 1.7 / Aug.2019):
+// HMA82GR7CJR8N-UH/VK/WM/XN, 16GB, 2Gx72, 1Gx8(H5AN8G8NCJR)*18, 2 ranks.
+// Features: Registered DIMM, ECC. VK is DDR4-2666 (decoder + portal 2666Mbps).
+// SDP / C-die component → MonolithicDie. Portal packing suffixes -VKTN/-VKT3/-VKTF
+// are digits 12–15 of the same base+speed, not a different density/org/rank.
+data hma82gr7cjr8n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "HMA82GR7CJR8N-VK",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_capacity_bytes_16g,
+  data_rate_mts: 2666,
+  ecc: true,
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(8),
+
+  rank_count: 2,
+}
+
+data hma82gr7cjr8n_vk_catalog_citation: FactCitation = FactCitation {
+  fact: decl_ref(module_path: "extdeps.memory.sk_hynix", decl_name: "hma82gr7cjr8n_vk_catalog"),
+  authority: c_die_rdimm_datasheet_rev_1_7,
 }

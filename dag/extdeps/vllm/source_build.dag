@@ -1,0 +1,230 @@
+module extdeps.vllm.source_build
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import extdeps.gpu.types {
+  GpuComputeCapability, GpuCapabilityLabelOutcome, GpuCapabilityLabelOk, GpuCapabilityLabelRejected,
+  UnsubstantiatedGpuCapabilityLabel,
+}
+import extdeps.vendor.nvidia { nvidia }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/07b75534651a0dd584c6f3be75d8c62fb8426397/docker/Dockerfile"
+  },
+}
+
+// HOW UPSTREAM BUILDS ITS OWN CONTAINER, READ AT ONE REVISION, SO THIS REPOSITORY NEVER INVENTS A
+// BUILD RECIPE FOR A DEPENDENCY IT DOES NOT OWN.
+//
+// WHY THIS MODULE EXISTS AT ALL. extdeps.vllm already carries what a RUNNING vLLM does -- its routes,
+// its engine arguments, the defaults an omitted flag resolves to. None of that says how a wheel with
+// a given set of compiled kernels comes to exist, and that question became load-bearing the moment no
+// published image registered DeepseekV41ForCausalLM on sm_121: the remedy is a build, and a build
+// whose arguments this repository made up would be a fact about a dependency with no upstream behind
+// it. Every row here is read from the tree at the revision named below and cited to the file that
+// carries it.
+//
+// THE RECIPE IS NOT THE INVOCATION. What upstream publishes is a set of ARGs with defaults plus the
+// argument sets its own release pipeline passes for each target architecture. Which of those a fleet
+// build chooses -- which arch list, how much parallelism -- is a policy decision belonging to the
+// workflow that runs the build, not to this module (DESIGN section 3: interface, realization and
+// policy are three facts). So this module carries what upstream says, and the gunbc side carries
+// what this fleet asked for, with the divergence visible as a difference between two declarations
+// rather than buried in one.
+
+// THE REVISION THAT FIRST CARRIES THE DeepSeek V4.1 SM12 PATH. vllm/models/deepseek_v4_1/nvidia/
+// model.py at this commit selects DeepseekV4FlashInferSM120Attention whenever the device capability
+// major is 12; extdeps.vllm.deepseek_v4_1_sm12 carries what that path then demands of the runtime.
+data vllm_deepseek_v4_1_sm12_revision: VllmSourceRevision = vllm_source_revision(
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+  full_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+)
+
+// A REPOSITORY IDENTITY IS NOT A CLONE LOCATOR, AND CONFLATING THEM BREAKS COLD ACQUISITION.
+// `VllmSourceRevision.repository` is `github.com/vllm-project/vllm` -- an identity, the spelling a
+// citation uses. Handed to `git clone` it is a RELATIVE PATH: reproduced in an empty directory, `git
+// clone --depth 1 github.com/vllm-project/vllm x` answers `fatal: repository
+// 'github.com/vllm-project/vllm' does not exist`. The transport needs a scheme, and deriving it here
+// keeps one authority for the identity while giving the clone a locator it can actually resolve.
+fn vllm_clone_url(source: VllmSourceRevision) -> String {
+  join(["https://", source.repository as String], "")
+}
+
+// ── THE ARGUMENTS UPSTREAM'S CONTAINER BUILD TAKES ─────────────────────────────────────────────
+//
+// One field per docker/Dockerfile ARG this repository sets or relies on. The names are upstream's
+// own spellings, lowercase where upstream spells them lowercase (torch_cuda_arch_list, max_jobs,
+// nvcc_threads), because a renamed build argument is a build argument that silently stops applying.
+type VllmContainerBuildRecipe sole_constructor {
+  source: VllmSourceRevision
+  dockerfile_path: NonEmptyStr
+  build_target: NonEmptyStr
+  cuda_version: NonEmptyStr
+  build_base_image: NonEmptyStr
+  final_base_image: NonEmptyStr
+  python_version: NonEmptyStr
+  torch_version: NonEmptyStr
+  flashinfer_version: NonEmptyStr
+  torch_cuda_arch_list: List<NonEmptyStr>
+  max_jobs: Nat
+  nvcc_threads: Nat
+}
+
+// THE ARCH LIST IS A LIST, AND THE WIRE FORM IS DERIVED FROM IT. Upstream passes it as one
+// space-separated build argument, which is a rendering rather than the fact: carried as a string, a
+// membership question ("does this build target 12.1") becomes a substring search that answers yes for
+// 12.10 and for a comment mentioning it. Carried as a list, membership is membership.
+fn vllm_torch_cuda_arch_list_wire(archs: List<NonEmptyStr>) -> String {
+  join(map(archs, a => a as String), " ")
+}
+
+fn vllm_torch_cuda_arch_list_targets(archs: List<NonEmptyStr>, arch: NonEmptyStr) -> Bool {
+  fold(archs, init: false, f: (acc, a) => if acc { true } else { a as String == arch as String })
+}
+
+// AND HOW AN OBSERVED DEVICE IS SPELLED AS ONE OF THOSE ENTRIES, so a caller with a compute
+// capability in hand never has to write the string. TORCH_CUDA_ARCH_LIST takes `major.minor`, which
+// is a different rendering of the same fact extdeps.gpu.types already renders as `sm_major_minor`;
+// this is that toolchain's spelling, not a second notion of what a capability is.
+//
+// IT REUSES THE LABEL OUTCOME RATHER THAN MINTING A SECOND ONE. The question is the same question --
+// render this capability in some toolchain's vocabulary, or refuse because that toolchain has no
+// vocabulary for this vendor -- and TORCH_CUDA_ARCH_LIST is CUDA's list: an AMD capability has no
+// entry in it at all, and a fallback spelling would put a number in a build argument that means
+// nothing to the compiler reading it.
+fn vllm_torch_cuda_arch_entry(cap: GpuComputeCapability) -> GpuCapabilityLabelOutcome {
+  if cap.vendor == nvidia {
+    GpuCapabilityLabelOk { label: concat(to_string(cap.major), concat(".", to_string(cap.minor))) }
+  } else {
+    GpuCapabilityLabelRejected { reason: UnsubstantiatedGpuCapabilityLabel { vendor: cap.vendor } }
+  }
+}
+
+// THE DEFAULTS, from docker/versions.json (itself generated from the Dockerfile ARGs) and
+// requirements/cuda.txt at the revision above. This row is what a `docker build` with no --build-arg
+// would use, and it is recorded so that every argument the fleet build overrides is visible as an
+// override rather than as a number with no baseline.
+//
+// ITS ARCH LIST DOES NOT CONTAIN 12.1, WHICH IS THE WHOLE REASON A BUILD IS NEEDED. GB10 reports
+// compute capability 12.1; the default list stops at 12.0, and 12.0 cubins are not loadable on
+// sm_121. A published image built from this default therefore cannot carry the kernels the SM12 path
+// dispatches to, however recent its vLLM is.
+data vllm_07b75534_default_recipe: VllmContainerBuildRecipe = VllmContainerBuildRecipe {
+  source: vllm_deepseek_v4_1_sm12_revision,
+  dockerfile_path: "docker/Dockerfile" as NonEmptyStr,
+  build_target: "vllm-openai" as NonEmptyStr,
+  cuda_version: "13.0.3" as NonEmptyStr,
+  build_base_image: "pytorch/manylinux2_28-builder:cuda13.0-78e737ad29420ffc4800e677c51e2a852caf8359" as NonEmptyStr,
+  final_base_image: "nvidia/cuda:13.0.3-base-ubuntu24.04" as NonEmptyStr,
+  python_version: "3.12" as NonEmptyStr,
+  torch_version: "2.13.0" as NonEmptyStr,
+  flashinfer_version: "0.6.18.post1" as NonEmptyStr,
+  torch_cuda_arch_list: ["7.5" as NonEmptyStr, "8.0" as NonEmptyStr, "8.6" as NonEmptyStr, "8.9" as NonEmptyStr, "9.0" as NonEmptyStr, "10.0" as NonEmptyStr, "11.0" as NonEmptyStr, "12.0" as NonEmptyStr],
+  max_jobs: 2,
+  nvcc_threads: 8,
+}
+
+// UPSTREAM'S OWN aarch64 RELEASE INVOCATION, from .buildkite/release-pipeline.yaml at the same
+// revision (the CUDA_ARCH_AARCH64 variable and the build-arg list beside it). It matters because the
+// default BUILD_BASE_IMAGE above is an amd64-only manifest -- Docker Hub lists exactly one image for
+// that tag, linux/amd64 -- so an arm64 build that did not override it has no base to start from. The
+// aarch64 builder tag here is the one upstream's own arm64 release job passes.
+data vllm_07b75534_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContainerBuildRecipe {
+  source: vllm_deepseek_v4_1_sm12_revision,
+  dockerfile_path: "docker/Dockerfile" as NonEmptyStr,
+  build_target: "vllm-openai" as NonEmptyStr,
+  cuda_version: "13.0.2" as NonEmptyStr,
+  build_base_image: "pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042" as NonEmptyStr,
+  final_base_image: "nvidia/cuda:13.0.2-base-ubuntu24.04" as NonEmptyStr,
+  python_version: "3.12" as NonEmptyStr,
+  torch_version: "2.13.0" as NonEmptyStr,
+  flashinfer_version: "0.6.18.post1" as NonEmptyStr,
+  torch_cuda_arch_list: ["8.0" as NonEmptyStr, "8.7" as NonEmptyStr, "8.9" as NonEmptyStr, "9.0" as NonEmptyStr, "10.0" as NonEmptyStr, "11.0" as NonEmptyStr, "12.0" as NonEmptyStr],
+  max_jobs: 16,
+  nvcc_threads: 8,
+}
+
+// A FLEET BUILD IS UPSTREAM'S RECIPE WITH DECLARED OVERRIDES, AND THE OVERRIDE POINT IS HERE.
+//
+// The record is sole_constructor so a caller cannot assemble a recipe field by field and call the
+// result an upstream fact -- every field except the three this function takes is copied from a cited
+// row, so a recipe that diverges diverges in exactly the places a reader is told to look. The three
+// are the ones a deployment legitimately chooses: which architectures to compile for, and how much of
+// the build machine to use. Everything else -- the revision, the bases, the toolchain pins -- is
+// upstream's and is not a knob.
+fn vllm_recipe_targeting(
+  base: VllmContainerBuildRecipe,
+  torch_cuda_arch_list: List<NonEmptyStr>,
+  max_jobs: Nat,
+  nvcc_threads: Nat,
+) -> VllmContainerBuildRecipe {
+  VllmContainerBuildRecipe {
+    source: base.source,
+    dockerfile_path: base.dockerfile_path,
+    build_target: base.build_target,
+    cuda_version: base.cuda_version,
+    build_base_image: base.build_base_image,
+    final_base_image: base.final_base_image,
+    python_version: base.python_version,
+    torch_version: base.torch_version,
+    flashinfer_version: base.flashinfer_version,
+    torch_cuda_arch_list: torch_cuda_arch_list,
+    max_jobs: max_jobs,
+    nvcc_threads: nvcc_threads,
+  }
+}
+
+// ── WHICH ARCHITECTURES THE BUILD SYSTEM WILL ACCEPT ───────────────────────────────────────────
+//
+// CUDA_SUPPORTED_ARCHS in CMakeLists.txt at the same revision. A value outside this set is rejected
+// by the build rather than silently producing an image with nothing compiled for it, so this is the
+// row that says a 12.1 request is a request upstream can answer at all. The arch-specific `12.1a`
+// variants the FP4 and Marlin kernel sets ask for are DERIVED by upstream's own
+// cuda_archs_loose_intersection from a plain 12.1 entry; a caller passes 12.1 and never 12.1a.
+data vllm_cuda_supported_archs: List<NonEmptyStr> = [
+  "7.5" as NonEmptyStr,
+  "8.0" as NonEmptyStr,
+  "8.6" as NonEmptyStr,
+  "8.7" as NonEmptyStr,
+  "8.9" as NonEmptyStr,
+  "9.0" as NonEmptyStr,
+  "10.0" as NonEmptyStr,
+  "10.1" as NonEmptyStr,
+  "10.3" as NonEmptyStr,
+  "12.0" as NonEmptyStr,
+  "12.1" as NonEmptyStr,
+]
+
+fn vllm_cuda_arch_supported(arch: NonEmptyStr) -> Bool {
+  fold(vllm_cuda_supported_archs, init: false, f: (acc, a) =>
+    if acc { true } else { a as String == arch as String })
+}
+
+// ── WHAT THE MODEL REGISTRY AT THIS REVISION MAPS ─────────────────────────────────────────────
+//
+// READ FROM vllm/model_executor/models/registry.py AT THE PINNED REVISION, and carried because it is
+// the fact that decides whether a checkpoint declaring an architecture can be loaded at all. The V4.1
+// MODEL CODE is in the tree -- the class is at the path below -- and no registry entry maps its name,
+// or any name, to vllm.models.deepseek_v4_1. What the registry does carry for this family points at
+// vllm.models.deepseek_v4.
+//
+// THIS IS A SOURCE FACT AND IT EXISTS TO BE DISAGREED WITH. An image built from this revision either
+// answers for that name or does not, and a probe inside one is an independent way to ask the same
+// question; the two are joined in the witness rather than one being assumed from the other.
+data vllm_07b75534_deepseek_v4_1_class_path: NonEmptyStr = "vllm/models/deepseek_v4_1/nvidia/vl_model.py" as NonEmptyStr
+data vllm_07b75534_registry_maps_deepseek_v4_1: Bool = false
+
+data vllm_07b75534_registered_deepseek_v4_architectures: List<NonEmptyStr> = [
+  "DeepseekV4ForCausalLM" as NonEmptyStr,
+  "DeepseekV4ForConditionalGeneration" as NonEmptyStr,
+]
+
+fn vllm_07b75534_registry_answers_for(architecture: NonEmptyStr) -> Bool {
+  fold(vllm_07b75534_registered_deepseek_v4_architectures, init: false, f: (acc, a) =>
+    if acc { true } else { a as String == architecture as String })
+}

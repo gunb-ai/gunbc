@@ -65,6 +65,20 @@ data ebay_inventory_mock_case_publish_offer: PublishedMockCase = PublishedMockCa
   case_id: 0
 }
 
+data ebay_browse_mock_case_search_item_summaries: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Browse.SearchItemSummaries",
+  service: "ebay.Browse",
+  operation: "SearchItemSummaries",
+  case_id: 0
+}
+
+data ebay_browse_mock_case_get_item: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Browse.GetItem",
+  service: "ebay.Browse",
+  operation: "GetItem",
+  case_id: 0
+}
+
 data ebay_published_mock_corpus: List<PublishedMockCase> = [
   ebay_oauth_mock_case_mint_application_token,
   ebay_oauth_mock_case_mint_user_token,
@@ -74,5 +88,7 @@ data ebay_published_mock_corpus: List<PublishedMockCase> = [
   ebay_inventory_mock_case_get_inventory_items,
   ebay_inventory_mock_case_create_offer,
   ebay_inventory_mock_case_get_offers,
-  ebay_inventory_mock_case_publish_offer
+  ebay_inventory_mock_case_publish_offer,
+  ebay_browse_mock_case_search_item_summaries,
+  ebay_browse_mock_case_get_item
 ]

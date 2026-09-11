@@ -11115,11 +11115,34 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
               } else { variant_name }
           }
       }
-      if rc_name != "" && set_contains(shared_types, rc_name) {
+      if rc_name != "" && set_contains(shared_types, rc_name) && !rust_expr_is_grounded_shared_value(expr: raw) {
         rust_shared_wrap_ctor(inner_expr: raw)
       } else { raw }
     _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
   }
+}
+
+// A GROUNDED CARRIER VALUE IS ALREADY SHARED, AND WRAPPING IT AGAIN IS A TYPE ERROR THE EMITTER
+// SHIPS RATHER THAN CATCHES. `Empty {}` for a seed-host container emits the grounded shared value
+// (emit_freemonoid_empty_rc_value, Rc::new(vec![])), and the two record-literal sites below then
+// applied the sharing ctor a second time because the carrier's parent enum is a shared type — so
+// `Cons { head: x, tail: Empty {} }` rendered `(*Rc::new(Rc::new(vec![]))).clone()`, which rustc
+// refuses with Rc<Vector<T>> where Vector<T> was expected. Measured on the required-v2-native
+// lane's emitted closure: 43 of its 152 rustc errors were this one shape, every one of them a
+// roster data row of the form Cons { head: "...", tail: Empty {} }.
+//
+// THE TEST IS EQUALITY WITH THE PRODUCER'S OWN VALUE, not a prefix sniff on the rendered text: one
+// authority produces this string, so asking whether the expression IS that value is decidable. A
+// second grounded pre-shared arm would need its own row here rather than widening this one.
+//
+// THIS IS BELOW ITS CEILING AND THE CLASS ROW SAYS SO. The guard RECOVERS a structural fact — this
+// child already rendered the shared carrier — by comparing rendered target text, which is decidable
+// but string-keyed. The class and its trigger are rostered as an occurrence of
+// gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target: NEXT-RUNG TRIGGER is the
+// emitter carrying sharing as a property of the RENDERED EXPRESSION rather than of the type alone,
+// sufficient that no site can wrap an already-shared value however many grounded producers exist.
+fn rust_expr_is_grounded_shared_value(expr: String) -> Bool {
+  expr == emit_freemonoid_empty_rc_value()
 }
 
 fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -13382,7 +13405,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Present { value: en } => en
             Absent => variant_name
           }
-          if rc_name != "" && set_contains(shared_types, qualified_last_segment(name: rc_name)) {
+          if rc_name != "" && set_contains(shared_types, qualified_last_segment(name: rc_name)) && !rust_expr_is_grounded_shared_value(expr: raw) {
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
@@ -16454,6 +16477,8 @@ data compiler_entry_retained_host_driver: String = "RetainedHostCliKernel"
 
 data compiler_entry_source_root_eval_driver: String = "SourceRootEvalDriver"
 
+data compiler_entry_direct_ingest_driver: String = "DirectIngestDriver"
+
 type CompilerPipelineEntryDecl {
   module_name: String
   driver: String
@@ -16515,6 +16540,56 @@ fn compiler_pipeline_entry_is_source_root_eval(modules: List<TypedModule>) -> Bo
   match compiler_pipeline_entry_decl(modules: modules) {
     Present { value: d } => d.driver == compiler_entry_source_root_eval_driver
     Absent => false
+  }
+}
+
+// THE DRIVER NAME IS READ FROM THE DECLARATION'S BODY, AND AN UNRECOGNISED READING USED TO PICK AN
+// ARM RATHER THAN REFUSE. std.compiler_entry declares exactly three drivers, and the arm selection
+// below tested two of them and treated EVERYTHING ELSE as the third — so a reading that matched
+// none rendered the direct-ingest main, silently, for a corpus whose declaration says
+// SourceRootEvalDriver. That is a silent wrong answer (DESIGN section 5: outside the ladder), and
+// it was observed: at a 404-module closure the required-v2-native lane's own entry emitted the
+// direct-ingest main while the same emission rendered
+// `compiler_pipeline_entry() -> CompilerEntryDriver::SourceRootEvalDriver` in the same crate.
+// Bisected: the same entry at 173 and 177 modules renders the eval-driver main.
+//
+// The partition is now closed by name: a driver reading equal to none of the three declared
+// drivers refuses the emission, naming the module and the reading it got, so the defect surfaces
+// as a located compile_error instead of a plausible binary.
+fn compiler_pipeline_entry_driver_is_known(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } =>
+      d.driver == compiler_entry_retained_host_driver
+      || d.driver == compiler_entry_source_root_eval_driver
+      || d.driver == compiler_entry_direct_ingest_driver
+    Absent => true
+  }
+}
+
+fn compiler_pipeline_entry_driver_reading(modules: List<TypedModule>) -> String {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver
+    Absent => ""
+  }
+}
+
+// THE READING IS ESCAPED INTO THE LITERAL IT LANDS IN. Both interpolations are arbitrary source
+// text read off a span -- that is the whole reason this arm exists -- so a reading carrying a quote
+// or a backslash would close the compile_error! literal early and refuse with a rustc parse error
+// about the emitted file instead of the located message this arm was written to deliver. A refusal
+// its own payload can break is a weak wall (review 63392 raised and dropped it; it is cheap to
+// close, so it is closed).
+fn emit_unknown_compiler_pipeline_driver_main_rs(module_name: String, driver_reading: String) -> TextFile {
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n\n",
+      "compile_error!(\"REFUSED: the compiler pipeline entry in ",
+      escape_string_literal_body(s: module_name),
+      " declares a driver this emitter does not recognise (read as [",
+      escape_string_literal_body(s: driver_reading),
+      "]); std.compiler_entry declares RetainedHostCliKernel, DirectIngestDriver and SourceRootEvalDriver, and an unrecognised reading is a defect in the declaration or in the name read off it -- never a reason to render one of the arms anyway\");\n"
+    ),
   }
 }
 
@@ -16586,6 +16661,12 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   if compiler_pipeline_entry_is_ambiguous(modules: modules) {
     return emit_ambiguous_compiler_pipeline_main_rs(
       module_names: compiler_pipeline_entry_module_names(modules: modules)
+    )
+  }
+  if compiler_pipeline_entry_driver_is_known(modules: modules) == false {
+    return emit_unknown_compiler_pipeline_driver_main_rs(
+      module_name: compiler_pipeline_entry_module_name(modules: modules),
+      driver_reading: compiler_pipeline_entry_driver_reading(modules: modules)
     )
   }
   if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
@@ -16718,15 +16799,22 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
     content: concat(
       "// Generated by v1 compiler -- do not edit.\n\n",
       "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
-      "use std::rc::Rc;\n\n",
+      "use std::rc::Rc;\n",
+      "use std::time::Instant;\n\n",
       "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};\n",
       "use ", crate_name, "::", pipeline_mod, "::{\n",
-      "    native_test_context_from_ingest, native_test_eval_one, native_test_prepare_module,\n",
+      "    native_test_context_from_ingest, native_test_eval_one, native_test_infer_resolved,\n",
+      "    native_test_resolve_module,\n",
       "    NativeTestObservation, NativeTestStage, NativeTestVerdict,\n",
       "};\n",
       "use ", crate_name, "::v2_compiler_source_authority::\{source_root_for_storage_path, DagSourceReadWitness\};\n",
       "use ", crate_name, "::v2_std_artifact::\{Artifact, ArtifactKind\};\n",
       "use ", crate_name, "::v2_std_diagnostic::Outcome;\n",
+      "use ", crate_name, "::std_compiler_entry::{\n",
+      "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos, native_driver_exclusive_sum,\n",
+      "    NativeDriverCostAccounting, NativeDriverExclusiveRows,\n",
+      "};\n",
+      "use ", crate_name, "::std_measure::\{nanosecond, nanosecond_count\};\n",
       "\n",
       "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {\n",
       "    let entries = match std::fs::read_dir(dir) {\n",
@@ -16748,7 +16836,18 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    Ok(())\n",
       "}\n",
       "\n",
+      "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 {\n",
+      "    if sorted.is_empty() { return 0; }\n",
+      "    let idx = (sorted.len() - 1) * numer / denom;\n",
+      "    sorted[idx]\n",
+      "}\n",
+      "\n",
+      "fn native_cost_i64(n: u128) -> i64 {\n",
+      "    i64::try_from(n).unwrap_or(i64::MAX)\n",
+      "}\n",
+      "\n",
       "fn main() {\n",
+      "    let driver_start = Instant::now();\n",
       "    let mut args = std::env::args().skip(1);\n",
       "    let universe_path = match args.next() {\n",
       "        Some(path) => path,\n",
@@ -16796,6 +16895,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        eprintln!(\"REFUSED: universe file \{universe_path\} carried no test identities\");\n",
       "        std::process::exit(2);\n",
       "    }\n",
+      "    let load_start = Instant::now();\n",
       "    let mut paths: Vec<String> = Vec::new();\n",
       "    for root in &source_roots {\n",
       "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) {\n",
@@ -16828,6 +16928,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            source_root: source_root_for_storage_path(path.clone()),\n",
       "        }));\n",
       "    }\n",
+      "    let source_files = paths.len() as u64;\n",
+      "    let load_nanos = load_start.elapsed().as_nanos();\n",
+      "    let context_start = Instant::now();\n",
       "    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) {\n",
       "        Outcome::Accepted { value, .. } => value.clone(),\n",
       "        Outcome::Rejected { diagnostics } => {\n",
@@ -16835,6 +16938,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            std::process::exit(1);\n",
       "        }\n",
       "    };\n",
+      "    let context_nanos = context_start.elapsed().as_nanos();\n",
+      "    eprintln!(\"[native-cost-shared] {}\", serde_json::json!(\{ \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"source_files\": source_files, \"load_nanos\": load_nanos, \"context_nanos\": context_nanos, \"file_refusals\": context.file_refusals.len() \}));\n",
       "    for refusal in context.file_refusals.iter() {\n",
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));\n",
       "    }\n",
@@ -16849,17 +16954,78 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        module_decls.get_mut(&dotted).unwrap().push(declaration.clone());\n",
       "    }\n",
       "    let mut rows: u64 = 0;\n",
+      "    let mut prepare_nanos: u128 = 0;\n",
+      "    let mut eval_nanos: u128 = 0;\n",
+      "    let mut prepare_ok: u64 = 0;\n",
+      "    let mut prepare_refused: u64 = 0;\n",
+      "    let mut prepare_samples: Vec<u128> = Vec::new();\n",
+      "    let mut eval_samples: Vec<u128> = Vec::new();\n",
+      "    let mut prepare_resolve_nanos: u128 = 0;\n",
+      "    let mut prepare_infer_nanos: u128 = 0;\n",
       "    for (dotted, qn) in &module_order {\n",
       "        let declarations = &module_decls[dotted];\n",
-      "        match &*native_test_prepare_module(context.clone(), qn.clone()) {\n",
-      "            Outcome::Accepted { value: prepared, .. } => {\n",
-      "                for declaration in declarations {\n",
-      "                    let observation = native_test_eval_one(prepared.clone(), declaration.clone());\n",
-      "                    println!(\"{}\", serde_json::to_string(&observation).unwrap());\n",
-      "                    rows += 1;\n",
+      "        let prepare_start = Instant::now();\n",
+      "        let resolve_start = Instant::now();\n",
+      "        match &*native_test_resolve_module(context.clone(), qn.clone()) {\n",
+      "            Outcome::Accepted { value: resolved, .. } => {\n",
+      "                let this_resolve = resolve_start.elapsed().as_nanos();\n",
+      "                let infer_start = Instant::now();\n",
+      "                match &*native_test_infer_resolved(qn.clone(), resolved.clone()) {\n",
+      "                    Outcome::Accepted { value: prepared, .. } => {\n",
+      "                        let this_infer = infer_start.elapsed().as_nanos();\n",
+      "                        let this_prepare = prepare_start.elapsed().as_nanos();\n",
+      "                        prepare_nanos += this_prepare;\n",
+      "                        prepare_resolve_nanos += this_resolve;\n",
+      "                        prepare_infer_nanos += this_infer;\n",
+      "                        prepare_samples.push(this_prepare);\n",
+      "                        prepare_ok += 1;\n",
+      "                        eprintln!(\"[native-prepare] module=\{dotted\} nanos=\{this_prepare\} decls=\{\} outcome=accepted\", declarations.len());\n",
+      "                        eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=\{this_infer\} prepare_nanos=\{this_prepare\} outcome=accepted\");\n",
+      "                        for declaration in declarations {\n",
+      "                            let eval_start = Instant::now();\n",
+      "                            let observation = native_test_eval_one(prepared.clone(), declaration.clone());\n",
+      "                            let this_eval = eval_start.elapsed().as_nanos();\n",
+      "                            eval_nanos += this_eval;\n",
+      "                            eval_samples.push(this_eval);\n",
+      "                            println!(\"{}\", serde_json::to_string(&observation).unwrap());\n",
+      "                            rows += 1;\n",
+      "                        }\n",
+      "                    }\n",
+      "                    Outcome::Rejected { diagnostics } => {\n",
+      "                        let this_infer = infer_start.elapsed().as_nanos();\n",
+      "                        let this_prepare = prepare_start.elapsed().as_nanos();\n",
+      "                        prepare_nanos += this_prepare;\n",
+      "                        prepare_resolve_nanos += this_resolve;\n",
+      "                        prepare_infer_nanos += this_infer;\n",
+      "                        prepare_samples.push(this_prepare);\n",
+      "                        prepare_refused += 1;\n",
+      "                        eprintln!(\"[native-prepare] module=\{dotted\} nanos=\{this_prepare\} decls=\{\} outcome=refused\", declarations.len());\n",
+      "                        eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=\{this_infer\} prepare_nanos=\{this_prepare\} outcome=infer_refused\");\n",
+      "                        let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n",
+      "                        for declaration in declarations {\n",
+      "                            let observation = NativeTestObservation {\n",
+      "                                module: qn.clone(),\n",
+      "                                declaration: declaration.clone(),\n",
+      "                                verdict: Rc::new(NativeTestVerdict::NativeTestRefused {\n",
+      "                                    stage: NativeTestStage::NativeTestStagePrepare,\n",
+      "                                    reason: reason.clone(),\n",
+      "                                }),\n",
+      "                            };\n",
+      "                            println!(\"{}\", serde_json::to_string(&observation).unwrap());\n",
+      "                            rows += 1;\n",
+      "                        }\n",
+      "                    }\n",
       "                }\n",
       "            }\n",
       "            Outcome::Rejected { diagnostics } => {\n",
+      "                let this_resolve = resolve_start.elapsed().as_nanos();\n",
+      "                let this_prepare = prepare_start.elapsed().as_nanos();\n",
+      "                prepare_nanos += this_prepare;\n",
+      "                prepare_resolve_nanos += this_resolve;\n",
+      "                prepare_samples.push(this_prepare);\n",
+      "                prepare_refused += 1;\n",
+      "                eprintln!(\"[native-prepare] module=\{dotted\} nanos=\{this_prepare\} decls=\{\} outcome=refused\", declarations.len());\n",
+      "                eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=0 prepare_nanos=\{this_prepare\} outcome=resolve_refused\");\n",
       "                let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n",
       "                for declaration in declarations {\n",
       "                    let observation = NativeTestObservation {\n",
@@ -16877,6 +17043,39 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        }\n",
       "    }\n",
       "    println!(\"{}\", serde_json::json!(\{ \"_terminal\": \"complete\", \"rows\": rows, \"file_refusals\": context.file_refusals.len() \}));\n",
+      "    let file_refusals = context.file_refusals.len() as u64;\n",
+      "    prepare_samples.sort_unstable();\n",
+      "    eval_samples.sort_unstable();\n",
+      "    let parent_span_nanos = driver_start.elapsed().as_nanos();\n",
+      "    let identities = universe.len() as u64;\n",
+      "    let unique_modules = module_order.len() as u64;\n",
+      "    let exclusive = Rc::new(NativeDriverExclusiveRows {\n",
+      "        load: nanosecond(native_cost_i64(load_nanos)),\n",
+      "        context: nanosecond(native_cost_i64(context_nanos)),\n",
+      "        prepare: nanosecond(native_cost_i64(prepare_nanos)),\n",
+      "        eval: nanosecond(native_cost_i64(eval_nanos)),\n",
+      "    });\n",
+      "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;\n",
+      "    let remainder_nanos = parent_span_nanos.saturating_sub(exclusive_sum);\n",
+      "    let shared_nanos = load_nanos + context_nanos;\n",
+      "    let shared_per_identity = if identities == 0 { 0 } else { shared_nanos / identities as u128 };\n",
+      "    let eval_mean = if eval_samples.is_empty() { 0 } else { eval_nanos / eval_samples.len() as u128 };\n",
+      "    let prepare_mean = if prepare_samples.is_empty() { 0 } else { prepare_nanos / prepare_samples.len() as u128 };\n",
+      "    let decls_per_module = if unique_modules == 0 { 0 } else { identities / unique_modules };\n",
+      "    let prepare_share_per_identity = if identities == 0 { 0 } else { prepare_nanos / identities as u128 };\n",
+      "    let floor_per_identity = eval_mean + prepare_share_per_identity;\n",
+      "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;\n",
+      "    let accounting = native_driver_cost_account(\n",
+      "        nanosecond(native_cost_i64(parent_span_nanos)),\n",
+      "        exclusive,\n",
+      "        native_driver_cost_remainder_tolerance_nanos(),\n",
+      "    );\n",
+      "    let verdict = match accounting.as_ref() {\n",
+      "        NativeDriverCostAccounting::NativeDriverCostOverAttributed \{ .. \} => r#\"NativeDriverCostOverAttributed\"#,\n",
+      "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance \{ .. \} => r#\"NativeDriverCostRemainderExceedsTolerance\"#,\n",
+      "        NativeDriverCostAccounting::NativeDriverCostReconciled \{ .. \} => r#\"NativeDriverCostReconciled\"#,\n",
+      "    };\n",
+      "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!(\{ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": tolerance_nanos, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": \{ \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos \}, \"sum_exclusive_nanos\": exclusive_sum, \"remainder_nanos\": remainder_nanos, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module, \"prepare_resolve_nanos\": prepare_resolve_nanos, \"prepare_infer_nanos\": prepare_infer_nanos \}));\n",
       "}\n")
   }
 }

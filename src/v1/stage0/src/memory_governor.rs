@@ -34,7 +34,7 @@ fn mirror_ci_human_bytes(bytes: u64) -> String {
     format!("{} GiB", mirror_ci_tenths_text(tenths))
 }
 
-fn mirror_ci_human_percent(bp: u64) -> String {
+pub(crate) fn mirror_ci_human_percent(bp: u64) -> String {
     format!("{}%", mirror_ci_tenths_text(bp / 10))
 }
 
