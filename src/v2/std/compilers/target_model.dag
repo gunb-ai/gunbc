@@ -987,20 +987,12 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
 
 // The needle is handed to string_replace as the nonempty carrier it demands; an escape row whose
 // `from` is empty names no occurrence (the same reasoning that makes string_split's delimiter a
-// FreeSemigroup), so the fold passes the spelling through unchanged. The replacement is the same
-// char-list carrier as the source (chars of rule.to): string_join is list_append, and list_append
-// is concat, which refuses to join a Cons spine to a native String. Quote-escaping is the join
-// that is not a single field; emit_directive_rust_escapes_string_literal_holds is the reader.
-// Below ceiling: the rung-4 shape declares `from` itself as FreeSemigroup<Char> so the empty row
-// is unwritable; the climb trigger is char-level literal sugar in the .dag realization, without
-// which producers cannot author the nonempty carrier from an escape row's quoted spelling.
-// `chars` is a String method, not a free function. A nested fold lambda does not
-// establish that callee (heal/floor: "function 'chars' not found in scope" in this
-// cons arm). Name the method call at module scope so the fold only applies it.
-fn string_as_char_spine(s: String) -> v2.std.text.String {
-  chars(s: s)
-}
-
+// FreeSemigroup), so the fold passes the spelling through unchanged. `to` is passed through: the
+// field is already v2.std.text.String, and authors that conform (bash) already hand a char spine.
+// Re-chars at this consumer would double-convert those rows. Below ceiling: the rung-4 shape
+// declares `from` itself as FreeSemigroup<Char> so the empty row is unwritable; the climb trigger
+// is char-level literal sugar in the .dag realization, without which producers cannot author the
+// nonempty carrier from an escape row's quoted spelling.
 fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitSpellingEscape>) -> v2.std.text.String {
   fold_list(
     xs: escapes,
@@ -1008,11 +1000,7 @@ fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitS
     cons: fn(acc, rule) {
       match rule.from {
         Cons { head: h, tail: t } =>
-          string_replace(
-            source: acc,
-            needle: FreeSemigroup { head: h, tail: t },
-            replacement: string_as_char_spine(s: rule.to)
-          )
+          string_replace(source: acc, needle: FreeSemigroup { head: h, tail: t }, replacement: rule.to)
         Empty => acc
       }
     }
