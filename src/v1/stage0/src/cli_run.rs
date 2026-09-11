@@ -41380,23 +41380,38 @@ mod heartbeat_tests {
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let int = |name: &str, v: u64| (Some(name.to_string()), Value::Int(v as i64));
         let flag = |name: &str, b: bool| (Some(name.to_string()), Value::Bool(b));
+        // Unit-bearing arguments cross the seam as std.measure carriers built by the
+        // authority's own constructors, never as bare integers (review 63436; same shape as
+        // `render_batch_summary_line`'s `nanosecond`).
+        let carrier = |ctor: &str, v: u64| -> Option<Value> {
+            v1_interpreter::run_in_context_with_args(
+                &ctx,
+                ctor,
+                &[(Some("count".to_string()), Value::Int(v as i64))],
+                false,
+            )
+            .ok()
+        };
+        let ms = |name: &str, v: u64| -> Option<(Option<String>, Value)> {
+            Some((Some(name.to_string()), carrier("millisecond", v)?))
+        };
+        let bytes = |name: &str, v: u64| -> Option<(Option<String>, Value)> {
+            Some((Some(name.to_string()), carrier("byte_size", v)?))
+        };
         let (high, max) = sample.cgroup_events.unwrap_or((0, 0));
         let (swap_in, host_major) = sample.host_vmstat.unwrap_or((0, 0));
         let out = v1_interpreter::run_in_context_with_args(
             &ctx,
             "seed_heartbeat_line",
             &[
-                int("elapsed_ms", elapsed_ms),
+                ms("elapsed", elapsed_ms)?,
                 (Some("seam".to_string()), str_value(seam.to_string())),
-                int("cpu_ms", sample.cpu_ms.unwrap_or(0)),
+                ms("cpu", sample.cpu_ms.unwrap_or(0))?,
                 int("major_faults", sample.major_faults.unwrap_or(0)),
                 flag("stat_available", sample.cpu_ms.is_some()),
-                int("rss_bytes", sample.rss_bytes.unwrap_or(0)),
+                bytes("rss", sample.rss_bytes.unwrap_or(0))?,
                 flag("rss_available", sample.rss_bytes.is_some()),
-                int(
-                    "cgroup_charge_bytes",
-                    sample.cgroup_charge_bytes.unwrap_or(0),
-                ),
+                bytes("cgroup_charge", sample.cgroup_charge_bytes.unwrap_or(0))?,
                 flag(
                     "cgroup_charge_available",
                     sample.cgroup_charge_bytes.is_some(),
@@ -41415,18 +41430,15 @@ mod heartbeat_tests {
                 int("host_swap_in", swap_in),
                 int("host_major_faults", host_major),
                 flag("vmstat_available", sample.host_vmstat.is_some()),
-                int(
-                    "stall_window_ms",
-                    stall.map(|o| o.window_wall_ms).unwrap_or(0),
-                ),
+                ms("stall_window", stall.map(|o| o.window_wall_ms).unwrap_or(0))?,
                 int(
                     "stall_major_faults",
                     stall.map(|o| o.major_faults_in_window).unwrap_or(0),
                 ),
-                int(
-                    "stall_user_cpu_ms",
+                ms(
+                    "stall_user_cpu",
                     stall.map(|o| o.self_user_cpu_ms_in_window).unwrap_or(0),
-                ),
+                )?,
                 flag("stall_available", stall.is_some()),
                 flag("emoji", emoji),
             ],

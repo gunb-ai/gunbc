@@ -1,6 +1,7 @@
 module test.claim.observation_seed_heartbeat_witness_test
 
 import std.types { Bool, String }
+import std.measure { millisecond, byte_size }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.observation_seed_render { seed_heartbeat_line }
 
@@ -23,14 +24,14 @@ data unreadable_expected: String = "◷ 500ms in — still in run required floor
 
 fn measured_line() -> String {
   seed_heartbeat_line(
-    elapsed_ms: 1980000,
+    elapsed: millisecond(count: 1980000),
     seam: "closure-strict-resolve",
-    cpu_ms: 59830,
+    cpu: millisecond(count: 59830),
     major_faults: 1234,
     stat_available: true,
-    rss_bytes: 16107200512,
+    rss: byte_size(16107200512),
     rss_available: true,
-    cgroup_charge_bytes: 17179869184,
+    cgroup_charge: byte_size(17179869184),
     cgroup_charge_available: true,
     cgroup_high_events: 3,
     cgroup_max_events: 0,
@@ -40,9 +41,9 @@ fn measured_line() -> String {
     host_swap_in: 0,
     host_major_faults: 999,
     vmstat_available: true,
-    stall_window_ms: 60000,
+    stall_window: millisecond(count: 60000),
     stall_major_faults: 178795,
-    stall_user_cpu_ms: 480,
+    stall_user_cpu: millisecond(count: 480),
     stall_available: true,
     emoji: true
   )
@@ -50,14 +51,14 @@ fn measured_line() -> String {
 
 fn unreadable_line() -> String {
   seed_heartbeat_line(
-    elapsed_ms: 500,
+    elapsed: millisecond(count: 500),
     seam: "",
-    cpu_ms: 0,
+    cpu: millisecond(count: 0),
     major_faults: 0,
     stat_available: false,
-    rss_bytes: 0,
+    rss: byte_size(0),
     rss_available: false,
-    cgroup_charge_bytes: 0,
+    cgroup_charge: byte_size(0),
     cgroup_charge_available: false,
     cgroup_high_events: 0,
     cgroup_max_events: 0,
@@ -67,9 +68,9 @@ fn unreadable_line() -> String {
     host_swap_in: 0,
     host_major_faults: 0,
     vmstat_available: false,
-    stall_window_ms: 0,
+    stall_window: millisecond(count: 0),
     stall_major_faults: 0,
-    stall_user_cpu_ms: 0,
+    stall_user_cpu: millisecond(count: 0),
     stall_available: false,
     emoji: false
   )
@@ -107,14 +108,14 @@ test fn w_seed_heartbeat_unreadable_sample_prints_no_counter_value() -> Bool {
 // than computing a rate over it. Both flags true with a zero wall must still print the cause.
 test fn w_seed_heartbeat_zero_wall_stall_window_is_unreadable() -> Bool {
   let line = seed_heartbeat_line(
-    elapsed_ms: 60000,
+    elapsed: millisecond(count: 60000),
     seam: "typecheck",
-    cpu_ms: 1,
+    cpu: millisecond(count: 1),
     major_faults: 1,
     stat_available: true,
-    rss_bytes: 1,
+    rss: byte_size(1),
     rss_available: true,
-    cgroup_charge_bytes: 1,
+    cgroup_charge: byte_size(1),
     cgroup_charge_available: true,
     cgroup_high_events: 0,
     cgroup_max_events: 0,
@@ -124,9 +125,9 @@ test fn w_seed_heartbeat_zero_wall_stall_window_is_unreadable() -> Bool {
     host_swap_in: 0,
     host_major_faults: 0,
     vmstat_available: true,
-    stall_window_ms: 0,
+    stall_window: millisecond(count: 0),
     stall_major_faults: 5,
-    stall_user_cpu_ms: 5,
+    stall_user_cpu: millisecond(count: 5),
     stall_available: true,
     emoji: false
   )
