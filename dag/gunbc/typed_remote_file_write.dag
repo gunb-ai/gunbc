@@ -1,18 +1,21 @@
 module gunbc.typed_remote_file_write
 
 import extdeps.tools.chmod { chmod_path_resolved_program }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
-import extdeps.ssh.session {
-  ssh_session_exec_portable_words_with_stdin,
-  SshSessionExecResult,
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.fleet_bootstrap_principal_session {
+  exec_as_fleet_principal_with_stdin,
+  BootstrapCredentialInRunEnvironment,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
 }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_word,
   portable_remote_words,
-  shape_fleet_ssh_exec,
 }
 import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 
@@ -98,6 +101,35 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
     RemoteFileModeOwnerReadWrite => "600"
     RemoteFileModeOwnerReadWriteWorldRead => "644"
   }
+}
+
+// WHO RUNS THE FOUR LEGS. A file under a directory the session principal owns needs nothing more; a
+// file under /etc needs root, and the fleet's administrator principals reach root through
+// non-interactive sudo rather than by logging in as root. So privilege is a property of THIS write
+// against THIS target, not of the transport, and it is spelled once here rather than by each consumer
+// prefixing words onto argv it did not build.
+//
+// THE SECOND ARM IS extdeps.sudo.elevation sudo_elevate, which mints only the non-interactive form.
+// sudo without -n prompts for a password on a channel with no
+// terminal, which hangs until the step times out; with it, a missing grant is an immediate nonzero exit
+// carrying sudo's own diagnostic, located at the leg that needed the privilege.
+//
+// The prefix goes on EVERY leg, the read-back included, so the principal that compared the bytes is the
+// principal that wrote them: an unprivileged cmp against a file the writer made unreadable would report
+// a comparison failure that was really a permission boundary.
+type RemoteFilePrivilege
+  = RemoteFileAsSessionPrincipal
+  | RemoteFileViaNonInteractiveSudo
+
+fn remote_file_privileged_argv(privilege: RemoteFilePrivilege, argv: List<String>) -> List<String> {
+  match privilege {
+    RemoteFileAsSessionPrincipal => argv
+    RemoteFileViaNonInteractiveSudo => elevated_invocation_argv(invocation: sudo_elevate(command: argv))
+  }
+}
+
+fn elevated_invocation_argv(invocation: ElevatedInvocation) -> List<String> {
+  concat([invocation.bin_path], invocation.args)
 }
 
 // The converged verdict is SEALED and the refusal is not, and the asymmetry is the whole point --
@@ -389,6 +421,10 @@ fn typed_remote_file_write_outcome_after_ssh_exec(
   }
 }
 
+// THE SESSION COMES FROM THE PRINCIPAL IN THE TARGET, not from this call site. This leg used
+// to name shape_fleet_ssh_exec directly, which silently asserted that every principal a
+// caller might write a file as holds the fleet key. The bootstrap principal does not, and
+// gunbc.fleet_bootstrap_principal_session is now the one place that decides.
 fn typed_remote_file_write_over_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -407,13 +443,18 @@ fn typed_remote_file_write_over_fleet_ssh(
             ),
           }
         Present { value: words } =>
-          typed_remote_file_write_outcome_after_ssh_exec(
-            write: write,
-            result: ssh_session_exec_portable_words_with_stdin(
-              client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
-              stdin_payload: typed_remote_file_write_stdin_payload(write: write),
-            ),
-          )
+          match exec_as_fleet_principal_with_stdin(
+            context: context,
+            target: target,
+            words: words,
+            stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+            credential: BootstrapCredentialInRunEnvironment,
+          ) {
+            FleetPrincipalLegRefused { cause: why } =>
+              TypedRemoteFileWriteOutcomeRefused { reason: why as String }
+            FleetPrincipalLegRan { session: _, result: result } =>
+              typed_remote_file_write_outcome_after_ssh_exec(write: write, result: result)
+          }
       }
   }
 }
@@ -422,20 +463,31 @@ fn typed_remote_file_write_over_fleet_ssh(
 
 // One remote step: portable-word admission, then the leg. A non-portable argv refuses BEFORE the
 // leg rather than being quoted into something the far-side shell may re-split.
+// THE THREE OUTCOMES ARE THREE, AND THEY USED TO BE TWO. This returned `SshSessionExecResult?`, where
+// Absent meant "the argv was not portable". A leg that cannot be OPENED -- no credential materialized
+// for the principal's session -- is a third fact with a different remedy, and folding it into Absent
+// would have reported a transport gap as a quoting problem.
+type TypedRemoteFileStepLeg
+  = TypedRemoteFileStepRan { result: SshSessionExecResult }
+  | TypedRemoteFileStepArgvRefused
+  | TypedRemoteFileStepLegRefused { cause: NonEmptyStr }
+
 fn typed_remote_file_step(
   target: SshTarget,
   context: FleetSshExecutionContext,
   raws: List<String>,
   stdin_payload: String,
-) -> SshSessionExecResult? {
+) -> TypedRemoteFileStepLeg {
   match portable_remote_words(raws: raws) {
-    Absent => none
-    Present { value: words } => Present {
-      value: ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
-        stdin_payload: stdin_payload,
-      ),
-    }
+    Absent => TypedRemoteFileStepArgvRefused
+    Present { value: words } =>
+      match exec_as_fleet_principal_with_stdin(
+        context: context, target: target, words: words, stdin_payload: stdin_payload,
+        credential: BootstrapCredentialInRunEnvironment,
+      ) {
+        FleetPrincipalLegRefused { cause: why } => TypedRemoteFileStepLegRefused { cause: why }
+        FleetPrincipalLegRan { session: _, result: r } => TypedRemoteFileStepRan { result: r }
+      }
   }
 }
 
@@ -449,13 +501,16 @@ fn typed_remote_file_step_outcome(
   stdin_payload: String,
 ) -> TypedRemoteFileConvergence? {
   match typed_remote_file_step(target: target, context: context, raws: raws, stdin_payload: stdin_payload) {
-    Absent => Present {
+    TypedRemoteFileStepArgvRefused => Present {
       value: TypedRemoteFileConvergenceRefused {
         step: step,
         reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
       },
     }
-    Present { value: r } =>
+    TypedRemoteFileStepLegRefused { cause: why } => Present {
+      value: TypedRemoteFileConvergenceRefused { step: step, reason: why as String },
+    }
+    TypedRemoteFileStepRan { result: r } =>
       if r.success { none } else {
         Present {
           value: TypedRemoteFileConvergenceRefused {
@@ -476,6 +531,7 @@ func converge_typed_remote_file(
   context: FleetSshExecutionContext,
   admission: TypedRemoteFileWriteAdmission,
   mode: RemoteFileMode,
+  privilege: RemoteFilePrivilege,
 ) -> TypedRemoteFileConvergence {
   match admission {
     TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
@@ -483,36 +539,38 @@ func converge_typed_remote_file(
     TypedRemoteFileWriteAdmitted { write: write } =>
       match typed_remote_file_step_outcome(
         target: target, context: context, step: "stage",
-        raws: typed_remote_file_stage_argv(write: write),
+        raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_stage_argv(write: write)),
         stdin_payload: typed_remote_file_write_stdin_payload(write: write),
       ) {
         Present { value: refusal } => refusal
         Absent =>
           match typed_remote_file_step_outcome(
             target: target, context: context, step: "mode",
-            raws: typed_remote_file_chmod_argv(write: write, mode: mode),
+            raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_chmod_argv(write: write, mode: mode)),
             stdin_payload: "",
           ) {
             Present { value: refusal } => refusal
             Absent =>
               match typed_remote_file_step_outcome(
                 target: target, context: context, step: "rename",
-                raws: typed_remote_file_rename_argv(write: write),
+                raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_rename_argv(write: write)),
                 stdin_payload: "",
               ) {
                 Present { value: refusal } => refusal
                 Absent =>
                   match typed_remote_file_step(
                     target: target, context: context,
-                    raws: typed_remote_file_compare_argv(write: write),
+                    raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_compare_argv(write: write)),
                     stdin_payload: write.content,
                   ) {
-                    Absent =>
+                    TypedRemoteFileStepArgvRefused =>
                       TypedRemoteFileConvergenceRefused {
                         step: "compare",
                         reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
                       }
-                    Present { value: back } =>
+                    TypedRemoteFileStepLegRefused { cause: why } =>
+                      TypedRemoteFileConvergenceRefused { step: "compare", reason: why as String }
+                    TypedRemoteFileStepRan { result: back } =>
                       remote_file_converged_from_report(
                         target: target,
                         write: write,
