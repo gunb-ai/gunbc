@@ -2245,6 +2245,15 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
 // ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
 // judged. The denominator is zero, which is precisely the state that must never be mistaken for a
 // clean numerator.
+// THE PUSH IS CLASSIFIED, NOT ASSUMED. Under the step default shell a bare push that loses a
+// non-fast-forward race ends the job on git's own exit status, so the outcome reaching every
+// reader is a raw rejection hint -- true about git and silent about which of the two states it is.
+// The two are decidable here and are separated by one question this job can answer: is the remote
+// branch still at the head this run judged? If it moved, the arm is gunbc.heal_revalidation
+// HealSupersededByAuthorHead, which owns the reasoning and the exit status. If it did not, the
+// push was refused for a reason that is not a race, and that stays a hard red. Neither arm forces
+// and neither retries: a second attempt against a branch that is still moving either loses again
+// or lands a repair derived from a tree nobody checked.
 fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
@@ -2283,7 +2292,16 @@ fn ci_heal_shell_lines() -> List<String> {
             concat(concat("  cat \"", heal_repair_declaration_artifact_path), "\" >> \"$HEAL_MESSAGE_FILE\""),
             "  git commit --no-verify -F \"$HEAL_MESSAGE_FILE\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
-            "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
+            "  HEAL_BRANCH_REF=\"${{ github.head_ref || github.ref_name }}\"",
+            "  if ! git -c core.hooksPath= push origin \"HEAD:$HEAL_BRANCH_REF\"; then",
+            "    REMOTE_HEAD=$(git ls-remote origin \"refs/heads/$HEAL_BRANCH_REF\" | cut -f1)",
+            "    if [ -n \"$REMOTE_HEAD\" ] && [ \"$REMOTE_HEAD\" != \"$PRIOR_HEAD\" ]; then",
+            "      echo \"::notice::SupersededByAuthorHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF author_commit_paths=$AUTHOR_COMMIT_DRIFT changed_artifacts=$CHANGED_ARTIFACTS; the branch moved under this run, nothing was published, and the repair for the current head belongs to its own run\"",
+            "      exit 0",
+            "    fi",
+            "    echo \"::error::HealPushRefused prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF -- the push was refused while the branch still stood at the head this run judged, so this is not a lost race\" >&2",
+            "    exit 1",
+            "  fi",
             "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""
           ]
         )

@@ -18,6 +18,12 @@ type HealOutcome
       head: CommitSha,
       author_commit_paths: List<String>
     }
+  | HealSupersededByAuthorHead {
+      prior_head: CommitSha,
+      healed_head: CommitSha,
+      remote_head: CommitSha,
+      changed_artifacts: List<String>
+    }
 
 type HealDispatchOutcome
   = HealDispatchPending { healed_head: CommitSha }
@@ -35,6 +41,10 @@ type PriorRunDisposition
   | SupersededByHealedHead {
       prior_head: CommitSha,
       healed_head: CommitSha
+    }
+  | SupersededByAuthorHead {
+      prior_head: CommitSha,
+      remote_head: CommitSha
     }
 
 type HealRevalidationState
@@ -84,6 +94,8 @@ fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
     HealNoChange { head } => HealRevalidationNotRequired { head: head }
     HealAuthorCommitRequired { head, author_commit_paths: _ } =>
       HealRevalidationNotRequired { head: head }
+    HealSupersededByAuthorHead { prior_head, healed_head: _, remote_head: _, changed_artifacts: _ } =>
+      HealRevalidationNotRequired { head: prior_head }
     HealProduced { prior_head, healed_head, changed_artifacts } =>
       HealRevalidationRequired {
         prior_head: prior_head,
@@ -94,11 +106,31 @@ fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
   }
 }
 
+// THE AUTHOR-PRODUCED SUPERSEDE IS THE MIRROR OF THE HEAL-PRODUCED ONE, AND IT EXITS ZERO WHERE
+// THAT ONE EXITS NONZERO. Both arms say the same thing about standing: the head this run judged is
+// no longer the branch tip, so this run has no standing to report a verdict. They differ in what
+// they leave behind. SupersededByHealedHead follows a PUBLISHED head -- heal pushed H1, nothing has
+// judged it, and the nonzero exit is what keeps an unjudged tree from standing as green.
+// SupersededByAuthorHead publishes NOTHING: the push was refused non-fast-forward, the healed
+// commit stays on the runner, and the branch is at an author head that carries its own run. There
+// is no unjudged tree created here and no repair withheld -- the successor run regenerates from
+// the successor tree, which is the only tree that matters. Exiting nonzero would render a red
+// square beside a pull request for a scheduling outcome about a revision that no longer exists,
+// which is exactly the misattribution gunbc.recurring_failure_mode
+// repair_job_red_is_attributed_to_the_content_it_repaired records as its arm one. The outcome
+// stays loud and countable as a typed, named line carrying all three revisions; it does not stay
+// loud by borrowing the channel that means "the content under review is wrong".
+//
+// THIS RETIRES ARM ONE OF THAT ROW AND NOT THE ROW. Arm two -- the designed supersede above --
+// still reports red on every heal that lands, and the row's trigger is explicit that a fix
+// covering one arm does not retire it.
 fn prior_run_disposition(outcome: HealOutcome) -> PriorRunDisposition {
   match outcome {
     HealNoChange { head } => PriorRunStillCurrent { head: head }
     HealAuthorCommitRequired { head, author_commit_paths: _ } =>
       PriorRunStillCurrent { head: head }
+    HealSupersededByAuthorHead { prior_head, healed_head: _, remote_head, changed_artifacts: _ } =>
+      SupersededByAuthorHead { prior_head: prior_head, remote_head: remote_head }
     HealProduced { prior_head, healed_head, changed_artifacts: _ } =>
       SupersededByHealedHead { prior_head: prior_head, healed_head: healed_head }
   }
@@ -178,5 +210,21 @@ fn heal_revalidation_admits(
     HealRevalidationAdmittedExactCoverage { healed_head: _ } => true
     HealRevalidationDeniedRequired { healed_head: _, dispatch: _ } => false
     HealRevalidationDeniedCoverage { healed_head: _, coverage: _ } => false
+  }
+}
+
+// ONE AUTHORITY FOR THE TOKEN THE JOB PRINTS. gunbc.ci_spec emits these names into shell, where a
+// coproduct arm cannot be applied to a value that only exists at runtime; without this fold the
+// spelling in the emitter would be a second name for an arm declared here. The join is executed by
+// test.claim.heal_revalidation_binding_witness, which derives the token from this match and
+// requires the emitted script to carry it -- so renaming an arm reddens the witness rather than
+// silently forking the name the log speaks.
+fn heal_outcome_token(outcome: HealOutcome) -> String {
+  match outcome {
+    HealNoChange { head: _ } => "HealNoChange"
+    HealProduced { prior_head: _, healed_head: _, changed_artifacts: _ } => "HealProduced"
+    HealAuthorCommitRequired { head: _, author_commit_paths: _ } => "HealAuthorCommitRequired"
+    HealSupersededByAuthorHead { prior_head: _, healed_head: _, remote_head: _, changed_artifacts: _ } =>
+      "SupersededByAuthorHead"
   }
 }

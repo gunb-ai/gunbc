@@ -9,9 +9,10 @@ import gunbc.merge_admission {
 }
 import gunbc.heal_revalidation {
   HealOutcome, HealNoChange, HealProduced, HealAuthorCommitRequired,
+  HealSupersededByAuthorHead,
   HealDispatchPending, HealDispatchAccepted, HealDispatchRefused,
   HealRevalidationNotRequired, HealRevalidationRequired, HealRevalidationCoverageObserved,
-  PriorRunStillCurrent, SupersededByHealedHead,
+  PriorRunStillCurrent, SupersededByHealedHead, SupersededByAuthorHead,
   OrdinaryWorkflowDispatch, HealWorkflowDispatchSubjectMatched,
   HealWorkflowDispatchCheckoutMismatch, HealWorkflowDispatchRunSubjectMismatch,
   HealRevalidationAdmittedNoChange, HealRevalidationAdmittedExactCoverage,
@@ -34,6 +35,15 @@ fn produced() -> HealOutcome {
     prior_head: prior_head,
     healed_head: healed_head,
     changed_artifacts: [".github/workflows/ci.yml"]
+  }
+}
+
+fn superseded_by_author() -> HealOutcome {
+  HealSupersededByAuthorHead {
+    prior_head: prior_head,
+    healed_head: healed_head,
+    remote_head: other_head,
+    changed_artifacts: ["docs/design-rung-drops.md"]
   }
 }
 
@@ -71,6 +81,7 @@ test fn author_commit_required_does_not_supersede_prior_run() -> Bool {
   }) {
     PriorRunStillCurrent { head } => head == prior_head
     SupersededByHealedHead { prior_head: _, healed_head: _ } => false
+    SupersededByAuthorHead { prior_head: _, remote_head: _ } => false
   }
 }
 
@@ -96,6 +107,7 @@ test fn produced_head_supersedes_prior_run() -> Bool {
     SupersededByHealedHead { prior_head: prior, healed_head: healed } =>
       prior == prior_head && healed == healed_head
     PriorRunStillCurrent { head: _ } => false
+    SupersededByAuthorHead { prior_head: _, remote_head: _ } => false
   }
 }
 
@@ -217,5 +229,35 @@ test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool 
     OrdinaryWorkflowDispatch { checkout_head: _, run_subject_head: _ } => false
     HealWorkflowDispatchSubjectMatched { expected_head: _ } => false
     HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+  }
+}
+
+// A REPAIR THAT WAS NEVER PUBLISHED OWES NO REVALIDATION, AND THE CONTROL IS ITS PUBLISHED TWIN.
+// The discrimination that matters is against HealProduced, which reaches the same fold with the
+// same two heads and must come out the other way: produced pushed H1 and owes a dispatched run,
+// superseded-by-author pushed nothing and owes none. Asserting only the superseded arm would stay
+// green if the fold collapsed both to NotRequired, which is the failure this pair rules out.
+test fn a_repair_the_author_superseded_owes_no_revalidation() -> Bool {
+  match heal_revalidation_initial(outcome: superseded_by_author()) {
+    HealRevalidationNotRequired { head } => head == prior_head
+    HealRevalidationRequired { prior_head: _, healed_head: _, changed_artifacts: _, dispatch: _ } => false
+    HealRevalidationCoverageObserved { prior_head: _, healed_head: _, changed_artifacts: _, coverage: _ } => false
+  } && match heal_revalidation_initial(outcome: produced()) {
+    HealRevalidationRequired { prior_head: _, healed_head: _, changed_artifacts: _, dispatch: _ } => true
+    HealRevalidationNotRequired { head: _ } => false
+    HealRevalidationCoverageObserved { prior_head: _, healed_head: _, changed_artifacts: _, coverage: _ } => false
+  }
+}
+
+// THE PRIOR RUN IS SUPERSEDED BY THE REMOTE HEAD, NOT BY THE HEALED ONE. Both supersede arms carry
+// two revisions and the wrong one is a plausible value, so the witness reads the field rather than
+// the arm: the head that superseded this run is the one the AUTHOR pushed, and the healed commit
+// never left the runner.
+test fn an_author_push_supersedes_the_prior_run_with_the_remote_head() -> Bool {
+  match prior_run_disposition(outcome: superseded_by_author()) {
+    SupersededByAuthorHead { prior_head: prior, remote_head: remote } =>
+      prior == prior_head && remote == other_head && remote != healed_head
+    SupersededByHealedHead { prior_head: _, healed_head: _ } => false
+    PriorRunStillCurrent { head: _ } => false
   }
 }
