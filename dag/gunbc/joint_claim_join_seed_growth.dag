@@ -1,0 +1,222 @@
+module gunbc.joint_claim_join_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the joint-claim join instrument, checkpoint 1 of
+// gunbc.plans.joint_incompatibility_claim_join. Homed here, beside the obligation it declares,
+// rather than in gunbc.seed_growth_admission, which owns the roster and the join.
+//
+// WHAT THE CHANGE IS. One cargo bin, v1_compiler.bin.joint_claim_join, that computes for each change
+// the two set differences a joint-incompatibility question needs -- export-surface entries removed
+// (declared, variants, reexported; base minus head) and import-member claims added or retired -- and
+// intersects them across a set of changes, excluding a claim no longer live when the entry left. It
+// reuses the parse the wave wall already performs (namespace_wave_admission base_records over
+// declaration_index record_from_module) and the diff listing it already trusts (diff_sides); it adds
+// no parse, no phase, no job and no permission. Retrospective mode walks a first-parent commit range.
+//
+// THE EXHIBITED COST, which is what admits this under the v1 PURPOSE test rather than either DESIGN
+// trigger: three main reds on 2026-09-10, about an hour each, of a class no check compiles -- two
+// individually green, textually disjoint PRs whose union does not compile. The manager's ruling on
+// the scope (2026-09-11) was that the raw-candidates-to-findings figure that decides the mitigation is worth acting on
+// only if it has an entry point behind it (DESIGN section 6: name the instrument, never transcribe
+// its output). This bin is that entry point. It is an instrument that serves the self-host program
+// the same way v1_src_dag_parse does: it measures the corpus the program compiles, and its output is
+// read by nothing that gates.
+//
+// CLASSIFIED AGAINST THE FIVE REFUSED CLASSES. NewLanguageBehavior: no -- the compile pipeline is
+// byte-untouched. NewCompatibilityObligation: no. NewEscapeHatchOrAdmissionRow: no -- nothing skips
+// anything; the bin is not on the required path. SeedFeatureCompletion: no -- the seed compiler gains
+// no capability. PublicSurfaceGrowth: no -- a bin contributes no pub mod line to the emitted lib.rs;
+// what grows is the SeedRetained roster, enumerated here in full.
+//
+// NO UNCITABLE ITEM. The one method the first draft carried (a key() on ImportClaimSite) was made a
+// free function before this row was written, so every item is nameable as a WholeDeclaration
+// DeclarationRef; test-module items are enumerated under the tests submodule path.
+//
+// RUNG, HONESTLY. The class this instrument measures stays at its ceiling record's rung
+// (gunbc.plans.ci_merge_freshness; gunbc.merge_admission receipt_is_admissible, deferred). This bin
+// establishes no rung for it: it is executed by nobody on the merge path, and its own evidence is
+// the fixture-boundary controls in its tests module -- one positive control per instance shape and
+// one discriminating RED for the exclusion -- which run under cargo test, itself off the merge path.
+
+data joint_claim_join_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "SurfaceKind",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "surface_kind_label",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "ImportClaimSite",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "ClaimKey",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "claim_key",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "ClaimDelta",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "surface_of",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "claim_sites",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "claim_delta",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "JointClaimSubject",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "JointClaimFinding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "JointClaimJoin",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "joint_claim_join",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "render_finding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "CommitSubject",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "commit_delta",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "usage",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "main",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join",
+      decl_name: "tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "records",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "subject",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "CARRIER_BOTH",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "CARRIER_ONE",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "WITNESS_CLAIMS",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "WITNESS_SILENT",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "all",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "never_between",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "a_claim_retired_by_a_third_change_between_the_pair_is_a_candidate_and_not_a_finding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "variant_deleted_by_one_change_and_imported_by_another_is_one_located_finding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "a_remover_that_retires_the_claim_itself_is_a_candidate_and_not_a_finding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "a_dropped_reexport_is_a_finding_that_names_the_reexported_surface",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "a_rename_fires_on_the_old_name_and_not_on_the_new_one",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "a_pair_outside_the_admitted_window_is_not_joined",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.joint_claim_join.tests",
+      decl_name: "a_claim_already_present_at_the_claimer_base_is_not_added",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "Three 2026-09-10 main reds were pairs of individually green, textually disjoint PRs whose union does not compile, and the join that would have named them -- surface entries one change removes against import claims another adds -- is a set intersection over records the parse phase already builds. The scope record that priced the mitigation rests on the width between the raw candidate count and the finding count; a figure worth acting on needs a producer, and this bin is it. Rust rather than .dag because the two inputs it joins -- a base-side record reconstructed from a git blob and a diff listing -- are host facts the seed already owns in namespace_wave_admission, and a .dag realization would re-derive both through a host effect that does not exist yet.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete every row when EITHER holds: the merge-time freshness requirement of gunbc.plans.ci_merge_freshness section 3 is in force as a witnessed property (receipt_is_admissible gating), at which point the class is unwritable by construction and the instrument measures nothing that can occur; OR the per-change delta (removed surface, added and retired claims) is a modeled operation over a modeled base-side read, at which point the join is a .dag fold over two declared inputs and this host has nothing left to do. What does NOT dissolve them: a rider consuming this join in the parse phase (that is checkpoint 2, a consumer, not a replacement), or the figure being cited in the plan (a citation is not a producer).",
+  current_boundary: "src/v1/stage0/src/bin/joint_claim_join.rs; src/v1/stage0/Cargo.toml [[bin]] joint_claim_join; dag/gunbc/joint_claim_join_seed_growth.dag"
+}
