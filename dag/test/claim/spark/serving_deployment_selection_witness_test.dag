@@ -660,12 +660,13 @@ fn v4_1_frontier_keys_contain(decl_name: String) -> Bool {
 test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool {
   frontier_rows_well_formed(rows: v4_1_selection_frontier)
     && match frontier_rows_keyed_roster_build(rows: v4_1_selection_frontier) {
-      KeyedRosterBuilt { rows: built } => count(built) == 3
+      KeyedRosterBuilt { rows: built } => count(built) == 4
       KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
     }
     && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_layout")
     && v4_1_frontier_keys_contain(decl_name: "fleet_admitted_topologies")
     && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_bytes_obligation")
+    && v4_1_frontier_keys_contain(decl_name: "engram_standing")
 }
 
 test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {

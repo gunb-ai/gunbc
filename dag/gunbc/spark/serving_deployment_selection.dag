@@ -442,6 +442,11 @@ data v4_1_selection_frontier: List<FrontierRow> = [
     reason: "GB10 fp8_ds_mla bytes-per-token wait on DSV41-4 rather than a transcribed rate",
     dissolution: unbound_dissolution(description: "TRIGGER: import the DSV41-4 declaration (separate PR; not this message) that carries the sm_12x fp8_ds_mla unpadded content rate at vLLM 07b75534 and config dba1be0a. Do not act on an eight-indexer figure: indexer K caches are owned only where index_source_layer_ids and kv_source_layer_ids intersect. SWA (DeepseekV4SWACache / SlidingWindowMLASpec) is per-sequence, not a bytes-per-token term. The unpadded rate is a floor; fp8_ds_mla page alignment and the engine allocator report decide. SUFFICIENT FOR: kv_bytes_per_token_standing cites that declaration rather than this obligation string." as NonEmptyStr),
   ),
+  frontier_row_decl(
+    ref: v4_1_selection_frontier_fact(decl_name: "engram_standing" as NonEmptyStr),
+    reason: "Engram pool-gain is a capacity standing, not a funded axis; weight-fit does not yet read it",
+    dissolution: unbound_dissolution(description: "TRIGGER: weight_fit_of (or fleet_fits on the same capacity path) refuses a shape whose fit assumes Engram UVA offload adds host-side pool on GB10 unified memory. Until that fold, engram_standing is a declared later consumer, not a selection axis and not a silent zero. SUFFICIENT FOR: candidate_readings / candidate_gaps / weight_fit_of call engram_standing, so a shape that treats offload as extra pool is excluded before Pareto." as NonEmptyStr),
+  ),
 ]
 
 fn deployment_candidate(identity: DeclarationRef, label: NonEmptyStr, artifact: ModelArtifact, topology: TopologyShape) -> DeploymentCandidate {
