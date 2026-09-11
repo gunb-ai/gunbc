@@ -121,12 +121,21 @@ type HarnessWireBlock
   | WireThinkingBlock { thinking: String }
   | WireToolUseBlock { id: String, name: String, input: JsonValue }
 
+// USAGE RIDES ON THE PARSED RESPONSE AS A READ, NOT AS TWO INTS, and the shape is the safety.
+//
+// A decoded response and a counted usage are two independent observations: a turn whose content
+// decoded perfectly may carry a usage object this codec cannot read, and collapsing that into
+// `input_tokens: 0` makes the second observation's ABSENCE wear the first one's success. Carrying
+// HarnessUsageRead forces every consumer to say what it does when the counts were not observed --
+// which is the whole point, because the consumer that matters (the context budget check in
+// gunbc.harness.harness_turn) must stop the line rather than compare against a number nobody
+// measured. This is the same move the turn already makes for the clock: ClockUnixMillisRead carries
+// its refusal into the event stream instead of fabricating an epoch.
 type HarnessResponseRead
   = HarnessResponseParsed {
       blocks: List<HarnessWireBlock>
       stop_reason: AnthropicStopReason
-      input_tokens: Int
-      output_tokens: Int
+      usage: HarnessUsageRead
     }
   | HarnessResponseUnreadable { cause: String }
 
@@ -141,71 +150,168 @@ fn harness_member_string(doc: JsonValue, key: String) -> String? {
   }
 }
 
-fn harness_member_int(doc: JsonValue, key: String) -> Int {
+// AN INTEGER MEMBER IS READ OR THE GAP IS NAMED. The predecessor of this function answered 0 for
+// every way of not having a number -- member absent, member present but not a number, number whose
+// lexeme does not parse as an integer -- and 0 is a LEGAL token count, so three distinct wire faults
+// arrived at the consumer wearing the costume of a real measurement. That is the absorbing fallback
+// of DESIGN section 5 in the position where it costs the most: input_tokens is what
+// gunbc.harness.harness_turn harness_context_exhausted and harness_compaction_due compare against
+// the declared budget, so a defaulted 0 says "the context is empty" for a turn that may be at the
+// ceiling, and the two mechanisms that exist to stop the line never fire.
+type HarnessIntRead
+  = IntRead { value: Int }
+  | IntAbsent
+  | IntNotANumber
+  | IntNotAnInteger { lexeme: String }
+
+fn harness_member_int(doc: JsonValue, key: String) -> HarnessIntRead {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        JsonNumber { lexeme: lex } => string_to_int_or_zero(s: lex as String)
-        _ => 0
+        JsonNumber { lexeme: lex } =>
+          match parse_int(s: lex as String) {
+            Present { value: n } => IntRead { value: n }
+            Absent => IntNotAnInteger { lexeme: lex as String }
+          }
+        _ => IntNotANumber
       }
-    _ => 0
+    _ => IntAbsent
   }
 }
 
-fn string_to_int_or_zero(s: String) -> Int {
-  match parse_int(s: s) {
-    Present { value: n } => n
-    Absent => 0
+fn harness_int_read_gap(key: String, read: HarnessIntRead) -> String {
+  match read {
+    IntRead { value: n } => join(["member '", key, "' was read as ", to_string(value: n)], "")
+    IntAbsent => join(["carries no '", key, "' member"], "")
+    IntNotANumber => join(["member '", key, "' is not a JSON number"], "")
+    IntNotAnInteger { lexeme: lx } => join(["member '", key, "' is not an integer: '", lx, "'"], "")
   }
 }
 
-fn harness_decode_block(v: JsonValue) -> HarnessWireBlock? {
+// THE USAGE OBJECT IS READ AS A PAIR OR THE TURN STAYS UNREADABLE, never as a pair of zeros. The
+// two counts are read together because they are one observation: a response that reports only one of
+// them is not a response with a missing field, it is a usage object this codec does not understand,
+// and reading the half that parsed would report a measurement that was never made.
+type HarnessUsageRead
+  = UsageRead { input_tokens: Int, output_tokens: Int }
+  | UsageUnreadable { cause: String }
+
+fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> HarnessUsageRead {
+  match json_object_unique_member(v: doc, key: "usage") {
+    JsonMemberFound { value: u } => {
+      let i = harness_member_int(doc: u, key: input_key)
+      let o = harness_member_int(doc: u, key: output_key)
+      match i {
+        IntRead { value: iv } =>
+          match o {
+            IntRead { value: ov } => UsageRead { input_tokens: iv, output_tokens: ov }
+            _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+          }
+        _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+      }
+    }
+    _ => UsageUnreadable {
+      cause: "response carries no usage object; the token counts the context budget is checked against were not observed",
+    }
+  }
+}
+
+// A BLOCK IS READ, DECLARED UNMODELLED, OR REFUSED -- three answers, because the predecessor had
+// two and the missing one was the one that mattered.
+//
+// The old decoder returned an option, so "this is a block kind a later vendor version added" and
+// "this is a block kind we DO model, arriving malformed" were the same answer: drop it. Dropping the
+// first is correct and is why BlockNotModelled survives. Dropping the second deletes work the model
+// actually did -- a tool_use block whose id is missing is a command the model issued, and a decoder
+// that silently omits it produces a turn in which the model asked for nothing.
+//
+// THE SHARPEST CASE IS `input`. A tool_use block whose input member is absent used to decode as an
+// EMPTY OBJECT, which is not a marker: it is a well-formed, dispatchable set of arguments. The
+// dispatcher in gunbc.harness.harness_tool then reads the tool's parameters off that object, finds
+// none, and runs the tool with its arguments silently removed. For a shell tool that is an empty
+// command; for anything with a default-shaped parameter it is an action nobody requested. The
+// fabricated value is INDISTINGUISHABLE at every consumer from a model that genuinely sent `{}`,
+// which is the property that makes it silent wrongness rather than a weak default.
+//
+// The rule is therefore: an unknown `type` is not modelled and is skipped; a MODELLED kind missing a
+// member its shape requires is a refusal naming the kind and the member.
+type HarnessBlockRead
+  = BlockRead { block: HarnessWireBlock }
+  | BlockNotModelled
+  | BlockUnreadable { cause: String }
+
+fn harness_block_member_gap(kind: String, key: String) -> String {
+  join(["a ", kind, " content block carries no string '", key, "' member"], "")
+}
+
+fn harness_decode_block(v: JsonValue) -> HarnessBlockRead {
   match harness_member_string(doc: v, key: "type") {
-    Absent => none
+    Absent => BlockUnreadable { cause: "a content block carries no string type member; its kind is unknown" }
     Present { value: kind } =>
       if kind == "text" {
         match harness_member_string(doc: v, key: "text") {
-          Present { value: t } => Present { value: WireTextBlock { text: t } }
-          Absent => none
+          Present { value: t } => BlockRead { block: WireTextBlock { text: t } }
+          Absent => BlockUnreadable { cause: harness_block_member_gap(kind: "text", key: "text") }
         }
       } else if kind == "thinking" {
         match harness_member_string(doc: v, key: "thinking") {
-          Present { value: t } => Present { value: WireThinkingBlock { thinking: t } }
-          Absent => none
+          Present { value: t } => BlockRead { block: WireThinkingBlock { thinking: t } }
+          Absent => BlockUnreadable { cause: harness_block_member_gap(kind: "thinking", key: "thinking") }
         }
       } else if kind == "tool_use" {
         match harness_member_string(doc: v, key: "id") {
-          Absent => none
+          Absent => BlockUnreadable {
+            cause: "a tool_use block carries no string id member; its result could not be addressed back to the call",
+          }
           Present { value: id } =>
             match harness_member_string(doc: v, key: "name") {
-              Absent => none
+              Absent => BlockUnreadable { cause: harness_block_member_gap(kind: "tool_use", key: "name") }
               Present { value: name } =>
-                Present {
-                  value: WireToolUseBlock {
-                    id: id,
-                    name: name,
-                    input: match json_object_unique_member(v: v, key: "input") {
-                      JsonMemberFound { value: iv } => iv
-                      _ => json_object([])
-                    },
-                  },
+                match json_object_unique_member(v: v, key: "input") {
+                  JsonMemberFound { value: iv } =>
+                    BlockRead { block: WireToolUseBlock { id: id, name: name, input: iv } }
+                  _ => BlockUnreadable {
+                    cause: join([
+                      "the tool_use block calling '", name, "' carries no input member; refusing rather than ",
+                      "dispatching that tool with its arguments removed",
+                    ], ""),
+                  }
                 }
             }
         }
       } else {
-        none
+        BlockNotModelled
       }
   }
 }
 
-fn harness_decode_blocks(v: JsonValue) -> List<HarnessWireBlock> {
+type HarnessBlocksRead
+  = BlocksRead { blocks: List<HarnessWireBlock> }
+  | BlocksUnreadable { cause: String }
+
+// THE FOLD IS FAIL-CLOSED ACROSS THE WHOLE LIST: one unreadable block makes the response unreadable,
+// because a partially decoded content list is exactly the fabricated-plausible-output shape -- it
+// reads as a complete turn that happens to be shorter.
+fn harness_decode_blocks_from(els: List<JsonValue>) -> HarnessBlocksRead {
+  match els.first() {
+    Absent => BlocksRead { blocks: [] }
+    Present { value: e } =>
+      match harness_decode_block(v: e) {
+        BlockUnreadable { cause: c } => BlocksUnreadable { cause: c }
+        BlockNotModelled => harness_decode_blocks_from(els: els.skip(n: 1))
+        BlockRead { block: b } =>
+          match harness_decode_blocks_from(els: els.skip(n: 1)) {
+            BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+            BlocksRead { blocks: rest } => BlocksRead { blocks: concat([b], rest) }
+          }
+      }
+  }
+}
+
+fn harness_decode_blocks(v: JsonValue) -> HarnessBlocksRead {
   match v {
-    JsonArray { elements: els } =>
-      els |> flat_map(e => match harness_decode_block(v: e) {
-        Present { value: b } => [b]
-        Absent => []
-      })
-    _ => []
+    JsonArray { elements: els } => harness_decode_blocks_from(els: els)
+    _ => BlocksUnreadable { cause: "the response content member is not an array of content blocks" }
   }
 }
 
@@ -238,20 +344,20 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
                 ], ""),
               }
             StopReasonRead { reason: r } =>
-              HarnessResponseParsed {
-                blocks: match json_object_unique_member(v: doc, key: "content") {
-                  JsonMemberFound { value: c } => harness_decode_blocks(v: c)
-                  _ => []
-                },
-                stop_reason: r,
-                input_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "input_tokens")
-                  _ => 0
-                },
-                output_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "output_tokens")
-                  _ => 0
-                },
+              match json_object_unique_member(v: doc, key: "content") {
+                JsonMemberFound { value: c } =>
+                  match harness_decode_blocks(v: c) {
+                    BlocksUnreadable { cause: bc } => HarnessResponseUnreadable { cause: bc }
+                    BlocksRead { blocks: bs } =>
+                      HarnessResponseParsed {
+                        blocks: bs,
+                        stop_reason: r,
+                        usage: harness_usage_read(doc: doc, input_key: "input_tokens", output_key: "output_tokens"),
+                      }
+                  }
+                _ => HarnessResponseUnreadable {
+                  cause: "response carries no content member; what the model produced this round is unknown",
+                }
               }
           }
       }
@@ -500,30 +606,61 @@ fn harness_chat_finish_reason(wire: String) -> HarnessStopReasonRead {
   }
 }
 
-fn harness_chat_tool_call_block(v: JsonValue) -> HarnessWireBlock? {
+// THE CHAT SHAPE'S TOOL CALL CARRIES THE SAME THREE OBLIGATIONS AS THE MESSAGES SHAPE'S, and its
+// predecessor fabricated all three.
+//
+// The id defaulted to the EMPTY STRING. That id is what gunbc.harness.harness_turn writes into the
+// tool_result message so the server can join a result to the call it answers; an empty one is not a
+// missing id on the wire, it is a well-formed id that matches nothing, so the model is handed the
+// output of a command it cannot attribute -- and when two calls arrive in one round they both carry
+// it and become indistinguishable.
+//
+// The arguments defaulted to an EMPTY OBJECT twice over: once when the member was absent and once
+// when it was present but not parseable as JSON. The second is the worse of the pair, because
+// malformed arguments are a thing a model actually produces under sampling -- a truncated object, a
+// trailing comma -- and answering `{}` converts "the model emitted a call this codec could not
+// read" into "the model called this tool with no arguments". The turn then runs the tool stripped
+// of its arguments and reports success.
+fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
   match json_object_unique_member(v: v, key: "function") {
     JsonMemberFound { value: f } =>
       match harness_member_string(doc: f, key: "name") {
-        Absent => none
+        Absent => BlockUnreadable { cause: "a chat tool_call carries no string function.name member" }
         Present { value: name } =>
-          Present { value: WireToolUseBlock {
-            id: match harness_member_string(doc: v, key: "id") { Present { value: i } => i  Absent => "" },
-            name: name,
-            input: match harness_member_string(doc: f, key: "arguments") {
-              Absent => json_object([])
-              Present { value: args } =>
-                match parse_json_document(s: args) {
-                  JsonDocumentParsed { value: a } => a
-                  JsonDocumentUnreadable { gap: _ } => json_object([])
+          match harness_member_string(doc: v, key: "id") {
+            Absent => BlockUnreadable {
+              cause: join([
+                "the chat tool_call for '", name, "' carries no string id member; its result could not ",
+                "be addressed back to the call",
+              ], ""),
+            }
+            Present { value: id } =>
+              match harness_member_string(doc: f, key: "arguments") {
+                Absent => BlockUnreadable {
+                  cause: join([
+                    "the chat tool_call for '", name, "' carries no arguments member; refusing rather ",
+                    "than dispatching that tool with its arguments removed",
+                  ], ""),
                 }
-            },
-          } }
+                Present { value: args } =>
+                  match parse_json_document(s: args) {
+                    JsonDocumentParsed { value: a } =>
+                      BlockRead { block: WireToolUseBlock { id: id, name: name, input: a } }
+                    JsonDocumentUnreadable { gap: g } => BlockUnreadable {
+                      cause: join([
+                        "the chat tool_call for '", name, "' carries arguments that are not a JSON document: ",
+                        json_document_gap_text(gap: g),
+                      ], ""),
+                    }
+                  }
+              }
+          }
       }
-    _ => none
+    _ => BlockUnreadable { cause: "a chat tool_call carries no function member" }
   }
 }
 
-fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> List<HarnessWireBlock> {
+fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
   let reasoning = match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
     Present { value: r } => [WireThinkingBlock { thinking: r }]
     Absent =>
@@ -536,15 +673,34 @@ fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> List
     Present { value: c } => if c == "" { [] } else { [WireTextBlock { text: c }] }
     Absent => []
   }
-  let calls = match json_object_unique_member(v: msg, key: "tool_calls") {
+  match json_object_unique_member(v: msg, key: "tool_calls") {
     JsonMemberFound { value: tc } =>
       match tc {
-        JsonArray { elements: es } => flat_map(es, e => match harness_chat_tool_call_block(v: e) { Present { value: b } => [b]  Absent => [] })
-        _ => []
+        JsonArray { elements: es } =>
+          match harness_chat_tool_calls_from(els: es) {
+            BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+            BlocksRead { blocks: calls } => BlocksRead { blocks: concat(concat(reasoning, text), calls) }
+          }
+        _ => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
       }
-    _ => []
+    _ => BlocksRead { blocks: concat(reasoning, text) }
   }
-  concat(concat(reasoning, text), calls)
+}
+
+fn harness_chat_tool_calls_from(els: List<JsonValue>) -> HarnessBlocksRead {
+  match els.first() {
+    Absent => BlocksRead { blocks: [] }
+    Present { value: e } =>
+      match harness_chat_tool_call_block(v: e) {
+        BlockUnreadable { cause: c } => BlocksUnreadable { cause: c }
+        BlockNotModelled => harness_chat_tool_calls_from(els: els.skip(n: 1))
+        BlockRead { block: b } =>
+          match harness_chat_tool_calls_from(els: els.skip(n: 1)) {
+            BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+            BlocksRead { blocks: rest } => BlocksRead { blocks: concat([b], rest) }
+          }
+      }
+  }
 }
 
 fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> HarnessResponseRead {
@@ -564,20 +720,18 @@ fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> Har
                     StopReasonUnrecognized { wire: w } =>
                       HarnessResponseUnreadable { cause: join(["chat completion carries an unrecognized finish_reason '", w, "'"], "") }
                     StopReasonRead { reason: r } =>
-                      HarnessResponseParsed {
-                        blocks: match json_object_unique_member(v: choice, key: "message") {
-                          JsonMemberFound { value: m } => harness_chat_message_blocks(unit: unit, msg: m)
-                          _ => []
-                        },
-                        stop_reason: r,
-                        input_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "prompt_tokens")
-                          _ => 0
-                        },
-                        output_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "completion_tokens")
-                          _ => 0
-                        },
+                      match json_object_unique_member(v: choice, key: "message") {
+                        JsonMemberFound { value: m } =>
+                          match harness_chat_message_blocks(unit: unit, msg: m) {
+                            BlocksUnreadable { cause: bc } => HarnessResponseUnreadable { cause: bc }
+                            BlocksRead { blocks: bs } =>
+                              HarnessResponseParsed {
+                                blocks: bs,
+                                stop_reason: r,
+                                usage: harness_usage_read(doc: doc, input_key: "prompt_tokens", output_key: "completion_tokens"),
+                              }
+                          }
+                        _ => HarnessResponseUnreadable { cause: "the chat completion choice carries no message member" }
                       }
                   }
               }
