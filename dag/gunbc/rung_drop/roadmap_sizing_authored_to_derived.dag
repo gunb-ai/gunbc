@@ -28,10 +28,13 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 //
 // WHAT IS NOT DROPPED, so the population is not read wider than it is. No dispatch, launch, spawn,
 // admission or presentation path refused on a size before this change and none does after it:
-// gunbc.dispatch_selection threaded a NodeSizing through selection and no branch read it, so the
-// passenger was deleted outright and selection is now sizing-free by construction; the spawn
-// request omits its two size keys, which the dashboard's both-or-neither argument pair accepts; and
-// the roadmap page drops a badge. The forecast is the only consumer whose OUTPUT changes.
+// gunbc.dispatch_selection threaded a NodeSizing through selection and no branch read it; that
+// passenger is RETYPED, not deleted -- it is now the two-arm SizingProfileExpectation, still
+// carried through the resolve functions and still recorded on the receipt and the refusal, so a
+// later profile policy has a declared place to read a derived size and a declared absent arm to
+// refuse on. What no branch can do, before or after, is refuse a dispatch because a size is
+// missing. The spawn request omits its two size keys, which the dashboard's both-or-neither
+// argument pair accepts; and the roadmap page drops a badge. The forecast is the only consumer whose OUTPUT changes.
 //
 // THREE CONTROLS ARE IN THE POPULATION, WHICH IS UNUSUAL AND IS DELIBERATE. The last three
 // population entries are witnesses, not production functions: each asserted a property of the live
