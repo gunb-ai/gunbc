@@ -409,6 +409,12 @@ data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObli
 //   5    " - Permission Denied"                refusal
 //   any value outside {0,1,100} renders "Stopped"; session_index 255 renders "N/A".
 //
+// THIS MAPPING IS KEYED TO ONE FIRMWARE BUILD AND MUST NOT BE INHERITED. It was read from the
+// frontend served by THIS controller at firmware revision 0.32. Nothing here establishes that any
+// other MegaRAC release uses the same numbers, and a controller whose firmware identity is not
+// catalogued must refuse rather than borrow the nearest profile — the whole reason this row exists
+// is that a plausible-looking status value was read as its opposite.
+//
 // MEASURED AGAINST THE LIVE CONTROLLER: attach at 22:38:16 -> 100 with session_index 255 ->
 // session_index 0 at +12s, still 100 -> status 1 at +15s -> HELD at 1 for 4m27s idle and then
 // through an entire boot. So 1 is not a decay, it is the destination.
@@ -434,8 +440,8 @@ data mtcollins1_media_state_machine: MtCollins1MediaStateMachine = MtCollins1Med
   serving: 1,
   first_refusal: 2,
   last_refusal: 5,
-  authority: "The controller's own served frontend, source.min.js, which renders 1 as \"Started - Connection Accepted\", 2 \" - Connection Denied\", 3 \" - Login Failed\", 4 \" - MAX Session Reached\", 5 \" - Permission Denied\", and anything outside {0,1,100} as \"Stopped\". Not inferred from behaviour.",
-  readiness_rule: "Only 1 is media-ready. 100 is connecting and must be polled with a bound, never treated as attached. 2 through 5 are distinct refusals and must not be admitted by a nonzero test.",
+  authority: "source.min.js as served by THIS controller at firmware revision 0.32 (AMI MegaRAC), which renders 1 as \"Started - Connection Accepted\", 2 \" - Connection Denied\", 3 \" - Login Failed\", 4 \" - MAX Session Reached\", 5 \" - Permission Denied\", and anything outside {0,1,100} as \"Stopped\". Read from the firmware, not inferred from behaviour.",
+  readiness_rule: "Only 1 is media-ready. 100 is connecting and must be polled with a bound, never treated as attached. 2 through 5 are distinct refusals and must not be admitted by a nonzero test. Any OTHER numeric code is vendor-rendered Stopped and is neither pending nor success; this row does not enumerate those and a consumer must carry them as an explicit other-code arm rather than defaulting them into any state above.",
 }
 
 // ── why the second capture took five attempts, and the defect that caused it ───────────────────
@@ -478,7 +484,7 @@ type MtCollins1BootDeliveryDefect {
 data mtcollins1_boot_delivery_defect: MtCollins1BootDeliveryDefect = MtCollins1BootDeliveryDefect {
   missing_field: "IPMI boot parameter 5 BIOS boot type (byte 1 bit 5: 0 = PC-compatible/legacy, 1 = EFI). Absent from gunbc.machine_intake_oob_boot_handoff and gunbc.machine_intake_mtcollins1_actuate, which model the device selector alone.",
   why_it_fails_here: "The default reads back as \"BIOS PC Compatible (legacy) boot\". aarch64 has no legacy BIOS boot path, so a legacy-boot request for the virtual CD is unsatisfiable; the firmware falls through to PXE (unanswered on this segment) and then the UEFI shell.",
-  measured_fix: "chassis bootdev cdrom options=efiboot,persistent reads back \"BIOS EFI boot\" and the next reset booted the census image, producing mtcollins1-host-capture.txt.",
+  measured_fix: "chassis bootdev cdrom options=efiboot,persistent reads back \"BIOS EFI boot\" and the next reset booted the census image, producing mtcollins1-host-capture.txt. WHAT THAT CONTROL ESTABLISHES IS THE EFI AXIS ALONE: persistence was held constant between the failing and succeeding probes, so it is the varied term that is implicated and persistence is not. It does NOT establish persistence policy, and persistent is the WRONG intake policy because it changes all future boots. ipmitool sets the valid bit itself, so the one-shot projection is options=efiboot with no valid member. A one-shot EFI wet run is still owed; if this firmware turns out to require persistence, that has to be carried as an explicit persistent-until-restored fact with the clear and the readback in the same transaction, never as a persistent write quietly described as one-shot.",
   postcondition_defect: "oob_boot_handoff mints BootHandoffCompleted from override-readback plus power-action-accepted, never from host-side evidence that the intended device booted. Both preconditions held on every failed attempt, so the model reported success throughout. The argv fix without a real postcondition would close this instance and leave the class.",
 }
 
