@@ -2924,7 +2924,12 @@ pub(crate) fn floor_prepared_inventory_digest() -> Option<String> {
     })
 }
 
-/// ONE RENDERING FOR ONE STATE, for every numeric field of the heartbeat sample. A reading that
+/// The one spelling of "this reading would not read" on the `[floor-phase]` key=value lines that
+/// still carry a sampled field. The heartbeat no longer uses it: its unreadable arms carry a cause
+/// through `render_heartbeat_line_mirror` (2026-09-11).
+const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+
+/// ONE RENDERING FOR ONE STATE, for every numeric field a `[floor-phase]` line samples. A reading that
 /// would not read is the sentinel; a reading that read is its number. There is no third answer,
 /// and no field renders itself, so "fabricate a zero for this one field" is a change to a line
 /// that names the field -- which is what makes it detectable rather than a silent substitution.
