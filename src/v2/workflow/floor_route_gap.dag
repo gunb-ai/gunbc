@@ -923,7 +923,10 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.self_host_v1_consumer_census_live_witness_test.consumer_census_live_transaction_refuses_for_recorded_reasons", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.self_host_v1_consumer_census_live_witness_test.consumer_census_live_gate_refuses_even_with_every_successor_realized", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.self_host_v1_consumer_census_live_witness_test.consumer_census_live_seed_link_join_is_observed_and_the_roster_is_current", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Empty {}
+  }
   }
   }
   }
