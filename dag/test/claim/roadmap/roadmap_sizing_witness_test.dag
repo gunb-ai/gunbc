@@ -13,11 +13,11 @@ import gunbc.roadmap_sizing {
   NodeSizing, Intricacy, IntricacyHigh, Volume, VolumeLarge,
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   sizing_deriver_unbuilt_detail,
-  derive_task_sizing, sizing_derived_cell, sizing_derivation_detail,
+  derive_task_sizing, sizing_derived_cell, intricacy_label, volume_label,
 }
 import gunbc.dispatch_selection {
   SizingProfileExpectation, NoDerivedSizingExpectation, DerivedSizingExpectation,
-  sizing_profile_expectation, sizing_profile_expectation_label,
+  sizing_profile_expectation,
 }
 import gunbc.roadmap_spawner { node_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -118,11 +118,14 @@ fn fixture_derived() -> NodeSizingDerivation {
 }
 
 test fn witness_derived_arm_carries_the_cell_through_every_fold() -> Bool {
-  sizing_derivation_detail(d: fixture_derived()) == "high/large"
-    && match sizing_derived_cell(d: fixture_derived()) {
-      Present { value: cell } => cell.intricacy == IntricacyHigh && cell.volume == VolumeLarge
-      Absent => false
-    }
+  match sizing_derived_cell(d: fixture_derived()) {
+    Present { value: cell } =>
+      cell.intricacy == IntricacyHigh
+        && cell.volume == VolumeLarge
+        && intricacy_label(i: cell.intricacy) == "high"
+        && volume_label(v: cell.volume) == "large"
+    Absent => false
+  }
 }
 
 // SELECTION SEES THE TWO ARMS AS TWO ARMS. The operator ruling of 2026-09-10 puts sizing outside
@@ -134,7 +137,6 @@ test fn witness_dispatch_selection_sees_absence_as_absence() -> Bool {
     NoDerivedSizingExpectation => true
     DerivedSizingExpectation { sizing: _ } => false
   }
-    && sizing_profile_expectation_label(e: sizing_profile_expectation(d: node_sizing_derivation(rn: fixture_node()))) == "no-derived-sizing"
 }
 
 test fn witness_dispatch_selection_sees_a_derived_cell_as_derived() -> Bool {
@@ -142,7 +144,6 @@ test fn witness_dispatch_selection_sees_a_derived_cell_as_derived() -> Bool {
     DerivedSizingExpectation { sizing } => sizing.volume == VolumeLarge
     NoDerivedSizingExpectation => false
   }
-    && sizing_profile_expectation_label(e: sizing_profile_expectation(d: fixture_derived())) == "high/large"
 }
 
 // THE DISPATCH REQUEST OMITS THE SIZE KEYS RATHER THAN DEFAULTING THEM. The dashboard's argument

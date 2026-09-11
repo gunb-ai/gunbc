@@ -49,7 +49,6 @@ import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.roadmap_sizing {
   NodeSizing, NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   IntricacyHigh, VolumeMedium,
-  intricacy_label, volume_label,
 }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_capacity_control {
@@ -271,14 +270,6 @@ fn sizing_profile_expectation(d: NodeSizingDerivation) -> SizingProfileExpectati
   match d {
     SizingDerived { subject: _, sizing } => DerivedSizingExpectation { sizing: sizing }
     SizingNotDerivable { subject: _, detail: _ } => NoDerivedSizingExpectation
-  }
-}
-
-fn sizing_profile_expectation_label(e: SizingProfileExpectation) -> String {
-  match e {
-    NoDerivedSizingExpectation => "no-derived-sizing"
-    DerivedSizingExpectation { sizing } =>
-      join([intricacy_label(i: sizing.intricacy), "/", volume_label(v: sizing.volume)], "")
   }
 }
 

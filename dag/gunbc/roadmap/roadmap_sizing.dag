@@ -113,11 +113,3 @@ fn sizing_derived_cell(d: NodeSizingDerivation) -> NodeSizing? {
     SizingNotDerivable { subject: _, detail: _ } => none
   }
 }
-
-fn sizing_derivation_detail(d: NodeSizingDerivation) -> String {
-  match d {
-    SizingDerived { subject: _, sizing } =>
-      join([intricacy_label(i: sizing.intricacy), "/", volume_label(v: sizing.volume)], "")
-    SizingNotDerivable { subject: _, detail } => detail
-  }
-}
