@@ -332,7 +332,7 @@ data serving_parameters_current: ServingDecisionParameters = serving_decision_pa
 // pinned GB10 build is the lead, not a silent reuse of spark_runtime. SGLang preview images are
 // for larger accelerators only. llama.cpp #28696 is conversion-only -- not a candidate.
 data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
-  image: "GB10 serving image to be built at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 (lead; not a fleet image today). TORCH_CUDA_ARCH_LIST including 12.1 is a compiled-kernel fact, not publisher verification: recipes.vllm.ai lists h200/gb200/gb300/mi350x only" as NonEmptyStr,
+  image: "GB10 fallback image built from public vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 (route B, #11022; built, not adopted: the operator chose the published image). Its TORCH_CUDA_ARCH_LIST of 12.1 names a REQUESTED build target, not compiled kernels; kernel presence is established only by #11022's in-image probe receipt. recipes.vllm.ai lists h200/gb200/gb300/mi350x only" as NonEmptyStr,
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
