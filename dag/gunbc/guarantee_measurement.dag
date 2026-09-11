@@ -2,6 +2,7 @@ module gunbc.guarantee_measurement
 
 import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
 import std.nat { Nat }
+import gunbc.guarantee_rung { GuaranteeRung, MechanicallyPreventable, OutsideTheLadder, guarantee_rung_index }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 
 // STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else
@@ -137,13 +138,25 @@ type MeasurementRevision
 // SyntheticProgram witnesses until real revision anchors land; it must never be cast to CommitSha.
 // Downstream consumers discriminate by variant rather than inferring family from hex width.
 
-type GuaranteeMeasurementReceipt {
+// WHAT A MEASUREMENT IS ANCHORED TO, declared ONCE and carried by everything that needs it. The five
+// fields are one fact -- they travel together or the anchor means nothing -- and holding them inline
+// here while a second record re-listed them made the identity two declarations and its comparison
+// two more. Adding a sixth component would then have to be remembered in four places, and the one
+// that fails silently is the comparison: a dropped field stops being compared, so two receipts
+// measuring different things join into one pair and yield a rung. That is the same law this module
+// already applies to ProbeObservation and GuaranteeDisposition, applied to the identity tuple
+// instead of to the sums (DESIGN section 3).
+type MeasurementAnchor {
   class: GuaranteeClassId
   path: GuaranteePathId
-  probe: GuaranteeProbeId
   subject_revision: MeasurementRevision
   harness_revision: MeasurementRevision
   probe_set_digest: Fnv1a64Structural
+}
+
+type GuaranteeMeasurementReceipt {
+  anchor: MeasurementAnchor
+  probe: GuaranteeProbeId
   observed: ProbeObservation
 }
 
@@ -189,7 +202,7 @@ type ReceiptJoin
   | ReceiptPathDuplicate { receipt_path: GuaranteePathId, matches: Int }
 
 fn join_receipt_to_path(receipt: GuaranteeMeasurementReceipt, paths: List<GuaranteePath>) -> ReceiptJoin {
-  match resolve_guarantee_path(paths: paths, wanted: receipt.path) {
+  match resolve_guarantee_path(paths: paths, wanted: receipt.anchor.path) {
     PathResolved { path: p } => ReceiptJoined { path: p }
     PathUnknown { wanted: w } => ReceiptPathUnknown { receipt_path: w }
     PathDuplicate { wanted: w, matches: m } => ReceiptPathDuplicate { receipt_path: w, matches: m }
@@ -223,5 +236,478 @@ fn guarantee_probe_ids_unique(ids: List<GuaranteeProbeId>) -> Bool {
 fn probe_set_digest(probe_ids: List<GuaranteeProbeId>) -> Fnv1a64Structural {
   fold(probe_ids, init: content_hash_atom(value: "guarantee-probe-set" as NonEmptyStr), f: fn(acc, id) {
     content_hash_combine_structural(left: acc, right: content_hash_tagged_structural(tag: "probe" as NonEmptyStr, payload: content_hash_atom(value: id as NonEmptyStr)))
+  })
+}
+
+// ============================================================================================
+// THE CLAIM SIDE: A REQUIREMENT, AND A DISPOSITION DERIVED PER PATH AND NEVER STORED.
+//
+// The measurement side above answers "what did this probe observe". It deliberately stops there:
+// dispositions are "DERIVED by the claims carrier from receipts, so storing one here would be the
+// transcribed-rung defect the carrier stage exists to make unrepresentable". This section is that
+// carrier, in the same module because it keys on the same identities - a separate module would put
+// the join between class identity and its own vocabulary across an authority edge for no fact.
+//
+// THE ROADMAP NODE SPECIFIES FOUR CARRIERS AND TWO OF THEM ALREADY EXIST HERE. GuaranteePath is
+// declared above; GuaranteeMeasurement is GuaranteeMeasurementReceipt above. What was missing is
+// GuaranteeRequirement and GuaranteeDisposition, and those are what this section adds - not a
+// partial realization of the set elsewhere, but the absent half landing beside the present half.
+//
+// THERE IS NO current_rung FIELD, AND THAT IS THE POINT. A stored rung is a number someone typed,
+// which is the rung inflation DESIGN section 4b(1) names: the reported rung must EQUAL the rung
+// established by executed evidence. Here the only way to obtain a rung is to fold receipts, so a
+// transcribed one is not merely discouraged, it is unwritable.
+
+// THE CEILING'S REASON IS TYPED because DESIGN section 4b derives the attainable ceiling rather
+// than asserting it, and the derivation differs by KIND: a decidable fully-modeled class may reach
+// impossibility; a decidable class missing its authority is section 5's wall-after-grounding; a
+// class blocked on a language capability names that capability; an undecidable property honestly
+// stays a ratchet; an external fact stays a boundary obligation. A String reason would let all five
+// be spelled the same way and none of them be folded.
+type GuaranteeCeilingReason
+  = DecidableAndFullyModeled
+  | WallAfterGrounding { missing_authority: NonEmptyStr }
+  | BlockedOnCapability { capability: NonEmptyStr }
+  | UndecidableProperty { property: NonEmptyStr }
+  | ExternalBoundaryObligation { boundary: NonEmptyStr }
+
+// A REQUIREMENT IS WHAT IS OWED FOR ONE CLASS, and every field is required: a class whose harm is
+// unstated cannot be prioritised, and a ceiling without its reason is an assertion. next_rung_trigger
+// carries section 4b(2)'s "no untracked stall" - a class below its ceiling must name what would move
+// it, separating cannot-climb from can-climb-after-one-grounding from can-climb-now-but-unbuilt.
+//
+// A DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). Inside this module the requirement is
+// consumed by ceiling_standing and by nothing else, which is honest but partial: the
+// comparison exists to be ASKED by something that owes an answer.
+//   CONSUMER: the compile-obligation activation authority, which states per required compile lens
+//   what is owed and reads class_disposition to decide whether the obligation is met.
+//   ROUTE: that authority folds one requirement per class against the dispositions derived from the
+//   receipts this module already carries; it does not re-derive either half.
+//   TRIGGER: the activation authority consuming class_disposition against a requirement roster --
+//   sufficient that a class below its ceiling is REFUSED by name rather than reported.
+// If that consumer does not land, this type is redundant work: the honest move is then to delete it
+// rather than leave a requirement nobody requires.
+type GuaranteeRequirement {
+  class: GuaranteeClassId
+  domain: NonEmptyStr
+  harm: NonEmptyStr
+  ceiling: GuaranteeRung
+  ceiling_reason: GuaranteeCeilingReason
+  next_rung_trigger: NonEmptyStr
+}
+
+// THE DISPOSITION OF ONE CLASS ON ONE PATH. OutsideModeledGuarantee is DESIGN's column that is
+// deliberately not a rung - external reality, undecidable properties, undeclared intent - and it is
+// carried here so that "we do not model this" can be said without masquerading as a weak rung.
+type GuaranteeDisposition
+  = Unmeasured
+  | BelowFloor
+  | FrontierAccepted
+  | OnLadder { rung: GuaranteeRung }
+  | OutsideModeledGuarantee
+
+// A RUNG NEEDS A PAIR OF OBSERVATIONS, NOT ONE, and this is the load-bearing shape of the whole
+// carrier. DESIGN section 4b(1): the rung must equal what is established by "a discriminating RED
+// refused on the real acceptance path plus an accepted positive control". One observation cannot
+// establish it in either direction - a gate that refuses everything refuses the planted red too, and
+// a gate that accepts everything accepts the positive control too. So a path's evidence is the pair,
+// and the two failure directions are different facts with the same disposition:
+//   - the RED was ACCEPTED  => the wall did not fire on the state it exists for.
+//   - the GREEN was REFUSED => the wall refuses a correct program.
+// Both are BelowFloor, and both are worth distinguishing to a reader, which is what the cause is for.
+type PathEvidence {
+  anchor: MeasurementAnchor
+  red_probe: ProbeObservation
+  green_probe: ProbeObservation
+}
+
+// THE PAIR IS JOINED FROM RECEIPTS, NOT ASSEMBLED BY HAND, and the join is what makes a derived
+// rung mean anything. A PathEvidence built from two bare observations says "something was refused
+// and something was accepted" and names no revision, no harness and no probe set -- so a rung
+// derived from it is a claim about nothing in particular, which is precisely the inflation this
+// carrier exists to prevent (DESIGN section 4b(1): the rung must be measured against a DECLARED
+// boundary). The earlier shape carried a lone path field that nothing in the module ever read,
+// which is the tell: the identity was decorative because no join was producing it.
+//
+// THE REFUSALS ARE THE POINT. Two receipts that disagree on class, path, harness revision, subject
+// revision or probe set are not a pair -- they are two measurements of different things, and
+// folding them into one rung is how a strong path comes to speak for a silent one. Answering a
+// disposition there would be the fabricated plausible output DESIGN section 5 forbids, so the join
+// refuses with the disagreement named. Using ONE receipt for both directions is its own arm: a
+// single probe cannot be both the discriminating red and the positive control, and a pair built
+// that way would report a rung established by half the evidence it claims.
+type PathEvidenceJoinCause
+  = ReceiptClassesDisagree
+  | ReceiptPathsDisagree
+  | SubjectRevisionsDisagree
+  | HarnessRevisionsDisagree
+  | ProbeSetsDisagree
+  | OneProbeUsedForBothDirections
+
+type PathEvidenceJoin
+  = PathEvidenceJoined { evidence: PathEvidence }
+  | PathEvidenceRefused { cause: PathEvidenceJoinCause }
+
+fn measurement_revision_eq(left: MeasurementRevision, right: MeasurementRevision) -> Bool {
+  match left {
+    GitRevision { commit: lc } =>
+      match right {
+        GitRevision { commit: rc } => (lc as String) == (rc as String)
+        ContentFingerprint { digest: _ } => false
+      }
+    ContentFingerprint { digest: ld } =>
+      match right {
+        GitRevision { commit: _ } => false
+        ContentFingerprint { digest: rd } => (ld.digest as String) == (rd.digest as String)
+      }
+  }
+}
+
+// THE ANCHORS ARE COMPARED ONCE, BY THE TYPE THAT DECLARES THEM. Field-by-field comparison here
+// would be the identity tuple's fourth copy -- the record, the receipt, the copy-out and the compare
+// -- and the copy is the one that fails silently: a sixth component added to the anchor would stop
+// being compared without anything refusing, so two receipts measuring different things would join
+// and yield a rung. One function over MeasurementAnchor means adding a field breaks HERE, at a
+// match the compiler checks, rather than passing quietly.
+//
+// It returns the named disagreement rather than a bare Bool because the causes are the substance:
+// a class or path mismatch is a wiring error, a revision mismatch is a stale measurement, and a
+// probe-set mismatch means two runs under one name ran different probes. Same repair vocabulary,
+// one traversal.
+fn anchor_disagreement(left: MeasurementAnchor, right: MeasurementAnchor) -> PathEvidenceJoinCause? {
+  if (left.class as String) != (right.class as String) {
+    Present { value: ReceiptClassesDisagree }
+  } else {
+    if (left.path as String) != (right.path as String) {
+      Present { value: ReceiptPathsDisagree }
+    } else {
+      if !measurement_revision_eq(left: left.subject_revision, right: right.subject_revision) {
+        Present { value: SubjectRevisionsDisagree }
+      } else {
+        if !measurement_revision_eq(left: left.harness_revision, right: right.harness_revision) {
+          Present { value: HarnessRevisionsDisagree }
+        } else {
+          if (left.probe_set_digest.digest as String) != (right.probe_set_digest.digest as String) {
+            Present { value: ProbeSetsDisagree }
+          } else {
+            none
+          }
+        }
+      }
+    }
+  }
+}
+
+fn path_evidence_from_receipts(
+  red: GuaranteeMeasurementReceipt,
+  green: GuaranteeMeasurementReceipt,
+) -> PathEvidenceJoin {
+  match anchor_disagreement(left: red.anchor, right: green.anchor) {
+    Present { value: cause } => PathEvidenceRefused { cause: cause }
+    Absent =>
+      if (red.probe as String) == (green.probe as String) {
+        PathEvidenceRefused { cause: OneProbeUsedForBothDirections }
+      } else {
+        PathEvidenceJoined { evidence: PathEvidence {
+          anchor: red.anchor,
+          red_probe: red.observed,
+          green_probe: green.observed,
+        } }
+      }
+  }
+}
+
+type BelowFloorCause
+  = PlantedRedAccepted
+  | PositiveControlRefused
+  | ObservationDiverged
+
+// THE SUM'S CANONICAL ELIMINATION IS probe_observation_fold, AND THIS MODULE SAID SO BEFORE I
+// IGNORED IT. Its own header states that the fold "owns the ONLY match over `ProbeObservation`…
+// a per-query hand-match has no form to accumulate - a new query is a `ProbeObservationFold` row",
+// and it names this very work as the consumer: "the carrier's disposition derivation consumes the
+// same fold when it lands." A first revision of this section forked four hand-matches instead. They
+// are gone: the derivation folds the red observation, and folds the green one inside the arm where
+// the red was refused, so no match over ProbeObservation exists outside the fold.
+
+// PROBE EVIDENCE CAPS AT MechanicallyPreventable, AND SAYING SO IS THE WHOLE HONESTY OF THIS FOLD.
+// A pair of probes can establish that a gate EXECUTES and DISCRIMINATES, which is exactly DESIGN's
+// rung 2: "a generated test, lens, or gate reliably exposes and blocks it, but the invalid state
+// remains writable and safety depends on that mechanism executing and staying enrolled". Rungs 3 and
+// 4 are claims about what no Accepted program CAN contain and what has no constructor at all - they
+// are properties of the model, not of any finite set of probe runs, and no number of green probes
+// can witness them. A derivation that returned StructurallyGuaranteed from probe observations would
+// be manufacturing the inflation this carrier exists to prevent.
+fn probe_pair_rung() -> GuaranteeRung {
+  MechanicallyPreventable
+}
+
+// THE GREEN OBSERVATION IS FOLDED INSIDE THE ARM WHERE THE RED WAS REFUSED, which is the pair
+// requirement expressed as nesting rather than as a conjunction of predicates: the green only
+// decides anything once the red has established that the wall fires at all.
+fn green_disposition_fold() -> ProbeObservationFold<GuaranteeDisposition> {
+  ProbeObservationFold {
+    refused: fn(_d, _c) { BelowFloor }
+    accepted_clean: OnLadder { rung: probe_pair_rung() }
+    accepted_counted: fn(_d, _c) { FrontierAccepted }
+    diverged: fn(_reason) { BelowFloor }
+    not_runnable: fn(_cause) { Unmeasured }
+  }
+}
+
+fn disposition_for_path(evidence: PathEvidence) -> GuaranteeDisposition {
+  probe_observation_fold(
+    o: evidence.red_probe,
+    fold: ProbeObservationFold {
+      refused: fn(_d, _c) {
+        probe_observation_fold(o: evidence.green_probe, fold: green_disposition_fold())
+      }
+      accepted_clean: BelowFloor
+      accepted_counted: fn(_d, _c) { BelowFloor }
+      diverged: fn(_reason) { BelowFloor }
+      not_runnable: fn(_cause) { Unmeasured }
+    }
+  )
+}
+
+// WHY A BELOW-FLOOR PATH IS NAMED RATHER THAN ONLY COUNTED: the two directions send a repair to
+// different places. A RED that was accepted means the wall is missing or misaimed; a GREEN that was
+// refused means the wall is wrong about correct programs, which is the more expensive defect
+// because it stops honest work. Folded the same way, for the same reason.
+//
+// THE CAUSE IS OPTIONAL BECAUSE NOT EVERY PATH HAS ONE, and the earlier total version of this
+// function is the exact defect this module exists to refuse. It answered PlantedRedAccepted for a
+// red probe that was NOT RUNNABLE and PositiveControlRefused for a green probe that was ACCEPTED --
+// paths that disposition_for_path calls Unmeasured and OnLadder. Nothing guarded it and nothing in
+// this language hides it from a caller, so a reader asking for the cause of a passing path got a
+// named, plausible, false repair location: a fabricated answer at the precise grain the carrier is
+// supposed to make honest (DESIGN section 5). Absent is the only true answer there, and
+// below_floor_cause_agrees_with_the_disposition pins Present exactly to the below-floor arm over
+// every one of the twenty-five observation pairs.
+fn below_floor_cause(evidence: PathEvidence) -> BelowFloorCause? {
+  probe_observation_fold(
+    o: evidence.red_probe,
+    fold: ProbeObservationFold {
+      refused: fn(_d, _c) {
+        probe_observation_fold(
+          o: evidence.green_probe,
+          fold: ProbeObservationFold {
+            refused: fn(_d2, _c2) { Present { value: PositiveControlRefused } }
+            accepted_clean: none
+            accepted_counted: fn(_d2, _c2) { none }
+            diverged: fn(_r) { Present { value: ObservationDiverged } }
+            not_runnable: fn(_c2) { none }
+          }
+        )
+      }
+      accepted_clean: Present { value: PlantedRedAccepted }
+      accepted_counted: fn(_d, _c) { Present { value: PlantedRedAccepted } }
+      diverged: fn(_reason) { Present { value: ObservationDiverged } }
+      not_runnable: fn(_cause) { none }
+    }
+  )
+}
+
+// THE FOLD ACROSS PATHS, IN THE ORDER THE ROADMAP FIXES: below-floor dominance, then frontier, then
+// unmeasured, then the MINIMUM rung across paths. The order is not a preference and each step is a
+// separate law:
+//   - BELOW-FLOOR DOMINATES because a class that fails its floor on any path is below the floor,
+//     full stop; averaging a failing path against passing ones is the compensating-errors defect.
+//   - FRONTIER BEFORE UNMEASURED because an accepted-with-residue path is a MEASURED fact, and
+//     reporting it as unmeasured would discard evidence that exists.
+//   - UNMEASURED BEFORE A RUNG because an unmeasured path is ignorance, and a rung reported over it
+//     would be a claim about a path nobody looked at.
+//   - MINIMUM, NEVER MAXIMUM OR AVERAGE, because section 4b(1) says a class's rung is the minimum
+//     across its in-scope paths: citing the strongest path while another stays silent is inflation.
+// OutsideModeledGuarantee contributes no rung: a path outside the modeled guarantee is not a weak
+// rung, so it is skipped in the minimum, and a class ALL of whose paths are outside is outside.
+// ONE ELIMINATOR FOR THIS COPRODUCT, for the same reason the module refuses hand-matches on
+// ProbeObservation: four predicates and an index function that each re-spell the same five arms are
+// five places an added arm can be silently dropped into a default, and adding an arm is not finished
+// until every fold over the type has been revisited. So the arms are named once, here, and every
+// question below is a choice of carrier rather than a new match.
+type GuaranteeDispositionFold<T> {
+  unmeasured: T
+  below_floor: T
+  frontier_accepted: T
+  on_ladder: fn(GuaranteeRung) -> T
+  outside_modeled: T
+}
+
+fn guarantee_disposition_fold<T>(d: GuaranteeDisposition, fold: GuaranteeDispositionFold<T>) -> T {
+  match d {
+    Unmeasured => fold.unmeasured
+    BelowFloor => fold.below_floor
+    FrontierAccepted => fold.frontier_accepted
+    OnLadder { rung: r } => fold.on_ladder(r)
+    OutsideModeledGuarantee => fold.outside_modeled
+  }
+}
+
+fn disposition_is_below_floor(d: GuaranteeDisposition) -> Bool {
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: false
+    below_floor: true
+    frontier_accepted: false
+    on_ladder: fn(_r) { false }
+    outside_modeled: false
+  })
+}
+
+fn disposition_is_frontier(d: GuaranteeDisposition) -> Bool {
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: false
+    below_floor: false
+    frontier_accepted: true
+    on_ladder: fn(_r) { false }
+    outside_modeled: false
+  })
+}
+
+fn disposition_is_unmeasured(d: GuaranteeDisposition) -> Bool {
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: true
+    below_floor: false
+    frontier_accepted: false
+    on_ladder: fn(_r) { false }
+    outside_modeled: false
+  })
+}
+
+// THE MINIMUM IS A CHOICE OF CARRIER OVER THE ONE ELIMINATOR, not a sixth match. Written as a pair
+// of hand-matches with wildcard defaults it forked the fold declared directly above it, and the
+// wildcards defeated the property the fold exists to give: a sixth disposition arm would have
+// compiled silently into the accumulator here while every other question in this module refused
+// until it was answered.
+fn lower_of_two_dispositions(acc: GuaranteeDisposition, d: GuaranteeDisposition) -> GuaranteeDisposition {
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: acc
+    below_floor: acc
+    frontier_accepted: acc
+    on_ladder: fn(r) {
+      guarantee_disposition_fold(d: acc, fold: GuaranteeDispositionFold {
+        unmeasured: OnLadder { rung: r }
+        below_floor: OnLadder { rung: r }
+        frontier_accepted: OnLadder { rung: r }
+        on_ladder: fn(current) {
+          if guarantee_rung_index(r: r) < guarantee_rung_index(r: current) {
+            OnLadder { rung: r }
+          } else {
+            acc
+          }
+        }
+        outside_modeled: OnLadder { rung: r }
+      })
+    }
+    outside_modeled: acc
+  })
+}
+
+fn minimum_on_ladder(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
+  fold(dispositions, init: OutsideModeledGuarantee, f: fn(acc, d) {
+    lower_of_two_dispositions(acc: acc, d: d)
+  })
+}
+
+// AN EMPTY PATH SET IS IGNORANCE, NOT A DECLARED OUTSIDE, and the distinction is the whole reason
+// OutsideModeledGuarantee sits beside the ladder rather than on it. The minimum below seeds with
+// OutsideModeledGuarantee so that an outside path contributes no rung, which is right for a path
+// that someone classified -- and wrong for NO PATHS AT ALL, because the seed then leaks out as the
+// answer: a class nobody measured would report as outside the modeled guarantee, and
+// ceiling_standing would call that AT CEILING against an outside-the-ladder ceiling, so a
+// class nobody looked at would stop owing its next-rung trigger. That is the inverse of the leak
+// section 4b guards: not "we do not model this" masquerading as a weak rung, but ignorance
+// masquerading as a deliberate classification. The module already makes this argument for a single
+// probe that could not run; the empty set is the same argument at class grain.
+fn fold_dispositions(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
+  if dispositions.length() == 0 {
+    Unmeasured
+  } else {
+  if any(dispositions, d => disposition_is_below_floor(d: d)) {
+    BelowFloor
+  } else {
+    if any(dispositions, d => disposition_is_frontier(d: d)) {
+      FrontierAccepted
+    } else {
+      if any(dispositions, d => disposition_is_unmeasured(d: d)) {
+        Unmeasured
+      } else {
+        minimum_on_ladder(dispositions: dispositions)
+      }
+    }
+  }
+  }
+}
+
+fn class_disposition(evidence: List<PathEvidence>) -> GuaranteeDisposition {
+  fold_dispositions(dispositions: map(evidence, e => disposition_for_path(evidence: e)))
+}
+
+// A CLASS AT ITS CEILING IS DONE; A CLASS BELOW IT OWES ITS TRIGGER; AND A CLASS WHOSE EVIDENCE
+// CONTRADICTS ITS CEILING IS NEITHER. This is the one place the requirement and the disposition
+// meet, and it is a comparison rather than a stored state: below the ceiling is a correctness gap,
+// never optional elegance (DESIGN section 4b).
+//
+// WHY IT IS THREE-VALUED AND NOT A PREDICATE. An index comparison alone answers the wrong question,
+// because OutsideTheLadder is index 0 and everything is >= 0. The three evidence-shortfall arms were
+// fixed first -- an unmeasured, below-floor or frontier class reaches no ceiling, whatever the
+// ceiling is -- and that left the FOURTH arm with the same leak: a class MEASURED ON THE LADDER
+// against a ceiling that says the class sits BESIDE the ladder read as at-ceiling, so a climbing
+// class stopped owing its next-rung trigger on the strength of a ceiling its own evidence falsifies.
+//
+// The two facts disagree, and neither side may quietly win. Reporting done hides a climbable class;
+// reporting below-ceiling hides that the CEILING is the thing now known to be wrong -- a requirement
+// declaring a class outside the modeled guarantee, contradicted by a measurement putting it on the
+// ladder, is a requirement to rewrite, not a trigger to chase. So the disagreement is named and
+// carries the measured rung, which is the evidence the repair needs (DESIGN section 5: a failure arm
+// refuses, it does not widen).
+type CeilingStanding
+  = AtCeiling
+  | BelowCeiling
+  | CeilingContradictedByEvidence { measured: GuaranteeRung }
+
+// A CLASS DECLARED OUTSIDE THE MODELED GUARANTEE MEETS A CEILING THAT SAYS THE SAME THING, and
+// meets nothing else: against a ceiling naming a real rung, an outside-the-guarantee class has not
+// reached it -- it is the class nobody modeled, which is a gap and not an arrival.
+// THE COMPARISON IS THREE-WAY BECAUSE THE THREE ANSWERS ARE THREE DIFFERENT FACTS, and collapsing
+// ABOVE into AT is the leak this replaces. `>=` read a class measured ABOVE its declared ceiling as
+// AtCeiling, and AtCeiling means the class stops owing its next-rung trigger -- so an understated
+// ceiling silently retired a class that had already climbed past it. DESIGN section 4b calls the
+// ceiling DERIVED rather than aspirational, which is exactly what a measurement above it falsifies:
+// the evidence is not the thing to doubt, the ceiling is, and the repair is to rewrite the
+// requirement rather than to chase a trigger.
+//
+// ONE RULE REPLACES TWO. The outside-the-ladder case needed its own branch only while the
+// comparison was two-valued; OutsideTheLadder is index 0 and every real rung outranks it, so a
+// class measured on the ladder against an off-ladder ceiling is just the ABOVE case and reaches the
+// same contradiction through the same arithmetic. Its control stays enrolled -- section 4b(4) keeps
+// the evidence when the production handling dissolves.
+fn standing_for_measured_rung(measured: GuaranteeRung, ceiling: GuaranteeRung) -> CeilingStanding {
+  if guarantee_rung_index(r: measured) < guarantee_rung_index(r: ceiling) {
+    BelowCeiling
+  } else {
+    if guarantee_rung_index(r: measured) == guarantee_rung_index(r: ceiling) {
+      AtCeiling
+    } else {
+      CeilingContradictedByEvidence { measured: measured }
+    }
+  }
+}
+
+fn standing_for_outside_modeled(r: GuaranteeRequirement) -> CeilingStanding {
+  if guarantee_rung_index(r: r.ceiling) == guarantee_rung_index(r: OutsideTheLadder) {
+    AtCeiling
+  } else {
+    BelowCeiling
+  }
+}
+
+fn ceiling_standing(r: GuaranteeRequirement, d: GuaranteeDisposition) -> CeilingStanding {
+  guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
+    unmeasured: BelowCeiling
+    below_floor: BelowCeiling
+    frontier_accepted: BelowCeiling
+    on_ladder: fn(rung) { standing_for_measured_rung(measured: rung, ceiling: r.ceiling) }
+    outside_modeled: standing_for_outside_modeled(r: r)
   })
 }

@@ -22,6 +22,10 @@ import gunbc.observation_emit_census {
   shell_site,
   floor_heartbeat_site,
   floor_claim_memory_site,
+  observation_emit_roster,
+  emit_site_producer_symbol,
+  ProducerUnlocated,
+  ConsumerUnresolved,
   floor_drain_site,
   receipt_site,
   file_trace_site,
@@ -103,6 +107,8 @@ test fn w_every_rostered_marker_still_exists_in_the_seed() -> Bool {
 test fn w_roster_staleness_check_discriminates() -> Bool {
   let bogus = CensusedEmitSite {
     marker: "[this-marker-does-not-exist-in-the-seed]" as NonEmptyStr,
+    producer: ProducerUnlocated { reason: "control" as NonEmptyStr },
+    consumption: ConsumerUnresolved { searched: "control" as NonEmptyStr },
     disposition: CountedFrontierSite {
       reason: "control" as NonEmptyStr,
       dissolution: unbound_dissolution(description: "control")
@@ -214,8 +220,6 @@ test fn w_witness_claim_result_has_migrated() -> Bool {
 // occurrences.
 
 test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
-  census_marker_present(site: floor_heartbeat_site) &&
-  emit_site_is_frontier(site: floor_heartbeat_site) &&
   census_marker_present(site: floor_claim_memory_site) &&
   emit_site_is_frontier(site: floor_claim_memory_site) &&
   census_marker_present(site: floor_drain_site) &&
@@ -232,10 +236,35 @@ test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   emit_site_is_frontier(site: witness_row_cost_site)
 }
 
-test fn w_the_floor_heartbeat_projection_is_absent_from_the_seed() -> Bool {
-  seed_marker_absent(marker: "render_heartbeat_line_mirror(") &&
+// THE REVERSAL PROBE FLIPPED TO ITS REGRESSION CONTROL (2026-09-11, DESIGN 4b(4)). Until the
+// restoration this asserted the mirror ABSENT and the raw tag PRESENT -- green meant "the
+// regression is still here" -- and its own note said it must red when the debt was paid. It did,
+// and it does not retire: the same three conjuncts now hold the restored state, so a second
+// deletion of the mirror, or a raw key=value line creeping back under the tag, reds here. The
+// marker itself survives as FLOOR_HEARTBEAT_CENSUS_MARKER so the roster's presence check stays
+// honest; what must be gone is the raw SHAPE, `[floor-heartbeat] wall_s=`.
+test fn w_the_floor_heartbeat_projection_is_restored_in_the_seed() -> Bool {
+  seed_marker_present(marker: "render_heartbeat_line_mirror(") &&
+  seed_marker_present(marker: "FLOOR_HEARTBEAT_CENSUS_MARKER") &&
+  seed_marker_absent(marker: "[floor-heartbeat] wall_s=") &&
   seed_marker_absent(marker: "[floor-memory]") &&
   seed_marker_present(marker: "[floor-heartbeat]")
+}
+
+// EVERY NAMED PRODUCER IS A SYMBOL THE SEED STILL CARRIES. The producer field is a citation into
+// hand Rust, which the ingestion wall counts rather than resolves, so this is the check that a row
+// has not started naming a deleted function -- the exact defect [witness-row-cost] carried for
+// four days under `claim_executor discovery_claim_result`. Substring on the symbol is the
+// approximation this suite already accepts for the mirror names above, with the same limitation.
+test fn w_every_named_producer_symbol_is_present_in_the_seed() -> Bool {
+  all(observation_emit_roster, site => match emit_site_producer_symbol(site: site) {
+    Present { value: name } => seed_marker_present(marker: name)
+    Absent => true
+  })
+}
+
+test fn w_producer_presence_check_discriminates() -> Bool {
+  !seed_marker_present(marker: "discovery_claim_result")
 }
 
 // THE DISCRIMINATING PROBE FOR THE REVERSAL, and it is stated as three conjuncts because two of

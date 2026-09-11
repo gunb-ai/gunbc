@@ -1,0 +1,141 @@
+module extdeps.vllm.deepseek_v4_1_flash_recipe
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Gigabyte, gigabyte, gigabyte_count, Percent, percent, percent_count }
+import extdeps.units.dimensionless { percent_unity_hundred_count }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash"
+  },
+}
+
+// WHAT THE PUBLISHER SAYS, AS THE PUBLISHER'S FIGURES AND NOT AS THIS FLEET'S.
+//
+// THE DISTINCTION IS THE WHOLE POINT OF THE MODULE. A vendor's minimum-VRAM number is a claim made
+// under a stated schema on stated hardware; it is evidence about what the publisher verified, never a
+// measurement of what this fleet would observe. Recording it as a plain number beside fleet
+// measurements is how a publisher's headroom convention becomes a fact nobody can attribute -- so
+// every row here says whose figure it is and, where the page states one, how it was derived.
+//
+// Fetched 2026-09-11 from the page cited above; the page itself records date_added 2026-09-09 and
+// date_updated 2026-09-10.
+type VllmPublishedFigure sole_constructor {
+  subject: NonEmptyStr
+  value: NonEmptyStr
+  derivation: NonEmptyStr
+}
+
+data v41_flash_checkpoint_on_disk: VllmPublishedFigure = VllmPublishedFigure {
+  subject: "checkpoint size on disk" as NonEmptyStr,
+  value: join([to_string(gigabyte_count(g: v41_flash_checkpoint)), " GB (476 GiB)"], "") as NonEmptyStr,
+  derivation: "stated by the recipe, with a component table: routed + DSpark experts MXFP4 557.2B params 259.5 GiB; Engram tables MXFP8 196.6B 188.8 GiB; attention, norms, routers MXFP8 6.0B 5.6 GiB; embedding + LM head + misc 3.0B 5.8 GiB; quantization scales 23.6B 21.9 GiB" as NonEmptyStr,
+}
+
+// THE 614 IS NOT A MEASUREMENT AND THE PAGE SAYS SO. It is the checkpoint total multiplied by the
+// recipe schema's 1.2 headroom factor, which is a publishing convention rather than an observed
+// floor -- so a fleet that wants a real floor measures one, and a fleet that wants to know whether it
+// is even in range compares against this.
+// THE TWO FIGURES THE PAGE STATES, AND THE RELATION IT STATES BETWEEN THEM. The checkpoint total and
+// the minimum are not independent rows: the page says the second IS the first times the schema's 1.2
+// headroom factor. Carrying both plus the relation is what lets a reader check the transcription --
+// if either number were copied wrong, the derivation disagrees. Carrying only the minimum leaves a
+// literal that can only be compared to itself.
+// THE UNIT IS THE PUBLISHER'S AND IT IS DECIMAL. The page writes `vram_minimum_gb`, and std.measure
+// already records that vendors publishing "GB" mean 10^9 -- so these are Gigabyte, not bare counts.
+// A scalar named `_gb` is a unit living in an identifier, which is the place a conversion goes wrong
+// silently; carrying the Measure makes any comparison against a binary figure a conversion someone
+// has to write.
+data v41_flash_checkpoint: Gigabyte = gigabyte(count: 511)
+// AND THE FACTOR IS A DIMENSIONLESS RATIO, WHICH std.measure ALREADY OWNS. It stood here as a bare
+// `Nat = 12` whose unit lived in the identifier (`_tenths`) with the scale open-coded beside it --
+// the same defect the annotation four lines up condemns for `_gb`, committed in the same file that
+// condemns it. Percent is the carrier for this concept, so 1.2 is percent(count: 120) and the scale
+// the division undoes is percent_unity_hundred_count(), the authority for what "per cent" means,
+// rather than a literal 10 chosen to match a name.
+data v41_flash_headroom_factor: Percent = percent(count: 120)
+
+// Integer ceiling of the total scaled by that factor, because the published figure is rounded up:
+// 511 * 1.2 = 613.2 and the page states 614. The +(scale - 1) is the ceiling, written against the
+// scale rather than against a hard-coded 9, so it stays correct if the factor is ever restated at a
+// different precision.
+fn v41_flash_headroom(total: Gigabyte) -> Gigabyte {
+  let scale = percent_unity_hundred_count()
+  gigabyte(count: (gigabyte_count(g: total) * percent_count(p: v41_flash_headroom_factor) + (scale - 1)) / scale)
+}
+
+// READ THIS AS THE PUBLISHER'S ARITHMETIC, NOT AS A FLOOR ANYONE MEASURED. The page's own sentence
+// around it is: "It fits one GB200 NVL4 tray (768 GB) at TP4, or one 8-GPU H200 node (1128 GB) with
+// room for KV cache, but 1M context will need the context or batch capped -- measure before
+// assuming." That caveat is the half a summary drops, and it belongs here, beside the number a reader
+// is most likely to mistake for a measurement.
+//
+// IT IS AN ANNOTATION RATHER THAN A ROW, DELIBERATELY. It stood as `v41_flash_fit_statement`, a
+// String declaration nothing read -- and its decidable content is already carried decidably next
+// door: which hardware the publisher verified is v41_flash_verified_hardware, and the minimum is the
+// Measure above. What was left in the sentence was commentary, which §4c puts in an annotation and
+// keeps out of program data, precisely so it cannot be mistaken for a fact something consumes.
+data v41_flash_vram_minimum: Gigabyte = gigabyte(count: 614)
+
+// THE FIGURE ROW CARRIES THE PAGE'S SENTENCE, AND ITS VALUE IS RENDERED FROM THE MEASURE rather than
+// spelled again. An earlier revision wrote "614" here beside the typed 614 above, so the two could
+// drift apart and nothing would notice.
+data v41_flash_vram_minimum_figure: VllmPublishedFigure = VllmPublishedFigure {
+  subject: "vram_minimum_gb" as NonEmptyStr,
+  value: to_string(gigabyte_count(g: v41_flash_vram_minimum)) as NonEmptyStr,
+  derivation: "the checkpoint total times the recipe schema's 1.2 headroom factor, stated verbatim on the page as `vram_minimum_gb: 614 is that total times the schema's 1.2 headroom factor`" as NonEmptyStr,
+}
+
+// THE VERIFIED-HARDWARE ROSTER THE PAGE CARRIES IN ITS OWN METADATA, and what is NOT in it matters as
+// much as what is: there is no GB10 / DGX Spark entry, so the publisher makes no claim about this
+// fleet's accelerator.
+//
+// WHAT IS NOT ESTABLISHED BESIDE IT. The published image's environment names 12.1 in its
+// TORCH_CUDA_ARCH_LIST, which is what the BUILD WAS TOLD TO TARGET -- an argument recorded in the
+// image's config, not a reading of which kernels the extension actually carries. Upstream's own build
+// prints `Not building ...` and exits zero when an architecture block finds no compatible target, so
+// a requested architecture and a compiled one are different facts and neither this row nor that env
+// var establishes the second. Only a probe inside the image can, and this lane has not run one there.
+data v41_flash_verified_hardware: List<NonEmptyStr> = [
+  "h200" as NonEmptyStr,
+  "gb200" as NonEmptyStr,
+  "gb300" as NonEmptyStr,
+  "mi350x" as NonEmptyStr,
+]
+
+fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
+  fold(v41_flash_verified_hardware, init: false, f: (acc, h) =>
+    if acc { true } else { h as String == hardware as String })
+}
+
+// ── WHAT THE PAGE SAYS ABOUT THE IMAGE ────────────────────────────────────────────────────────
+//
+// THE PREREQUISITE THE RECIPE STATES, and only that. Whether a registry actually serves this
+// reference, at what digest, for which architectures, and from which source revision, are questions
+// answered by ASKING A REGISTRY -- observations this repository makes, which live in the observing
+// layer with their instrument and date (gunbc.spark.v41_published_image_observation), never here.
+// An extdeps module carries what upstream publishes; a resolved digest is what we found when we
+// looked.
+// ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
+//
+// Several declarations here have no consumer in this change, and that is a DECLARED FRONTIER with a
+// named consumer rather than dangling modelling. gunbc.spark.serving_deployment_selection's V4.1
+// candidate work (DSV41-2, #11013) states that it will import this module rather than fork the
+// figures -- its profile already refuses to copy vram_minimum_gb or the admitted-layout set -- and it
+// cannot import a module that is not on the tree. The trigger is therefore this change landing, at
+// which point that lane's frontier rows become imports and these declarations acquire their readers.
+// The rows the witnesses already exercise are the ones a reader can check today; the rest are the
+// figures that lane asked for, in the shape it asked for them.
+// AND THE PAGE SAYS DOCKER IS THE ONLY ROUTE: "No pip wheel serves this architecture, so the Install
+// block only offers Docker." That stood as a String row nothing read -- the same defect this module
+// just deleted one declaration earlier for the fit statement, which is how a class gets fixed at one
+// instance and left standing at the next. Its decidable content is that the image below is not one
+// install option among several; it is the only one the publisher offers, which is why a reference
+// that does not resolve is a hard stop for a consumer rather than an inconvenience.
+data v41_flash_documented_image: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
+data v41_flash_documented_engine_floor: NonEmptyStr = "vLLM 0.30.0+" as NonEmptyStr
+

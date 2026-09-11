@@ -1,0 +1,178 @@
+module gunbc.spark.v41_published_image_observation
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.vllm.deepseek_v4_1_flash_recipe { v41_flash_documented_image }
+
+// WHAT WE FOUND WHEN WE ASKED, AS OPPOSED TO WHAT THE PUBLISHER SAYS.
+//
+// WHY THESE ROWS ARE NOT IN extdeps.vllm.*. A resolved digest, an absent tag, a commit the public
+// repository does not have, a registry.py read out of a layer -- every one of those is a READING THIS
+// REPOSITORY TOOK with an instrument on a date, not a fact the upstream publishes about itself. The
+// same rule DESIGN states for observed facts generally: an observation belongs to the observing
+// layer, and backfilling it into the dependency's module makes it look like the vendor asserted it.
+// The distinction is load-bearing here because two of these readings CONTRADICT the published page.
+//
+// EVERY ROW NAMES ITS INSTRUMENT, so a reader can re-take the reading rather than trust this one.
+type PublishedImageObservation sole_constructor {
+  subject: NonEmptyStr
+  reading: NonEmptyStr
+  instrument: NonEmptyStr
+  observed_at: NonEmptyStr
+}
+
+data v41_published_image_observed_at: NonEmptyStr = "2026-09-11" as NonEmptyStr
+
+fn v41_published_observation(subject: NonEmptyStr, reading: NonEmptyStr, instrument: NonEmptyStr) -> PublishedImageObservation {
+  PublishedImageObservation {
+    subject: subject,
+    reading: reading,
+    instrument: instrument,
+    observed_at: v41_published_image_observed_at,
+  }
+}
+
+// THE DOCUMENTED TAG IS NOT SERVED, AND THE SERVED ONES ARE DATED. This is the first contradiction
+// with the page, and it is the one a consumer hits first: copying the documented reference gets a
+// 404.
+data v41_published_tag_absent: PublishedImageObservation = v41_published_observation(
+  subject: v41_flash_documented_image,
+  reading: "httperror 404: tag 'deepseekv41-flash' not found -- what is served is a dated family: deepseekv41-flash-0909 and its -cu129 and per-architecture variants, published 2026-09-10T06:47:50Z" as NonEmptyStr,
+  instrument: "Docker Hub tag API, hub.docker.com/v2/repositories/vllm/vllm-openai/tags/" as NonEmptyStr,
+)
+
+data v41_published_repository: NonEmptyStr = "vllm/vllm-openai" as NonEmptyStr
+data v41_published_tag: NonEmptyStr = "deepseekv41-flash-0909" as NonEmptyStr
+data v41_published_manifest_list_digest: NonEmptyStr = "sha256:00d577a6a63281e15336029d5bcee4e9a2cf182214a4f20ba6111b1c8e79893d" as NonEmptyStr
+data v41_published_arm64_digest: NonEmptyStr = "sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr
+data v41_published_amd64_digest: NonEmptyStr = "sha256:4f3c8bcf6328305b8cb6f61146dbfa125b0b04ae98eef3d091019ec30f564a9b" as NonEmptyStr
+
+// THE PINNED REFERENCE ANY CONSUMER SHOULD NAME: repository@digest, never the tag, and never the
+// documented tag that does not resolve.
+fn v41_published_arm64_reference() -> NonEmptyStr {
+  join([v41_published_repository as String, "@", v41_published_arm64_digest as String], "") as NonEmptyStr
+}
+
+// READ FROM THE arm64 IMAGE'S CONFIG BLOB THROUGH THE REGISTRY API -- no pull, nothing on any fleet
+// host. It targets sm_121 explicitly, and it states NO provenance of its own.
+data v41_published_arm64_config_observations: List<PublishedImageObservation> = [
+  v41_published_observation(
+    subject: "TORCH_CUDA_ARCH_LIST" as NonEmptyStr,
+    reading: "8.7 8.9 9.0 10.0+PTX 12.0 12.1 -- sm_121 is an explicit target of the published arm64 image" as NonEmptyStr,
+    instrument: "registry-1.docker.io config blob for sha256:d84a1232..." as NonEmptyStr,
+  ),
+  v41_published_observation(
+    subject: "CUDA_VERSION" as NonEmptyStr,
+    reading: "13.0.1" as NonEmptyStr,
+    instrument: "registry-1.docker.io config blob for sha256:d84a1232..." as NonEmptyStr,
+  ),
+  v41_published_observation(
+    subject: "build provenance labels" as NonEmptyStr,
+    reading: "ai.vllm.build.commit and org.opencontainers.image.revision both read `unknown`; ai.vllm.build.pipeline reads `local`; ai.vllm.image.tag reads `local/vllm-openai:dev`. The image declines to name its own source" as NonEmptyStr,
+    instrument: "registry-1.docker.io config blob for sha256:d84a1232..." as NonEmptyStr,
+  ),
+]
+
+// TWO OBSERVATIONS, AND THE CONCLUSION THEY DO NOT ESTABLISH.
+//
+// A DISTRIBUTION NAME IS A SELF-REPORT. setuptools-scm writes the version at build time from whatever
+// repository state it was pointed at; the name is what the packager stamped, not proof that these
+// bytes were compiled from that commit -- the same reasoning extdeps.vllm.server already records for
+// a server's self-reported version prefix. An earlier revision of this module read the pair below as
+// "the published image is built from source that is not on main", which promotes a version string and
+// a failed lookup into source provenance. What is established is the two readings; the equality
+// between the image and any revision stays UNESTABLISHED, which is exactly what
+// extdeps.vllm.runtime_defaults ImageSourceEquivalence exists to say.
+// THE DISCRIMINATING FACTS ARE FIELDS, AND THE SENTENCE IS FOR A HUMAN. The two rows below carry
+// prose so a reader learns what was found and why it does not establish more; a WITNESS asserting a
+// substring of that prose would be checking this change against itself, which is the change detector
+// the capability receipts in this lane already retired. So the facts a consumer joins on are typed
+// beside the sentence: the distribution name as published, the identifier the packager stamped into
+// it, and what a lookup of that identifier answered.
+data v41_published_distribution_name: NonEmptyStr = "vllm-0.1.dev20904+g179dd0fa9" as NonEmptyStr
+data v41_published_stamped_identifier: NonEmptyStr = "179dd0fa9" as NonEmptyStr
+
+// A LOOKUP HAS THREE ANSWERS AND ONLY ONE OF THEM IS "NO". Present means the public repository has a
+// commit with this id; Absent means it answered that it does not; Unasked would mean nobody looked.
+// None of the three says which source produced the image's bytes.
+type PublicCommitLookup
+  = PublicCommitPresent
+  | PublicCommitAbsent
+  | PublicCommitUnasked
+
+fn public_commit_lookup_wire(l: PublicCommitLookup) -> NonEmptyStr {
+  match l {
+    PublicCommitPresent => "present" as NonEmptyStr
+    PublicCommitAbsent => "absent" as NonEmptyStr
+    PublicCommitUnasked => "unasked" as NonEmptyStr
+  }
+}
+
+data v41_published_stamped_identifier_lookup: PublicCommitLookup = PublicCommitAbsent
+
+// THE DOCUMENTED TAG'S STANDING, likewise typed: it resolved, or the registry answered that it does
+// not exist, or nobody asked.
+type RegistryTagStanding
+  = RegistryTagResolves
+  | RegistryTagAbsent
+  | RegistryTagUnasked
+
+data v41_documented_tag_standing: RegistryTagStanding = RegistryTagAbsent
+
+data v41_published_distribution_observation: PublishedImageObservation = v41_published_observation(
+  subject: "installed vLLM distribution name in the arm64 image" as NonEmptyStr,
+  reading: "the site-packages layer of sha256:d84a1232... carries vllm-0.1.dev20904+g179dd0fa9.dist-info, so the packager stamped the identifier 179dd0fa9 into the version" as NonEmptyStr,
+  instrument: "tar listing of the site-packages layer, streamed from the registry API" as NonEmptyStr,
+)
+
+data v41_published_revision_public_standing: PublishedImageObservation = v41_published_observation(
+  subject: "the identifier 179dd0fa9 as a commit in vllm-project/vllm" as NonEmptyStr,
+  reading: "the GitHub commits API answered `No commit found for SHA: 179dd0fa9`. That is a fact about the public repository and the identifier; it does not by itself establish which source these bytes were compiled from" as NonEmptyStr,
+  instrument: "GitHub commits API, api.github.com/repos/vllm-project/vllm/commits/179dd0fa9" as NonEmptyStr,
+)
+
+// HOW THIS IMAGE MAPS THE ARCHITECTURE, read out of the registry.py IN ITS OWN site-packages layer.
+// The mapping is an ordinary registry entry -- not a plugin entry point, not hf-overrides, not a
+// launch-time registration -- and two entries point at vllm.models.deepseek_v4_1, which public main at
+// 07b75534 does not carry.
+//
+// WHAT THAT IS NOT. An earlier revision called it "the entire difference" between this image and the
+// one this fleet built. Two registry files differing in two entries is not a diff of two images, and
+// nothing here compared the rest of either tree; the wiring is the difference OBSERVED, at the grain
+// observed, in the layer named beside it.
+data v41_published_registry_entries: List<NonEmptyStr> = [
+  "DeepseekV41ForCausalLM -> (vllm.models.deepseek_v4_1, DeepseekV41ForCausalLM)" as NonEmptyStr,
+  "DSparkV41DraftModel -> (vllm.models.deepseek_v4_1, DSparkDeepseekV4ForCausalLM)" as NonEmptyStr,
+]
+
+data v41_published_registry_observation: PublishedImageObservation = v41_published_observation(
+  subject: "vllm/model_executor/models/registry.py inside the arm64 image" as NonEmptyStr,
+  reading: "carries DeepseekV41ForCausalLM and DSparkV41DraftModel, both mapping to vllm.models.deepseek_v4_1; public main at 07b75534 maps no name to that module" as NonEmptyStr,
+  instrument: "site-packages layer extracted from the registry API and read directly" as NonEmptyStr,
+)
+
+fn v41_published_observations() -> List<PublishedImageObservation> {
+  concat(
+    [v41_published_tag_absent, v41_published_distribution_observation, v41_published_revision_public_standing, v41_published_registry_observation],
+    v41_published_arm64_config_observations,
+  )
+}
+
+// ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
+//
+// Several declarations here have no consumer in this change, and that is a DECLARED FRONTIER with a
+// named consumer rather than dangling modelling. gunbc.spark.serving_deployment_selection's V4.1
+// candidate work (DSV41-2, #11013) states that it will import this module rather than fork the
+// figures -- its profile already refuses to copy vram_minimum_gb or the admitted-layout set -- and it
+// cannot import a module that is not on the tree. The trigger is therefore this change landing, at
+// which point that lane's frontier rows become imports and these declarations acquire their readers.
+// The rows the witnesses already exercise are the ones a reader can check today; the rest are the
+// figures that lane asked for, in the shape it asked for them.
+//
+// The pinned arm64 reference is the same case with a second named consumer: if the operator's route
+// decision adopts the published image, the adoption names repository@digest through this function and
+// not through the tag the recipe page documents, which does not resolve.
+fn v41_published_registers_architecture(architecture: NonEmptyStr) -> Bool {
+  fold(v41_published_registry_entries, init: false, f: (acc, e) =>
+    if acc { true } else { starts_with(s: e as String, prefix: join([architecture as String, " ->"], "")) })
+}

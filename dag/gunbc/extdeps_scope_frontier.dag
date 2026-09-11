@@ -276,6 +276,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/automation/playwright.dag",
   "dag/extdeps/package.dag",
   "dag/extdeps/npm.dag",
+  "dag/extdeps/needrestart/needrestart.dag",
   "dag/extdeps/browser/chromium.dag",
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
@@ -339,6 +340,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/network/switch_types.dag",
   "dag/extdeps/network/tp_link.dag",
   "dag/extdeps/network/mikrotik_crs812.dag",
+  "dag/extdeps/transceiver/sff_8636.dag",
+  "dag/extdeps/transceiver/fs_145681.dag",
   "dag/extdeps/network/arista_7050s_52.dag",
   "dag/extdeps/rack/navepoint.dag",
   "dag/extdeps/rack/types.dag",
@@ -406,6 +409,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/llm/cursor_stream.dag",
   "dag/extdeps/probes/provider_interface_acquisition.dag",
   "dag/extdeps/memory/samsung.dag",
+  "dag/extdeps/memory/sk_hynix.dag",
   "dag/extdeps/accounting/encumbrance.dag",
   "dag/extdeps/ampere/mt_collins_product_brief/platform.dag",
   "dag/extdeps/boards/supermicro.dag",
@@ -490,7 +494,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/docker/images/gitcommit90_glm_53_one_spark.dag",
   "dag/extdeps/docker/images/timothystewart6_vllm_gb10.dag",
   "dag/extdeps/docker/images/xomoxcc_dgx_spark_sglang.dag",
-  "dag/extdeps/vllm/recipe_deepseek_v4_1_flash.dag"
+  "dag/extdeps/vllm/recipe_deepseek_v4_1_flash.dag",
+  "dag/extdeps/ebay/browse.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
