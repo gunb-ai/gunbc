@@ -1272,11 +1272,6 @@ fn observe_rust_references(
   RustReferencesObserved { rows: final.rows, unattributed: final.unattributed, unscannable: final.unscannable }
 }
 
-fn path_has_prefix(path: String, prefix: String) -> Bool {
-  string_length(s: path) >= string_length(s: prefix)
-    && substring(s: path, start: 0, end: string_length(s: prefix)) == prefix
-}
-
 // THE LIVE ENTRY. The selection is NOT narrowed to the namespace-claimed trees: a token-carrying
 // file under an unclaimed tree must reach the projection and refuse there (ItemDeclarationRefRefused
 // names the path), because skipping it here would make the population a silent lower bound.
@@ -1289,12 +1284,12 @@ fn observe_current_rust_references_selected(tokens: List<String>, select: fn(Str
 }
 
 fn observe_current_rust_references(tokens: List<String>, excluded_repo_prefix: String) -> RustReferenceObservation {
-  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { !path_has_prefix(path: path, prefix: excluded_repo_prefix) })
+  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { !starts_with(s: path, prefix: excluded_repo_prefix) })
 }
 
 // THE DUAL SELECTION: the population UNDER a prefix rather than outside it, for a caller whose
 // subject is the deletion set itself (which of the seed's own sites mint a manifest naming the
 // seed) rather than its consumers.
 fn observe_current_rust_references_under(tokens: List<String>, repo_prefix: String) -> RustReferenceObservation {
-  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { path_has_prefix(path: path, prefix: repo_prefix) })
+  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { starts_with(s: path, prefix: repo_prefix) })
 }
