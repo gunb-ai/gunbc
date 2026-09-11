@@ -12,16 +12,19 @@ import std.goal_assessment {
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   ServingCheckpointRow, serving_checkpoint_row,
+  ServingRuntimeRow, serving_runtime_row,
+  CheckpointQuantization, checkpoint_quantization_on_argv,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused, serving_arm_admits,
 }
 
-// ── WHY THIS EXISTS BESIDE THE CANARY'S CUTOVER, AND WHAT IT CORRECTS ─────────────────────────
+// ── WHY THIS EXISTS BESIDE THE NATIVE CUTOVER, AND WHAT IT CORRECTS ───────────────────────────
 //
-// gunbc.spark.glm_canary_converge can replace a running container with one this model started, and it
-// is deliberately narrow: it proceeds only on ServeAgreed, meaning the rendered launch line already
-// equals the running one. Its own annotation states the value that buys -- PROVENANCE, NOT CAPABILITY,
-// same digest and same weights, a container the model owns instead of one a person started.
+// THE ROUTE THIS REPLACES WAS THE EXL3 CANARY'S CONVERGENCE, RETIRED ON 2026-09-11 with the canary itself.
+// It could replace a running container with one this model started, and it was deliberately narrow: it
+// proceeded only on ServeAgreed, meaning the rendered launch line already equalled the running one. What
+// that bought was PROVENANCE, NOT CAPABILITY -- same digest and same weights, a container the model owns
+// instead of one a person started.
 //
 // THAT GATE CANNOT EXPRESS A CHANGE OF ARTIFACT, WHICH IS THE OPERATOR'S ACTUAL GOAL. Moving off the
 // quantised EXL3 checkpoint onto the native FP8 one is by construction a DIFFERENT launch line, so it
@@ -66,20 +69,53 @@ import gunbc.spark.serving_arm {
 // service that is the correct direction to be wrong in, and the only inputs are the engine's own argv
 // and this model's own rendering. NEXT-RUNG TRIGGER: a decimal reader in std, at which point the
 // observed word is parsed once at the boundary and this field becomes the Nat it describes.
+// THE RUNTIME IMAGE IS PART OF THE IDENTITY, AND ITS ABSENCE MADE THIS COMPARISON BLIND TO THE ONE AXIS
+// THIS SESSION SPENT NINE ATTEMPTS ON. Alias, quantisation and rank count were the whole identity, so two
+// engines running DIFFERENT IMAGES over the same checkpoint at the same width compared EQUAL -- and the
+// difference between those images is precisely whether the arm serves at all: one loads the native fp8
+// weights and refuses the NoPE MLA kernel, the other serves NoPE MLA and cannot load the weights. A
+// convergence that reports "the desired arm is running" while the wrong runtime holds the port is the
+// silent-wrong-answer case, not a missing nicety.
+//
+// IT IS READ FROM THE CONTAINER RATHER THAN FROM THE ARGV, because the argv does not carry it: the image is
+// what `docker run` was given, and the serving line inside the container never names it. So the reading
+// carries it beside the words.
+//
+// THE QUANTISATION IS AN OPTIONAL BECAUSE "THE LINE SPELLS NO SCHEME" IS A REAL, CORRECT STATE. It used to
+// be a required word, which made the native arm permanently unrecognisable: its launch deliberately omits
+// `--quantization` so the engine reads the checkpoint's own config, and the assessor then reported the
+// correct line as an incomplete identity forever. Both sides now spell the same absence, and
+// gunbc.spark.serving_arm owns which checkpoints declare on the wire.
 type ServedArmIdentity sole_constructor {
   alias: NonEmptyStr
-  quantization_wire: NonEmptyStr
+  quantization_on_argv: NonEmptyStr?
   rank_count_wire: NonEmptyStr
+  runtime_image_wire: NonEmptyStr
 }
 
-fn served_arm_identity(alias: NonEmptyStr, quantization_wire: NonEmptyStr, rank_count_wire: NonEmptyStr) -> ServedArmIdentity {
-  ServedArmIdentity { alias: alias, quantization_wire: quantization_wire, rank_count_wire: rank_count_wire }
+fn served_arm_identity(alias: NonEmptyStr, quantization_on_argv: NonEmptyStr?, rank_count_wire: NonEmptyStr, runtime_image_wire: NonEmptyStr) -> ServedArmIdentity {
+  ServedArmIdentity {
+    alias: alias,
+    quantization_on_argv: quantization_on_argv,
+    rank_count_wire: rank_count_wire,
+    runtime_image_wire: runtime_image_wire,
+  }
+}
+
+// THE ABSENCE IS A WORD A RECEIPT CAN CARRY, and it is deliberately not a plausible scheme name: a reader
+// scanning a quantisation column must not mistake "the launch said nothing" for something the launch said.
+fn quantization_word(q: NonEmptyStr?) -> NonEmptyStr {
+  match q {
+    Present { value: w } => w
+    Absent => "none-on-argv" as NonEmptyStr
+  }
 }
 
 fn served_arm_identity_eq(a: ServedArmIdentity, b: ServedArmIdentity) -> Bool {
   (a.alias as String) == (b.alias as String)
-    && (a.quantization_wire as String) == (b.quantization_wire as String)
+    && (quantization_word(q: a.quantization_on_argv) as String) == (quantization_word(q: b.quantization_on_argv) as String)
     && (a.rank_count_wire as String) == (b.rank_count_wire as String)
+    && (a.runtime_image_wire as String) == (b.runtime_image_wire as String)
 }
 
 // ── THE GOAL ───────────────────────────────────────────────────────────────────────────────────
@@ -111,11 +147,16 @@ type DesiredArmIdentity
 fn desired_arm_identity(goal: ServingArmGoal) -> DesiredArmIdentity {
   match serving_checkpoint_row(c: goal.checkpoint) {
     Absent => DesiredArmUnmodelled { goal_alias: goal.alias }
-    Present { value: row } => DesiredArm { identity: served_arm_identity(
-      alias: goal.alias,
-      quantization_wire: row.quantization_wire,
-      rank_count_wire: to_string(serving_topology_rank_count(t: goal.topology)) as NonEmptyStr,
-    ) }
+    Present { value: row } =>
+      match serving_runtime_row(r: goal.runtime) {
+        Absent => DesiredArmUnmodelled { goal_alias: goal.alias }
+        Present { value: rrow } => DesiredArm { identity: served_arm_identity(
+          alias: goal.alias,
+          quantization_on_argv: checkpoint_quantization_on_argv(q: row.quantization),
+          rank_count_wire: to_string(serving_topology_rank_count(t: goal.topology)) as NonEmptyStr,
+          runtime_image_wire: rrow.image_reference,
+        ) }
+      }
   }
 }
 
@@ -128,7 +169,7 @@ fn desired_arm_identity(goal: ServingArmGoal) -> DesiredArmIdentity {
 // unreachable one indistinguishable, and those license opposite actions -- launch, versus do nothing
 // until someone looks.
 type ServingArmReading
-  = ArmArgvRead { words: List<String> }
+  = ArmArgvRead { words: List<String>, runtime_image_wire: NonEmptyStr }
   | ArmNothingRunning { detail: NonEmptyStr }
   | ArmReadUnavailable { cause: NonEmptyStr }
 
@@ -144,6 +185,7 @@ type ServedArmDeviation
   = ServedAliasDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
   | ServedQuantizationDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
   | ServedRankCountDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
+  | ServedRuntimeImageDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
   | ServedNothingRunning { detail: NonEmptyStr }
 
 type ServedArmUnknown sole_constructor {
@@ -201,24 +243,28 @@ data argv_flag_tensor_parallel_size: String = "--tensor-parallel-size"
 // make the comparison agree with itself -- a check satisfiable by editing the goal while the running
 // engine serves something else. Reporting it as an unknown is what makes the assessment indeterminate
 // rather than falsely satisfied, and indeterminate is the arm over which remediation is refused.
-fn observed_identity_of(words: List<String>) -> ServedArmObserved {
+fn argv_quantization_of(words: List<String>) -> NonEmptyStr? {
+  match argv_value_after(words: words, flag: argv_flag_quantization) {
+    Absent => none
+    Present { value: w } => Present { value: w as NonEmptyStr }
+  }
+}
+
+fn observed_identity_of(words: List<String>, runtime_image_wire: NonEmptyStr) -> ServedArmObserved {
   match argv_value_after(words: words, flag: argv_flag_served_model_name) {
     Absent => ServedArmIdentityIncomplete { missing: [argv_flag_served_model_name], words: words }
     Present { value: alias_word } =>
-      match argv_value_after(words: words, flag: argv_flag_quantization) {
-        Absent => ServedArmIdentityIncomplete { missing: [argv_flag_quantization], words: words }
-        Present { value: quant_word } =>
-          match argv_value_after(words: words, flag: argv_flag_tensor_parallel_size) {
-            Absent => ServedArmIdentityIncomplete { missing: [argv_flag_tensor_parallel_size], words: words }
-            Present { value: tp_word } => ServedArm {
-              identity: served_arm_identity(
-                alias: alias_word as NonEmptyStr,
-                quantization_wire: quant_word as NonEmptyStr,
-                rank_count_wire: tp_word as NonEmptyStr,
-              ),
-              words: words,
-            }
-          }
+      match argv_value_after(words: words, flag: argv_flag_tensor_parallel_size) {
+        Absent => ServedArmIdentityIncomplete { missing: [argv_flag_tensor_parallel_size], words: words }
+        Present { value: tp_word } => ServedArm {
+          identity: served_arm_identity(
+            alias: alias_word as NonEmptyStr,
+            quantization_on_argv: argv_quantization_of(words: words),
+            rank_count_wire: tp_word as NonEmptyStr,
+            runtime_image_wire: runtime_image_wire,
+          ),
+          words: words,
+        }
       }
   }
 }
@@ -227,7 +273,8 @@ fn observe_served_arm(subject: NonEmptyStr, reading: ServingArmReading) -> Obser
   match reading {
     ArmReadUnavailable { cause: c } => ObservationRefused { cause: c }
     ArmNothingRunning { detail: d } => ObservationEstablished { observed: NoArmServing { detail: d } }
-    ArmArgvRead { words: ws } => ObservationEstablished { observed: observed_identity_of(words: ws) }
+    ArmArgvRead { words: ws, runtime_image_wire: img } =>
+      ObservationEstablished { observed: observed_identity_of(words: ws, runtime_image_wire: img) }
   }
 }
 
@@ -239,12 +286,16 @@ fn arm_deviations(want: ServedArmIdentity, observed: ServedArmObserved) -> List<
       if (want.alias as String) == (got.alias as String) { [] } else {
         [ServedAliasDiffers { desired: want.alias, observed: got.alias }]
       },
-      if (want.quantization_wire as String) == (got.quantization_wire as String) { [] } else {
-        [ServedQuantizationDiffers { desired: want.quantization_wire, observed: got.quantization_wire }]
+      if (quantization_word(q: want.quantization_on_argv) as String) == (quantization_word(q: got.quantization_on_argv) as String) { [] } else {
+        [ServedQuantizationDiffers { desired: quantization_word(q: want.quantization_on_argv), observed: quantization_word(q: got.quantization_on_argv) }]
       }),
-      if (want.rank_count_wire as String) == (got.rank_count_wire as String) { [] } else {
-        [ServedRankCountDiffers { desired: want.rank_count_wire, observed: got.rank_count_wire }]
-      })
+      concat(
+        if (want.rank_count_wire as String) == (got.rank_count_wire as String) { [] } else {
+          [ServedRankCountDiffers { desired: want.rank_count_wire, observed: got.rank_count_wire }]
+        },
+        if (want.runtime_image_wire as String) == (got.runtime_image_wire as String) { [] } else {
+          [ServedRuntimeImageDiffers { desired: want.runtime_image_wire, observed: got.runtime_image_wire }]
+        }))
   }
 }
 
@@ -317,6 +368,7 @@ fn deviation_is_nothing_running(d: ServedArmDeviation) -> Bool {
     ServedAliasDiffers { desired: _, observed: _ } => false
     ServedQuantizationDiffers { desired: _, observed: _ } => false
     ServedRankCountDiffers { desired: _, observed: _ } => false
+    ServedRuntimeImageDiffers { desired: _, observed: _ } => false
   }
 }
 

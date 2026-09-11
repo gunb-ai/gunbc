@@ -16,9 +16,15 @@ import gunbc.spark.serving_arm_launch {
 }
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, VllmOpenaiGlm53Flash, FourSparkTp4, ArmBoundedExperiment,
-  serving_topology_rank_count, vllm_openai_glm53_flash_row,
+  serving_topology_rank_count, vllm_openai_glm53_flash_row, ArmNormalServing,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.serving_compatibility {
+  SelectedServingDeployment, SelectedDeploymentAuthorization, SelectionAdmission,
+  SelectionAdmitted, SelectionRefused, select_serving_deployment,
+  selected_identity_of, authorization_covers, authorize_selection,
+  glm_native_on_official_sm121_tp4, glm_native_official_sm121_tp4_standing,
+}
 
 // ── THE MEMORY ENVELOPE IS RESOLVED AGAINST OBSERVED SUPPLY, NOT DECIDED AGAINST CAPACITY ──────
 //
@@ -583,19 +589,72 @@ fn glm_native_tp4_nodes() -> ArmNodeRoster {
   arm_node_roster(group: FabricGroupB, expected_ranks: serving_topology_rank_count(t: FourSparkTp4))
 }
 
-fn glm_native_tp4_launch_plan(envelope: ResolvedDeviceMemoryEnvelope) -> ArmLaunchPlan {
-  match envelope {
-    NoFeasibleDeviceMemoryEnvelope { cause: c, standings: _ } => ArmLaunchRefused {
-      cause: join(["no feasible device memory envelope, so there is no plan: ", c as String], "") as NonEmptyStr,
+// ── THE PLAN IS BUILT FROM A SELECTED VALUE AND AN AUTHORISATION THAT COVERS IT ────────────────
+//
+// A PREVIOUS REVISION CONSTRUCTED THE TUPLE HERE, naming the checkpoint, runtime, topology and intent inline.
+// That made this function a fourth author of the deployment: the decision parameters described one engine,
+// the launch renderer another, and this constructed a third, all agreeing by coincidence. A review named it
+// the central authority break -- changing the selected runtime had no necessary effect on the image launched.
+//
+// SO THE SUBJECT ARRIVES ALREADY SELECTED AND ALREADY AUTHORISED, and this function contributes exactly one
+// thing the selection cannot: the memory fraction, which is resolved per attempt from observed supply and
+// therefore cannot live in a profile whose identity must stay stable.
+//
+// THE AUTHORISATION IS CHECKED AGAINST THE SELECTION'S STRUCTURAL IDENTITY, so one minted for a different
+// checkpoint, runtime, topology, accelerator, profile or intent does not cover this launch. The durable claim
+// the transaction takes is a MUTEX and answers a different question entirely -- whether another attempt is
+// mid-flight -- which is why it cannot stand in for this.
+fn glm_native_tp4_launch_plan_for(
+  selected: SelectedServingDeployment,
+  authorization: SelectedDeploymentAuthorization,
+  envelope: ResolvedDeviceMemoryEnvelope,
+) -> ArmLaunchPlan {
+  if !authorization_covers(a: authorization, s: selected) {
+    ArmLaunchRefused {
+      cause: join([
+        "the authorisation does not cover this selection: granted for ",
+        authorization.selected_identity as String, ", asked for ", selected_identity_of(s: selected) as String,
+      ], "") as NonEmptyStr,
     }
-    ResolvedForAttempt { basis_points: bp, binding_node_rank: _, policy: _, attempt: _, standings: _ } =>
-      plan_arm_launch_for(
-        checkpoint: Glm53NativeFp8,
-        runtime: VllmOpenaiGlm53Flash,
-        topology: FourSparkTp4,
-        group: FabricGroupB,
-        intent: ArmBoundedExperiment,
-        utilization_basis_points: bp,
+  } else {
+    match envelope {
+      NoFeasibleDeviceMemoryEnvelope { cause: c, standings: _ } => ArmLaunchRefused {
+        cause: join(["no feasible device memory envelope, so there is no plan: ", c as String], "") as NonEmptyStr,
+      }
+      ResolvedForAttempt { basis_points: bp, binding_node_rank: _, policy: _, attempt: _, standings: _ } =>
+        plan_arm_launch_for(
+          checkpoint: selected.subject.checkpoint,
+          runtime: selected.subject.runtime,
+          topology: selected.subject.topology,
+          group: FabricGroupB,
+          intent: if selected.intent_is_normal_serving { ArmNormalServing } else { ArmBoundedExperiment },
+          profile: selected.subject.profile,
+          utilization_basis_points: bp,
+        )
+    }
+  }
+}
+
+// THE NATIVE ARM'S OWN SELECTION, produced through the admission fold rather than constructed, so a subject
+// the compatibility roster refuses cannot reach a plan even here. It asks for a bounded experiment because no
+// execution has shown this subject serving -- which is exactly what select_serving_deployment enforces, and
+// today this subject is ExecutionIncompatible, so the selection refuses and there is no plan at all.
+fn glm_native_tp4_selection() -> SelectionAdmission {
+  select_serving_deployment(
+    subject: glm_native_on_official_sm121_tp4,
+    standing: glm_native_official_sm121_tp4_standing,
+    intent_is_normal_serving: false,
+  )
+}
+
+fn glm_native_tp4_launch_plan(envelope: ResolvedDeviceMemoryEnvelope) -> ArmLaunchPlan {
+  match glm_native_tp4_selection() {
+    SelectionRefused { cause: c } => ArmLaunchRefused { cause: c }
+    SelectionAdmitted { selected: sel } =>
+      glm_native_tp4_launch_plan_for(
+        selected: sel,
+        authorization: authorize_selection(s: sel, granted_for_normal_serving: false),
+        envelope: envelope,
       )
   }
 }

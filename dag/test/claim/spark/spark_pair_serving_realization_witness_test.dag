@@ -88,9 +88,9 @@ fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) ->
 //
 // IT WOULD HAVE BEEN EASY TO MAKE GREEN THE WRONG WAY, by relaxing it to accept whatever the roster
 // now renders. That would have blessed the impossible combination instead of reporting it. The
-// combination is removed instead: GLM lives behind gunbc.spark.glm_canary_converge, which admits its
-// exact arm through `serving_arm_admits` -- the wall that refuses an image that cannot load the
-// checkpoint.
+// combination is removed instead: GLM is reached through gunbc.spark.serving_arm_launch, whose plan
+// producer admits its exact arm through `serving_arm_admits_for` and then through the measured standing in
+// gunbc.spark.serving_compatibility -- the walls that refuse an image that cannot load the checkpoint.
 test fn the_live_roster_renders_the_model_its_image_can_actually_load() -> Bool {
   match w_first() {
     Absent => false

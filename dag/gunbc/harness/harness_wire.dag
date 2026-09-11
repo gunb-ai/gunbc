@@ -425,8 +425,8 @@ fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> 
 // encoded GLM's reasoning kwargs, effort key and tool parser into requests aimed at an endpoint
 // serving DeepSeek from an image measured not to register GLM at all.
 //
-// A CANARY IS NOT A DEFAULT. The GLM arm is reached through gunbc.spark.glm_canary_converge, which
-// names its own host, port and alias together; a caller that wants it selects that binding explicitly
+// A CANARY IS NOT A DEFAULT. The GLM arm is reached through gunbc.spark.serving_arm_launch, whose launch
+// profile names its own port and alias together; a caller that wants it selects that binding explicitly
 // rather than inheriting it from a row every other caller also reads. Making the one global selector
 // carry an experiment is how an experiment becomes production without anyone deciding it should.
 data harness_serving_unit: HarnessServingUnit = DeepseekV4FlashOnVllm

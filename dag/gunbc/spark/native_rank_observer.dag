@@ -13,7 +13,7 @@ import gunbc.spark.serving_arm_launch {
   glm_native_container_name, fabric_rail_interface_name,
   utilization_basis_points_in_argv, glm_native_serve_port,
 }
-import gunbc.spark.glm_canary_converge { go_template_action }
+import extdeps.docker.container_inspect { go_template_action }
 import gunbc.spark.native_deployment_readback {
   RankObservation, rank_observation,
   NativeDeploymentObserved, DeploymentRanksRead, DeploymentNothingRunning,

@@ -92,14 +92,43 @@ fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
 // arm genuinely needs one checkpoint in two locations -- a staging copy beside a serving copy -- that
 // is a second checkpoint row with its own identity and provenance, not a placement field that has
 // quietly stopped being a function of the thing it names.
+// ── WHO SPELLS THE QUANTISATION: THE LAUNCH, OR THE CHECKPOINT ────────────────────────────────
+//
+// THIS WAS A `NonEmptyStr` BESIDE A BOOL ABOUT SOMETHING ELSE, and the two got joined by accident. The
+// launch renderer decided whether to pass `--quantization` by reading
+// `requires_upstream_glm53_integration` -- a fact about what the RUNTIME must support -- because the native
+// checkpoint happened to be the only row where both answers coincided. Two independent facts sharing one
+// carrier means the first row where they disagree silently renders the wrong argv.
+//
+// SO THE SCHEME AND ITS DECLARER ARE ONE VALUE. `exl3` must be spelled, because nothing in that checkpoint's
+// config tells the engine to load an EXL3 kernel; `fp8` must NOT be, because the checkpoint's config already
+// carries the scheme together with the block size and exclusion list that a bare flag would discard. That is
+// not a preference about verbosity: it changes which weights the engine builds.
+//
+// AND IT IS WHAT THE CONVERGENCE ASSESSOR NEEDS. An observed line missing `--quantization` used to read as
+// an UNKNOWN, which made the native deployment permanently unrecognisable -- the arm could never converge
+// because its own correct argv looked incomplete. With the declarer modelled, "the line spells no scheme" is
+// a state the desired identity can also be in, and the two match.
+type CheckpointQuantization
+  = QuantizationSpelledOnArgv { wire: NonEmptyStr }
+  | QuantizationResolvedFromCheckpointConfig { wire: NonEmptyStr, because: NonEmptyStr }
+
+// PRESENT ONLY WHERE THE LAUNCH ITSELF SAYS IT. This is the one projection both the renderer and the
+// convergence identity read, so they cannot disagree about whether a flag is on the line.
+fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
+  match q {
+    QuantizationSpelledOnArgv { wire: w } => Present { value: w }
+    QuantizationResolvedFromCheckpointConfig { wire: _, because: _ } => none
+  }
+}
+
 type ServingCheckpointRow {
   checkpoint: ServingCheckpoint
   repo: HubRepoId
   revision: NonEmptyStr
   placement: SnapshotPlacement
   weight_gib: Nat
-  quantization_wire: NonEmptyStr
-  requires_upstream_glm53_integration: Bool
+  quantization: CheckpointQuantization
   provenance: NonEmptyStr
 }
 
@@ -109,8 +138,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
   placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
   weight_gib: 80,
-  quantization_wire: "exl3" as NonEmptyStr,
-  requires_upstream_glm53_integration: false,
+  quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards" as NonEmptyStr,
 }
 
@@ -120,8 +148,7 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   weight_gib: glm_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
-  quantization_wire: "fp8" as NonEmptyStr,
-  requires_upstream_glm53_integration: true,
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence. Still NOT measured on this fleet -- nothing here has fetched it" as NonEmptyStr,
 }
 
@@ -158,44 +185,38 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // into the value.
 // -- WHETHER AN ENGINE CAN LOAD THIS CHECKPOINT'S TENSOR LAYOUT --------------------------------
 //
-// A THIRD WALL, AND THE ONE THIS FLEET LEARNED BY LOSING A SERVICE. `registers_glm5_next` answers
+// THE WALL THIS FLEET LEARNED BY LOSING A SERVICE, AND IT IS NOT A ROW FIELD. `registers_glm5_next` answers
 // whether the architecture is in the registry and the quantisation roster answers whether fp8 is
-// implemented; BOTH were true of the image that failed on 2026-09-10, which loaded the native FP8
-// checkpoint far enough to form a four-rank NCCL group and then died with
-// KeyError 'layers.0.self_attn.k_proj.weight'. The loader expected a plain k_proj that this
-// architecture does not have -- it uses fused_qkvbfg_a_proj and conv1d projections, with 1509 modules
-// held out of quantisation -- so the missing fact was the WEIGHT MAPPING, which neither existing wall
-// asks about.
+// implemented; BOTH were true of the image that failed on 2026-09-10, which loaded the native FP8 checkpoint
+// far enough to form a four-rank NCCL group and then died with
+// KeyError 'layers.0.self_attn.k_proj.weight'. The loader expected a plain k_proj that this architecture does
+// not have -- it uses fused_qkvbfg_a_proj and conv1d projections, with 1509 modules held out of quantisation
+// -- so the missing fact was the WEIGHT MAPPING, which neither per-row wall asks about.
 //
-// UPSTREAM STATES IT AS A VERSION FLOOR, and extdeps.zhipu.glm_5_3_flash now carries it:
-// min_vllm_version 0.29.0 with nightly_required true, the integration arriving in
-// vllm-project/vllm#53906. This field is the per-image JOIN to that requirement, and it is an
-// OBSERVATION rather than a version comparison because a version string is not orderable here --
-// the failing image reports "0.1.dev20051+g487ecf187", which no comparison against "0.29.0" reads
-// correctly, and inventing one would be a parser standing where a measurement belongs.
-// THREE STANDINGS, BECAUSE TWO CREATED A CIRCULARITY. The previous shape asked only whether native
-// support was observed, and observing it requires a successful load, which the wall refused until it
-// was observed -- so the honest state of a candidate image was indistinguishable from a refuted one and
-// nothing could ever be tried. The split is between what a STATIC probe of an image can establish and
-// what only a RUN can:
+// AND IT CANNOT BE ASKED PER ROW, WHICH IS WHY THE ATTEMPT TO IS GONE. "Does this runtime carry the GLM-5.3
+// integration" has no answer independent of the checkpoint being loaded and the kernel path it takes: the
+// official image carries the loader and refuses the NoPE MLA kernel, the community image serves NoPE MLA and
+// cannot map the weights. A Bool on a checkpoint row joined to a standing on a runtime row could express
+// neither. gunbc.spark.serving_compatibility asks it at the grain that has an answer.
+// THE PER-IMAGE NATIVE STANDING WAS DELETED HERE, BECAUSE IT WAS THE SAME FACT TWICE.
 //
-//   StaticIntegrationObserved  -- this exact digest carries the loader integration, by inspection.
-//                                 Sufficient to authorise a BOUNDED EXPERIMENT. Not serving.
-//   ExperimentRuntimeFeasible  -- this digest loaded THIS checkpoint at THIS topology and served.
-//                                 The only standing that supports normal serving.
-//   NativeRuntimeRefused       -- inspection or execution refuted it.
+// This row used to carry `native_runtime_standing: NativeRuntimeStanding` -- three arms saying whether an
+// IMAGE carried the GLM-5.3 loader integration -- and gunbc.spark.serving_compatibility was then added
+// carrying the same question as a RELATION over checkpoint x runtime x topology x accelerator x profile. Both
+// authorities survived the same commit, which is the fork DESIGN section 3 exists to prevent: an image is
+// refuted FOR A CHECKPOINT, and the standing stored on the row could not say which, so it answered for every
+// checkpoint at once. That is exactly why the EXL3 arm needed a sentence inside its own refusal cause
+// explaining that the refutation was "of this checkpoint on this image, not of the image".
 //
-// AND THE VERSION NUMBER IS WHY THIS IS AN OBSERVATION RATHER THAN A COMPARISON, which the prescribed
-// image settles on its own: extdeps.zhipu.glm_5_3_flash records upstream's floor as min_vllm_version
-// 0.29.0, and the image upstream DIRECTS deployments to for this very model self-reports
-// "0.28.1rc1.dev580+g385dce36b". A version ordering would refuse the correct artifact. The durable
-// requirement is that a NAMED DIGEST carries the integration, never that a release number sorts above
-// a floor.
-type NativeRuntimeStanding
-  = StaticIntegrationObserved { instrument: NonEmptyStr }
-  | ExperimentRuntimeFeasible { receipt: NonEmptyStr }
-  | NativeRuntimeRefused { cause: NonEmptyStr }
-
+// EVERY FACT THOSE ARMS CARRIED SURVIVES AS A MEASURED STANDING. The gitcommit90 weight-mapping failure is
+// glm_native_on_gitcommit90_standing; the official image's kernel refusal is
+// glm_native_official_sm121_tp4_standing; the EXL3 success is glm_exl3_on_gitcommit90_standing. Nothing was
+// dropped -- the same receipts now sit at the grain that can name their subject.
+//
+// AND THE INTENT SPLIT MOVED WITH THEM. StaticIntegrationObserved existed so that an inspected-but-unrun
+// image could carry a bounded experiment and not normal serving; that asymmetry is now
+// select_serving_deployment over CompatibilityUnknown/StaticallyPlausible/ExecutionCompatible, which is
+// where a SELECTION belongs rather than inside a per-row admission check.
 // WHAT AN ARM IS BEING ASKED FOR, because the same tuple is admissible for one and not the other. An
 // experiment may run on a statically-inspected image precisely so that the feasibility receipt can
 // exist; ordinary serving may not, because a bounded trial and a service carry different consequences
@@ -210,7 +231,6 @@ type ServingRuntimeRow {
   hub_cli_path: NonEmptyStr
   vllm_version: NonEmptyStr
   registers_glm5_next: Bool
-  native_runtime_standing: NativeRuntimeStanding
   reasoning_projection: ReasoningResponseProjection
   provenance: NonEmptyStr
   claimed_defaults_revision: ModelledVllmDefaultsRevision
@@ -233,9 +253,6 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: "0.1.dev20051+g487ecf187" as NonEmptyStr,
   registers_glm5_next: true,
-  native_runtime_standing: NativeRuntimeRefused {
-    cause: "launched against zai-org/GLM-5.3-Flash at the pinned revision on four ranks, 2026-09-10: the group formed (nccl 2.30.7, tp:0 and ep:0 communicators up) and the load failed with KeyError 'layers.0.self_attn.k_proj.weight'. This image reports vLLM 0.1.dev20051+g487ecf187 and does not carry the GLM-5.3 native loader integration. It DOES serve turboderp/GLM-5.3-Flash-exl3, whose repack has a different tensor layout -- so the refutation is of this checkpoint on this image, not of the image" as NonEmptyStr,
-  },
   reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
@@ -247,9 +264,6 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
   vllm_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr,
   registers_glm5_next: false,
-  native_runtime_standing: NativeRuntimeRefused {
-    cause: "the registry probe on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, so this image cannot reach a weight loader for this architecture at all" as NonEmptyStr,
-  },
   reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present" as NonEmptyStr,
   claimed_defaults_revision: Vllm1967a5627,
@@ -279,9 +293,6 @@ data vllm_openai_glm53_flash_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: "0.28.1rc1.dev580+g385dce36b" as NonEmptyStr,
   registers_glm5_next: true,
-  native_runtime_standing: StaticIntegrationObserved {
-    instrument: "probed on spark-3336, 2026-09-10, at RepoDigest sha256:819ec9c0...52374 (image id 5a0f8b914da5, linux/arm64, entrypoint [vllm serve]): the registry answers Glm5NextForCausalLM, Glm5NextForConditionalGeneration and Glm5NextMTPModel; ParallelConfig carries nnodes, node_rank, master_addr and master_port; flashinfer-python is 0.6.18; torch is 2.13.0+cu130 on CUDA 13.0.2; and torch.randn(2048,2048).matmul on the GB10 returned a value at compute capability 12.1 although TORCH_CUDA_ARCH_LIST is '8.0 8.7 8.9 9.0 10.0 11.0 12.0'. VLLM_BUILD_COMMIT is 385dce36bcee42309924a5ece951a96db3dce7f2, the commit recipes.vllm.ai names for the GLM-5.3-Flash integration. NOTE THE VERSION: 0.28.1rc1.dev580 sorts BELOW the recipe's own stated floor of 0.29.0, so this row is the reason the requirement is a digest observation and not a comparison" as NonEmptyStr,
-  },
   reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
   provenance: "pulled by tag vllm/vllm-openai:glm53-flash on the group B hosts 2026-09-10 and pinned here to the digest that tag resolved to; recipes.vllm.ai/zai-org/GLM-5.3-Flash directs NVIDIA deployments to this image for this checkpoint" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
@@ -305,53 +316,7 @@ type ServingArmVerdict
   = ServingArmAdmitted
   | ServingArmRefused { cause: NonEmptyStr }
 
-// THE FOOTPRINT ALLOWANCE IS DELIBERATELY NOT A UTILISATION FRACTION. Weights are not the whole
-// requirement: the engine also needs KV, activations and graph memory, and the recipe's own runtime
-// minimum for native FP8 exceeds its weight size by a quarter. A checkpoint is admitted only when
-// the aggregate pool exceeds the weights with headroom, and the headroom is stated rather than
-// tuned away.
-// THIS FIT TEST CANNOT ADMIT, AND ITS POSITIVE ARM CURRENTLY DOES -- A KNOWN OVERCLAIM, RECORDED
-// RATHER THAN LEFT SILENT (review finding, 2026-09-09). The arithmetic is sharded weight bytes times a
-// cited 25 percent headroom against the aggregate pool. That is a LOWER BOUND: it can prove a
-// checkpoint impossible, and it cannot establish that an engine loads, admits its requested context by
-// allocator block population, or survives a real request. gunbc.spark.serving_deployment_selection
-// draws exactly this line -- its equivalent arm is named WeightsNotRuledOutByLowerBound and runtime
-// feasibility is a separate, unsatisfied axis -- and this module has not yet been brought to it.
-//
-// WHY IT IS NOT REPAIRED IN THIS CHANGE: ServingArmAdmitted is consumed by
-// gunbc.spark.glm_canary_converge, which drives the engine currently serving traffic. Splitting the
-// verdict there is a change to a live serving path and belongs in its own diff with its own controls,
-// not appended to a size-unification repair. The distinction that makes the repair safe already
-// exists: the EXL3 arm's runtime feasibility IS established by execution -- it is serving now -- while
-// the native FP8 arm has never run, so admission should require that observation rather than infer it
-// from a bound. NEXT-RUNG TRIGGER: a runtime-feasibility observation on the checkpoint x runtime x
-// topology arm, at which point the positive verdict requires it and the bound reverts to refusal only.
-fn native_standing_admits(standing: NativeRuntimeStanding, intent: ArmIntent) -> Bool {
-  match standing {
-    NativeRuntimeRefused { cause: _ } => false
-    ExperimentRuntimeFeasible { receipt: _ } => true
-    StaticIntegrationObserved { instrument: _ } =>
-      match intent {
-        ArmBoundedExperiment => true
-        ArmNormalServing => false
-      }
-  }
-}
 
-fn native_standing_cause(standing: NativeRuntimeStanding, intent: ArmIntent) -> NonEmptyStr {
-  match standing {
-    NativeRuntimeRefused { cause: c } => c
-    ExperimentRuntimeFeasible { receipt: r } => r
-    StaticIntegrationObserved { instrument: i } =>
-      match intent {
-        ArmBoundedExperiment => i
-        ArmNormalServing => join([
-          "this runtime's integration is established by INSPECTION only and has never loaded this checkpoint, so it may run a bounded experiment and may not carry normal serving: ",
-          i as String,
-        ], "") as NonEmptyStr
-      }
-  }
-}
 
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
@@ -361,14 +326,15 @@ fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
     >= c.weight_gib * serving_arm_headroom_numerator
 }
 
-fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
-  serving_arm_admits_for(checkpoint: checkpoint, runtime: runtime, topology: topology, intent: ArmNormalServing)
+// THE INTENT PARAMETER IS GONE WITH THE STANDING THAT NEEDED IT. This verdict now answers only the two
+// questions a ROW can answer -- does the image register the architecture, does the checkpoint fit the pool --
+// and both give the same answer for an experiment and for a service. Whether a tuple may carry NORMAL
+// SERVING is a question about measured compatibility and is decided by select_serving_deployment.
+fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, intent: ArmIntent) -> ServingArmVerdict {
+  serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology)
 }
 
-// THE INTENT IS A PARAMETER AND THE NORMAL-SERVING CASE IS THE DEFAULT, so an existing caller that asks
-// the old question keeps getting the strict answer. Only a caller that explicitly says it is running a
-// bounded experiment gets the weaker gate.
-fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, intent: ArmIntent) -> ServingArmVerdict {
+fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
   match serving_checkpoint_row(c: checkpoint) {
     Absent => ServingArmRefused { cause: "no checkpoint row: this checkpoint's repo, revision and footprint are unmodelled, so neither fit nor acquisition can be decided" as NonEmptyStr }
     Present { value: crow } =>
@@ -380,16 +346,6 @@ fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime
               "the runtime does not register Glm5NextForConditionalGeneration (vLLM ",
               rrow.vllm_version as String,
               "); no amount of weight transfer makes this tuple start",
-            ], "") as NonEmptyStr }
-          } else if crow.requires_upstream_glm53_integration && !native_standing_admits(standing: rrow.native_runtime_standing, intent: intent) {
-            ServingArmRefused { cause: join([
-              "this checkpoint needs the upstream GLM-5.3-Flash integration and this runtime does not carry it: ",
-              native_standing_cause(standing: rrow.native_runtime_standing, intent: intent) as String,
-              " -- extdeps.zhipu.glm_5_3_flash names the requirement (upstream publishes min_vllm_version ",
-              glm_5_3_flash_vllm_published_min_version as String,
-              ", which is NOT the gate here because the prescribed image sorts below it; the gate is that a named digest carries the integration. Prescribed image ",
-              glm_5_3_flash_vllm_prerelease_image_nvidia as String,
-              "). Registering the architecture and implementing fp8 are NOT sufficient: the weight loader must know this checkpoint's tensor layout",
             ], "") as NonEmptyStr }
           } else if !serving_arm_fits(c: crow, t: topology) {
             ServingArmRefused { cause: join([
@@ -404,3 +360,135 @@ fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime
       }
   }
 }
+
+// ── THE LAUNCH PROFILE IS A VALUE, NOT A SCATTER OF ROWS IN THE RENDERER ───────────────────────
+//
+// THE ARGV WAS ASSEMBLED FROM MODULE-LEVEL CONSTANTS IN gunbc.spark.serving_arm_launch, so the deployment
+// being DECIDED and the deployment being LAUNCHED were two independently authored profiles that happened to
+// describe the same engine. The decision named a Ray executor, 0.82, thirty-two sequences and an fp8 KV
+// request; the renderer separately fixed mp, one sequence and an auto KV request. Nothing made a change to
+// either follow the other, which is the authority break a review found: changing the selected runtime had no
+// necessary effect on the image launched.
+//
+// SO THE PROFILE IS ONE VALUE THAT TRAVELS. A compatibility subject names it, a selection carries it, and the
+// renderer reads argv out of it -- which makes "same subject" and "same argv" the same question instead of
+// two that have to be kept in agreement by hand.
+//
+// IT CARRIES THE WIRE VALUES AND NOT THE POLICY THAT CHOSE THEM. The memory fraction here is the DECIDED one
+// for the initial normal deployment; a fraction resolved per attempt from observed supply overrides it at
+// plan time, and gunbc.spark.device_memory_envelope owns that. Storing a resolved value in a profile would
+// make the profile's identity change every time a machine's free memory did.
+type ServingLaunchProfile sole_constructor {
+  max_model_len: Nat
+  max_num_batched_tokens: Nat
+  max_num_seqs: Nat
+  decided_gpu_memory_basis_points: Nat
+  kv_cache_dtype_wire: NonEmptyStr
+  speculation_enabled: Bool
+  serve_port: Nat
+  served_alias: NonEmptyStr
+}
+
+// THE FROZEN INITIAL NORMAL PROFILE FOR THE NATIVE ARM, every value an operator decision rather than a
+// derivation, and the identity string is what a compatibility receipt names. Changing any field here changes
+// the identity, which changes the subject, which means a refusal recorded against the old profile does not
+// silently cover the new one.
+// THE PROFILE'S IDENTITY IS DERIVED FROM ITS FIELDS, NEVER AUTHORED BESIDE THEM. It used to be a
+// hand-written `identity` string, and the two drifted immediately: the EXL3 row said "tp4 ... 32seq" while
+// the running engine was tp1 with one sequence, so the very carrier introduced to stop a borrowed profile
+// carried a label describing a different launch. A review named this correctly -- a hand-authored identity is
+// a second authority for what the record already says.
+//
+// SO THE KEY IS A FOLD OVER EVERY FIELD THAT REACHES THE WIRE. Change any of them and the key changes, which
+// changes the compatibility subject, which means a refusal recorded against one profile cannot silently
+// cover another. Nothing can edit the label to make two different launches compare equal, because there is
+// no label.
+// THE SEAL STAYS AND A NAMED MINT IS ADDED, which is the distinction the seal exists to make. Sealing
+// stopped a caller from spelling a profile with fields it invented -- but the profile is an ordinary value
+// that witnesses and future callers legitimately build, so the answer is one constructor here rather than a
+// record literal in every module. A caller still cannot omit a field or reorder the meaning of one.
+fn serving_launch_profile(
+  max_model_len: Nat,
+  max_num_batched_tokens: Nat,
+  max_num_seqs: Nat,
+  decided_gpu_memory_basis_points: Nat,
+  kv_cache_dtype_wire: NonEmptyStr,
+  speculation_enabled: Bool,
+  serve_port: Nat,
+  served_alias: NonEmptyStr,
+) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    max_model_len: max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype_wire: kv_cache_dtype_wire,
+    speculation_enabled: speculation_enabled,
+    serve_port: serve_port,
+    served_alias: served_alias,
+  }
+}
+
+// AND A FIELD-AT-A-TIME VARIANT, because the thing a caller actually wants is "this profile but one value
+// different" -- a mutation control, a retry at a lower fraction. Spelling seven fields to change one is how
+// a copy drifts from its original, which is the failure the profile type was introduced to end.
+fn profile_with_memory_basis_points(p: ServingLaunchProfile, decided_gpu_memory_basis_points: Nat) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    max_model_len: p.max_model_len,
+    max_num_batched_tokens: p.max_num_batched_tokens,
+    max_num_seqs: p.max_num_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype_wire: p.kv_cache_dtype_wire,
+    speculation_enabled: p.speculation_enabled,
+    serve_port: p.serve_port,
+    served_alias: p.served_alias,
+  }
+}
+
+fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
+  join([
+    "len=", to_string(p.max_model_len),
+    " batch=", to_string(p.max_num_batched_tokens),
+    " seqs=", to_string(p.max_num_seqs),
+    " util_bp=", to_string(p.decided_gpu_memory_basis_points),
+    " kv=", p.kv_cache_dtype_wire as String,
+    " spec=", if p.speculation_enabled { "on" } else { "off" },
+    " port=", to_string(p.serve_port),
+    " alias=", p.served_alias as String,
+  ], "")
+}
+
+data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
+  max_model_len: 262144,
+  max_num_batched_tokens: 2048,
+  max_num_seqs: 1,
+  decided_gpu_memory_basis_points: 8400,
+  kv_cache_dtype_wire: "auto" as NonEmptyStr,
+  speculation_enabled: false,
+  serve_port: 30000,
+  served_alias: "glm-5.3-flash" as NonEmptyStr,
+}
+
+// THE EXL3 ARM'S PROFILE IS ITS OWN, and giving this subject the native one would make the receipt below
+// assert something that was never measured. The canary is retired; this row exists so its EVIDENCE stays
+// accurate, which is the only reason a retired route's facts are worth keeping at all.
+// THE CANARY'S PROFILE IS READ OFF THE ENGINE THAT RAN, NOT ASSEMBLED FROM WHAT WAS DECIDED. A first
+// revision of this row carried tp=4, 32 sequences and 2048 batched tokens -- the shared production decision
+// parameters -- while the container on spark-0c75 was running tp=1, ONE sequence and 7168 batched tokens, as
+// `docker inspect` reported on 2026-09-10 and as the fixture in
+// test.claim.spark.serving_arm_convergence_witness_test still carries verbatim. That is the borrowed-profile
+// substitution this profile type exists to stop, committed inside the type itself.
+//
+// THE MEMORY FRACTION IS THE ENGINE'S DEFAULT, BECAUSE THE LINE NAMES NONE. Recording a decided 0.82 here
+// would claim an argument the launch never sent.
+data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
+  max_model_len: 262144,
+  max_num_batched_tokens: 7168,
+  max_num_seqs: 1,
+  decided_gpu_memory_basis_points: 9000,
+  kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+  speculation_enabled: false,
+  serve_port: 30001,
+  served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
+}
+

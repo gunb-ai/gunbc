@@ -13,7 +13,7 @@ import gunbc.spark.grant_privileged_operation {
   read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
 }
 import gunbc.fleet_known_hosts_anchor {
-  FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  FleetOpenSshTrustPolicy, FleetSshAttemptIdentity, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
 }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file }
@@ -40,7 +40,7 @@ import gunbc.spark.native_launch_fold {
 }
 import gunbc.spark.native_rank_observer { observe_native_population, observe_rank_utilization_basis_points }
 import gunbc.spark.serving_group_exclusivity {
-  ServingGroupMutationStanding, ServingGroupExclusivelyHeld, CompetingServingAuthorityObserved,
+  ServingGroupMutationStanding, KnownCompetingProducersSuppressed, CompetingServingAuthorityObserved,
   ServingGroupOwnershipUnread, hold_group_b_for, mutation_standing_text,
 }
 import gunbc.spark.snapshot_serving_handoff {
@@ -82,11 +82,30 @@ data native_claim_path: NonEmptyStr = "/home/briansrls/acq/glm-native-cutover.cl
 // about a machine whose containers have since been removed. Reusing one across attempts would make both of
 // those checks vacuous at exactly the moment they matter, which is a retry after a failure.
 //
-// -5 IS THE FIRST ATTEMPT WHOSE PREFLIGHT MEASURES THE STATE THE LAUNCH WILL MEET. Attempts 1 through 3 ran
-// against a fraction derived from total capacity. Attempt 4 resolved from observed supply but read its peers
-// before releasing their page cache, so it withheld on srv12 -- correctly refusing a reading it should never
-// have taken. Each is a different subject rather than a repeat of the previous one.
-data native_attempt_raw: String = "glm-native-tp4-cutover-5"
+// AND IT IS DERIVED FROM EXECUTION RATHER THAN EDITED INTO THE SOURCE. It was a hand-written counter --
+// "...-cutover-5" -- which made the per-attempt property a matter of an author remembering to increment a
+// literal before every wet run. Twice it was not incremented, so a retry inherited its predecessor's
+// identity and the two guards above went quietly vacuous at exactly the moment they matter. Worse, the
+// increment is a SOURCE EDIT for a fact about a RUN: rerunning the same commit is a different attempt, and a
+// value living in the tree cannot say so.
+//
+// SO THE INSTANT THE TRANSACTION STARTED IS THE ATTEMPT. Two invocations are two instants without anybody
+// doing anything, and no invocation can pass for another. AN UNREADABLE CLOCK REFUSES rather than falling
+// back to a fixed word: a fallback identity shared by every clock-blind run would make a stale reading
+// indistinguishable from a fresh one, which is the entire failure this identity exists to prevent.
+fn native_attempt_identity_at(now: NonEmptyStr?) -> FleetSshAttemptIdentity? {
+  match native_attempt_raw_at(now: now) {
+    Absent => none
+    Present { value: raw } => fleet_ssh_attempt_identity(raw: raw)
+  }
+}
+
+fn native_attempt_raw_at(now: NonEmptyStr?) -> String? {
+  match now {
+    Absent => none
+    Present { value: ts } => Present { value: join(["glm-native-tp4-cutover-", ts as String], "") }
+  }
+}
 
 // THE READINESS BUDGET IS UPSTREAM'S FIGURE FOR THIS MODEL, and the poll interval is chosen so the budget
 // is spent in observations rather than in one long blind wait.
@@ -408,7 +427,7 @@ func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -
                        a as String], "") as NonEmptyStr],
                 rs),
             }
-            ServingGroupExclusivelyHeld { group: _, holder: _, receipts: _ } =>
+            KnownCompetingProducersSuppressed { group: _, holder: _, receipts: _ } =>
           match stage_one_peer_envelope(ctx: ctx, nodes: ns, head: head.host, attempt: attempt) {
             NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss } => NativeCutoverWithheld {
               reasons: concat(
@@ -620,8 +639,8 @@ func glm_native_tp4_cutover_wet() -> ProcessExit
       match read_bootstrap_credential() {
         BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
         BootstrapCredentialReady { secret: administrator } =>
-          match fleet_ssh_attempt_identity(raw: native_attempt_raw) {
-            Absent => exit_failure(reason: "the attempt identity is not a safe path segment")
+          match native_attempt_identity_at(now: now) {
+            Absent => exit_failure(reason: "the attempt identity could not be minted: the clock was unreadable, or the instant it reported is not a safe path segment")
             Present { value: attempt } => {
               let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
               match fleet_openssh_trust_policy_of(outcome: materialization) {
@@ -641,7 +660,7 @@ func glm_native_tp4_cutover_wet() -> ProcessExit
                           administrator: administrator as Secret,
                           administrator_file: file,
                         },
-                        attempt: native_attempt_raw,
+                        attempt: attempt as String,
                       )
                     },
                   ) {

@@ -4,13 +4,14 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, Glm53Exl3_205, Glm53Nvfp4CompressedTensors,
-  Gitcommit90Sm121Exl3,
+  Gitcommit90Sm121Exl3, VllmOpenaiGlm53Flash,
   SingleSparkTp1, FourSparkTp4,
+  gitcommit90_sm121_exl3_row, vllm_openai_glm53_flash_row,
 }
 import gunbc.spark.serving_arm_convergence {
   ServingArmGoal, serving_arm_goal,
   ServingArmReading, ArmArgvRead, ArmNothingRunning, ArmReadUnavailable,
-  ServedArmIdentity, served_arm_identity, served_arm_identity_eq,
+  ServedArmIdentity, served_arm_identity, served_arm_identity_eq, quantization_word,
   inspect_served_arm, plan_arm_remedy,
   ServingArmRemedy, ArmAlreadyConverged, ArmFirstLaunchRequired, ArmReplacementRequired,
   ArmRemedyWithheld, ArmRemedyRefused,
@@ -52,7 +53,7 @@ data canary_goal: ServingArmGoal = serving_arm_goal(
 data native_tp4_goal: ServingArmGoal = serving_arm_goal(
   alias: "glm-5.3-flash-native-fp8" as NonEmptyStr,
   checkpoint: Glm53NativeFp8,
-  runtime: Gitcommit90Sm121Exl3,
+  runtime: VllmOpenaiGlm53Flash,
   topology: FourSparkTp4,
 )
 
@@ -62,6 +63,12 @@ data unmodelled_goal: ServingArmGoal = serving_arm_goal(
   runtime: Gitcommit90Sm121Exl3,
   topology: FourSparkTp4,
 )
+
+// THE IMAGES ARE READ FROM THE ROWS, NOT SPELLED HERE. A digest copied into a fixture would let this
+// witness agree with itself after the roster changed under it, which is the transcribed-measurement failure
+// at test grain.
+data exl3_image: NonEmptyStr = gitcommit90_sm121_exl3_row.image_reference
+data official_image: NonEmptyStr = vllm_openai_glm53_flash_row.image_reference
 
 data subject_group_b: NonEmptyStr = "the four hosts on fabric cage 2 (srv9, srv10, srv11, srv12)" as NonEmptyStr
 
@@ -73,7 +80,7 @@ fn remedy_for(goal: ServingArmGoal, reading: ServingArmReading) -> ServingArmRem
 //
 // THE ARM THE CANARY IS SERVING IS THE ARM THE CANARY GOAL DESIRES, and the tuning disagreement does not
 // change that. The model desires 2048 batched tokens and this line runs 7168 -- a real drift, and one the
-// arm's own basis in gunbc.spark.glm_canary_converge insists must keep being reported -- but the alias,
+// arm's own basis insists must keep being reported -- but the alias,
 // the quantisation and the rank count all agree, so the right model is loaded on the right number of
 // GPUs. The cutover this replaces compared whole rendered lines and therefore answered ServeDiffers here,
 // which is why converging the fleet appeared to require either editing the desired value to match the
@@ -82,7 +89,7 @@ fn remedy_for(goal: ServingArmGoal, reading: ServingArmReading) -> ServingArmRem
 // ITS RED IS AUTHORABLE AND CHEAP: change any of the three identity words in `canary_argv` and this row
 // goes red, which is the next control below.
 test fn an_arm_differing_only_in_tuning_is_already_converged() -> Bool {
-  match remedy_for(goal: canary_goal, reading: ArmArgvRead { words: canary_argv }) {
+  match remedy_for(goal: canary_goal, reading: ArmArgvRead { words: canary_argv, runtime_image_wire: exl3_image }) {
     ArmAlreadyConverged { identity: got } => (got.alias as String) == "glm-5.3-flash-exl3-canary"
     ArmFirstLaunchRequired { desired: _ } => false
     ArmReplacementRequired { desired: _, displaced: _ } => false
@@ -95,12 +102,14 @@ test fn an_arm_differing_only_in_tuning_is_already_converged() -> Bool {
 // different rank count, so it asks for a replacement and names what it would displace. If the comparison
 // ever collapsed to "something is serving, good enough", this row would go green as converged.
 test fn a_different_arm_serving_asks_for_a_replacement_naming_what_it_displaces() -> Bool {
-  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: canary_argv }) {
+  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: canary_argv, runtime_image_wire: exl3_image }) {
     ArmReplacementRequired { desired: want, displaced: got } =>
-      (want.quantization_wire as String) == "fp8"
+      (quantization_word(q: want.quantization_on_argv) as String) == "none-on-argv"
         && (want.rank_count_wire as String) == "4"
-        && (got.quantization_wire as String) == "exl3"
+        && (want.runtime_image_wire as String) == (official_image as String)
+        && (quantization_word(q: got.quantization_on_argv) as String) == "exl3"
         && (got.rank_count_wire as String) == "1"
+        && (got.runtime_image_wire as String) == (exl3_image as String)
     _ => false
   }
 }
@@ -117,22 +126,64 @@ test fn nothing_serving_asks_for_a_first_launch() -> Bool {
   }
 }
 
-// ── AN UNREAD FACT WITHHOLDS, AND DOES NOT DEFAULT ────────────────────────────────────────────
+// ── THE NATIVE ARM'S OWN CORRECT LINE MUST BE RECOGNISABLE ───────────────────────────────────
 //
-// A line that names no quantisation had one resolved from the checkpoint's own config, and this module
-// refuses to guess which. The remedy is WITHHELD rather than a replacement: the unread value could mean
-// the desired arm is already serving, and replacing on that basis would stop a healthy engine on the
-// strength of a fact nobody read. This is std.goal_assessment's indeterminate arm doing the work it is
-// separated from divergence to do.
-data argv_without_quantization: List<String> = [
+// THIS ROW WAS RED IN SUBSTANCE FOR AS LONG AS THE MODULE EXISTED, and it was green as written because it
+// asserted the wrong thing. A line that names no quantisation used to be read as an UNREAD FACT and the
+// remedy WITHHELD -- defensible reasoning about a canary whose scheme is not in its config, and simply
+// wrong about the native arm, whose launch OMITS `--quantization` ON PURPOSE so the engine reads the
+// checkpoint's own config with its block size and its 1509-entry exclusion list intact. The consequence was
+// that the native deployment could never be recognised as converged by its own correct argv: nine cutover
+// attempts ran toward a state this assessor would have reported as indeterminate forever.
+//
+// gunbc.spark.serving_arm now owns which checkpoints declare the scheme on the wire, so both sides spell
+// the same absence and they match.
+data native_argv: List<String> = [
   "serve", "/model",
   "--served-model-name", "glm-5.3-flash-native-fp8",
   "--tensor-parallel-size", "4",
   "--max-model-len", "262144",
 ]
 
-test fn an_omitted_quantisation_flag_withholds_rather_than_replaces() -> Bool {
-  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: argv_without_quantization }) {
+test fn the_native_arms_own_line_which_names_no_quantisation_is_converged() -> Bool {
+  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: native_argv, runtime_image_wire: official_image }) {
+    ArmAlreadyConverged { identity: got } =>
+      (got.alias as String) == "glm-5.3-flash-native-fp8"
+        && (quantization_word(q: got.quantization_on_argv) as String) == "none-on-argv"
+    _ => false
+  }
+}
+
+// ── THE IMAGE IS PART OF THE IDENTITY ────────────────────────────────────────────────────────
+//
+// THE DISCRIMINATING RED FOR THE AXIS THIS SESSION SPENT NINE ATTEMPTS ON. Same alias, same rank count,
+// same absent quantisation flag -- and a DIFFERENT runtime image, which on this fleet is the difference
+// between an engine that loads the native fp8 weights and one that cannot. Before the image entered the
+// identity these two compared equal, so a convergence could report the desired arm running while the wrong
+// runtime held the port.
+test fn the_same_line_under_a_different_image_is_not_the_same_arm() -> Bool {
+  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: native_argv, runtime_image_wire: exl3_image }) {
+    ArmReplacementRequired { desired: want, displaced: got } =>
+      (want.runtime_image_wire as String) == (official_image as String)
+        && (got.runtime_image_wire as String) == (exl3_image as String)
+        && (want.alias as String) == (got.alias as String)
+    _ => false
+  }
+}
+
+// ── A LINE MISSING AN IDENTITY FLAG STILL WITHHOLDS ──────────────────────────────────────────
+//
+// The indeterminate arm did not disappear with the quantisation repair; it moved to the flags that really
+// are unreadable when absent. A line naming no `--tensor-parallel-size` had one resolved by the engine, and
+// replacing on a value nobody read would stop a healthy engine on a guess.
+data argv_without_rank_count: List<String> = [
+  "serve", "/model",
+  "--served-model-name", "glm-5.3-flash-native-fp8",
+  "--max-model-len", "262144",
+]
+
+test fn a_line_missing_the_rank_count_withholds_rather_than_replaces() -> Bool {
+  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: argv_without_rank_count, runtime_image_wire: official_image }) {
     ArmRemedyWithheld { because: bs } => count(bs) == 1
     _ => false
   }
@@ -223,7 +274,7 @@ test fn the_native_arm_adds_its_own_obligation_even_with_weights_and_a_grant() -
 test fn an_already_converged_arm_is_admitted_without_a_grant() -> Bool {
   match admit_arm_actuation(
     goal: canary_goal,
-    remedy: remedy_for(goal: canary_goal, reading: ArmArgvRead { words: canary_argv }),
+    remedy: remedy_for(goal: canary_goal, reading: ArmArgvRead { words: canary_argv, runtime_image_wire: exl3_image }),
     weights_present_on_every_rank: false,
     launch_granted: false,
   ) {
@@ -254,7 +305,7 @@ test fn the_argv_scan_declines_a_flag_that_is_absent() -> Bool {
 // IDENTITY EQUALITY IS FIELD-WISE, and this row is the control that it is not comparing a rendering: two
 // identities differing only in rank count are different arms.
 test fn identities_differing_only_in_rank_count_are_not_equal() -> Bool {
-  let one = served_arm_identity(alias: "a" as NonEmptyStr, quantization_wire: "fp8" as NonEmptyStr, rank_count_wire: "1" as NonEmptyStr)
-  let four = served_arm_identity(alias: "a" as NonEmptyStr, quantization_wire: "fp8" as NonEmptyStr, rank_count_wire: "4" as NonEmptyStr)
+  let one = served_arm_identity(alias: "a" as NonEmptyStr, quantization_on_argv: Present { value: "fp8" as NonEmptyStr }, rank_count_wire: "1" as NonEmptyStr, runtime_image_wire: official_image)
+  let four = served_arm_identity(alias: "a" as NonEmptyStr, quantization_on_argv: Present { value: "fp8" as NonEmptyStr }, rank_count_wire: "4" as NonEmptyStr, runtime_image_wire: official_image)
   !served_arm_identity_eq(a: one, b: four) && served_arm_identity_eq(a: four, b: four)
 }

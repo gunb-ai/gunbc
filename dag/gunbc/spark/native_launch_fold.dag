@@ -13,7 +13,7 @@ import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
   glm_native_container_name,
 }
-import gunbc.spark.glm_canary_converge { go_template_action }
+import extdeps.docker.container_inspect { go_template_action }
 
 // ── LAUNCHING A RANK POPULATION IS A FOLD THAT REMEMBERS WHAT IT STARTED ───────────────────────
 //

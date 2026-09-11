@@ -16,10 +16,13 @@ import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   ServingCheckpointRow, serving_checkpoint_row,
+  CheckpointQuantization,
+  checkpoint_quantization_on_argv,
   ServingRuntimeRow, serving_runtime_row,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
   ArmIntent, ArmNormalServing, serving_arm_admits_for,
+  ServingLaunchProfile, glm_native_initial_profile,
 }
 import gunbc.spark.serving_compatibility {
   RuntimeCompatibilityStanding, CompatibilityUnknown, StaticallyPlausible,
@@ -27,6 +30,23 @@ import gunbc.spark.serving_compatibility {
   CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing,
   compatibility_admits, measured_serving_compatibility,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+  ServingCompatibilitySubject, compatibility_subject_text,
+  measured_subject_refuses, measured_refusal_cause, spark_gb10_accelerator,
+  serving_compatibility_subject,
+}
+import std.measure { TokenCount, token_count, BasisPoint, basis_point }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.vllm.engine_args { VllmMemoryRequest }
+import extdeps.vllm.runtime_defaults { defaults_source_revision }
+import gunbc.spark.serving_deployment_selection {
+  ModelArtifact, artifact_glm_53_flash_native, artifact_glm_53_flash_2bit, artifact_deepseek_v4_flash_native,
+  DeploymentCandidate, deployment_candidate, TopologyShape, topology_shape,
+  ServingExecutionProfile, execution_profile_of,
+  ServingDecisionParameters, serving_decision_parameters,
+  ExecutorProfile, ExecutorMpProfile,
+  KvLayoutPolicy, KvAutoLayout, KvFp8Layout, KvFp8DsMlaLayout,
+  SpeculativePolicy, SpeculationOff, SpeculationOn,
+  RuntimeRevision, runtime_revision,
 }
 import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
 
@@ -143,8 +163,11 @@ fn arm_node_roster(group: FabricGroup, expected_ranks: Nat) -> ArmNodeRoster {
 
 // ── THE LAUNCH LINE ────────────────────────────────────────────────────────────────────────────
 
-data glm_native_served_model_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
-data glm_native_serve_port: Nat = 30000
+// THESE TWO DERIVE FROM THE PROFILE RATHER THAN RESTATING IT, because the readback probe, the semantic probe
+// and the launch line must name one port and one alias. Two rows agreeing today is a fork that disagrees the
+// first time one of them is edited.
+data glm_native_served_model_alias: NonEmptyStr = glm_native_initial_profile.served_alias
+data glm_native_serve_port: Nat = glm_native_initial_profile.serve_port
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_master_port: Nat = 29501
 data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
@@ -342,7 +365,7 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // them over the wireless LAN while a 200G switched fabric sat idle, and nothing would report an error --
 // the group would simply be slow. The rail address is derived from the lane observation via
 // gunbc.spark.fabric_rail_desired rather than authored here.
-fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, utilization_basis_points: Nat) -> List<String> {
+fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> List<String> {
   concat([
     "docker", "run", "-d",
     "--name", glm_native_container_name as String,
@@ -357,23 +380,23 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "-v", join([arm_mount_plan(row: crow).host_dir as String, ":", arm_mount_plan(row: crow).container_dir as String, ":ro"], ""),
     rrow.image_reference as String,
     arm_mount_plan(row: crow).model_path as String,
-    "--served-model-name", glm_native_served_model_alias as String,
+    "--served-model-name", profile.served_alias as String,
     "--tensor-parallel-size", to_string(ranks),
     "--distributed-executor-backend", "mp",
     "--nnodes", to_string(ranks),
     "--node-rank", to_string(node.node_rank),
     "--master-addr", render_ipv4_address(addr: master) as String,
     "--master-port", to_string(glm_native_master_port),
-    "--max-model-len", to_string(glm_native_max_model_len),
-    "--max-num-batched-tokens", to_string(glm_native_max_num_batched_tokens),
-    "--max-num-seqs", to_string(glm_native_max_num_seqs),
-    "--kv-cache-dtype", glm_native_kv_cache_dtype_wire as String,
+    "--max-model-len", to_string(profile.max_model_len),
+    "--max-num-batched-tokens", to_string(profile.max_num_batched_tokens),
+    "--max-num-seqs", to_string(profile.max_num_seqs),
+    "--kv-cache-dtype", profile.kv_cache_dtype_wire as String,
     "--gpu-memory-utilization", render_utilization_fraction(basis_points: utilization_basis_points),
     "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
     "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
     "--enable-auto-tool-choice",
     "--host", "0.0.0.0",
-    "--port", to_string(glm_native_serve_port),
+    "--port", to_string(profile.serve_port),
   ], concat(arm_quantization_argv(row: crow), arm_headless_argv(node: node)))
 }
 
@@ -446,9 +469,14 @@ fn arm_headless_argv(node: ArmNode) -> List<String> {
 // this arm, and overriding it is how a launch discards the checkpoint's weight_block_size and its
 // 1509-entry modules_to_not_convert list. The identity the assessor needs comes from the REVISION PATH,
 // which every line carries and which determines the weights uniquely.
+//
+// AND THE CONDITION IS NOW THE FACT ITSELF. It used to read `requires_upstream_glm53_integration` -- a fact
+// about what the RUNTIME must support -- which gave the right answer only because the native checkpoint was
+// the single row where the two questions coincided.
 fn arm_quantization_argv(row: ServingCheckpointRow) -> List<String> {
-  if row.requires_upstream_glm53_integration { [] } else {
-    ["--quantization", row.quantization_wire as String]
+  match checkpoint_quantization_on_argv(q: row.quantization) {
+    Absent => []
+    Present { value: w } => ["--quantization", w as String]
   }
 }
 
@@ -464,8 +492,8 @@ type ArmNodeLaunch sole_constructor {
 // THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
 // any roster. `serving_arm_admits` is the check whose absence let a previous revision admit a
 // known-impossible tuple, so it is consulted before anything renders.
-fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, utilization_basis_points: Nat) -> ArmLaunchPlan {
-  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, utilization_basis_points: utilization_basis_points)
+fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> ArmLaunchPlan {
+  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing, profile: profile, utilization_basis_points: utilization_basis_points)
 }
 
 // ── A TUPLE EXECUTION HAS ALREADY REFUSED MAY NOT BE PLANNED AGAIN ─────────────────────────────
@@ -486,39 +514,35 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
 // all. The topology is part of the match, so a different rank count is a different subject; a patched image
 // would be a different runtime and likewise uncovered by the old refusal. That is the point of the relational
 // grain rather than a per-image flag.
-fn measured_subject_refuses(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> Bool {
-  count(refusing_standings(checkpoint: checkpoint, runtime: runtime, topology: topology)) > 0
-}
-
-fn refusing_standings(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> List<RuntimeCompatibilityStanding> {
-  filter(measured_serving_compatibility, st => standing_refuses_tuple(
-    standing: st, checkpoint: checkpoint, runtime: runtime, topology: topology))
-}
-
-fn standing_refuses_tuple(standing: RuntimeCompatibilityStanding, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> Bool {
-  match standing {
-    ExecutionIncompatible { subject: sub, failure: _, receipt: _ } =>
-      serving_checkpoint_wire(c: sub.checkpoint) == serving_checkpoint_wire(c: checkpoint)
-        && serving_runtime_wire(r: sub.runtime) == serving_runtime_wire(r: runtime)
-        && serving_topology_wire(t: sub.topology) == serving_topology_wire(t: topology)
-    ExecutionCompatible { subject: _, receipt: _ } => false
-    StaticallyPlausible { subject: _, evidence: _ } => false
-    CompatibilityUnknown { subject: _ } => false
+// THE SUBJECT THE GATE COMPARES IS BUILT HERE, FROM EVERYTHING THE LAUNCH ACTUALLY BINDS. A previous
+// revision passed checkpoint, runtime and topology to a three-field lookup, so a refusal measured under one
+// launch profile refused every other profile of the same tuple -- the patched-image repair included -- and
+// the accelerator was never compared at all. The gate now takes the whole typed subject and
+// gunbc.spark.serving_compatibility owns the comparison.
+//
+// THE ACCELERATOR IS A PROPERTY OF THE GROUP, and every Spark in both cages is a GB10 at compute capability
+// 12.1. It is a total match rather than a constant so that the first non-uniform cage is a compile error
+// here instead of a receipt that quietly claims the wrong silicon.
+fn fabric_group_accelerator(g: FabricGroup) -> NonEmptyStr {
+  match g {
+    FabricGroupA => spark_gb10_accelerator
+    FabricGroupB => spark_gb10_accelerator
   }
 }
 
-fn measured_refusal_cause(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> NonEmptyStr {
-  join(map(refusing_standings(checkpoint: checkpoint, runtime: runtime, topology: topology),
-    st => match compatibility_admits(s: st) {
-      AdmitsNothing { because: b } => b as String
-      AdmitsNormalServing => ""
-      AdmitsBoundedExperimentOnly => ""
-    }), "; ") as NonEmptyStr
+fn launch_compatibility_subject(
+  checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology,
+  group: FabricGroup, profile: ServingLaunchProfile,
+) -> ServingCompatibilitySubject {
+  serving_compatibility_subject(
+    checkpoint: checkpoint, runtime: runtime, topology: topology,
+    accelerator: fabric_group_accelerator(g: group), profile: profile)
 }
 
-fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, utilization_basis_points: Nat) -> ArmLaunchPlan {
-  if measured_subject_refuses(checkpoint: checkpoint, runtime: runtime, topology: topology) {
-    ArmLaunchRefused { cause: measured_refusal_cause(checkpoint: checkpoint, runtime: runtime, topology: topology) }
+fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> ArmLaunchPlan {
+  let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
+  if measured_subject_refuses(subject: subject) {
+    ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
   } else {
   match serving_arm_admits_for(checkpoint: checkpoint, runtime: runtime, topology: topology, intent: intent) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
@@ -534,7 +558,7 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
                 ArmNodesResolved { nodes: ns, master: m } => ArmLaunchPlanned {
                   lines: map(ns, n => ArmNodeLaunch {
                     node: n,
-                    argv: arm_container_argv(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), utilization_basis_points: utilization_basis_points),
+                    argv: arm_container_argv(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points),
                   }),
                   master: m,
                 },
@@ -567,5 +591,90 @@ fn arm_launch_plan_render(plan: ArmLaunchPlan) -> String {
         "master ", render_ipv4_address(addr: m) as String, " port ", to_string(glm_native_master_port), "\n",
         join(map(ls, l => arm_launch_line_text(l: l)), "\n"),
       ], "")
+  }
+}
+
+// ── THE SAME SUBJECT, SPELLED AS THE DECISION LAYER'S PROFILE ─────────────────────────────────
+//
+// A MEMORY RECEIPT IS ADMITTED AGAINST A `ServingExecutionProfile`, and until now the only producer of one
+// for a GLM engine lived inside the EXL3 canary's convergence module. When that module was retired the
+// receipt witness had no subject at all, which is the ordinary tell that a fact was reachable only through
+// one consumer: the profile is not a canary fact, it is what ANY selected deployment looks like to the
+// decision layer.
+//
+// IT IS DERIVED FROM THE COMPATIBILITY SUBJECT RATHER THAN AUTHORED BESIDE IT. The subject already carries
+// the checkpoint, the runtime, the topology and the launch profile argv is rendered from, so "the deployment
+// that was selected" and "the profile a receipt is admitted against" become the same value read two ways
+// instead of two rows kept in agreement by hand -- which is the authority break that let a figure measured
+// on the canary stand as evidence about a different engine.
+fn serving_checkpoint_artifact(c: ServingCheckpoint) -> ModelArtifact? {
+  match c {
+    Glm53NativeFp8 => Present { value: artifact_glm_53_flash_native }
+    Glm53Exl3_205 => Present { value: artifact_glm_53_flash_2bit }
+    Glm53Nvfp4CompressedTensors => none
+    DeepseekV4FlashIq3sSplit => Present { value: artifact_deepseek_v4_flash_native }
+  }
+}
+
+// AN UNRECOGNISED KV SPELLING PRODUCES NO PROFILE RATHER THAN A DEFAULT ONE. The wire value is what the
+// launch actually sends, and a layout this type cannot spell must not be rounded to `auto`: two launches
+// sending different arguments would then share one identity.
+fn kv_layout_of_wire(w: NonEmptyStr) -> KvLayoutPolicy? {
+  if (w as String) == "auto" { Present { value: KvAutoLayout } }
+  else { if (w as String) == "fp8" { Present { value: KvFp8Layout } }
+  else { if (w as String) == "fp8_ds_mla" { Present { value: KvFp8DsMlaLayout } }
+  else { none } } }
+}
+
+fn selected_memory_request(p: ServingLaunchProfile) -> VllmMemoryRequest {
+  VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: p.decided_gpu_memory_basis_points) },
+    kv_cache_bytes: none,
+  }
+}
+
+fn selected_decision_parameters(s: ServingCompatibilitySubject) -> ServingDecisionParameters? {
+  match serving_runtime_row(r: s.runtime) {
+    Absent => none
+    Present { value: rrow } =>
+      match kv_layout_of_wire(w: s.profile.kv_cache_dtype_wire) {
+        Absent => none
+        Present { value: kv } => Present { value: serving_decision_parameters(
+          max_model_len: token_count(count: s.profile.max_model_len),
+          memory_request: selected_memory_request(p: s.profile),
+          max_num_batched_tokens: token_count(count: s.profile.max_num_batched_tokens),
+          max_num_seqs: s.profile.max_num_seqs,
+          executor: ExecutorMpProfile,
+          kv_layout: kv,
+          speculative: if s.profile.speculation_enabled { SpeculationOn } else { SpeculationOff },
+          enable_prefix_caching: false,
+          runtime: runtime_revision(
+            image: rrow.image_reference,
+            vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),
+        ) }
+      }
+  }
+}
+
+fn selected_deployment_candidate(s: ServingCompatibilitySubject) -> DeploymentCandidate? {
+  match serving_checkpoint_artifact(c: s.checkpoint) {
+    Absent => none
+    Present { value: a } => Present { value: deployment_candidate(
+      identity: decl_ref(module_path: "gunbc.spark.serving_arm_launch", decl_name: "selected_execution_profile"),
+      label: compatibility_subject_text(s: s) as NonEmptyStr,
+      artifact: a,
+      topology: topology_shape(tensor_parallel_degree: serving_topology_rank_count(t: s.topology), replica_count: 1),
+    ) }
+  }
+}
+
+fn selected_execution_profile(s: ServingCompatibilitySubject) -> ServingExecutionProfile? {
+  match selected_deployment_candidate(s: s) {
+    Absent => none
+    Present { value: c } =>
+      match selected_decision_parameters(s: s) {
+        Absent => none
+        Present { value: p } => Present { value: execution_profile_of(c: c, p: p) }
+      }
   }
 }

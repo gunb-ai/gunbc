@@ -2,10 +2,16 @@ module gunbc.spark.serving_compatibility
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import extdeps.zhipu.glm_5_3_flash {
+  GlmAttentionGeometry, glm_5_3_flash_attention_geometry,
+  vllm_fp8_ds_mla_required_rope_dim, glm_5_3_flash_refused_by_fp8_ds_mla_writer,
+}
 import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53NativeFp8, Glm53Exl3_205, Glm53Nvfp4CompressedTensors, DeepseekV4FlashIq3sSplit,
   ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3, Tonyd2wildSm121Nvfp4, VllmOpenaiGlm53Flash,
   ServingTopology, SingleSparkTp1, SparkPairTp2, FourSparkTp4,
+  ServingLaunchProfile, glm_native_initial_profile, glm_exl3_canary_profile,
+  serving_launch_profile_key, ServingRuntimeRow, serving_runtime_row,
 }
 
 // ── COMPATIBILITY IS A RELATION, AND ATTACHING IT TO A RUNTIME ROW WAS THE DEFECT ───────────────
@@ -32,17 +38,117 @@ type ServingCompatibilitySubject sole_constructor {
   runtime: ServingRuntime
   topology: ServingTopology
   accelerator: NonEmptyStr
-  profile_identity: NonEmptyStr
+  profile: ServingLaunchProfile
+}
+
+// ── THE SUBJECT'S IDENTITY IS ALL FIVE FIELDS, AND THE RUNTIME HALF IS BYTES ──────────────────
+//
+// A REVIEW FOUND THE GATE COMPARING THREE OF FIVE. `standing_refuses_tuple` matched checkpoint, runtime and
+// topology, so a refusal measured against ONE launch profile refused every other profile of the same tuple --
+// including the patched-image profile the repair depends on -- and an accelerator change was invisible
+// entirely. A relation that ignores two of its own dimensions is not a relation; it is a three-field lookup
+// wearing one's name.
+//
+// AND THE RUNTIME IS IDENTIFIED BY ITS IMAGE REFERENCE, NOT BY ITS ENUM VARIANT. `VllmOpenaiGlm53Flash` is a
+// NAME; the thing that refused is a DIGEST. Repointing that name at a rebuilt image would carry the old
+// refusal onto bytes nobody ran -- which is precisely the move the derived NoPE runtime requires, so the
+// defect would have fired on the first repair attempt. The image reference in the runtime row is
+// digest-pinned, so comparing it compares the artifact.
+//
+// A RUNTIME WITH NO ROW HAS NO BYTES TO COMPARE, so it renders a located marker rather than an empty string:
+// two unmodelled runtimes must not collapse into one subject by both being unknown.
+// THE SEAL STAYS AND THE MINTS ARE NAMED. A subject is a value the launch layer and its controls both need
+// to build; what the seal must keep out is a record literal that omits a dimension or reorders one. One
+// constructor plus two field-at-a-time variants gives every legitimate caller a route and gives none of them
+// a way to author a partial subject.
+fn serving_compatibility_subject(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  accelerator: NonEmptyStr,
+  profile: ServingLaunchProfile,
+) -> ServingCompatibilitySubject {
+  ServingCompatibilitySubject {
+    checkpoint: checkpoint, runtime: runtime, topology: topology,
+    accelerator: accelerator, profile: profile,
+  }
+}
+
+// THE VARIANTS EXIST FOR THE MUTATION CONTROLS, and they are the reason those controls are trustworthy: a
+// row that varies one dimension by RESPELLING all five could differ in a second field by typo and still
+// pass, reporting a discrimination it never made.
+fn subject_with_profile(s: ServingCompatibilitySubject, profile: ServingLaunchProfile) -> ServingCompatibilitySubject {
+  ServingCompatibilitySubject {
+    checkpoint: s.checkpoint, runtime: s.runtime, topology: s.topology,
+    accelerator: s.accelerator, profile: profile,
+  }
+}
+
+fn subject_with_accelerator(s: ServingCompatibilitySubject, accelerator: NonEmptyStr) -> ServingCompatibilitySubject {
+  ServingCompatibilitySubject {
+    checkpoint: s.checkpoint, runtime: s.runtime, topology: s.topology,
+    accelerator: accelerator, profile: s.profile,
+  }
+}
+
+fn subject_runtime_bytes(r: ServingRuntime) -> String {
+  match serving_runtime_row(r: r) {
+    Absent => join(["<unmodelled-runtime:", serving_runtime_wire(r: r), ">"], "")
+    Present { value: row } => row.image_reference as String
+  }
 }
 
 fn compatibility_subject_text(s: ServingCompatibilitySubject) -> String {
   join([
     "checkpoint=", serving_checkpoint_wire(c: s.checkpoint),
     " runtime=", serving_runtime_wire(r: s.runtime),
+    " runtime_bytes=", subject_runtime_bytes(r: s.runtime),
     " topology=", serving_topology_wire(t: s.topology),
     " accelerator=", s.accelerator as String,
-    " profile=", s.profile_identity as String,
+    " profile=", serving_launch_profile_key(p: s.profile),
   ], "")
+}
+
+// THE ONE COMPARISON EVERY GATE USES. It is the rendered identity rather than a field-by-field equality so
+// that adding a dimension to the subject cannot leave a comparison behind: a new field appears in the text
+// and every consumer starts discriminating on it in the same commit.
+fn compatibility_subject_eq(a: ServingCompatibilitySubject, b: ServingCompatibilitySubject) -> Bool {
+  compatibility_subject_text(s: a) == compatibility_subject_text(s: b)
+}
+
+fn standing_subject(st: RuntimeCompatibilityStanding) -> ServingCompatibilitySubject {
+  match st {
+    ExecutionIncompatible { subject: sub, failure: _, receipt: _ } => sub
+    ExecutionCompatible { subject: sub, receipt: _ } => sub
+    StaticallyPlausible { subject: sub, evidence: _ } => sub
+    CompatibilityUnknown { subject: sub } => sub
+  }
+}
+
+fn standing_refuses_subject(st: RuntimeCompatibilityStanding, subject: ServingCompatibilitySubject) -> Bool {
+  match st {
+    ExecutionIncompatible { subject: sub, failure: _, receipt: _ } => compatibility_subject_eq(a: sub, b: subject)
+    ExecutionCompatible { subject: _, receipt: _ } => false
+    StaticallyPlausible { subject: _, evidence: _ } => false
+    CompatibilityUnknown { subject: _ } => false
+  }
+}
+
+fn refusing_standings_for(subject: ServingCompatibilitySubject) -> List<RuntimeCompatibilityStanding> {
+  filter(measured_serving_compatibility, st => standing_refuses_subject(st: st, subject: subject))
+}
+
+fn measured_subject_refuses(subject: ServingCompatibilitySubject) -> Bool {
+  count(refusing_standings_for(subject: subject)) > 0
+}
+
+fn measured_refusal_cause(subject: ServingCompatibilitySubject) -> NonEmptyStr {
+  join(map(refusing_standings_for(subject: subject),
+    st => match compatibility_admits(s: st) {
+      AdmitsNothing { because: b } => b as String
+      AdmitsNormalServing => ""
+      AdmitsBoundedExperimentOnly => ""
+    }), "; ") as NonEmptyStr
 }
 
 // THE WIRE SPELLINGS ARE LOCAL AND EXHAUSTIVE RATHER THAN IMPORTED, because a subject's identity must not
@@ -105,11 +211,38 @@ type RuntimeCompatibilityStanding
 // resolved `fp8_ds_mla` anyway, so a single kv-dtype field would have recorded either a false request or a
 // false resolution. They are two observations from two instruments: the request is what argv carried, the
 // resolution is what the engine's own log reported.
+// ── HOW STRONGLY A RECORDED FACT IS KNOWN ─────────────────────────────────────────────────────
+//
+// TWO FIELDS OF ONE RECEIPT CAN HAVE GENUINELY DIFFERENT EVIDENCE, and this receipt has exactly that: the
+// resolved KV layout, the rope dimensions and the error text come from the ranks' own retained logs, while
+// the REQUESTED dtype is reconstructed from the plan the pushed source renders, because the running
+// containers were removed before their argv was inspected -- a cleanup that was necessary, urgent, and
+// performed one step too early.
+//
+// IT USED TO BE SAID INSIDE THE STRINGS, as "auto (plan-reconstructed...)" and
+// "fp8_ds_mla (from the rank's own log)". A review was right that this is prose standing where a fact
+// belongs: nothing can filter on it, a comparison of two receipts would compare the parenthetical as part of
+// the value, and the distinction survives only as long as whoever reads it happens to parse English.
+type ObservationStrength
+  = ObservedFromRuntimeLog { instrument: NonEmptyStr }
+  | ObservedFromContainerArgv { instrument: NonEmptyStr }
+  | ReconstructedFromPlan { because: NonEmptyStr }
+
+fn observation_strength_text(o: ObservationStrength) -> String {
+  match o {
+    ObservedFromRuntimeLog { instrument: i } => join(["observed in the runtime's own log (", i as String, ")"], "")
+    ObservedFromContainerArgv { instrument: i } => join(["read from the running container's argv (", i as String, ")"], "")
+    ReconstructedFromPlan { because: b } => join(["RECONSTRUCTED from the plan rather than observed: ", b as String], "")
+  }
+}
+
 type RuntimeCompatibilityFailure
   = KvCacheKernelShapeRefused {
       backend: NonEmptyStr,
       requested_kv: NonEmptyStr,
+      requested_kv_evidence: ObservationStrength,
       resolved_kv_layout: NonEmptyStr,
+      resolved_kv_evidence: ObservationStrength,
       checkpoint_rope_dim: Nat,
       kernel_required_rope_dim: Nat,
       stage: NonEmptyStr,
@@ -122,12 +255,14 @@ type RuntimeCompatibilityFailure
 fn compatibility_failure_text(f: RuntimeCompatibilityFailure) -> String {
   match f {
     KvCacheKernelShapeRefused {
-      backend: b, requested_kv: rq, resolved_kv_layout: rl,
+      backend: b, requested_kv: rq, requested_kv_evidence: rqe, resolved_kv_layout: rl, resolved_kv_evidence: rle,
       checkpoint_rope_dim: crd, kernel_required_rope_dim: krd, stage: st, error_signature: sig,
     } =>
       join([
         "the ", b as String, " backend resolved a requested KV dtype of ", rq as String,
-        " into the ", rl as String, " layout, whose kernel requires a rope dimension of ",
+        " [", observation_strength_text(o: rqe),
+        "] into the ", rl as String, " layout [", observation_strength_text(o: rle),
+        "], whose kernel requires a rope dimension of ",
         to_string(krd), " against this checkpoint's ", to_string(crd),
         "; refused at ", st as String, ": ", sig as String,
       ], "")
@@ -171,8 +306,6 @@ fn compatibility_admits(s: RuntimeCompatibilityStanding) -> CompatibilityAdmissi
 // THESE ARE RECEIPTS, NOT POLICY. Each row is one tuple that was actually launched on this fleet and what
 // executing it established. A subject absent from this roster is CompatibilityUnknown, which admits a bounded
 // experiment; nothing here licenses a normal deployment that has not served.
-data glm_native_tp4_sm121_profile: NonEmptyStr = "native-fp8 tp4 mp 262144ctx 2048batch 1seq mtp-off kv-auto" as NonEmptyStr
-
 data spark_gb10_accelerator: NonEmptyStr = "nvidia-gb10-sm121" as NonEmptyStr
 
 data glm_native_on_official_sm121_tp4: ServingCompatibilitySubject = ServingCompatibilitySubject {
@@ -180,7 +313,7 @@ data glm_native_on_official_sm121_tp4: ServingCompatibilitySubject = ServingComp
   runtime: VllmOpenaiGlm53Flash,
   topology: FourSparkTp4,
   accelerator: spark_gb10_accelerator,
-  profile_identity: glm_native_tp4_sm121_profile,
+  profile: glm_native_initial_profile,
 }
 
 // THE REFUSAL THAT ENDED ATTEMPT 9, recorded at the grain of the thing refused so an identical retry is
@@ -197,8 +330,14 @@ data glm_native_on_official_sm121_tp4: ServingCompatibilitySubject = ServingComp
 // the rope dimensions and the error text come from the retained rank logs. Two instruments, two strengths.
 data glm_native_official_sm121_tp4_refusal: RuntimeCompatibilityFailure = KvCacheKernelShapeRefused {
   backend: "FLASHINFER_MLA_SPARSE_SM120" as NonEmptyStr,
-  requested_kv: "auto (plan-reconstructed: the running argv was removed before inspection)" as NonEmptyStr,
-  resolved_kv_layout: "fp8_ds_mla (from the rank's own log)" as NonEmptyStr,
+  requested_kv: "auto" as NonEmptyStr,
+  requested_kv_evidence: ReconstructedFromPlan {
+    because: "the running containers were removed before their argv was inspected, so this is what the pushed source renders for this profile rather than what was read off the engine" as NonEmptyStr,
+  },
+  resolved_kv_layout: "fp8_ds_mla" as NonEmptyStr,
+  resolved_kv_evidence: ObservedFromRuntimeLog {
+    instrument: "the retained per-rank container logs from attempt 9, which report the backend's own resolution line" as NonEmptyStr,
+  },
   checkpoint_rope_dim: 0,
   kernel_required_rope_dim: 64,
   stage: "KV cache update during engine-core initialization, after weights loaded" as NonEmptyStr,
@@ -228,17 +367,20 @@ data glm_native_official_sm121_tp4_standing: RuntimeCompatibilityStanding = Exec
 // THE CANARY'S SUBJECT, WHICH IS THE ONLY THING THE CANARY IS EVIDENCE FOR. It is recorded so that nobody
 // reaches for it as proof about the native artifact -- the mistake this session made when it read matching
 // attention geometry as a matching checkpoint.
-data glm_exl3_on_gitcommit90_sm121_tp4: ServingCompatibilitySubject = ServingCompatibilitySubject {
+// IT IS A SINGLE-SPARK SUBJECT, WHICH IS THE WHOLE POINT OF RECORDING IT SEPARATELY. A first revision of
+// this row said FourSparkTp4 -- copied from the shape the native arm wants rather than read from the engine
+// that actually served -- which would have made this row evidence about a four-rank deployment nobody ran.
+data glm_exl3_on_gitcommit90_sm121_tp1: ServingCompatibilitySubject = ServingCompatibilitySubject {
   checkpoint: Glm53Exl3_205,
   runtime: Gitcommit90Sm121Exl3,
-  topology: FourSparkTp4,
+  topology: SingleSparkTp1,
   accelerator: spark_gb10_accelerator,
-  profile_identity: "exl3-2.05 tp4 262144ctx kv-fp8" as NonEmptyStr,
+  profile: glm_exl3_canary_profile,
 }
 
 data glm_exl3_on_gitcommit90_standing: RuntimeCompatibilityStanding = ExecutionCompatible {
-  subject: glm_exl3_on_gitcommit90_sm121_tp4,
-  receipt: "served continuously on group B through 2026-09-11, answering /v1/models as glm-5.3-flash-exl3-canary at a 262,144-token window, reporting Using fp8_ds_mla for the FLASHINFER_MLA_SPARSE_SM120 backend" as NonEmptyStr,
+  subject: glm_exl3_on_gitcommit90_sm121_tp1,
+  receipt: "served continuously on srv9 through 2026-09-11, answering /v1/models as glm-5.3-flash-exl3-canary at a 262,144-token window, reporting Using fp8_ds_mla for the FLASHINFER_MLA_SPARSE_SM120 backend" as NonEmptyStr,
 }
 
 // AND THE OTHER REFUSAL THIS FLEET MEASURED, kept because it is the counterexample that makes the relational
@@ -248,7 +390,7 @@ data glm_native_on_gitcommit90_sm121_tp4: ServingCompatibilitySubject = ServingC
   runtime: Gitcommit90Sm121Exl3,
   topology: FourSparkTp4,
   accelerator: spark_gb10_accelerator,
-  profile_identity: glm_native_tp4_sm121_profile,
+  profile: glm_native_initial_profile,
 }
 
 data glm_native_on_gitcommit90_standing: RuntimeCompatibilityStanding = ExecutionIncompatible {
@@ -265,3 +407,240 @@ data measured_serving_compatibility: List<RuntimeCompatibilityStanding> = [
   glm_exl3_on_gitcommit90_standing,
   glm_native_on_gitcommit90_standing,
 ]
+
+// ── ONE SELECTED VALUE PRODUCES THE LAUNCH, OR THE DECISION DOES NOT GOVERN IT ──────────────────
+//
+// A REVIEW FOUND THREE INDEPENDENTLY AUTHORED DEPLOYMENT PROFILES WHERE THERE SHOULD HAVE BEEN ONE. The
+// decision parameters named a Ray executor, 0.82, thirty-two sequences and an fp8 KV request; the launch
+// renderer fixed mp, one sequence and an auto KV request; and the native plan constructed its own
+// checkpoint/runtime/topology tuple directly, consulting neither. They described the same engine by
+// coincidence and nothing made a change to any of them follow the others -- so changing the selected runtime
+// had no necessary effect on the image launched, and changing the launched image had no necessary effect on
+// what had been authorised.
+//
+// SO THE SELECTED VALUE CARRIES THE WHOLE SUBJECT and is the only thing a plan may be built from. Its
+// identity IS the subject's identity, which means a compatibility refusal, an authorisation, a rendered argv
+// and a readback expectation all move together or not at all.
+//
+// THE COMPATIBILITY STANDING IS CARRIED RATHER THAN LOOKED UP, because a selection that had to consult a
+// roster at launch time could be constructed for a subject the roster refuses. Requiring the standing in the
+// constructor makes the refused case unrepresentable in a selection rather than merely rejected by one.
+type SelectedServingDeployment sole_constructor {
+  subject: ServingCompatibilitySubject
+  compatibility: RuntimeCompatibilityStanding
+  intent_is_normal_serving: Bool
+}
+
+// A SELECTION IS ADMITTED ONLY WHERE ITS STANDING LICENSES ITS INTENT, and the two licences differ: a bounded
+// experiment may run on a subject nobody has executed yet, while normal serving may not. That asymmetry is
+// the whole reason StaticallyPlausible and ExecutionCompatible are separate rungs -- inspection establishes
+// that an image registers an architecture, which was repeatedly mistaken for evidence that it can serve one.
+type SelectionAdmission
+  = SelectionAdmitted { selected: SelectedServingDeployment }
+  | SelectionRefused { cause: NonEmptyStr }
+
+fn select_serving_deployment(
+  subject: ServingCompatibilitySubject,
+  standing: RuntimeCompatibilityStanding,
+  intent_is_normal_serving: Bool,
+) -> SelectionAdmission {
+  match compatibility_admits(s: standing) {
+    AdmitsNothing { because: b } => SelectionRefused { cause: b }
+    AdmitsBoundedExperimentOnly =>
+      if intent_is_normal_serving {
+        SelectionRefused {
+          cause: join([
+            "this subject has not been shown to serve by execution, so it may be experimented on but not ",
+            "selected for normal serving: ", compatibility_subject_text(s: subject),
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        SelectionAdmitted {
+          selected: SelectedServingDeployment {
+            subject: subject, compatibility: standing, intent_is_normal_serving: false,
+          },
+        }
+      }
+    AdmitsNormalServing => SelectionAdmitted {
+      selected: SelectedServingDeployment {
+        subject: subject, compatibility: standing, intent_is_normal_serving: intent_is_normal_serving,
+      },
+    }
+  }
+}
+
+// THE AUTHORISATION IS BOUND TO THE SELECTION'S STRUCTURAL IDENTITY, not to a free string an invoker chooses.
+// The durable claim this transaction takes is a MUTEX -- `set -C` against one path, deleted on settlement --
+// and a mutex answers "is anyone else mid-flight", never "is this permitted". Treating it as permission is
+// how a launch came to be authorised by the fact that nobody else was launching.
+type SelectedDeploymentAuthorization sole_constructor {
+  selected_identity: NonEmptyStr
+  granted_for_normal_serving: Bool
+}
+
+fn selected_identity_of(s: SelectedServingDeployment) -> NonEmptyStr {
+  join([
+    compatibility_subject_text(s: s.subject),
+    " intent=", if s.intent_is_normal_serving { "normal" } else { "experiment" },
+  ], "") as NonEmptyStr
+}
+
+// THE AUTHORISATION IS MINTED FROM THE SELECTION, NEVER BESIDE IT. The type is sealed so that no caller can
+// spell an identity of its own choosing; the only way to obtain one is to hand over the selection it covers,
+// which makes the identity a DERIVATION rather than a claim. What the grantor actually supplies is the one
+// fact a selection cannot supply about itself -- whether normal serving is permitted -- and that is a
+// decision about a live endpoint, not a property of the tuple.
+fn authorize_selection(s: SelectedServingDeployment, granted_for_normal_serving: Bool) -> SelectedDeploymentAuthorization {
+  SelectedDeploymentAuthorization {
+    selected_identity: selected_identity_of(s: s),
+    granted_for_normal_serving: granted_for_normal_serving,
+  }
+}
+
+fn authorization_covers(a: SelectedDeploymentAuthorization, s: SelectedServingDeployment) -> Bool {
+  (a.selected_identity as String) == (selected_identity_of(s: s) as String)
+    && (a.granted_for_normal_serving || !s.intent_is_normal_serving)
+}
+
+// ── THE CANDIDATE REPAIR, NAMED AS A PATCH STACK RATHER THAN A HOPE ───────────────────────────
+//
+// THE REFUSAL ABOVE IS A COMPILED GUARD, so no further flag experiment reaches it: vLLM's
+// cache_kernels.cu carries `STD_TORCH_CHECK(pe_dim == 64, "pe_dim must be 64 for fp8_ds_mla")`, and this
+// checkpoint's qk_rope_head_dim is zero. That is why `auto` did not help and why the next attempt must
+// change the BYTES, not the arguments.
+//
+// AND THE PATCH THIS SESSION FIRST NAMED WAS THE WRONG ONE. vllm-project/vllm#53969 is a compatibility shim
+// that pads queries through the DeepSeek-shaped path; its own discussion records that once FlashInfer gained
+// native GLM53_NOPE the preferred work moved to #55277, which makes the writer natively accept pe_dim=0,
+// zeroes the reserved tail so the fixed 656-byte cache row stays well-defined, widens the top-k page-table
+// capacity, and -- unlike #53969 -- carries a NoPE regression test and a TP4 run across four SM120 GPUs
+// including CUDA graph capture. Building the shim would have been work spent on the superseded branch.
+//
+// BOTH HALVES ARE REQUIRED AND THE SECOND IS EASY TO MISS. The official image pins FlashInfer 0.6.18, tagged
+// 2026-08-28, which PREDATES native GLM53_NOPE (flashinfer #4802) and the sparse-backend NoPE validation fix
+// (#4947, 2026-09-08). Patching vLLM alone leaves the kernel this checkpoint needs absent from the library
+// vLLM calls, so the candidate runtime pins a FlashInfer source revision containing both.
+//
+// IT IS A CANDIDATE AND NOT A STANDING, WHICH IS THE WHOLE POINT OF THIS MODULE. #55277's TP4 evidence is
+// NVFP4 on RTX PRO 6000 at SM120; ours is native FP8 on four GB10 at SM121. Different accelerator, different
+// checkpoint encoding -- a different subject, and this repository has already paid for reading a neighbouring
+// success as evidence about a subject nobody ran.
+type RuntimeRepairCandidate sole_constructor {
+  base_vllm_revision: NonEmptyStr
+  backported_commits: List<NonEmptyStr>
+  flashinfer_requirement: NonEmptyStr
+  upstream_evidence: NonEmptyStr
+  why_not_sufficient: NonEmptyStr
+}
+
+data glm53_nope_repair_candidate: RuntimeRepairCandidate = RuntimeRepairCandidate {
+  base_vllm_revision: "385dce36bcee42309924a5ece951a96db3dce7f2" as NonEmptyStr,
+  backported_commits: [
+    "0fa2b3308c2292b9e4d07a8f7bca17f0b2e6067d -- vllm#55277, NoPE cache writer: concat_and_cache_mla natively accepts pe_dim=0 and zeroes the reserved tail" as NonEmptyStr,
+    "8d09804c877c48165c6ba69bc9dc02d09bae0b83 -- vllm#55277, actual top-k capacity: widens the page-table population for the kpool-widened index" as NonEmptyStr,
+  ],
+  flashinfer_requirement: "a source revision containing BOTH flashinfer#4802 (native GLM53_NOPE) and flashinfer#4947 (sparse-backend NoPE validation: the TP4 sparse path serves NoPE without the per-token sparse_mla_top_k_lens requirement that belongs to the other backends). Release 0.6.18, which the official image pins, was tagged 2026-08-28 and predates both" as NonEmptyStr,
+  upstream_evidence: "vllm#55277 carries a NoPE regression test and was exercised at TP4 on four SM120 GPUs including CUDA graph capture and generation" as NonEmptyStr,
+  why_not_sufficient: "that run was NVFP4 on RTX PRO 6000 / SM120. This subject is native FP8 on four GB10 / SM121 at a 262,144-token window. The accelerator and the checkpoint encoding both differ, so it establishes that the approach is sound and nothing about this tuple" as NonEmptyStr,
+}
+
+// ── THE CHEAP PROBES THAT RUN BEFORE 524 SECONDS OF WEIGHT LOADING ────────────────────────────
+//
+// EACH ATTEMPT SO FAR SPENT A FULL LOAD TO LEARN A FACT A KERNEL CALL WOULD HAVE SETTLED. Attempt 9 loaded
+// 300+ GiB across four ranks, compiled TileLang kernels, initialised the DSA indexer and began CUDA graph
+// capture before the writer refused on a shape that was decidable from two integers. These probes are
+// ordered cheapest-first and every one of them runs INSIDE the candidate image, so a pass is about the bytes
+// that will serve rather than about the patch that was intended.
+//
+// THEY ARE NOT A SUBSTITUTE FOR THE EXPENSIVE RUN. Passing all three establishes that the kernels accept
+// this geometry; it does not establish that the engine serves. Only the native-FP8 x TP4 x four-GB10 load
+// followed by one semantic completion mints ExecutionCompatible, and this type deliberately cannot express
+// that verdict.
+type NopeConformanceProbe sole_constructor {
+  ordinal: Nat
+  asks: NonEmptyStr
+  passes_when: NonEmptyStr
+}
+
+data glm53_nope_conformance_probes: List<NopeConformanceProbe> = [
+  NopeConformanceProbe {
+    ordinal: 1,
+    asks: "call concat_and_cache_mla with k_pe shaped [T, 0]" as NonEmptyStr,
+    passes_when: "the call returns rather than tripping the pe_dim guard, AND the reserved tail of the 656-byte cache row reads back zero -- the second half matters because an unzeroed tail is a silent wrongness the reader would consume as data" as NonEmptyStr,
+  },
+  NopeConformanceProbe {
+    ordinal: 2,
+    asks: "ask FlashInfer's SM12x sparse backend to accept kv_lora_rank=512 with qk_rope_head_dim=0" as NonEmptyStr,
+    passes_when: "the backend accepts the native NoPE dimensions without demanding sparse_mla_top_k_lens, which is the per-token requirement belonging to the other backends and the subject of flashinfer#4947" as NonEmptyStr,
+  },
+  NopeConformanceProbe {
+    ordinal: 3,
+    asks: "present this checkpoint's widened physical top-k population to the page table" as NonEmptyStr,
+    passes_when: "the capacity is accepted at index_topk 2048 over index_kpool 4, which is the second of the two backported commits and the half a writer-only patch would leave broken" as NonEmptyStr,
+  },
+]
+
+// ── THE PREDICTION, AND WHY IT IS NOT A SECOND AUTHORITY ──────────────────────────────────────
+//
+// THE MEASURED STANDINGS ABOVE ARE RECEIPTS AND STAY THE AUTHORITY. What this adds is the same conclusion
+// DERIVED from modelled facts -- the checkpoint's own attention geometry against the kernel constant vLLM
+// compiles in -- so that the question which cost nine attempts and roughly 524 seconds of weight loading
+// each becomes two integers and an inequality.
+//
+// A PREDICTION THAT DISAGREED WITH ITS RECEIPT WOULD BE THE DANGEROUS STATE, so the control below asserts
+// they agree rather than trusting either alone. If upstream changes the constant, or a revision changes the
+// geometry, the disagreement goes red and names which half moved -- which is the opposite of a model that
+// silently keeps predicting what used to be true.
+//
+// IT DOES NOT GATE ANY LAUNCH. Gating on it would make the derivation a second authority over admission
+// beside the measured relation, which is the fork this module was written to end. It informs a preflight and
+// a receipt; the refusal still comes from what execution established.
+fn checkpoint_attention_geometry(c: ServingCheckpoint) -> GlmAttentionGeometry? {
+  match c {
+    Glm53NativeFp8 => Present { value: glm_5_3_flash_attention_geometry }
+    Glm53Exl3_205 => none
+    Glm53Nvfp4CompressedTensors => none
+    DeepseekV4FlashIq3sSplit => none
+  }
+}
+
+// AN UNMODELLED GEOMETRY PREDICTS NOTHING RATHER THAN PREDICTING SAFETY. A checkpoint whose config this
+// repository has not read is not thereby compatible; it is unexamined, and the two must not render alike.
+type KernelShapePrediction
+  = KernelShapeWouldRefuse { checkpoint_rope_dim: Nat, kernel_required_rope_dim: Nat }
+  | KernelShapeWouldAdmit { checkpoint_rope_dim: Nat }
+  | KernelShapeUnpredictable { because: NonEmptyStr }
+
+fn predict_fp8_ds_mla_writer(c: ServingCheckpoint) -> KernelShapePrediction {
+  match checkpoint_attention_geometry(c: c) {
+    Absent => KernelShapeUnpredictable {
+      because: join([
+        "this repository has not read the attention geometry of ", serving_checkpoint_wire(c: c),
+        " at a pinned revision, so whether the fp8_ds_mla writer accepts it is unexamined rather than fine",
+      ], "") as NonEmptyStr,
+    }
+    Present { value: g } =>
+      if glm_5_3_flash_refused_by_fp8_ds_mla_writer(g: g) {
+        KernelShapeWouldRefuse {
+          checkpoint_rope_dim: g.qk_rope_head_dim,
+          kernel_required_rope_dim: vllm_fp8_ds_mla_required_rope_dim,
+        }
+      } else {
+        KernelShapeWouldAdmit { checkpoint_rope_dim: g.qk_rope_head_dim }
+      }
+  }
+}
+
+fn kernel_shape_prediction_text(p: KernelShapePrediction) -> String {
+  match p {
+    KernelShapeWouldRefuse { checkpoint_rope_dim: c, kernel_required_rope_dim: k } =>
+      join([
+        "PREDICTED REFUSAL from modelled facts, before any transfer: the stock fp8_ds_mla writer requires a rope dimension of ",
+        to_string(k), " and this checkpoint's is ", to_string(c),
+        ". A runtime carrying the NoPE writer backport is a different subject and must be measured, not inferred",
+      ], "")
+    KernelShapeWouldAdmit { checkpoint_rope_dim: c } =>
+      join(["the stock fp8_ds_mla writer accepts a rope dimension of ", to_string(c)], "")
+    KernelShapeUnpredictable { because: b } => b as String
+  }
+}

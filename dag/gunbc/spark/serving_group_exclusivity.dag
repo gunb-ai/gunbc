@@ -36,19 +36,32 @@ import gunbc.spark.remote_execution {
 // ENABLED is why it must be excluded before another launch. A second authority that can mutate the group
 // makes every per-rank observation provisional, whether or not it has yet.
 //
-// SO EXCLUSIVITY IS HELD, NOT ASSERTED. The unit is disabled and stopped on every planned host, the
+// AND THE POSITIVE ARM IS NAMED FOR WHAT IT ACTUALLY ESTABLISHES, WHICH IS LESS THAN EXCLUSIVITY. It used
+// to be called ServingGroupExclusivelyHeld, and a review was right that nothing here holds anything: what
+// this performs is a suppression of ONE KNOWN PRODUCER -- the pair worker unit -- verified per host by
+// re-reading its state, at ONE INSTANT. It takes no lease, carries no deadline, fences nothing, and says
+// nothing about a second producer nobody has enumerated or about an operator who enables the unit a second
+// after the read. A name promising exclusivity would license a launch to treat every later observation as
+// authoritative on that basis, which is exactly the point-in-time-observation failure rostered at
+// gunbc.recurring_failure_mode.point_in_time_observation_used_to_exclude_a_producer.
+//
+// NEXT-RUNG TRIGGER: a lease with a declared deadline and a resource fence, whose vocabulary
+// std.temporal_effect already owns -- at which point the positive arm can name a held lease rather than a
+// suppression receipt, and this annotation retires with the name.
+//
+// SO SUPPRESSION IS PERFORMED, NOT ASSERTED. The unit is disabled and stopped on every planned host, the
 // absence is verified per host rather than assumed from the group, and only then may a transaction claim
 // the group. gunbc.spark.pair_serving_desired already withdrew Group B from the pair-serving ROSTER --
 // `spark_pair_serving_groups = [FabricGroupA]` -- so this module removes the running authority that the
 // roster withdrawal did not reach. A roster that stops desiring something does not stop it.
 type ServingGroupMutationStanding
-  = ServingGroupExclusivelyHeld { group: FabricGroup, holder: NonEmptyStr, receipts: List<NonEmptyStr> }
+  = KnownCompetingProducersSuppressed { group: FabricGroup, holder: NonEmptyStr, receipts: List<NonEmptyStr> }
   | CompetingServingAuthorityObserved { group: FabricGroup, actor: NonEmptyStr, receipts: List<NonEmptyStr> }
   | ServingGroupOwnershipUnread { group: FabricGroup, cause: NonEmptyStr }
 
 fn mutation_standing_text(s: ServingGroupMutationStanding) -> String {
   match s {
-    ServingGroupExclusivelyHeld { group: _, holder: h, receipts: rs } =>
+    KnownCompetingProducersSuppressed { group: _, holder: h, receipts: rs } =>
       join(["group exclusively held by ", h as String, ": ", join(map(rs, r => r as String), "; ")], "")
     CompetingServingAuthorityObserved { group: _, actor: a, receipts: rs } =>
       join(["a competing serving authority can mutate this group: ", a as String, ": ",
@@ -58,9 +71,9 @@ fn mutation_standing_text(s: ServingGroupMutationStanding) -> String {
   }
 }
 
-fn group_is_exclusively_held(s: ServingGroupMutationStanding) -> Bool {
+fn known_competing_producers_are_suppressed(s: ServingGroupMutationStanding) -> Bool {
   match s {
-    ServingGroupExclusivelyHeld { group: _, holder: _, receipts: _ } => true
+    KnownCompetingProducersSuppressed { group: _, holder: _, receipts: _ } => true
     CompetingServingAuthorityObserved { group: _, actor: _, receipts: _ } => false
     ServingGroupOwnershipUnread { group: _, cause: _ } => false
   }
@@ -199,7 +212,7 @@ func exclude_serving_group(
         receipts: receipts,
       }
     } else {
-      ServingGroupExclusivelyHeld { group: group, holder: holder, receipts: receipts }
+      KnownCompetingProducersSuppressed { group: group, holder: holder, receipts: receipts }
     }
   }
 }

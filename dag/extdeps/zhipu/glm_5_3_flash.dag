@@ -306,6 +306,63 @@ type GlmCheckpointManifest sole_constructor {
   read_by: NonEmptyStr
 }
 
+// ── THE ATTENTION GEOMETRY, WHICH IS WHAT ACTUALLY REFUSED ────────────────────────────────────
+//
+// NINE CUTOVER ATTEMPTS ENDED ON TWO INTEGERS THIS MODULE DID NOT CARRY. The engine loaded 300+ GiB across
+// four ranks, compiled kernels, initialised the indexer and began CUDA graph capture before refusing with
+// `pe_dim must be 64 for fp8_ds_mla` -- a comparison between this checkpoint's qk_rope_head_dim and a
+// kernel constant, both of which are knowable before anything is transferred. A preflight that could read
+// these fields would have refused in milliseconds and named the reason.
+//
+// mla_use_nope IS THE FACT, AND IT IS WHY THE DEEPSEEK-SHAPED KERNEL PATH DOES NOT FIT. This architecture
+// applies no rotary section to the query/key at all, so the rope dimension is genuinely zero rather than
+// merely small; the fp8_ds_mla writer assumes DeepSeek's fixed 64-wide section inside a 656-byte cache row.
+// That is a SHAPE disagreement, not a tuning one, which is why no --kv-cache-dtype value reaches past it.
+//
+// index_kpool AND index_topk ARE THE SECOND HALF, and they are here because the repair needs both. The
+// sparse indexer's physical top-k population is widened by the kpool factor, and a patch that fixed only the
+// cache writer would leave the page table sized for the unwidened figure -- which is precisely why the
+// upstream candidate carries two commits rather than one.
+//
+// READ AT THE PINNED REVISION, NOT FROM TODAY'S MAIN. These are config.json fields of a mutable branch; a
+// figure copied from whatever main says on the day it is read describes an artifact this fleet may never
+// fetch. The revision below is the same one glm_5_3_flash_native_manifest was summed at.
+type GlmAttentionGeometry sole_constructor {
+  revision: NonEmptyStr
+  mla_use_nope: Bool
+  qk_rope_head_dim: Nat
+  qk_nope_head_dim: Nat
+  kv_lora_rank: Nat
+  v_head_dim: Nat
+  index_kpool: Nat
+  index_topk: Nat
+  read_by: NonEmptyStr
+}
+
+data glm_5_3_flash_attention_geometry: GlmAttentionGeometry = GlmAttentionGeometry {
+  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  mla_use_nope: true,
+  qk_rope_head_dim: 0,
+  qk_nope_head_dim: 256,
+  kv_lora_rank: 512,
+  v_head_dim: 256,
+  index_kpool: 4,
+  index_topk: 2048,
+  read_by: "config.json of zai-org/GLM-5.3-Flash at this exact revision. NOT read from the repository's main branch: these are fields of a mutable ref, and a value copied from whatever main carried on the day it was read would describe an artifact this fleet may never fetch" as NonEmptyStr,
+}
+
+// THE KERNEL CONSTANT THAT REFUSED, CARRIED AS THE FOREIGN FACT IT IS. It belongs beside the geometry
+// because the refusal is a COMPARISON of the two, and a comparison whose right-hand side lives only in a
+// prose sentence cannot be evaluated by anything.
+data vllm_fp8_ds_mla_required_rope_dim: Nat = 64
+
+// SO THE REFUSAL IS DECIDABLE FROM MODELLED FACTS, BEFORE A BYTE MOVES. This is the whole return on carrying
+// the geometry: the question that cost nine attempts and roughly 524 seconds of weight loading each is now
+// two integers and an inequality.
+fn glm_5_3_flash_refused_by_fp8_ds_mla_writer(g: GlmAttentionGeometry) -> Bool {
+  g.qk_rope_head_dim != vllm_fp8_ds_mla_required_rope_dim
+}
+
 data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifest {
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   safetensors_shard_count: 62,
