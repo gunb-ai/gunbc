@@ -1,0 +1,22 @@
+module gunbc.dag_artifact_identity_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data dag_artifact_identity_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_BASENAME", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "DagArtifactIdentityOutcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "emit_dag_artifact_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "registry_keys_in_artifact", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "run_dag_artifact_identity", field: WholeDeclaration }
+  ],
+  reason: "THE SUBJECT IS THE IDENTITY OF AN EMITTED ARTIFACT, WHICH IS ONLY OBSERVABLE BY RUNNING THE EMITTER TWICE OVER A TREE ON DISK. v1.compile emit_dag_artifact is the authority that produces dag-artifact.json and the fix for the instability lives THERE, in .dag, at the key: both of its item-registry key lists now read sorted_map_keys (CanonicalOrder) instead of map_keys (HostUnspecifiedOrder). What is retained in Rust is the CONTROL, not the fix. It compiles a committed fixture source root through cli_run compile_emission -- the same transaction gunbc compile runs -- three times and compares bytes: twice over the subject specimen, which must agree, and once over a specimen one declaration larger, which must NOT. Reading a source root off disk and running the compile transaction are host effects the required floor's hermetic envelope refuses by construction, so a .dag witness with this subject would be counted executed while its assertion never ran. The class of thing this retains is the same as generated_artifact_boundary and required_regen: an artifact-identity adjudicator living where the effects are. It adds no compiler language behavior, no diagnostic, no flag, and no mode that skips a check; the direction is the opposite, since it adds a wall on the required path where none existed. WHAT IT DOES NOT CLAIM: the control's subject is a sixteen-declaration fixture, not the corpus, so it establishes that the EMITTER orders its key lists and not that every other emitted collection in the tree is ordered.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when a modeled actuator can perform the two host effects this control needs -- reading a committed source root and running the compile transaction over it with a typed outcome -- so that the comparison becomes a .dag fold over those operations. That is the SAME capability gunbc.emitted_closure_compile_seed_growth names, and this row retires on it rather than on a narrower artifact. WHAT DOES NOT RETIRE IT: a hermetic witness asserting equality over a fabricated or mocked emission, which would retire the evidence while retiring nothing it guards, and a fixture roster change, which moves the population and not the boundary.",
+  current_boundary: "src/v1/stage0/src/required_regen_host.rs (the appended dag-artifact identity block); src/v1/stage0/src/cli_run.rs (the re-export); src/v1/stage0/src/bin/claim_executor.rs (the rider inside RequiredCiPhase::RegenFixedPoint); fixtures/dag_artifact_identity/subject and fixtures/dag_artifact_identity/perturbed (the control's two arms, which are committed files so that the arm this control adjudicates is the arm any caller runs)"
+}

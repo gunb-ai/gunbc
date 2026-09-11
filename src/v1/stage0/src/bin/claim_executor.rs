@@ -1040,6 +1040,38 @@ fn run() -> Result<ExitCode, ExitCode> {
                     phase_failures.push(format!("regen-fixed-point ({e})"));
                 }
             }
+
+            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THIS PHASE, for the reason
+            // the rostered-row join rides the parse: it is the SAME QUESTION this phase already
+            // asks -- re-run the producer over an unchanged tree, compare the bytes -- one
+            // artifact over, and the roster of required jobs is closed to growth. It is a rider,
+            // not a phase, so `RequiredCiPhase::RegenFixedPoint`'s lane ownership answers for it
+            // and no second routing fact exists to drift.
+            //
+            // ITS COST IS THREE EMISSIONS OF A SIXTEEN-DECLARATION FIXTURE, not of the corpus.
+            // The class it catches is a property of the EMITTER, so the smallest specimen that
+            // carries several registry keys discriminates it exactly as the corpus does; paying
+            // corpus cost for it would buy nothing this control can read.
+            match v1_compiler::cli_run::run_dag_artifact_identity() {
+                Ok(outcome) => {
+                    eprintln!("required-ci: dag-artifact-identity {}", outcome.summary());
+                    for finding in &outcome.findings {
+                        eprintln!("required-ci: dag-artifact-identity FAIL {finding}");
+                    }
+                    if !outcome.passed() {
+                        phase_failures.push(format!(
+                            "dag-artifact-identity ({} finding(s))",
+                            outcome.findings.len()
+                        ));
+                    }
+                }
+                // NO VERDICT IS NOT A GREEN. A fixture that will not compile leaves this run
+                // holding no identity evidence, and that stops the line under its own name.
+                Err(e) => {
+                    eprintln!("required-ci: dag-artifact-identity NOT EVALUATED — {e}");
+                    phase_failures.push("dag-artifact-identity (subject unobtainable)".to_string());
+                }
+            }
             ran.push("regen-fixed-point");
         }
 
