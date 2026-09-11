@@ -351,11 +351,15 @@ test fn witness_empty_graph_refuses() -> Bool {
   }
 }
 
+// UNSIZED IS NOW "ABSENT FROM THE ASSIGNMENT LIST", which is what the empty list below says. The
+// authored form of this fixture carried NodeSizing.Unsized on the node itself; with sizing an input
+// to the fold, a node the deriver could not answer for simply has no assignment, and handing this
+// witness a cell would make the arm it matches on unreachable.
 test fn witness_unsized_node_refuses() -> Bool {
   let n = fixture_node(id: "unsized")
   match schedule_forecast(
     nodes: [n],
-    sizings: fixture_sizings(ns: [n]),
+    sizings: [],
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -379,11 +383,15 @@ test fn witness_unsized_node_refuses() -> Bool {
   }
 }
 
+// THE CELL HERE MUST BE ONE THE OBSERVATIONS DO NOT COVER, or the gap this witness exists to find
+// cannot exist. fixture_observations are all fixture_cell() (medium/medium), so the node is sized
+// high/small deliberately -- the shared fixture_sizings helper would hand it a calibrated cell and
+// the NoCalibrationSample assertion would become unsatisfiable.
 test fn witness_empty_calibration_cell_refuses() -> Bool {
   let n = fixture_node(id: "missing-cell")
   match schedule_forecast(
     nodes: [n],
-    sizings: fixture_sizings(ns: [n]),
+    sizings: [sized_at(n: n, cell: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall })],
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
