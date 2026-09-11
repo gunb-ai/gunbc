@@ -17,7 +17,7 @@ import v2.workflow.compile_door_ledger {
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.content_hash { ContentHash }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.host_budget_source {
   HostBudgetObservation, HostBudgetObserved, host_budget_source_bounds_this_process, host_budget_source_label
 }
@@ -133,65 +133,6 @@ fn native_route_reference_for(
 type NativeRouteMemberRow {
   identity: NativeRouteTestIdentity
   verdict: NativeTestVerdict
-  provenance: NativeRouteVerdictProvenance
-}
-
-// WHERE EACH VERDICT CAME FROM, PER IDENTITY (operator ruling 2026-09-11 via fierce-lark-661):
-// the native run IS a materialization. A test verdict is a pure computation keyed by (compiler
-// identity, test identity, dependency-closure digest), and a replacement job may SERVE a verdict
-// from a provider (std.artifact_store / std.materialization_provider, ArtifactRequest by
-// ContentHash) instead of executing it. A receipt whose rows cannot say which happened would
-// let a served verdict pass as an executed one and the reverse, so every row names its
-// provenance, and every provenance names the tested tree it is a verdict FOR: admission refuses a
-// row whose tree is not the receipt's, which is what stops a provider serving a verdict minted
-// for another head into this receipt.
-//
-// DECLARED FRONTIER: the closure_digest on VerdictMaterialized is a ContentHash THIS PRODUCER DOES
-// NOT COMPUTE. The per-identity dependency-closure digest is a separate, compiler-side lane
-// (after D4); when its type lands in std/ this field consumes it, and until then the producer
-// mints VerdictExecuted only. The field exists now so the receipt's shape does not change again
-// under the train, and so the counts below have a constructor for the served arm. Trigger: the
-// compiler-side per-identity dependency-closure digest, sufficient for keying an ArtifactRequest.
-type NativeRouteVerdictProvenance
-  = VerdictExecuted { tested_tree: String }
-  | VerdictMaterialized { tested_tree: String, closure_digest: ContentHash }
-
-fn native_route_provenance_tree(p: NativeRouteVerdictProvenance) -> String {
-  match p {
-    VerdictExecuted { tested_tree: t } => t
-    VerdictMaterialized { tested_tree: t, closure_digest: _ } => t
-  }
-}
-
-// THE HIT/MISS COUNTS, DERIVED FROM THE ROWS, never accumulated beside them (the census rule):
-// materialized is the provider's hits, executed its misses.
-type NativeRouteServing {
-  materialized: Int
-  executed: Int
-}
-
-fn native_route_serving(rows: List<NativeRouteMemberRow>) -> NativeRouteServing {
-  fold_list(
-    xs: rows,
-    empty: NativeRouteServing { materialized: 0, executed: 0 },
-    cons: fn(acc, row) {
-      match row.provenance {
-        VerdictExecuted { tested_tree: _ } =>
-          NativeRouteServing { materialized: acc.materialized, executed: acc.executed + 1 }
-        VerdictMaterialized { tested_tree: _, closure_digest: _ } =>
-          NativeRouteServing { materialized: acc.materialized + 1, executed: acc.executed }
-      }
-    }
-  )
-}
-
-fn native_route_serving_summary(receipt: NativeRouteReceipt) -> String {
-  let serving = native_route_serving(rows: receipt.population)
-  concat(
-    "served materialized=", to_string(serving.materialized),
-    " executed=", to_string(serving.executed),
-    " of ", to_string(length(xs: receipt.population))
-  )
 }
 
 // THE MODULE → SOURCE-PATH RELATION, OVER THE UNIVERSE'S OWN MODULES. A Context-stage row is a
@@ -550,28 +491,33 @@ type NativeRouteMemoryBound
   = MemoryBoundEnforced { observation: HostBudgetObservation }
   | MemoryBoundUnobserved { reason: String }
 
-// THE LANE'S DECLARED MEMORY ENVELOPE AND THE RESERVE IT REQUIRES ABOVE IT, both as ByteSize
-// (std.measure owns the carrier, as it does for the lane's timeout). The envelope is the peak the
-// lane's process declares it may reach; it is 15 GiB, the self-hosted runner slot's own
-// memory.high (the line above which the kernel begins reclaim), and above both completed
-// measurements named on NativeRouteMemoryBound. The reserve is the headroom that must separate
-// the envelope from the ENFORCED bound: 1 GiB, the distance between that slot's memory.high and
-// its memory.max, which is what the kernel has to reclaim into before it kills. Admission holds
-// when observed_bound >= envelope + reserve; the receipt's summary prints all three and the
-// headroom the bound actually leaves, so a slot that fits exactly is stated as fitting exactly.
-// These are EXECUTION ENVELOPES, ratcheted down as the measured peak falls, never targets; the
-// telemetry line the lane prints beside its receipt (process peak RSS via getrusage ru_maxrss,
-// process-scoped so it undercounts the rustc children cargo spawns) is the instrument that
-// re-derives the peak on every run. The next-rung trigger for gating the envelope against a
-// measured peak is a RUN-SCOPED whole-slot peak: the runner service cgroup's memory.peak spans the
-// service's lifetime (read 10.3 GB at floor entry before any floor work ran, srv3-10,
-// 2026-09-10), so it measures the slot's history, not this run.
-data v2_native_lane_memory_envelope: ByteSize = byte_size(count: 16106127360)
+// THE LANE'S MEMORY ENVELOPE AND THE RESERVE IT REQUIRES ABOVE IT, both READ FROM THE RUNNER
+// SLOT'S OWN AUTHORITY rather than re-spelled here (review 63410; DESIGN 3). The envelope is the
+// peak the lane's process declares it may reach, and it is the slot's memory.high — the line
+// above which the kernel begins reclaim — which gunbc.runner_slot_allocation sizes to the
+// measured floor peak and which sits above both completed native measurements named on
+// NativeRouteMemoryBound. The reserve is the slot's own memory.high→memory.max distance, what the
+// kernel has to reclaim into before it kills. So the requirement is exactly the slot's memory.max
+// today: the lane declares it needs the whole slot, and says so by construction. If the native
+// run's own peak ever settles below the slot's throttle line the envelope may ratchet BELOW
+// memory_high as a stated 3b divergence consuming the slot row as its starting bound; it may not
+// be re-spelled. The telemetry line the lane prints beside its receipt (process peak RSS via
+// getrusage ru_maxrss, process-scoped so it undercounts the rustc children cargo spawns) is the
+// instrument that re-derives the peak on every run. The next-rung trigger for gating the envelope
+// against a measured peak is a RUN-SCOPED whole-slot peak: the runner service cgroup's
+// memory.peak spans the service's lifetime (read 10.3 GB at floor entry before any floor work
+// ran, srv3-10, 2026-09-10), so it measures the slot's history, not this run.
+fn v2_native_lane_memory_envelope() -> ByteSize {
+  gunbc_runner_slot_desired().memory_high
+}
 
-data v2_native_lane_memory_reserve: ByteSize = byte_size(count: 1073741824)
+fn v2_native_lane_memory_reserve() -> ByteSize {
+  let slot = gunbc_runner_slot_desired()
+  byte_size(count: byte_size_count(b: slot.memory_max) - byte_size_count(b: slot.memory_high))
+}
 
 fn v2_native_lane_memory_requirement() -> ByteSize {
-  byte_size(count: byte_size_count(b: v2_native_lane_memory_envelope) + byte_size_count(b: v2_native_lane_memory_reserve))
+  byte_size(count: byte_size_count(b: v2_native_lane_memory_envelope()) + byte_size_count(b: v2_native_lane_memory_reserve()))
 }
 
 // THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
@@ -642,7 +588,6 @@ type NativeRouteAdmissionRefusalCause
   | MemoryBoundUnobservedOnHost
   | MemoryBoundNotEnforced
   | MemoryBoundBelowRequirement
-  | ProvenanceTreeMismatch
 
 type NativeRouteAdmission
   = NativeRouteAdmitted
@@ -943,20 +888,13 @@ fn native_route_memory_budget_summary(receipt: NativeRouteReceipt) -> String {
           concat(
             "memory bound=", to_string(byte_size_count(b: b)),
             " bytes (", host_budget_source_label(s: source) as String, ")",
-            " envelope=", to_string(byte_size_count(b: v2_native_lane_memory_envelope)),
-            " reserve=", to_string(byte_size_count(b: v2_native_lane_memory_reserve)),
-            " headroom=", to_string(byte_size_count(b: b) - byte_size_count(b: v2_native_lane_memory_envelope))
+            " envelope=", to_string(byte_size_count(b: v2_native_lane_memory_envelope())),
+            " reserve=", to_string(byte_size_count(b: v2_native_lane_memory_reserve())),
+            " headroom=", to_string(byte_size_count(b: b) - byte_size_count(b: v2_native_lane_memory_envelope()))
           )
       }
     MemoryBoundUnobserved { reason: r } => concat("memory bound unobserved: ", r)
   }
-}
-
-// Every row's verdict is a verdict FOR the receipt's tree, whether executed here or served.
-fn native_route_provenance_bound_to_tree(receipt: NativeRouteReceipt) -> Bool {
-  !any(xs: receipt.population, predicate: fn(row) {
-    native_route_provenance_tree(p: row.provenance) != receipt.tested_tree
-  })
 }
 
 fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
@@ -995,8 +933,7 @@ fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
     NativeRouteClauseCheck { holds: native_route_emitted_build_clean(receipt: receipt), cause: EmittedBuildNotClean },
     NativeRouteClauseCheck { holds: native_route_memory_bound_observed(receipt: receipt), cause: MemoryBoundUnobservedOnHost },
     NativeRouteClauseCheck { holds: native_route_memory_bound_enforced(receipt: receipt), cause: MemoryBoundNotEnforced },
-    NativeRouteClauseCheck { holds: native_route_memory_bound_covers_requirement(receipt: receipt), cause: MemoryBoundBelowRequirement },
-    NativeRouteClauseCheck { holds: native_route_provenance_bound_to_tree(receipt: receipt), cause: ProvenanceTreeMismatch }
+    NativeRouteClauseCheck { holds: native_route_memory_bound_covers_requirement(receipt: receipt), cause: MemoryBoundBelowRequirement }
   ]
   let causes = fold_list(
     xs: checks,
@@ -1042,7 +979,6 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     MemoryBoundUnobservedOnHost => "memory_bound_unobserved_on_host"
     MemoryBoundNotEnforced => "memory_bound_not_enforced"
     MemoryBoundBelowRequirement => "memory_bound_below_requirement"
-    ProvenanceTreeMismatch => "provenance_tree_mismatch"
   }
 }
 

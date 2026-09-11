@@ -7,8 +7,6 @@ import gunbc.witness_v2_native_route {
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,
   NativeRouteMemberRow,
-  NativeRouteVerdictProvenance, VerdictExecuted, VerdictMaterialized,
-  NativeRouteServing, native_route_serving, native_route_serving_summary,
   NativeRouteModuleSource,
   native_route_required_pass_identities,
   NativeRouteExclusionCause, CompilerFrontierAttributed, NativeEntryResolutionLimit,
@@ -37,7 +35,7 @@ import gunbc.host_budget_source {
 import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
 import std.measure { byte_size, byte_size_count }
 import std.types { NonEmptyStr }
-import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import v2.compiler.compile {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused,
@@ -64,25 +62,17 @@ fn test_identity(module: String, declaration: String) -> NativeRouteTestIdentity
   NativeRouteTestIdentity { module: module, declaration: declaration }
 }
 
-// Every synthetic row is an EXECUTED verdict for the synthetic receipts' tree ("tree-sha",
-// receipt_over) unless a test says otherwise; the provenance clause reads that binding.
-fn executed_here() -> NativeRouteVerdictProvenance {
-  VerdictExecuted { tested_tree: "tree-sha" }
-}
-
 fn passed_row(module: String, declaration: String) -> NativeRouteMemberRow {
   NativeRouteMemberRow {
     identity: test_identity(module: module, declaration: declaration),
-    verdict: NativeTestPassed,
-    provenance: executed_here()
+    verdict: NativeTestPassed
   }
 }
 
 fn false_row(module: String, declaration: String) -> NativeRouteMemberRow {
   NativeRouteMemberRow {
     identity: test_identity(module: module, declaration: declaration),
-    verdict: NativeTestReturnedFalse,
-    provenance: executed_here()
+    verdict: NativeTestReturnedFalse
   }
 }
 
@@ -94,8 +84,7 @@ fn refused_row(
 ) -> NativeRouteMemberRow {
   NativeRouteMemberRow {
     identity: test_identity(module: module, declaration: declaration),
-    verdict: NativeTestRefused { stage: stage, reason: reason },
-    provenance: executed_here()
+    verdict: NativeTestRefused { stage: stage, reason: reason }
   }
 }
 
@@ -1232,16 +1221,19 @@ test fn a_reclaim_throttle_is_not_an_enforced_bound() -> Bool {
 // memory.max equals it fits exactly and is admitted; one byte less is refused.
 test fn a_bound_below_the_requirement_is_refused_and_an_exact_fit_is_admitted() -> Bool {
   let requirement = byte_size_count(b: v2_native_lane_memory_requirement())
+  let slot = gunbc_runner_slot_desired()
   let exact = native_route_admission(receipt: receipt_with_memory_bound(bound: enforced_bound_of(bytes: requirement)))
   let short = native_route_admission(receipt: receipt_with_memory_bound(bound: enforced_bound_of(bytes: requirement - 1)))
-  requirement == byte_size_count(b: v2_native_lane_memory_envelope) + byte_size_count(b: v2_native_lane_memory_reserve)
+  requirement == byte_size_count(b: v2_native_lane_memory_envelope()) + byte_size_count(b: v2_native_lane_memory_reserve())
+  && byte_size_count(b: v2_native_lane_memory_envelope()) == byte_size_count(b: slot.memory_high)
+  && requirement == byte_size_count(b: slot.memory_max)
   && native_route_admitted(admission: exact)
   && native_route_admission_refused_with(admission: short, cause_name: "memory_bound_below_requirement")
 }
 
 test fn the_memory_budget_summary_states_bound_envelope_reserve_and_headroom() -> Bool {
-  let envelope = byte_size_count(b: v2_native_lane_memory_envelope)
-  let reserve = byte_size_count(b: v2_native_lane_memory_reserve)
+  let envelope = byte_size_count(b: v2_native_lane_memory_envelope())
+  let reserve = byte_size_count(b: v2_native_lane_memory_reserve())
   native_route_memory_budget_summary(receipt: receipt_with_memory_bound(bound: enforced_bound_of(bytes: envelope + reserve)))
     == concat(
       "memory bound=", to_string(envelope + reserve), " bytes (cgroup memory.max (/sys/fs/cgroup/slot))",
@@ -1249,67 +1241,6 @@ test fn the_memory_budget_summary_states_bound_envelope_reserve_and_headroom() -
     )
   && native_route_memory_budget_summary(receipt: receipt_with_memory_bound(bound: MemoryBoundUnobserved { reason: "r" }))
     == "memory bound unobserved: r"
-}
-
-// ── admission: per-identity provenance ─────────────────────────────────────────────────────
-
-fn served_row(module: String, declaration: String, tree: String) -> NativeRouteMemberRow {
-  let hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-  let digest = match sha256_hex_digest(hex: hex) {
-    Present { value: d } => Sha256Hash(d)
-    Absent => Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
-  }
-  NativeRouteMemberRow {
-    identity: test_identity(module: module, declaration: declaration),
-    verdict: NativeTestPassed,
-    provenance: VerdictMaterialized { tested_tree: tree, closure_digest: digest }
-  }
-}
-
-fn receipt_with_population(population: List<NativeRouteMemberRow>) -> NativeRouteReceipt {
-  let base = green_receipt()
-  receipt_over(
-    universe: base.universe,
-    module_source_index: base.module_source_index,
-    population: population,
-    file_refusals: []
-  )
-}
-
-// A verdict SERVED from a provider is admitted beside executed ones when it is a verdict for this
-// receipt's tree, and the hit/miss counts are derived from the rows.
-test fn a_served_verdict_for_this_tree_is_admitted_and_counted_as_a_hit() -> Bool {
-  let receipt = receipt_with_population(population: [
-    served_row(module: "v2.test.alpha", declaration: "passes", tree: "tree-sha"),
-    passed_row(module: "v2.test.native_lane_smoke", declaration: "native_route_positive_population_smoke")
-  ])
-  let serving = native_route_serving(rows: receipt.population)
-  native_route_admitted(admission: native_route_admission(receipt: receipt))
-  && serving.materialized == 1 && serving.executed == 1
-  && native_route_serving_summary(receipt: receipt) == "served materialized=1 executed=1 of 2"
-}
-
-// A verdict minted for ANOTHER head — served or executed — is refused by name: the receipt is
-// bound to its tree per row, not only in its header.
-test fn a_verdict_for_another_tree_is_refused() -> Bool {
-  let served_elsewhere = native_route_admission(receipt: receipt_with_population(population: [
-    served_row(module: "v2.test.alpha", declaration: "passes", tree: "other-sha"),
-    passed_row(module: "v2.test.native_lane_smoke", declaration: "native_route_positive_population_smoke")
-  ]))
-  let executed_elsewhere = native_route_admission(receipt: receipt_with_population(population: [
-    NativeRouteMemberRow {
-      identity: test_identity(module: "v2.test.alpha", declaration: "passes"),
-      verdict: NativeTestPassed,
-      provenance: VerdictExecuted { tested_tree: "other-sha" }
-    },
-    passed_row(module: "v2.test.native_lane_smoke", declaration: "native_route_positive_population_smoke")
-  ]))
-  native_route_admission_refused_with(admission: served_elsewhere, cause_name: "provenance_tree_mismatch")
-  && native_route_admission_refused_with(admission: executed_elsewhere, cause_name: "provenance_tree_mismatch")
-  && !native_route_admission_refused_with(
-    admission: native_route_admission(receipt: green_receipt()),
-    cause_name: "provenance_tree_mismatch"
-  )
 }
 
 // ── admission: the fold collects every violated clause ─────────────────────────────────────

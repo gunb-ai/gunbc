@@ -919,18 +919,6 @@ fn receipt_value(
                     identity_value(ctx, &row.module, &row.declaration),
                 ),
                 (ctx.sym("verdict"), verdict_value(ctx, &row.verdict)),
-                // THIS PRODUCER EXECUTES EVERY VERDICT: no provider is consulted, so every
-                // row is `VerdictExecuted` for the tested tree. `VerdictMaterialized` is the
-                // declared frontier on the authority (its closure digest is not computed
-                // here); a producer that serves from a provider mints that arm instead.
-                (
-                    ctx.sym("provenance"),
-                    Value::Variant {
-                        type_name: ctx.sym("NativeRouteVerdictProvenance"),
-                        variant_name: ctx.sym("VerdictExecuted"),
-                        fields: Rc::new(vec![(ctx.sym("tested_tree"), str_value(tested_tree))]),
-                    },
-                ),
             ]),
         })
         .collect();
@@ -1199,7 +1187,6 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
 
     // 8. ADMISSION, BY THE AUTHORITY. The lane prints the authority's own summary either way.
     let receipt_for_summary = receipt.clone();
-    let receipt_for_serving = receipt.clone();
     let admission = v1_interpreter::run_in_context_with_args(
         &route_ctx,
         "gunbc.witness_v2_native_route.native_route_admission",
@@ -1267,24 +1254,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         super::current_rss_bytes(),
         lane_started.elapsed().as_secs()
     );
-    let serving_summary = v1_interpreter::run_in_context_with_args(
-        &route_ctx,
-        "gunbc.witness_v2_native_route.native_route_serving_summary",
-        &[(Some("receipt".to_string()), receipt_for_serving)],
-        false,
-    )
-    .map_err(|e| format!("V2-NATIVE REFUSAL cause=AdmissionUnevaluable — serving summary: {e}"))?;
-    let serving_text = match &serving_summary {
-        Value::Str(s) => s.to_string(),
-        other => {
-            return Err(format!(
-                "V2-NATIVE REFUSAL cause=AdmissionUnevaluable — the serving summary returned {}, not a \
-                 String",
-                super::output_policy_value_shape(other)
-            ))
-        }
-    };
-    eprintln!("required-ci: v2-native receipt {budget_text}; {serving_text}");
+    eprintln!("required-ci: v2-native receipt {budget_text}");
     eprintln!("required-ci: v2-native admission {summary_text}");
     if admitted {
         Ok(())
