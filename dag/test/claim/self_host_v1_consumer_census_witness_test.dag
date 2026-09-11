@@ -12,7 +12,7 @@ import gunbc.v1_consumer_census {
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
   v1_bankruptcy_transaction_admitted,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
-  v1_consumer_population_for, v1_reference_tokens, v1_seed_link_tokens,
+  v1_consumer_population_for, v1_reference_tokens, v1_seed_link_tokens, v1_shim_partition_over,
   V1BlockingCount, V1BlockingCounted, V1BlockingUnmeasured, v1_blocking_count_of,
   V1ShimPopulation, V1ShimPopulationObserved, V1ShimPopulationRefused, v1_shim_population_of,
   MintedManifestJoin, MintedManifestJoined, MintedManifestJoinUnobserved,
@@ -135,6 +135,26 @@ fn planted_sources() -> List<RustFileChangeInput> {
 
 fn planted_observation(rows: List<RustSourceNamespaceRow>) -> RustReferenceObservation {
   observe_rust_references(sources: planted_sources(), generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rows)
+}
+
+// A TOKEN THE AUTHORITY TABLE DOES NOT CARRY IS AN UNDECIDED CONSUMER, NOT A V1RuntimeBridge ROW:
+// the producer is handed a token the census never declared, and the partition refuses to guess.
+fn an_unknown_token_refuses_rather_than_borrowing_the_first_authority() -> Bool {
+  match observe_rust_references(sources: planted_sources(), generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { rows: rs, unattributed: u, unscannable: _ } => {
+      let unknown_sources = [planted_source(path: "dag/gunbc/instruments/planted_unknown_shims/lib.rs", content: "pub use v1_compiler::planted_unknown_token;\n")]
+      match observe_rust_references(sources: unknown_sources, generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
+        RustReferenceHostRefused { detail: _ } => false
+        RustReferencesObserved { rows: rs2, unattributed: u2, unscannable: _ } => {
+          let p = v1_shim_partition_over(rows: rs2, unattributed: u2)
+          count(rs2) == 1 && count(p.cited) == 0 && count(p.uncitable) == 1
+            && (p.uncitable |> all(x => consumer_disposition_blocks(d: x.disposition) && string_contains(s: x.refusal_detail, pattern: "planted_unknown_token")))
+            && count(v1_shim_partition_over(rows: rs, unattributed: u).cited) == count(rs)
+        }
+      }
+    }
+  }
 }
 
 fn planted_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPopulation {
@@ -309,6 +329,7 @@ test fn consumer_census_unrostered_seed_link_site_blocks() -> Bool { an_unroster
 test fn consumer_census_stale_rostered_renderer_is_excluded() -> Bool { a_rostered_renderer_the_tree_no_longer_carries_is_stale_and_excluded() }
 test fn consumer_census_unrostered_uncitable_site_is_undisposed_and_comment_is_not_a_site() -> Bool { an_unrostered_uncitable_site_is_undisposed_and_a_comment_is_not_a_site() }
 test fn consumer_census_manifest_relation_keys_on_the_package_graph() -> Bool { the_manifest_relation_keys_on_the_package_graph() }
+test fn consumer_census_unknown_token_refuses_rather_than_borrowing_an_authority() -> Bool { an_unknown_token_refuses_rather_than_borrowing_the_first_authority() }
 
 // THE TOOLING TREE CARRIES THE NAME OF THE PACKAGE IT ASSEMBLES INTO. dag/gunbc/instruments/ is the
 // scaffold's rust_source_prefix_tooling; its shim crates are assembled into the `v1_compiled`

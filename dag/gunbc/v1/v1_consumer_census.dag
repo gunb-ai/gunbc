@@ -18,6 +18,7 @@ import gunbc.stage0_partition_package_graph {
 }
 import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
 import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
+import gunbc.rust_item_identity { rust_item_identity_key }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjected, ItemDeclarationRefUncitable, ItemDeclarationRefRefused,
   RustReferenceRow, RustReferenceUnattributed,
@@ -583,14 +584,21 @@ fn v1_reference_tokens() -> List<String> {
   v1_reference_authorities |> map(a => a.token)
 }
 
-// THE TOKEN IS THE JOIN KEY BACK TO THE AUTHORITY, and a token the table does not carry cannot
-// occur: the producer is handed exactly this table's tokens, so the fold below is total over what
-// it can be given and the fallback arm is the first row rather than a fabricated reference.
-fn v1_reference_authority_for(token: String) -> V1ReferenceAuthority {
+// THE TOKEN IS THE JOIN KEY BACK TO THE AUTHORITY, AND A TOKEN THE TABLE DOES NOT CARRY REFUSES.
+// The producer is handed exactly this table's tokens, so the unknown arm is unreachable by
+// construction today -- but the types leave it representable, and an earlier revision resolved it
+// by answering the first row, which would have filed a confidently mis-attributed V1RuntimeBridge
+// consumer for the admission gate to read. The lookup is a coproduct; the unknown arm lands in the
+// uncitable column as an Undecided consumer, which blocks, naming the token it could not join.
+type V1ReferenceAuthorityLookup
+  = V1ReferenceAuthorityFound { authority: V1ReferenceAuthority }
+  | V1ReferenceTokenUnknown { token: String }
+
+fn v1_reference_authority_for(token: String) -> V1ReferenceAuthorityLookup {
   fold_list(
     xs: v1_reference_authorities |> filter(a => a.token == token),
-    empty: V1ReferenceAuthority { token: token, authority: v1_rt_bridge_authority, subject: V1RuntimeBridge },
-    cons: fn(_acc, a) { a }
+    empty: V1ReferenceTokenUnknown { token: token },
+    cons: fn(_acc, a) { V1ReferenceAuthorityFound { authority: a } }
   )
 }
 
@@ -630,12 +638,22 @@ fn v1_unattributed_key(u: RustReferenceUnattributed) -> String {
 // CITABILITY IS THE PROJECTION'S ANSWER, CARRIED ON EACH PRODUCED ROW. One fold, two accumulators;
 // a reference cannot be in both and cannot be in neither, and the unattributed rows join the
 // uncitable column so the partition's member count equals the producer's row count.
-fn v1_shim_partition_over(rows: List<RustReferenceRow>, unattributed: List<RustReferenceUnattributed>) -> V1ShimPartition {
-  let attributed = fold_list(
-    xs: rows,
-    empty: V1ShimPartition { cited: [], uncitable: [] },
-    cons: fn(acc, row) {
-      let authority = v1_reference_authority_for(token: row.token)
+fn v1_unknown_token_row(item_key: String, token: String) -> V1UncitableConsumer {
+  {
+    item_key: item_key,
+    refusal_detail: concat("reference token the authority table does not carry: ", token),
+    medium: RustSourceReference,
+    subject: V1CompilerCrate,
+    disposition: Undecided,
+    discovered_by: producer_rust_bridge_edge,
+  }
+}
+
+fn v1_shim_absorb_row(acc: V1ShimPartition, row: RustReferenceRow) -> V1ShimPartition {
+  match v1_reference_authority_for(token: row.token) {
+    V1ReferenceTokenUnknown { token: t } =>
+      V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_unknown_token_row(item_key: rust_item_identity_key(item: row.item), token: t)) }
+    V1ReferenceAuthorityFound { authority: authority } =>
       match row.projection {
         ItemDeclarationRefProjected { ref: r } =>
           V1ShimPartition { cited: list_snoc_item(xs: acc.cited, item: v1_shim_cited_row(ref: r, authority: authority)), uncitable: acc.uncitable }
@@ -644,14 +662,21 @@ fn v1_shim_partition_over(rows: List<RustReferenceRow>, unattributed: List<RustR
         ItemDeclarationRefRefused { item_key: k, detail: d } =>
           V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d, authority: authority)) }
       }
-    }
-  )
+  }
+}
+
+fn v1_shim_unattributed_row(u: RustReferenceUnattributed) -> V1UncitableConsumer {
+  match v1_reference_authority_for(token: u.token) {
+    V1ReferenceTokenUnknown { token: t } => v1_unknown_token_row(item_key: v1_unattributed_key(u: u), token: t)
+    V1ReferenceAuthorityFound { authority: authority } => v1_shim_uncitable_row(item_key: v1_unattributed_key(u: u), detail: u.detail, authority: authority)
+  }
+}
+
+fn v1_shim_partition_over(rows: List<RustReferenceRow>, unattributed: List<RustReferenceUnattributed>) -> V1ShimPartition {
+  let attributed = fold_list(xs: rows, empty: V1ShimPartition { cited: [], uncitable: [] }, cons: fn(acc, row) { v1_shim_absorb_row(acc: acc, row: row) })
   V1ShimPartition {
     cited: attributed.cited,
-    uncitable: list_append(
-      left: attributed.uncitable,
-      right: unattributed |> map(u => v1_shim_uncitable_row(item_key: v1_unattributed_key(u: u), detail: u.detail, authority: v1_reference_authority_for(token: u.token)))
-    )
+    uncitable: list_append(left: attributed.uncitable, right: unattributed |> map(u => v1_shim_unattributed_row(u: u)))
   }
 }
 
