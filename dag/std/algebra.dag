@@ -365,7 +365,7 @@ fn structured_cost_rank_in_operand(c: StructuredCost, operand: String) -> Int {
 }
 
 fn structured_cost_operands(c: StructuredCost) -> List<String> {
-  reverse(c.terms |> fold(init: Empty, f: fn(acc, t) {
+  reverse(c.terms |> fold(init: [], f: fn(acc, t) {
     t.factors |> fold(init: acc, f: fn(inner, f) {
       match cost_factor_operand(f: f) {
         Absent => inner
@@ -373,7 +373,7 @@ fn structured_cost_operands(c: StructuredCost) -> List<String> {
           if inner |> fold(init: false, f: fn(seen, x) { seen || x == o }) {
             inner
           } else {
-            Cons { head: o, tail: inner }
+            concat([o], inner)
           }
       }
     })
@@ -384,22 +384,30 @@ fn structured_cost_operands(c: StructuredCost) -> List<String> {
 // operands at once, so projecting one would have to round -- and a rounded rank presented as the
 // operation's shape is the fabricated answer this whole authority exists to prevent. The absent
 // arm is the vocabulary gap stated out loud, not a failure to compute.
+fn shape_for_single_operand_rank(rank: Int) -> CostShape? {
+  match rank {
+    0 => Present { value: ShapeConstant }
+    1 => Present { value: ShapeConstant }
+    2 => Present { value: ShapeLinearScan }
+    3 => Present { value: ShapeSortBody }
+    _ => none
+  }
+}
+
 fn structured_cost_to_shape(c: StructuredCost) -> CostShape? {
   let operands = structured_cost_operands(c: c)
-  match operands {
-    Empty => Present { value: ShapeConstant }
-    Cons { head: only, tail: rest } =>
-      match rest {
-        Cons { head: _, tail: _ } => none
-        Empty =>
-          match structured_cost_rank_in_operand(c: c, operand: only) {
-            0 => Present { value: ShapeConstant }
-            1 => Present { value: ShapeConstant }
-            2 => Present { value: ShapeLinearScan }
-            3 => Present { value: ShapeSortBody }
-            _ => none
-          }
+  if operands.length() == 0 {
+    Present { value: ShapeConstant }
+  } else {
+    if operands.length() == 1 {
+      match operands.first() {
+        Absent => none
+        Present { value: only } =>
+          shape_for_single_operand_rank(rank: structured_cost_rank_in_operand(c: c, operand: only))
       }
+    } else {
+      none
+    }
   }
 }
 

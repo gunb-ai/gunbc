@@ -1,9 +1,7 @@
 module std.realization_cost_fidelity
 
 import std.algebra {
-  Cons,
   CostShape,
-  Empty,
   StructuredCost,
   structured_cost_operands,
   structured_cost_rank_in_operand,
@@ -90,14 +88,14 @@ fn realization_target_eq(left: RealizationTarget, right: RealizationTarget) -> B
 }
 
 fn operand_union(modeled: StructuredCost, realized: StructuredCost) -> List<String> {
-  let seeded = structured_cost_operands(c: modeled) |> fold(init: Empty, f: fn(acc, o) {
-    Cons { head: o, tail: acc }
+  let seeded = structured_cost_operands(c: modeled) |> fold(init: [], f: fn(acc, o) {
+    concat([o], acc)
   })
   reverse(structured_cost_operands(c: realized) |> fold(init: seeded, f: fn(acc, o) {
     if acc |> fold(init: false, f: fn(seen, x) { seen || x == o }) {
       acc
     } else {
-      Cons { head: o, tail: acc }
+      concat([o], acc)
     }
   }))
 }
@@ -109,15 +107,15 @@ fn operand_axis_comparisons(
   modeled: StructuredCost,
   realized: StructuredCost,
 ) -> List<AxisComparison> {
-  operand_union(modeled: modeled, realized: realized) |> fold(init: Empty, f: fn(acc, o) {
-    Cons {
-      head: axis_comparison_int(
+  operand_union(modeled: modeled, realized: realized) |> fold(init: [], f: fn(acc, o) {
+    concat(
+      [axis_comparison_int(
         goal: LowerIsBetter,
         a: structured_cost_rank_in_operand(c: realized, operand: o),
         b: structured_cost_rank_in_operand(c: modeled, operand: o),
-      ),
-      tail: acc,
-    }
+      )],
+      acc,
+    )
   })
 }
 
@@ -203,11 +201,11 @@ fn realization_cost_fidelity_rows(
   target: RealizationTarget,
   facts: List<RealizationCostFact>,
 ) -> List<RealizationCostFidelityRow> {
-  let structured_rows = modeled |> fold(init: Empty, f: fn(acc, m) {
-    Cons { head: realization_cost_fidelity_row(modeled: m, target: target, facts: facts), tail: acc }
+  let structured_rows = modeled |> fold(init: [], f: fn(acc, m) {
+    concat([realization_cost_fidelity_row(modeled: m, target: target, facts: facts)], acc)
   })
   reverse(unstructured |> fold(init: structured_rows, f: fn(acc, p) {
-    Cons { head: unstructured_modeled_row(primitive: p, target: target), tail: acc }
+    concat([unstructured_modeled_row(primitive: p, target: target)], acc)
   }))
 }
 
