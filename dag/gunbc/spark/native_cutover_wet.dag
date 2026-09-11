@@ -93,13 +93,68 @@ data native_attempt_raw: String = "glm-native-tp4-cutover-5"
 data native_ready_poll_budget: Nat = 240
 data native_ready_poll_interval_seconds: Nat = 15
 
+// ── A TERMINAL MAY NOT ASSERT WHAT ITS OWN STEPS DID NOT REPORT ────────────────────────────────
+//
+// THE FAILURE TERMINAL SAID "group B is clean" UNCONDITIONALLY. `roll_back` bound the cleanup outcomes and
+// the settlement result and then discarded both, so a rank whose container could not be removed, or a claim
+// that could not be settled, rendered exactly like a clean abort. `every_rank_cleaned` was written for this
+// and imported and never called. The same shape sat on the success arm, which reported "completed" without
+// checking whether the completion settled, and on the incumbent-clear refusal, which ignored its own abort
+// settlement.
+//
+// THIS IS THE Bool-THAT-CLAIMED-A-LOG DEFECT AGAIN, one layer out: a receipt asserting a fact its producer
+// did not establish. There it cost the diagnosis of a failed launch; here it would cost the next attempt,
+// because a half-cleaned group and an unsettled claim are exactly what a following run trips over -- and it
+// would trip over them having been told the group was clean.
+type CleanupStanding
+  = CleanupComplete { receipts: List<RankRollbackOutcome> }
+  | CleanupIncomplete { receipts: List<RankRollbackOutcome> }
+
+type ClaimSettlementStanding
+  = ClaimSettled
+  | ClaimSettlementFailed
+
+fn cleanup_standing_of(outcomes: List<RankRollbackOutcome>) -> CleanupStanding {
+  if every_rank_cleaned(outcomes: outcomes) {
+    CleanupComplete { receipts: outcomes }
+  } else {
+    CleanupIncomplete { receipts: outcomes }
+  }
+}
+
+fn settlement_standing_of(settled: Bool) -> ClaimSettlementStanding {
+  if settled { ClaimSettled } else { ClaimSettlementFailed }
+}
+
+fn cleanup_text(c: CleanupStanding) -> String {
+  match c {
+    CleanupComplete { receipts: rs } =>
+      join(["group B is clean: ", join(map(rs, r => rank_rollback_text(o: r)), "; ")], "")
+    CleanupIncomplete { receipts: rs } =>
+      join(["GROUP B IS NOT CLEAN -- a started rank could not be removed and may still hold its host: ",
+            join(map(rs, r => rank_rollback_text(o: r)), "; ")], "")
+  }
+}
+
+fn settlement_text(c: ClaimSettlementStanding) -> String {
+  match c {
+    ClaimSettled => "the cutover claim is settled"
+    ClaimSettlementFailed => "THE CUTOVER CLAIM IS STILL HELD -- the next attempt will refuse until it is cleared"
+  }
+}
+
 type NativeCutoverTerminal
   = NativeAlreadyConverged { receipt: NonEmptyStr }
   | NativeCutoverWithheld { reasons: List<NonEmptyStr> }
-  | NativeServing { receipt: NonEmptyStr, probe: NonEmptyStr }
+  | NativeServing {
+      receipt: NonEmptyStr,
+      probe: NonEmptyStr,
+      claim: ClaimSettlementStanding,
+    }
   | NativeNormalDeploymentFailed {
       failure: NonEmptyStr,
-      cleanup: List<RankRollbackOutcome>,
+      cleanup: CleanupStanding,
+      claim: ClaimSettlementStanding,
     }
 
 fn terminal_text(t: NativeCutoverTerminal) -> String {
@@ -108,22 +163,24 @@ fn terminal_text(t: NativeCutoverTerminal) -> String {
       join(["ALREADY CONVERGED, nothing was touched: ", r as String], "")
     NativeCutoverWithheld { reasons: rs } =>
       join(["WITHHELD before acting: ", join(map(rs, x => x as String), "; ")], "")
-    NativeServing { receipt: r, probe: p } =>
-      join(["SERVING and accepted: ", r as String, " -- probe: ", p as String], "")
-    NativeNormalDeploymentFailed { failure: f, cleanup: cs } =>
+    NativeServing { receipt: r, probe: p, claim: cl } =>
+      join(["SERVING and accepted: ", r as String, " -- probe: ", p as String,
+            " -- ", settlement_text(c: cl)], "")
+    NativeNormalDeploymentFailed { failure: f, cleanup: cs, claim: cl } =>
       join([
-        "FAILED, group B is clean and NOT SERVING: ", f as String,
-        " -- cleanup: ", join(map(cs, c => rank_rollback_text(o: c)), "; "),
+        "FAILED and NOT SERVING: ", f as String,
+        " -- ", cleanup_text(c: cs), " -- ", settlement_text(c: cl),
       ], "")
   }
 }
 
 fn terminal_is_success(t: NativeCutoverTerminal) -> Bool {
   match t {
-    NativeServing { receipt: _, probe: _ } => true
+    NativeServing { receipt: _, probe: _, claim: cl } =>
+      match cl { ClaimSettled => true, ClaimSettlementFailed => false }
     NativeAlreadyConverged { receipt: _ } => true
     NativeCutoverWithheld { reasons: _ } => false
-    NativeNormalDeploymentFailed { failure: _, cleanup: _ } => false
+    NativeNormalDeploymentFailed { failure: _, cleanup: _, claim: _ } => false
   }
 }
 
@@ -254,7 +311,11 @@ func roll_back(
 {
   let cleanup = rollback_started_ranks(ctx: ctx, started: started)
   let settled = settle_claim(ctx: ctx, host: head, status: "aborted")
-  NativeNormalDeploymentFailed { failure: failure, cleanup: cleanup }
+  NativeNormalDeploymentFailed {
+    failure: failure,
+    cleanup: cleanup_standing_of(outcomes: cleanup),
+    claim: settlement_standing_of(settled: settled),
+  }
 }
 
 // ── THE ENVELOPE IS RESOLVED TWICE AND THE TWO STAGES ASK DIFFERENT QUESTIONS ──────────────────
@@ -300,12 +361,20 @@ func stage_one_peer_envelope(
   uses net: Network
 {
   let peers = plan_peer_nodes(nodes: nodes, head: head)
-  let handoff = hand_off_snapshot_for_native_serving(ctx: ctx, ranks: peers)
-  glm_native_tp4_resolve_envelope(
-    ctx: ctx,
-    nodes: peers,
-    attempt: attempt as NonEmptyStr,
-  )
+  match hand_off_snapshot_for_native_serving(ctx: ctx, ranks: peers) {
+    SnapshotMaterializedButNotReady { obligations: os } =>
+      NoFeasibleDeviceMemoryEnvelope {
+        cause: join(["the peers were not handed over ready for serving, so their supply was not measured: ",
+                     join(map(os, o => o as String), "; ")], "") as NonEmptyStr,
+        standings: [],
+      }
+    SnapshotReadyForNativeServing { ranks: _, page_cache_compatibility: _ } =>
+      glm_native_tp4_resolve_envelope(
+        ctx: ctx,
+        nodes: peers,
+        attempt: attempt as NonEmptyStr,
+      )
+  }
 }
 
 // ── THE TRANSACTION ───────────────────────────────────────────────────────────────────────────
@@ -452,14 +521,31 @@ func launch_after_stop(
 ) -> NativeCutoverTerminal
   uses net: Network
 {
-  let handoff = hand_off_snapshot_for_native_serving(ctx: ctx, ranks: nodes)
+  match hand_off_snapshot_for_native_serving(ctx: ctx, ranks: nodes) {
+    SnapshotMaterializedButNotReady { obligations: os } =>
+      roll_back(ctx: ctx, head: head, started: [], failure: join([
+        "the ranks were not handed over ready for serving, so nothing was launched: ",
+        join(map(os, o => o as String), "; "),
+      ], "") as NonEmptyStr)
+    SnapshotReadyForNativeServing { ranks: _, page_cache_compatibility: _ } =>
+      launch_with_ready_snapshot(ctx: ctx, nodes: nodes, head: head, attempt: attempt)
+  }
+}
+
+// THE LAUNCH IS ITS OWN FUNCTION SO THE HANDOFF CAN GATE IT RATHER THAN DECORATE IT. A previous revision bound
+// the handoff to a name and then launched regardless, which made SnapshotMaterializedButNotReady an
+// unconsumed value: the type described an obligation nothing enforced, around the same procedure it was
+// written to replace.
+func launch_with_ready_snapshot(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, head: HostIdentity, attempt: String,
+) -> NativeCutoverTerminal
+  uses net: Network
+{
   let envelope = glm_native_tp4_resolve_envelope(ctx: ctx, nodes: nodes, attempt: attempt as NonEmptyStr)
   let plan = glm_native_tp4_launch_plan(envelope: envelope)
   match plan {
     ArmLaunchRefused { cause: c } =>
-      roll_back(ctx: ctx, head: head, started: [], failure: join([
-        c as String, " -- snapshot handoff: ", handoff_text(h: handoff),
-      ], "") as NonEmptyStr)
+      roll_back(ctx: ctx, head: head, started: [], failure: c)
     ArmLaunchPlanned { lines: _, master: _ } =>
       match launch_native_population(ctx: ctx, plan: plan) {
         LaunchPopulationHadNoPlan { cause: c } =>
@@ -516,6 +602,7 @@ func accept_or_roll_back(
               " serving ", rec.model_path as String,
             ], "") as NonEmptyStr,
             probe: body,
+            claim: settlement_standing_of(settled: settled),
           }
         }
       }

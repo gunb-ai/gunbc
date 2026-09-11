@@ -11,7 +11,7 @@ import gunbc.spark.remote_execution {
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
   glm_native_container_name, fabric_rail_interface_name,
-  utilization_basis_points_in_argv,
+  utilization_basis_points_in_argv, glm_native_serve_port,
 }
 import gunbc.spark.glm_canary_converge { go_template_action }
 import gunbc.spark.native_deployment_readback {
@@ -94,6 +94,73 @@ func observe_rank_utilization_basis_points(ctx: SparkRemoteExecutionContext, nod
     } else {
       utilization_basis_points_in_argv(argv: decode_json_string_array(raw: remote_run_stdout(r: argvjson)))
     }
+  }
+}
+
+// ── THE ENDPOINT ALIAS IS OBSERVED, AND UNTIL NOW IT WAS HARDCODED ABSENT ───────────────────────
+//
+// THIS MADE ACCEPTANCE UNREACHABLE FROM REAL OBSERVATION, which is the most expensive defect this module has
+// carried. `observe_native_population` constructed DeploymentRanksRead with `endpoint_alias: none`, and
+// gunbc.spark.native_deployment_readback maps an absent alias to EndpointAliasUnread -- an UNKNOWN, which
+// makes the assessment DeploymentUnverified and never DeploymentAccepted. So no deployment this producer
+// described could ever be accepted, and the wet root's success arm and its AlreadyConverged arm were both
+// dead code. Nine cutover attempts ran against a transaction that could not have reported success even had
+// the engine come up perfectly.
+//
+// THE WITNESS DID NOT CATCH IT BECAUSE THE WITNESS AUTHORED THE FIELD. Its positive control passes
+// `endpoint_alias: served()` directly into the assessor, which establishes that the ASSESSOR accepts a
+// complete observation and says nothing about whether this PRODUCER can construct one. A positive control
+// that does not traverse the product path is the specification-without-execution trap in its purest form:
+// green, and about the wrong subject.
+//
+// SO THE ALIAS IS READ FROM THE SERVING ENDPOINT ITSELF, which is the only place it is a measurement. The
+// engine publishes what it serves at /v1/models; the launch requested an alias, and reading the request back
+// would make the check agree with itself. An endpoint that does not answer, or answers without a model id,
+// leaves the alias ABSENT -- which the assessor still treats as unknown rather than as agreement, and that
+// remains correct: a deployment whose endpoint cannot be read is not a deployment whose endpoint is wrong.
+//
+// THE FIRST MODEL ID IS THE ALIAS BECAUSE THIS ARM SERVES ONE MODEL. `--served-model-name` names exactly one,
+// and the readback compares it against the plan's declared alias, so a second id appearing would surface as a
+// mismatch rather than being silently tolerated.
+fn endpoint_alias_argv() -> List<String> {
+  ["sh", "-c", join([
+    "curl -sf -m 10 http://127.0.0.1:", to_string(glm_native_serve_port), "/v1/models",
+    " | tr ',' '\\n' | grep -oE '\"id\":\"[^\"]+\"' | head -1 | cut -d'\"' -f4",
+  ], "")]
+}
+
+func observe_endpoint_alias(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> NonEmptyStr?
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: endpoint_alias_argv())
+  if !remote_run_succeeded(r: r) { none } else { optional_nonempty(raw: remote_run_stdout(r: r)) }
+}
+
+// THE HEAD IS THE RANK THAT HOSTS THE SERVER, so the alias is read there and nowhere else. The followers run
+// headless and publish no endpoint, so probing them would report an absent alias for a healthy deployment.
+//
+// AND A PLAN WITH NO HEAD YIELDS NO HOST RATHER THAN A PLACEHOLDER ONE. A first version returned
+// `"" as HostIdentity` for the refused and empty arms, which the compiler refused because HostIdentity has no
+// such inhabitant -- correctly: an empty host is not a host, and a probe sent to one would either fail
+// obscurely or, worse, reach something. The absence is carried instead, and the caller turns it into an
+// absent alias, which the assessor already treats as unknown rather than as agreement.
+fn head_host_of(plan: ArmLaunchPlan) -> HostIdentity? {
+  match plan {
+    ArmLaunchRefused { cause: _ } => none
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match ls.first() {
+        Absent => none
+        Present { value: l } => Present { value: l.node.host }
+      }
+  }
+}
+
+func observe_endpoint_alias_of(ctx: SparkRemoteExecutionContext, host: HostIdentity?) -> NonEmptyStr?
+  uses net: Network
+{
+  match host {
+    Absent => none
+    Present { value: h } => observe_endpoint_alias(ctx: ctx, host: h)
   }
 }
 
@@ -199,7 +266,7 @@ func observe_native_population(ctx: SparkRemoteExecutionContext, plan: ArmLaunch
         }
         Present { value: _ } => DeploymentRanksRead {
           ranks: folded.observations,
-          endpoint_alias: none,
+          endpoint_alias: observe_endpoint_alias_of(ctx: ctx, host: head_host_of(plan: plan)),
         }
       }
     }
