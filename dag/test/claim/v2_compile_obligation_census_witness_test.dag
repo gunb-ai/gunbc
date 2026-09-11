@@ -21,7 +21,6 @@ import gunbc.v2_compile_obligation_census {
   ExecutedPendingVerification,
   standing_carries_premise,
   unverified_entry_premise,
-  unread_native_verdict_premise,
   RouteGapHeld,
   RouteReach,
   NotNamedByAnyExecutingRoute,
@@ -35,11 +34,11 @@ import gunbc.v2_compile_obligation_census {
   witness_subject_is_excluded,
   witness_subject_is_inside_gate_closure,
   obligation_route_coverage_rung,
+  route_coverage_rung_of,
   obligation_rung_is_inflated,
+  rung_is_inflated_of,
   obligation_executes_on_an_unverified_entry,
   obligation_is_pending_on,
-  obligation_is_pending_on_native,
-  unread_native_verdict_premise,
   obligation_claim_exceeds_its_ceiling,
   witness_subject_in_native_lane,
   obligation_seed_escape_is_open,
@@ -158,24 +157,39 @@ test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_h
     && !witness_subject_is_excluded(w: discovered_subject())
 }
 
-// THE ROUTE-COVERAGE RUNG IGNORES THE CLAIM. Both fixture rows claim StructurallyGuaranteed. The one whose
-// paths do not execute must still read Mitigatable, and the one whose paths do execute must read
-// MechanicallyPreventable — so the function is neither a constant nor a reader of claimed_rung. This
-// is DESIGN section 4b(1) applied to the census itself: without this arm a row could raise its own
-// executed rung by restating its claim, which is the exact inflation the census exists to measure.
-test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_not_the_claim_holds() -> Bool {
+// THE ROUTE-COVERAGE RUNG READS THE TWO STANDINGS AND NOTHING ELSE, and it is exercised through
+// route_coverage_rung_of because both standings are now derived: with the native lane off the merge
+// path no obligation in the corpus can reach a both-routes-executing state, so a test that went
+// through a fixture ROW could only ever observe Mitigatable and would be permanently green by
+// construction. Handing the law its two arguments keeps its RED authorable, which is the boundary
+// DESIGN section 4b draws before a check is worth writing.
+//
+// claimed_rung is absent from all four cases on purpose: the law must not read it, and the way to
+// show that is to never give it one to read.
+test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_holds() -> Bool {
   guarantee_rung_is(
-    r: obligation_route_coverage_rung(
-      o: fixture_row(subject: frozen_and_excluded_subject())
-    ),
-    expected: "Mitigatable"
+    r: route_coverage_rung_of(interpreted: an_executing_arm(), native: an_executing_arm()),
+    expected: "MechanicallyPreventable"
   )
     && guarantee_rung_is(
-      r: obligation_route_coverage_rung(
-        o: fixture_row(subject: discovered_subject())
-      ),
-      expected: "MechanicallyPreventable"
+      r: route_coverage_rung_of(interpreted: an_executing_arm(), native: non_executing_arm()),
+      expected: "Mitigatable"
     )
+    && guarantee_rung_is(
+      r: route_coverage_rung_of(interpreted: non_executing_arm(), native: an_executing_arm()),
+      expected: "Mitigatable"
+    )
+    && guarantee_rung_is(
+      r: route_coverage_rung_of(interpreted: non_executing_arm(), native: non_executing_arm()),
+      expected: "Mitigatable"
+    )
+}
+
+fn an_executing_arm() -> PathExecution {
+  ExecutedPendingVerification {
+    instrument: "fixture instrument" as NonEmptyStr,
+    unverified_premises: [unverified_entry_premise]
+  }
 }
 
 // THE SEED-ESCAPE ARMS ARE DISTINGUISHED BY THE ARM, NOT BY PROSE. Every row in the live roster is
@@ -206,31 +220,22 @@ test fn v2_compile_obligation_native_standing_intersects_discovery_holds() -> Bo
     && !witness_subject_in_native_lane(w: this_witnesss_own_subject())
 }
 
-// THE CENSUS'S HEADLINE COMPARISON, EXERCISED ON FOUR ROWS THAT DIFFER ON BOTH AXES. Inflation is
-// claimed > executed, so the arms have to vary the claim AND the paths independently or a passing
-// predicate could be reading only one of them. A row claiming StructurallyGuaranteed on
-// non-executing paths IS inflated (rank 3 over 1). The same row claiming Mitigatable on the same
-// paths is NOT, because claiming no more than your paths establish is honesty and not a defect —
-// that arm is what stops the predicate from being "claim is high". A row whose paths both execute
-// and whose claim is exactly the MechanicallyPreventable that establishes is NOT inflated — that arm
-// is what stops it from being "paths do not execute", and it is the arm that would convict every
-// correctly-claimed row the day the native lane starts executing. And a row whose paths both execute
-// while it still claims StructurallyGuaranteed IS inflated, one rank rather than two, which is what
-// stops the predicate from collapsing to a boolean executes/does-not.
+// THE CENSUS'S HEADLINE COMPARISON, EXERCISED ON THE LAW RATHER THAN THROUGH A ROW. Inflation is
+// claimed > coverage, and both sides have to vary independently or a passing predicate could be
+// reading only one. Going through a fixture obligation can no longer do that: with the native lane
+// off the merge path no row reaches a both-routes-executing coverage, so every row-based case would
+// observe Mitigatable and the arm would be permanently green on one side.
 //
-// THE THIRD ARM WAS WRONG IN THE FIRST CUT AND THE WITNESS CAUGHT IT: it reused the shared fixture,
-// which hardcodes a StructurallyGuaranteed claim, and then asserted the row was not inflated while
-// it executed at MechanicallyPreventable. The witness returned false rather than green, which is the
-// arm doing its job on its own author.
+// THE FOUR CASES. Claimed above coverage IS inflated, at one rank and at two, so the predicate is not
+// reading a fixed gap. Claimed EQUAL to coverage is not, which is what stops it from being "claim is
+// high". And claimed BELOW coverage is not either -- under-claiming is honesty, not a defect, and
+// that arm is what makes this a strict inequality rather than a disagreement.
 test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> Bool {
-  obligation_rung_is_inflated(
-    o: fixture_row(subject: frozen_and_excluded_subject())
-  )
-    && !obligation_rung_is_inflated(o: honestly_claimed_fixture_row())
-    && !obligation_rung_is_inflated(o: fully_executing_exact_claim_fixture_row())
-    && obligation_rung_is_inflated(
-      o: fixture_row(subject: discovered_subject())
-    )
+  rung_is_inflated_of(claimed: StructurallyGuaranteed, coverage: Mitigatable)
+    && rung_is_inflated_of(claimed: MechanicallyPreventable, coverage: Mitigatable)
+    && !rung_is_inflated_of(claimed: Mitigatable, coverage: Mitigatable)
+    && !rung_is_inflated_of(claimed: MechanicallyPreventable, coverage: MechanicallyPreventable)
+    && !rung_is_inflated_of(claimed: Mitigatable, coverage: MechanicallyPreventable)
 }
 
 // A CLAIM ABOVE THE ROW'S OWN CEILING IS INCOHERENT, and unlike the emptiness checks this module
@@ -243,22 +248,6 @@ test fn v2_compile_obligation_claim_above_its_own_ceiling_is_detected_holds() ->
     )
 }
 
-fn honestly_claimed_fixture_row() -> V2CompileObligation {
-  V2CompileObligation {
-    identity: "fixture_honest" as NonEmptyStr,
-    kind: RequiredRootLens,
-    home: HomeAuthority { authority: fixture_home },
-    claimed_rung: Mitigatable,
-    witnesses: [frozen_and_excluded_subject()],
-    discriminating_red: "fixture red" as NonEmptyStr,
-    positive_control: "fixture positive control" as NonEmptyStr,
-    route_reach: fixture_reach(),
-    ceiling: StructurallyGuaranteed,
-    next_trigger: climbs_when(capability: "fixture trigger"),
-    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
-    related_drops: [],
-  }
-}
 
 fn over_ceiling_fixture_row() -> V2CompileObligation {
   V2CompileObligation {
@@ -277,22 +266,6 @@ fn over_ceiling_fixture_row() -> V2CompileObligation {
   }
 }
 
-fn fully_executing_exact_claim_fixture_row() -> V2CompileObligation {
-  V2CompileObligation {
-    identity: "fixture_exact" as NonEmptyStr,
-    kind: RequiredRootLens,
-    home: HomeAuthority { authority: fixture_home },
-    claimed_rung: MechanicallyPreventable,
-    witnesses: [discovered_subject()],
-    discriminating_red: "fixture red" as NonEmptyStr,
-    positive_control: "fixture positive control" as NonEmptyStr,
-    route_reach: fixture_reach(),
-    ceiling: StructurallyGuaranteed,
-    next_trigger: climbs_when(capability: "fixture trigger"),
-    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
-    related_drops: [],
-  }
-}
 
 // THE UNVERIFIED-ENTRY DEBT IS COUNTED, NOT ASSUMED. A row whose subject survives both subtractions
 // reports ExecutedPendingVerification and is counted as debt; a row whose subject is frozen and
@@ -340,24 +313,22 @@ fn this_witnesss_own_subject() -> WitnessSubject {
   )
 }
 
-// THE PENDING PREMISES ARE DISTINGUISHED BY THE PREMISE, NOT BY THE ARM. The per-premise counts move
-// together on the live roster, so a reader could reasonably suspect one is the other under another
-// name — and in the first cut of that pair it WAS, folding the same predicate twice. This arm builds
-// a standing carrying only the entry premise and shows the gate premise is absent from it, which is
-// the shape neither count can produce from the live roster and the only thing that makes "two
-// numbers, two premises" a claim rather than a coincidence.
-test fn v2_compile_obligation_pending_premises_are_read_individually_holds() -> Bool {
+// THE PREMISE FOLD READS ITS ARGUMENT, WHICH IS THE PROPERTY THAT SURVIVED THE LANE'S DELETION. When
+// the native route was a required lane the census carried two premises and this arm contrasted them;
+// gunbc#11003 took that lane off the merge path, the unread-verdict premise described a state nobody
+// can reach, and it was deleted with its fold. What must still hold is that standing_carries_premise
+// answers about the premise it is HANDED rather than about the arm it is looking at — otherwise the
+// remaining count could drift onto any premise at all. So the absent side is now an arbitrary real
+// reference that no standing carries, which tests the same property without inventing a second
+// production premise to keep a test company.
+test fn v2_compile_obligation_premise_fold_reads_its_argument_holds() -> Bool {
   standing_carries_premise(p: entry_only_pending_standing(), premise: unverified_entry_premise)
-    && !standing_carries_premise(
-      p: entry_only_pending_standing(),
-      premise: unread_native_verdict_premise
-    )
-    && standing_carries_premise(p: both_premises_pending_standing(), premise: unverified_entry_premise)
-    && standing_carries_premise(
-      p: both_premises_pending_standing(),
-      premise: unread_native_verdict_premise
-    )
+    && !standing_carries_premise(p: entry_only_pending_standing(), premise: a_premise_no_standing_carries())
     && !standing_carries_premise(p: non_executing_arm(), premise: unverified_entry_premise)
+}
+
+fn a_premise_no_standing_carries() -> DeclarationRef {
+  decl_ref(module_path: "fixture.premise", decl_name: "carried_by_nothing")
 }
 
 fn entry_only_pending_standing() -> PathExecution {
@@ -365,37 +336,4 @@ fn entry_only_pending_standing() -> PathExecution {
     instrument: "fixture instrument" as NonEmptyStr,
     unverified_premises: [unverified_entry_premise]
   }
-}
-
-fn both_premises_pending_standing() -> PathExecution {
-  ExecutedPendingVerification {
-    instrument: "fixture instrument" as NonEmptyStr,
-    unverified_premises: [unverified_entry_premise, unread_native_verdict_premise]
-  }
-}
-
-// THE NATIVE PREMISE IS READ OFF THE NATIVE ARM, NOT THE INTERPRETED ONE. For one cut
-// unread_native_verdict_premise was attached to every native standing and folded by nothing, so the
-// coverage and inflation counts spent it as if the verdict had been read. The fold that fixes it
-// has to reach native_standing specifically, and the second conjunct is what pins that: the SAME row
-// asked through obligation_is_pending_on -- the interpreted fold -- answers false for this premise,
-// because the interpreted arm does not carry it. So a fold that read the wrong standing would look
-// exactly like a correct one on the first conjunct and fail here.
-//
-// THE FIRST CUT OF THIS ARM CONTRASTED THE WRONG THING. It asserted the native arm does NOT carry
-// the entry premise, and the native arm carries both -- the premises co-occur, which is why they are
-// a list. The arm went red and the contrast moved to the fold, which is where the defect was.
-test fn v2_compile_obligation_native_verdict_premise_is_counted_holds() -> Bool {
-  obligation_is_pending_on_native(
-    o: fixture_row(subject: discovered_subject()),
-    premise: unread_native_verdict_premise
-  )
-    && !obligation_is_pending_on(
-      o: fixture_row(subject: discovered_subject()),
-      premise: unread_native_verdict_premise
-    )
-    && !obligation_is_pending_on_native(
-      o: fixture_row(subject: frozen_and_excluded_subject()),
-      premise: unread_native_verdict_premise
-    )
 }

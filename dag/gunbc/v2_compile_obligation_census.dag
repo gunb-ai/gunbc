@@ -16,7 +16,7 @@ import gunbc.guarantee_rung {
 import gunbc.witness_deferral_freeze { frozen_path_deferral_covers }
 import gunbc.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier }
 import v2.workflow.required_floor { required_gate_prefixes }
-import gunbc.witness_v2_native_route { native_route_universe_member, required_v2_native_job_name }
+import gunbc.witness_v2_native_route { native_route_universe_member }
 
 // WHY THIS CENSUS EXISTS, IN ONE SENTENCE THE OPERATOR ASKED FOR (2026-09-10): v2 exists so that
 // classes like nondeterministic emission are UNWRITABLE, and this roster says, per compile-time
@@ -102,6 +102,7 @@ type PathExecution
   = ExecutedOnPath { instrument: NonEmptyStr }
   | ExecutedPendingVerification { instrument: NonEmptyStr, unverified_premises: List<DeclarationRef> }
   | DeclinedOutsideGateClosure { gate: DeclarationRef }
+  | RouteOffTheMergePath { drop: DeclarationRef }
   | ExcludedFromDiscovery { frontier: DeclarationRef }
   | FrozenPathDeferred { roster: DeclarationRef }
   | RouteGapHeld { stall: DeclarationRef }
@@ -352,12 +353,13 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
 // after the lane landed would have been the stale present-tense coverage claim in reverse — a
 // pessimistic one, which is not more honest, only wrong in the safer direction.
 //
-// WHAT IS STILL PENDING, AND IT IS A THIRD PREMISE RATHER THAN A SOFTER WORD. Lane membership says
-// the identity is IN the population the emitted binary executes. It does not say which verdict that
-// execution reached: NativeTestPassed, NativeTestReturnedFalse, NativeTestRefused and the stage
-// refusals are a receipt the lane publishes per run, and nothing in this module reads it. So the
-// native standing is ExecutedPendingVerification carrying unread_native_verdict_premise, never
-// ExecutedOnPath, and the rung this census reports stays route coverage rather than qualification.
+// WHAT THE LANE WOULD HAVE LEFT PENDING, AND WHY THAT QUESTION IS MOOT WHILE IT IS OFF THE MERGE
+// PATH. When the lane was required, membership said the emitted binary executes the identity and said
+// nothing about which verdict it reached, so the native arm carried an unread-verdict premise and a
+// count beside the coverage number. That premise, its trigger and its fold are DELETED rather than
+// kept: with no required invocation there is no execution to be pending about, and a premise nobody
+// can reach is the dangling declaration DESIGN section 3c calls red -- machinery describing a state
+// that cannot occur. They return with the lane, from the drop row that owns its return.
 //
 // THE SELF-HOST RECEIPT FAMILY IS WHY THE NON-MEMBER ARM IS RouteGapHeld AND NOT SOMETHING SOFTER —
 // and it is now the arm for rows the lane does NOT reach, rather than for every row. The only
@@ -366,11 +368,6 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
 // two roster grains, compared against a nine-line seed module whose whole content is that same
 // string. Not one gate is invoked, so even a spendable receipt would not move if every gate were
 // deleted. A row outside the lane's population has that and nothing else.
-data unread_native_verdict_premise: DeclarationRef = decl_ref(
-  module_path: "gunbc.v2_compile_obligation_census",
-  decl_name: "native_verdict_receipt_trigger"
-)
-
 // THE DORMANCY GETS A TYPED TRIGGER TOO, because this module already ruled on exactly this
 // asymmetry one premise over: the repair is the declaration, not a softer sentence. The census's
 // only executing evidence is a witness that is DeclinedOutsideGateClosure on every required run and
@@ -382,8 +379,22 @@ data witness_dormancy_trigger: DissolutionCondition = unbound_dissolution(
   description: "the census's derivation is checked by something a required run reaches: either test.claim.v2_compile_obligation_census_witness_test is admitted by a v2.workflow.required_floor required_gate_prefixes row -- which is an operator-priced roster this module may not grow on its own authority, and proposing it from inside the diff that benefits would be the move this census exists to object to -- or the obligation-coverage receipt that consumes census_counts lands on a required lane and takes the derivation with it. Until one of the two, editing the folds without editing the arms that check them is unguarded" as NonEmptyStr
 )
 
-data native_verdict_receipt_trigger: DissolutionCondition = unbound_dissolution(
-  description: "this census reads the required-v2-native lane's per-identity NativeTestVerdict receipt, so a row whose native execution reached NativeTestReturnedFalse or NativeTestRefused reports a refusal instead of pending execution — at which point the native arm splits into a verified arm and a typed decline, and obligations_executing_natively stops meaning lane membership" as NonEmptyStr
+// THE LANE LANDED AND WAS THEN DELETED, AND THE CENSUS FOLLOWED BOTH MOVES RATHER THAN ONE. gunbc#10882
+// made the native column report execution and this module was rebuilt to say so; gunbc#11003 then
+// deleted the required-v2-native JOB on an operator ruling -- the only full run on the real runner
+// class took over four hours at 14.8 GB and the workflow's concurrency group never supersedes a
+// running job, so every push added another claimant. The route model, harness and admission authority
+// are unchanged and still reachable when someone invokes them; what left is the REQUIRED LANE.
+//
+// SO LANE MEMBERSHIP NO LONGER MEANS EXECUTION ON AN ACCEPTANCE PATH, and reporting it as executing
+// would be this census's own headline defect for the second time in two days, in the same column,
+// with the sign reversed: once when the lane landed and the module still said zero, once now when the
+// lane is gone and the module would still say nine. The arm cites gunbc.rung_drop
+// v2_native_route_off_the_merge_path, which is the authority for when the lane returns; this module
+// does not restate its trigger.
+data native_route_merge_path_drop: DeclarationRef = decl_ref(
+  module_path: "gunbc.rung_drop.v2_native_route_off_the_merge_path",
+  decl_name: "v2_native_route_off_the_merge_path"
 )
 
 // LANE MEMBERSHIP IS THE PREFIX INTERSECTED WITH FLOOR DISCOVERY, NOT THE PREFIX ALONE, and the
@@ -418,16 +429,7 @@ fn native_standing(o: V2CompileObligation) -> PathExecution {
     }
   } else {
     if any_witness_in_native_lane(ws: o.witnesses) {
-      ExecutedPendingVerification {
-        instrument: concat(
-          "the required-v2-native CI job ",
-          concat(
-            required_v2_native_job_name,
-            ": the emitted compiler binary executes this identity through its own SourceRootEvalDriver"
-          )
-        ) as NonEmptyStr,
-        unverified_premises: [unverified_entry_premise, unread_native_verdict_premise]
-      }
+      RouteOffTheMergePath { drop: native_route_merge_path_drop }
     } else {
       RouteGapHeld { stall: self_host_route_stall }
     }
@@ -937,6 +939,7 @@ fn path_execution_is_executing(p: PathExecution) -> Bool {
   match p {
     ExecutedOnPath { instrument: _ } => true
     ExecutedPendingVerification { instrument: _, unverified_premises: _ } => true
+    RouteOffTheMergePath { drop: _ } => false
     DeclinedOutsideGateClosure { gate: _ } => false
     ExcludedFromDiscovery { frontier: _ } => false
     FrozenPathDeferred { roster: _ } => false
@@ -1017,7 +1020,7 @@ fn obligations_without_a_home() -> Int {
 // members report route coverage at MechanicallyPreventable on the strength of membership plus an
 // unread verdict — which is exactly the reading the old name would have licensed, arrived at
 // honestly through a named pending premise instead. That premise is counted by
-// obligations_on_an_unread_native_verdict, and closing it is what turns coverage into
+// the drop row that owns the lane's return, and closing that is what turns coverage into
 // qualification.
 //
 // WHY INFLATION FINDINGS ARE STILL SOUND UNDER THE WEAKER READING. Route coverage is an UPPER BOUND
@@ -1033,12 +1036,21 @@ fn obligations_without_a_home() -> Int {
 // v2.compiler.self_host.compile_obligation_activation, which is being authored separately and will
 // consume this census. That authority landing is this fold's next trigger; until it does, this
 // module reports coverage and says coverage.
-fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
-  if obligation_executes_natively(o: o) && obligation_executes_interpreted(o: o) {
+// THE RUNG IS A FUNCTION OF THE TWO STANDINGS, TAKEN AS ARGUMENTS, so the law stays exercisable when
+// both standings are derived. Once the native column stopped being an authored field, no fixture row
+// could construct a both-routes-executing obligation, and the arm that proves this fold is not a
+// constant would have had nothing to compare against -- a check that can only observe one answer is
+// the decoration DESIGN section 4b names. Splitting the law from the row keeps its RED authorable.
+fn route_coverage_rung_of(interpreted: PathExecution, native: PathExecution) -> GuaranteeRung {
+  if path_execution_is_executing(p: native) && path_execution_is_executing(p: interpreted) {
     MechanicallyPreventable
   } else {
     Mitigatable
   }
+}
+
+fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
+  route_coverage_rung_of(interpreted: interpreted_standing(o: o), native: native_standing(o: o))
 }
 
 // WHO CONSUMES THE COUNTS, STATED AS A DECLARED FRONTIER RATHER THAN LEFT IMPLICIT (DESIGN section
@@ -1089,6 +1101,7 @@ fn standing_carries_premise(p: PathExecution, premise: DeclarationRef) -> Bool {
       fold(ps, init: false, f: fn(found, r) { found || declaration_ref_eq(a: r, b: premise) })
     ExecutedOnPath { instrument: _ } => false
     DeclinedOutsideGateClosure { gate: _ } => false
+    RouteOffTheMergePath { drop: _ } => false
     ExcludedFromDiscovery { frontier: _ } => false
     FrozenPathDeferred { roster: _ } => false
     RouteGapHeld { stall: _ } => false
@@ -1100,30 +1113,6 @@ fn obligation_is_pending_on(o: V2CompileObligation, premise: DeclarationRef) -> 
   standing_carries_premise(p: interpreted_standing(o: o), premise: premise)
 }
 
-// THE NATIVE ARM CARRIES A PREMISE TOO, AND FOR ONE CUT NOTHING COUNTED IT. unread_native_verdict_premise
-// was minted, attached to every native ExecutedPendingVerification, and then read by nothing but the
-// witness fixtures, because obligation_is_pending_on folds the INTERPRETED standing alone. Meanwhile
-// path_execution_is_executing scores a pending arm as executing, so obligations_executing_natively,
-// obligation_route_coverage_rung and obligations_with_inflated_rung all CLEARED rows on the strength
-// of a verdict nobody read: an identity whose native run reached NativeTestReturnedFalse or
-// NativeTestRefused was reported route-covered at MechanicallyPreventable and dropped out of the
-// inflation count.
-//
-// That is this module's own rule broken at the one place it matters -- the debt's own number BESIDE
-// the coverage number rather than inside it -- and it is the widen the census exists to measure,
-// committed in the census. A premise with no fold is not a declared debt; it is a footnote.
-fn obligation_is_pending_on_native(o: V2CompileObligation, premise: DeclarationRef) -> Bool {
-  standing_carries_premise(p: native_standing(o: o), premise: premise)
-}
-
-fn obligations_on_an_unread_native_verdict() -> Int {
-  list_length(
-    items: filter(
-      v2_compile_obligation_census,
-      o => obligation_is_pending_on_native(o: o, premise: unread_native_verdict_premise)
-    )
-  )
-}
 
 fn obligations_executing_on_an_unverified_entry() -> Int {
   list_length(
@@ -1157,8 +1146,15 @@ fn census_witness_subjects() -> List<WitnessSubject> {
 // claimed > executed counts. DESIGN section 4b(1): the reported rung must EQUAL the rung executed
 // evidence establishes, and citing the stronger side while another path stays silent is the
 // inflation, which is worse than sitting low because an inflated class never ranks for climbing.
+// SPLIT FROM THE ROW FOR THE SAME REASON route_coverage_rung_of IS: both standings are derived, so no
+// fixture obligation can reach a both-routes-executing state and an arm that went through a ROW could
+// only ever observe one side of the inequality. The law takes its two rungs.
+fn rung_is_inflated_of(claimed: GuaranteeRung, coverage: GuaranteeRung) -> Bool {
+  guarantee_rung_index(r: claimed) > guarantee_rung_index(r: coverage)
+}
+
 fn obligation_rung_is_inflated(o: V2CompileObligation) -> Bool {
-  guarantee_rung_index(r: o.claimed_rung) > guarantee_rung_index(r: obligation_route_coverage_rung(o: o))
+  rung_is_inflated_of(claimed: o.claimed_rung, coverage: obligation_route_coverage_rung(o: o))
 }
 
 fn obligations_with_inflated_rung() -> Int {
@@ -1195,6 +1191,7 @@ fn path_execution_label(p: PathExecution) -> String {
     ExecutedPendingVerification { instrument: _, unverified_premises: _ } =>
       "executes-pending-verification"
     DeclinedOutsideGateClosure { gate: _ } => "declined-outside-gate-closure"
+    RouteOffTheMergePath { drop: _ } => "route-off-the-merge-path"
     ExcludedFromDiscovery { frontier: _ } => "excluded-from-discovery"
     FrozenPathDeferred { roster: _ } => "frozen-deferral"
     RouteGapHeld { stall: _ } => "route-gap-held"
@@ -1269,10 +1266,7 @@ fn census_counts() -> String {
                 concat(" inflated_rung=", to_string(obligations_with_inflated_rung())),
                 concat(
                   concat(" claiming_above_ceiling=", to_string(obligations_claiming_above_their_ceiling())),
-                  concat(
-                    concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry())),
-                    concat(" unread_native_verdict=", to_string(obligations_on_an_unread_native_verdict()))
-                  )
+                  concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry()))
                 )
               )
             )
