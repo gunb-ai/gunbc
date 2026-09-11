@@ -1902,6 +1902,26 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_empty_calibration_cell_refuses",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeSmall` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_empty_calibration_cell_refuses",
+            spelling: "VolumeSmall",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
 ];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
