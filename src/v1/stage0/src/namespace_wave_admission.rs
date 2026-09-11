@@ -1695,53 +1695,20 @@ pub struct TransitionAdmission {
 /// merge and was never authored on this branch; that is not evidence of anything, and the reason it
 /// goes is that the wall computed its transition as merged and printed it.
 ///
-/// UNION, NOT A CHOICE (2026-09-11 merge). Both sides carry LIVE rows again, the same case the
-/// 2026-09-10 merge of this file recorded: `main` admits the gunbc#10956 runner-roster rehome and
-/// this branch admits the gunbc#10994 sizing relocations. Taking either side whole would delete
-/// obligations the other still owes, and an unadjudicated delta is what this wall exists to
-/// refuse, so the rosters are appended and each side's account of its own subject is kept
-/// verbatim below.
+/// UNION, THEN A CONSUMPTION (2026-09-11 merge). Both sides carried LIVE rows: `main` admitted the
+/// gunbc#10956 runner-roster rehome and this branch admits the gunbc#10994 sizing relocations, so
+/// the rosters were appended rather than one side taken whole -- an unadjudicated delta is what
+/// this wall exists to refuse. #10956 then merged, and the wall said so rather than this paragraph
+/// guessing: the required floor on gunbc#10994 reported `CONSUMED ADMISSION gunbc#10956 runner
+/// provider roster rehome ... already satisfied at the base -- consumed by its own merge`, and
+/// refused adjudication because a roster-touching change owes that deletion. This change is the
+/// toucher, so the deletion is paid here rather than deferred, and main's account of that subject
+/// goes with its row. The sizing rows below retire the same way, by their own merge.
 
-/// THE RESTING STATE WAS EMPTY AND THIS CHANGE AUTHORS ONE ROW BACK INTO IT, which is the ordinary
-/// motion and not a regression of the dissolution above: the twentieth dissolution retired a row
-/// whose delta had stopped being producible, and the row below admits a different delta that this
-/// change produces. Empty is not permissive and non-empty is not permission - a run with any delta
-/// no row names still refuses it as UNADJUDICATED.
+/// The resting state was empty again as of THAT change, and this one authors rows back into it,
+/// which is the ordinary motion rather than a regression: empty is not permissive and non-empty is
+/// not permission, because a run with any delta no row names still refuses it as UNADJUDICATED.
 ///
-/// gunbc#10956 runner provider roster rehome (2026-09-10). `gunbc.runner_shape_census` authored
-/// `surveyed_runner_catalogs`, the roster of which CI runner providers this repository has read.
-/// That roster acquired a SECOND consumer — `gunbc.runner_label_resolution`, which asks the same
-/// list a different question: not what a provider's sizes are, but what one of its `runs-on` labels
-/// means. A roster copied into the second consumer is a fork that goes stale the first time a
-/// provider is added to one list and not the other (DESIGN §3), so the declaration moved to
-/// `gunbc.runner_provider_survey` and both consumers import it.
-///
-/// WHY THIS IS `TargetChanged` AND WHY THAT CLASSIFICATION IS CORRECT HERE. The spelling
-/// `surveyed_runner_catalogs` is authored on both sides inside `surveyed_runner_shapes`, and what
-/// changed is which declaration it admits: base `{gunbc.runner_shape_census}`, head
-/// `{gunbc.runner_provider_survey}`. That is exactly the motion this wall exists to make an author
-/// say out loud, because a spelling that silently starts denoting a different declaration is how a
-/// rehome smuggles a semantic change past review. It is not the `AuthoredReferenceResolution`
-/// pattern the 2026-08-27 ruling auto-admits: the name was not previously unresolved or bound to
-/// nothing, it was bound to a real declaration that this change deliberately relocated.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. The moved declaration is
-/// byte-identical to the one it replaces — same name, same signature, same six-element body — and
-/// the four `SameDeclarationIdentityRebind` membership rows the required floor on this branch's
-/// first head reported (run 34517395009, `gunbc.runner_shape_census ->
-/// extdeps.ci_runner.{blacksmith,circleci,depot,github_actions}`, removed) are the mechanical
-/// evidence: every name the census stopped importing directly still
-/// denotes the same declaration through the new module, and a binding that did not would have been
-/// refused on its own row. The closure blast radius that run measured is 407 modules, the census's
-/// own reach and not new reach — `gunbc.runner_provider_survey` imports nothing the census did not already
-/// import.
-///
-/// TRIGGER: this row goes when #10956 merges. The base then authors `surveyed_runner_catalogs` in
-/// `gunbc.runner_provider_survey`, the delta stops being producible, and CONSUMED comes due on the
-/// roster's next touch — adjudicated by the declaring-module join, not by this sentence.
-/// The resting state is empty again as of this change. Empty is not permissive: a run with a real
-/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
-/// admission.
 /// THE SIZING UNBUNDLING (gunbc#10994) RELOCATES TWO GROUPS OF SPELLINGS, AND EVERY ROW BELOW IS
 /// ONE OF THEM AT EXACT IDENTITY. `Intricacy*` and `Volume*` were declared by
 /// `gunbc.roadmap_model` inside the `NodeSizing` coproduct; that coproduct fused a size with the
@@ -1764,16 +1731,6 @@ pub struct TransitionAdmission {
 /// each spelling to the module named in `target`, the delta stops being producible, and the wall
 /// reports them CONSUMED on the next roster-touching change, which is what deletes them.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10956 runner provider roster rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner_shape_census",
-            in_declaration: "surveyed_runner_shapes",
-            spelling: "surveyed_runner_catalogs",
-            target: "gunbc.runner_provider_survey",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
         subject: AdmissionSubject::Binding {
