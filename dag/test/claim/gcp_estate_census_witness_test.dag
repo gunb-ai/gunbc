@@ -42,7 +42,9 @@ import gunbc.gcp_estate_observation {
   gunb_test_is_enumerated_not_selected,
   sheets_calling_home,
   SheetsCallingHomeUnresolved,
-  gunb_test_sheets_is_absent,
+  project_enables_service,
+  sts_api_service_id,
+  sheets_api_service_id,
   census_observed_project_roster_is_the_named_set,
   census_wif_provider_roster_is_the_named_set,
   census_sa_roster_is_the_named_set,
@@ -66,15 +68,12 @@ import gunbc.gcp_estate_observation {
   four_github_pools_are_keyed_by_project_number,
   github_pool_id_does_not_discriminate_project,
   gunbai_auto_sts_inert_is_not_established,
-  gunbai_auto_has_sts,
-  gunb_ci_has_sts,
   none_of_the_three_sandboxes_has_sheets,
   gunbai_auto_is_the_only_pool_host_without_sts,
   sheets_home_is_create_purpose_scoped_unminted,
   gunbai_secrets_enabled_services_are_closed,
   copied_malformed_condition_has_three_instances,
   copied_malformed_instance_count_in_census,
-  gunb_test_has_sts,
   gunbai_auto_provider_condition_is_tight_legacy_repo,
   gunbai_auto_legacy_federation_hygiene,
   CorrectlyScopedPossiblyInertUndeclared,
@@ -87,7 +86,6 @@ import gunbc.gcp_estate_observation {
   gunb_ci_project_number,
   project_number_from_sa_email,
   sheets_leading_candidate_is_not_selected,
-  gunbai_auto_lacks_sts_while_ci_and_test_have_it,
   gunb_test_is_deranked_scratch_not_a_sheets_candidate,
   workspace_admin_display_name_says_test,
   workspace_admin_has_no_gunb_ci_project_roles,
@@ -443,12 +441,12 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   let census = operator_audit_census()
   gunb_test_is_enumerated_not_selected(census: census)
     && census_observed_project_roster_is_the_named_set(census: census)
-    && gunb_test_sheets_is_absent()
-    && gunb_test_has_sts()
+    && !project_enables_service(project_id: gunb_test_project_id, service: sheets_api_service_id)
+    && project_enables_service(project_id: gunb_test_project_id, service: sts_api_service_id)
     && none_of_the_three_sandboxes_has_sheets()
     && sheets_home_is_create_purpose_scoped_unminted()
-    && !gunbai_auto_has_sts()
-    && gunb_ci_has_sts()
+    && !project_enables_service(project_id: gunbai_auto_project_id, service: sts_api_service_id)
+    && project_enables_service(project_id: gunb_ci_project_id, service: sts_api_service_id)
     && gunbai_auto_is_the_only_pool_host_without_sts()
     && gunbai_auto_services_are_distinctive_not_a_count()
     && gunb_ci_services_are_distinctive_not_a_count()
@@ -464,7 +462,6 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && census_subject_is_named_gap(census: census, subject: gap_pool_creation_timestamps.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_token_creator_binding_members.subject_identity as String)
     && sheets_leading_candidate_is_not_selected()
-    && gunbai_auto_lacks_sts_while_ci_and_test_have_it()
     && gunb_test_is_deranked_scratch_not_a_sheets_candidate()
     && workspace_admin_display_name_says_test()
     && workspace_admin_has_no_gunb_ci_project_roles()

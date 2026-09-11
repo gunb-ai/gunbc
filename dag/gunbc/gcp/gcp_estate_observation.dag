@@ -65,6 +65,11 @@ type GcpEstateSubject
       member: String?
     }
 
+type ObservedEnabledServices {
+  project_id: GcpProjectId
+  ids: List<NonEmptyStr>
+}
+
 type EstateCoverageGap {
   subject_identity: NonEmptyStr
   cause: NonEmptyStr
@@ -949,18 +954,6 @@ data gunb_test_enabled_service_ids: List<NonEmptyStr> = [
   "telemetry.googleapis.com" as NonEmptyStr,
 ]
 
-fn gunb_test_enables_service(service: NonEmptyStr) -> Bool {
-  fold(
-    gunb_test_enabled_service_ids,
-    init: false,
-    f: fn(acc, s) { acc || s == service },
-  )
-}
-
-fn gunb_test_sheets_is_absent() -> Bool {
-  !gunb_test_enables_service(service: sheets_api_service_id)
-}
-
 data gunbai_auto_enabled_service_ids: List<NonEmptyStr> = [
   "aiplatform.googleapis.com" as NonEmptyStr,
   "analyticshub.googleapis.com" as NonEmptyStr,
@@ -996,56 +989,56 @@ data gunbai_auto_enabled_service_ids: List<NonEmptyStr> = [
   "storage.googleapis.com" as NonEmptyStr,
 ]
 
-fn gunbai_auto_enables_service(service: NonEmptyStr) -> Bool {
-  fold(
-    gunbai_auto_enabled_service_ids,
-    init: false,
-    f: fn(acc, s) { acc || s == service },
-  )
-}
-
 data compute_api_service_id: NonEmptyStr = "compute.googleapis.com"
 
 data sts_api_service_id: NonEmptyStr = "sts.googleapis.com"
 
-fn gunb_ci_enables_service(service: NonEmptyStr) -> Bool {
+data observed_enabled_services_roster: List<ObservedEnabledServices> = [
+  ObservedEnabledServices {
+    project_id: fleet_secrets_gcp_project,
+    ids: gunbai_secrets_enabled_service_ids,
+  },
+  ObservedEnabledServices {
+    project_id: gunbai_auto_project_id,
+    ids: gunbai_auto_enabled_service_ids,
+  },
+  ObservedEnabledServices {
+    project_id: gunb_ci_project_id,
+    ids: gunb_ci_enabled_service_ids,
+  },
+  ObservedEnabledServices {
+    project_id: gunb_test_project_id,
+    ids: gunb_test_enabled_service_ids,
+  },
+]
+
+fn enabled_service_ids_for_project(project_id: GcpProjectId) -> List<NonEmptyStr>? {
   fold(
-    gunb_ci_enabled_service_ids,
-    init: false,
-    f: fn(acc, s) { acc || s == service },
+    observed_enabled_services_roster,
+    init: none,
+    f: fn(acc, row) {
+      match acc {
+        Present { value: ids } => Present { value: ids }
+        Absent =>
+          if row.project_id == project_id {
+            Present { value: row.ids }
+          } else {
+            none
+          }
+      }
+    },
   )
 }
 
-fn gunbai_auto_has_sts() -> Bool {
-  gunbai_auto_enables_service(service: sts_api_service_id)
+fn service_id_in_list(ids: List<NonEmptyStr>, service: NonEmptyStr) -> Bool {
+  fold(ids, init: false, f: fn(acc, s) { acc || s == service })
 }
 
-fn gunb_ci_has_sts() -> Bool {
-  gunb_ci_enables_service(service: sts_api_service_id)
-}
-
-fn gunbai_auto_has_sheets() -> Bool {
-  gunbai_auto_enables_service(service: sheets_api_service_id)
-}
-
-fn gunb_ci_has_sheets() -> Bool {
-  gunb_ci_enables_service(service: sheets_api_service_id)
-}
-
-fn gunb_test_has_sts() -> Bool {
-  gunb_test_enables_service(service: sts_api_service_id)
-}
-
-fn gunbai_secrets_enables_service(service: NonEmptyStr) -> Bool {
-  fold(
-    gunbai_secrets_enabled_service_ids,
-    init: false,
-    f: fn(acc, s) { acc || s == service },
-  )
-}
-
-fn gunbai_secrets_has_sts() -> Bool {
-  gunbai_secrets_enables_service(service: sts_api_service_id)
+fn project_enables_service(project_id: GcpProjectId, service: NonEmptyStr) -> Bool {
+  match enabled_service_ids_for_project(project_id: project_id) {
+    Absent => false
+    Present { value: ids } => service_id_in_list(ids: ids, service: service)
+  }
 }
 
 type EnabledServicesReadStanding
@@ -1065,22 +1058,23 @@ fn gunbai_secrets_enabled_services_are_closed() -> Bool {
   match gunbai_secrets_enabled_services_standing() {
     ClosedUnfiltered { project_id: p, ids: _ } =>
       p == fleet_secrets_gcp_project
-        && !gunbai_secrets_enables_service(service: sheets_api_service_id)
-        && gunbai_secrets_enables_service(service: sts_api_service_id)
-        && gunbai_secrets_enables_service(service: compute_api_service_id)
+        && !project_enables_service(project_id: fleet_secrets_gcp_project, service: sheets_api_service_id)
+        && project_enables_service(project_id: fleet_secrets_gcp_project, service: sts_api_service_id)
+        && project_enables_service(project_id: fleet_secrets_gcp_project, service: compute_api_service_id)
   }
 }
 
 fn none_of_the_three_sandboxes_has_sheets() -> Bool {
-  gunb_test_sheets_is_absent() && !gunbai_auto_has_sheets() && !gunb_ci_has_sheets()
+  !project_enables_service(project_id: gunb_test_project_id, service: sheets_api_service_id)
+    && !project_enables_service(project_id: gunbai_auto_project_id, service: sheets_api_service_id)
+    && !project_enables_service(project_id: gunb_ci_project_id, service: sheets_api_service_id)
 }
 
 fn gunbai_auto_is_the_only_pool_host_without_sts() -> Bool {
-  gunbai_secrets_has_sts() && gunb_test_has_sts() && gunb_ci_has_sts() && !gunbai_auto_has_sts()
-}
-
-fn gunbai_auto_lacks_sts_while_ci_and_test_have_it() -> Bool {
-  gunbai_auto_is_the_only_pool_host_without_sts()
+  project_enables_service(project_id: fleet_secrets_gcp_project, service: sts_api_service_id)
+    && project_enables_service(project_id: gunb_test_project_id, service: sts_api_service_id)
+    && project_enables_service(project_id: gunb_ci_project_id, service: sts_api_service_id)
+    && !project_enables_service(project_id: gunbai_auto_project_id, service: sts_api_service_id)
 }
 
 type TokenExchangeStsHypothesis
@@ -1095,7 +1089,10 @@ fn gunbai_auto_token_exchange_sts_hypothesis() -> TokenExchangeStsHypothesis {
   TokenExchangeRequiresStsInPoolProjectUngrounded {
     pool_project_number: gunbai_auto_project_number,
     pool_id: github_pool_id,
-    sts_enabled_in_pool_project: gunbai_auto_has_sts(),
+    sts_enabled_in_pool_project: project_enables_service(
+      project_id: gunbai_auto_project_id,
+      service: sts_api_service_id,
+    ),
     auto_is_the_only_pool_host_without_sts: gunbai_auto_is_the_only_pool_host_without_sts(),
   }
 }
@@ -1137,23 +1134,30 @@ fn gcp_project_int_number_is_the_string_authority() -> Bool {
     && to_string(observed_gunb_test_project.project_number) == gunb_test_project_number
 }
 
+data observed_named_project_numbers: List<String> = [
+  fleet_secrets_project_number,
+  gunbai_auto_project_number,
+  gunb_ci_project_number,
+  gunb_test_project_number,
+  to_string(observed_gemini_project.project_number),
+]
+
 fn observed_project_number_is_named(number: String) -> Bool {
-  number == fleet_secrets_project_number
-    || number == gunbai_auto_project_number
-    || number == gunb_ci_project_number
-    || number == gunb_test_project_number
-    || number == to_string(observed_gemini_project.project_number)
+  fold(
+    observed_named_project_numbers,
+    init: false,
+    f: fn(acc, n) { acc || n == number },
+  )
 }
 
 fn named_projects_are_observed_in_census(census: GcpEstateCensus) -> Bool {
-  census_subject_is_observed_project_number(census: census, number: fleet_secrets_project_number)
-    && census_subject_is_observed_project_number(census: census, number: gunbai_auto_project_number)
-    && census_subject_is_observed_project_number(census: census, number: gunb_ci_project_number)
-    && census_subject_is_observed_project_number(census: census, number: gunb_test_project_number)
-    && census_subject_is_observed_project_number(
-      census: census,
-      number: to_string(observed_gemini_project.project_number),
-    )
+  fold(
+    observed_named_project_numbers,
+    init: true,
+    f: fn(acc, n) {
+      acc && census_subject_is_observed_project_number(census: census, number: n)
+    },
+  )
 }
 
 fn every_census_observed_project_is_named(census: GcpEstateCensus) -> Bool {
@@ -1278,17 +1282,19 @@ fn census_sa_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
 }
 
 fn gunbai_auto_services_are_distinctive_not_a_count() -> Bool {
-  !gunbai_auto_has_sts()
-    && !gunbai_auto_has_sheets()
-    && gunbai_auto_enables_service(service: compute_api_service_id)
+  !project_enables_service(project_id: gunbai_auto_project_id, service: sts_api_service_id)
+    && !project_enables_service(project_id: gunbai_auto_project_id, service: sheets_api_service_id)
+    && project_enables_service(project_id: gunbai_auto_project_id, service: compute_api_service_id)
 }
 
 fn gunb_ci_services_are_distinctive_not_a_count() -> Bool {
-  gunb_ci_has_sts() && !gunb_ci_has_sheets()
+  project_enables_service(project_id: gunb_ci_project_id, service: sts_api_service_id)
+    && !project_enables_service(project_id: gunb_ci_project_id, service: sheets_api_service_id)
 }
 
 fn gunb_test_services_are_distinctive_not_a_count() -> Bool {
-  gunb_test_has_sts() && gunb_test_sheets_is_absent()
+  project_enables_service(project_id: gunb_test_project_id, service: sts_api_service_id)
+    && !project_enables_service(project_id: gunb_test_project_id, service: sheets_api_service_id)
 }
 
 // Secrets is refused as Sheets API surface because custody and API surface should be
