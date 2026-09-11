@@ -51,6 +51,13 @@ import gunbc.spark.native_deployment_readback {
   DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
   inspect_native_deployment, accept_deployment,
 }
+import gunbc.spark.nope_conformance_probe {
+  NopeConformanceStanding, NopeConformanceHeld, NopeConformanceRefused, NopeConformanceUnestablished,
+  run_nope_conformance,
+}
+import gunbc.spark.serving_arm { RuntimeArtifactIdentity, vllm_openai_glm53_flash_row }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.native_incumbent {
   IncumbentObservation, IncumbentRunning, IncumbentStoppedPresent, IncumbentAbsent, IncumbentUnreadable,
   observe_incumbent,
@@ -674,4 +681,91 @@ func glm_native_tp4_cutover_wet() -> ProcessExit
           }
       }
   }
+}
+
+// ── THE CHEAP PROBES AS THEIR OWN OPERATOR-REACHABLE ROOT ─────────────────────────────────────
+//
+// IT LIVES HERE RATHER THAN IN gunbc.spark.nope_conformance_probe BECAUSE THE PLUMBING IS ALREADY HERE.
+// Reaching a Spark needs the executor's own hostname, the bootstrap credential, a known-hosts anchor
+// materialised under an attempt identity, and an ssh key file bracket -- four facts this module already
+// assembles for the cutover. A second copy of that chain in the probe module would be the §2 duplication
+// this repository consolidates, and the probe module stays a pure description of WHAT to ask.
+//
+// AND IT IS A SEPARATE ROOT RATHER THAN A STAGE OF THE CUTOVER, DELIBERATELY. The cutover cannot reach its
+// expensive stage today: the native subject is ExecutionIncompatible, so selection refuses and no plan is
+// produced. A gate placed below that refusal would be unreachable code defended as caution -- the same shape
+// as the readback arm nothing could reach. This root runs the probes on their own, against ANY candidate
+// image, which is what an operator actually needs before deciding to spend a weight load.
+//
+// IT TAKES THE ARTIFACT AS A PARAMETER, so the answer names the bytes it asked about. Running it against the
+// stock official artifact is expected to REFUSE on probe one, and that refusal is this session's cheapest
+// reproduction of the outage: milliseconds against 524 seconds of weight loading per rank.
+func glm53_nope_conformance_wet(artifact: RuntimeArtifactIdentity) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["nope conformance: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match native_attempt_identity_at(now: now) {
+            Absent => exit_failure(reason: "the attempt identity could not be minted: the clock was unreadable, or the instant it reported is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join([
+                  "trust could not be established, so no probe ran: ",
+                  known_hosts_materialization_receipt(outcome: materialization),
+                ], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: "gunbc-glm-nope-conformance-admin-password" as NonEmptyStr,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) {
+                      run_nope_conformance(
+                        ctx: SparkRemoteExecutionContext {
+                          trust: trust,
+                          reach_path: path,
+                          administrator: administrator as Secret,
+                          administrator_file: file,
+                        },
+                        host: spark_pair_serving_head(group: FabricGroupB),
+                        artifact: artifact,
+                      )
+                    },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: standing } =>
+                      match standing {
+                        NopeConformanceHeld { image_key: k, passed: p, unrun: u } =>
+                          if u == 0 { ExitSuccess } else {
+                            exit_failure(reason: join([
+                              "PROBES PASSED BUT COVERAGE IS INCOMPLETE, so this is not a green: ", to_string(p),
+                              " passed and ", to_string(u), " could not be executed against ", k,
+                              ". The unexecutable probe is the widened page-table capacity, which only the expensive native run reaches",
+                            ], ""))
+                          }
+                        NopeConformanceRefused { image_key: k, first_refusal: r } =>
+                          exit_failure(reason: join(["REFUSED against ", k, ": ", r], ""))
+                        NopeConformanceUnestablished { cause: c } =>
+                          exit_failure(reason: join(["NOTHING ESTABLISHED: ", c as String], ""))
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE STOCK OFFICIAL ARTIFACT, WHICH IS THE SUBJECT AN OPERATOR ASKS ABOUT TODAY. It is a separate root
+// rather than a default parameter so that running the probes against the stock image is an explicit request:
+// the interesting run, once the derived runtime exists, is against the DERIVED artifact, and a default would
+// quietly keep answering about the old bytes.
+func glm53_nope_conformance_on_stock_official_wet() -> ProcessExit
+  uses net: Network
+{
+  glm53_nope_conformance_wet(artifact: vllm_openai_glm53_flash_row.artifact)
 }
