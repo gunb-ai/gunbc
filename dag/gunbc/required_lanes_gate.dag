@@ -120,6 +120,13 @@ fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
   )
 }
 
+// Shell realization of `gunbc.floor_attempt_standing` `class_wire_is_environment`: the CLASS
+// job output equals `floor_outcome_wire_infra`. The modeled decode does not mint a POSIX
+// signature from class alone (`ClassWireOnly`).
+fn required_lane_is_infra_class_test(var_name: String) -> Node {
+  required_lane_var_equals_lit_test(var_name: var_name, text: floor_outcome_wire_infra)
+}
+
 // THE ATTEMPT SUBJECT RECEIPT, AND IT IS THE PIECE THAT MAKES THE JOIN POSSIBLE AT ALL.
 //
 // Before this, the aggregator's log said which two lane results it read and nothing about WHICH

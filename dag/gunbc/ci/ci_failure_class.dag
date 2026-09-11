@@ -34,6 +34,7 @@ type InfraSignature
   | CommandInvokedCannotExecute
   | CommandNotFound
   | MemoryStallRefusedPageThrash
+  | ClassWireOnly
 
 type SignatureSite
   = BuildLog
@@ -66,6 +67,7 @@ fn infra_signature_match_substring(sig: InfraSignature) -> String {
     CommandInvokedCannotExecute => "command invoked cannot execute"
     CommandNotFound => "command not found"
     MemoryStallRefusedPageThrash => "MemoryStallRefusedPageThrash"
+    ClassWireOnly => "ClassWireOnly"
   }
 }
 
@@ -81,6 +83,7 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
     CommandInvokedCannotExecute => "extdeps.process.posix_exit (POSIX.1-2017 shell status 126: command found but not executable)"
     CommandNotFound => "extdeps.process.posix_exit (POSIX.1-2017 shell status 127: command not found); limitation: gunbc.ci_failure_class command_not_found_exit_cannot_distinguish_eviction_from_misnaming"
     MemoryStallRefusedPageThrash => "gunbc.host.memory_stall_refusal memory_stall_refusal_pressure_text (typed floor refusal, not a subject defect; positive control)"
+    ClassWireOnly => "gunbc.ci_failure_class floor_outcome_wire_infra (job output carries class only; signature is on the attempt receipt file, not this wire)"
   }
 }
 
@@ -96,6 +99,7 @@ fn infra_signature_site(sig: InfraSignature) -> SignatureSite {
     CommandInvokedCannotExecute => ExitStatus
     CommandNotFound => ExitStatus
     MemoryStallRefusedPageThrash => JobSignal
+    ClassWireOnly => ExitStatus
   }
 }
 
@@ -260,6 +264,7 @@ fn infra_signature_wire(sig: InfraSignature) -> String {
     CommandInvokedCannotExecute => "CommandInvokedCannotExecute"
     CommandNotFound => "CommandNotFound"
     MemoryStallRefusedPageThrash => "MemoryStallRefusedPageThrash"
+    ClassWireOnly => "ClassWireOnly"
   }
 }
 

@@ -48,9 +48,16 @@ import gunbc.floor_attempt_standing {
   floor_mechanism_workflow_cancelled_name,
   floor_mechanism_runner_lost_name,
   floor_mechanism_toolchain_identity_lost_name,
-  floor_attribution_unestablished_name
+  floor_attribution_unestablished_name,
+  class_wire_is_environment
 }
-import gunbc.ci_failure_class { FloorFailed, Infra, CommandInvokedCannotExecute }
+import gunbc.ci_failure_class {
+  FloorFailed,
+  Infra,
+  CommandInvokedCannotExecute,
+  floor_outcome_wire_infra,
+  floor_outcome_wire_structural
+}
 import gunbc.witness_floor_workflow {
   expected_witness_floor_yml,
   WitnessFloorGenerated,
@@ -368,6 +375,9 @@ test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool {
   floor_rendered_verdict_name(verdict: env) == floor_rendered_verdict_environment_name
     && floor_rendered_verdict_blocks(verdict: env) == true
     && floor_rendered_verdict_name(verdict: still_red) == floor_rendered_verdict_red_name
+    && class_wire_is_environment(raw: floor_outcome_wire_infra)
+    && (class_wire_is_environment(raw: floor_outcome_wire_structural) == false)
+    && (class_wire_is_environment(raw: "") == false)
 }
 
 // BOTH AXES REACH THE EMITTED GATE, so the population of unestablished mechanisms is countable
