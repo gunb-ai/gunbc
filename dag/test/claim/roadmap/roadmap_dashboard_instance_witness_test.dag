@@ -100,6 +100,8 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_path_is_under,
+  srv1_linux_toolchain,
+  dispatch_worker_memory_ceiling,
 }
 
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
@@ -817,6 +819,7 @@ fn witness_production_slot(
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
