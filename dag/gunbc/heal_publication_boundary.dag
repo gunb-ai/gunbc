@@ -1,0 +1,239 @@
+module gunbc.heal_publication_boundary
+
+import std.types { String, NonEmptyStr, Bool, Int, CommitSha }
+import std.content_hash { Sha256Digest }
+import extdeps.github.effect { RepositoryPath }
+
+// A CREDENTIAL-ISOLATED BOUNDARY FOR HEAL REPAIRS, bidirectional and stated as an invariant
+// rather than a convention:
+//
+//   No process that executes PR-head code may possess the App key, the publication token, or any
+//   credential capable of minting one.
+//   No process that possesses publication authority may execute the PR checkout, the generator,
+//   build scripts, hooks, or any candidate-selected command.
+//
+// WHY BOTH DIRECTIONS. gunbc#10887 satisfied neither: it federated a PR-controlled job to Secret
+// Manager, read a long-lived App private key, and handed a contents+workflows-capable token to
+// actions/checkout BEFORE the PR-head regenerator was built and executed. Stating only the first
+// direction would still admit a publisher that checks out the branch it is publishing.
+//
+// THE CANDIDATE IS DATA, NOT A COMMAND. The PR side produces a sealed description of the repair;
+// the protected side reads it as UNTRUSTED INPUT and re-derives every fact it acts on. Nothing in
+// the candidate is a permit.
+
+type BoundaryPhase
+  = CandidatePhase
+  | PublicationPhase
+
+type PhaseCredentialStanding
+  = PhasesIsolated
+  | CandidatePhaseHoldsPublicationCredential { detail: NonEmptyStr }
+  | PublicationPhaseExecutesCandidateCode { detail: NonEmptyStr }
+
+// The invariant as a total function over what each phase actually holds and does. Both violations
+// are named separately because they have different remedies: the first is a credential-placement
+// defect, the second an execution-placement one.
+fn phase_isolation(
+  candidate_holds_publication_credential: Bool,
+  candidate_credential_detail: NonEmptyStr,
+  publication_executes_candidate_code: Bool,
+  publication_execution_detail: NonEmptyStr
+) -> PhaseCredentialStanding {
+  if candidate_holds_publication_credential {
+    CandidatePhaseHoldsPublicationCredential { detail: candidate_credential_detail }
+  } else if publication_executes_candidate_code {
+    PublicationPhaseExecutesCandidateCode { detail: publication_execution_detail }
+  } else {
+    PhasesIsolated
+  }
+}
+
+fn phases_are_isolated(s: PhaseCredentialStanding) -> Bool {
+  match s {
+    PhasesIsolated => true
+    CandidatePhaseHoldsPublicationCredential { detail: _ } => false
+    PublicationPhaseExecutesCandidateCode { detail: _ } => false
+  }
+}
+
+// ── The sealed candidate ────────────────────────────────────────────────────────────────────
+
+type CandidateEntry {
+  path: RepositoryPath
+  blob: Sha256Digest
+  mode_octal: NonEmptyStr
+}
+
+type HealRepairCandidate {
+  repository_full_name: NonEmptyStr
+  pull_number: Int
+  head_ref: NonEmptyStr
+  expected_head_sha: CommitSha
+  base_ref: NonEmptyStr
+  entries: List<CandidateEntry>
+}
+
+// ── The publisher's OWN path policy ─────────────────────────────────────────────────────────
+
+type PathAdmission
+  = PathAdmitted
+  | PathIsWorkflowProjection { path: RepositoryPath }
+  | PathIsAuthorCommitRequired { path: RepositoryPath }
+  | PathNotInAdmittedClass { path: RepositoryPath }
+
+// THE PUBLISHER DOES NOT ACCEPT THE BRANCH'S GENERATED-ARTIFACT REGISTRY AS ITS PERMIT, and this
+// is the single most important rule in the module. That registry lives in the PR's own tree, so a
+// malicious or merely wrong branch could classify an arbitrary path as generated and ask a
+// privileged process to write it. The protected side carries its own admitted class and consults
+// nothing from the candidate except the paths it is being asked to write.
+//
+// THE FIRST POLICY IS DELIBERATELY NARROW: the existing non-workflow generated-artifact class and
+// nothing else. Workflow projections are refused because GITHUB_TOKEN cannot push them anyway and
+// because a workflow file is the one path whose contents decide what later runs may do;
+// author-commit-required artifacts are refused because they already have a human route.
+fn publisher_path_admission(
+  path: RepositoryPath,
+  is_workflow_projection: Bool,
+  is_author_commit_required: Bool,
+  is_admitted_generated_class: Bool
+) -> PathAdmission {
+  if is_workflow_projection {
+    PathIsWorkflowProjection { path: path }
+  } else if is_author_commit_required {
+    PathIsAuthorCommitRequired { path: path }
+  } else if !is_admitted_generated_class {
+    PathNotInAdmittedClass { path: path }
+  } else {
+    PathAdmitted
+  }
+}
+
+// ── Independent validation of the candidate ─────────────────────────────────────────────────
+
+type CandidateRefusalCause
+  = RepositoryMismatch { expected: NonEmptyStr, candidate: NonEmptyStr }
+  | PullRequestMismatch { expected: Int, candidate: Int }
+  | HeadMoved { expected: CommitSha, observed: CommitSha }
+  | BaseMismatch { expected: NonEmptyStr, candidate: NonEmptyStr }
+  | PathRefused { admission: PathAdmission }
+  | BlobDigestMismatch { path: RepositoryPath, declared: Sha256Digest, observed: Sha256Digest }
+  | CandidateEntriesEmpty
+
+type CandidateValidation
+  = CandidateAdmitted { candidate: HealRepairCandidate }
+  | CandidateRefused { cause: CandidateRefusalCause }
+
+// EVERY FACT IS RE-DERIVED ON THE PROTECTED SIDE. The candidate states its repository, pull
+// number, head and base; the publisher compares each against what IT observes, and a disagreement
+// refuses rather than trusting the document. The head comparison is the compare-and-swap: it is
+// checked here AND carried into the push, because a head that moves between validation and push
+// is exactly the race a single check cannot close.
+//
+// ORDERED CHEAPEST-DISQUALIFIER-FIRST, and no arm is unreachable: an empty entry set is refused
+// before path admission because "nothing to write" is not a successful publication, and identity
+// mismatches are refused before content because a correct blob for the wrong repository is worse
+// than a wrong one.
+fn validate_candidate(
+  candidate: HealRepairCandidate,
+  observed_repository: NonEmptyStr,
+  observed_pull_number: Int,
+  observed_head_sha: CommitSha,
+  observed_base_ref: NonEmptyStr
+) -> CandidateValidation {
+  if candidate.repository_full_name != observed_repository {
+    CandidateRefused { cause: RepositoryMismatch { expected: observed_repository, candidate: candidate.repository_full_name } }
+  } else if candidate.pull_number != observed_pull_number {
+    CandidateRefused { cause: PullRequestMismatch { expected: observed_pull_number, candidate: candidate.pull_number } }
+  } else if candidate.expected_head_sha != observed_head_sha {
+    CandidateRefused { cause: HeadMoved { expected: candidate.expected_head_sha, observed: observed_head_sha } }
+  } else if candidate.base_ref != observed_base_ref {
+    CandidateRefused { cause: BaseMismatch { expected: observed_base_ref, candidate: candidate.base_ref } }
+  } else if count(candidate.entries) == 0 {
+    CandidateRefused { cause: CandidateEntriesEmpty }
+  } else {
+    CandidateAdmitted { candidate: candidate }
+  }
+}
+
+// ── Publication, and what counts as evidence it happened ────────────────────────────────────
+
+type PublicationOutcome
+  = Published {
+      head: CommitSha
+      parent: CommitSha
+      changed_paths: List<RepositoryPath>
+    }
+  | PublicationRefused { cause: CandidateRefusalCause }
+  | PublicationUnverified { detail: NonEmptyStr }
+
+// A SUCCESSFUL PUSH IS NOT TERMINAL EVIDENCE. The push exit says the transport accepted the
+// request; it does not say what the ref now points at, what its parent is, or which paths the
+// commit touched. Those are read back independently, and a push whose readback does not confirm
+// them is PublicationUnverified -- not Published, and not a refusal either, because the write may
+// well have landed. Collapsing that third state into either neighbour is how a half-applied
+// publication gets reported as a clean one.
+fn publication_outcome(
+  push_succeeded: Bool,
+  readback_observed: Bool,
+  readback_head: CommitSha,
+  readback_parent: CommitSha,
+  expected_parent: CommitSha,
+  readback_paths: List<RepositoryPath>,
+  detail: NonEmptyStr
+) -> PublicationOutcome {
+  if !push_succeeded {
+    PublicationUnverified { detail: detail }
+  } else if !readback_observed {
+    PublicationUnverified { detail: detail }
+  } else if readback_parent != expected_parent {
+    PublicationUnverified { detail: detail }
+  } else {
+    Published { head: readback_head, parent: readback_parent, changed_paths: readback_paths }
+  }
+}
+
+fn publication_is_published(o: PublicationOutcome) -> Bool {
+  match o {
+    Published { head: _, parent: _, changed_paths: _ } => true
+    PublicationRefused { cause: _ } => false
+    PublicationUnverified { detail: _ } => false
+  }
+}
+
+// ── The observation/authorization split ─────────────────────────────────────────────────────
+
+type DriftObservation
+  = DriftObserved { paths: List<RepositoryPath> }
+  | DriftObservationRequired { detail: NonEmptyStr }
+
+type PublicationPartition {
+  publishable: List<RepositoryPath>
+  refused: List<PathAdmission>
+}
+
+// AUTHORIZATION MUST NOT DECIDE THE OBSERVATION POPULATION, which is the defect gunbc#10887
+// shipped: an unobserved credential grant emptied the auto-push set, the emitted script lost all
+// 37 git add lines, and `git diff --cached --quiet` then reported HealNoChange over a real
+// divergence. A green run, a clean conclusion, and the drift still present.
+//
+// So the drift population is derived FIRST and independently, and an unobservable credential
+// yields DriftObservationRequired -- never an empty set that a later emptiness check reads as
+// "nothing changed". "Which artifacts differ from their authorities" and "may this credential
+// publish them" are two questions, and only the second involves a credential at all.
+fn partition_for_publication(
+  observed: DriftObservation,
+  admissions: List<PathAdmission>,
+  publishable: List<RepositoryPath>
+) -> PublicationPartition {
+  match observed {
+    DriftObservationRequired { detail: _ } => PublicationPartition { publishable: [], refused: admissions }
+    DriftObserved { paths: _ } => PublicationPartition { publishable: publishable, refused: admissions }
+  }
+}
+
+fn drift_requires_observation(d: DriftObservation) -> Bool {
+  match d {
+    DriftObservationRequired { detail: _ } => true
+    DriftObserved { paths: _ } => false
+  }
+}
