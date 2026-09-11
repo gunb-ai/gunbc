@@ -16,7 +16,21 @@ import gunbc.spark.native_cutover {
   CutoverRolledBackAndIncumbentLost, cutover_succeeded, cutover_left_an_outage,
   glm_native_cutover_standing, glm_native_cutover_satisfied_today,
 }
-import gunbc.spark.serving_arm_launch { glm_native_tp4_launch_plan }
+import gunbc.spark.device_memory_envelope {
+  ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan,
+  glm_native_device_memory_policy,
+}
+
+// THE FIXTURE MINTS ITS OWN RESOLUTION, WHICH IS THE POINT OF PUTTING THE FRACTION IN A TYPE. A witness for
+// the precondition roster is not a witness about memory, so it supplies a resolution directly rather than
+// reaching a fleet -- and the fact that it MUST supply one is the wall: there is no plan to admit without it.
+data fixture_envelope: ResolvedDeviceMemoryEnvelope = ResolvedForAttempt {
+  basis_points: 8400,
+  binding_node_rank: 1,
+  policy: glm_native_device_memory_policy,
+  attempt: "witness-fixture" as NonEmptyStr,
+  standings: [],
+}
 
 data every_precondition: List<CutoverPrecondition> = cutover_preconditions
 
@@ -42,7 +56,7 @@ data all_but_image_present: List<CutoverPrecondition> = [
 // absent from two ranks, and nothing asked. A roster that reported readiness on a majority would have
 // produced the same outage with a receipt saying it was fine.
 test fn a_single_unmet_precondition_withholds_the_cutover() -> Bool {
-  match admit_cutover(plan: glm_native_tp4_launch_plan(), satisfied: all_but_image_present) {
+  match admit_cutover(plan: glm_native_tp4_launch_plan(envelope: fixture_envelope), satisfied: all_but_image_present) {
     CutoverWithheld { unmet: us } => count(us) == 1
     CutoverAdmitted { plan: _ } => false
   }
@@ -52,7 +66,7 @@ test fn a_single_unmet_precondition_withholds_the_cutover() -> Bool {
 // nothing must be told everything it did not check, because the alternative is fixing them one launch at
 // a time.
 test fn checking_nothing_reports_every_precondition() -> Bool {
-  match admit_cutover(plan: glm_native_tp4_launch_plan(), satisfied: []) {
+  match admit_cutover(plan: glm_native_tp4_launch_plan(envelope: fixture_envelope), satisfied: []) {
     CutoverWithheld { unmet: us } => count(us) == count(cutover_preconditions)
     CutoverAdmitted { plan: _ } => false
   }
@@ -61,7 +75,7 @@ test fn checking_nothing_reports_every_precondition() -> Bool {
 // THE POSITIVE CONTROL: with every precondition satisfied and an admissible plan, the cutover is
 // admitted. Without this the rows above would pass on a gate that refuses unconditionally.
 test fn a_complete_roster_admits_the_cutover() -> Bool {
-  match admit_cutover(plan: glm_native_tp4_launch_plan(), satisfied: every_precondition) {
+  match admit_cutover(plan: glm_native_tp4_launch_plan(envelope: fixture_envelope), satisfied: every_precondition) {
     CutoverAdmitted { plan: _ } => true
     CutoverWithheld { unmet: _ } => false
   }
@@ -71,7 +85,7 @@ test fn a_complete_roster_admits_the_cutover() -> Bool {
 // on the hosts but none has been joined into this fold, and a row claiming otherwise would assert a join
 // that never happened.
 test fn the_fleets_cutover_is_withheld_today() -> Bool {
-  match glm_native_cutover_standing(satisfied: glm_native_cutover_satisfied_today) {
+  match glm_native_cutover_standing(plan: glm_native_tp4_launch_plan(envelope: fixture_envelope), satisfied: glm_native_cutover_satisfied_today) {
     CutoverWithheld { unmet: us } => count(us) == count(cutover_preconditions)
     CutoverAdmitted { plan: _ } => false
   }

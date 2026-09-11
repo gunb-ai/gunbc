@@ -12,9 +12,32 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch,
+  render_utilization_fraction,
   ArmNodeLaunch, ArmNode,
-  glm_native_tp4_launch_plan,
   arm_node_roster, ArmNodeRoster, ArmNodesResolved, ArmNodeRosterRefused,
+}
+
+// THE FRACTION IS A FIXTURE VALUE AND EVERY CALL BELOW PASSES THE SAME ONE, so an argv difference between two
+// arms is a difference in the arm rather than in the memory policy. It is 8400 because that is what the
+// envelope policy resolved to against the readings taken on 2026-09-10; the launcher does not care.
+data witness_fraction_basis_points: Nat = 8400
+
+// ── THE WIRE FORM OF A FRACTION, INCLUDING THE RANGE THAT WAS WRONG ───────────────────────────
+//
+// THE FIRST TWO ROWS WOULD HAVE PASSED BEFORE THE PAD LANDED AND THE THIRD IS THE DISCRIMINATING ONE.
+// `"0." + bp/100` renders 900 basis points as "0.9" -- ten times the intended 0.09 -- and no caller had
+// reached that range, so the defect was latent rather than absent. A budget ten times larger than intended
+// arrives as an inexplicably large request, not as an error.
+test fn the_wire_fraction_is_two_digits() -> Bool {
+  render_utilization_fraction(basis_points: 8400) == "0.84"
+}
+
+test fn the_ceiling_renders_as_written() -> Bool {
+  render_utilization_fraction(basis_points: 9000) == "0.90"
+}
+
+test fn a_single_digit_percentage_is_padded_rather_than_shifted() -> Bool {
+  render_utilization_fraction(basis_points: 900) == "0.09"
 }
 
 // THE SHAPE CONTROLS RUN ON AN ADMISSIBLE ARM, AND THAT IS A CONSEQUENCE OF THE WALL LANDING.
@@ -33,7 +56,7 @@ import gunbc.spark.serving_arm_launch {
 // not of which checkpoint it carries, so the coverage is unchanged. What the native arm keeps is the
 // one control that is genuinely about it: that it refuses.
 fn admissible_tp4_plan() -> ArmLaunchPlan {
-  plan_arm_launch(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB)
+  plan_arm_launch(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB, utilization_basis_points: witness_fraction_basis_points)
 }
 
 fn planned_lines(p: ArmLaunchPlan) -> List<ArmNodeLaunch> {
@@ -54,7 +77,7 @@ fn argv_has(argv: List<String>, word: String) -> Bool {
 // its red is authorable from a fixture forever: the DeepSeek image is recorded with
 // registers_glm5_next = false, so a native GLM arm on it must refuse before any line renders.
 test fn a_native_arm_on_an_image_that_cannot_load_it_refuses() -> Bool {
-  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: GunbcSparkrunVllmDs4Gb10, topology: FourSparkTp4, group: FabricGroupB) {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: GunbcSparkrunVllmDs4Gb10, topology: FourSparkTp4, group: FabricGroupB, utilization_basis_points: witness_fraction_basis_points) {
     ArmLaunchRefused { cause: _ } => true
     ArmLaunchPlanned { lines: _, master: _ } => false
   }
@@ -77,7 +100,7 @@ test fn an_admissible_arm_plans_one_line_per_rank() -> Bool {
 // 306 GiB of weights against a 121 GiB unified pool is refused by the arm wall on the fit bound, which is
 // the reason four ranks is a minimum rather than a preference.
 test fn the_native_arm_refuses_a_single_spark() -> Bool {
-  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1, group: FabricGroupB) {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1, group: FabricGroupB, utilization_basis_points: witness_fraction_basis_points) {
     ArmLaunchRefused { cause: _ } => true
     ArmLaunchPlanned { lines: _, master: _ } => false
   }
@@ -203,7 +226,7 @@ test fn no_line_repeats_the_serve_subcommand() -> Bool {
 // image. If someone later marks the image as supporting the integration without evidence, this row
 // goes green and the positive control below is what keeps that honest.
 test fn the_native_arm_refuses_on_a_runtime_without_the_upstream_integration() -> Bool {
-  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB) {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB, utilization_basis_points: witness_fraction_basis_points) {
     ArmLaunchRefused { cause: _ } => true
     ArmLaunchPlanned { lines: _, master: _ } => false
   }
@@ -231,7 +254,7 @@ test fn the_exl3_arm_still_admits_on_the_same_runtime() -> Bool {
 // deliberately instead of being an accident of another row's fixture: a one-rank arm cannot be
 // planned onto a four-host group.
 test fn a_one_rank_arm_is_refused_on_a_four_host_group() -> Bool {
-  match plan_arm_launch(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1, group: FabricGroupB) {
+  match plan_arm_launch(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1, group: FabricGroupB, utilization_basis_points: witness_fraction_basis_points) {
     ArmLaunchRefused { cause: _ } => true
     ArmLaunchPlanned { lines: _, master: _ } => false
   }
@@ -239,7 +262,7 @@ test fn a_one_rank_arm_is_refused_on_a_four_host_group() -> Bool {
 
 // AN UNMODELLED CHECKPOINT REFUSES rather than planning a line against a repo nobody declared.
 test fn an_unmodelled_checkpoint_refuses() -> Bool {
-  match plan_arm_launch(checkpoint: Glm53Nvfp4CompressedTensors, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB) {
+  match plan_arm_launch(checkpoint: Glm53Nvfp4CompressedTensors, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB, utilization_basis_points: witness_fraction_basis_points) {
     ArmLaunchRefused { cause: _ } => true
     ArmLaunchPlanned { lines: _, master: _ } => false
   }

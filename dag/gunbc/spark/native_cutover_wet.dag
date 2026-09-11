@@ -23,14 +23,25 @@ import gunbc.spark.remote_execution {
 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNode, ArmNodeLaunch,
-  glm_native_tp4_launch_plan, glm_native_serve_port, glm_native_served_model_alias,
+  ArmNodeRoster, ArmNodesResolved, ArmNodeRosterRefused,
+  glm_native_serve_port, glm_native_served_model_alias,
+}
+import gunbc.spark.device_memory_envelope {
+  ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, NoFeasibleDeviceMemoryEnvelope,
+  glm_native_tp4_launch_plan, glm_native_tp4_nodes, glm_native_tp4_resolve_envelope,
+  resolved_envelope_text,
 }
 import gunbc.spark.native_launch_fold {
   LaunchPopulationOutcome, EveryRankStarted, LaunchPopulationIncomplete, LaunchPopulationHadNoPlan,
   RankLaunchOutcome, rank_outcome_text, RankRollbackOutcome, rank_rollback_text,
   launch_native_population, rollback_started_ranks, every_rank_cleaned,
+  RankStartupStanding, RankStillRunning, RankExitedBeforeReady, RankStartupUnreadable,
+  rank_startup_text, first_failed_rank_startup,
 }
 import gunbc.spark.native_rank_observer { observe_native_population }
+import gunbc.spark.post_acquisition_memory_remedy {
+  MemoryRemedyOutcome, memory_remedy_text, release_population_page_cache,
+}
 import gunbc.spark.native_deployment_readback {
   DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
   inspect_native_deployment, accept_deployment,
@@ -116,17 +127,6 @@ fn terminal_is_success(t: NativeCutoverTerminal) -> Bool {
   }
 }
 
-fn plan_head(plan: ArmLaunchPlan) -> ArmNode? {
-  match plan {
-    ArmLaunchRefused { cause: _ } => none
-    ArmLaunchPlanned { lines: ls, master: _ } =>
-      match ls.first() {
-        Absent => none
-        Present { value: l } => Present { value: l.node }
-      }
-  }
-}
-
 // ── THE DURABLE CLAIM ─────────────────────────────────────────────────────────────────────────
 fn claim_argv(attempt: String) -> List<String> {
   ["sh", "-c", join([
@@ -163,14 +163,38 @@ fn native_sleep_argv() -> List<String> {
   ["sleep", to_string(native_ready_poll_interval_seconds)]
 }
 
-func await_native_endpoint(ctx: SparkRemoteExecutionContext, host: HostIdentity, remaining: Nat) -> Bool
+// ── WAITING IS A QUESTION ABOUT THE WHOLE POPULATION ──────────────────────────────────────────
+//
+// AN EARLIER FORM RETURNED A Bool AND ASKED ONLY THE HEAD'S PORT, so a group that had already died looked
+// exactly like a group that was still loading. On 2026-09-10 that cost an hour: two peer ranks refused
+// within seconds of starting, and this loop spent its entire 240-poll budget asking the head whether it was
+// serving yet, then reported "the endpoint never answered within the readiness budget" -- a true statement
+// about the wrong host. The reason nothing looked wrong is that a Bool has no room to say WHY it is still
+// false.
+//
+// SO EVERY POLL ALSO ASKS WHETHER THE STARTED RANKS ARE STILL ALIVE, and one that is not ends the wait
+// immediately with its own log attached. The budget is for slowness, not for a decided failure.
+type NativeReadiness
+  = NativeEndpointServing
+  | NativeReadinessPeerFailed { standing: RankStartupStanding }
+  | NativeReadinessBudgetExhausted
+
+func await_native_endpoint(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, started: List<ArmNode>, remaining: Nat,
+) -> NativeReadiness
   uses net: Network
 {
-  if remaining == 0 { false } else {
-    if remote_run_stdout(r: spark_exec(ctx: ctx, host: host, argv: native_probe_argv())) == "SERVING" { true }
-    else {
-      let waited = spark_exec(ctx: ctx, host: host, argv: native_sleep_argv())
-      await_native_endpoint(ctx: ctx, host: host, remaining: remaining - 1)
+  if remaining == 0 { NativeReadinessBudgetExhausted } else {
+    if remote_run_stdout(r: spark_exec(ctx: ctx, host: host, argv: native_probe_argv())) == "SERVING" {
+      NativeEndpointServing
+    } else {
+      match first_failed_rank_startup(ctx: ctx, started: started) {
+        Present { value: s } => NativeReadinessPeerFailed { standing: s }
+        Absent => {
+          let waited = spark_exec(ctx: ctx, host: host, argv: native_sleep_argv())
+          await_native_endpoint(ctx: ctx, host: host, started: started, remaining: remaining - 1)
+        }
+      }
     }
   }
 }
@@ -224,37 +248,124 @@ func roll_back(
   }
 }
 
+// ── THE ENVELOPE IS RESOLVED TWICE AND THE TWO STAGES ASK DIFFERENT QUESTIONS ──────────────────
+//
+// STAGE ONE RUNS WHILE THE INCUMBENT IS STILL SERVING, AND IT DELIBERATELY EXCLUDES THE INCUMBENT'S HOST.
+// The head is holding a loaded engine, so its device-free reading is a reading of an occupied machine and
+// would refuse every launch -- correctly, and uselessly. The three PEERS are the hosts whose supply is
+// knowable in advance, and on 2026-09-10 the peers were exactly where the shortfall was. Checking them
+// before displacing anything is the difference between withholding and an outage.
+//
+// STAGE TWO RUNS AFTER THE INCUMBENT IS STOPPED AND BEFORE ANY RANK STARTS, over ALL FOUR ranks, and its
+// result is the one the launch uses. Only then is the head's supply the supply a rank will meet, and the
+// peers are re-read rather than carried forward because a reading taken minutes ago describes a machine
+// that has since had time to change. A stage-two refusal restarts the incumbent and launches nothing.
+//
+// A STAGE-ONE PASS IS NOT EVIDENCE FOR STAGE TWO AND IS NOT TREATED AS ANY. It is a cheap veto, nothing
+// more; the plan is built from stage two's resolution alone.
+fn plan_peer_nodes(nodes: List<ArmNode>, head: HostIdentity) -> List<ArmNode> {
+  filter(nodes, n => !host_identity_eq(a: n.host, b: head))
+}
+
+func stage_one_peer_envelope(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, head: HostIdentity, attempt: String,
+) -> ResolvedDeviceMemoryEnvelope
+  uses net: Network
+{
+  glm_native_tp4_resolve_envelope(
+    ctx: ctx,
+    nodes: plan_peer_nodes(nodes: nodes, head: head),
+    attempt: attempt as NonEmptyStr,
+  )
+}
+
 // ── THE TRANSACTION ───────────────────────────────────────────────────────────────────────────
+//
+// THE PLAN IS NOW THE LAST THING BUILT RATHER THAN THE FIRST. Its memory fraction is a resolved fact about
+// four machines at one moment, so there is nothing to plan until that fact exists -- and the roster the
+// observation needs is available without a plan, from the same function the plan itself uses.
 func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -> NativeCutoverTerminal
   uses net: Network
 {
-  let plan = glm_native_tp4_launch_plan()
-  match plan {
-    ArmLaunchRefused { cause: c } => NativeCutoverWithheld { reasons: [c] }
-    ArmLaunchPlanned { lines: _, master: _ } =>
-      match plan_head(plan: plan) {
-        Absent => NativeCutoverWithheld { reasons: ["the plan names no head rank" as NonEmptyStr] }
-        Present { value: head } => {
-          let already = accept_deployment(inspection: inspect_native_deployment(
-            subject: "the native four-rank deployment" as NonEmptyStr,
-            plan: plan,
-            reading: observe_native_population(ctx: ctx, plan: plan),
-          ))
-          match already {
-            DeploymentAccepted { receipt: r } =>
-              NativeAlreadyConverged {
-                receipt: join(["four ranks already agree with the plan at ", r.image_digest as String], "") as NonEmptyStr,
-              }
-            DeploymentRejected { deviations: _ } => attempt_cutover(ctx: ctx, plan: plan, head: head.host, attempt: attempt)
-            DeploymentUnverified { unknowns: _ } => attempt_cutover(ctx: ctx, plan: plan, head: head.host, attempt: attempt)
-            DeploymentUnverifiable { cause: _ } => attempt_cutover(ctx: ctx, plan: plan, head: head.host, attempt: attempt)
+  match glm_native_tp4_nodes() {
+    ArmNodeRosterRefused { cause: c } => NativeCutoverWithheld { reasons: [c] }
+    ArmNodesResolved { nodes: ns, master: _ } =>
+      match ns.first() {
+        Absent => NativeCutoverWithheld { reasons: ["the roster names no head rank" as NonEmptyStr] }
+        Present { value: head } =>
+          match stage_one_peer_envelope(ctx: ctx, nodes: ns, head: head.host, attempt: attempt) {
+            NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss } => NativeCutoverWithheld {
+              reasons: [
+                join(["the non-incumbent peers cannot supply this arm's memory floor, so nothing was stopped: ",
+                      c as String], "") as NonEmptyStr,
+                join(map(ss, x => "peer standing recorded" as String), "") as NonEmptyStr,
+              ],
+            }
+            ResolvedForAttempt { basis_points: _, binding_node_rank: _, policy: _, attempt: _, standings: _ } =>
+              cutover_after_peer_preflight(ctx: ctx, nodes: ns, head: head, attempt: attempt)
           }
-        }
       }
   }
 }
 
-func attempt_cutover(ctx: SparkRemoteExecutionContext, plan: ArmLaunchPlan, head: HostIdentity, attempt: String) -> NativeCutoverTerminal
+// ── THE IDEMPOTENCE CHECK CANNOT CONSULT STAGE TWO, AND SAYING WHY MATTERS MORE THAN THE CODE ──
+//
+// A RESOLVED ENVELOPE IS A READING OF IDLE MACHINES, AND THE IDEMPOTENCE CHECK RUNS WHILE SOMETHING IS
+// SERVING. Whatever occupies these four hosts -- the incumbent on the head, or an already-converged native
+// rank population -- is holding the memory the resolution would measure, so an all-rank resolution taken
+// here refuses by construction whenever there is anything to be idempotent about. Resolving before the stop
+// and reusing it after would be worse: it would launch against a supply reading taken while a 76 GiB engine
+// was still resident.
+//
+// SO THE COMPARISON PLAN IS BUILT AT THE POLICY CEILING, AND THE CONSEQUENCE IS DECLARED RATHER THAN HIDDEN.
+// A native deployment already serving at a resolved fraction BELOW the ceiling will not match this plan's
+// argv and will be reported divergent rather than converged. That outcome is safe and not silent: with the
+// native arm serving, the incumbent is not running, `incumbent_is_retainable` is false, and the transaction
+// WITHHOLDS -- it cannot reach a destructive step. A person then reads "the incumbent is not observed
+// running" against a serving native endpoint, which is legible.
+//
+// DISSOLUTION TRIGGER, AND IT IS A CAPABILITY RATHER THAN AN ARTIFACT: the rank observer reading the
+// `--gpu-memory-utilization` value out of the RUNNING argv it already captures, so the comparison plan is
+// built at the fraction the running deployment actually has. That makes idempotence exact for every
+// resolved fraction, and this ceiling-built plan is deleted.
+fn idempotence_reference_envelope(attempt: String) -> ResolvedDeviceMemoryEnvelope {
+  ResolvedForAttempt {
+    basis_points: glm_native_device_memory_policy.maximum_fraction_basis_points,
+    binding_node_rank: 0,
+    policy: glm_native_device_memory_policy,
+    attempt: attempt as NonEmptyStr,
+    standings: [],
+  }
+}
+
+func cutover_after_peer_preflight(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, head: ArmNode, attempt: String,
+) -> NativeCutoverTerminal
+  uses net: Network
+{
+  let reference = glm_native_tp4_launch_plan(envelope: idempotence_reference_envelope(attempt: attempt))
+  match reference {
+    ArmLaunchRefused { cause: c } => NativeCutoverWithheld { reasons: [c] }
+    ArmLaunchPlanned { lines: _, master: _ } => {
+      let already = accept_deployment(inspection: inspect_native_deployment(
+        subject: "the native four-rank deployment" as NonEmptyStr,
+        plan: reference,
+        reading: observe_native_population(ctx: ctx, plan: reference),
+      ))
+      match already {
+        DeploymentAccepted { receipt: r } =>
+          NativeAlreadyConverged {
+            receipt: join(["four ranks already agree with the plan at ", r.image_digest as String], "") as NonEmptyStr,
+          }
+        DeploymentRejected { deviations: _ } => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
+        DeploymentUnverified { unknowns: _ } => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
+        DeploymentUnverifiable { cause: _ } => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
+      }
+    }
+  }
+}
+
+func attempt_cutover(ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, head: HostIdentity, attempt: String) -> NativeCutoverTerminal
   uses net: Network
 {
   let incumbent = observe_incumbent(ctx: ctx, host: head)
@@ -272,49 +383,101 @@ func attempt_cutover(ctx: SparkRemoteExecutionContext, plan: ArmLaunchPlan, head
           NativeCutoverWithheld { reasons: [c as NonEmptyStr] }
         }
         IncumbentStopped { container_id: _ } =>
-          match launch_native_population(ctx: ctx, plan: plan) {
-            LaunchPopulationHadNoPlan { cause: c } =>
-              roll_back(ctx: ctx, head: head, started: [], failure: c)
-            LaunchPopulationIncomplete { outcomes: os, started: st, first_failure_rank: fr } =>
-              roll_back(ctx: ctx, head: head, started: st, failure: join([
-                "rank ", to_string(fr), " did not start: ",
-                join(map(os, o => rank_outcome_text(o: o)), " | "),
-              ], "") as NonEmptyStr)
-            EveryRankStarted { outcomes: _, started: st } =>
-              if !await_native_endpoint(ctx: ctx, host: head, remaining: native_ready_poll_budget) {
-                roll_back(ctx: ctx, head: head, started: st, failure: "every rank started and the endpoint never answered within the readiness budget" as NonEmptyStr)
-              } else {
-                match accept_deployment(inspection: inspect_native_deployment(
-                  subject: "the native four-rank deployment" as NonEmptyStr,
-                  plan: plan,
-                  reading: observe_native_population(ctx: ctx, plan: plan),
-                )) {
-                  DeploymentRejected { deviations: _ } =>
-                    roll_back(ctx: ctx, head: head, started: st, failure: "the deployment readback DIVERGED from the plan" as NonEmptyStr)
-                  DeploymentUnverified { unknowns: _ } =>
-                    roll_back(ctx: ctx, head: head, started: st, failure: "the deployment readback could not establish every fact it must assert" as NonEmptyStr)
-                  DeploymentUnverifiable { cause: c } =>
-                    roll_back(ctx: ctx, head: head, started: st, failure: c)
-                  DeploymentAccepted { receipt: rec } =>
-                    match run_semantic_probe(ctx: ctx, host: head) {
-                      Absent =>
-                        roll_back(ctx: ctx, head: head, started: st, failure: "the endpoint answered and the semantic probe did not return a completion for the declared alias" as NonEmptyStr)
-                      Present { value: body } => {
-                        let settled = settle_claim(ctx: ctx, host: head, status: "completed")
-                        NativeServing {
-                          receipt: join([
-                            "four ranks agreed at ", rec.image_digest as String,
-                            " serving ", rec.model_path as String,
-                          ], "") as NonEmptyStr,
-                          probe: body,
-                        }
-                      }
-                    }
-                }
-              }
-          }
+          launch_after_stop(ctx: ctx, nodes: nodes, head: head, attempt: attempt)
       }
     }
+  }
+}
+
+// ── STAGE TWO: THE ONLY RESOLUTION A LAUNCH IS BUILT FROM ──────────────────────────────────────
+//
+// THIS IS THE FIRST MOMENT THE READING MEANS WHAT THE LAUNCH NEEDS IT TO MEAN. The incumbent has released
+// the head's memory, no native rank has started, and every one of the four hosts is in the state a rank
+// will find. The peers are re-read rather than carried from stage one, because stage one's purpose was to
+// avoid an outage and not to supply a budget -- and minutes have passed since.
+//
+// THE PAGE CACHE IS RELEASED BEFORE THE READING THAT GOVERNS, AND THAT IS MEASURED RATHER THAN HOPEFUL. On
+// srv10 the same device probe answered 10.82 GiB with the acquisition's page cache resident and 117.08 GiB
+// immediately after releasing it, so a resolution taken without that step would refuse four correct machines.
+// The remedy's own outcomes are EVIDENCE and not a second admission decision: if a host still cannot supply
+// the floor, the envelope refuses on the device reading, which remains the only authority here.
+//
+// A STAGE-TWO REFUSAL LAUNCHES NOTHING AND PUTS THE INCUMBENT BACK. The rollback path is entered with an
+// empty started population, which is exactly what it is for: no container to remove, one engine to restore,
+// one claim to settle as aborted.
+func launch_after_stop(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, head: HostIdentity, attempt: String,
+) -> NativeCutoverTerminal
+  uses net: Network
+{
+  let remedies = release_population_page_cache(ctx: ctx, nodes: nodes)
+  let envelope = glm_native_tp4_resolve_envelope(ctx: ctx, nodes: nodes, attempt: attempt as NonEmptyStr)
+  let plan = glm_native_tp4_launch_plan(envelope: envelope)
+  match plan {
+    ArmLaunchRefused { cause: c } =>
+      roll_back(ctx: ctx, head: head, started: [], failure: join([
+        c as String, " -- page cache remedy: ",
+        join(map(remedies, x => memory_remedy_text(o: x)), "; "),
+      ], "") as NonEmptyStr)
+    ArmLaunchPlanned { lines: _, master: _ } =>
+      match launch_native_population(ctx: ctx, plan: plan) {
+        LaunchPopulationHadNoPlan { cause: c } =>
+          roll_back(ctx: ctx, head: head, started: [], failure: c)
+        LaunchPopulationIncomplete { outcomes: os, started: st, first_failure_rank: fr } =>
+          roll_back(ctx: ctx, head: head, started: st, failure: join([
+            "rank ", to_string(fr), " did not start: ",
+            join(map(os, o => rank_outcome_text(o: o)), " | "),
+          ], "") as NonEmptyStr)
+        EveryRankStarted { outcomes: _, started: st } =>
+          match await_native_endpoint(ctx: ctx, host: head, started: st, remaining: native_ready_poll_budget) {
+            NativeReadinessBudgetExhausted =>
+              roll_back(ctx: ctx, head: head, started: st,
+                failure: "every rank started, every rank stayed running, and the endpoint never answered within the readiness budget" as NonEmptyStr)
+            NativeReadinessPeerFailed { standing: sg } =>
+              roll_back(ctx: ctx, head: head, started: st, failure: join([
+                "a started rank left the group before the endpoint answered, so the wait was abandoned rather than spent: ",
+                rank_startup_text(s: sg),
+              ], "") as NonEmptyStr)
+            NativeEndpointServing =>
+              accept_or_roll_back(ctx: ctx, plan: plan, head: head, started: st)
+          }
+      }
+  }
+}
+
+// THE ACCEPTANCE TAIL IS ITS OWN FUNCTION BECAUSE THE READINESS MATCH ABOVE IS ALREADY THREE ARMS DEEP, and
+// a fourth level of nesting is where an arm gets dropped without anyone seeing it.
+func accept_or_roll_back(
+  ctx: SparkRemoteExecutionContext, plan: ArmLaunchPlan, head: HostIdentity, started: List<ArmNode>,
+) -> NativeCutoverTerminal
+  uses net: Network
+{
+  match accept_deployment(inspection: inspect_native_deployment(
+    subject: "the native four-rank deployment" as NonEmptyStr,
+    plan: plan,
+    reading: observe_native_population(ctx: ctx, plan: plan),
+  )) {
+    DeploymentRejected { deviations: _ } =>
+      roll_back(ctx: ctx, head: head, started: started, failure: "the deployment readback DIVERGED from the plan" as NonEmptyStr)
+    DeploymentUnverified { unknowns: _ } =>
+      roll_back(ctx: ctx, head: head, started: started, failure: "the deployment readback could not establish every fact it must assert" as NonEmptyStr)
+    DeploymentUnverifiable { cause: c } =>
+      roll_back(ctx: ctx, head: head, started: started, failure: c)
+    DeploymentAccepted { receipt: rec } =>
+      match run_semantic_probe(ctx: ctx, host: head) {
+        Absent =>
+          roll_back(ctx: ctx, head: head, started: started, failure: "the endpoint answered and the semantic probe did not return a completion for the declared alias" as NonEmptyStr)
+        Present { value: body } => {
+          let settled = settle_claim(ctx: ctx, host: head, status: "completed")
+          NativeServing {
+            receipt: join([
+              "four ranks agreed at ", rec.image_digest as String,
+              " serving ", rec.model_path as String,
+            ], "") as NonEmptyStr,
+            probe: body,
+          }
+        }
+      }
   }
 }
 

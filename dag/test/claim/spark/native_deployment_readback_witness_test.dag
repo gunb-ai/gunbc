@@ -6,7 +6,11 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
-  glm_native_tp4_launch_plan, fabric_rail_interface_name,
+  fabric_rail_interface_name,
+}
+import gunbc.spark.device_memory_envelope {
+  ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan,
+  glm_native_device_memory_policy,
 }
 import gunbc.spark.native_deployment_readback {
   RankObservation, rank_observation,
@@ -19,8 +23,20 @@ data subject: NonEmptyStr = "the native four-rank deployment on fabric cage 2" a
 data pinned_digest: NonEmptyStr = "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
 data pinned_model_path: NonEmptyStr = "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
 
+// THE FIXTURE RESOLUTION IS 8400 BASIS POINTS, WHICH IS WHAT THE POLICY RESOLVED TO ON 2026-09-10 AGAINST
+// THE READINGS THAT REFUSED THE 0.90 LAUNCH. It is written here as a fixture and not as a recommendation:
+// this witness is about argv comparison, and the fraction matters only in that the plan cannot exist without
+// one.
+data readback_fixture_envelope: ResolvedDeviceMemoryEnvelope = ResolvedForAttempt {
+  basis_points: 8400,
+  binding_node_rank: 1,
+  policy: glm_native_device_memory_policy,
+  attempt: "readback-witness-fixture" as NonEmptyStr,
+  standings: [],
+}
+
 fn plan() -> ArmLaunchPlan {
-  glm_native_tp4_launch_plan()
+  glm_native_tp4_launch_plan(envelope: readback_fixture_envelope)
 }
 
 fn planned_argv_for(rank: Nat) -> List<String> {

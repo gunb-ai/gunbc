@@ -1,0 +1,94 @@
+module gunbc.spark.post_acquisition_memory_remedy
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_text,
+}
+import gunbc.spark.serving_arm_launch { ArmNode }
+
+// ── ACQUIRING WEIGHTS LEAVES THE HOST UNABLE TO LAUNCH, AND THAT IS AN ACQUISITION FACT ─────────
+//
+// MEASURED, NOT SUPPOSED (srv10, 2026-09-11). After the 328 GB native snapshot transfer, the host held about
+// 106 GB of page cache. The kernel reported 11 GB free and 117 GB AVAILABLE. The device reading taken inside
+// the launch image -- `torch.cuda.mem_get_info`, the function the engine itself calls -- reported 10.82 GiB
+// free of 121.69 GiB. After `sync; echo 3 > /proc/sys/vm/drop_caches` the same reading returned 117.08 GiB.
+//
+// SO CUDA'S FREE FIGURE TRACKS THE KERNEL'S FREE FIGURE AND NOT ITS AVAILABLE FIGURE, essentially one for
+// one on this unified-memory hardware. Reclaimable page cache is invisible to the allocator that admits a
+// launch. The consequence is not a tuning inconvenience: a host that has just received a large file
+// population cannot admit a substantial engine at all until the cache is released, and the host-level
+// reading that says otherwise is the one an operator naturally reaches for. That class is rostered as
+// gunbc.recurring_failure_mode.host_available_memory_read_as_device_admission.
+//
+// WHICH MAKES THIS AN ACQUISITION OBLIGATION RATHER THAN A LAUNCH WORKAROUND. A transfer that leaves the
+// target unable to serve has not finished; it has moved bytes and left a condition behind. Naming the
+// remedy here, as the completing step of acquisition, keeps the launch path free of a repair for damage it
+// did not cause -- and keeps the next acquisition from rediscovering this at the cost of an endpoint.
+//
+// THE ACTION IS SCOPED, BOUNDED AND NOT GLOBAL POLICY. `drop_caches` writes to a system-wide knob, so it is
+// performed on a NAMED host as a declared remedy with a receipt, never as a background convenience and never
+// on a host outside the acquisition's own population. It is also SAFE in the specific sense that matters
+// here: it discards only clean reclaimable pages, and the `sync` that precedes it is what makes the
+// distinction hold for a host that has just written 328 GB.
+type MemoryRemedyOutcome
+  = CacheReleased { host: HostIdentity, detail: String }
+  | CacheReleaseFailed { host: HostIdentity, cause: String }
+  | CacheReleaseUnreachable { host: HostIdentity, cause: String }
+
+fn memory_remedy_text(o: MemoryRemedyOutcome) -> String {
+  match o {
+    CacheReleased { host: h, detail: d } =>
+      join([h as String, " released its page cache: ", d], "")
+    CacheReleaseFailed { host: h, cause: c } =>
+      join([h as String, " COULD NOT release its page cache: ", c], "")
+    CacheReleaseUnreachable { host: h, cause: c } =>
+      join([h as String, " UNREACHABLE for the page cache remedy: ", c], "")
+  }
+}
+
+fn memory_remedy_succeeded(o: MemoryRemedyOutcome) -> Bool {
+  match o {
+    CacheReleased { host: _, detail: _ } => true
+    CacheReleaseFailed { host: _, cause: _ } => false
+    CacheReleaseUnreachable { host: _, cause: _ } => false
+  }
+}
+
+// THE SYNC IS NOT DECORATION. drop_caches discards clean pages and leaves dirty ones, so on a host that has
+// just written hundreds of gigabytes the flush is what makes the release actually release -- and omitting it
+// would produce a remedy that reports success and frees a fraction of what it claimed.
+fn cache_release_argv() -> List<String> {
+  ["sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches; echo RELEASED"]
+}
+
+func release_host_page_cache(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> MemoryRemedyOutcome
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: cache_release_argv())
+  match r {
+    RemoteUnreachable { host: h, cause: c } => CacheReleaseUnreachable { host: h, cause: c }
+    RemoteRan { host: h, exit_code: _, stdout: _, stderr: _ } =>
+      if remote_run_succeeded(r: r) {
+        CacheReleased { host: host, detail: remote_run_text(r: r) }
+      } else {
+        CacheReleaseFailed { host: host, cause: remote_run_text(r: r) }
+      }
+  }
+}
+
+// EVERY RANK, AND THE RESULT IS A LIST RATHER THAN A VERDICT. Whether a failed remedy should stop a launch is
+// the caller's decision and not this fold's: the envelope observation that follows will refuse on its own
+// terms if a host still cannot supply the floor, so a remedy failure is EVIDENCE and the device reading
+// remains the authority. Collapsing this to a Bool here would put a second admission decision beside the one
+// that actually governs.
+func release_population_page_cache(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>,
+) -> List<MemoryRemedyOutcome>
+  uses net: Network
+{
+  map(nodes, n => release_host_page_cache(ctx: ctx, host: n.host))
+}

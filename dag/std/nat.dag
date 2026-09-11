@@ -1,6 +1,6 @@
 module std.nat
 
-import std.types { List }
+import std.types { List, String }
 import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
 import std.magnitude { Magnitude }
 
@@ -46,5 +46,36 @@ fn nat_range_accumulate(lo: Nat, hi: Nat, acc: List<Nat>) -> List<Nat> {
     acc
   } else {
     nat_range_accumulate(lo: lo + 1, hi: hi, acc: concat(acc, [lo]))
+  }
+}
+
+// ── READING A NATURAL OUT OF TEXT ──────────────────────────────────────────────────────────────
+//
+// THIS BELONGS TO Nat AND NOT TO ITS FIRST CALLER. An instrument that answers with digits -- a device
+// memory reading, a byte count, a process id -- is not a string-handling problem specific to whoever
+// asked; it is the question "which natural is this text", and until 2026-09-11 the corpus could not ask
+// it at all. Every consumer that needed a number from a command's stdout had therefore compared strings
+// instead, which is why a device-memory admission check could be written that never compared magnitudes.
+//
+// IT IS TOTAL AND IT REFUSES ON EVERYTHING THAT IS NOT EXACTLY A RUN OF DIGITS. No sign, no whitespace
+// tolerance, no partial prefix parse, no empty-string-as-zero. Each of those would be a fabricated
+// plausible output on input that does not denote a natural, and a memory budget resolved from a
+// fabricated zero is worse than one that refuses: zero free memory and unreadable free memory demand
+// opposite actions. Callers that need to tolerate surrounding whitespace must trim first, visibly.
+fn parse_nat(s: String) -> Nat? {
+  let len = string_length(s: s)
+  if len == 0 { none } else { parse_nat_digits(s: s, pos: 0, len: len, acc: 0) }
+}
+
+fn parse_nat_digits(s: String, pos: Nat, len: Nat, acc: Nat) -> Nat? {
+  if pos == len {
+    Present { value: acc }
+  } else {
+    let cp = code_point(c: char_at(s: s, pos: pos))
+    if cp < 48 || cp > 57 {
+      none
+    } else {
+      parse_nat_digits(s: s, pos: pos + 1, len: len, acc: acc * 10 + (cp - 48))
+    }
   }
 }

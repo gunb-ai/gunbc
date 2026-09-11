@@ -1,0 +1,43 @@
+module gunbc.recurring_failure_mode.host_available_memory_read_as_device_admission
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data host_available_memory_read_as_device_admission: RecurringFailureMode = RecurringFailureMode {
+  identity: "host_available_memory_read_as_device_admission" as NonEmptyStr,
+
+  receipts: [
+    "**host MemAvailable read as the device memory an engine will admit against** (a launch budget is derived from, or believed satisfiable by, a host-level memory reading -- `free` \"available\", /proc/meminfo MemAvailable, or a total-capacity figure -- when the admitting authority is the DEVICE-visible free memory the runtime itself queries at startup. ",
+
+    "The two are different instruments answering different questions, and on a unified-memory system they answer materially differently. ",
+
+    "HARM: the launch is admitted, displaces whatever was serving, and then refuses on a rank that could never have satisfied the request. ",
+
+    "SPECIMEN, NATIVE GLM TP4 CUTOVER (2026-09-10). A row named the fraction 0.90 and reasoned about fit by multiplying it against the device's TOTAL memory, 121.69 GiB, giving 109.52 GiB per rank. Two of the four ranks reported 106.82 GiB FREE and refused at startup with `Free memory on device cuda:0 (106.82/121.69 GiB) on startup is less than desired GPU memory utilization (0.9, 109.52 GiB)` -- a 2.70 GiB shortfall. The host's own `free` reported about 117 GB available on the same machines. Three instruments, three numbers, and the derivation had consulted the only one with no authority over the decision. ",
+
+    "THE REPORTED FAILURE NAMED THE WRONG MACHINE, which is why the class survives a careless reading. Rank zero, whose memory had just been freed by stopping the incumbent, started normally, loaded all 62 weight shards, and waited about nine minutes before its rendezvous sockets closed. The transaction's readiness poll asked only the HEAD whether its port answered, so it spent its entire budget and reported \"the endpoint never answered within the readiness budget\" -- true, and about the one host that was fine. ",
+
+    "DISTINGUISHING FACT: the reading that matters is taken INSIDE the runtime image through the same source the engine uses, `torch.cuda.mem_get_info`, per rank, fresh, immediately before launch. A host figure counts reclaimable page cache as available; the device figure does not. So the two diverge most exactly after a large file copy -- which is the moment a weight-acquisition step hands a host to launch admission. ",
+
+    "THE MECHANISM IS ESTABLISHED BY A CONTROLLED RELEASE-AND-REOBSERVE, NOT INFERRED FROM TIMING (srv10, 2026-09-11). With 106 GB of page cache resident from the 328 GB snapshot transfer, `free` reported 11 GB free and 117 GB AVAILABLE, and the device reading taken inside the launch image reported 11,617,505,280 bytes free of 130,663,165,952 -- 10.82 GiB of 121.69 GiB. After `sync; echo 3 > /proc/sys/vm/drop_caches`, the same device reading returned 125,718,261,760 bytes -- 117.08 GiB. So CUDA's free tracks the kernel's FREE figure essentially one-to-one and does not count reclaimable page cache at all, while MemAvailable does. The two instruments diverged by 106 GiB on an idle machine. ",
+
+    "THE CONSEQUENCE IS SHARPER THAN THE ORIGINAL DIAGNOSIS: a host that has just received a large weight transfer cannot admit ANY substantial launch until its cache is released, and the host-level reading that says it can is the one an operator naturally reaches for. A budget of 0.90 of TOTAL is not merely optimistic on such a host; it is unreachable by a factor of ten. Note what this does NOT establish: on 2026-09-10 the device reported 106.82 GiB free, so the cache resident AT THAT MOMENT was small and the 2.70 GiB shortfall there was a smaller effect of the same mechanism. The mechanism is proven; that day's exact residency is not reconstructible. ",
+
+    "THE WRONG REPAIR IS A SMALLER CONSTANT. Changing 0.90 to the 0.878 that would have fitted, or to the 0.84 the policy now resolves to, is the same defect with a number that happens to be green on the machine that produced it -- and wrong on the next machine, or on the same one an hour later. The fraction has to stop being a value any module carries. ",
+
+    "RECOGNITION RULE: A BUDGET DERIVED AGAINST TOTAL CAPACITY OR HOST AVAILABILITY IS NOT A BUDGET THE ENGINE WILL ADMIT; ONLY A FRESH PER-RANK DEVICE-FREE READING TAKEN IN THE LAUNCH IMAGE DECIDES. ",
+
+    "RUNG FOUND AT: mitigatable. The failure occurred, was contained by a typed rollback that cleaned all four ranks and restored the incumbent to SERVING, and the diagnosis existed only because a revision landed earlier the same day retained the per-rank logs that an earlier one had destroyed while reporting them as captured. ",
+
+    "ATTAINABLE CEILING: structurally guaranteed. Membership is decidable from facts the fleet can be asked for -- a rendered budget is admissible only against a fresh per-rank device-free observation carrying the exact runtime digest and attempt, and a plan whose budget exceeds any rank's supply has no admitted form. It does not reach structural impossibility because the supply is external reality that can change between observation and launch, which is why the check is taken twice: over the non-incumbent peers before anything is displaced, and over all four ranks after the incumbent is stopped and before any rank starts. ",
+
+    "NEXT TRIGGER: the envelope resolution in gunbc.spark.device_memory_envelope consumed by the cutover transaction as the sole producer of the native plan, so no launch can render a fraction that was not resolved from observed supply.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.spark.device_memory_envelope", decl_name: "resolve_device_memory_envelope", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.spark.device_memory_envelope", decl_name: "glm_native_tp4_launch_plan", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.spark.native_launch_fold", decl_name: "first_failed_rank_startup", field: WholeDeclaration },
+  ],
+}

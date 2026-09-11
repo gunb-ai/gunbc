@@ -13,6 +13,7 @@ import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
   glm_native_container_name,
 }
+import gunbc.spark.glm_canary_converge { go_template_action }
 
 // ── LAUNCHING A RANK POPULATION IS A FOLD THAT REMEMBERS WHAT IT STARTED ───────────────────────
 //
@@ -212,6 +213,78 @@ func rollback_started_ranks(ctx: SparkRemoteExecutionContext, started: List<ArmN
   uses net: Network
 {
   map(started, n => rollback_one_rank(ctx: ctx, node: n))
+}
+
+// ── A RANK THAT EXITS DURING THE READINESS WAIT IS A TERMINAL FACT, NOT A SLOW START ───────────
+//
+// THE 2026-09-10 ATTEMPT SPENT NINE MINUTES, AND THEN SIXTY, WAITING FOR A GROUP THAT NO LONGER EXISTED.
+// Two peer ranks refused at startup within seconds. Rank zero, which had memory and loaded all 62 shards,
+// noticed only when its rendezvous sockets closed, and the transaction's readiness poll -- which asks the
+// HEAD whether the endpoint answers -- had nothing to say about the other three hosts at all. So the
+// reported failure was "the endpoint never answered within the readiness budget", which is true and
+// describes the wrong machine.
+//
+// SO READINESS IS A QUESTION ABOUT THE POPULATION AND NOT ABOUT THE HEAD'S PORT. A started rank whose
+// container has exited cannot be waited for, and its log is the diagnosis -- collected HERE, while the
+// container still exists, because the rollback that follows removes it.
+type RankStartupStanding
+  = RankStillRunning { node: ArmNode }
+  | RankExitedBeforeReady { node: ArmNode, state: String, log_tail: String }
+  | RankStartupUnreadable { node: ArmNode, cause: String }
+
+fn rank_startup_text(s: RankStartupStanding) -> String {
+  match s {
+    RankStillRunning { node: n } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " still running"], "")
+    RankExitedBeforeReady { node: n, state: st, log_tail: l } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " EXITED BEFORE READY (", st, "); log: ", l], "")
+    RankStartupUnreadable { node: n, cause: cz } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " startup state UNREADABLE: ", cz], "")
+  }
+}
+
+fn rank_state_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: ".State.Status"), glm_native_container_name as String]
+}
+
+// AN UNREADABLE STATE IS NOT TREATED AS RUNNING. A host that cannot be asked whether its rank survived is a
+// host this transaction knows nothing about, and continuing to wait on that basis is the absorbing arm --
+// so it is reported as its own standing and the caller decides, rather than being folded into "fine".
+func observe_rank_startup(ctx: SparkRemoteExecutionContext, node: ArmNode) -> RankStartupStanding
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: node.host, argv: rank_state_argv())
+  if !remote_run_succeeded(r: r) {
+    RankStartupUnreadable { node: node, cause: remote_run_text(r: r) }
+  } else {
+    let state = remote_run_stdout(r: r)
+    if state == "running" { RankStillRunning { node: node } }
+    else {
+      let log = spark_exec(ctx: ctx, host: node.host, argv: rank_log_argv(node: node))
+      RankExitedBeforeReady { node: node, state: state, log_tail: remote_run_text(r: log) }
+    }
+  }
+}
+
+// THE FOLD STOPS AT THE FIRST RANK THAT IS NOT RUNNING, because the population's answer is already decided
+// and every further probe is a round trip spent confirming it. The ranks after it are not reported as
+// running -- they are not reported at all, which is the honest shape: this is a search for a reason to
+// abandon the wait, not a census.
+func first_failed_rank_startup(ctx: SparkRemoteExecutionContext, started: List<ArmNode>) -> RankStartupStanding?
+  uses net: Network
+{
+  match started.first() {
+    Absent => none
+    Present { value: n } => {
+      let s = observe_rank_startup(ctx: ctx, node: n)
+      match s {
+        RankStillRunning { node: _ } =>
+          first_failed_rank_startup(ctx: ctx, started: started.skip(n: 1))
+        RankExitedBeforeReady { node: _, state: _, log_tail: _ } => Present { value: s }
+        RankStartupUnreadable { node: _, cause: _ } => Present { value: s }
+      }
+    }
+  }
 }
 
 fn every_rank_cleaned(outcomes: List<RankRollbackOutcome>) -> Bool {

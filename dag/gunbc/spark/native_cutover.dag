@@ -6,7 +6,7 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused,
-  ArmNodeLaunch, ArmNode, glm_native_tp4_launch_plan,
+  ArmNodeLaunch, ArmNode,
   glm_native_container_name, glm_native_serve_port, glm_native_master_port,
 }
 import gunbc.spark.native_deployment_readback {
@@ -246,8 +246,14 @@ fn cutover_left_an_outage(o: CutoverOutcome) -> Bool {
 // gathered on the real hosts, the floor is green at the exact head, and the operator has authorised the
 // displacement. It consumes THIS decision rather than re-deriving one, so the thing reviewed here is the
 // thing that runs.
-fn glm_native_cutover_standing(satisfied: List<CutoverPrecondition>) -> CutoverStanding {
-  admit_cutover(plan: glm_native_tp4_launch_plan(), satisfied: satisfied)
+// THE PLAN IS AN ARGUMENT BECAUSE THE PLAN NO LONGER EXISTS WITHOUT AN OBSERVATION. Its memory fraction is
+// resolved per attempt from fresh per-rank device readings by gunbc.spark.device_memory_envelope, so there
+// is no zero-argument native plan to consult -- and an infeasible envelope arrives here as an
+// ArmLaunchRefused, which admit_cutover already refuses. That is the produced-standing route the roster
+// below deliberately does NOT duplicate as an enum member: a token saying "the envelope was checked" would
+// be satisfiable by typing it, while a refused plan cannot be talked out of.
+fn glm_native_cutover_standing(plan: ArmLaunchPlan, satisfied: List<CutoverPrecondition>) -> CutoverStanding {
+  admit_cutover(plan: plan, satisfied: satisfied)
 }
 
 // NOTHING IS SATISFIED YET, AND THIS ROW SAYS SO RATHER THAN LEAVING IT TO BE INFERRED. Several members
