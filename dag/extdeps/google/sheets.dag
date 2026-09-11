@@ -66,6 +66,8 @@ data sheets_api_version: NonEmptyStr = "v4"
 
 data sheets_api_base: NonEmptyStr = "https://sheets.googleapis.com/v4"
 
+data sheets_serviceusage_api_id: NonEmptyStr = "sheets.googleapis.com"
+
 data sheets_spreadsheets_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/spreadsheets"
 
 data sheets_spreadsheets_readonly_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/spreadsheets.readonly"
