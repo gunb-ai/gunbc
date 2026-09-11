@@ -183,6 +183,12 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // this tree before scheduling: all three held against the repaired writer, and against the
 // pre-repair writer the claim went false while both controls held.
 //
+// TWO DEVBOOT TEXT-BLOB MEMBERS (test.claim.devboot_text_blob_real_execution), the same
+// local-repo effects: a temp directory holding a bare store or a worktree repository, and git
+// hash-object / cat-file inside it. They are consumption controls for devboot's stdin route through
+// both of its repository addresses. Measured wet through `gunbc run` over this tree: both held, and
+// a writer mutated to drop trailing bytes turned the worktree member false.
+//
 // THE ROWS NOW CARRY `WitnessIdentity` RATHER THAN A QUALIFIED STRING, and that removed a duplicated
 // fact rather than adding a field: every row's `identity` ended with "." plus its own `function`, so
 // the qualified name was authored twice per row and could disagree with itself. It is derived from
@@ -482,6 +488,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.fabric_event_log_append_real_execution", function: "two_appends_chain_oldest_first_by_real_execution" },
       entry: "dag/test/claim/fabric_event_log_append_real_execution_witness_test.dag",
       function: "two_appends_chain_oldest_first_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.devboot_text_blob_real_execution", function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution" },
+      entry: "dag/test/claim/devboot_text_blob_real_execution_witness_test.dag",
+      function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.devboot_text_blob_real_execution", function: "a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution" },
+      entry: "dag/test/claim/devboot_text_blob_real_execution_witness_test.dag",
+      function: "a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

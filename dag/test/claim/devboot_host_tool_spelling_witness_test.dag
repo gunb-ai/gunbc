@@ -16,6 +16,7 @@ import extdeps.cargo {
   CargoTargetDirEnv,
   CargoBuildJobsEnv,
   RustcWrapperEnv,
+  RustflagsEnv,
   cargo_environment_variable_name,
 }
 import extdeps.rustup { rustup_home_env_name }
@@ -68,6 +69,7 @@ test fn cargo_environment_variable_names_are_the_cited_upstream_spellings() -> B
     && (cargo_environment_variable_name(variable: CargoTargetDirEnv) as String) == "CARGO_TARGET_DIR"
     && (cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String) == "CARGO_BUILD_JOBS"
     && (cargo_environment_variable_name(variable: RustcWrapperEnv) as String) == "RUSTC_WRAPPER"
+    && (cargo_environment_variable_name(variable: RustflagsEnv) as String) == "RUSTFLAGS"
 }
 
 // THE NAME COMES FROM CARGO, THE OPERAND FORM FROM env(1), AND THE JOIN IS THE ASSERTION. This

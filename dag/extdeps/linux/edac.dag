@@ -1,14 +1,43 @@
 module extdeps.linux.edac
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.linux.kernel { LinuxKernelModuleName, LinuxKernelRelease }
 import extdeps.uri { Uri, Https }
-import std.types { Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { MemoryControllerCount, memory_controller_count, memory_controller_count_value }
+import v2.std.optional { Absent, Present }
+import std.types { Bool, NonEmptyStr, String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.kernel.org/admin-guide/RAS/main.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.edac",
+      decl_name: "EdacDriverBinding",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri {
+        scheme: Https
+        locator: "docs.kernel.org/firmware-guide/acpi/apei/output_format.html"
+      }
+    },
+    ExternalAuthority {
+      uri: Uri {
+        scheme: Https
+        locator: "git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/edac/ghes_edac.c?h=v6.8"
+      }
+    },
+  ]
 }
 
 service diagnostic.edac.RasMcCtl {
@@ -22,4 +51,162 @@ service diagnostic.edac.RasMcCtl {
       nonzero => String "ras-mc-ctl failed"
     }
   }
+}
+
+// ── who owns the memory controller, which is what decides whether EDAC can answer about topology ──
+
+// WHO CONSUMES THESE FOLDS (DESIGN §3c). Today: test.claim.linux_edac_topology_authority_witness
+// exercises every arm of every fold below, including the discriminating red control on the dmesg
+// detector and the release every channel-topology reading carries. The named later consumer is the observing layer's receipt — gunbc#10965's
+// mtcollins1_edac_channel_map_unavailable_reason, which currently restates this mechanism as prose
+// inside a single unit's observation; its trigger is that PR merging, after which the receipt keeps
+// its readings (driver ghes_edac, apei_firmware_first true, csrow_node_count 0, the dmesg line) and
+// resolves the WHY against this module. The split is DESIGN §3's: an observation this repository
+// produced is a receipt in the observing layer, never a fact owned by the observed upstream.
+
+// THE KERNEL RELEASE THESE TOPOLOGY ROWS WERE READ AGAINST. ExternalModelScope deliberately carries
+// no revision (a subject module legitimately models several releases), so the release belongs on
+// the fact rows that need it. It is not a decorative provenance note: this module's whole claim is
+// that an absent channel map is STRUCTURAL rather than a missing driver, and that claim is only
+// falsifiable against a stated release — a mainline kernel that grew a native Altra memory-controller
+// driver would make the same reading come back ChannelTopologyEnumerated. So the release travels
+// WITH the reading, in the same value, rather than sitting beside it where a consumer can quote the
+// answer and drop the thing that makes it checkable.
+data edac_topology_model_read_at_release: LinuxKernelRelease = "6.8.0" as LinuxKernelRelease
+
+// THE ROSTER OF NATIVE DRIVERS IS OPEN, SO IT IS NOT AN ENUM. Every new memory controller upstream
+// supports adds one more driver (skx_edac, i10nm_edac, amd64_edac, …), so a closed variant list
+// would claim a completeness nobody can hold. What IS closed is the question that matters: either a
+// driver that enumerates the controller is bound, or ghes_edac is, or nothing is. That trichotomy is
+// exhaustive and stable, and the open part is carried as the kernel's own module name.
+type EdacDriverBinding
+  = NativeMemoryControllerEdac { kernel_module: LinuxKernelModuleName }
+  | GhesEdac
+  | NoEdacDriverBound
+
+// WHY ghes_edac CANNOT ANSWER A TOPOLOGY QUESTION, stated once here rather than re-derived on each
+// platform where someone expects a channel map and finds an empty tree.
+//
+// Under ACPI APEI firmware-first mode the FIRMWARE handles memory errors and hands the OS finished
+// error records; the OS never enumerates the memory controller at all. ghes_edac exists so that one
+// of those finished records has a DIMM to be attributed to — it registers ONE synthetic memory
+// controller and mirrors the SMBIOS Type 17 device list into it. It is an ERROR-ATTRIBUTION shim,
+// not a memory-controller topology authority.
+//
+// The consequence is structural, not a gap to chase: no csrow or channel node exists to read, on
+// ANY boot, absent a native memory-controller EDAC driver for the platform. A reader who sees an
+// empty csrow tree under ghes_edac has a complete answer, not a failed probe, and rebooting or
+// modprobing will not change it.
+type EdacTopologyAuthority
+  = MemoryControllerEnumerated
+  | ErrorAttributionOnly
+  | NoEdacAuthority
+
+fn edac_driver_topology_authority(binding: EdacDriverBinding) -> EdacTopologyAuthority {
+  match binding {
+    NativeMemoryControllerEdac { kernel_module: _ } => MemoryControllerEnumerated
+    GhesEdac => ErrorAttributionOnly
+    NoEdacDriverBound => NoEdacAuthority
+  }
+}
+
+// AN ABSENT CHANNEL MAP HAS TWO CAUSES AND THEY ARE NOT INTERCHANGEABLE. One ends the errand and the
+// other schedules work, so collapsing them into a bare "unavailable" is what makes the next reader
+// book another boot.
+type EdacChannelTopologyAbsenceCause
+  = FirmwareFirstErrorAttributionShim
+  | NoMemoryControllerDriverBound
+
+type EdacChannelTopologyAvailability
+  = ChannelTopologyEnumerated { kernel_module: LinuxKernelModuleName }
+  | ChannelTopologyAbsent { cause: EdacChannelTopologyAbsenceCause }
+
+// ONE FOLD, AND ITS ANSWER CARRIES THE RELEASE IT WAS READ AT. There is deliberately no second
+// release-free fold beside this one: a parallel route that answers the same question without the
+// provenance is the path every consumer would take, and the release would be dangling again one
+// caller later.
+type EdacChannelTopologyReading {
+  availability: EdacChannelTopologyAvailability
+  read_at_release: LinuxKernelRelease
+}
+
+fn edac_channel_topology_availability(binding: EdacDriverBinding) -> EdacChannelTopologyReading {
+  EdacChannelTopologyReading {
+    availability: match binding {
+      NativeMemoryControllerEdac { kernel_module: m } => ChannelTopologyEnumerated { kernel_module: m }
+      GhesEdac => ChannelTopologyAbsent { cause: FirmwareFirstErrorAttributionShim }
+      NoEdacDriverBound => ChannelTopologyAbsent { cause: NoMemoryControllerDriverBound }
+    },
+    read_at_release: edac_topology_model_read_at_release,
+  }
+}
+
+// THE REBOOT-STABILITY OF THE ABSENCE IS THE ACTIONABLE HALF. Under the shim the absence is a
+// property of the firmware/OS arrangement and holds on every boot; with nothing bound at all it
+// holds only until a driver is bound, which is a real thing to try.
+type EdacTopologyAbsenceStanding
+  = AbsentOnEveryBoot
+  | AbsentUntilDriverBound
+
+fn edac_channel_topology_absence_standing(
+  cause: EdacChannelTopologyAbsenceCause,
+) -> EdacTopologyAbsenceStanding {
+  match cause {
+    FirmwareFirstErrorAttributionShim => AbsentOnEveryBoot
+    NoMemoryControllerDriverBound => AbsentUntilDriverBound
+  }
+}
+
+// HOW MANY CONTROLLERS ARE REGISTERED IS ITSELF TWO DIFFERENT KINDS OF FACT, which is why it is a
+// fold and not a number. Under the shim the count is ONE regardless of what the hardware has,
+// because it is a property of ghes_edac rather than of the platform — a memory_controller_count of
+// 1 beside sixteen DIMMs is the expected reading, not an anomaly to investigate. Under a native
+// driver the count is whatever the machine actually has, which this module cannot know and must not
+// guess: that is a per-platform reading for the observing layer, so the fold declines to answer
+// rather than fabricating a plausible one.
+data ghes_edac_registered_controller_count: MemoryControllerCount = memory_controller_count(count: 1)
+
+type EdacRegisteredControllerCount
+  = ControllerCountFixedByDriver { count: MemoryControllerCount }
+  | ControllerCountIsAPlatformReading
+  | ControllerCountNotApplicable
+
+fn edac_registered_controller_count(binding: EdacDriverBinding) -> EdacRegisteredControllerCount {
+  match binding {
+    GhesEdac => ControllerCountFixedByDriver { count: ghes_edac_registered_controller_count }
+    NativeMemoryControllerEdac { kernel_module: _ } => ControllerCountIsAPlatformReading
+    NoEdacDriverBound => ControllerCountNotApplicable
+  }
+}
+
+// WHERE THE DIMM NODES COME FROM, which is the same question asked of both drivers and gets
+// different answers — that difference IS the shim. A native driver's dimm nodes are the controller's
+// own enumeration, so they carry channel position; ghes_edac's are a mirror of the SMBIOS Memory
+// Device (Type 17) table, which names slots and not channels, so its dimm nodes can identify a part
+// without ever locating it in the topology. A full DMTF SMBIOS authority is a separate
+// independently versioned upstream and does not exist in this corpus yet: the frontier is
+// extdeps.dmtf.smbios, and this variant is what will cite it by symbol once it lands.
+type EdacDimmNodeSource
+  = MemoryControllerEnumeration
+  | SmbiosType17MemoryDeviceTable
+
+fn edac_dimm_node_source(binding: EdacDriverBinding) -> EdacDimmNodeSource? {
+  match binding {
+    NativeMemoryControllerEdac { kernel_module: _ } =>
+      Present { value: MemoryControllerEnumeration }
+    GhesEdac => Present { value: SmbiosType17MemoryDeviceTable }
+    NoEdacDriverBound => Absent
+  }
+}
+
+// ── detecting the arrangement from what the kernel says ───────────────────────────────────────────
+
+// THE KERNEL'S OWN LOG LINE, and it is the kernel's string rather than ours: drivers/acpi/apei emits
+// it when the HEST advertises firmware-first handling. Carried here so a consumer greps for a
+// modeled upstream literal instead of retyping it, which is the same reason a diagnostic's text
+// belongs to whoever emits it.
+data apei_firmware_first_dmesg_marker: NonEmptyStr = "APEI firmware first mode is enabled by APEI bit"
+
+fn apei_firmware_first_from_dmesg(dmesg: String) -> Bool {
+  string_contains(s: dmesg, pattern: apei_firmware_first_dmesg_marker as String)
 }
