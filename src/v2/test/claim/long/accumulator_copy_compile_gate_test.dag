@@ -5,13 +5,14 @@ import std.algebra { Empty }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
-import v2.compiler.compile { TranslateTo, validate_then_compile }
+import v2.compiler.compile {
+  CompileLensRoot,
+  required_lenses_at_grain,
+  run_required_lens_gates
+}
+import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
-import v2.std.collection { empty_map }
-import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.compilers.target_model {
-  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -20,7 +21,6 @@ import v2.std.diagnostic {
   Rejected,
   Some
 }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, Symbol, TypeNode }
 import v2.std.text { String }
@@ -124,28 +124,28 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
   }
 }
 
-data compile_gate_target_stub: TargetModel = TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
-  bundle: Node {
-    kind: TypeNode { connective: Conj },
-    children: [],
-    occurrence_id: OccurrenceSynthetic
-  },
-  lex: VoidLexRules,
-  binding_spellings: empty_map(),
-  token_class_emit_transforms: target_model_emit_transforms_empty,
-  authority_source_text: Empty,
-  runtime_row: target_emit_host_runtime_row_unconfigured
-}
-
-test fn door_root_roster_runs_and_passes_clean_tree() -> Bool {
-  match validate_then_compile(
-    source: fixture_add_resolved_tree(),
-    lenses: [],
-    mode: TranslateTo { target: compile_gate_target_stub }
-  ) {
-    Rejected { diagnostics: d } =>
-      !non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
-    Accepted { value: _, diagnostics: _ } => true
+// WHAT THIS CONTROL DISCRIMINATES, AND WHY IT WAS RE-SCOPED. Its previous form called
+// validate_then_compile and accepted EITHER an Accepted compile OR any Rejected whose diagnostics
+// lacked the poly2 suspect. Measured: the door REFUSES this fixture, so the check was green on a
+// refusal and would have stayed green if the root roster had stopped running altogether - a
+// permanently-green check cited as coverage (DESIGN section 4b). The refusal is located, and it is
+// neither infer nor the root roster: infer Accepts this fixture, the root-required roster Accepts
+// the inferred tree, and the SUBTREE-grain roster refuses it. So the honest root-grain claim is
+// this one - infer accepts and every root-registered gate accepts the real inferred tree, with no
+// tolerance for an unrelated refusal - and the door-grain positive control (an Accepted
+// validate_then_compile carrying its coverage receipt) is a declared frontier recorded in
+// v2.test.lens_application.required_lens_coverage_join, triggered by a route that reaches Accepted
+// through the door.
+test fn door_root_roster_accepts_clean_inferred_tree() -> Bool {
+  match infer(tree: fixture_add_resolved_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match run_required_lens_gates(
+        inferred: inferred,
+        lenses: required_lenses_at_grain(grain: CompileLensRoot)
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
   }
 }
