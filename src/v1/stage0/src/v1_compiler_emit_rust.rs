@@ -39198,7 +39198,8 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("::");
         content.push_str(&pipeline_mod);
         content.push_str("::{\n");
-        content.push_str("    native_test_context_from_ingest, native_test_eval_one, native_test_prepare_module,\n");
+        content.push_str("    native_test_context_from_ingest, native_test_eval_one, native_test_infer_resolved,\n");
+        content.push_str("    native_test_resolve_module,\n");
         content.push_str("    NativeTestObservation, NativeTestStage, NativeTestVerdict,\n");
         content.push_str("};\n");
         content.push_str("use ");
@@ -39371,38 +39372,91 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    let mut prepare_refused: u64 = 0;\n");
         content.push_str("    let mut prepare_samples: Vec<u128> = Vec::new();\n");
         content.push_str("    let mut eval_samples: Vec<u128> = Vec::new();\n");
+        content.push_str("    let mut prepare_resolve_nanos: u128 = 0;\n");
+        content.push_str("    let mut prepare_infer_nanos: u128 = 0;\n");
         content.push_str("    for (dotted, qn) in &module_order {\n");
         content.push_str("        let declarations = &module_decls[dotted];\n");
         content.push_str("        let prepare_start = Instant::now();\n");
+        content.push_str("        let resolve_start = Instant::now();\n");
         content.push_str(
-            "        match &*native_test_prepare_module(context.clone(), qn.clone()) {\n",
+            "        match &*native_test_resolve_module(context.clone(), qn.clone()) {\n",
         );
-        content.push_str("            Outcome::Accepted { value: prepared, .. } => {\n");
+        content.push_str("            Outcome::Accepted { value: resolved, .. } => {\n");
         content
-            .push_str("                let this_prepare = prepare_start.elapsed().as_nanos();\n");
-        content.push_str("                prepare_nanos += this_prepare;\n");
-        content.push_str("                prepare_samples.push(this_prepare);\n");
-        content.push_str("                prepare_ok += 1;\n");
-        content.push_str("                eprintln!(\"[native-prepare] module={dotted} nanos={this_prepare} decls={} outcome=accepted\", declarations.len());\n");
-        content.push_str("                for declaration in declarations {\n");
-        content.push_str("                    let eval_start = Instant::now();\n");
-        content.push_str("                    let observation = native_test_eval_one(prepared.clone(), declaration.clone());\n");
-        content.push_str("                    let this_eval = eval_start.elapsed().as_nanos();\n");
-        content.push_str("                    eval_nanos += this_eval;\n");
-        content.push_str("                    eval_samples.push(this_eval);\n");
+            .push_str("                let this_resolve = resolve_start.elapsed().as_nanos();\n");
+        content.push_str("                let infer_start = Instant::now();\n");
         content.push_str(
-            "                    println!(\"{}\", serde_json::to_string(&observation).unwrap());\n",
+            "                match &*native_test_infer_resolved(qn.clone(), resolved.clone()) {\n",
         );
-        content.push_str("                    rows += 1;\n");
+        content.push_str("                    Outcome::Accepted { value: prepared, .. } => {\n");
+        content.push_str(
+            "                        let this_infer = infer_start.elapsed().as_nanos();\n",
+        );
+        content.push_str(
+            "                        let this_prepare = prepare_start.elapsed().as_nanos();\n",
+        );
+        content.push_str("                        prepare_nanos += this_prepare;\n");
+        content.push_str("                        prepare_resolve_nanos += this_resolve;\n");
+        content.push_str("                        prepare_infer_nanos += this_infer;\n");
+        content.push_str("                        prepare_samples.push(this_prepare);\n");
+        content.push_str("                        prepare_ok += 1;\n");
+        content.push_str("                        eprintln!(\"[native-prepare] module={dotted} nanos={this_prepare} decls={} outcome=accepted\", declarations.len());\n");
+        content.push_str("                        eprintln!(\"[native-prepare-split] module={dotted} resolve_nanos={this_resolve} infer_nanos={this_infer} prepare_nanos={this_prepare} outcome=accepted\");\n");
+        content.push_str("                        for declaration in declarations {\n");
+        content.push_str("                            let eval_start = Instant::now();\n");
+        content.push_str("                            let observation = native_test_eval_one(prepared.clone(), declaration.clone());\n");
+        content.push_str(
+            "                            let this_eval = eval_start.elapsed().as_nanos();\n",
+        );
+        content.push_str("                            eval_nanos += this_eval;\n");
+        content.push_str("                            eval_samples.push(this_eval);\n");
+        content.push_str("                            println!(\"{}\", serde_json::to_string(&observation).unwrap());\n");
+        content.push_str("                            rows += 1;\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
+        content.push_str("                    Outcome::Rejected { diagnostics } => {\n");
+        content.push_str(
+            "                        let this_infer = infer_start.elapsed().as_nanos();\n",
+        );
+        content.push_str(
+            "                        let this_prepare = prepare_start.elapsed().as_nanos();\n",
+        );
+        content.push_str("                        prepare_nanos += this_prepare;\n");
+        content.push_str("                        prepare_resolve_nanos += this_resolve;\n");
+        content.push_str("                        prepare_infer_nanos += this_infer;\n");
+        content.push_str("                        prepare_samples.push(this_prepare);\n");
+        content.push_str("                        prepare_refused += 1;\n");
+        content.push_str("                        eprintln!(\"[native-prepare] module={dotted} nanos={this_prepare} decls={} outcome=refused\", declarations.len());\n");
+        content.push_str("                        eprintln!(\"[native-prepare-split] module={dotted} resolve_nanos={this_resolve} infer_nanos={this_infer} prepare_nanos={this_prepare} outcome=infer_refused\");\n");
+        content.push_str("                        let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n");
+        content.push_str("                        for declaration in declarations {\n");
+        content.push_str("                            let observation = NativeTestObservation {\n");
+        content.push_str("                                module: qn.clone(),\n");
+        content.push_str("                                declaration: declaration.clone(),\n");
+        content.push_str("                                verdict: Rc::new(NativeTestVerdict::NativeTestRefused {\n");
+        content.push_str(
+            "                                    stage: NativeTestStage::NativeTestStagePrepare,\n",
+        );
+        content.push_str("                                    reason: reason.clone(),\n");
+        content.push_str("                                }),\n");
+        content.push_str("                            };\n");
+        content.push_str("                            println!(\"{}\", serde_json::to_string(&observation).unwrap());\n");
+        content.push_str("                            rows += 1;\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
         content.push_str("                }\n");
         content.push_str("            }\n");
         content.push_str("            Outcome::Rejected { diagnostics } => {\n");
         content
+            .push_str("                let this_resolve = resolve_start.elapsed().as_nanos();\n");
+        content
             .push_str("                let this_prepare = prepare_start.elapsed().as_nanos();\n");
         content.push_str("                prepare_nanos += this_prepare;\n");
+        content.push_str("                prepare_resolve_nanos += this_resolve;\n");
         content.push_str("                prepare_samples.push(this_prepare);\n");
         content.push_str("                prepare_refused += 1;\n");
         content.push_str("                eprintln!(\"[native-prepare] module={dotted} nanos={this_prepare} decls={} outcome=refused\", declarations.len());\n");
+        content.push_str("                eprintln!(\"[native-prepare-split] module={dotted} resolve_nanos={this_resolve} infer_nanos=0 prepare_nanos={this_prepare} outcome=resolve_refused\");\n");
         content.push_str("                let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n");
         content.push_str("                for declaration in declarations {\n");
         content.push_str("                    let observation = NativeTestObservation {\n");
@@ -39446,7 +39500,7 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    let prepare_share_per_identity = if identities == 0 { 0 } else { prepare_nanos / identities as u128 };\n");
         content.push_str("    let floor_per_identity = eval_mean + prepare_share_per_identity;\n");
         content.push_str("    let verdict = if exclusive_sum > parent_span_nanos { r#\"NativeDriverCostOverAttributed\"# } else if remainder_nanos > 50000000 { r#\"NativeDriverCostRemainderExceedsTolerance\"# } else { r#\"NativeDriverCostReconciled\"# };\n");
-        content.push_str("    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": 50000000, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": { \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos }, \"sum_exclusive_nanos\": exclusive_sum, \"remainder_nanos\": remainder_nanos, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module }));\n");
+        content.push_str("    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": 50000000, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": { \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos }, \"sum_exclusive_nanos\": exclusive_sum, \"remainder_nanos\": remainder_nanos, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module, \"prepare_resolve_nanos\": prepare_resolve_nanos, \"prepare_infer_nanos\": prepare_infer_nanos }));\n");
         content.push_str("}\n");
         Rc::new(TextFile {
             path: v1_rt::concat(
