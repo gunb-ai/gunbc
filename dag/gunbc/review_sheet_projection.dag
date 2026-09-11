@@ -127,15 +127,15 @@ data a1_column_letters: List<String> = [
   "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"
 ]
 
-fn a1_column_letter(index: Int) -> String {
-  match a1_column_letters |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
-    Present { value: letter } => letter
-    Absent => "?"
-  }
+fn a1_column_letter(index: Int) -> String? {
+  a1_column_letters |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first
 }
 
-fn a1_cell(column_index: Int, sheet_row: Int) -> NonEmptyStr {
-  concat(a1_column_letter(index: column_index), to_string(sheet_row)) as NonEmptyStr
+fn a1_cell(column_index: Int, sheet_row: Int) -> NonEmptyStr? {
+  match a1_column_letter(index: column_index) {
+    Present { value: letter } => Present { value: concat(letter, to_string(sheet_row)) as NonEmptyStr }
+    Absent => none
+  }
 }
 
 fn sheet_row_number(data_index: Int) -> Int {
@@ -274,24 +274,36 @@ fn classification_from_cell_decision(
   match decision {
     CellSkip => ReviewSheetNeedsWrite { plan: plan }
     CellWrite { value: v } =>
-      ReviewSheetNeedsWrite {
-        plan: plan_plus_patch(
-          plan: plan,
-          write: DerivedCellWrite {
-            listing_id: listing_id,
-            column: column,
-            a1: a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)),
-            value: v,
-          },
-        )
+      match a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)) {
+        Absent => ReviewSheetUnreadable {
+          reason: concat("unrepresentable A1 column index ", to_string(column_index)) as NonEmptyStr
+        }
+        Present { value: a1 } =>
+          ReviewSheetNeedsWrite {
+            plan: plan_plus_patch(
+              plan: plan,
+              write: DerivedCellWrite {
+                listing_id: listing_id,
+                column: column,
+                a1: a1,
+                value: v,
+              },
+            )
+          }
       }
     CellConflict =>
-      ReviewSheetConflict {
-        conflict: LocatedDerivedConflict {
-          listing_id: listing_id,
-          column: column,
-          a1: a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)),
+      match a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)) {
+        Absent => ReviewSheetUnreadable {
+          reason: concat("unrepresentable A1 column index ", to_string(column_index)) as NonEmptyStr
         }
+        Present { value: a1 } =>
+          ReviewSheetConflict {
+            conflict: LocatedDerivedConflict {
+              listing_id: listing_id,
+              column: column,
+              a1: a1,
+            }
+          }
       }
   }
 }
@@ -306,7 +318,13 @@ fn classify_existing_row(
 ) -> ReviewSheetClassification {
   let listing_raw = cell_at(cells: row.cells, index: identity_index)
   if listing_raw == "" {
-    ReviewSheetUnreadable { reason: concat("empty listing identity at ", a1_cell(column_index: identity_index, sheet_row: sheet_row_number(data_index: row.data_index)) as String) as NonEmptyStr }
+    match a1_cell(column_index: identity_index, sheet_row: sheet_row_number(data_index: row.data_index)) {
+      Absent => ReviewSheetUnreadable {
+        reason: concat("empty listing identity at unrepresentable A1 column index ", to_string(identity_index)) as NonEmptyStr
+      }
+      Present { value: a1 } =>
+        ReviewSheetUnreadable { reason: concat("empty listing identity at ", a1 as String) as NonEmptyStr }
+    }
   } else {
     let listing_id = listing_raw as NonEmptyStr
     match projection_row_for(projection: projection, listing_id: listing_id) {

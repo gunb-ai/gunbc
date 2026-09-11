@@ -32,7 +32,3 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: [google_workspace_credentials_citation]
 }
-
-data workspace_api_edition: NonEmptyStr = "workspace-apis"
-
-data workspace_not_gcp_note: String = "Google Workspace is an independently governed product family from Google Cloud. GCP IAM, ADC and Secret Manager are how a service account is minted and held; they are not this product. A Sheets credential is a fleet secret under gunbc.secret_provision, not a second credential concept."

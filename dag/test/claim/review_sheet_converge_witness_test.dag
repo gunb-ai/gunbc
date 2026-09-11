@@ -27,19 +27,38 @@ import gunbc.review_sheet_projection {
   StandingKnown,
   StandingBlank,
   StandingForeign,
+  a1_column_letter,
+  a1_column_letters,
 }
 import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
   review_sheet_from_readback,
   sheets_workspace_suite,
+  sheets_access,
+  sheets_value_input_raw,
+  sheets_projection_oauth_scope,
+  sheets_api_edition,
+  live_sheets_transport_frontier,
 }
 import extdeps.google.sheets {
   ValueRange,
   sheets_api_version,
   sheets_spreadsheets_oauth_scope,
+  sheets_spreadsheets_readonly_oauth_scope,
   sheets_read_requests_per_minute_per_project,
+  sheets_write_requests_per_minute_per_project,
+  sheets_requests_per_minute_per_user,
+  sheets_rate_limits,
+  sheets_read_quota_citation,
+  sheets_major_dimension_wire,
+  sheets_major_dimension_from_wire,
+  DimensionRows,
+  DimensionColumns,
 }
+import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import std.disposition { Terminal, Scaffold }
 
 fn w_schema() -> ReviewSheetSchema {
   ReviewSheetSchema {
@@ -291,4 +310,82 @@ test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
     Noop => false
     Apply { plan: _ } => false
   }
+}
+
+test fn a1_column_past_z_has_no_letter() -> Bool {
+  match a1_column_letter(index: 0) {
+    Present { value: a } =>
+      a == "A"
+        && match a1_column_letter(index: 25) {
+          Present { value: z } =>
+            z == "Z"
+              && match a1_column_letter(index: 26) {
+                Absent => true
+                Present { value: _ } => false
+              }
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool {
+  let schema = ReviewSheetSchema {
+    identity_column: "listing_id" as NonEmptyStr,
+    columns: map(a1_column_letters, n => ReviewColumn {
+      name: n as NonEmptyStr,
+      kind: DerivedField { source_field: n as NonEmptyStr },
+    }),
+  }
+  let projection = ReviewSheetProjection {
+    schema: schema,
+    rows: [ProjectionRow {
+      listing_id: "L1" as NonEmptyStr,
+      derived: [DerivedCell { column: "Z" as NonEmptyStr, value: "x" }],
+    }],
+  }
+  let observed = w_observed(
+    headers: concat(["listing_id"], a1_column_letters),
+    rows: [concat(["L1"], map(a1_column_letters, n => ""))],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "unrepresentable A1 column index 26")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn sheets_cited_facts_have_executing_readers() -> Bool {
+  (sheets_rate_limits |> count) == 3
+    && sheets_write_requests_per_minute_per_project.requests == 300
+    && sheets_requests_per_minute_per_user.requests == 60
+    && sheets_read_quota_citation.fact.decl_name == "sheets_read_requests_per_minute_per_project"
+    && match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionRows)) {
+      Present { value: DimensionRows } =>
+        match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionColumns)) {
+          Present { value: DimensionColumns } => true
+          Present { value: DimensionRows } => false
+          Absent => false
+        }
+      Present { value: DimensionColumns } => false
+      Absent => false
+    }
+    && (sheets_published_mock_corpus |> count) == 2
+    && (sheets_spreadsheets_readonly_oauth_scope as String) != (sheets_spreadsheets_oauth_scope as String)
+    && (sheets_projection_oauth_scope() as String) == (sheets_spreadsheets_oauth_scope as String)
+    && sheets_value_input_raw() == "RAW"
+    && (sheets_api_edition() as String) == (sheets_api_version as String)
+    && match live_sheets_transport_frontier {
+      Terminal { reason: r } => string_contains(s: r as String, pattern: "sunny-carp-475")
+      Scaffold { dissolves_to: _, bind: _ } => false
+    }
+    && sheets_access(
+      spreadsheet_id: "sheet" as NonEmptyStr,
+      credential: SecretRef {
+        project: "proj",
+        secret: "sheets-sa" as NonEmptyStr,
+        version: "pending",
+        hash_state: HashPending,
+      },
+    ).spreadsheet_id == ("sheet" as NonEmptyStr)
 }
