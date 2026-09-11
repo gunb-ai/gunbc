@@ -2382,13 +2382,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_JDGMNTM0D3LS3L3CTNTUN1NGX7Q",
       id: "judgment-model-selection-and-specialization",
       by: "gunbc.roadmap.roadmap_review_role, gunbc.roadmap.roadmap_review_criteria and gunbc.roadmap.roadmap_goal_audit_role (#10443)",
-      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's one fixed engine (gunbc.harness.harness_wire harness_engine_model); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
+      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's own serving routes (gunbc.serving.serving_enrollment serving_enrolled_groups, whose model is bound per placement); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
     ),
     superseded(
       identity: "rn_0PGYW4KDNQ2BXR9TVCM6HJ3LZ5",
       id: "judgment-mechanical-review-service",
       by: "gunbc.roadmap.roadmap_review_role, gunbc.roadmap.roadmap_review_criteria and gunbc.roadmap.roadmap_goal_audit_role (#10443)",
-      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's one fixed engine (gunbc.harness.harness_wire harness_engine_model); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
+      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's own serving routes (gunbc.serving.serving_enrollment serving_enrolled_groups, whose model is bound per placement); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
     ),
 
     active(

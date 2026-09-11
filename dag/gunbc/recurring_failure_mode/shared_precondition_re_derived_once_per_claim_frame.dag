@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.shared_precondition_re_derived_once_per_claim_frame
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data shared_precondition_re_derived_once_per_claim_frame: RecurringFailureMode = RecurringFailureMode {
@@ -19,6 +20,8 @@ data shared_precondition_re_derived_once_per_claim_frame: RecurringFailureMode =
 
     "SPECIMEN, gunbc#10882 and gunbc#10992. #10882 landed src/v2/test/native_decl_selection_test.dag into the required floor at 2026-09-10T20:53Z; its four witnesses each called collision_prepared, so the seed tokenized and parsed ~230 characters of synthetic source once per claim. required-witnesses-floor refused on main for nearly an hour with the summary claims_failed=0 interrupted_before_verdict=4 interrupted_cpu_deadline=4 -- NOTHING FAILING and the lane red, because an unreached verdict is fail-closed. Marginal CPU measured by claim_batch: 1113, 1330, 1375 and 1362ms against the 500ms line. #10992 repaired it by sharing the fixture at the resolved seam so the ingest is paid once, and the four rows fit. ",
 
+    "SECOND SPECIMEN, gunbc#11032, arriving by the same recognition rule a day later and diagnosed by a lane that had not read this row. A newly landed family -- the where-refinement parse witnesses from gunbc#10946 -- refused the 500ms line on main with interrupted_before_verdict and nothing failing. Partitioned, the shared precondition dominated: v2.compiler.parse parse_grammar_digest and the production index were re-derived on EVERY PARSE CALL although prepare_grammar had fixed both before the first token, and the shared fixture sources were re-parsed per claim. The producer that named it is the floor's cross-claim demand census (main run 34556223550, required_floor_cross_claim_demand.tsv, row parse_grammar_digest). The repair was the one this row prescribes: carry both facts on the prepared grammar, the seam where the grammar is already resolved, and share the fixture trees warm (v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm). Its frame is narrower than a claim -- per parse call -- which widens this row's reach rather than founding a neighbour: the question that finds it is still the one above. It also shows the census already locating the class and nothing refusing on it, which is this row's next-rung trigger unmet. ",
+
     "WHAT THE DIAGNOSTIC OFFERED AND WHY BOTH ARMS WERE WRONG, recorded because two readers took them in turn and neither questioned the frame. The refusal named exactly two remedies -- reduce the cost, or move the row to a lane declaring its own ceiling -- and a cost ladder showed the first unreachable, since the cheapest possible precondition was already 1.45x the line. That made the second arm look forced, and it is worse than it looks: the only off-floor home in the tree is a namespace the floor's own authority describes as NOT COVERED by anything, so routing there would have executed the rows nowhere and greened the gate over four unobserved claims. A diagnostic that enumerates its remedies teaches its reader that the enumeration is exhaustive; here the repair was in neither arm, and the reason is that both arms are about what the cost is ALLOWED to be while the defect was how many times it was paid. ",
 
     "RUNG FOUND AT: mitigatable. The gate refuses, typed and located, and contains the harm -- it did not ship a wrong verdict. What it does not do is name the duplication, so the refusal is discovered per family and diagnosed by hand, and on this specimen two readers in sequence reasoned about cost allowance before anyone asked about cost multiplicity. ",
@@ -28,5 +31,7 @@ data shared_precondition_re_derived_once_per_claim_frame: RecurringFailureMode =
     "NEXT-RUNG TRIGGER, a capability and not an artifact: the floor reports, for each refusing file, the shared pure preconditions its claims re-derive and the multiplicity -- sufficient that a cost refusal names the duplication where one exists, so the reader is never offered trim-or-re-home as an exhaustive choice over work that should have been computed once. Until then the class is found by partitioning a claim by hand, which requires an author who already suspects it. ",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.parse", decl_name: "parse_grammar_digest", field: WholeDeclaration },
+  ],
 }

@@ -160,10 +160,17 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // authorities at once. It does not restore group A, does not diagnose the restarts, and does not
 // establish a DeepSeek control -- there is currently no serving DeepSeek to be the control.
 //
-// THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing routes to it today, and that is a guard being
-// quiet rather than a guard being dead: the arm is reachable the moment B is promoted again, and
-// deleting it because the current roster does not reach it would be reading occupancy as
+// THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing converges to it today, and that is a guard
+// being quiet rather than a guard being dead: the arm is reachable the moment B is claimed again,
+// and deleting it because the current roster does not reach it would be reading occupancy as
 // reachability. The withdrawal belongs in the ROSTER, which is the thing that decides.
+//
+// AND THIS ROSTER NO LONGER DECIDES WHERE A TURN GOES, which is the repair that let group B be
+// enrolled for SERVING without restoring the claim this row withdrew. It answered two questions that
+// move for different reasons -- whose hosts this repository claims and converges, and which routes a
+// turn may be offered to -- and gunbc.serving.serving_enrollment now owns the second. This row is
+// the first question only, and it still says what it said on 2026-09-08: group B's hosts are the
+// canary's and are not claimed here.
 data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
 
 // WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair
