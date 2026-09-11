@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
 import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
+import std.pareto { LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint }
 import gunbc.spark.v41_published_image_observation {
   v41_published_arm64_reference,
@@ -30,7 +31,7 @@ import gunbc.spark.serving_deployment_selection {
   artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
   fleet_admitted_topologies, native_quality_holds, no_redundancy_holds,
   topology_shape_eq,
-  serving_selection_constraints, id_constraint_authority,
+  serving_selection_constraints, id_constraint_authority, ax_quality,
   deepseek_v4_1_candidate_field, v4_1_declared_profiles,
   TopologyShape, topology_shape,
   ServingDeploymentChoiceDomain, serving_deployment_domain,
@@ -390,12 +391,66 @@ test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
       evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
       quality_requirement: deepseek_quality_requirement,
       selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
-      constraints: [
-        HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 99 },
-      ],
+      constraints: map(serving_selection_constraints, c =>
+        if declaration_ref_eq(a: c.axis, b: ax_quality) {
+          HardConstraint { identity: c.identity, axis: c.axis, bound_micro: c.bound_micro + 1 }
+        } else { c }),
       constraint_authority: id_constraint_authority,
       axes: serving_selection_axes,
     ))
+}
+
+test fn changing_axis_goal_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) != decision_snapshot_key(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: map(v4_1_selection_axes, a =>
+      if declaration_ref_eq(a: a.identity, b: ax_no_redundancy) {
+        SelectionAxis { identity: a.identity, goal: LowerIsBetter }
+      } else { a }),
+  ))
+}
+
+test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
+  match select_serving_deployment(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) {
+    NoFeasibleServingDeployment { causes: _ } =>
+      match select_serving_deployment(input: serving_decision_input(
+        field: settled_field,
+        evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+        quality_requirement: deepseek_quality_requirement,
+        selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+        constraints: v4_1_selection_constraints,
+        constraint_authority: id_constraint_authority,
+        axes: map(v4_1_selection_axes, a =>
+          if declaration_ref_eq(a: a.identity, b: ax_no_redundancy) {
+            SelectionAxis { identity: a.identity, goal: LowerIsBetter }
+          } else { a }),
+      )) {
+        ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn changing_funded_axes_changes_the_decision_identity() -> Bool {
@@ -545,6 +600,10 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
           PublicCommitAbsent => true
           PublicCommitPresent => false
           PublicCommitUnasked => false
+        }
+        && match spark_runtime.vllm_source {
+          VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => true
+          VllmSourceRevisionEstablished { git: _ } => false
         }
         && match v4_1_runtime_vllm_gb10_lead.vllm_source {
           VllmSourceRevisionEstablished { git: g } =>

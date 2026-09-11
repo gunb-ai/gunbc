@@ -300,10 +300,13 @@ fn parameters_defect(p: ServingDecisionParameters) -> NonEmptyStr? {
   vllm_memory_request_defect(request: p.memory_request)
 }
 
-data spark_runtime: RuntimeRevision = runtime_revision(
+data spark_runtime: RuntimeRevision = RuntimeRevision {
   image: "the serving container image currently deployed on the Sparks" as NonEmptyStr,
-  vllm_revision: "the vLLM revision pinned in that image" as NonEmptyStr,
-)
+  vllm_source: VllmSourceRevisionUnestablished {
+    reported_version: "unread fleet image" as NonEmptyStr,
+    obligation: "the vLLM git revision in the currently deployed Spark image has not been read; this is not an established source pin" as NonEmptyStr,
+  },
+}
 
 data spark_host_memory_request: VllmMemoryRequest = VllmMemoryRequest {
   utilization: Present { value: basis_point(count: 8200) },
@@ -1349,7 +1352,14 @@ fn decision_snapshot_key(input: ServingDeploymentDecisionInput) -> String {
       to_string(c.bound_micro),
     ], "")), ","), "}",
     "|authority{", declaration_ref_display_key(ref: input.constraint_authority), "}",
-    "|axes{", join(map(input.axes, a => declaration_ref_display_key(ref: a.identity)), ","), "}",
+    "|axes{", join(map(input.axes, a => join([
+      declaration_ref_display_key(ref: a.identity),
+      ":",
+      match a.goal {
+        HigherIsBetter => "higher"
+        LowerIsBetter => "lower"
+      },
+    ], "")), ","), "}",
   ], "")
 }
 
