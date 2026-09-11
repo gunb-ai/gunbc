@@ -11,6 +11,8 @@ import gunbc.auth.github_gcp_federation {
   fleet_secrets_project_number,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet_ssh_access { fleet_automation_sa_email }
+import gunbc.assimilate.bmc_token_federation { bmc_assimilator_sa_email }
 
 // OBSERVING LAYER. These rows are receipts about a live GCP estate, not facts owned by
 // extdeps.cloud.gcp (DESIGN section 3: observations stay downstream of the observed upstream).
@@ -34,10 +36,6 @@ data gunbai_ci_secrets_sa_email: ServiceAccountEmail = "gunbai-ci-secrets@gunbai
 data gunbai_ci_iap_sa_email: ServiceAccountEmail = "gunbai-ci-iap@gunbai-secrets.iam.gserviceaccount.com"
 
 data fleet_cloud_convergence_sa_email: ServiceAccountEmail = "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com"
-
-data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
-
-data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
 data gunbai_dev_secrets_sa_email: ServiceAccountEmail = "gunbai-dev-secrets@gunbai-secrets.iam.gserviceaccount.com"
 
@@ -207,6 +205,12 @@ fn operator_prose_disagrees_with_sa_derived_project_id() -> Bool {
   operator_prose_project_name_slip as String != fleet_secrets_gcp_project as String
 }
 
+data github_pool_id: NonEmptyStr = "github-pool"
+
+data github_actions_pool_id: NonEmptyStr = "github-actions"
+
+// GcpProject.project_number is Int in extdeps.cloud.gcp; WIF paths use String.
+// The Int is the same identity as fleet_secrets_project_number; gcp_project_int_number_is_the_string_authority joins them.
 data observed_gunbai_secrets_project: GcpProject = GcpProject {
   project_id: fleet_secrets_gcp_project,
   project_number: 582015116396,
@@ -215,7 +219,7 @@ data observed_gunbai_secrets_project: GcpProject = GcpProject {
 
 data observed_github_actions_pool: ObservedWifPool = ObservedWifPool {
   project_number: fleet_secrets_project_number,
-  pool_id: "github-actions" as NonEmptyStr,
+  pool_id: github_actions_pool_id,
   display_name: "GitHub Actions OIDC",
   disabled: false,
 }
@@ -223,8 +227,6 @@ data observed_github_actions_pool: ObservedWifPool = ObservedWifPool {
 // github-pool is one identifier and one display name in four projects. The project
 // NUMBER is the only discriminator, and it is the part a reader skims — which is
 // how 314501921854 looked foreign. Inventory rows are keyed by project, never by pool id alone.
-data github_pool_id: NonEmptyStr = "github-pool"
-
 data gunb_ci_project_number: String = "477326212498"
 
 data gunb_test_project_number: String = "895190113964"
@@ -280,7 +282,7 @@ data observed_gunbai_auto_github_provider: ObservedWifProvider = ObservedWifProv
 
 data observed_github_oidc_provider: ObservedWifProvider = ObservedWifProvider {
   project_number: fleet_secrets_project_number,
-  pool_id: "github-actions" as NonEmptyStr,
+  pool_id: github_actions_pool_id,
   provider_id: "github-oidc" as NonEmptyStr,
   issuer_uri: "https://token.actions.githubusercontent.com",
   attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
@@ -386,7 +388,10 @@ fn gunbai_auto_legacy_principal_set_member() -> String {
 fn observed_github_actions_gunbc_principal_set() -> String {
   concat(
     concat("principalSet://iam.googleapis.com/projects/", fleet_secrets_project_number),
-    "/locations/global/workloadIdentityPools/github-actions/attribute.repository/gunb-ai/gunbc",
+    concat(
+      concat("/locations/global/workloadIdentityPools/", github_actions_pool_id as String),
+      "/attribute.repository/gunb-ai/gunbc",
+    ),
   )
 }
 
@@ -1125,6 +1130,13 @@ fn sheets_home_is_create_purpose_scoped_unminted() -> Bool {
   }
 }
 
+fn gcp_project_int_number_is_the_string_authority() -> Bool {
+  to_string(observed_gunbai_secrets_project.project_number) == fleet_secrets_project_number
+    && to_string(observed_gunbai_auto_project.project_number) == gunbai_auto_project_number
+    && to_string(observed_gunb_ci_project.project_number) == gunb_ci_project_number
+    && to_string(observed_gunb_test_project.project_number) == gunb_test_project_number
+}
+
 fn observed_project_number_is_named(number: String) -> Bool {
   number == fleet_secrets_project_number
     || number == gunbai_auto_project_number
@@ -1159,7 +1171,8 @@ fn every_census_observed_project_is_named(census: GcpEstateCensus) -> Bool {
 }
 
 fn census_observed_project_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
-  named_projects_are_observed_in_census(census: census)
+  gcp_project_int_number_is_the_string_authority()
+    && named_projects_are_observed_in_census(census: census)
     && every_census_observed_project_is_named(census: census)
 }
 

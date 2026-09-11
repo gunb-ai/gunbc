@@ -8,7 +8,17 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.gcp_estate_observation { operator_audit_observed_at }
+import gunbc.gcp_estate_observation {
+  operator_audit_observed_at,
+  github_pool_id,
+  github_actions_pool_id,
+  gunbai_ci_secrets_sa_email,
+  gunbai_ci_iap_sa_email,
+  gunbai_ci_workspace_admin_sa_email,
+  gunbai_auto_project_id,
+  gunb_ci_project_id,
+  gunb_test_project_id,
+}
 
 // Named instruments that re-derive estate observation rows. These are not facts in
 // extdeps.cloud.gcp (DESIGN §3: observations and their refresh live in the observing layer).
@@ -212,7 +222,7 @@ fn argv_contains_word(argv: List<String>, wanted: String) -> Bool {
 
 fn enrolled_roster_includes_projects_list_and_workspace_admin_keys() -> Bool {
   let keys = gcloud_sa_keys_list_user_managed_instrument(
-    email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com",
+    email: gunbai_ci_workspace_admin_sa_email as String,
   )
   roster_includes_instrument(instrument: gcloud_projects_list_instrument())
     && roster_includes_instrument(instrument: keys)
@@ -228,43 +238,43 @@ fn secrets_project_read_instruments() -> List<EstateReadInstrument> {
     gcloud_wif_pools_list_instrument(project_id: fleet_secrets_gcp_project as String),
     gcloud_wif_providers_list_instrument(
       project_id: fleet_secrets_gcp_project as String,
-      pool_id: "github-pool",
+      pool_id: github_pool_id as String,
     ),
     gcloud_wif_providers_list_instrument(
       project_id: fleet_secrets_gcp_project as String,
-      pool_id: "github-actions",
+      pool_id: github_actions_pool_id as String,
     ),
-    gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-secrets@gunbai-secrets.iam.gserviceaccount.com"),
-    gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-iap@gunbai-secrets.iam.gserviceaccount.com"),
+    gcloud_sa_get_iam_policy_instrument(email: gunbai_ci_secrets_sa_email as String),
+    gcloud_sa_get_iam_policy_instrument(email: gunbai_ci_iap_sa_email as String),
   ]
 }
 
 fn sandbox_project_read_instruments() -> List<EstateReadInstrument> {
   [
-    gcloud_services_list_instrument(project_id: "gunbai-auto"),
-    gcloud_service_accounts_list_instrument(project_id: "gunbai-auto"),
-    gcloud_wif_pools_list_instrument(project_id: "gunbai-auto"),
+    gcloud_services_list_instrument(project_id: gunbai_auto_project_id as String),
+    gcloud_service_accounts_list_instrument(project_id: gunbai_auto_project_id as String),
+    gcloud_wif_pools_list_instrument(project_id: gunbai_auto_project_id as String),
     gcloud_wif_providers_list_instrument(
-      project_id: "gunbai-auto",
-      pool_id: "github-pool",
+      project_id: gunbai_auto_project_id as String,
+      pool_id: github_pool_id as String,
     ),
-    gcloud_services_list_instrument(project_id: "gunb-ci"),
-    gcloud_service_accounts_list_instrument(project_id: "gunb-ci"),
-    gcloud_wif_pools_list_instrument(project_id: "gunb-ci"),
+    gcloud_services_list_instrument(project_id: gunb_ci_project_id as String),
+    gcloud_service_accounts_list_instrument(project_id: gunb_ci_project_id as String),
+    gcloud_wif_pools_list_instrument(project_id: gunb_ci_project_id as String),
     gcloud_wif_providers_list_instrument(
-      project_id: "gunb-ci",
-      pool_id: "github-pool",
+      project_id: gunb_ci_project_id as String,
+      pool_id: github_pool_id as String,
     ),
-    gcloud_services_list_instrument(project_id: "gunb-test"),
-    gcloud_service_accounts_list_instrument(project_id: "gunb-test"),
-    gcloud_wif_pools_list_instrument(project_id: "gunb-test"),
+    gcloud_services_list_instrument(project_id: gunb_test_project_id as String),
+    gcloud_service_accounts_list_instrument(project_id: gunb_test_project_id as String),
+    gcloud_wif_pools_list_instrument(project_id: gunb_test_project_id as String),
     gcloud_wif_providers_list_instrument(
-      project_id: "gunb-test",
-      pool_id: "github-pool",
+      project_id: gunb_test_project_id as String,
+      pool_id: github_pool_id as String,
     ),
-    gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com"),
-    gcloud_sa_keys_list_user_managed_instrument(email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com"),
-    gcloud_projects_get_iam_policy_instrument(project_id: "gunb-ci"),
+    gcloud_sa_get_iam_policy_instrument(email: gunbai_ci_workspace_admin_sa_email as String),
+    gcloud_sa_keys_list_user_managed_instrument(email: gunbai_ci_workspace_admin_sa_email as String),
+    gcloud_projects_get_iam_policy_instrument(project_id: gunb_ci_project_id as String),
   ]
 }
 
