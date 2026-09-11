@@ -994,6 +994,13 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
 // Below ceiling: the rung-4 shape declares `from` itself as FreeSemigroup<Char> so the empty row
 // is unwritable; the climb trigger is char-level literal sugar in the .dag realization, without
 // which producers cannot author the nonempty carrier from an escape row's quoted spelling.
+// `chars` is a String method, not a free function. A nested fold lambda does not
+// establish that callee (heal/floor: "function 'chars' not found in scope" in this
+// cons arm). Name the method call at module scope so the fold only applies it.
+fn string_as_char_spine(s: String) -> v2.std.text.String {
+  chars(s: s)
+}
+
 fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitSpellingEscape>) -> v2.std.text.String {
   fold_list(
     xs: escapes,
@@ -1004,7 +1011,7 @@ fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitS
           string_replace(
             source: acc,
             needle: FreeSemigroup { head: h, tail: t },
-            replacement: chars(s: rule.to)
+            replacement: string_as_char_spine(s: rule.to)
           )
         Empty => acc
       }
