@@ -38,6 +38,7 @@ import v1.compiler.parse {
   parse_with_table,
   parse_with_table_in_occurrence_scope,
   ParseResult,
+  census_heads_body_stand_in,
 }
 import std.occurrence_identity {
   OccurrenceSynthetic,
@@ -1154,6 +1155,57 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     occurrence_transport: occurrence_transport,
     annotations: parsed.annotations
   }
+}
+
+// A census head is the declaration projection of an already parsed Node. Signature
+// subtrees and declaration identity survive; executable expressions and uses do not.
+// A function keeps the parser's refusing body stand-in: body presence is the existing
+// function-kind discriminator used by local_binding_for_item, not executable content.
+fn census_heads_item_is_fn_decl(item: Node) -> Bool {
+  item.connective == NoConnective && item.body != none && item.transport == none
+}
+
+fn census_heads_node(node: Node, children: List<Node>, body: Node?) -> Node {
+  Node {
+    occurrence_identity: node.occurrence_identity,
+    name: node.name,
+    ident: node.ident,
+    span: node.span,
+    ident_span: node.ident_span,
+    children: children,
+    connective: node.connective,
+    params: node.params,
+    inferred: node.inferred,
+    return_cardinality: node.return_cardinality,
+    uses: [],
+    body: body,
+    transport: node.transport,
+    properties: node.properties,
+    type_annotation: node.type_annotation,
+    is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: none,
+    module_item_kind: node.module_item_kind,
+    expr_data: NoExprData,
+  }
+}
+
+fn census_heads_module_item(item: Node) -> Node {
+  census_heads_node(
+    node: item,
+    children: item.children |> map(child => census_heads_module_item(item: child)),
+    body: if census_heads_item_is_fn_decl(item: item) {
+      Present { value: census_heads_body_stand_in() }
+    } else { none }
+  )
+}
+
+fn census_heads_module_node(module: Node) -> Node {
+  census_heads_node(
+    node: module,
+    children: module_items(n: module) |> map(item => census_heads_module_item(item: item)),
+    body: none
+  )
 }
 
 type CensusFillParse {
