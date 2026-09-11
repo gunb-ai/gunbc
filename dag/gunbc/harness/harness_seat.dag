@@ -52,7 +52,7 @@ import gunbc.spark.serving_offer {
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
   ServingSeatStanding, SeatStandingRead, SeatStandingUnread,
-  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
+  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
   ServingGroupAdmission, AdmissibleForClass, InadmissibleQualityTurnInFlight, InadmissibleGroupNotIdle,
   InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
   AdmissibilityUnread, serving_group_admission, serving_admission_detail, serving_isolation_profile,
@@ -238,32 +238,58 @@ fn harness_serving_readiness(standing: HarnessBackendStanding, now: EpochSecs) -
 // is refused by a single held QUALITY seat and is bounded by the tolerant ceiling, and those are two
 // different pools. Either read failing makes the whole standing unread -- a standing carrying one
 // class's count and defaulting the other's would default the one that admits.
-fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, layout: EventLogLayout, now: EpochSecs) -> Nat? {
+// AN OPTIONAL COUNT WOULD HAVE THROWN AWAY THE HALF AN OPERATOR ACTS ON. A first spelling of this
+// returned Nat?, which collapsed two materially different failures into one bare Absent: a route
+// whose ceiling is unestablished, and a pool whose chain could not be walked at a named step. The
+// composer downstream then had to invent a generic sentence naming neither, which is a refusal that
+// is typed and NOT located -- and the location is the whole remedy, because "the ceiling is
+// unestablished for group B" and "the partition chain broke at step read-head" send an operator to
+// different places. So the per-class read carries its own cause forward (DESIGN section 5: every
+// path succeeds fully or fails with a typed, LOCATED diagnostic).
+type HarnessClassHeld
+  = ClassSeatsHeld { held: Nat }
+  | ClassHeldUnread { obligation: NonEmptyStr }
+
+fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, layout: EventLogLayout, now: EpochSecs) -> HarnessClassHeld {
   match harness_seat_capacity_for(route: route, class: class) {
-    AdmissionCeilingUnestablished { group: _, cause: _ } => none
+    AdmissionCeilingUnestablished { group: g, cause: why } =>
+      ClassHeldUnread {
+        obligation: join([
+          fabric_group_wire(g: g) as String, " ", serving_co_tenancy_class_wire(c: class) as String,
+          ": no ceiling is established for this route, so its pool cannot be reconstructed: ", why as String,
+        ], "") as NonEmptyStr,
+      }
     SeatCeilingByDeclaredPolicy { class: _, pool: root, seats: ceiling } =>
       match route {
-        ServingRouteUnresolved { group: _, obligation: _ } => none
+        ServingRouteUnresolved { group: g, obligation: why } =>
+          ClassHeldUnread { obligation: join([fabric_group_wire(g: g) as String, ": ", why as String], "") as NonEmptyStr }
         ServingRouteResolved { endpoint: e, ceiling: _ } =>
           match fabric_seat_observe(layout: layout, partition: harness_seat_partition(group: e.group, class: class), root: root, at: now, budget: 4096) {
-            SeatStandingUnobserved { step: _, reason: _ } => none
-            SeatFullObserved { generation: _ } => Present { value: ceiling }
+            SeatStandingUnobserved { step: st, reason: why } =>
+              ClassHeldUnread {
+                obligation: join([
+                  fabric_group_wire(g: e.group) as String, " ", serving_co_tenancy_class_wire(c: class) as String,
+                  " seat pool could not be read at ", st, ": ", why,
+                ], "") as NonEmptyStr,
+              }
+            SeatFullObserved { generation: _ } => ClassSeatsHeld { held: ceiling }
             SeatRoomObserved { headroom: h, generation: _ } =>
-              Present { value: ceiling - nat_min(a: h, b: ceiling) }
+              ClassSeatsHeld { held: ceiling - nat_min(a: h, b: ceiling) }
           }
       }
   }
 }
 
+// EITHER CLASS UNREAD MAKES THE WHOLE STANDING UNREAD, carrying that class's own cause rather than a
+// sentence about which class it was. A standing holding one class's count and defaulting the other's
+// would default the one that admits.
 fn harness_seat_standing(route: ServingRoute, layout: EventLogLayout, now: EpochSecs) -> ServingSeatStanding {
   match harness_class_held(route: route, class: InteractiveQualitySensitive, layout: layout, now: now) {
-    Absent =>
-      SeatStandingUnread { obligation: "the quality seat pool could not be read for this route" as NonEmptyStr }
-    Present { value: q } =>
+    ClassHeldUnread { obligation: o } => SeatStandingUnread { obligation: o }
+    ClassSeatsHeld { held: q } =>
       match harness_class_held(route: route, class: BatchQualityTolerant, layout: layout, now: now) {
-        Absent =>
-          SeatStandingUnread { obligation: "the tolerant seat pool could not be read for this route" as NonEmptyStr }
-        Present { value: t } => SeatStandingRead { quality_held: q, tolerant_held: t }
+        ClassHeldUnread { obligation: o } => SeatStandingUnread { obligation: o }
+        ClassSeatsHeld { held: t } => SeatStandingRead { quality_held: q, tolerant_held: t }
       }
   }
 }

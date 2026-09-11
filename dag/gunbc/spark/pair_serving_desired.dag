@@ -164,10 +164,6 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // authorities at once. It does not restore group A, does not diagnose the restarts, and does not
 // establish a DeepSeek control -- there is currently no serving DeepSeek to be the control.
 //
-// THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing routes to it today, and that is a guard being
-// quiet rather than a guard being dead: the arm is reachable the moment B is promoted again, and
-// deleting it because the current roster does not reach it would be reading occupancy as
-// reachability. The withdrawal belongs in the ROSTER, which is the thing that decides.
 // THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing converges to it today, and that is a guard
 // being quiet rather than a guard being dead: the arm is reachable the moment B is claimed again,
 // and deleting it because the current roster does not reach it would be reading occupancy as
