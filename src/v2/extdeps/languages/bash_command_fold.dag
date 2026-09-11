@@ -864,8 +864,7 @@ fn bash_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m3 = map_insert(m2, ^bash_fold_stmt_kind_tag, EmitSpellingConstant { value: "" })
   let m4 = map_insert(m3, ^bash_fold_word_kind_concat, EmitSpellingConstant { value: "" })
   let m5 = map_insert(m4, ^bash_fold_word_kind_cmdsubst, EmitSpellingConstant { value: "" })
-  let m6 = map_insert(m5, ^bash_fold_word_kind_single_quoted, EmitSpellingConstant { value: "" })
-  map_insert(m6, ^bash_token_orch_raw, EmitSpellingIdentity)
+  map_insert(m5, ^bash_token_orch_raw, EmitSpellingIdentity)
 }
 
 fn bash_fold_binding_spellings() -> Map<Symbol, String> {

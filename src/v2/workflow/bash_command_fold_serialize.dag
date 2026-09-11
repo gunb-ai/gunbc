@@ -2,7 +2,6 @@ module v2.workflow.bash_command_fold_serialize
 
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
-  bash_single_quote,
   bash_stmt_andor_emitted,
   bash_stmt_andor_target_model,
   bash_stmt_assign_emitted,
@@ -246,16 +245,6 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
               production_binding: ^bash_production_fold_var_word,
               rule_name: ^bash_production_fold_var_word
             )
-          } else if kind == ^bash_fold_word_kind_single_quoted {
-            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-              Present { value: text_node } =>
-                match text_node.kind {
-                  TypeNode { connective: Atom { identity: text } } =>
-                    Accepted { value: bash_single_quote(spelling: text), diagnostics: None }
-                  _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
-                }
-              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
-            }
           } else if kind == ^bash_fold_word_kind_concat {
             bash_fold_serialize_leaf_node(
               emitted: word,

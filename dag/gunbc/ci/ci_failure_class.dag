@@ -23,7 +23,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_with_redir_stdout_and_stderr_to_file
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
-import v2.extdeps.languages.bash { bash_single_quote }
 import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
@@ -670,7 +669,8 @@ fn wrap_command_with_floor_attempt_receipt_outcome(command: String) -> String? {
 
 fn wrap_command_is_renderable(command: String) -> Bool {
   match wrap_command_with_floor_attempt_receipt_outcome(command: command) {
-    Present { value: script } => string_contains(s: script, pattern: bash_single_quote(spelling: command))
+    Present { value: script } =>
+      (script != "") && (script != floor_attempt_shell_serialize_refused)
     Absent => false
   }
 }

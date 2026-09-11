@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash_build
 
+import v2.extdeps.languages.bash { bash_single_quote }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import v2.std.collection { List, Present, list_at_optional }
@@ -43,7 +44,7 @@ fn bash_build_word_lit(text: String) -> Node {
 }
 
 fn bash_build_word_single_quoted(text: String) -> Node {
-  bash_build_word_kinded(kind: ^bash_fold_word_kind_single_quoted, value: text)
+  bash_build_word_lit(text: bash_single_quote(spelling: text))
 }
 
 fn bash_build_word_var(name: String) -> Node {
