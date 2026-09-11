@@ -3,22 +3,20 @@ module gunbc.instruments.rest_pulls_wire_receipt
 import std.types { Secret, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
+import gunbc.repository { gunbc_repository }
 import extdeps.github.pulls { Open }
 import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
-data receipt_owner: String = "gunb-ai"
-data receipt_repo: String = "gunbc"
-
-// Wet GET /repos/gunb-ai/gunbc/pulls through github.Pulls.List. RestOk is the live green after
+// Wet GET /repos/<gunbc_repository>/pulls through github.Pulls.List. RestOk is the live green after
 // the performer refuses Null under RestOk. The diagnostic dump that measured the raw body lived
 // only long enough to take that receipt and is not a standing interpreter surface.
 func list_open_pulls_wire_receipt() -> ProcessExit uses net: Network {
   let result = github.Pulls.List(
     auth_token: "" as Secret,
-    owner: receipt_owner,
-    repo: receipt_repo,
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
     state: Open,
   )
   match result.outcome {
