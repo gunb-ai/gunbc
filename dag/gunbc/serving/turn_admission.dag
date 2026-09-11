@@ -196,14 +196,6 @@ type ServingGroupAdmission
   | InadmissibleUnexplainedOccupancy { occupants: Nat, seated: Nat }
   | AdmissibilityUnread { obligation: NonEmptyStr }
 
-fn serving_occupant_count(tenancy: ServingCoTenancy) -> Nat {
-  match tenancy {
-    GroupIdle => 0
-    GroupOccupied { occupants: n } => n
-    CoTenancyUnread { obligation: _ } => 0
-  }
-}
-
 // THE LEDGER IS CONSULTED FIRST, not because it outranks the engine, but because it sees the earlier
 // event: a seat is taken before a request is sent, so a group the ledger calls busy is busy even
 // when the gauges have not caught up. The gauges are then consulted for what the ledger cannot see:
