@@ -7,15 +7,15 @@ data surface_shorthand_preempts_resolved_identity: RecurringFailureMode = Recurr
   identity: "surface_shorthand_preempts_resolved_identity" as NonEmptyStr,
 
   receipts: [
-    "**surface shorthand preempts resolved identity** (a semantic consumer dispatches on a raw lexeme after resolution has already named its declaration, so a declared constructor is reinterpreted as a host sentinel or primitive. ",
+    "**surface shorthand preempts resolved identity** (a semantic consumer dispatches on a raw lexeme after resolution has already named its declaration, so a declared constructor is reinterpreted as a host sentinel or primitive.",
 
-    "Recognition rule: once a node carries a binding/declaration identity, value construction must be total over that identity; spelling may be interpreted only on an explicitly unresolved shorthand arm. ",
+    "Recognition rule: once a node carries a binding/declaration identity, value construction must be total over that identity; spelling may be interpreted only on an explicitly unresolved shorthand arm.",
 
-    "Specimen gunbc#9741: bare and imported `None` became host `Null` while qualified `Diagnostics.None {}` became a `Variant`; a single-frame comparison hid the fork. ",
+    "Specimen gunbc#9741: bare and imported `None` became host `Null` while qualified `Diagnostics.None {}` became a `Variant`; a single-frame comparison hid the fork.",
 
-    "This is not hollow alias: the binding is grounded and present, then discarded downstream. ",
+    "This is not hollow alias: the binding is grounded and present, then discarded downstream.",
 
-    "It is also separate from the per-frame symbol-ordinal defect: that defect corrupted lexeme identity while crossing frames, whereas this one ignores an identity already supplied at one construction site. ",
+    "It is also separate from the per-frame symbol-ordinal defect: that defect corrupted lexeme identity while crossing frames, whereas this one ignores an identity already supplied at one construction site.",
 
     "SECOND SPECIMEN (2026-09-11, v1_interpreter eval_var's variable slow path, gunbc#11065). The evaluator held the resolved node from the file-aware resolver and still took the item KIND from item_registry, a projection keyed by bare SPELLING that keeps one homonym per spelling in hash-seed order. One fact, two authorities: a data reference to extdeps.vendor.gigabyte's gigabyte was classified by std.measure's fn gigabyte on some processes and evaluated as a function, and a field read refused with cannot access field 'legal_name' on Fn. Found at: mitigatable where the wrong kind reached a typed refusal, and silent wrongness wherever a mis-kinded value flows on without one. The instrument that exposed and discharges it is an N-run comparison across per-process hash seeds on one probe, a control binary built from the base against the repaired binary, recorded on gunbc#11065; test.claim.data_reference_kind_from_resolved_node is only a probabilistic regression control for it, never its coverage. ",
 
