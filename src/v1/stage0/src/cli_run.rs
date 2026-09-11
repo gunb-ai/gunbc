@@ -31330,11 +31330,17 @@ fn collect_node_refs_inner(
             ExprData::ExprCall { .. } => {
                 if !node.name.is_empty() {
                     bare.insert(node.name.clone());
-                    // The callee of a call is resolved through the same three steps as a free
-                    // variable — `lookup_fn_from` — so it is a value-position read too. A callee
-                    // bound by an enclosing binder is an `ExprVar` in receiver position and is
-                    // classified by the arm above; this name is the call's own target.
-                    classify.value_refs.insert(node.name.clone());
+                    // The callee of a call is resolved through the same tiers as a free variable
+                    // — `lookup_fn_from` — so it is a value-position read too, UNLESS an
+                    // enclosing binder holds the spelling. `fn f(observe: fn(..) -> ..) { match
+                    // observe(x) { .. } }` calls its own parameter, and `let observe =
+                    // handler.observe` calls its own local; neither reaches the shared slot, and
+                    // both were reported as ambiguous reads until the binder stack was consulted
+                    // here as it already is for `ExprVar` one arm above.
+                    let bound_as = bound.iter().rev().find(|(n, _)| n == &node.name);
+                    if bound_as.is_none() {
+                        classify.value_refs.insert(node.name.clone());
+                    }
                 }
             }
             ExprData::ExprRecordLit { .. } => {
