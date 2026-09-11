@@ -17,7 +17,6 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetBootstrapCredentialPathReady,
   FleetBootstrapCredentialPathAbsent,
   resolve_fleet_bootstrap_credential_path,
-  FleetPasswordLegPrerequisite,
   PasswordLegPrerequisiteReady,
   PasswordLegPrerequisiteRefused,
   fleet_password_leg_from_host_observation,
