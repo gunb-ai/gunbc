@@ -1,0 +1,181 @@
+module gunbc.cloud.gcp_estate_audit_2026_09_11
+
+import std.types { List, NonEmptyStr }
+import std.upsert_decision { Inaccessible }
+import gunbc.cloud.gcp_estate_observation {
+  GcpEstateCoverage, GcpEstateObservation, GcpObservationProvenance, GcpSubjectKey,
+  OperatorReadOnlyAudit, gcp_estate_observation, gcp_subject_coverage_gap,
+}
+
+// THE OPERATOR'S READ-ONLY AUDIT OF gunbai-secrets / 582015116396, 2026-09-11, AS AN OBSERVATION.
+// It is territory, not target. Nothing in this receipt is a thing this repository wants: github-pool
+// is here because it EXISTS, not because it should; the principalSets in 314501921854 are here
+// because something grants to them, not because we grant to them. The desired federation for
+// gunb-ai/gunbc remains gunbc.auth.github_gcp_federation and this module neither reads nor
+// contradicts it.
+//
+// NOTHING HERE ACTUATES. This module declares data. There is no converge, no setIamPolicy, no
+// disable, no delete, and no service operation is invoked from this closure.
+
+// WHY EVERY ROW IS A GAP, AND WHY THAT IS THE RECEIPT'S ACTUAL FINDING.
+//
+// The audit was relayed to this session as prose, and prose is a LOSSY PROJECTION of the records it
+// describes. "fleet-cloud-convergence@" names a service account without its domain or its unique
+// id; "pool github-pool" names a pool without its disabled flag; "provider condition
+// assertion.repository_owner=='https:'" names a condition without the provider id or issuer URI
+// that would key and ground it. Not one upstream record in extdeps.cloud.gcp.gcp can be constructed
+// from what was relayed without inventing fields.
+//
+// So the relay is a COVERAGE OBLIGATION and this receipt records it as one. The tempting move was
+// to fill the missing fields from the shapes GCP conventionally uses — a service account email is
+// usually <id>@<project>.iam.gserviceaccount.com, a pool is usually enabled, the github-actions
+// provider is probably the one gunbc.auth.github_gcp_federation calls github-oidc. Every one of
+// those is a guess wearing the standing of an observation, and a census exists precisely to make
+// that substitution unwritable. A relayed fact that cannot be keyed is not a weak observation; it
+// is a named hole, and the remedy is a credentialed read, not a better guess.
+//
+// The gap CAUSE is Inaccessible for all of them, which is the accurate verdict for this session:
+// the subject was not reachable from here. The operator reached it; this receipt is not the
+// operator, and a receipt that claimed otherwise would be citing a read it did not perform.
+
+data gcp_estate_audit_provenance: GcpObservationProvenance = GcpObservationProvenance {
+  method: OperatorReadOnlyAudit {
+    tool: "gcloud" as NonEmptyStr,
+    audit_date: "2026-09-11" as NonEmptyStr,
+  },
+  reading_principal: "operator" as NonEmptyStr,
+  scope_project_number: "582015116396" as NonEmptyStr,
+}
+
+// The two projects the census population must contain. gunbai-secrets is the audited project; its
+// PROJECT NAME was not relayed, so the record is unconstructible and the project is a gap under its
+// own id. 314501921854 is in the population because IAM bindings in the audited project grant to
+// principalSets that cite it — it was never read at all, by anyone, and the brief names identifying
+// it as an open question. IT IS ENUMERATED AND UNREAD, which is a different thing from absent:
+// dropping it would make the estate look self-contained when it demonstrably reaches outside itself.
+
+data gcp_estate_audit_project_gaps: List<GcpEstateCoverage> = [
+  gcp_subject_coverage_gap(subject: "project/gunbai-secrets" as GcpSubjectKey, cause: Inaccessible),
+  gcp_subject_coverage_gap(subject: "project/582015116396" as GcpSubjectKey, cause: Inaccessible),
+  gcp_subject_coverage_gap(subject: "project/314501921854" as GcpSubjectKey, cause: Inaccessible)
+]
+
+// Enabled services were not part of the audit at all. The subject is enumerated so that the absence
+// of a services roster reads as "never looked" rather than as "none enabled" — for a project whose
+// purpose is holding secrets, those two conclusions are opposite.
+
+data gcp_estate_audit_service_gaps: List<GcpEstateCoverage> = [
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/services" as GcpSubjectKey,
+    cause: Inaccessible
+  )
+]
+
+// Four service accounts were named by prefix only. fleet-cloud-convergence is the one the audit
+// reports as correctly federated; fleet-automation is the one it reports as holding no IAM policy
+// bindings while gunbc.secret_provision names an intervention for "the fleet automation service
+// account"; gunbai-ci-secrets and gunbai-ci-iap are the two that grant into 314501921854. All four
+// are gaps at record grain for the same reason: neither the full email nor the unique id nor the
+// disabled flag was relayed.
+
+data gcp_estate_audit_service_account_gaps: List<GcpEstateCoverage> = [
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/fleet-cloud-convergence" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/fleet-automation" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/gunbai-ci-secrets" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/gunbai-ci-iap" as GcpSubjectKey,
+    cause: Inaccessible
+  )
+]
+
+// TWO POOLS EXIST WHERE ONE IS DECLARED. gunbc.auth.github_gcp_federation declares github-actions.
+// github-pool is undeclared and is recorded here as observed territory only; this receipt does not
+// promote it to a target and must not be read as adopting it.
+//
+// THE PROVIDERS ARE THE SHARPEST GAP IN THIS RECEIPT. The audit relayed two attribute conditions —
+// assertion.repository == 'gunb-ai/gunbc' on the github-actions pool, and
+// assertion.repository_owner == 'https:' on github-pool — and the second is the finding that
+// matters: repository_owner is a GitHub org name and can never equal the string "https:", so that
+// provider admits nothing. It is fail-closed BY ACCIDENT, which is a different safety state from
+// fail-closed by construction, and it will stop being closed the moment somebody "fixes" the
+// condition without knowing what it was for.
+//
+// That fact is NOT RECORDED AS AN OBSERVED PROVIDER, because a provider subject is keyed by its id
+// and neither id nor issuer URI was relayed. A row keyed on a pool name would claim the pool has
+// exactly one provider, which the audit does not establish. So the condition is stated in this
+// annotation, where DESIGN section 4c puts irreducible rationale that no Accepted program reads,
+// and the provider itself is a named gap — which is the honest claim: we know something is there
+// and we cannot yet name it. Retiring these two rows requires a credentialed
+// workloadIdentityPools.providers.list, not a better relay.
+
+data gcp_estate_audit_wif_gaps: List<GcpEstateCoverage> = [
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/wifPool/github-actions" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/wifPool/github-pool" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "wifPool/github-actions/providers" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "wifPool/github-pool/providers" as GcpSubjectKey,
+    cause: Inaccessible
+  )
+]
+
+// The IAM policies themselves. The audit reports that gunbai-ci-secrets and gunbai-ci-iap grant
+// roles/iam.workloadIdentityUser to a principalSet in 314501921854, and that three of the four
+// service accounts are bound to the OLD repository gunb-ai/gunb.ai while only the convergence
+// account is bound to gunb-ai/gunbc — but it did not relay a single member string verbatim. Without
+// the member URI there is no cell to record and no citation to extract, so the policies are gaps at
+// the grain a binding decision is made on (extdeps.cloud.gcp.iam GcpIamBindingCell). This is the
+// gap that keeps 314501921854 an inference from prose rather than a citation this census derived.
+
+data gcp_estate_audit_iam_policy_gaps: List<GcpEstateCoverage> = [
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/iamPolicy" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/gunbai-ci-secrets/iamPolicy" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/gunbai-ci-iap/iamPolicy" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/fleet-cloud-convergence/iamPolicy" as GcpSubjectKey,
+    cause: Inaccessible
+  ),
+  gcp_subject_coverage_gap(
+    subject: "project/gunbai-secrets/serviceAccount/fleet-automation/iamPolicy" as GcpSubjectKey,
+    cause: Inaccessible
+  )
+]
+
+data gcp_estate_audit_coverage: List<GcpEstateCoverage> = append(
+  append(
+    append(gcp_estate_audit_project_gaps, items: gcp_estate_audit_service_gaps),
+    items: append(gcp_estate_audit_service_account_gaps, items: gcp_estate_audit_wif_gaps)
+  ),
+  items: gcp_estate_audit_iam_policy_gaps
+)
+
+data gcp_estate_audit_2026_09_11: GcpEstateObservation = gcp_estate_observation(
+  provenance: gcp_estate_audit_provenance,
+  coverage: gcp_estate_audit_coverage,
+)

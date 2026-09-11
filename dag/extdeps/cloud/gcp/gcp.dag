@@ -67,11 +67,25 @@ type WifPool {
   disabled: Bool
 }
 
+// attribute_condition IS THE PART OF A PROVIDER THAT DECIDES WHO GETS IN, and it was the one part
+// this shape could not represent. The attribute MAPPING says how an OIDC assertion becomes
+// attributes; the CONDITION is the CEL expression that must hold for the token to be accepted at
+// all, and a provider read back without it looks identical to a provider that admits everybody.
+// iam_admin CreateWorkloadIdentityPoolProvider already sends attributeCondition on the wire, so the
+// field was modeled on the write side and absent on the read side — one upstream fact with two
+// disagreeing shapes inside one dependency.
+//
+// It is OPTIONAL because Google's own API makes it optional: a provider may legitimately carry no
+// condition. Absent therefore means "this provider has no condition", which is a far stronger and
+// more alarming statement than "we did not read one" — an observer that cannot distinguish those
+// must carry the distinction in its own coverage vocabulary
+// (gunbc.cloud.gcp_estate_observation), not by overloading this field.
 type WifProvider {
   name: String
   pool: String
   issuer_uri: String
   attribute_mapping: Map<String, String>?
+  attribute_condition: String?
 }
 
 fn wif_pool_resource(project_number: String, pool_id: String) -> String {

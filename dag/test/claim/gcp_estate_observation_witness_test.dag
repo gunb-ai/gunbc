@@ -1,0 +1,342 @@
+module test.claim.gcp_estate_observation_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.upsert_decision { Inaccessible, UnknownRefused, Converged, Drifted }
+import extdeps.cloud.gcp.gcp { GcpProject, GcpProjectId, GcpServiceAccount, WifPool, WifProvider }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell }
+import gunbc.cloud.gcp_estate_observation {
+  GcpEstateObservation, GcpSubjectKey,
+  GcpProjectSubject, GcpServiceAccountSubject, GcpWifPoolSubject, GcpWifProviderSubject,
+  GcpIamBindingCellSubject,
+  MemberIsNotAPrincipalSet, PrincipalSetCitesProject, PrincipalSetUnparsed,
+  gcp_coverage_gap_cause_is_a_coverage_cause,
+  gcp_estate_cited_but_unenumerated_projects,
+  gcp_estate_cited_project_numbers,
+  gcp_estate_gap_count,
+  gcp_estate_named_gaps,
+  gcp_estate_observation,
+  gcp_estate_observation_identity_eq,
+  gcp_estate_subject_is_enumerated,
+  gcp_estate_subject_is_named_gap,
+  gcp_estate_subject_is_observed,
+  gcp_estate_unparsed_principal_set_members,
+  gcp_subject_coverage_gap,
+  gcp_subject_key,
+  gcp_subject_observed,
+  principal_set_citation,
+}
+import gunbc.cloud.gcp_estate_audit_2026_09_11 {
+  gcp_estate_audit_2026_09_11, gcp_estate_audit_provenance,
+}
+
+// FIXTURES ARE AUDIT-SHAPED, NOT AUDIT-DERIVED. These records carry the field set a credentialed
+// read would return, in the shape the 2026-09-11 operator audit describes, so the projections can
+// be exercised end to end. They are NOT the receipt: gunbc.cloud.gcp_estate_audit_2026_09_11 holds
+// what was actually relayed, and what was relayed could not fill these fields. Keeping the two
+// apart is the point — if the fixtures were promoted into the receipt, this suite would be
+// asserting that a guess is an observation.
+
+data audited_project: GcpProject = GcpProject {
+  project_id: "gunbai-secrets" as GcpProjectId,
+  project_number: 582015116396,
+  name: "gunbai-secrets",
+}
+
+data convergence_account: GcpServiceAccount = GcpServiceAccount {
+  email: "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
+  unique_id: "100000000000000000001",
+  display_name: Present { value: "fleet cloud convergence" },
+  disabled: false,
+}
+
+data github_actions_pool: WifPool = WifPool {
+  name: "github-actions",
+  project: "gunbai-secrets",
+  display_name: Present { value: "GitHub Actions OIDC" },
+  disabled: false,
+}
+
+data github_pool: WifPool = WifPool {
+  name: "github-pool",
+  project: "gunbai-secrets",
+  display_name: Absent,
+  disabled: false,
+}
+
+data github_actions_provider: WifProvider = WifProvider {
+  name: "github-oidc",
+  pool: "github-actions",
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_mapping: Absent,
+  attribute_condition: Present { value: "assertion.repository == 'gunb-ai/gunbc'" },
+}
+
+// The never-true condition, as a fixture. repository_owner is a GitHub organisation name and cannot
+// equal "https:", so this provider admits nothing — fail-closed by accident rather than by
+// construction. The census records it as an ordinary observation: an inventory that flagged it
+// would be assessing, and std.goal_assessment keeps the goal away from the observer.
+data github_pool_provider: WifProvider = WifProvider {
+  name: "github-provider",
+  pool: "github-pool",
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_mapping: Absent,
+  attribute_condition: Present { value: "assertion.repository_owner=='https:'" },
+}
+
+data foreign_principal_set: String = "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunb.ai"
+
+data ci_secrets_binding: GcpIamBindingCell = GcpIamBindingCell {
+  role: "roles/iam.workloadIdentityUser",
+  member: foreign_principal_set,
+  condition: Absent,
+}
+
+data local_binding: GcpIamBindingCell = GcpIamBindingCell {
+  role: "roles/secretmanager.secretAccessor",
+  member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
+  condition: Absent,
+}
+
+data estate_fixture: GcpEstateObservation = gcp_estate_observation(
+  provenance: gcp_estate_audit_provenance,
+  coverage: [
+    gcp_subject_observed(subject: GcpProjectSubject { project: audited_project }),
+    gcp_subject_observed(subject: GcpServiceAccountSubject {
+      project_id: "gunbai-secrets" as GcpProjectId,
+      account: convergence_account,
+    }),
+    gcp_subject_observed(subject: GcpWifPoolSubject { pool: github_actions_pool }),
+    gcp_subject_observed(subject: GcpWifPoolSubject { pool: github_pool }),
+    gcp_subject_observed(subject: GcpWifProviderSubject { provider: github_actions_provider }),
+    gcp_subject_observed(subject: GcpWifProviderSubject { provider: github_pool_provider }),
+    gcp_subject_observed(subject: GcpIamBindingCellSubject {
+      resource: "project/gunbai-secrets/serviceAccount/gunbai-ci-secrets" as NonEmptyStr,
+      cell: ci_secrets_binding,
+    }),
+    gcp_subject_observed(subject: GcpIamBindingCellSubject {
+      resource: "project/gunbai-secrets" as NonEmptyStr,
+      cell: local_binding,
+    }),
+    gcp_subject_coverage_gap(subject: "project/314501921854" as GcpSubjectKey, cause: Inaccessible)
+  ],
+)
+
+// ── THE DISCRIMINATING ROW: UNREACHABLE IS NOT EMPTY ─────────────────────────────────────
+//
+// This is the assertion the whole carrier exists for, and it is written as three answers about ONE
+// subject because any two of them collapse into a lie. Project 314501921854 is ENUMERATED (the
+// census knows it must be accounted for), NOT OBSERVED (nothing about its contents is known), and a
+// NAMED GAP (someone owes a read). A carrier that could only say observed-or-not would answer this
+// subject identically to a project nobody has ever heard of.
+
+test fn an_unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
+  let unread = "project/314501921854" as GcpSubjectKey
+  gcp_estate_subject_is_enumerated(observation: estate_fixture, subject: unread)
+    && !gcp_estate_subject_is_observed(observation: estate_fixture, subject: unread)
+    && gcp_estate_subject_is_named_gap(observation: estate_fixture, subject: unread)
+}
+
+// The positive control for the row above. Without it, a projection that answered "gap" for
+// everything would pass the discriminator, and a projection that answered "enumerated" for
+// everything would pass it too.
+test fn an_observed_project_is_enumerated_observed_and_not_a_gap() -> Bool {
+  let observed = gcp_subject_key(subject: GcpProjectSubject { project: audited_project })
+  gcp_estate_subject_is_enumerated(observation: estate_fixture, subject: observed)
+    && gcp_estate_subject_is_observed(observation: estate_fixture, subject: observed)
+    && !gcp_estate_subject_is_named_gap(observation: estate_fixture, subject: observed)
+}
+
+// The third state. A subject the census never enumerated answers NO to all three, which is what
+// makes "named gap" carry information rather than being the default for anything unfamiliar.
+test fn a_subject_outside_the_census_is_not_enumerated_at_all() -> Bool {
+  let never_seen = "project/999999999999" as GcpSubjectKey
+  !gcp_estate_subject_is_enumerated(observation: estate_fixture, subject: never_seen)
+    && !gcp_estate_subject_is_observed(observation: estate_fixture, subject: never_seen)
+    && !gcp_estate_subject_is_named_gap(observation: estate_fixture, subject: never_seen)
+}
+
+// ── principalSet citation: how a foreign project enters the population ───────────────────
+
+test fn a_principal_set_member_yields_the_project_number_it_cites() -> Bool {
+  match principal_set_citation(member: foreign_principal_set) {
+    PrincipalSetCitesProject { project_number: number, pool_id: pool } =>
+      number == ("314501921854" as NonEmptyStr) && pool == ("github-pool" as NonEmptyStr)
+    MemberIsNotAPrincipalSet { member: _ } => false
+    PrincipalSetUnparsed { member: _ } => false
+  }
+}
+
+// A serviceAccount: member is not a principalSet and cites no project. The discrimination matters
+// because the citation fold runs over EVERY observed IAM cell, and a reader that treated every
+// member as a principal set would manufacture project numbers out of email addresses.
+test fn a_service_account_member_cites_no_project() -> Bool {
+  match principal_set_citation(member: local_binding.member) {
+    MemberIsNotAPrincipalSet { member: _ } => true
+    PrincipalSetCitesProject { project_number: _, pool_id: _ } => false
+    PrincipalSetUnparsed { member: _ } => false
+  }
+}
+
+// THE FAIL-CLOSED ARM, AND THE ROW THAT MAKES IT REAL. A member that announces itself as a
+// principalSet but whose path this reader cannot decompose must NOT be classified as "not a
+// principal set": that arm is how a foreign project silently drops out of the population we owe a
+// read of. This input is a principalSet whose path names no projects/ segment, so the reader has to
+// choose between widening (wrong, and invisible) and refusing (right, and countable).
+test fn an_undecomposable_principal_set_refuses_rather_than_reading_as_a_non_principal_set() -> Bool {
+  match principal_set_citation(member: "principalSet://iam.googleapis.com/some/unfamiliar/shape") {
+    PrincipalSetUnparsed { member: _ } => true
+    MemberIsNotAPrincipalSet { member: _ } => false
+    PrincipalSetCitesProject { project_number: _, pool_id: _ } => false
+  }
+}
+
+test fn cited_project_numbers_are_derived_from_the_observed_cells() -> Bool {
+  let cited = gcp_estate_cited_project_numbers(observation: estate_fixture)
+  count(cited) == 1 && any(cited, number => number == ("314501921854" as NonEmptyStr))
+}
+
+// The fixture ENUMERATES 314501921854 as a gap, so the citation it carries is already accounted
+// for and the outstanding-obligation list is empty. This is the green half; the red half below is
+// what proves the list can be non-empty.
+test fn a_cited_project_that_is_enumerated_raises_no_outstanding_obligation() -> Bool {
+  count(gcp_estate_cited_but_unenumerated_projects(observation: estate_fixture)) == 0
+}
+
+// THE DISCRIMINATOR FOR THE COVERAGE OBLIGATION. Drop the gap row and the census now observes a
+// binding that reaches into a project it never enumerated — the exact hole the obligation exists to
+// surface. If gcp_estate_cited_but_unenumerated_projects were inert, this row and the one above
+// would both be green, which is why they are written as a pair over the same citation.
+data estate_fixture_without_the_gap: GcpEstateObservation = gcp_estate_observation(
+  provenance: gcp_estate_audit_provenance,
+  coverage: [
+    gcp_subject_observed(subject: GcpProjectSubject { project: audited_project }),
+    gcp_subject_observed(subject: GcpIamBindingCellSubject {
+      resource: "project/gunbai-secrets/serviceAccount/gunbai-ci-secrets" as NonEmptyStr,
+      cell: ci_secrets_binding,
+    })
+  ],
+)
+
+test fn a_cited_project_nobody_enumerated_is_an_outstanding_coverage_obligation() -> Bool {
+  let outstanding = gcp_estate_cited_but_unenumerated_projects(
+    observation: estate_fixture_without_the_gap
+  )
+  count(outstanding) == 1 && any(outstanding, number => number == ("314501921854" as NonEmptyStr))
+}
+
+test fn an_undecomposable_member_is_rostered_rather_than_dropped() -> Bool {
+  let observation = gcp_estate_observation(
+    provenance: gcp_estate_audit_provenance,
+    coverage: [
+      gcp_subject_observed(subject: GcpIamBindingCellSubject {
+        resource: "project/gunbai-secrets" as NonEmptyStr,
+        cell: GcpIamBindingCell {
+          role: "roles/iam.workloadIdentityUser",
+          member: "principalSet://iam.googleapis.com/some/unfamiliar/shape",
+          condition: Absent,
+        },
+      })
+    ],
+  )
+  count(gcp_estate_unparsed_principal_set_members(observation: observation)) == 1
+    && count(gcp_estate_cited_project_numbers(observation: observation)) == 0
+}
+
+// ── The identity covers the measured value, not only the subject key ─────────────────────
+//
+// Two observations over the SAME subject key whose measured fact differs must not share an
+// identity. The edit is a provider's attribute condition — the single field that decides who the
+// provider admits, and the field extdeps.cloud.gcp.gcp WifProvider could not represent before this
+// change. If the identity hashed keys alone, a provider silently opened to every repository would
+// be indistinguishable from the one that was there before.
+
+data provider_with_a_widened_condition: WifProvider = WifProvider {
+  name: "github-oidc",
+  pool: "github-actions",
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_mapping: Absent,
+  attribute_condition: Present { value: "true" },
+}
+
+test fn editing_an_attribute_condition_changes_the_observation_identity() -> Bool {
+  let before = gcp_estate_observation(
+    provenance: gcp_estate_audit_provenance,
+    coverage: [gcp_subject_observed(subject: GcpWifProviderSubject { provider: github_actions_provider })],
+  )
+  let after = gcp_estate_observation(
+    provenance: gcp_estate_audit_provenance,
+    coverage: [gcp_subject_observed(subject: GcpWifProviderSubject { provider: provider_with_a_widened_condition })],
+  )
+  gcp_estate_observation_identity_eq(left: before, right: before)
+    && !gcp_estate_observation_identity_eq(left: before, right: after)
+}
+
+// An observed subject and a gap under the same key are different measurements, so they carry
+// different identities. Without this the coverage arm would be invisible to the content address and
+// a census could lose every gap it recorded without changing its own name.
+test fn a_gap_and_an_observation_under_one_key_are_different_measurements() -> Bool {
+  let key = gcp_subject_key(subject: GcpWifPoolSubject { pool: github_pool })
+  let observed = gcp_estate_observation(
+    provenance: gcp_estate_audit_provenance,
+    coverage: [gcp_subject_observed(subject: GcpWifPoolSubject { pool: github_pool })],
+  )
+  let gapped = gcp_estate_observation(
+    provenance: gcp_estate_audit_provenance,
+    coverage: [gcp_subject_coverage_gap(subject: key, cause: Inaccessible)],
+  )
+  !gcp_estate_observation_identity_eq(left: observed, right: gapped)
+}
+
+// Two gap causes are two different measurements: "we could not reach it" and "the read refused" have
+// different remedies, and an identity that could not tell them apart would let one be silently
+// rewritten as the other.
+test fn two_gap_causes_under_one_key_are_different_measurements() -> Bool {
+  let key = "project/314501921854" as GcpSubjectKey
+  let inaccessible = gcp_estate_observation(
+    provenance: gcp_estate_audit_provenance,
+    coverage: [gcp_subject_coverage_gap(subject: key, cause: Inaccessible)],
+  )
+  let refused = gcp_estate_observation(
+    provenance: gcp_estate_audit_provenance,
+    coverage: [gcp_subject_coverage_gap(subject: key, cause: UnknownRefused)],
+  )
+  !gcp_estate_observation_identity_eq(left: inaccessible, right: refused)
+}
+
+// The rung-1 classifier declared in the module. Inaccessible and UnknownRefused are coverage
+// causes; the desired-versus-observed verdicts are not, and remain representable in the field until
+// the substrate can refine a coproduct to a subset of its arms. The row makes the distinction
+// executed rather than asserted in prose.
+test fn only_the_unknown_verdicts_are_coverage_causes() -> Bool {
+  gcp_coverage_gap_cause_is_a_coverage_cause(cause: Inaccessible)
+    && gcp_coverage_gap_cause_is_a_coverage_cause(cause: UnknownRefused)
+    && !gcp_coverage_gap_cause_is_a_coverage_cause(cause: Converged)
+    && !gcp_coverage_gap_cause_is_a_coverage_cause(cause: Drifted)
+}
+
+// ── The committed receipt ────────────────────────────────────────────────────────────────
+//
+// Every row of the 2026-09-11 audit receipt is a gap, because the audit was relayed as prose and no
+// upstream record could be constructed from it without inventing fields. The receipt is asserted to
+// be gap-ONLY: if a later edit slipped an Observed row in, it would mean somebody filled a missing
+// field from a convention, and that is the substitution this census exists to make visible.
+
+test fn the_operator_audit_receipt_is_named_gaps_and_nothing_else() -> Bool {
+  let gaps = gcp_estate_named_gaps(observation: gcp_estate_audit_2026_09_11)
+  count(gaps) == gcp_estate_gap_count(observation: gcp_estate_audit_2026_09_11)
+    && count(gaps) == count(gcp_estate_audit_2026_09_11.coverage)
+    && count(gaps) > 0
+}
+
+// The two projects the brief names as live-credential questions are both in the population. 582015116396
+// is the audited project by number; 314501921854 is the unidentified one. Neither was readable from
+// this session, so both are named gaps rather than absent rows.
+test fn both_open_project_questions_are_enumerated_as_named_gaps() -> Bool {
+  gcp_estate_subject_is_named_gap(
+    observation: gcp_estate_audit_2026_09_11,
+    subject: "project/582015116396" as GcpSubjectKey,
+  ) && gcp_estate_subject_is_named_gap(
+    observation: gcp_estate_audit_2026_09_11,
+    subject: "project/314501921854" as GcpSubjectKey,
+  )
+}

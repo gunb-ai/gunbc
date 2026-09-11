@@ -1,0 +1,602 @@
+module gunbc.cloud.gcp_estate_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.upsert_decision { ObservationVerdict, Inaccessible, UnknownRefused }
+import std.decl_ref { DeclarationRef }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_tagged_structural,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
+}
+import extdeps.cloud.gcp.gcp {
+  GcpProject, GcpProjectId, GcpServiceAccount, WifPool, WifProvider,
+}
+import extdeps.cloud.gcp.iam { GcpIamBindingCell }
+
+// THE GCP ESTATE AS OBSERVED TERRITORY. This module records what a read of the GCP estate found and
+// what it could not reach. It states nothing about what the estate SHOULD contain: no desired
+// federation, no reconcile, no plan, no actuation. The desired federation for gunb-ai/gunbc is
+// gunbc.auth.github_gcp_federation and stays there; a pool this census observes is an observation
+// even when nobody declared it, and adopting an observed row as a target would be exactly the
+// conflation std.goal_assessment refuses when it keeps the goal away from the observer.
+//
+// IT LIVES IN gunbc, NOT IN extdeps.cloud.gcp (DESIGN section 3, external upstream decomposition).
+// A receipt about what THIS repository managed to read is a fact of the observing layer. Google
+// does not own the statement "we could not read project 314501921854"; we do. extdeps carries the
+// upstream SHAPES this census is built out of — GcpProject, GcpServiceAccount, WifPool,
+// WifProvider, GcpIamBindingCell — and nothing here re-declares one of them.
+//
+// IT IS NOT A HUB. There is no enumeration of GCP products here and no dispatch among them. Each
+// product module (iam, iam_admin, serviceusage, cloudresourcemanager) is independently governed and
+// owns its own read operations; this census consumes their types and is agnostic about which
+// operation produced a row.
+
+// UNREACHABLE IS NOT EMPTY, AND THAT IS THE WHOLE POINT OF THE CARRIER. A census that dropped the
+// subjects it failed to read would report a smaller estate as a cleaner one: the project whose IAM
+// policy refused our credential would be indistinguishable from a project with no bindings, and the
+// remedy for those two is opposite — one needs a grant, the other needs nothing. So every subject
+// the census enumerates lands as exactly one of two arms, and there is no third state in which a
+// subject is silently missing. Absence from the coverage list means NOT ENUMERATED, which is itself
+// a distinguishable and separately reportable condition.
+//
+// THE GAP CAUSE IS std.upsert_decision.ObservationVerdict, NOT A NEW VOCABULARY. Inaccessible and
+// UnknownRefused already name "we could not see it" and "the read refused"; minting a third unknown
+// vocabulary here would be the nickname DESIGN section 3 forbids. RUNG HONESTY (DESIGN section 4b):
+// the remaining ObservationVerdict arms — Converged, Absent, Drifted, Conflict — are
+// desired-versus-observed verdicts and are meaningless as a coverage cause, yet remain
+// REPRESENTABLE in this field. That is rung 1, mitigatable, not a wall. Next-rung trigger: a
+// capability for refining a coproduct to a declared subset of its arms at a field, which the
+// substrate does not have; until it exists, gcp_coverage_gap_cause_is_a_coverage_cause carries the
+// distinction as a readable classifier rather than a check nothing runs.
+
+// Arm names are PREFIXED. v1-seed declaration names are not module-scoped, so a bare `Observed` or
+// `CoverageGap` arm would collide across any closure containing another module that wanted those
+// words — the ambiguity class std.decl_ref records for decl_ref itself.
+
+type GcpSubjectKey = NonEmptyStr where brand("GcpSubjectKey")
+
+type GcpEstateSubject
+  = GcpProjectSubject { project: GcpProject }
+  | GcpEnabledServiceSubject { project_id: GcpProjectId, service_id: NonEmptyStr }
+  | GcpServiceAccountSubject { project_id: GcpProjectId, account: GcpServiceAccount }
+  | GcpWifPoolSubject { pool: WifPool }
+  | GcpWifProviderSubject { provider: WifProvider }
+  | GcpIamBindingCellSubject { resource: NonEmptyStr, cell: GcpIamBindingCell }
+
+type GcpEstateCoverage
+  = GcpSubjectObserved { subject: GcpSubjectKey, observed: GcpEstateSubject }
+  | GcpSubjectCoverageGap { subject: GcpSubjectKey, cause: ObservationVerdict }
+
+fn gcp_coverage_gap_cause_is_a_coverage_cause(cause: ObservationVerdict) -> Bool {
+  match cause {
+    Inaccessible => true
+    UnknownRefused => true
+    Converged => false
+    Absent => false
+    Drifted => false
+    Conflict => false
+  }
+}
+
+fn gcp_observation_verdict_label(cause: ObservationVerdict) -> NonEmptyStr {
+  match cause {
+    Inaccessible => "inaccessible" as NonEmptyStr
+    UnknownRefused => "unknown-refused" as NonEmptyStr
+    Converged => "converged" as NonEmptyStr
+    Absent => "absent" as NonEmptyStr
+    Drifted => "drifted" as NonEmptyStr
+    Conflict => "conflict" as NonEmptyStr
+  }
+}
+
+// THE SUBJECT KEY IS DERIVED FROM THE SUBJECT, never supplied beside it. An authored key next to an
+// authored subject is two representations of one identity with nothing forcing agreement — the
+// output_identity fork gunbc.repository_census_observation was recut to remove. A gap has no
+// subject to derive from, which is precisely why a gap must state its key explicitly: naming the
+// thing you could not read is the entire content of the obligation.
+
+// ONE SPELLING OF A PROJECT SUBJECT KEY, used by the key derivation and by every consumer that has
+// only a project number in hand. Two sites building "project/" by hand is how the census and its
+// own coverage obligation would come to disagree about whether a project is enumerated.
+fn gcp_project_subject_key_for_number(number: String) -> GcpSubjectKey {
+  concat("project/", number) as GcpSubjectKey
+}
+
+fn gcp_subject_key(subject: GcpEstateSubject) -> GcpSubjectKey {
+  match subject {
+    GcpProjectSubject { project: p } =>
+      concat("project/", p.project_id as String) as GcpSubjectKey
+    GcpEnabledServiceSubject { project_id: pid, service_id: sid } =>
+      concat(concat("project/", pid as String), concat("/service/", sid as String)) as GcpSubjectKey
+    GcpServiceAccountSubject { project_id: pid, account: sa } =>
+      concat(concat("project/", pid as String), concat("/serviceAccount/", sa.email as String)) as GcpSubjectKey
+    GcpWifPoolSubject { pool: pool } =>
+      concat(concat("project/", pool.project), concat("/wifPool/", pool.name)) as GcpSubjectKey
+    GcpWifProviderSubject { provider: provider } =>
+      concat(concat("wifPool/", provider.pool), concat("/provider/", provider.name)) as GcpSubjectKey
+    GcpIamBindingCellSubject { resource: resource, cell: cell } =>
+      concat(
+        concat(resource as String, concat("/binding/", cell.role)),
+        concat("/member/", cell.member)
+      ) as GcpSubjectKey
+  }
+}
+
+fn gcp_subject_observed(subject: GcpEstateSubject) -> GcpEstateCoverage {
+  GcpSubjectObserved { subject: gcp_subject_key(subject: subject), observed: subject }
+}
+
+fn gcp_subject_coverage_gap(subject: GcpSubjectKey, cause: ObservationVerdict) -> GcpEstateCoverage {
+  GcpSubjectCoverageGap { subject: subject, cause: cause }
+}
+
+// A PROJECT NUMBER NAMED BY A principalSet IS HOW A FOREIGN PROJECT ENTERS THE POPULATION. An IAM
+// binding whose member is a principalSet:// URI cites a project number that may be nothing this
+// repository has ever read. Extracting that citation is what turns "an opaque member string" into
+// "a named project we owe a read of", so the citation is the join between the IAM cell grain and
+// the project population.
+//
+// THE UNPARSED ARM IS THE FAIL-CLOSED ONE (DESIGN section 5). A member that announces itself as a
+// principalSet and whose path this reader cannot decompose is NOT reported as "not a principal
+// set": that would silently shrink the set of foreign projects we owe a read of, which is the
+// absorbing fallback in the direction that under-reports reach. It is carried as its own arm and
+// rostered by gcp_estate_unparsed_principal_set_members.
+
+data principal_set_scheme: String = "principalSet://iam.googleapis.com/"
+
+type PrincipalSetCitation
+  = MemberIsNotAPrincipalSet { member: String }
+  | PrincipalSetCitesProject { project_number: NonEmptyStr, pool_id: NonEmptyStr }
+  | PrincipalSetUnparsed { member: String }
+
+type PrincipalSetPathScan {
+  previous: String
+  project_number: String
+  pool_id: String
+}
+
+// FIRST OCCURRENCE WINS, and the guard is what makes that true rather than incidental: a path that
+// repeated the `projects/` segment would otherwise have the later value silently overwrite the
+// resource's own project number.
+fn principal_set_scan_step(acc: PrincipalSetPathScan, segment: String) -> PrincipalSetPathScan {
+  PrincipalSetPathScan {
+    previous: segment,
+    project_number: if acc.previous == "projects" && acc.project_number == "" { segment } else { acc.project_number },
+    pool_id: if acc.previous == "workloadIdentityPools" && acc.pool_id == "" { segment } else { acc.pool_id },
+  }
+}
+
+fn principal_set_citation(member: String) -> PrincipalSetCitation {
+  if !starts_with(s: member, prefix: principal_set_scheme) {
+    MemberIsNotAPrincipalSet { member: member }
+  } else {
+    let scanned = fold(
+      split(s: member, delimiter: "/"),
+      init: PrincipalSetPathScan { previous: "", project_number: "", pool_id: "" },
+      f: (acc, segment) => principal_set_scan_step(acc: acc, segment: segment)
+    )
+    if scanned.project_number == "" || scanned.pool_id == "" {
+      PrincipalSetUnparsed { member: member }
+    } else {
+      PrincipalSetCitesProject {
+        project_number: scanned.project_number as NonEmptyStr,
+        pool_id: scanned.pool_id as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// HOW THE READ HAPPENED, carried so a row can never be read as more than its method supports. An
+// operator running read-only gcloud commands by hand and a modeled API operation are different
+// methods with different failure modes, and a census that flattened them would let a hand-typed
+// transcription inherit the standing of an executed read. ModeledApiRead cites the operation as a
+// DeclarationRef — the symbol, not a position (DESIGN section 3).
+//
+// NO OPERATION IS ADDED TO A PRODUCT MODULE IN THIS CHANGE. The List/Get reads an executed
+// inventory needs — serviceusage services.list, iam workloadIdentityPools.list and
+// .providers.list, iam_admin serviceAccounts.list, cloudresourcemanager projects.get and
+// projects.list — do not exist yet, and this session has no credential to execute one with. A
+// declared operation with no executing consumer is the dangling declaration DESIGN section 3c
+// refuses, so the ops land with the credentialed read that consumes them, on their own product
+// modules, one product at a time. That is a DECLARED FRONTIER, not an absence: until it lands,
+// every row in this census is an OperatorReadOnlyAudit row and says so.
+
+type GcpReadMethod
+  = OperatorReadOnlyAudit { tool: NonEmptyStr, audit_date: NonEmptyStr }
+  | ModeledApiRead { operation: DeclarationRef }
+
+fn gcp_read_method_identity(method: GcpReadMethod) -> Fnv1a64Structural {
+  match method {
+    OperatorReadOnlyAudit { tool: tool, audit_date: audit_date } =>
+      content_hash_combine_structural(
+        left: content_hash_tagged_structural(
+          tag: "gcp-read-operator-audit-tool",
+          payload: content_hash_atom(value: tool),
+        ),
+        right: content_hash_tagged_structural(
+          tag: "gcp-read-operator-audit-date",
+          payload: content_hash_atom(value: audit_date),
+        ),
+      )
+    ModeledApiRead { operation: operation } =>
+      content_hash_combine_structural(
+        left: content_hash_tagged_structural(
+          tag: "gcp-read-api-operation-module",
+          payload: content_hash_atom(value: operation.module_path),
+        ),
+        right: content_hash_tagged_structural(
+          tag: "gcp-read-api-operation-name",
+          payload: content_hash_atom(value: operation.decl_name),
+        ),
+      )
+  }
+}
+
+type GcpObservationProvenance {
+  method: GcpReadMethod
+  reading_principal: NonEmptyStr
+  scope_project_number: NonEmptyStr
+}
+
+fn gcp_provenance_identity(provenance: GcpObservationProvenance) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_tagged_structural(
+      tag: "gcp-provenance-method",
+      payload: gcp_read_method_identity(method: provenance.method),
+    ),
+    right: content_hash_combine_structural(
+      left: content_hash_tagged_structural(
+        tag: "gcp-provenance-principal",
+        payload: content_hash_atom(value: provenance.reading_principal),
+      ),
+      right: content_hash_tagged_structural(
+        tag: "gcp-provenance-scope-project-number",
+        payload: content_hash_atom(value: provenance.scope_project_number),
+      ),
+    ),
+  )
+}
+
+// THE IDENTITY COVERS THE MEASURED VALUE, NOT ONLY THE SUBJECT KEY. Hashing keys alone was the
+// defect gunbc.repository_census_observation records against its own first cut: a subject could be
+// reclassified — a provider's attribute condition edited, a service account flipped to disabled —
+// with the content address unchanged, so the carrier built to make measurements accountable would
+// have said two different measurements were the same one.
+
+fn gcp_optional_string_identity(tag: NonEmptyStr, value: String?) -> Fnv1a64Structural {
+  match value {
+    Present { value: present } =>
+      if present == "" {
+        content_hash_tagged_structural(tag: tag, payload: content_hash_atom(value: "present-empty"))
+      } else {
+        content_hash_tagged_structural(tag: tag, payload: content_hash_atom(value: present as NonEmptyStr))
+      }
+    Absent =>
+      content_hash_tagged_structural(tag: tag, payload: content_hash_atom(value: "absent"))
+  }
+}
+
+fn gcp_bool_identity(tag: NonEmptyStr, value: Bool) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: tag,
+    payload: content_hash_atom(value: if value { "true" as NonEmptyStr } else { "false" as NonEmptyStr }),
+  )
+}
+
+fn gcp_subject_fact_identity(subject: GcpEstateSubject) -> Fnv1a64Structural {
+  match subject {
+    GcpProjectSubject { project: p } =>
+      content_hash_tagged_structural(
+        tag: "gcp-subject-project",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: p.project_id as NonEmptyStr),
+          right: content_hash_atom(value: to_string(p.project_number) as NonEmptyStr),
+        ),
+      )
+    GcpEnabledServiceSubject { project_id: pid, service_id: sid } =>
+      content_hash_tagged_structural(
+        tag: "gcp-subject-enabled-service",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: pid as NonEmptyStr),
+          right: content_hash_atom(value: sid),
+        ),
+      )
+    GcpServiceAccountSubject { project_id: pid, account: sa } =>
+      content_hash_tagged_structural(
+        tag: "gcp-subject-service-account",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: pid as NonEmptyStr),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: sa.email as NonEmptyStr),
+            right: gcp_bool_identity(tag: "gcp-service-account-disabled", value: sa.disabled),
+          ),
+        ),
+      )
+    GcpWifPoolSubject { pool: pool } =>
+      content_hash_tagged_structural(
+        tag: "gcp-subject-wif-pool",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: pool.project as NonEmptyStr),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: pool.name as NonEmptyStr),
+            right: gcp_bool_identity(tag: "gcp-wif-pool-disabled", value: pool.disabled),
+          ),
+        ),
+      )
+    GcpWifProviderSubject { provider: provider } =>
+      content_hash_tagged_structural(
+        tag: "gcp-subject-wif-provider",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: provider.pool as NonEmptyStr),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: provider.name as NonEmptyStr),
+            right: content_hash_combine_structural(
+              left: content_hash_atom(value: provider.issuer_uri as NonEmptyStr),
+              right: gcp_optional_string_identity(
+                tag: "gcp-wif-provider-attribute-condition",
+                value: provider.attribute_condition,
+              ),
+            ),
+          ),
+        ),
+      )
+    GcpIamBindingCellSubject { resource: resource, cell: cell } =>
+      content_hash_tagged_structural(
+        tag: "gcp-subject-iam-binding-cell",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: resource),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: cell.role as NonEmptyStr),
+            right: content_hash_atom(value: cell.member as NonEmptyStr),
+          ),
+        ),
+      )
+  }
+}
+
+fn gcp_coverage_identity(coverage: GcpEstateCoverage) -> Fnv1a64Structural {
+  match coverage {
+    GcpSubjectObserved { subject: key, observed: observed } =>
+      content_hash_tagged_structural(
+        tag: "gcp-coverage-observed",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: key as NonEmptyStr),
+          right: gcp_subject_fact_identity(subject: observed),
+        ),
+      )
+    GcpSubjectCoverageGap { subject: key, cause: cause } =>
+      content_hash_tagged_structural(
+        tag: "gcp-coverage-gap",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: key as NonEmptyStr),
+          right: content_hash_atom(value: gcp_observation_verdict_label(cause: cause)),
+        ),
+      )
+  }
+}
+
+// NO COUNT FIELD AND NO CONCLUSION, for the reason gunbc.repository_census_observation states: a
+// stored count is a second representation of what the rows determine and can disagree with them.
+// The coverage identity is DERIVED by the constructor from the coverage rows it stores, which is
+// why the type is sole_constructor.
+
+type GcpEstateObservation sole_constructor {
+  provenance: GcpObservationProvenance
+  coverage: List<GcpEstateCoverage>
+  coverage_identity: Fnv1a64Structural
+}
+
+fn gcp_coverage_rows_identity(coverage: List<GcpEstateCoverage>) -> Fnv1a64Structural {
+  fold(
+    coverage,
+    init: content_hash_tagged_structural(
+      tag: "gcp-coverage-rows",
+      payload: content_hash_atom(value: "rows"),
+    ),
+    f: fn(acc, row) {
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_tagged_structural(
+          tag: "gcp-coverage-rows-row",
+          payload: gcp_coverage_identity(coverage: row),
+        ),
+      )
+    },
+  )
+}
+
+fn gcp_estate_observation(
+  provenance: GcpObservationProvenance,
+  coverage: List<GcpEstateCoverage>,
+) -> GcpEstateObservation {
+  GcpEstateObservation {
+    provenance: provenance,
+    coverage: coverage,
+    coverage_identity: gcp_coverage_rows_identity(coverage: coverage),
+  }
+}
+
+fn gcp_estate_observation_identity(observation: GcpEstateObservation) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_tagged_structural(
+      tag: "gcp-estate-provenance",
+      payload: gcp_provenance_identity(provenance: observation.provenance),
+    ),
+    right: content_hash_tagged_structural(
+      tag: "gcp-estate-coverage",
+      payload: observation.coverage_identity,
+    ),
+  )
+}
+
+fn gcp_estate_observation_identity_eq(
+  left: GcpEstateObservation,
+  right: GcpEstateObservation,
+) -> Bool {
+  content_hash_eq_structural(
+    left: gcp_estate_observation_identity(observation: left),
+    right: gcp_estate_observation_identity(observation: right),
+  )
+}
+
+// ── Projections over the coverage ────────────────────────────────────────────────────────
+
+fn gcp_coverage_subject(coverage: GcpEstateCoverage) -> GcpSubjectKey {
+  match coverage {
+    GcpSubjectObserved { subject: key, observed: _ } => key
+    GcpSubjectCoverageGap { subject: key, cause: _ } => key
+  }
+}
+
+fn gcp_coverage_is_gap(coverage: GcpEstateCoverage) -> Bool {
+  match coverage {
+    GcpSubjectObserved { subject: _, observed: _ } => false
+    GcpSubjectCoverageGap { subject: _, cause: _ } => true
+  }
+}
+
+fn gcp_estate_enumerated_subjects(observation: GcpEstateObservation) -> List<GcpSubjectKey> {
+  observation.coverage |> map(row => gcp_coverage_subject(coverage: row))
+}
+
+fn gcp_estate_named_gaps(observation: GcpEstateObservation) -> List<GcpSubjectKey> {
+  observation.coverage
+    |> filter(row => gcp_coverage_is_gap(coverage: row))
+    |> map(row => gcp_coverage_subject(coverage: row))
+}
+
+fn gcp_estate_gap_count(observation: GcpEstateObservation) -> Int {
+  count(gcp_estate_named_gaps(observation: observation))
+}
+
+// THREE STATES, NOT TWO, and keeping them apart is the reason this carrier exists. A subject may be
+// OBSERVED, may be ENUMERATED-BUT-UNREAD (a named gap), or may be OUTSIDE THE CENSUS ALTOGETHER.
+// Collapsing the middle into either neighbour is the error: folded into observed it invents data,
+// folded into unenumerated it erases the coverage obligation.
+
+fn gcp_estate_subject_is_enumerated(observation: GcpEstateObservation, subject: GcpSubjectKey) -> Bool {
+  any(observation.coverage, row => gcp_coverage_subject(coverage: row) == subject)
+}
+
+fn gcp_estate_subject_is_observed(observation: GcpEstateObservation, subject: GcpSubjectKey) -> Bool {
+  any(observation.coverage, row =>
+    gcp_coverage_subject(coverage: row) == subject && !gcp_coverage_is_gap(coverage: row))
+}
+
+fn gcp_estate_subject_is_named_gap(observation: GcpEstateObservation, subject: GcpSubjectKey) -> Bool {
+  any(observation.coverage, row =>
+    gcp_coverage_subject(coverage: row) == subject && gcp_coverage_is_gap(coverage: row))
+}
+
+// ── principalSet citations reachable from the observed IAM cells ─────────────────────────
+
+fn gcp_coverage_iam_member(coverage: GcpEstateCoverage) -> String? {
+  match coverage {
+    GcpSubjectCoverageGap { subject: _, cause: _ } => Absent
+    GcpSubjectObserved { subject: _, observed: observed } =>
+      match observed {
+        GcpIamBindingCellSubject { resource: _, cell: cell } => Present { value: cell.member }
+        GcpProjectSubject { project: _ } => Absent
+        GcpEnabledServiceSubject { project_id: _, service_id: _ } => Absent
+        GcpServiceAccountSubject { project_id: _, account: _ } => Absent
+        GcpWifPoolSubject { pool: _ } => Absent
+        GcpWifProviderSubject { provider: _ } => Absent
+      }
+  }
+}
+
+data no_principal_set_citations: List<PrincipalSetCitation> = []
+
+fn gcp_estate_principal_set_citations(observation: GcpEstateObservation) -> List<PrincipalSetCitation> {
+  fold(
+    observation.coverage,
+    init: no_principal_set_citations,
+    f: fn(acc, row) {
+      match gcp_coverage_iam_member(coverage: row) {
+        Absent => acc
+        Present { value: member } => acc |> list_push(principal_set_citation(member: member))
+      }
+    },
+  )
+}
+
+data no_cited_project_numbers: List<NonEmptyStr> = []
+
+fn gcp_estate_cited_project_numbers(observation: GcpEstateObservation) -> List<NonEmptyStr> {
+  fold(
+    gcp_estate_principal_set_citations(observation: observation),
+    init: no_cited_project_numbers,
+    f: fn(acc, citation) {
+      match citation {
+        PrincipalSetCitesProject { project_number: project_number, pool_id: _ } =>
+          if any(acc, existing => existing == project_number) { acc } else { acc |> list_push(project_number) }
+        MemberIsNotAPrincipalSet { member: _ } => acc
+        PrincipalSetUnparsed { member: _ } => acc
+      }
+    },
+  )
+}
+
+data no_unparsed_members: List<String> = []
+
+fn gcp_estate_unparsed_principal_set_members(observation: GcpEstateObservation) -> List<String> {
+  fold(
+    gcp_estate_principal_set_citations(observation: observation),
+    init: no_unparsed_members,
+    f: fn(acc, citation) {
+      match citation {
+        PrincipalSetUnparsed { member: member } => acc |> list_push(member)
+        PrincipalSetCitesProject { project_number: _, pool_id: _ } => acc
+        MemberIsNotAPrincipalSet { member: _ } => acc
+      }
+    },
+  )
+}
+
+// THE COVERAGE OBLIGATION A CENSUS CREATES FOR ITSELF. Every project number a principalSet cites is
+// a project this estate REACHES INTO, so a census that observed the citation and did not enumerate
+// the cited project has an unnamed hole. This returns the numbers cited but not enumerated as a
+// project subject — the list that must be empty before anyone reads this census as covering the
+// estate, and the list from which the next read's population is drawn.
+
+// A CITED NUMBER IS MATCHED AGAINST BOTH SPELLINGS OF A PROJECT. A project observed through
+// projects.get is known by its id AND its number, and a project we could only name as a number is
+// enumerated under that number. Matching on one spelling alone would report a project as an
+// unnamed hole while the census in fact covers it under the other name — a false obligation, which
+// erodes the list exactly as fast as a missed one does.
+fn gcp_coverage_project_identifiers(coverage: GcpEstateCoverage) -> List<String> {
+  match coverage {
+    GcpSubjectCoverageGap { subject: key, cause: _ } => [key as String]
+    GcpSubjectObserved { subject: key, observed: observed } =>
+      match observed {
+        GcpProjectSubject { project: p } =>
+          [key as String, gcp_project_subject_key_for_number(number: to_string(p.project_number)) as String]
+        GcpEnabledServiceSubject { project_id: _, service_id: _ } => []
+        GcpServiceAccountSubject { project_id: _, account: _ } => []
+        GcpWifPoolSubject { pool: _ } => []
+        GcpWifProviderSubject { provider: _ } => []
+        GcpIamBindingCellSubject { resource: _, cell: _ } => []
+      }
+  }
+}
+
+data no_project_identifiers: List<String> = []
+
+fn gcp_estate_project_identifiers(observation: GcpEstateObservation) -> List<String> {
+  fold(
+    observation.coverage,
+    init: no_project_identifiers,
+    f: fn(acc, row) {
+      fold(gcp_coverage_project_identifiers(coverage: row), init: acc, f: fn(inner, id) { inner |> list_push(id) })
+    },
+  )
+}
+
+fn gcp_estate_cited_but_unenumerated_projects(observation: GcpEstateObservation) -> List<NonEmptyStr> {
+  let identifiers = gcp_estate_project_identifiers(observation: observation)
+  gcp_estate_cited_project_numbers(observation: observation)
+    |> filter(number =>
+      !any(identifiers, id => id == gcp_project_subject_key_for_number(number: number as String) as String))
+}
