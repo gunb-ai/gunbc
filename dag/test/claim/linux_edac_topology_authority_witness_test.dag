@@ -27,6 +27,7 @@ import extdeps.linux.edac {
   edac_registered_controller_count,
 }
 import extdeps.linux.kernel { LinuxKernelModuleName }
+import std.measure { memory_controller_count_value }
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Absent, Present }
@@ -132,7 +133,7 @@ test fn unbound_edac_has_no_dimm_node_source_holds() -> Bool {
 // fabricated-plausible-output failure with a Nat on it.
 test fn ghes_edac_registers_exactly_one_controller_holds() -> Bool {
   match edac_registered_controller_count(binding: GhesEdac) {
-    ControllerCountFixedByDriver { count: n } => n == 1
+    ControllerCountFixedByDriver { count: n } => memory_controller_count_value(c: n) == 1
     ControllerCountIsAPlatformReading => false
     ControllerCountNotApplicable => false
   }

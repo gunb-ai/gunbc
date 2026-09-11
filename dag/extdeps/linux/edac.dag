@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.linux.kernel { LinuxKernelModuleName, LinuxKernelRelease }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.nat { Nat }
+import std.measure { MemoryControllerCount, memory_controller_count, memory_controller_count_value }
 import v2.std.optional { Absent, Present }
 import std.types { Bool, NonEmptyStr, String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -148,10 +148,10 @@ fn edac_channel_topology_absence_standing(
 // driver the count is whatever the machine actually has, which this module cannot know and must not
 // guess: that is a per-platform reading for the observing layer, so the fold declines to answer
 // rather than fabricating a plausible one.
-data ghes_edac_registered_controller_count: Nat = 1
+data ghes_edac_registered_controller_count: MemoryControllerCount = memory_controller_count(count: 1)
 
 type EdacRegisteredControllerCount
-  = ControllerCountFixedByDriver { count: Nat }
+  = ControllerCountFixedByDriver { count: MemoryControllerCount }
   | ControllerCountIsAPlatformReading
   | ControllerCountNotApplicable
 
