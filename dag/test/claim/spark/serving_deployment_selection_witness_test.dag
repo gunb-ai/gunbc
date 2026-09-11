@@ -20,7 +20,10 @@ import gunbc.spark.serving_deployment_selection {
   WeightsNotRuledOutByLowerBound, WeightsImpossibleByLowerBound, WeightFitUnderivable, weight_fit_of,
   per_rank_bytes_ceiling, fleet_fits,
   spark_fleet_snapshot, serving_parameters_current, spark_runtime, eight_host_topologies,
-  artifact_deepseek_v4_flash_native, artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
+  artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
+  artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
+  full_fleet_covering_topologies, native_quality_holds, no_redundancy_holds,
+  topology_shape_eq,
   TopologyShape, topology_shape,
   ServingDeploymentChoiceDomain, serving_deployment_domain,
   ServingDeploymentCandidateField, serving_candidate_field,
@@ -30,7 +33,7 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
   select_serving_deployment,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
-  glm_decision_input, deepseek_decision_input,
+  glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
 }
 
@@ -49,6 +52,13 @@ test fn the_real_deepseek_subject_returns_obligations_rather_than_a_topology() -
 
 test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
   match select_serving_deployment(input: glm_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+test fn the_real_deepseek_v4_1_subject_returns_obligations_rather_than_a_topology() -> Bool {
+  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
     ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
     _ => false
   }
@@ -407,6 +417,32 @@ test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
 //
 // The requantised build is not a cheaper way to serve the native checkpoint; it is other weights.
 // No report about it can pass a requirement whose subject is the native artifact.
+test fn covering_topologies_are_the_divisors_of_the_fleet() -> Bool {
+  let derived = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
+  let expected = [
+    topology_shape(tensor_parallel_degree: 1, replica_count: 8),
+    topology_shape(tensor_parallel_degree: 2, replica_count: 4),
+    topology_shape(tensor_parallel_degree: 4, replica_count: 2),
+    topology_shape(tensor_parallel_degree: 8, replica_count: 1),
+  ]
+  count(derived) == 4
+    && count(eight_host_topologies) == 4
+    && all(expected, t => any(derived, d => topology_shape_eq(a: d, b: t)))
+    && all(derived, d => any(expected, t => topology_shape_eq(a: d, b: t)))
+}
+
+test fn native_quality_is_a_fact_on_the_weight_treatment() -> Bool {
+  native_quality_holds(c: native_tp4_x2)
+    && native_quality_holds(c: cand(name: "v41", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)))
+    && !native_quality_holds(c: cand(name: "twobit_fact", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)))
+}
+
+test fn leftover_hosts_fail_the_no_redundancy_constraint() -> Bool {
+  no_redundancy_holds(c: native_tp4_x2, fleet: spark_fleet_snapshot)
+    && no_redundancy_holds(c: native_tp8_x1, fleet: spark_fleet_snapshot)
+    && !no_redundancy_holds(c: cand(name: "leftover", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2)), fleet: spark_fleet_snapshot)
+}
+
 test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool {
   match assess_quality(
     report: serving_quality_report(

@@ -1,7 +1,7 @@
 module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
@@ -60,11 +60,18 @@ type ArtifactFootprint
   | FootprintReportedExternally { bytes: Nat, source: NonEmptyStr }
   | FootprintUnread { obligation: NonEmptyStr }
 
+// WHETHER THE BYTES ARE THE PUBLISHED CHECKPOINT IS A FACT, NOT A SCORE. A requantised build is
+// other weights. Native-quality is therefore a hard constraint over this constructor, not an axis
+// a faster quantisation could outweigh.
+type WeightTreatment
+  = PublishedNativeWeights
+  | RequantisedWeights { distinction: NonEmptyStr }
+
 type ModelArtifact {
   identity: DeclarationRef
   label: NonEmptyStr
   footprint: ArtifactFootprint
-  weight_treatment: NonEmptyStr
+  weight_treatment: WeightTreatment
 }
 
 data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
@@ -74,7 +81,16 @@ data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
     bytes: 168683720987,
     how: "summed safetensors byte size read inside the serving container on a Spark, 2026-09-07" as NonEmptyStr,
   },
-  weight_treatment: "the checkpoint as published, no requantisation" as NonEmptyStr,
+  weight_treatment: PublishedNativeWeights,
+}
+
+data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
+  identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
+  label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
+  footprint: FootprintUnread {
+    obligation: "nobody has read this checkpoint's bytes on this fleet. DSV41-0 owns the pinned revision and footprint; a family-level estimate is not a reading of what will be loaded" as NonEmptyStr,
+  },
+  weight_treatment: PublishedNativeWeights,
 }
 
 data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
@@ -83,7 +99,7 @@ data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   footprint: FootprintUnread {
     obligation: "nobody has read this checkpoint's bytes on this fleet. A parameter count divided by a bit width is an estimate about a family, not a reading of what will be loaded" as NonEmptyStr,
   },
-  weight_treatment: "the checkpoint as published, no requantisation" as NonEmptyStr,
+  weight_treatment: PublishedNativeWeights,
 }
 
 data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
@@ -93,7 +109,9 @@ data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
     bytes: 85230000000,
     source: "a third-party single-host deployment report; not read on this fleet, so it cannot support a feasibility verdict here" as NonEmptyStr,
   },
-  weight_treatment: "requantised to 2.05 bits per weight, a DIFFERENT SET OF WEIGHTS from the native checkpoint" as NonEmptyStr,
+  weight_treatment: RequantisedWeights {
+    distinction: "requantised to 2.05 bits per weight, a DIFFERENT SET OF WEIGHTS from the native checkpoint" as NonEmptyStr,
+  },
 }
 
 // ── THE FLEET AS A SNAPSHOT ───────────────────────────────────────────────────────────────────
@@ -588,6 +606,66 @@ fn fleet_fits(c: DeploymentCandidate, fleet: FleetSnapshot) -> Bool {
     && hosts_consumed(c: c) <= fleet.host_count
 }
 
+// A WHOLE-FLEET COVERING IS DERIVED FROM THE HOST COUNT, NOT AUTHORED AS FOUR SHAPES.
+// For n hosts the covering shapes are exactly the pairs (d, n/d) where d divides n. Authoring
+// 8×1 / 4×2 / 2×4 / 1×8 beside host_count: 8 restates the same fact twice, and a fleet of a
+// different width would keep the old list. The order is increasing degree; completeness is a
+// set join, so existing fields that listed the reverse order remain established.
+fn full_fleet_covering_topologies(host_count: Nat) -> List<TopologyShape> {
+  map(
+    filter(nat_range_inclusive(lo: 1, hi: host_count), d => host_count % d == 0),
+    d => topology_shape(tensor_parallel_degree: d, replica_count: host_count / d),
+  )
+}
+
+fn native_quality_holds(c: DeploymentCandidate) -> Bool {
+  match c.artifact.weight_treatment {
+    PublishedNativeWeights => true
+    RequantisedWeights { distinction: _ } => false
+  }
+}
+
+// LEFTOVER HOSTS ARE A SECOND UNDECLARED SERVING, NOT HEADROOM. A shape that consumes fewer hosts
+// than the fleet has leaves capacity that this decision did not account for; that is redundancy
+// against the fleet snapshot, not a cheaper topology. Degenerate zero-rank/zero-replica shapes
+// consume nothing and so also fail.
+fn no_redundancy_holds(c: DeploymentCandidate, fleet: FleetSnapshot) -> Bool {
+  c.topology.replica_count > 0
+    && c.topology.tensor_parallel_degree > 0
+    && hosts_consumed(c: c) == fleet.host_count
+}
+
+fn derived_candidate_identity(stem: String, art: ModelArtifact, t: TopologyShape) -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.spark.serving_deployment_selection",
+    decl_name: join([
+      stem,
+      "_",
+      art.identity.decl_name as String,
+      "_tp",
+      to_string(t.tensor_parallel_degree),
+      "_x",
+      to_string(t.replica_count),
+    ], ""),
+  )
+}
+
+fn derived_candidates(stem: String, artifacts: List<ModelArtifact>, topologies: List<TopologyShape>) -> List<DeploymentCandidate> {
+  flat_map(artifacts, art => map(topologies, t =>
+    deployment_candidate(
+      identity: derived_candidate_identity(stem: stem, art: art, t: t),
+      label: join([
+        art.label as String,
+        ", tp",
+        to_string(t.tensor_parallel_degree),
+        " x",
+        to_string(t.replica_count),
+      ], "") as NonEmptyStr,
+      artifact: art,
+      topology: t,
+    )))
+}
+
 // THE SHARE OF EQUAL-CAPACITY REPLICAS LOST WHEN ONE REPLICA IS LOST -- not a physical blast radius,
 // which would need rank-to-host partitions and declared failure domains this module does not carry.
 fn replica_capacity_share_lost_percent(c: DeploymentCandidate) -> Nat {
@@ -618,7 +696,9 @@ fn covers_demand(p: ServingDecisionParameters, demand: WorkloadDemandStanding) -
 // returns SelectionNeedsEvidence naming each missing reading, and it keeps doing so until the
 // measurements exist. No weights are guessed and no axis is dropped to obtain an answer.
 data ax_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_quality")
+data ax_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_native_quality")
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
+data ax_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_no_redundancy")
 data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
 data ax_workload_established: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_workload_established")
@@ -638,7 +718,9 @@ data ax_operational_complexity: DeclarationRef = decl_ref(module_path: "gunbc.sp
 
 data serving_selection_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_quality, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_native_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_weight_fit, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_no_redundancy, goal: HigherIsBetter },
   SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
   SelectionAxis { identity: ax_context_covered, goal: HigherIsBetter },
   SelectionAxis { identity: ax_workload_established, goal: HigherIsBetter },
@@ -661,7 +743,9 @@ data id_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.spar
 
 data serving_selection_constraints: List<HardConstraint> = [
   HardConstraint { identity: id_constraint_authority, axis: ax_quality, bound_micro: 1 },
+  HardConstraint { identity: id_constraint_authority, axis: ax_native_quality, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_weight_fit, bound_micro: 1 },
+  HardConstraint { identity: id_constraint_authority, axis: ax_no_redundancy, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_runtime_feasible, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_context_covered, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_workload_established, bound_micro: 1 },
@@ -955,6 +1039,8 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
       concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
              optional_reading(r: workload_reading(e: e)))),
     [
+      reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
+      reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c, fleet: e.fleet))),
       reading(axis: ax_context_covered, v: flag(b: covers_demand(p: p, demand: e.workload))),
       reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
       reading(axis: ax_independent_replicas, v: c.topology.replica_count),
@@ -1085,7 +1171,7 @@ fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
     constraints: [
       ConstraintSatisfied {
         constraint: id_constraint_authority,
-        evidence: "quality, weight fit, runtime feasibility, context coverage, workload standing and stability are each bounded at one and excluded before dominance" as NonEmptyStr,
+        evidence: "quality, native-quality, weight fit, no-redundancy, runtime feasibility, context coverage, workload standing and stability are each bounded at one and excluded before dominance" as NonEmptyStr,
       },
     ],
     parameters: [
@@ -1286,12 +1372,7 @@ data serving_parameters_current: ServingDecisionParameters = serving_decision_pa
   runtime: spark_runtime,
 )
 
-data eight_host_topologies: List<TopologyShape> = [
-  topology_shape(tensor_parallel_degree: 8, replica_count: 1),
-  topology_shape(tensor_parallel_degree: 4, replica_count: 2),
-  topology_shape(tensor_parallel_degree: 2, replica_count: 4),
-  topology_shape(tensor_parallel_degree: 1, replica_count: 8),
-]
+data eight_host_topologies: List<TopologyShape> = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
 
 // THE WORKLOAD IS A SCENARIO AND SAYS SO. 300,000 tokens was authored as a working window with no
 // derived population behind it, and the checkpoint's own 1,048,576-token ceiling is a LIMIT rather
@@ -1440,4 +1521,43 @@ data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_
   evidence: serving_evidence_current,
   quality_requirement: deepseek_quality_requirement,
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_quality_requirement"),
+)
+
+// ── V4.1 FLASH: NATIVE CANDIDATES, CONSTRAINTS AGAINST FACTS, TOPOLOGY DERIVED ──────────────
+//
+// THE CANDIDATE ROSTER IS NOT A SECOND LIST. Covering topologies come from the fleet host count;
+// candidates are the cartesian of the native artifact with those shapes. Native-quality and
+// no-redundancy are facts on the candidate (published weights; the shape consumes every host) and
+// are hard constraints, not scores a requantisation or a leftover-host shape could trade against.
+// The quality-assessment axis remains a separate evidence obligation: a native checkpoint that has
+// not been measured still needs a report, and this subject therefore still returns obligations.
+data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement(
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_quality_requirement"),
+  required_artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
+  max_divergence_millinats: 0,
+  min_task_score_delta_hundredths: 0,
+  rationale: "operator policy: do not sacrifice quality. Only the published V4.1 Flash checkpoint is admissible; a requantised build is other weights and is excluded by the native-quality constraint before dominance, not ranked" as NonEmptyStr,
+)
+
+data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
+  artifacts: [artifact_deepseek_v4_1_flash_native],
+  topologies: eight_host_topologies,
+  parameters: serving_parameters_current,
+)
+
+data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_candidate_field"),
+  domain: deepseek_v4_1_domain,
+  candidates: derived_candidates(
+    stem: "deepseek_v4_1",
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: eight_host_topologies,
+  ),
+)
+
+data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
+  field: deepseek_v4_1_candidate_field,
+  evidence: serving_evidence_current,
+  quality_requirement: deepseek_v4_1_quality_requirement,
+  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_quality_requirement"),
 )
