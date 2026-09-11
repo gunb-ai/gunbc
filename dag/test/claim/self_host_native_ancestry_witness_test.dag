@@ -206,21 +206,28 @@ test fn seed_cannot_be_the_recurring_successor_producer() -> Bool {
   }
 }
 
+fn na_moved_producer(identity: GenerationIdentity) -> GenerationIdentity {
+  compiler_artifact_identity(
+    producer_compiler: na_digest(label: "producer-MOVED"),
+    source_closure: identity.source_closure,
+    target_model: identity.target_model,
+    toolchain: identity.toolchain,
+    build_configuration: identity.build_configuration,
+    materialized_artifact: identity.materialized_artifact
+  )
+}
+
 test fn identity_axes_changed_is_a_new_identity() -> Bool {
   match na_good_genesis() {
     Absent => false
     Present { value: ancestor } =>
-      let left = ancestor.identity
-      let right = compiler_artifact_identity(
-        producer_compiler: na_digest(label: "producer-MOVED"),
-        source_closure: left.source_closure,
-        target_model: left.target_model,
-        toolchain: left.toolchain,
-        build_configuration: left.build_configuration,
-        materialized_artifact: left.materialized_artifact
+      !generation_identity_agrees(
+        left: ancestor.identity,
+        right: na_moved_producer(identity: ancestor.identity)
+      ) && !ancestor_identity_still_current(
+        ancestor: ancestor,
+        observed_now: na_moved_producer(identity: ancestor.identity)
       )
-      !generation_identity_agrees(left: left, right: right)
-        && !ancestor_identity_still_current(ancestor: ancestor, observed_now: right)
   }
 }
 
