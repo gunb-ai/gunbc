@@ -47,7 +47,8 @@ import gunbc.gcp_estate_observation {
   observed_project_roster_count,
   gunbai_auto_is_not_selected_as_sheets_home,
   gap_gunb_ci_service_accounts_and_pools,
-  gap_gunbai_auto_service_accounts,
+  gap_gunb_test_service_accounts_and_pools,
+  gap_gemini_project_beyond_identity,
   fleet_automation_sa_email,
   gunb_test_project_id,
   gunbai_auto_project_id,
@@ -65,6 +66,9 @@ import gunbc.gcp_estate_observation {
   CorrectlyScopedPossiblyInertUndeclared,
   secrets_github_pool_condition_is_the_malformed_one,
   observed_gunbai_auto_github_provider,
+  gunbai_auto_enabled_service_ids,
+  sheets_leading_candidate_is_not_selected,
+  gunb_ci_is_the_only_sts_candidate,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
@@ -331,10 +335,16 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && gunb_test_sts_is_absent()
     && none_of_the_three_sandboxes_has_sheets()
     && sheets_calling_strategy_is_create_not_adopt()
-    && !gunbai_auto_has_sts
+    && !gunbai_auto_has_sts()
     && gunb_ci_has_sts
+    && gunbai_auto_enabled_service_ids.length() == 32
+    && census.service_accounts.length() == 3
+    && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
     && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_service_accounts_and_pools.subject_identity as String)
-    && census_subject_is_named_gap(census: census, subject: gap_gunbai_auto_service_accounts.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gunb_test_service_accounts_and_pools.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gemini_project_beyond_identity.subject_identity as String)
+    && sheets_leading_candidate_is_not_selected()
+    && gunb_ci_is_the_only_sts_candidate()
 }
 
 test fn two_github_pools_are_keyed_by_project_not_name() -> Bool {
