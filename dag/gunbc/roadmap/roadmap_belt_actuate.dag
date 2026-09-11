@@ -808,12 +808,15 @@ fn belt_persist_spawn_origin_for_instance(
 // moment the oracle is known to be the base revision's, not the attempt's. The controller repo is a
 // tree nothing ties to this attempt; reading after the agent runs is the fail-open this lane
 // closes. The staged spawn already orders it: worktree-add and attempt-state-prepare first, this
-// capture inside state initialization, tmux-session-create after.
+// capture inside state initialization, session-container create after.
 //
-// A PIN REFUSAL FAILS THE SPAWN. The verify gate already refuses an unpinnable attempt, so this is
-// not a second decider: it is the same observation, asked before worktree-add, so a worker is not
-// spent on work that cannot verify. belt_spawn_oracle_pin_standing is that earlier ask; the
-// verify-side gate is unchanged.
+// A PIN REFUSAL ON THAT WORKTREE FAILS THE SPAWN before seat acquisition. That is the wall this
+// route actually holds. An earlier ask against instance.repo_root is NOT the same observation:
+// the controller tree and the admitted-base worktree can disagree, which is the #11021 class
+// (the guard protects a different object than the harm travels through). belt_spawn_oracle_pin_standing
+// is the fold over a caller-supplied observation set; it is not a controller-tree gate. The
+// next slice observes the oracle from the exact admitted Git object before enqueue (POST /dispatch
+// must not wait through worktree-add). Verify-side validation_oracle_gate is unchanged.
 type AttemptOraclePinCapture
   = OraclePinRecorded {
       identity: ContentHash,
@@ -1011,11 +1014,14 @@ fn belt_verify_detached_worktree_refusal(
 
 fn belt_oracle_pin_not_observable_reason(tree: String) -> String {
   join([
-    "the declared validation oracle was not observable in the attempt worktree at ",
+    "the declared validation oracle was not observable in the named tree at ",
     tree,
-    " when the attempt was created",
   ], "")
 }
+
+// Standing over a caller-supplied observation set for a named tree. Spawn's wall is the
+// attempt-worktree capture after worktree-add, not a read of the controller repo. The next
+// enqueue gate should pass observations of the exact admitted-base Git objects into this fold.
 
 type BeltSpawnOraclePinStanding
   = SpawnOraclePinAdmitted
@@ -1937,23 +1943,6 @@ fn belt_actuate_spawn_with_origin(
         launch: launch,
       }
     DispatchSpawnReady { commands: cmds } =>
-  match belt_spawn_oracle_pin_standing(
-    contract: node.execution,
-    observations: belt_oracle_observations_in_worktree(
-      contract: node.execution,
-      worktree: instance.repo_root as String,
-    ),
-    tree: instance.repo_root as String,
-  ) {
-    SpawnOraclePinRefused { reason } =>
-      SpawnFailed {
-        node_id: node.node as String,
-        step: "validation-oracle-pin",
-        detail: reason,
-        provider: provider_wire_label,
-        launch: launch,
-      }
-    SpawnOraclePinAdmitted =>
   match belt_exec_steps(
     steps: [
       BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
@@ -2067,7 +2056,6 @@ fn belt_actuate_spawn_with_origin(
           }
       }
   }
-}
 }
 }
 

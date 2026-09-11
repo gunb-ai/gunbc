@@ -280,7 +280,7 @@ fn pin_witness_claim_contract() -> WorkItemExecutionContract {
   )
 }
 
-test fn a_declared_oracle_absent_from_the_tree_refuses_spawn() -> Bool {
+test fn a_declared_oracle_absent_from_the_named_tree_is_incomplete_standing() -> Bool {
   let tree = "/attempt-worktree"
   match belt_spawn_oracle_pin_standing(
     contract: pin_witness_claim_contract(),
