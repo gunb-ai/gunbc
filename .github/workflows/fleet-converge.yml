@@ -602,6 +602,16 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'runner_password_session_tool_converge'
         timeout-minutes: 15
+      - name: Upload password-session tool converge receipt
+        id: runner_password_session_tool_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-password-session-tool-converge-receipt
+          path: target/runner-password-session-tool-converge-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'runner_password_session_tool_converge')
+        timeout-minutes: 10
       - name: Upload runner host file converge receipt
         id: runner_host_file_receipt_upload
         uses: actions/upload-artifact@v4

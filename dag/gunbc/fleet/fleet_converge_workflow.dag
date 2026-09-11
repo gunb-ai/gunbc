@@ -662,6 +662,27 @@ data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mo
 // neither.
 data fleet_converge_runner_password_session_tool_converge_step_if: String = fleet_converge_mode_step_if(mode: RunnerPasswordSessionToolConverge)
 
+// THE RECEIPT IS UPLOADED ON FAILURE TOO. FailFast means the step's cat never runs when the
+// ensure refuses, which is exactly when the body names the cause. always() is what keeps that
+// body reachable after the job has already failed.
+fn fleet_converge_runner_password_session_tool_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload password-session tool converge receipt" },
+    id: Present { value: "runner_password_session_tool_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-password-session-tool-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/runner-password-session-tool-converge-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_password_session_tool_converge_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 data fleet_converge_spark_grants_step_if: String = fleet_converge_mode_step_if(mode: SparkGrants)
 
 data fleet_converge_spark_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: SparkBootstrap)
@@ -1379,6 +1400,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
+        fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]

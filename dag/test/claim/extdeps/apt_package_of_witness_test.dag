@@ -18,8 +18,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // returned none. Both live tools are enrolled here because the corpus already contains both shapes
 // and a fixture would prove less: sshpass is the subject of this lane, websocat is installed from a
 // GitHub release and has no apt source at all.
-data witness_note: String = "Hermetic controls for extdeps.tools apt_package_of: an apt-sourced tool resolves to its declared package, a release-sourced tool resolves to Absent rather than a fabricated package, and the resolved package is the declaration rather than the binary name."
-
+// Hermetic controls for extdeps.tools apt_package_of: an apt-sourced tool resolves to its declared
+// package, a release-sourced tool resolves to Absent rather than a fabricated package, and the
+// resolved package is the declaration rather than the binary name.
 test fn apt_package_of_resolves_the_declared_package() -> Bool {
   match apt_package_of(tool: sshpass_cli_tool) {
     Present { value: p } => (p as String) == (package_sshpass as String)
