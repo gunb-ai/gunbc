@@ -20,6 +20,10 @@ import gunbc.fleet_known_hosts_anchor {
   shape_fleet_ssh_password_exec_trusting,
 }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.host_cli_dependency {
+  first_absent_password_session_host_cli_dependency,
+  host_dependency_absent_wire,
+}
 
 // WHICH SESSION REACHES A PRINCIPAL IS ONE FACT, AND IT WAS TWO.
 //
@@ -156,6 +160,58 @@ type FleetPrincipalLegOutcome
   = FleetPrincipalLegRan { session: FleetSshPrincipalSession, result: SshSessionExecResult }
   | FleetPrincipalLegRefused { cause: NonEmptyStr }
 
+// WHAT A PASSWORD LEG NEEDS BEFORE IT CAN RUN, in one place, because it is two facts and both
+// password arms below needed both. The credential path was already resolved here twice; the HOST
+// PREREQUISITE was resolved nowhere, and that is the gap this type closes.
+//
+// ssh.PasswordFileSsh's transport argv begins with `sshpass`, so a runner without that binary does
+// not open a degraded session -- the process is never spawned, and what surfaces is the exec
+// error `failed to execute 'sshpass': No such file or directory` from inside a leg whose every
+// other word is about a REMOTE host. Measured on runners srv3 and srv4 under mode=spark_grants
+// while srv1 and srv2 carried the binary. That error is a true statement and the wrong diagnosis
+// at the point anyone reads it: it is a LOCAL PATH gap wearing a remote session's vocabulary, so
+// the reader's next move is to go debug the far side. Refusing first turns it into the same shape
+// the missing-credential arm already has -- a leg that did NOT run, with a cause naming the
+// binary and its install source.
+//
+// The enrolled requirement is gunbc.host_cli_dependency password_session_host_cli_requirements;
+// this module observes it and never installs it. Converging the runner is the installer's job and
+// enrolling a dependency is not a licence to mutate a host mid-leg.
+//
+// THE HOST PREREQUISITE IS CHECKED FIRST, and on a runner missing both binary and credential that
+// changes which cause the caller reads. That ordering is deliberate: the absent binary is the
+// unconditional one -- materializing a credential on this runner would still not let the leg run,
+// while installing sshpass leaves a credential gap that a later step can close -- so naming it
+// first names the blocker whose repair is a precondition of the other's mattering.
+type FleetPasswordLegPrerequisite
+  = PasswordLegPrerequisiteReady { password_file: NonEmptyStr }
+  | PasswordLegPrerequisiteRefused { cause: NonEmptyStr }
+
+fn open_fleet_password_leg(
+  credential: FleetBootstrapCredentialLocus,
+) -> FleetPasswordLegPrerequisite {
+  match first_absent_password_session_host_cli_dependency() {
+    Present { value: absence } =>
+      PasswordLegPrerequisiteRefused {
+        cause: join([
+          "the password session that reaches ",
+          fleet_bootstrap_principal_login() as String,
+          " executes through ",
+          absence.tool as String,
+          " on THIS runner, and it is not on PATH here, so the leg was NOT attempted: ",
+          host_dependency_absent_wire(tool: absence.tool, hint: absence.hint),
+        ], "") as NonEmptyStr,
+      }
+    Absent =>
+      match resolve_fleet_bootstrap_credential_path(locus: credential) {
+        FleetBootstrapCredentialPathAbsent { cause: c } =>
+          PasswordLegPrerequisiteRefused { cause: c }
+        FleetBootstrapCredentialPathReady { path: p } =>
+          PasswordLegPrerequisiteReady { password_file: p }
+      }
+  }
+}
+
 fn password_exec_result_as_session_result(
   exit_code: Int,
   success: Bool,
@@ -186,9 +242,9 @@ fn exec_as_fleet_principal_with_stdin(
         ),
       }
     FleetSshPasswordSession =>
-      match resolve_fleet_bootstrap_credential_path(locus: credential) {
-        FleetBootstrapCredentialPathAbsent { cause: c } => FleetPrincipalLegRefused { cause: c }
-        FleetBootstrapCredentialPathReady { path: p } => {
+      match open_fleet_password_leg(credential: credential) {
+        PasswordLegPrerequisiteRefused { cause: c } => FleetPrincipalLegRefused { cause: c }
+        PasswordLegPrerequisiteReady { password_file: p } => {
           let r = password_file_ssh_exec_portable_words_with_stdin(
             password_file: p,
             client_args: shape_fleet_ssh_password_exec(context: context, target: target, words: words),
@@ -260,9 +316,9 @@ fn exec_as_fleet_principal_trusting_with_stdin(
         ], "") as NonEmptyStr,
       }
     FleetSshPasswordSession =>
-      match resolve_fleet_bootstrap_credential_path(locus: credential) {
-        FleetBootstrapCredentialPathAbsent { cause: c } => FleetPrincipalLegRefused { cause: c }
-        FleetBootstrapCredentialPathReady { path: p } => {
+      match open_fleet_password_leg(credential: credential) {
+        PasswordLegPrerequisiteRefused { cause: c } => FleetPrincipalLegRefused { cause: c }
+        PasswordLegPrerequisiteReady { password_file: p } => {
           let r = password_file_ssh_exec_portable_words_with_stdin(
             password_file: p,
             client_args: shape_fleet_ssh_password_exec_trusting(
