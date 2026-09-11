@@ -5058,9 +5058,9 @@ pub fn run_required_floor(
                 // 2026-09-11). Both say this identity is not run on an ordinary floor because the
                 // CPU line cannot carry it -- the roster per identity after measuring, the long
                 // home per module structurally. Reading only the roster left a changed witness in
-                // a long module on the armed line: measured on gunbc#11004 at 6b153bf8, three such
-                // witnesses were budget-refused at 503, 505 and 525ms before reaching a verdict,
-                // none of them planned on any ordinary floor. `long_home` above is the same
+                // a long module on the armed line: the floor's own per-claim cost receipt for
+                // gunbc#11004 at 6b153bf8 reports three such witnesses refused at the line before
+                // reaching a verdict, none of them planned on any ordinary floor. `long_home` above is the same
                 // authored-name prefix match `required_floor_site_disposition` folds to reach
                 // `DeclinedLongModule`, so this is one classification read twice, not a second one.
                 //

@@ -21,9 +21,11 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // and that cadence has been declared-unrealized since falsifier.yml was deleted. No green run has
 // ever paid their cost. The line applied only when a PR TOUCHED their file, which made them changed
 // witnesses. So the wall did not protect the floor from an expensive witness; it converted "this PR
-// touched a long module" into three reds that say nothing about the change. Measured on gunbc#11004
-// at 6b153bf8: 503 ms, 505 ms and 525 ms against the 500 ms line, all budget-refused BEFORE reaching
-// a verdict, with no row for the module in any green floor's claim-cost artifact.
+// touched a long module" into three reds that say nothing about the change. The instrument is the
+// floor's own per-claim cost receipt for gunbc#11004 at 6b153bf8 -- the run's BUDGET-REFUSED
+// announcements and the required-floor-claim-cost artifact beside them -- which reports every one of
+// the three refused at the line before reaching a verdict, and no row for the module in any green
+// floor's artifact at all.
 //
 // WHAT THE DROP IS NOT. It is not a raised ceiling and not a new lane: both are refused for this
 // class at docs/plans/floor-cost-distribution-near-the-ceiling.md, which says reducing the shared
@@ -33,13 +35,14 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // control that keeps that true.
 //
 // THE RESTORATION TRIGGER NAMES A CAPABILITY, NOT AN ARTIFACT, and the capability is the one that
-// makes the line honest rather than the one that makes these three rows pass. The ~500 ms is a
-// FIXED per-frame front end -- language model plus tokenize, parse and normalize, rebuilt in every
-// claim's own evaluation frame -- and it is fixed in the literal sense: three snippets differing by
-// 32% in size cost 503, 505 and 525 ms, with the SHORTEST the slowest. Shrinking sources cannot
-// reach it because there is no size term to shrink. Netting it across claims is what would, and the
-// one attempt that netted it (a WARM shared producer) then failed at consumption, which is the
-// serve-boundary defect this trigger also names.
+// makes the line honest rather than the one that makes these three rows pass. The cost is a FIXED
+// per-frame front end -- language model plus tokenize, parse and normalize, rebuilt in every claim's
+// own evaluation frame -- and "fixed" is what the cost receipt reports rather than an inference from
+// it: across the three witnesses the receipt orders them INDEPENDENTLY of their source sizes, with
+// the shortest source the slowest, and a paired before/after across a source-shortening change moved
+// two of the three the WRONG WAY. Shrinking sources cannot reach it because there is no size term to
+// shrink. Netting it across claims is what would, and the one attempt that netted it (a WARM shared
+// producer) then failed at consumption, which is the serve-boundary defect this trigger also names.
 data long_module_changed_witness_cpu_observed_only: RungDrop = RungDrop {
   identity: "long_module_changed_witness_cpu_observed_only" as NonEmptyStr,
 
@@ -58,6 +61,6 @@ data long_module_changed_witness_cpu_observed_only: RungDrop = RungDrop {
     "v2.workflow.required_floor changed_witness_cost_policy (the join that selects it, and the only place the two conditions meet)",
     "src/v1/stage0/src/cli_run/required_floor_runner.rs (the seed realization of the same arm, keyed on the long_home prefix match the runner already computes)",
     ],
-    restoration_trigger: "the per-frame front end is paid once per run rather than once per claim, so a claim's measured CPU is its own work: a shared producer whose value SURVIVES CONSUMPTION in the claim frame that reads it. Both halves are required and the second is why this row exists rather than a narrower one. The netting half is already demonstrated -- a WARM enrolment of three normalized-tree producers stored at preparation and moved 868ms, 496ms and 571ms out of the per-claim budget -- and the consumption half failed on the same run: every claim reading a served normalized tree errored with no field 'kind' on type 'NormalizedTree', the same error an instrument reports for that module under its own preparation. Until a served tree answers field access the deriving frame answered, netting cannot be turned on, and until netting is on the 500ms line measures a fixed cost no witness in this population causes. Retirement is observed and not asserted: when the front end is closure-scoped and the three v2.test.long.accumulator_copy_compile_gate witnesses complete under the armed line, this arm and this row retire together. A run in which they merely pass under the OBSERVED-ONLY policy does not discharge it, because that is the state this row declares",
+    restoration_trigger: "the per-frame front end is paid once per run rather than once per claim, so a claim's measured CPU is its own work: a shared producer whose value SURVIVES CONSUMPTION in the claim frame that reads it. Both halves are required and the second is why this row exists rather than a narrower one. The netting half is already demonstrated, and the producer of that fact is the floor's own pure-producer-share-warm phase receipt on the run that enrolled them: three normalized-tree producers reported disposition=Stored at strict preparation, with their fill billed to preparation rather than to any claim. The consumption half failed on that same run: every claim reading a served normalized tree errored with no field 'kind' on type 'NormalizedTree', the same error an instrument reports for that module under its own preparation. Until a served tree answers field access the deriving frame answered, netting cannot be turned on, and until netting is on the 500ms line measures a fixed cost no witness in this population causes. Retirement is observed and not asserted: when the front end is closure-scoped and the three v2.test.long.accumulator_copy_compile_gate witnesses complete under the armed line, this arm and this row retire together. A run in which they merely pass under the OBSERVED-ONLY policy does not discharge it, because that is the state this row declares",
   }
 }

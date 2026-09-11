@@ -192,13 +192,15 @@ type ChangedWitnessCostPolicy =
 // reason that reads as a defect rather than as a gap: minimization holds only if each fact lives
 // in one place, and "declared too expensive" was living in two with only one of them wired here.
 //
-// MEASURED, on gunbc#11004 at 6b153bf8: touching one long module planned its three witnesses as
-// changed witnesses, and all three were budget-refused BEFORE reaching a verdict -- 503ms, 505ms
-// and 525ms against the 500ms line. None of them is planned on any ordinary floor, so no green
-// run has ever paid that cost; the line applied only because a PR touched the file. The floor
-// therefore reported three reds that say nothing about the change, which is the FLOOR-CHANGED-
-// COST-0 failure exactly: a green context that never looked, inverted into a red context that
-// looked and could not finish.
+// MEASURED, AND CITED BY NAMING THE PRODUCER RATHER THAN BY COPYING ITS FIGURES (DESIGN section 6).
+// The instrument is the floor's own per-claim cost receipt for gunbc#11004 at 6b153bf8 -- the run's
+// BUDGET-REFUSED announcements and the required-floor-claim-cost artifact beside them. What it
+// reports: touching one long module planned its three witnesses as changed witnesses, and EVERY ONE
+// was refused at the line BEFORE reaching a verdict. What no green floor's artifact reports: any row
+// for that module at all, because none of its witnesses is planned on an ordinary floor. So the line
+// applied only because a PR touched the file, and the floor returned three reds that say nothing
+// about the change -- the FLOOR-CHANGED-COST-0 failure exactly, a green context that never looked
+// inverted into a red context that looked and could not finish.
 //
 // THE LONG TEST READS THE CLASSIFICATION THE FLOOR ALREADY COMPUTES. It matches the module's
 // AUTHORED NAME against long_home_prefixes(), the same roster required_floor_site_disposition
