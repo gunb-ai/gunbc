@@ -182,6 +182,26 @@ fn two_lines_naming_one_authority_are_one_consumer() -> Bool {
   }
 }
 
+// ONE ITEM, TWO AUTHORITIES, TWO RELATIONS -- the opposite case to two-lines-one-authority. A crate
+// root that names v1_rt AND v1_interpreter at file level is one item reaching two consumed
+// authorities, so the census keeps two rows in BOTH columns: cited under the live table, and
+// uncitable under the table without the tooling row (where the dedup key must carry the authority,
+// or the two would collapse to one and the count would undercount in the fail-open direction).
+fn one_item_naming_two_authorities_is_two_relations() -> Bool {
+  let sources = [planted_source(path: "dag/gunbc/instruments/planted_two_authority_shims/lib.rs", content: "pub use v1_compiler::v1_rt;\npub use v1_compiler::v1_interpreter;\n")]
+  match observe_rust_references(observed_at: planted_observed_tree, sources: sources, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rust_source_namespace_rows) {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: _ } =>
+      match observe_rust_references(observed_at: planted_observed_tree, sources: sources, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: live_rows_without_tooling()) {
+        RustReferenceHostRefused { detail: _ } => false
+        RustReferencesObserved { observed_at: _, rows: rs2, unattributed: u2, unscannable: _ } =>
+          count(rs) == 2
+            && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs, unattributed: u).cited) == 2
+            && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs2, unattributed: u2).uncitable) == 2
+      }
+  }
+}
+
 fn planted_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPopulation {
   v1_shim_population_of(observation: planted_observation(rows: rows))
 }
@@ -360,6 +380,7 @@ test fn consumer_census_unrostered_uncitable_site_is_undisposed_and_comment_is_n
 test fn consumer_census_manifest_relation_keys_on_the_package_graph() -> Bool { the_manifest_relation_keys_on_the_package_graph() }
 test fn consumer_census_unknown_token_refuses_rather_than_borrowing_an_authority() -> Bool { an_unknown_token_refuses_rather_than_borrowing_the_first_authority() }
 test fn consumer_census_two_lines_naming_one_authority_are_one_consumer() -> Bool { two_lines_naming_one_authority_are_one_consumer() }
+test fn consumer_census_one_item_naming_two_authorities_is_two_relations() -> Bool { one_item_naming_two_authorities_is_two_relations() }
 
 // THE TOOLING TREE CARRIES THE NAME OF THE PACKAGE IT ASSEMBLES INTO. dag/gunbc/instruments/ is the
 // scaffold's rust_source_prefix_tooling; its shim crates are assembled into the `v1_compiled`

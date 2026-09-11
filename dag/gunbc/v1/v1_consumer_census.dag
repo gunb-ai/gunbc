@@ -259,8 +259,24 @@ fn coverage_authorities(c: CoverageClaim) -> List<String> {
 // every one returns here -- which is the falsifier the paired witness executes over planted
 // sources, and the reason the table is a parameter of the producer.
 
+// THE UNCITABLE ROW CARRIES THE AUTHORITY IT REACHES, because the census's grain is consumer x
+// consumed authority and a row without the second half cannot be joined at that grain: one item
+// naming two authorities would dedup to one relation, an undercount in the fail-open direction.
+// The authority is a coproduct because an unknown token has none to name.
+type V1UncitableAuthority
+  = V1UncitableAuthorityKnown { authority: DeclarationRef }
+  | V1UncitableAuthorityUnknownToken { token: String }
+
+fn v1_uncitable_authority_key(a: V1UncitableAuthority) -> String {
+  match a {
+    V1UncitableAuthorityKnown { authority: r } => declaration_ref_display_key(ref: r)
+    V1UncitableAuthorityUnknownToken { token: t } => concat("unknown-token:", t)
+  }
+}
+
 type V1UncitableConsumer {
   item_key: String
+  consumed_old_authority: V1UncitableAuthority
   refusal_detail: String
   medium: ConsumerMedium
   subject: V1Subject
@@ -749,6 +765,7 @@ fn v1_shim_cited_row(ref: DeclarationRef, authority: V1ReferenceAuthority, disco
 fn v1_shim_uncitable_row(item_key: String, detail: String, authority: V1ReferenceAuthority, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
   {
     item_key: item_key,
+    consumed_old_authority: V1UncitableAuthorityKnown { authority: authority.authority },
     refusal_detail: detail,
     medium: RustSourceReference,
     subject: authority.subject,
@@ -767,6 +784,7 @@ fn v1_unattributed_key(u: RustReferenceUnattributed) -> String {
 fn v1_unknown_token_row(item_key: String, token: String, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
   {
     item_key: item_key,
+    consumed_old_authority: V1UncitableAuthorityUnknownToken { token: token },
     refusal_detail: concat("reference token the authority table does not carry: ", token),
     medium: RustSourceReference,
     subject: V1CompilerCrate,
@@ -808,8 +826,15 @@ fn v1_shim_cited_absent(acc: List<V1ConsumerRow>, row: V1ConsumerRow) -> Bool {
   !(acc |> any(r => v1_row_key(r: r) == v1_row_key(r: row)))
 }
 
+// THE UNCITABLE KEY IS item x authority -- the census grain, not the item alone: the same item
+// naming two known authorities is two relations, and the same item naming one authority on two
+// lines is one. The refusal detail is evidence on the row, not part of its identity.
+fn v1_uncitable_row_key(r: V1UncitableConsumer) -> String {
+  concat(concat(r.item_key, " -> "), v1_uncitable_authority_key(a: r.consumed_old_authority))
+}
+
 fn v1_shim_uncitable_absent(acc: List<V1UncitableConsumer>, row: V1UncitableConsumer) -> Bool {
-  !(acc |> any(r => r.item_key == row.item_key && r.refusal_detail == row.refusal_detail))
+  !(acc |> any(r => v1_uncitable_row_key(r: r) == v1_uncitable_row_key(r: row)))
 }
 
 fn v1_shim_join_to_census_grain(p: V1ShimPartition) -> V1ShimPartition {
@@ -1468,6 +1493,7 @@ fn v1_minted_rust_renderers() -> List<DeclarationRef> {
 fn v1_uncitable_seed_link_row(site: SeedLinkSiteDisposition, detail: String, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
   {
     item_key: site.item_key,
+    consumed_old_authority: V1UncitableAuthorityKnown { authority: v1_compiler_crate_root },
     refusal_detail: detail,
     medium: site.medium,
     subject: site.subject,
@@ -1479,6 +1505,7 @@ fn v1_uncitable_seed_link_row(site: SeedLinkSiteDisposition, detail: String, dis
 fn v1_undisposed_site_row(item_key: String, detail: String, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
   {
     item_key: item_key,
+    consumed_old_authority: V1UncitableAuthorityKnown { authority: v1_compiler_crate_root },
     refusal_detail: detail,
     medium: CargoManifestDependency,
     subject: V1CompilerCrate,
