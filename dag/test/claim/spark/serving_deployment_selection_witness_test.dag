@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
 import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
-import v2.std.optional { Present, Absent }
+import std.dissolution { dissolution_description }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
@@ -42,6 +42,7 @@ import gunbc.spark.serving_deployment_selection {
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
+  v4_1_gb10_kv_layout, v4_1_gb10_kv_layout_authority_frontier,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -479,6 +480,14 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
           KvFp8Layout => false
           KvFp4Layout => false
         })
+    && match v4_1_gb10_kv_layout {
+      KvFp8DsMlaLayout => true
+      KvAutoLayout => false
+      KvFp8Layout => false
+      KvFp4Layout => false
+    }
+    && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("deepseek_v4_1_sm12")
+    && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("supports_combination")
     && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
     && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
       KvBytesPerTokenUnestablished { layout: k, obligation: o } =>

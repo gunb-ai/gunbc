@@ -7,7 +7,7 @@ import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
-import std.interval { degenerate_interval, OrderedClosedInterval }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   HardConstraint, SelectionPolicy, UniqueSurvivorRequired, SelectionReceipt,
@@ -315,12 +315,14 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
+data v4_1_gb10_kv_layout: KvLayoutPolicy = KvFp8DsMlaLayout
+
+data v4_1_gb10_kv_layout_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173) once it records DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for device major 12. Until that module lands, this row names the serving KV layout as a frontier rather than copying the engine admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout, not the card's FP4 (NVFP4 DS-MLA is SM10x-only). SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr)
+
 // V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
-// extdeps.deepseek.deepseek_v4_1_flash. KV layout is a candidate fact: vLLM 07b75534 on device
-// major 12 admits fp8 / fp8_ds_mla only; NVFP4 DS-MLA is SM10x-only, so the Spark candidate is
-// fp8_ds_mla, not the card's FP4. Higher-precision KV does not violate native quality — it is a
-// capacity fact. Speculation is DeepSeek DSpark. Per-token KV bytes for this layout are an
-// obligation on DSV41-4; the card's 890 does not apply.
+// extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, cited to the SM12
+// frontier above. Higher-precision KV does not violate native quality. Speculation is DSpark.
+// Per-token KV bytes stay an obligation on DSV41-4; the card's 890 does not apply.
 fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
   serving_decision_parameters(
     max_model_len: deepseek_v4_1_flash_context_length,
@@ -328,7 +330,7 @@ fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
     max_num_batched_tokens: spark_host_max_num_batched_tokens,
     max_num_seqs: spark_host_max_num_seqs,
     executor: ExecutorRayProfile,
-    kv_layout: KvFp8DsMlaLayout,
+    kv_layout: v4_1_gb10_kv_layout,
     speculative: SpeculationDraft { algorithm: DSpark },
     runtime: runtime,
   )
