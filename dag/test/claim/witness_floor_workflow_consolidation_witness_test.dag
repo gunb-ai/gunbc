@@ -3,13 +3,14 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, supersession_event_expression, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression, witness_floor_triggers }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
-import extdeps.languages.yaml.gha_workflow { pr_activity_string }
+import extdeps.languages.yaml.gha_workflow { pr_activity_string, workflow_triggers_yaml }
+import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed, github_event_name_pull_request, github_event_name_push, github_event_name_merge_group, github_event_name_workflow_dispatch }
 import extdeps.github.actions { RunStep, UsesStep }
 import extdeps.github.expressions {
@@ -468,11 +469,13 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
 // over-deletion an absence-only row would have passed). Both went FAIL; the unmutated tree went
 // PASS.
 test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
-  let types = witness_floor_pull_request_activity_types
-  length(xs: types) == 3
-    && count_where(xs: types, predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Opened) }) == 1
-    && count_where(xs: types, predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Synchronize) }) == 1
-    && count_where(xs: types, predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Reopened) }) == 1
+  let yml = serialize_yaml(v: workflow_triggers_yaml(triggers: witness_floor_triggers()))
+  string_contains(
+    s: yml,
+    pattern: concat("types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
+  )
+    && !string_contains(s: yml, pattern: pr_activity_string(a: ReadyForReview))
+    && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
 }
 
 test fn w_RED_the_pull_request_activity_set_excludes_ready_for_review() -> Bool {
