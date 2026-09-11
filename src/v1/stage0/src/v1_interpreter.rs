@@ -13023,6 +13023,14 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
 
 /// When a whole-receipt wall deadline is armed, put the child in its own process
 /// group so a mid-wait kill reaps cargo→rustc descendants, not only the parent.
+///
+/// `process_group(0)`, NEVER a `pre_exec` closure. A `pre_exec` forces std off `posix_spawn`
+/// onto a real `fork()` of this whole process, and the kernel's page-table copy and the
+/// parent's copy-on-write faults are SYSTEM time charged to the calling thread -- the quantity
+/// `CLOCK_THREAD_CPUTIME_ID` reports as evaluation CPU. Measured on an 8.4 GB serve process,
+/// one dispatch: utime +0.38s, stime +53.93s, so the evaluation budget was bounding how often
+/// the process forked, not how much it evaluated. `process_group(0)` sets the same group
+/// through `POSIX_SPAWN_SETPGROUP` with no fork.
 fn configure_shell_process_group_for_wall_kill(
     cmd: &mut std::process::Command,
     ctx: &InterpContext,
@@ -13033,16 +13041,7 @@ fn configure_shell_process_group_for_wall_kill(
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        // SAFETY: runs in the child after fork, before exec — setpgid(0,0) is the
-        // standard isolate-for-kill pattern; no shared mutable state is touched.
-        unsafe {
-            cmd.pre_exec(|| {
-                if libc::setpgid(0, 0) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
+        cmd.process_group(0);
     }
     #[cfg(not(unix))]
     {
@@ -21110,6 +21109,7 @@ mod wall_deadline_kill_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
+        configure_shell_process_group_for_wall_kill, kill_shell_process_group,
         map_budget_error_to_witness_refusal, wait_child_honoring_wall_deadline, EvaluationClock,
         ExecutionMode, InterpContext, InterpError,
     };
@@ -21306,6 +21306,51 @@ mod wall_deadline_kill_tests {
     fn evaluation_clock_keys_match_dag_authority() {
         assert_eq!(EvaluationClock::ThreadCpu.key(), "thread_cpu");
         assert_eq!(EvaluationClock::MonotonicWall.key(), "monotonic_wall");
+    }
+
+    /// The kill-group property survives the move off `pre_exec`: with a wall deadline armed, the
+    /// configured child leads its own process group (pgid == pid), which is what lets
+    /// `kill_shell_process_group` reach its descendants. Unarmed, it stays in ours.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn armed_wall_deadline_spawns_the_child_as_its_own_process_group_leader() {
+        fn pgid_of(pid: u32) -> i32 {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("stat");
+            let rest = &stat[stat.rfind(')').expect("comm") + 2..];
+            rest.split_whitespace()
+                .nth(2)
+                .expect("pgrp")
+                .parse()
+                .expect("int")
+        }
+        let armed = wet_ctx();
+        armed.arm_wall_deadline(60_000);
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        configure_shell_process_group_for_wall_kill(&mut cmd, &armed);
+        let mut child = cmd.spawn().expect("spawn sleep");
+        let pid = child.id();
+        assert_eq!(
+            pgid_of(pid),
+            pid as i32,
+            "armed: the child must lead its own group"
+        );
+        kill_shell_process_group(pid);
+        let _ = child.wait();
+
+        let unarmed = wet_ctx();
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        configure_shell_process_group_for_wall_kill(&mut cmd, &unarmed);
+        let mut child = cmd.spawn().expect("spawn sleep");
+        let pid = child.id();
+        assert_eq!(
+            pgid_of(pid),
+            pgid_of(std::process::id()),
+            "unarmed: the child stays in our group"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]
