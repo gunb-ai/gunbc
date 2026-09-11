@@ -2,6 +2,7 @@ module test.claim.v2_compile_obligation_census_witness_test
 
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
 import gunbc.guarantee_rung {
   GuaranteeRung,
   OutsideTheLadder,
@@ -16,7 +17,7 @@ import gunbc.v2_compile_obligation_census {
   WitnessSubject,
   CompileDoor,
   RequiredRootLens,
-  ExecutedOnPath,
+
   ExecutedPendingVerification,
   standing_carries_premise,
   unverified_entry_premise,
@@ -92,10 +93,6 @@ fn non_executing_arm() -> PathExecution {
   RouteGapHeld { stall: fixture_stall }
 }
 
-fn executing_arm() -> PathExecution {
-  ExecutedOnPath { instrument: "fixture instrument" as NonEmptyStr }
-}
-
 fn fixture_reach() -> RouteReach {
   NotNamedByAnyExecutingRoute { note: "fixture reach" as NonEmptyStr }
 }
@@ -111,7 +108,7 @@ fn fixture_row(subject: WitnessSubject) -> V2CompileObligation {
     positive_control: "fixture positive control" as NonEmptyStr,
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
-    next_trigger: "fixture trigger" as NonEmptyStr,
+    next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
     related_drops: [],
   }
@@ -128,7 +125,7 @@ fn closed_escape_fixture_row() -> V2CompileObligation {
     positive_control: "fixture positive control" as NonEmptyStr,
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
-    next_trigger: "fixture trigger" as NonEmptyStr,
+    next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeClosed { by: fixture_home },
     related_drops: [],
   }
@@ -254,7 +251,7 @@ fn honestly_claimed_fixture_row() -> V2CompileObligation {
     positive_control: "fixture positive control" as NonEmptyStr,
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
-    next_trigger: "fixture trigger" as NonEmptyStr,
+    next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
     related_drops: [],
   }
@@ -271,7 +268,7 @@ fn over_ceiling_fixture_row() -> V2CompileObligation {
     positive_control: "fixture positive control" as NonEmptyStr,
     route_reach: fixture_reach(),
     ceiling: Mitigatable,
-    next_trigger: "fixture trigger" as NonEmptyStr,
+    next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
     related_drops: [],
   }
@@ -288,7 +285,7 @@ fn fully_executing_exact_claim_fixture_row() -> V2CompileObligation {
     positive_control: "fixture positive control" as NonEmptyStr,
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
-    next_trigger: "fixture trigger" as NonEmptyStr,
+    next_trigger: climbs_when(capability: "fixture trigger"),
     seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
     related_drops: [],
   }
