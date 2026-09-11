@@ -286,14 +286,19 @@ data spark_runtime: RuntimeRevision = runtime_revision(
   vllm_revision: "the vLLM revision pinned in that image" as NonEmptyStr,
 )
 
+data spark_host_memory_request: VllmMemoryRequest = VllmMemoryRequest {
+  utilization: Present { value: basis_point(count: 8200) },
+  kv_cache_bytes: none,
+}
+
+data spark_host_max_num_batched_tokens: TokenCount = token_count(count: 2048)
+data spark_host_max_num_seqs: Nat = 32
+
 data serving_parameters_current: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 300000),
-  memory_request: VllmMemoryRequest {
-    utilization: Present { value: basis_point(count: 8200) },
-    kv_cache_bytes: none,
-  },
-  max_num_batched_tokens: token_count(count: 2048),
-  max_num_seqs: 32,
+  memory_request: spark_host_memory_request,
+  max_num_batched_tokens: spark_host_max_num_batched_tokens,
+  max_num_seqs: spark_host_max_num_seqs,
   executor: ExecutorRayProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
@@ -319,10 +324,10 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
 fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
   serving_decision_parameters(
     max_model_len: deepseek_v4_1_flash_context_length,
-    memory_request: serving_parameters_current.memory_request,
-    max_num_batched_tokens: serving_parameters_current.max_num_batched_tokens,
-    max_num_seqs: serving_parameters_current.max_num_seqs,
-    executor: serving_parameters_current.executor,
+    memory_request: spark_host_memory_request,
+    max_num_batched_tokens: spark_host_max_num_batched_tokens,
+    max_num_seqs: spark_host_max_num_seqs,
+    executor: ExecutorRayProfile,
     kv_layout: KvFp4Layout,
     speculative: SpeculationDraft { algorithm: DSpark },
     runtime: runtime,
@@ -689,17 +694,6 @@ fn fleet_fits(c: DeploymentCandidate, fleet: FleetSnapshot) -> Bool {
   c.topology.replica_count > 0
     && c.topology.tensor_parallel_degree > 0
     && hosts_consumed(c: c) <= fleet.host_count
-}
-
-// COVERING PARTITIONS (tp * replicas == n) ARE ONE SLICE OF WHAT THE FLEET ADMITS. The GLM and
-// V4-Flash fields still use them because their authored candidate rows are that cartesian. V4.1
-// does not: DESIGN §3d says absence is not irrelevance, so its domain is every shape the snapshot
-// can host, and no-redundancy excludes replica_count != 1 before Pareto rather than by omitting rows.
-fn full_fleet_covering_topologies(host_count: Nat) -> List<TopologyShape> {
-  map(
-    filter(nat_range_inclusive(lo: 1, hi: host_count), d => host_count % d == 0),
-    d => topology_shape(tensor_parallel_degree: d, replica_count: host_count / d),
-  )
 }
 
 fn fleet_admitted_topologies(fleet: FleetSnapshot) -> List<TopologyShape> {
@@ -1550,8 +1544,6 @@ data glm_selection_policy: DeclarationRef = decl_ref(module_path: "gunbc.spark.s
 data deepseek_v4_flash_selection_policy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_flash_selection_policy")
 data deepseek_v4_1_selection_policy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_selection_policy")
 
-data eight_host_topologies: List<TopologyShape> = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
-
 // THE WORKLOAD IS A SCENARIO AND SAYS SO. 300,000 tokens was authored as a working window with no
 // derived population behind it. V4.1's 1,048,576-token window (DSV41-0) is yarn-scaled over a
 // native 65,536, not 1M native, and even that scaled ceiling is a LIMIT rather than a requirement --
@@ -1591,7 +1583,7 @@ data serving_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evide
 
 data glm_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_glm_53_flash_native, artifact_glm_53_flash_2bit],
-  topologies: eight_host_topologies,
+  topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
   parameters: serving_parameters_current,
 )
 
@@ -1652,7 +1644,7 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
 // recommendation is withdrawn rather than restated more carefully.
 data deepseek_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_deepseek_v4_flash_native],
-  topologies: eight_host_topologies,
+  topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
   parameters: serving_parameters_current,
 )
 

@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
-  ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
+  ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
   ServingExecutionProfile, execution_profile_of,
@@ -19,10 +19,10 @@ import gunbc.spark.serving_deployment_selection {
   WorkloadDemandStanding, WorkloadDemandEstablished, WorkloadDemandUnestablished, ContextReservePolicy, context_reserve_policy,
   WeightsNotRuledOutByLowerBound, WeightsImpossibleByLowerBound, WeightFitUnderivable, weight_fit_of,
   per_rank_bytes_ceiling, fleet_fits,
-  spark_fleet_snapshot, serving_parameters_current, spark_runtime, eight_host_topologies,
+  spark_fleet_snapshot, serving_parameters_current, spark_runtime,
   artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
   artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
-  full_fleet_covering_topologies, fleet_admitted_topologies, native_quality_holds, no_redundancy_holds,
+  fleet_admitted_topologies, native_quality_holds, no_redundancy_holds,
   topology_shape_eq,
   serving_selection_constraints, id_constraint_authority,
   deepseek_v4_1_candidate_field, v4_1_declared_profiles,
@@ -39,7 +39,7 @@ import gunbc.spark.serving_deployment_selection {
   deepseek_quality_requirement,
   KvFp4Layout, v4_1_runtime_supported_tp_widths_unestablished, deepseek_v4_1_selection_policy,
   deepseek_v4_1_quality_requirement,
-  glm_candidate_field, deepseek_candidate_field,
+  glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -235,9 +235,16 @@ test fn a_duplicated_value_in_the_declared_domain_refuses() -> Bool {
 }
 
 // ── COMPLETENESS IS A JOIN, IN BOTH DIRECTIONS ────────────────────────────────────────────────
+data fixture_four_covering_topologies: List<TopologyShape> = [
+  topology_shape(tensor_parallel_degree: 1, replica_count: 8),
+  topology_shape(tensor_parallel_degree: 2, replica_count: 4),
+  topology_shape(tensor_parallel_degree: 4, replica_count: 2),
+  topology_shape(tensor_parallel_degree: 8, replica_count: 1),
+]
+
 data full_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_deepseek_v4_flash_native],
-  topologies: eight_host_topologies,
+  topologies: fixture_four_covering_topologies,
   parameters: serving_parameters_current,
 )
 
@@ -424,20 +431,6 @@ test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
 //
 // The requantised build is not a cheaper way to serve the native checkpoint; it is other weights.
 // No report about it can pass a requirement whose subject is the native artifact.
-test fn covering_topologies_are_the_divisors_of_the_fleet() -> Bool {
-  let derived = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
-  let expected = [
-    topology_shape(tensor_parallel_degree: 1, replica_count: 8),
-    topology_shape(tensor_parallel_degree: 2, replica_count: 4),
-    topology_shape(tensor_parallel_degree: 4, replica_count: 2),
-    topology_shape(tensor_parallel_degree: 8, replica_count: 1),
-  ]
-  count(derived) == 4
-    && count(eight_host_topologies) == 4
-    && all(expected, t => any(derived, d => topology_shape_eq(a: d, b: t)))
-    && all(derived, d => any(expected, t => topology_shape_eq(a: d, b: t)))
-}
-
 test fn native_quality_is_a_fact_on_the_weight_treatment() -> Bool {
   native_quality_holds(c: native_tp4_x2)
     && native_quality_holds(c: cand(name: "v41", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)))
@@ -460,12 +453,10 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
   let admitted = fleet_admitted_topologies(fleet: spark_fleet_snapshot)
   match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
     ServingFieldEstablished =>
-      count(admitted) > count(eight_host_topologies)
-        && count(v4_1_declared_profiles) == 2
-        && topology_in(shapes: admitted, tp: 4, replicas: 1)
+      topology_in(shapes: admitted, tp: 4, replicas: 1)
         && topology_in(shapes: admitted, tp: 2, replicas: 1)
         && topology_in(shapes: admitted, tp: 1, replicas: 1)
-        && !topology_in(shapes: eight_host_topologies, tp: 4, replicas: 1)
+        && count(v4_1_declared_profiles) == 2
         && (v4_1_runtime_supported_tp_widths_unestablished as String).contains("does not guess")
     ServingFieldUnestablished { causes: _ } => false
   }
@@ -476,6 +467,11 @@ test fn v4_1_profiles_do_not_inherit_v4_flash_window_or_kv() -> Bool {
     && all(v4_1_declared_profiles, p =>
       token_count_value(t: p.max_model_len) == 1048576
         && token_count_value(t: p.max_model_len) != token_count_value(t: serving_parameters_current.max_model_len)
+        && match p.speculative {
+          SpeculationDraft { algorithm: _ } => true
+          SpeculationOff => false
+          SpeculationOn => false
+        }
         && match p.kv_layout {
           KvFp4Layout => true
           KvAutoLayout => false
@@ -488,12 +484,17 @@ test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool {
   !declaration_ref_eq(a: deepseek_v4_1_selection_policy, b: deepseek_v4_1_quality_requirement.identity)
 }
 
-test fn glm_and_deepseek_fields_are_the_derived_covering_cartesian() -> Bool {
+test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool {
   match establish_serving_candidate_field(field: glm_candidate_field) {
-    ServingFieldEstablished => count(glm_candidate_field.candidates) == 8
+    ServingFieldEstablished =>
+      count(glm_candidate_field.candidates)
+        == count(glm_domain.artifacts) * count(glm_domain.topologies) * count(glm_domain.profiles)
+        && topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 1)
     ServingFieldUnestablished { causes: _ } => false
   } && match establish_serving_candidate_field(field: deepseek_candidate_field) {
-    ServingFieldEstablished => count(deepseek_candidate_field.candidates) == 4
+    ServingFieldEstablished =>
+      count(deepseek_candidate_field.candidates)
+        == count(deepseek_domain.artifacts) * count(deepseek_domain.topologies) * count(deepseek_domain.profiles)
     ServingFieldUnestablished { causes: _ } => false
   }
 }
