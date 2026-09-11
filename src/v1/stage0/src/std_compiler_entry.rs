@@ -26,73 +26,76 @@ pub struct DirectIngestDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRootEvalDriver;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+use crate::std_measure::{
+    millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count, Nanosecond,
+};
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeDriverExclusiveRows {
-    pub load: i64,
-    pub context: i64,
-    pub prepare: i64,
-    pub eval: i64,
+    pub load: Nanosecond,
+    pub context: Nanosecond,
+    pub prepare: Nanosecond,
+    pub eval: Nanosecond,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NativeDriverCostAccounting {
     NativeDriverCostReconciled {
-        residual_nanos: i64,
-        tolerance_nanos: i64,
+        residual: Nanosecond,
+        tolerance: Nanosecond,
     },
     NativeDriverCostOverAttributed {
-        sum_exclusive_nanos: i64,
-        parent_span_nanos: i64,
+        sum_exclusive: Nanosecond,
+        parent_span: Nanosecond,
     },
     NativeDriverCostRemainderExceedsTolerance {
-        residual_nanos: i64,
-        tolerance_nanos: i64,
+        residual: Nanosecond,
+        tolerance: Nanosecond,
     },
 }
 
-pub fn native_driver_cost_remainder_tolerance_nanos() -> i64 {
-    50000000
+pub fn native_driver_cost_remainder_tolerance_nanos() -> Nanosecond {
+    millisecond_to_nanosecond(millisecond(50))
 }
 
-pub fn native_driver_exclusive_sum(rows: Rc<NativeDriverExclusiveRows>) -> i64 {
-    rows.load + rows.context + rows.prepare + rows.eval
+pub fn native_driver_exclusive_sum(rows: Rc<NativeDriverExclusiveRows>) -> Nanosecond {
+    nanosecond(
+        nanosecond_count(rows.load.clone())
+            + nanosecond_count(rows.context.clone())
+            + nanosecond_count(rows.prepare.clone())
+            + nanosecond_count(rows.eval.clone()),
+    )
 }
 
 pub fn native_driver_cost_account(
-    parent_span_nanos: i64,
+    parent_span: Nanosecond,
     exclusive: Rc<NativeDriverExclusiveRows>,
-    tolerance_nanos: i64,
+    tolerance: Nanosecond,
 ) -> Rc<NativeDriverCostAccounting> {
     let sum = native_driver_exclusive_sum(exclusive.clone());
-    if sum > parent_span_nanos {
+    if nanosecond_count(sum.clone()) > nanosecond_count(parent_span.clone()) {
         Rc::new(NativeDriverCostAccounting::NativeDriverCostOverAttributed {
-            sum_exclusive_nanos: sum,
-            parent_span_nanos,
+            sum_exclusive: sum,
+            parent_span,
         })
     } else {
-        let residual = parent_span_nanos - sum;
-        if residual > tolerance_nanos {
+        let residual =
+            nanosecond(nanosecond_count(parent_span.clone()) - nanosecond_count(sum.clone()));
+        if nanosecond_count(residual.clone()) > nanosecond_count(tolerance.clone()) {
             Rc::new(
                 NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance {
-                    residual_nanos: residual,
-                    tolerance_nanos,
+                    residual,
+                    tolerance,
                 },
             )
         } else {
             Rc::new(NativeDriverCostAccounting::NativeDriverCostReconciled {
-                residual_nanos: residual,
-                tolerance_nanos,
+                residual,
+                tolerance,
             })
         }
     }
-}
-
-pub fn native_driver_cost_is_reconciled(verdict: Rc<NativeDriverCostAccounting>) -> bool {
-    matches!(
-        verdict.as_ref(),
-        NativeDriverCostAccounting::NativeDriverCostReconciled { .. }
-    )
 }
 
 #[cfg(test)]
@@ -101,44 +104,51 @@ mod native_driver_cost_law {
 
     fn rows(load: i64, context: i64, prepare: i64, eval: i64) -> Rc<NativeDriverExclusiveRows> {
         Rc::new(NativeDriverExclusiveRows {
-            load,
-            context,
-            prepare,
-            eval,
+            load: nanosecond(load),
+            context: nanosecond(context),
+            prepare: nanosecond(prepare),
+            eval: nanosecond(eval),
         })
     }
 
     #[test]
     fn exclusive_sum_is_the_four_grains() {
         let sample = rows(432921485, 3380085706753, 59277814291, 3531894);
-        assert_eq!(native_driver_exclusive_sum(sample), 3439799974423);
+        assert_eq!(
+            native_driver_exclusive_sum(sample),
+            nanosecond(3439799974423)
+        );
     }
 
     #[test]
     fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() {
-        let verdict = native_driver_cost_account(
-            3439809790856,
+        match native_driver_cost_account(
+            nanosecond(3439809790856),
             rows(432921485, 3380085706753, 59277814291, 3531894),
             native_driver_cost_remainder_tolerance_nanos(),
-        );
-        assert!(native_driver_cost_is_reconciled(verdict));
+        )
+        .as_ref()
+        {
+            NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {}
+            other => panic!("expected reconciled, got {other:?}"),
+        }
     }
 
     #[test]
     fn exclusive_rows_past_the_parent_are_over_attributed() {
         match native_driver_cost_account(
-            100,
+            nanosecond(100),
             rows(40, 40, 40, 0),
             native_driver_cost_remainder_tolerance_nanos(),
         )
         .as_ref()
         {
             NativeDriverCostAccounting::NativeDriverCostOverAttributed {
-                sum_exclusive_nanos,
-                parent_span_nanos,
+                sum_exclusive,
+                parent_span,
             } => {
-                assert_eq!(*sum_exclusive_nanos, 120);
-                assert_eq!(*parent_span_nanos, 100);
+                assert_eq!(sum_exclusive.clone(), nanosecond(120));
+                assert_eq!(parent_span.clone(), nanosecond(100));
             }
             other => panic!("expected over-attributed, got {other:?}"),
         }
@@ -147,19 +157,19 @@ mod native_driver_cost_law {
     #[test]
     fn a_remainder_past_tolerance_is_not_a_partition() {
         match native_driver_cost_account(
-            200000000,
+            nanosecond(200000000),
             rows(10, 10, 10, 10),
             native_driver_cost_remainder_tolerance_nanos(),
         )
         .as_ref()
         {
             NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance {
-                residual_nanos,
-                tolerance_nanos,
+                residual,
+                tolerance,
             } => {
-                assert_eq!(*residual_nanos, 199999960);
+                assert_eq!(residual.clone(), nanosecond(199999960));
                 assert_eq!(
-                    *tolerance_nanos,
+                    tolerance.clone(),
                     native_driver_cost_remainder_tolerance_nanos()
                 );
             }

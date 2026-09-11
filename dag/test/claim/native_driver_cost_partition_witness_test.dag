@@ -1,12 +1,12 @@
 module test.claim.native_driver_cost_partition
 
+import std.measure { nanosecond }
 import std.compiler_entry {
   NativeDriverExclusiveRows,
   NativeDriverCostOverAttributed,
   NativeDriverCostReconciled,
   NativeDriverCostRemainderExceedsTolerance,
   native_driver_cost_account,
-  native_driver_cost_is_reconciled,
   native_driver_cost_remainder_tolerance_nanos,
   native_driver_exclusive_sum
 }
@@ -15,49 +15,63 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
   NativeDriverExclusiveRows {
-    load: 432921485,
-    context: 3380085706753,
-    prepare: 59277814291,
-    eval: 3531894
+    load: nanosecond(count: 432921485),
+    context: nanosecond(count: 3380085706753),
+    prepare: nanosecond(count: 59277814291),
+    eval: nanosecond(count: 3531894)
   }
 }
 
 test fn exclusive_sum_is_the_four_grains() -> Bool {
-  native_driver_exclusive_sum(rows: sample_exclusive_rows()) == 3439799974423
+  native_driver_exclusive_sum(rows: sample_exclusive_rows())
+    == nanosecond(count: 3439799974423)
 }
 
 test fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() -> Bool {
-  native_driver_cost_is_reconciled(
-    verdict: native_driver_cost_account(
-      parent_span_nanos: 3439809790856,
-      exclusive: sample_exclusive_rows(),
-      tolerance_nanos: native_driver_cost_remainder_tolerance_nanos
-    )
-  )
+  match native_driver_cost_account(
+    parent_span: nanosecond(count: 3439809790856),
+    exclusive: sample_exclusive_rows(),
+    tolerance: native_driver_cost_remainder_tolerance_nanos
+  ) {
+    NativeDriverCostReconciled { residual: _, tolerance: _ } => true
+    NativeDriverCostOverAttributed { sum_exclusive: _, parent_span: _ } => false
+    NativeDriverCostRemainderExceedsTolerance { residual: _, tolerance: _ } => false
+  }
 }
 
 test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
   match native_driver_cost_account(
-    parent_span_nanos: 100,
-    exclusive: NativeDriverExclusiveRows { load: 40, context: 40, prepare: 40, eval: 0 },
-    tolerance_nanos: native_driver_cost_remainder_tolerance_nanos
+    parent_span: nanosecond(count: 100),
+    exclusive: NativeDriverExclusiveRows {
+      load: nanosecond(count: 40),
+      context: nanosecond(count: 40),
+      prepare: nanosecond(count: 40),
+      eval: nanosecond(count: 0)
+    },
+    tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
-    NativeDriverCostOverAttributed { sum_exclusive_nanos: sum, parent_span_nanos: parent } =>
-      (sum == 120) && (parent == 100)
-    NativeDriverCostReconciled { residual_nanos: _, tolerance_nanos: _ } => false
-    NativeDriverCostRemainderExceedsTolerance { residual_nanos: _, tolerance_nanos: _ } => false
+    NativeDriverCostOverAttributed { sum_exclusive: sum, parent_span: parent } =>
+      (sum == nanosecond(count: 120)) && (parent == nanosecond(count: 100))
+    NativeDriverCostReconciled { residual: _, tolerance: _ } => false
+    NativeDriverCostRemainderExceedsTolerance { residual: _, tolerance: _ } => false
   }
 }
 
 test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
   match native_driver_cost_account(
-    parent_span_nanos: 200000000,
-    exclusive: NativeDriverExclusiveRows { load: 10, context: 10, prepare: 10, eval: 10 },
-    tolerance_nanos: native_driver_cost_remainder_tolerance_nanos
+    parent_span: nanosecond(count: 200000000),
+    exclusive: NativeDriverExclusiveRows {
+      load: nanosecond(count: 10),
+      context: nanosecond(count: 10),
+      prepare: nanosecond(count: 10),
+      eval: nanosecond(count: 10)
+    },
+    tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
-    NativeDriverCostRemainderExceedsTolerance { residual_nanos: residual, tolerance_nanos: tol } =>
-      (residual == 199999960) && (tol == native_driver_cost_remainder_tolerance_nanos)
-    NativeDriverCostReconciled { residual_nanos: _, tolerance_nanos: _ } => false
-    NativeDriverCostOverAttributed { sum_exclusive_nanos: _, parent_span_nanos: _ } => false
+    NativeDriverCostRemainderExceedsTolerance { residual: residual, tolerance: tol } =>
+      (residual == nanosecond(count: 199999960))
+        && (tol == native_driver_cost_remainder_tolerance_nanos)
+    NativeDriverCostReconciled { residual: _, tolerance: _ } => false
+    NativeDriverCostOverAttributed { sum_exclusive: _, parent_span: _ } => false
   }
 }

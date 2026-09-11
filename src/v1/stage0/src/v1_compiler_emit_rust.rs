@@ -39217,6 +39217,9 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos, native_driver_exclusive_sum,\n");
         content.push_str("    NativeDriverCostAccounting, NativeDriverExclusiveRows,\n");
         content.push_str("};\n");
+        content.push_str("use ");
+        content.push_str(&crate_name);
+        content.push_str("::std_measure::{nanosecond, nanosecond_count};\n");
         content.push_str("\n");
         content.push_str("fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {\n");
         content.push_str("    let entries = match std::fs::read_dir(dir) {\n");
@@ -39497,14 +39500,12 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    let identities = universe.len() as u64;\n");
         content.push_str("    let unique_modules = module_order.len() as u64;\n");
         content.push_str("    let exclusive = Rc::new(NativeDriverExclusiveRows {\n");
-        content.push_str("        load: native_cost_i64(load_nanos),\n");
-        content.push_str("        context: native_cost_i64(context_nanos),\n");
-        content.push_str("        prepare: native_cost_i64(prepare_nanos),\n");
-        content.push_str("        eval: native_cost_i64(eval_nanos),\n");
+        content.push_str("        load: nanosecond(native_cost_i64(load_nanos)),\n");
+        content.push_str("        context: nanosecond(native_cost_i64(context_nanos)),\n");
+        content.push_str("        prepare: nanosecond(native_cost_i64(prepare_nanos)),\n");
+        content.push_str("        eval: nanosecond(native_cost_i64(eval_nanos)),\n");
         content.push_str("    });\n");
-        content.push_str(
-            "    let exclusive_sum = native_driver_exclusive_sum(exclusive.clone()) as u128;\n",
-        );
+        content.push_str("    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;\n");
         content.push_str(
             "    let remainder_nanos = parent_span_nanos.saturating_sub(exclusive_sum);\n",
         );
@@ -39515,11 +39516,9 @@ pub fn emit_source_root_eval_driver_main_rs(
         content.push_str("    let decls_per_module = if unique_modules == 0 { 0 } else { identities / unique_modules };\n");
         content.push_str("    let prepare_share_per_identity = if identities == 0 { 0 } else { prepare_nanos / identities as u128 };\n");
         content.push_str("    let floor_per_identity = eval_mean + prepare_share_per_identity;\n");
-        content.push_str(
-            "    let tolerance_nanos = native_driver_cost_remainder_tolerance_nanos() as u128;\n",
-        );
+        content.push_str("    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;\n");
         content.push_str("    let accounting = native_driver_cost_account(\n");
-        content.push_str("        native_cost_i64(parent_span_nanos),\n");
+        content.push_str("        nanosecond(native_cost_i64(parent_span_nanos)),\n");
         content.push_str("        exclusive,\n");
         content.push_str("        native_driver_cost_remainder_tolerance_nanos(),\n");
         content.push_str("    );\n");

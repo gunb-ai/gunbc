@@ -1,6 +1,12 @@
 module std.compiler_entry
 
-import std.types { Int, Bool }
+import std.measure {
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
+  millisecond,
+  millisecond_to_nanosecond
+}
 
 // WHICH MODULE IS THE COMPILER PIPELINE ENTRY IS A FACT ABOUT THE MODULE, CARRIED BY IT.
 //
@@ -60,63 +66,61 @@ type CompilerEntryDriver
 // single-threaded wall. The grains are the driver's own (load / context / prepare / eval), not
 // a restatement of the resolve-split rows: context is the once-per-process ingest fold,
 // prepare is resolve+infer per unique module, eval is per identity. The law is the same
-// exclusive-sum law: exclusive rows must not exceed parent_span_nanos, and the remainder
+// exclusive-sum law: exclusive rows must not exceed parent_span, and the remainder
 // (parent minus exclusive) must sit inside the declared tolerance or the receipt is not a
-// partition. Re-derive by running the emitted binary; these rows are the type of that
-// stderr JSON, not a second ledger.
+// partition. Durations are std.measure Nanosecond (Time/Nano), not a bare Int whose unit
+// lives only in the field name. Re-derive by running the emitted binary; these rows are the
+// type of that stderr JSON, not a second ledger.
 
 type NativeDriverExclusiveRows {
-  load: Int
-  context: Int
-  prepare: Int
-  eval: Int
+  load: Nanosecond
+  context: Nanosecond
+  prepare: Nanosecond
+  eval: Nanosecond
 }
 
 type NativeDriverCostAccounting
-  = NativeDriverCostReconciled { residual_nanos: Int, tolerance_nanos: Int }
-  | NativeDriverCostOverAttributed { sum_exclusive_nanos: Int, parent_span_nanos: Int }
-  | NativeDriverCostRemainderExceedsTolerance { residual_nanos: Int, tolerance_nanos: Int }
+  = NativeDriverCostReconciled { residual: Nanosecond, tolerance: Nanosecond }
+  | NativeDriverCostOverAttributed { sum_exclusive: Nanosecond, parent_span: Nanosecond }
+  | NativeDriverCostRemainderExceedsTolerance { residual: Nanosecond, tolerance: Nanosecond }
 
-// Fifty milliseconds. The sample run's remainder was ~10 ms of Instant/print overhead around
-// the four exclusive windows; a remainder larger than this is unattributed driver work, not
-// a rounding crumb.
-data native_driver_cost_remainder_tolerance_nanos: Int = 50000000
+// Fifty milliseconds on the host monotonic wall Instant the driver uses. A remainder larger
+// than this is unattributed driver work, not a rounding crumb.
+data native_driver_cost_remainder_tolerance_nanos: Nanosecond =
+  millisecond_to_nanosecond(m: millisecond(count: 50))
 
-fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Int {
-  rows.load + rows.context + rows.prepare + rows.eval
+fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
+  nanosecond(count:
+    nanosecond_count(n: rows.load)
+      + nanosecond_count(n: rows.context)
+      + nanosecond_count(n: rows.prepare)
+      + nanosecond_count(n: rows.eval)
+  )
 }
 
 fn native_driver_cost_account(
-  parent_span_nanos: Int,
+  parent_span: Nanosecond,
   exclusive: NativeDriverExclusiveRows,
-  tolerance_nanos: Int
+  tolerance: Nanosecond
 ) -> NativeDriverCostAccounting {
   let sum = native_driver_exclusive_sum(rows: exclusive)
-  if sum > parent_span_nanos {
+  if nanosecond_count(n: sum) > nanosecond_count(n: parent_span) {
     NativeDriverCostOverAttributed {
-      sum_exclusive_nanos: sum,
-      parent_span_nanos: parent_span_nanos
+      sum_exclusive: sum,
+      parent_span: parent_span
     }
   } else {
-    let residual = parent_span_nanos - sum
-    if residual > tolerance_nanos {
+    let residual = nanosecond(count: nanosecond_count(n: parent_span) - nanosecond_count(n: sum))
+    if nanosecond_count(n: residual) > nanosecond_count(n: tolerance) {
       NativeDriverCostRemainderExceedsTolerance {
-        residual_nanos: residual,
-        tolerance_nanos: tolerance_nanos
+        residual: residual,
+        tolerance: tolerance
       }
     } else {
       NativeDriverCostReconciled {
-        residual_nanos: residual,
-        tolerance_nanos: tolerance_nanos
+        residual: residual,
+        tolerance: tolerance
       }
     }
-  }
-}
-
-fn native_driver_cost_is_reconciled(verdict: NativeDriverCostAccounting) -> Bool {
-  match verdict {
-    NativeDriverCostReconciled { residual_nanos: _, tolerance_nanos: _ } => true
-    NativeDriverCostOverAttributed { sum_exclusive_nanos: _, parent_span_nanos: _ } => false
-    NativeDriverCostRemainderExceedsTolerance { residual_nanos: _, tolerance_nanos: _ } => false
   }
 }
