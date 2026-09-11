@@ -241,6 +241,7 @@ pub enum CargoEnvironmentVariable {
     CargoTargetDirEnv,
     CargoBuildJobsEnv,
     RustcWrapperEnv,
+    RustflagsEnv,
 }
 
 pub fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> String {
@@ -249,6 +250,7 @@ pub fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> St
         CargoEnvironmentVariable::CargoTargetDirEnv => "CARGO_TARGET_DIR".to_string(),
         CargoEnvironmentVariable::CargoBuildJobsEnv => "CARGO_BUILD_JOBS".to_string(),
         CargoEnvironmentVariable::RustcWrapperEnv => "RUSTC_WRAPPER".to_string(),
+        CargoEnvironmentVariable::RustflagsEnv => "RUSTFLAGS".to_string(),
     }
 }
 
@@ -303,3 +305,5 @@ pub struct CargoTargetDirEnv;
 pub struct CargoBuildJobsEnv;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RustcWrapperEnv;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RustflagsEnv;
