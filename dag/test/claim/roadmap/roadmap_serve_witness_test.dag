@@ -20,6 +20,7 @@ import gunbc.roadmap_serve {
   roadmap_serve_invoke,
   roadmap_serve_respond,
   roadmap_serve_respond_for_instance,
+  roadmap_serve_respond_over,
   belt_dispatch_status,
 }
 import gunbc.roadmap_belt_actuate {
@@ -50,6 +51,10 @@ import extdeps.http.server {
 }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
+import gunbc.roadmap_authority {
+  RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+}
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 
 // Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below
 // goes RED (nothing selects) — the discriminating direction; the production path never does this
@@ -380,4 +385,69 @@ test fn an_absent_identity_arrives_at_the_handler_as_absent() -> Bool {
   )
   string_contains(s: r.body, pattern: "identity: \n")
     && !string_contains(s: r.body, pattern: "briansrls")
+}
+
+// ── The plan authority is a parameter ───────────────────────────────────────────────────────────
+//
+// THE DISCRIMINATING DIRECTION IS THE NEGATIVE. Asserting that a caller-supplied plan appears in
+// the response would stay green if a consumer under the route ALSO read the public carrier and
+// concatenated both; asserting that the public roadmap's own section title is ABSENT is what goes
+// red the moment any surface below roadmap_serve_respond_over reaches past its parameter to
+// roadmap_authority_projection(). That is the whole claim of the seam: one response, one plan.
+
+fn caller_supplied_plan_fixture() -> RoadmapAuthorityProjection {
+  RoadmapAuthorityProjected {
+    doc: RoadmapDocument {
+      preamble: [],
+      lead_lanes: [],
+      sections: [
+        RoadmapSection { title: "A plan supplied by the caller", elements: [] },
+      ],
+    },
+    accepted: [],
+  }
+}
+
+fn serve_over_plan(plan: RoadmapAuthorityProjection, path: String) -> ServeHttpResponse {
+  roadmap_serve_respond_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: plan,
+    method_label: "GET",
+    path: path,
+    body: "",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+test fn witness_roadmap_md_answers_from_the_supplied_plan() -> Bool {
+  let r = serve_over_plan(plan: caller_supplied_plan_fixture(), path: "/roadmap.md")
+  r.status == 200
+    && string_contains(s: r.body, pattern: "A plan supplied by the caller")
+    && !string_contains(s: r.body, pattern: "Active deliverables")
+}
+
+test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
+  let r = serve_over_plan(plan: caller_supplied_plan_fixture(), path: "/dispatch.json")
+  r.status == 200
+    && !string_contains(s: r.body, pattern: "Active deliverables")
+}
+
+// A plan that failed to project refuses in ITS OWN vocabulary rather than serving an empty
+// roadmap: the detail the caller handed over is what the reader sees.
+test fn witness_supplied_plan_refusal_travels_to_the_wire() -> Bool {
+  let detail = "the caller's plan carrier could not be read"
+  let md = serve_over_plan(
+    plan: RoadmapAuthorityProjectionRefused { detail: detail },
+    path: "/roadmap.md",
+  )
+  let dispatch = serve_over_plan(
+    plan: RoadmapAuthorityProjectionRefused { detail: detail },
+    path: "/dispatch.json",
+  )
+  string_contains(s: md.body, pattern: "# roadmap unavailable")
+    && string_contains(s: md.body, pattern: detail)
+    && !string_contains(s: md.body, pattern: "Active deliverables")
+    && string_contains(s: dispatch.body, pattern: "\"refused\": true")
+    && string_contains(s: dispatch.body, pattern: detail)
 }

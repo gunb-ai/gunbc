@@ -1294,10 +1294,6 @@ fn roadmap_page_for_authority() -> Fragment {
   roadmap_page_for_projection(proj: roadmap_authority_projection())
 }
 
-fn roadmap_page_for_authority_launch(launch: LaunchHostStanding) -> Fragment {
-  roadmap_page_for_projection_launch(proj: roadmap_authority_projection(), launch: launch)
-}
-
 fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
   roadmap_page_for_projection_launch(proj: proj, launch: launch_host_unobserved_static_render())
 }
@@ -1335,18 +1331,7 @@ fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, 
   roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
 }
 
-// The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation.
-fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?,
-  standings: RoadmapStandings, launch: LaunchHostStanding) -> Fragment {
-  roadmap_daily_workspace_page_for_projection_observed(
-    proj: roadmap_authority_projection(),
-    attempts: attempts,
-    attempts_refused: attempts_refused,
-        standings: standings,
-    launch: launch,
-  )
-}
-
+// The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it.
 fn roadmap_daily_workspace_page_for_projection_observed(
   proj: RoadmapAuthorityProjection,
   attempts: List<WorkflowAttemptProgress>,

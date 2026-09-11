@@ -16,11 +16,12 @@ import extdeps.languages.json.parse {
 }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap_page { roadmap_daily_workspace_page_for_authority_observed }
+import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
+import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body, site_artifact_digest }
 import gunbc.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
-  belt_launch_host_standing_for_page,
+  belt_launch_host_standing_for_page_over,
   belt_sessions_observe_for_instance, belt_sessions_observed_json, belt_sessions_http_status,
   belt_attempts_observe_for_instance, belt_attempts_observed_json, belt_attempts_http_status,
   belt_workflow_attempts_observe_for_instance,
@@ -159,14 +160,17 @@ fn served_observation_status_of_label(label: String) -> ServedObservationStatusD
   else { ServedObservationStatusUnknown { label: label } }
 }
 
-fn served_observation_daily_surface_for_instance(instance: HostDashboardInstance, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
-  let launch = belt_launch_host_standing_for_page(instance: instance)
+// The daily page is RENDERED HERE, at the tick, and only read back at request time -- so this is
+// where the plan a snapshot is about has to arrive. It is the same parameter the serve entry takes,
+// travelling the other route into the same page fold.
+fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
+  let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
   let standings = roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   let page = match observed {
     WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none, standings: standings, launch: launch)
+      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: attempts, attempts_refused: none, standings: standings, launch: launch)
     WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch)
+      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch)
   }
   match try_serialize_html_source(node: page) {
     EmitOk { html } => ServedObservationSurface { kind: DailyPage, status: 200, body: html }
@@ -195,11 +199,15 @@ fn served_observation_sessions_surface_for_instance(instance: HostDashboardInsta
 // The workflow attempts are observed ONCE per tick and shared by the two surfaces that project them
 // (one observing authority, two projections), so the walk over dispatch worktrees happens once.
 fn served_observation_snapshot_observe_for_instance(instance: HostDashboardInstance, observed_at: String) -> ServedObservationSnapshot {
+  served_observation_snapshot_observe_over(instance: instance, plan: roadmap_authority_projection(), observed_at: observed_at)
+}
+
+fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String) -> ServedObservationSnapshot {
   let observed = belt_workflow_attempts_observe_for_instance(instance: instance)
   ServedObservationSnapshot {
     observed_at: observed_at,
     surfaces: [
-      served_observation_daily_surface_for_instance(instance: instance, observed: observed),
+      served_observation_daily_surface_over(instance: instance, plan: plan, observed: observed),
       served_observation_attempts_surface_for_instance(instance: instance),
       served_observation_workflow_surface_for_instance(instance: instance, observed: observed),
       served_observation_sessions_surface_for_instance(instance: instance),
@@ -399,10 +407,18 @@ fn served_observation_write_for_instance(instance: HostDashboardInstance, snapsh
   }
 }
 
-fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String) -> BeltPassOutcome {
+fn served_observation_observe_and_write_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String) -> BeltPassOutcome {
   served_observation_write_for_instance(
     instance: instance,
-    snapshot: served_observation_snapshot_observe_for_instance(instance: instance, observed_at: observed_at),
+    snapshot: served_observation_snapshot_observe_over(instance: instance, plan: plan, observed_at: observed_at),
+  )
+}
+
+fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String) -> BeltPassOutcome {
+  served_observation_observe_and_write_over(
+    instance: instance,
+    plan: roadmap_authority_projection(),
+    observed_at: observed_at,
   )
 }
 

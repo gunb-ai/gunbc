@@ -151,8 +151,12 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
   }
 }
 
+fn materialize_roadmap_site_surface_bundle_over(plan: RoadmapAuthorityProjection) -> RoadmapSiteSurfaceBundle {
+  render_roadmap_site_surface_bundle_for_projection(proj: plan)
+}
+
 fn materialize_live_roadmap_site_surface_bundle() -> RoadmapSiteSurfaceBundle {
-  render_roadmap_site_surface_bundle_for_projection(proj: roadmap_authority_projection())
+  materialize_roadmap_site_surface_bundle_over(plan: roadmap_authority_projection())
 }
 
 fn live_roadmap_site_surface_bundle() -> LiveRoadmapSiteSurfaceBundle {
