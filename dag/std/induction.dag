@@ -467,23 +467,41 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 // per element. Collapsing them loses real distinctions -- a single ordinal makes log(n)*log(n) and n
 // compare equal -- so they are carried, and the order below is lexicographic on (degree, logs),
 // which is the true order of n^a (log n)^b, with the body held out of the order deliberately.
-type ParamGrowth {
+//
+// THE UNORDERABLE CASE IS AN ARM, NOT A FLAG BESIDE THE NUMBERS. A `representable: Bool` on a flat
+// record leaves the illegal state writable: a growth that cannot be placed on the lattice still
+// carries a degree and a log count, so an ordering can be computed from numbers that mean nothing,
+// and that is precisely how sqrt(n) came to be ordered as cheaper than n and an unbounded cost came
+// to compare equal to a constant. Both were caught by a gate ADDED AFTER the numbers were compared,
+// which is validation standing where construction was available (DESIGN section 5). So the rank and
+// the refusal are two constructors: `param_growth_order` takes GrowthRank, an unorderable growth has
+// no rank to hand it, and the comparison the flag existed to prevent has no way to be written.
+// The unorderable arm carries no payload, deliberately: a body count on a growth no consumer can
+// place is a field nothing reads (DESIGN section 3c).
+type GrowthRank {
   degree: Int
   logs: Int
   bodies: Int
-  representable: Bool
+}
+
+type ParamGrowth
+  = OrderableGrowth { rank: GrowthRank }
+  | GrowthNotOrderable
+
+fn growth_rank_zero() -> GrowthRank {
+  GrowthRank { degree: 0, logs: 0, bodies: 0 }
 }
 
 fn param_growth_zero() -> ParamGrowth {
-  ParamGrowth { degree: 0, logs: 0, bodies: 0, representable: true }
+  OrderableGrowth { rank: growth_rank_zero() }
 }
 
 // A FRACTIONAL OR LOG-BASED EXPONENT IS A REAL BOUND THIS READING CANNOT ORDER, and it says so
 // rather than rounding to the nearest integer degree. sqrt(n) is not linear and is not constant; a
-// reader that reported either would be fabricating. The flag travels with the growth so every
-// consumer sees the same refusal instead of each one rediscovering it.
-fn param_growth_unrepresentable() -> ParamGrowth {
-  ParamGrowth { degree: 0, logs: 0, bodies: 0, representable: false }
+// reader that reported either would be fabricating. The arm travels with the growth so every
+// consumer meets the same refusal instead of each one rediscovering it.
+fn param_growth_not_orderable() -> ParamGrowth {
+  GrowthNotOrderable
 }
 
 fn atomic_cost_param(c: AtomicCost) -> String {
@@ -498,32 +516,42 @@ fn exponent_growth(e: PolynomialExponent) -> ParamGrowth {
   match e {
     IntegerExpZero => param_growth_zero()
     IntegerExpPos { degree: d } =>
-      ParamGrowth { degree: positive_descent_count(steps: d), logs: 0, bodies: 0, representable: true }
-    FractionExp { numerator: _, root: _ } => param_growth_unrepresentable()
-    LogBasedExp { base: _, argument: _ } => param_growth_unrepresentable()
+      OrderableGrowth { rank: GrowthRank { degree: positive_descent_count(steps: d), logs: 0, bodies: 0 } }
+    FractionExp { numerator: _, root: _ } => param_growth_not_orderable()
+    LogBasedExp { base: _, argument: _ } => param_growth_not_orderable()
   }
 }
 
 fn atomic_cost_growth(c: AtomicCost) -> ParamGrowth {
   match c {
     PolyCost { param: _, exponent: e } => exponent_growth(e: e)
-    LogCost { param: _ } => ParamGrowth { degree: 0, logs: 1, bodies: 0, representable: true }
-    CallerBodyCost { param: _ } => ParamGrowth { degree: 0, logs: 0, bodies: 1, representable: true }
+    LogCost { param: _ } => OrderableGrowth { rank: GrowthRank { degree: 0, logs: 1, bodies: 0 } }
+    CallerBodyCost { param: _ } => OrderableGrowth { rank: GrowthRank { degree: 0, logs: 0, bodies: 1 } }
   }
 }
 
 // A PRODUCT MULTIPLIES, so the exponents ADD -- separately, which is why two linear factors over one
 // parameter read quadratic and two logarithmic ones read log-squared rather than colliding with it.
 fn param_growth_multiply(a: ParamGrowth, b: ParamGrowth) -> ParamGrowth {
-  ParamGrowth {
-    degree: a.degree + b.degree,
-    logs: a.logs + b.logs,
-    bodies: a.bodies + b.bodies,
-    representable: a.representable && b.representable,
+  match a {
+    GrowthNotOrderable => GrowthNotOrderable
+    OrderableGrowth { rank: ra } =>
+      match b {
+        GrowthNotOrderable => GrowthNotOrderable
+        OrderableGrowth { rank: rb } =>
+          OrderableGrowth { rank: GrowthRank {
+            degree: ra.degree + rb.degree,
+            logs: ra.logs + rb.logs,
+            bodies: ra.bodies + rb.bodies,
+          } }
+      }
   }
 }
 
-fn param_growth_order(a: ParamGrowth, b: ParamGrowth) -> Ordering {
+// THE ORDER IS OVER RANKS, NOT OVER GROWTHS, and that is the whole construction: a caller holding a
+// growth it cannot place has nothing to pass here, so the fabricated comparison is not refused at
+// run time, it is unwritable.
+fn param_growth_order(a: GrowthRank, b: GrowthRank) -> Ordering {
   if a.degree < b.degree {
     Less
   } else {
@@ -535,17 +563,26 @@ fn param_growth_order(a: ParamGrowth, b: ParamGrowth) -> Ordering {
   }
 }
 
-// A SUM TAKES THE LARGEST TERM'S GROWTH -- but the body and the unrepresentable flag are facts about
-// the WHOLE cost, not about the winning term, so they survive a term that loses the ordering.
-// Returning the winner whole drops them, and dropping the body makes a cost that runs a caller's
-// body compare EQUAL to one that does not.
+// A SUM TAKES THE LARGEST TERM'S GROWTH -- but the body count is a fact about the WHOLE cost, not
+// about the winning term, so it survives a term that loses the ordering. Returning the winner whole
+// drops it, and dropping the body makes a cost that runs a caller's body compare EQUAL to one that
+// does not. An unorderable term makes the whole sum unorderable, which is the same absorption: a
+// sum whose largest term cannot be placed has no place either.
 fn param_growth_max(a: ParamGrowth, b: ParamGrowth) -> ParamGrowth {
-  let bodies = if a.bodies > b.bodies { a.bodies } else { b.bodies }
-  let representable = a.representable && b.representable
-  match param_growth_order(a: a, b: b) {
-    Less => ParamGrowth { degree: b.degree, logs: b.logs, bodies: bodies, representable: representable }
-    Equal => ParamGrowth { degree: a.degree, logs: a.logs, bodies: bodies, representable: representable }
-    Greater => ParamGrowth { degree: a.degree, logs: a.logs, bodies: bodies, representable: representable }
+  match a {
+    GrowthNotOrderable => GrowthNotOrderable
+    OrderableGrowth { rank: ra } =>
+      match b {
+        GrowthNotOrderable => GrowthNotOrderable
+        OrderableGrowth { rank: rb } => {
+          let bodies = if ra.bodies > rb.bodies { ra.bodies } else { rb.bodies }
+          match param_growth_order(a: ra, b: rb) {
+            Less => OrderableGrowth { rank: GrowthRank { degree: rb.degree, logs: rb.logs, bodies: bodies } }
+            Equal => OrderableGrowth { rank: GrowthRank { degree: ra.degree, logs: ra.logs, bodies: bodies } }
+            Greater => OrderableGrowth { rank: GrowthRank { degree: ra.degree, logs: ra.logs, bodies: bodies } }
+          }
+        }
+      }
   }
 }
 
@@ -576,8 +613,8 @@ fn cost_bound_growth_in_param(b: CostBound, param: String) -> ParamGrowth {
       ts |> fold(init: param_growth_zero(), f: fn(acc, inner) {
         param_growth_max(a: acc, b: cost_bound_growth_in_param(b: inner, param: param))
       })
-    ForeverBound => param_growth_unrepresentable()
-    ErrorBound => param_growth_unrepresentable()
+    ForeverBound => param_growth_not_orderable()
+    ErrorBound => param_growth_not_orderable()
   }
 }
 
@@ -612,8 +649,10 @@ fn cost_bound_params(b: CostBound) -> List<String> {
 }
 
 // ORDERABILITY IS A PROPERTY OF THE WHOLE BOUND, AND IT HAS TO BE ASKED BEFORE ANY COMPARISON.
-// ParamGrowth carries `representable` per parameter, and the projection consults it — but a bound
-// with NO parameters has no per-parameter flag to carry, and ForeverBound is exactly that shape. So
+// ParamGrowth answers it per parameter by its constructor, and every consumer of a growth destructures
+// it — but a bound with NO parameters yields no per-parameter growth at all, and ForeverBound is
+// exactly that shape, so no axis exists to carry the refusal. That residue is what this predicate
+// covers, and it is why the construction above did not delete it. So
 // a consumer that only read the per-parameter flag would order an unbounded cost as if it were
 // constant, which is not a weaker answer than refusing: it is the opposite answer.
 //
@@ -622,17 +661,13 @@ fn cost_bound_params(b: CostBound) -> List<String> {
 // cost_fidelity_of(ForeverBound, ConstantBound) answered "preserved" (no parameters, so no axes, so
 // equivalent). Both are the fabricated plausible output DESIGN section 5 forbids, produced by the
 // module whose annotations forbid it.
+// THE PREDICATE IS DERIVED FROM THE GROWTH, NOT RE-SPELLED BESIDE IT. Which exponent forms this
+// reading can place is decided once, in exponent_growth; a second match over the same arms here
+// would be the fork DESIGN section 3 forbids, and it is the fork that lets the two answers drift.
 fn atomic_cost_is_orderable(c: AtomicCost) -> Bool {
-  match c {
-    PolyCost { param: _, exponent: e } =>
-      match e {
-        IntegerExpZero => true
-        IntegerExpPos { degree: _ } => true
-        FractionExp { numerator: _, root: _ } => false
-        LogBasedExp { base: _, argument: _ } => false
-      }
-    LogCost { param: _ } => true
-    CallerBodyCost { param: _ } => true
+  match atomic_cost_growth(c: c) {
+    OrderableGrowth { rank: _ } => true
+    GrowthNotOrderable => false
   }
 }
 
@@ -662,27 +697,30 @@ fn cost_bound_is_orderable(b: CostBound) -> Bool {
 // quadratic, log-squared, a cost in two parameters, a fractional exponent, an unbounded one --
 // answers absent rather than being rounded to the nearest thing CostShape can say, because a
 // rounded rank presented as the operation's shape is a fabricated answer.
-fn shape_for_param_growth(growth: ParamGrowth) -> CostShape? {
-  if !growth.representable {
-    none
+fn shape_for_growth_rank(r: GrowthRank) -> CostShape? {
+  if r.degree == 0 && r.logs == 0 && r.bodies == 0 {
+    Present { value: ShapeConstant }
   } else {
-    if growth.degree == 0 && growth.logs == 0 && growth.bodies == 0 {
-      Present { value: ShapeConstant }
+    if r.degree == 1 && r.logs == 0 && r.bodies == 1 {
+      Present { value: ShapeIterateBody }
     } else {
-      if growth.degree == 1 && growth.logs == 0 && growth.bodies == 1 {
-        Present { value: ShapeIterateBody }
+      if r.degree == 1 && r.logs == 0 && r.bodies == 0 {
+        Present { value: ShapeLinearScan }
       } else {
-        if growth.degree == 1 && growth.logs == 0 && growth.bodies == 0 {
-          Present { value: ShapeLinearScan }
+        if r.degree == 1 && r.logs == 1 && r.bodies == 0 {
+          Present { value: ShapeSortBody }
         } else {
-          if growth.degree == 1 && growth.logs == 1 && growth.bodies == 0 {
-            Present { value: ShapeSortBody }
-          } else {
-            none
-          }
+          none
         }
       }
     }
+  }
+}
+
+fn shape_for_param_growth(growth: ParamGrowth) -> CostShape? {
+  match growth {
+    GrowthNotOrderable => none
+    OrderableGrowth { rank: r } => shape_for_growth_rank(r: r)
   }
 }
 

@@ -15,7 +15,10 @@ import std.induction {
   LogCost,
   PolyCost,
   ProductBound,
+  SumBound,
   SumOfProductsBound,
+  GrowthNotOrderable,
+  OrderableGrowth,
   cost_bound_growth_in_param,
   cost_bound_to_shape,
   cost_graph_linear,
@@ -26,6 +29,7 @@ import std.induction {
   cost_sqrt,
   param_growth_order,
   poly_exp_degree_one,
+  shape_for_param_growth,
 }
 import std.realization_cost_fidelity {
   CostShapePreserved,
@@ -92,13 +96,18 @@ test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
   match cost_bound_to_shape(b: concat_modeled_cost()) {
     Present { value: _ } => false
     Absent =>
-      match param_growth_order(
-        a: cost_bound_growth_in_param(b: concat_modeled_cost(), param: "right"),
-        b: cost_bound_growth_in_param(b: concat_realized_cost(), param: "right"),
-      ) {
-        Equal => true
-        Less => false
-        Greater => false
+      match cost_bound_growth_in_param(b: concat_modeled_cost(), param: "right") {
+        GrowthNotOrderable => false
+        OrderableGrowth { rank: modeled_rank } =>
+          match cost_bound_growth_in_param(b: concat_realized_cost(), param: "right") {
+            GrowthNotOrderable => false
+            OrderableGrowth { rank: realized_rank } =>
+              match param_growth_order(a: modeled_rank, b: realized_rank) {
+                Equal => true
+                Less => false
+                Greater => false
+              }
+          }
       }
   }
 }
@@ -417,4 +426,49 @@ test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
     && count_cost_body_dependent(rows: rows) == 0
     && count_cost_fidelity_unmeasured(rows: rows) == 0
     && count_cost_model_unmigrated(rows: rows) == 0
+}
+
+// THE CONSTRUCTION ITSELF, exercised where the old flag was readable: an unplaceable growth now has
+// no rank to hand param_growth_order, so these controls check the arm rather than a boolean field.
+// The behavioural claims are the same two fabrications that were measured before the gate existed --
+// sqrt(n) read as cheaper than n, an unbounded cost read as equal to a constant -- and they are kept
+// here as permanent regression controls even though the ordering that produced them is now
+// unwritable (DESIGN section 4b(4): a climb dissolves the production handling, never the evidence).
+test fn a_fractional_exponent_growth_has_no_rank() -> Bool {
+  match cost_bound_growth_in_param(b: cost_sqrt(param: "n"), param: "n") {
+    GrowthNotOrderable => true
+    OrderableGrowth { rank: _ } => false
+  }
+}
+
+test fn an_unbounded_growth_has_no_rank() -> Bool {
+  match cost_bound_growth_in_param(b: ForeverBound, param: "n") {
+    GrowthNotOrderable => true
+    OrderableGrowth { rank: _ } => false
+  }
+}
+
+test fn a_linear_growth_has_a_rank() -> Bool {
+  match cost_bound_growth_in_param(b: cost_linear(param: "n"), param: "n") {
+    OrderableGrowth { rank: r } => r.degree == 1 && r.logs == 0 && r.bodies == 0
+    GrowthNotOrderable => false
+  }
+}
+
+// AN UNORDERABLE FACTOR ABSORBS ITS PRODUCT AND ITS SUM, which is the property the old `&&` on the
+// flag had and the arm must keep: a term nobody can place does not become placeable by sitting
+// beside one that can.
+test fn an_unorderable_factor_absorbs_the_whole_bound() -> Bool {
+  let mixed = SumBound { terms: [cost_linear(param: "n"), cost_sqrt(param: "n")] }
+  match cost_bound_growth_in_param(b: mixed, param: "n") {
+    GrowthNotOrderable => true
+    OrderableGrowth { rank: _ } => false
+  }
+}
+
+test fn an_unorderable_growth_projects_to_no_shape() -> Bool {
+  match shape_for_param_growth(growth: cost_bound_growth_in_param(b: cost_sqrt(param: "n"), param: "n")) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

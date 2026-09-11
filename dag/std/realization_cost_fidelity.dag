@@ -4,7 +4,9 @@ import std.algebra { CostShape, Equal, Greater, Less, Ordering }
 import std.induction {
   CostBound,
   cost_bound_is_orderable,
-  ParamGrowth,
+  GrowthRank,
+  GrowthNotOrderable,
+  OrderableGrowth,
   cost_bound_growth_in_param,
   cost_bound_params,
   cost_bound_to_shape,
@@ -156,12 +158,25 @@ fn param_union(modeled: CostBound, realized: CostBound) -> List<String> {
 // An operand named by only one side is not skipped: its rank on the other side is 0, which is the
 // TRUE statement that the cost does not grow in it. That is what makes "declares work in both
 // operands, realizes work in one" come out as a difference rather than as a missing axis.
+// THE AXIS LIST IS OPTIONAL BECAUSE AN AXIS CAN BE ABSENT, not because it can be empty. A parameter
+// whose growth std.induction cannot place on the (degree, logs) lattice yields no comparison at all,
+// and the honest fold is absorbing: one unplaceable axis makes the whole comparison unavailable,
+// because a dominance computed over the axes that happened to be placeable is a claim about a subset
+// nobody declared. It is deliberately NOT rendered as UndecidedOnEvidence, which means the costs are
+// known and their order turns on an unmodeled body — a different ignorance with a different repair.
 fn param_axis_comparisons(
   modeled: CostBound,
   realized: CostBound,
-) -> List<AxisComparison> {
-  param_union(modeled: modeled, realized: realized) |> fold(init: [], f: fn(acc, o) {
-    concat([param_axis_comparison(modeled: modeled, realized: realized, param: o)], acc)
+) -> List<AxisComparison>? {
+  param_union(modeled: modeled, realized: realized) |> fold(init: Present { value: [] }, f: fn(acc, o) {
+    match acc {
+      Absent => none
+      Present { value: so_far } =>
+        match param_axis_comparison(modeled: modeled, realized: realized, param: o) {
+          Absent => none
+          Present { value: c } => Present { value: concat([c], so_far) }
+        }
+    }
   })
 }
 
@@ -172,12 +187,22 @@ fn param_axis_comparison(
   modeled: CostBound,
   realized: CostBound,
   param: String,
-) -> AxisComparison {
-  let modeled_growth = cost_bound_growth_in_param(b: modeled, param: param)
-  let realized_growth = cost_bound_growth_in_param(b: realized, param: param)
-  match param_growth_order(a: realized_growth, b: modeled_growth) {
+) -> AxisComparison? {
+  match cost_bound_growth_in_param(b: modeled, param: param) {
+    GrowthNotOrderable => none
+    OrderableGrowth { rank: modeled_rank } =>
+      match cost_bound_growth_in_param(b: realized, param: param) {
+        GrowthNotOrderable => none
+        OrderableGrowth { rank: realized_rank } =>
+          Present { value: rank_axis_comparison(realized: realized_rank, modeled: modeled_rank) }
+      }
+  }
+}
+
+fn rank_axis_comparison(realized: GrowthRank, modeled: GrowthRank) -> AxisComparison {
+  match param_growth_order(a: realized, b: modeled) {
     Equal =>
-      if realized_growth.bodies != modeled_growth.bodies {
+      if realized.bodies != modeled.bodies {
         UndecidedOnEvidence
       } else {
         Same
@@ -204,9 +229,14 @@ fn cost_fidelity_of(modeled: CostBound, realized: CostBound) -> CostFidelity {
 }
 
 fn cost_fidelity_of_orderable(modeled: CostBound, realized: CostBound) -> CostFidelity {
-  match dominance_of_comparisons(
-    comparisons: param_axis_comparisons(modeled: modeled, realized: realized)
-  ) {
+  match param_axis_comparisons(modeled: modeled, realized: realized) {
+    Absent => CostGrowthNotOrderable
+    Present { value: comparisons } => fidelity_of_comparisons(comparisons: comparisons)
+  }
+}
+
+fn fidelity_of_comparisons(comparisons: List<AxisComparison>) -> CostFidelity {
+  match dominance_of_comparisons(comparisons: comparisons) {
     Dominates => RealizationFasterThanModeled
     Dominated => RealizationSlowerThanModeled
     Equivalent => CostShapePreserved
