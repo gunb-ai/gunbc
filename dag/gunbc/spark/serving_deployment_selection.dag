@@ -7,7 +7,8 @@ import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.interval { OrderedClosedInterval, degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
@@ -339,11 +340,9 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
 
 data v4_1_gb10_kv_layout: KvLayoutPolicy = KvFp8DsMlaLayout
 
-data v4_1_gb10_kv_layout_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173 #11022) v41_sm12_admitted_kv_cache_dtypes / v41_sm12_kv_cache_dtype_admitted, which record DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for DeviceCapability(12,1). Until that module is importable here, this row names the serving KV layout as a frontier rather than copying the admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout. Unset/auto kv_cache_dtype is a launch refusal on this backend, not a default. nvfp4_ds_mla is not reachable on sm_12x. SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr)
-
 // V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
 // extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, cited to the SM12
-// frontier above: the dtype must be set (auto is refused). Higher-precision KV does not
+// row of v4_1_selection_frontier: the dtype must be set (auto is refused). Higher-precision KV does not
 // violate native quality. Speculation is DSpark. Per-token KV bytes stay an obligation;
 // the card's 890 does not apply.
 fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
@@ -358,8 +357,6 @@ fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
     runtime: runtime,
   )
 }
-
-data v4_1_runtime_supported_tp_widths_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: DSV41-1 (loyal-ram-346) shows which tensor-parallel widths the GB10 vLLM lead accepts. Until then the V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1. SUFFICIENT FOR: a derived admitted-width set from that runtime observation replaces an unfiltered fleet cartesian for this image." as NonEmptyStr)
 
 data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
   image: v41_published_arm64_reference(),
@@ -411,9 +408,7 @@ type KvBytesPerTokenStanding
   = KvBytesPerTokenUnestablished { layout: KvLayoutPolicy, obligation: NonEmptyStr }
   | KvBytesPerTokenNotThisSubject
 
-data v4_1_gb10_kv_bytes_authority_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: import the DSV41-4 declaration (separate PR; not this message) that carries the sm_12x fp8_ds_mla unpadded content rate at vLLM 07b75534 and config dba1be0a. Do not act on an eight-indexer figure: indexer K caches are owned only where index_source_layer_ids and kv_source_layer_ids intersect. SWA (DeepseekV4SWACache / SlidingWindowMLASpec) is per-sequence, not a bytes-per-token term. The unpadded rate is a floor; fp8_ds_mla page alignment and the engine allocator report decide. SUFFICIENT FOR: kv_bytes_per_token_standing cites that declaration rather than this obligation string." as NonEmptyStr)
-
-data v4_1_gb10_kv_bytes_obligation: NonEmptyStr = "Cite v4_1_gb10_kv_bytes_authority_frontier / the DSV41-4 declaration when it lands; do not transcribe a dashboard rate. The card's 890 B/token is not the whole-model fp8_ds_mla quantity on sm_12x. Do not use 656 (withdrawn; Kimi K3 stride). Indexer ownership is the kv-source ∩ index-source set, not eight caches. SWA is excluded from the per-token rate. Unpadded source derivation is a floor; the allocator report decides. Higher-precision KV is a capacity fact, not a native-quality violation" as NonEmptyStr
+data v4_1_gb10_kv_bytes_obligation: NonEmptyStr = "Cite v4_1_selection_frontier / the DSV41-4 declaration when it lands; do not transcribe a dashboard rate. The card's 890 B/token is not the whole-model fp8_ds_mla quantity on sm_12x. Do not use 656 (withdrawn; Kimi K3 stride). Indexer ownership is the kv-source ∩ index-source set, not eight caches. SWA is excluded from the per-token rate. Unpadded source derivation is a floor; the allocator report decides. Higher-precision KV is a capacity fact, not a native-quality violation" as NonEmptyStr
 
 fn kv_bytes_per_token_standing(c: DeploymentCandidate) -> KvBytesPerTokenStanding {
   if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
@@ -422,6 +417,32 @@ fn kv_bytes_per_token_standing(c: DeploymentCandidate) -> KvBytesPerTokenStandin
     KvBytesPerTokenNotThisSubject
   }
 }
+
+fn v4_1_selection_frontier_fact(decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.spark.serving_deployment_selection" as NonEmptyStr,
+    decl_name: decl_name,
+    field: WholeDeclaration,
+  }
+}
+
+data v4_1_selection_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: v4_1_selection_frontier_fact(decl_name: "v4_1_gb10_kv_layout" as NonEmptyStr),
+    reason: "GB10 V4.1 KV layout waits on #11022 sm_12 admit set rather than a copied dtype list",
+    dissolution: unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173 #11022) v41_sm12_admitted_kv_cache_dtypes / v41_sm12_kv_cache_dtype_admitted, which record DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for DeviceCapability(12,1). Until that module is importable here, this row names the serving KV layout as a frontier rather than copying the admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout. Unset/auto kv_cache_dtype is a launch refusal on this backend, not a default. nvfp4_ds_mla is not reachable on sm_12x. SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: v4_1_selection_frontier_fact(decl_name: "fleet_admitted_topologies" as NonEmptyStr),
+    reason: "V4.1 domain stays the fleet cartesian until DSV41-1 names admitted TP widths",
+    dissolution: unbound_dissolution(description: "TRIGGER: DSV41-1 (loyal-ram-346) shows which tensor-parallel widths the GB10 vLLM lead accepts. Until then the V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1. SUFFICIENT FOR: a derived admitted-width set from that runtime observation replaces an unfiltered fleet cartesian for this image." as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: v4_1_selection_frontier_fact(decl_name: "v4_1_gb10_kv_bytes_obligation" as NonEmptyStr),
+    reason: "GB10 fp8_ds_mla bytes-per-token wait on DSV41-4 rather than a transcribed rate",
+    dissolution: unbound_dissolution(description: "TRIGGER: import the DSV41-4 declaration (separate PR; not this message) that carries the sm_12x fp8_ds_mla unpadded content rate at vLLM 07b75534 and config dba1be0a. Do not act on an eight-indexer figure: indexer K caches are owned only where index_source_layer_ids and kv_source_layer_ids intersect. SWA (DeepseekV4SWACache / SlidingWindowMLASpec) is per-sequence, not a bytes-per-token term. The unpadded rate is a floor; fp8_ds_mla page alignment and the engine allocator report decide. SUFFICIENT FOR: kv_bytes_per_token_standing cites that declaration rather than this obligation string." as NonEmptyStr),
+  ),
+]
 
 fn deployment_candidate(identity: DeclarationRef, label: NonEmptyStr, artifact: ModelArtifact, topology: TopologyShape) -> DeploymentCandidate {
   deployment_candidate_at(identity: identity, label: label, artifact: artifact, topology: topology, profile: serving_parameters_current)

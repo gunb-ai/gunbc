@@ -2,12 +2,16 @@ module test.claim.spark.serving_deployment_selection_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import std.pareto { LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint }
+import std.roster_frontier {
+  FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
+}
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import gunbc.spark.v41_published_image_observation {
   v41_published_arm64_reference,
   v41_published_distribution_name,
@@ -56,7 +60,7 @@ import gunbc.spark.serving_deployment_selection {
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
   VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
-  NoFeasibleServingDeployment,
+  NoFeasibleServingDeployment, v4_1_selection_frontier,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -642,6 +646,26 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
         match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
       KvBytesPerTokenNotThisSubject => false
     }
+}
+
+fn v4_1_frontier_keys_contain(decl_name: String) -> Bool {
+  let want = declaration_ref_display_key(ref: DeclarationRef {
+    module_path: "gunbc.spark.serving_deployment_selection" as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  })
+  any(frontier_path_subjects(rows: v4_1_selection_frontier), k => k == want)
+}
+
+test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool {
+  frontier_rows_well_formed(rows: v4_1_selection_frontier)
+    && match frontier_rows_keyed_roster_build(rows: v4_1_selection_frontier) {
+      KeyedRosterBuilt { rows: built } => count(built) == 3
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_layout")
+    && v4_1_frontier_keys_contain(decl_name: "fleet_admitted_topologies")
+    && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_bytes_obligation")
 }
 
 test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
