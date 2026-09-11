@@ -152,14 +152,17 @@ fn serving_route_head(group: FabricGroup) -> HostIdentity {
   }
 }
 
-// THE CANARY'S PORT CROSSES ONE WIDTH BOUNDARY AND IT IS CROSSED HERE, ONCE. Its arm declares the
-// port as a Nat; Port is a bounded Int. The conversion is done at this seam rather than at each
-// consumer so there is exactly one place where the canary's spelling meets the corpus's port type,
-// and the range refinement is what checks the result.
+// BOTH ROUTES HAND BACK A Port AND NEITHER CROSSES A WIDTH BOUNDARY TO DO IT. A first spelling of
+// this cast the canary arm's Nat-declared port to Port, and the compiler refused: `cannot cast Int to
+// Port`, five witnesses red. The refusal is correct -- a refinement type is not reachable by casting
+// a value of a different width into it -- and the honest repair was at the declaration rather than at
+// this seam. gunbc.spark.glm_canary_converge now declares that field as the Port it always was, which
+// is the type std.types carries for exactly this fact; its literal 30001 satisfies the range by
+// construction and its two existing consumers only render it.
 fn serving_route_port(group: FabricGroup) -> Port {
   match group {
     FabricGroupA => spark_pair_serve_port
-    FabricGroupB => glm_canary_arm.port as Port
+    FabricGroupB => glm_canary_arm.port
   }
 }
 
