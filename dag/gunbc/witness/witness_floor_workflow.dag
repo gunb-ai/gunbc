@@ -16,7 +16,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { FreeSemigroup, list_append, list_map, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -49,7 +49,11 @@ import extdeps.github.actions {
   CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
   RunnerSpec,
-  checkout_action, setup_rust_action
+  checkout_action, setup_rust_action,
+  github_event_name_pull_request,
+  github_event_name_push,
+  github_event_name_merge_group,
+  github_event_name_workflow_dispatch
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_heal_credential {
@@ -80,7 +84,7 @@ import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_build_outcome_var
 }
 import v2.std.diagnostic { Outcome }
-import std.types { List, String, Int }
+import std.types { Bool, List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
@@ -215,36 +219,167 @@ data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 // admission comparing against a name nothing produces, refusing every candidate forever.
 data witness_floor_workflow_name: String = "witnesses"
 
-// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling 2026-08-17:
-// every push to main must finish; only pull-request runs may be superseded. The predecessor
-// collapsed both axes into one group keyed on `github.ref` with an unconditional `true`, so
-// consecutive pushes to main landed in the single group `witness-floor-refs/heads/main` and each
-// new push killed the previous commit's run -- main's floor coverage was decided by push arrival,
-// the empty-observation narrow section 5 forbids: a cancelled run reports no verdict, and no
-// verdict was being read as nothing to report.
-//
-// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels PENDING
-// runs in a group regardless of that flag -- it only protects a run that has already started -- so
-// a main run queued behind a busy fleet could still be superseded before it executed. The group
-// must therefore be unique per main run, which `github.run_id` gives, and the flag must
-// additionally be false there so the two mechanisms agree rather than one relying on the other.
-//
-// The cost is that N concurrent main runs may execute where one used to. That is the intended
-// trade -- coverage of every landed commit, at fleet occupancy -- and the reason the dep-info race
-// under `target/` is worth identifying before this is widened further.
-//
-// AND QUEUEING IS NOT THE THIRD ARM IT LOOKS LIKE. Sharing one main group with cancellation off
-// makes GitHub QUEUE same-group runs rather than drop them, which reads as coverage without
-// concurrency cost -- but the floor's merge-critical wall runs hours against a main push gap of
-// minutes (run 31672107941, the last main run to complete before the 2026-08-13 measurement), so a
-// queued policy accumulates an unbounded backlog and delivers each verdict long after the commit it
-// judges. A unique key runs them concurrently instead, which is the only arm that yields a verdict
-// per main commit at this arrival rate. This paragraph is carried here because it was the only
-// record of that measurement, and it lived in `gunbc.ci_workflow_expressions` -- a SECOND
-// concurrency authority left behind when the floor cut deleted the workflow it fed. That module's
-// note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
-// its rows are deleted with this one standing as the single authority.
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
+// GROUPING AND RUNNING CANCEL ARE TWO AXES. The 2026-09-10 occupancy ruling supersedes the
+// 2026-08-17 per-main-commit grouping policy (unique github.run_id so every main push finished).
+// PRs group by PR identity; main pushes group by github.ref. GitHub may replace obsolete PENDING
+// members of those mutable-head groups; a replaced pending run is not a green verdict. Running
+// cancellation is derived independently from fleet_compile_cancellation_standing: the live
+// producer-absent standing yields NeverSupersedeRunning, so cancel-in-progress is literal false.
+// merge_group and heal revalidation stay immutable and separately keyed (mg-{sha},
+// heal-{expected_healed_sha}); other dispatch uses run_id.
+fn github_event_name_equals_expr(event: String) -> String {
+  concat(concat("github.event_name == '", event), "'")
+}
+
+type WitnessFloorGroupBranch
+  = ShaAfterEvent { event: String, prefix: String }
+  | NonemptyInputAfterEvent { event: String, input: String, prefix: String }
+  | PrNumberAfterEvent { event: String, prefix: String }
+  | RefAfterEvent { event: String }
+  | RunIdFallback { prefix: String }
+
+fn gha_format_arg0(prefix: String, arg: String) -> String {
+  concat(concat("format('", prefix), concat("{0}', ", concat(arg, ")")))
+}
+
+fn gha_branch_predicate(branch: WitnessFloorGroupBranch) -> String {
+  match branch {
+    ShaAfterEvent { event: e, prefix: p } =>
+      concat(concat(github_event_name_equals_expr(event: e), " && "), gha_format_arg0(prefix: p, arg: "github.sha"))
+    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
+      concat(
+        concat(github_event_name_equals_expr(event: e), concat(" && github.event.inputs.", concat(i, " != '' && "))),
+        gha_format_arg0(prefix: p, arg: concat("github.event.inputs.", i))
+      )
+    PrNumberAfterEvent { event: e, prefix: p } =>
+      concat(concat(github_event_name_equals_expr(event: e), " && "), gha_format_arg0(prefix: p, arg: "github.event.pull_request.number"))
+    RefAfterEvent { event: e } =>
+      concat(github_event_name_equals_expr(event: e), " && github.ref")
+    RunIdFallback { prefix: p } =>
+      gha_format_arg0(prefix: p, arg: "github.run_id")
+  }
+}
+
+fn gha_or_join(acc: String, next: String) -> String {
+  if acc == "" {
+    next
+  } else {
+    concat(concat(acc, " || "), next)
+  }
+}
+
+fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
+  [
+    ShaAfterEvent { event: github_event_name_merge_group, prefix: "mg-" },
+    NonemptyInputAfterEvent {
+      event: github_event_name_workflow_dispatch,
+      input: ci_heal_expected_healed_sha_input_name,
+      prefix: "heal-"
+    },
+    PrNumberAfterEvent { event: github_event_name_pull_request, prefix: "pr-" },
+    RefAfterEvent { event: github_event_name_push },
+    RunIdFallback { prefix: "run-" }
+  ]
+}
+
+fn witness_floor_concurrency_group() -> String {
+  concat(
+    "witness-floor-${{ ",
+    concat(
+      fold_list(
+        xs: witness_floor_group_branches(),
+        empty: "",
+        cons: fn(acc, b) { gha_or_join(acc: acc, next: gha_branch_predicate(branch: b)) }
+      ),
+      " }}"
+    )
+  )
+}
+
+type DispatchInputBinding {
+  name: String
+  value: String
+}
+
+type WitnessFloorGroupFixture {
+  event: String
+  sha: String
+  run_id: String
+  pull_request_number: String
+  github_ref: String
+  dispatch_inputs: List<DispatchInputBinding>
+}
+
+type ChosenGroupSuffix
+  = UnchosenGroupSuffix
+  | ChosenGroupSuffix { value: String }
+
+fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> String {
+  fold_list(
+    xs: bindings,
+    empty: "",
+    cons: fn(acc, b) {
+      if acc != "" {
+        acc
+      } else {
+        if b.name == name {
+          b.value
+        } else {
+          ""
+        }
+      }
+    }
+  )
+}
+
+fn group_branch_matches(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> Bool {
+  match branch {
+    ShaAfterEvent { event: e, prefix: _ } => fx.event == e
+    NonemptyInputAfterEvent { event: e, input: i, prefix: _ } =>
+      fx.event == e && dispatch_input_value(bindings: fx.dispatch_inputs, name: i) != ""
+    PrNumberAfterEvent { event: e, prefix: _ } => fx.event == e
+    RefAfterEvent { event: e } => fx.event == e
+    RunIdFallback { prefix: _ } => true
+  }
+}
+
+fn group_branch_suffix(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> String {
+  match branch {
+    ShaAfterEvent { event: _, prefix: p } => concat(p, fx.sha)
+    NonemptyInputAfterEvent { event: _, input: i, prefix: p } =>
+      concat(p, dispatch_input_value(bindings: fx.dispatch_inputs, name: i))
+    PrNumberAfterEvent { event: _, prefix: p } => concat(p, fx.pull_request_number)
+    RefAfterEvent { event: _ } => fx.github_ref
+    RunIdFallback { prefix: p } => concat(p, fx.run_id)
+  }
+}
+
+fn choose_group_suffix(acc: ChosenGroupSuffix, branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> ChosenGroupSuffix {
+  match acc {
+    ChosenGroupSuffix { value: v } => ChosenGroupSuffix { value: v }
+    UnchosenGroupSuffix =>
+      if group_branch_matches(branch: branch, fx: fx) {
+        ChosenGroupSuffix { value: group_branch_suffix(branch: branch, fx: fx) }
+      } else {
+        UnchosenGroupSuffix
+      }
+  }
+}
+
+fn resolve_witness_floor_group_suffix(fx: WitnessFloorGroupFixture) -> String {
+  match fold_list(
+    xs: witness_floor_group_branches(),
+    empty: UnchosenGroupSuffix,
+    cons: fn(acc, b) { choose_group_suffix(acc: acc, branch: b, fx: fx) }
+  ) {
+    ChosenGroupSuffix { value: v } => v
+    UnchosenGroupSuffix => ""
+  }
+}
+
+fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> String {
+  concat("witness-floor-", resolve_witness_floor_group_suffix(fx: fx))
+}
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
@@ -296,6 +431,7 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 type RunningSupersessionPolicy
   = NeverSupersedeRunning
   | SupersedeRunningForEvent { event: String }
+  | SupersedeMutableHeadRuns
 
 // THE QUEUE AXIS IS THE SECOND HALF OF THE SAME FACT, and omitting it left the classifier carrying
 // a hardcoded copy of today's regime. ConcurrencySpec already distinguishes QueueMax from
@@ -333,7 +469,7 @@ fn running_supersession_for_fleet_standing(
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
-    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+    FleetCancellationSafe { hosts: _ } => SupersedeMutableHeadRuns
   }
 }
 
@@ -350,11 +486,24 @@ fn supersession_event_expression(event: String) -> String {
   concat(concat("${{ github.event_name == '", event), "' }}")
 }
 
+fn is_mutable_ci_head_event(event: String) -> Bool {
+  event == github_event_name_pull_request || event == github_event_name_push
+}
+
+fn mutable_head_runs_cancel_expression() -> String {
+  concat(
+    concat("${{ github.event_name == '", github_event_name_pull_request),
+    concat("' || github.event_name == '", concat(github_event_name_push, "' }}"))
+  )
+}
+
 fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
   match policy {
     NeverSupersedeRunning => CancelInProgressBool { value: false }
     SupersedeRunningForEvent { event: e } =>
       CancelInProgressExpression { expression: supersession_event_expression(event: e) }
+    SupersedeMutableHeadRuns =>
+      CancelInProgressExpression { expression: mutable_head_runs_cancel_expression() }
   }
 }
 
@@ -375,6 +524,8 @@ fn queue_max_cancel_of_policy(policy: RunningSupersessionPolicy) -> CancelInProg
     NeverSupersedeRunning => QueueMaxCancelInProgressFalse
     SupersedeRunningForEvent { event: e } =>
       QueueMaxCancelInProgressExpression { expression: supersession_event_expression(event: e) }
+    SupersedeMutableHeadRuns =>
+      QueueMaxCancelInProgressExpression { expression: mutable_head_runs_cancel_expression() }
   }
 }
 
@@ -2596,7 +2747,7 @@ data witness_floor_workflow: Workflow = {
   concurrency: Present {
     value: concurrency_of_policy(
       policy: witness_floor_concurrency_policy,
-      group: witness_floor_concurrency_group)
+      group: witness_floor_concurrency_group())
   },
   env: Present {
     value: [

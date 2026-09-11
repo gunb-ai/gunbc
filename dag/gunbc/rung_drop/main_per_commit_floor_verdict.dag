@@ -1,0 +1,34 @@
+module gunbc.rung_drop.main_per_commit_floor_verdict
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-09-11 with P0a.1 occupancy grouping (gunbc#10981, review 63340).
+// The 2026-08-17 unique-run_id grouping stated that every push to main must finish, because sharing
+// one main group drops queued observations. The 2026-09-10 occupancy ruling replaces that key with
+// github.ref for push events, so GitHub may replace pending members of the main group. Running
+// cancel stays NeverSupersedeRunning. DESIGN 4b(3) requires the drop row beside the change that
+// lowers the rung.
+
+data main_per_commit_floor_verdict: RungDrop = RungDrop {
+  identity: "main_per_commit_floor_verdict" as NonEmptyStr,
+
+  subject: "every main SHA obtains its own floor/build/native verdict via a unique github.run_id concurrency group",
+
+  declared: "2026-09-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "witness_floor_concurrency_group keys push events by github.ref under the 2026-09-10 occupancy ruling; cancel-in-progress stays false"
+    },
+    population: [
+      "push events on refs/heads/main"
+    ],
+    restoration_trigger: "every superseded pending refs/heads/main SHA receives a terminal adjudication bound to that SHA -- either its affected native subjects execute and pass, or non-affection/coverage by a superseding execution is proved for that SHA. SUFFICIENT FOR: per-commit attribution and bisection grain on main, so a SHA GitHub removed while pending is not silent. P0a.2 is the expected route only if and when it is wired to adjudicate skipped main heads; landing typed affected-set admission that only judges subjects inside a workflow that already executed does not retire this row. Fleet cancellation safety (running_supersession_for_fleet_standing / SupersedeMutableHeadRuns) lives on the running-cancellation axis and does not retire this evidence-grain drop. Re-adding unique run_id to the group string is an artifact and does not discharge the row"
+  }
+}
