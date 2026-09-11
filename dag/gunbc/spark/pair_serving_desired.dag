@@ -2,13 +2,13 @@ module gunbc.spark.pair_serving_desired
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { token_count, percent, Millisecond, millisecond }
+import std.measure { token_count, basis_point, Millisecond, millisecond }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.memory.types { UnifiedShared }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
-  VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+  VllmEngineArgs, VllmMemoryRequest, PrefixCachingExplicit, KvFp8DsMla, ExecutorRay,
   VllmPrefillSchedulingPolicy, ChunkedPrefillRequested, ChunkedPrefillNotRequested,
 }
 import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
@@ -220,6 +220,16 @@ fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
 // THE WINDOW IS DEEPSEEK'S DECLARED CEILING for the same reason. Both models happen to declare
 // 1,048,576, which is exactly what made a transcribed literal survive a model change it was never
 // about; it is derived from the authority of the model this route actually serves.
+// THE SAME 82% THIS ROUTE ALWAYS REQUESTED, NOW IN BASIS POINTS AND IN THE FIELD THE ARGV IS RENDERED
+// FROM. 8200 basis points is exactly the integral 82 percent this carried before, so the request is
+// unchanged; what changed is that omission is now expressible beside it, which is what lets the
+// canary's both-omitted launch live in this same field instead of a parallel carrier.
+//
+// AND DEEPSEEK REQUESTS PREFIX CACHING EXPLICITLY, WHICH I FIRST RECORDED AS AN OMISSION. Its
+// realization renders a literal `--enable-prefix-caching` into the launch line, so `Omitted` would
+// have been a model that disagreed with the argv beside it -- the same class of defect this change
+// exists to remove, introduced while removing it. The rendered flag is the evidence and it is now
+// derived from this field rather than spelled at the launch site.
 fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
     prefill_scheduling: Present {
@@ -229,7 +239,11 @@ fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> Vl
       },
     },
     tensor_parallel_size: tensor_parallel,
-    gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
+    memory_request: VllmMemoryRequest {
+      utilization: Present { value: basis_point(count: 8200) },
+      kv_cache_bytes: none,
+    },
+    prefix_caching_request: PrefixCachingExplicit { enabled: true },
     max_model_len: deepseek_v4_context_length,
     max_num_seqs: max_num_seqs,
     kv_cache_dtype: KvFp8DsMla,

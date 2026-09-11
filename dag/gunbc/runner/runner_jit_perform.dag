@@ -1,0 +1,268 @@
+module gunbc.runner.runner_jit_perform
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.github.app { GitHubAppInstallationId }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_jit_runner {
+  JitRunnerConfigRequest, JitRunnerGroupId, JitRunnerLabel, EncodedJitConfig,
+  JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused, JitConfigMintNotFound,
+  JitConfigMintConflict, JitConfigMintValidationFailed,
+}
+import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential {
+  GitHubCredentialAuthority, ActionsJobCredential, ManagedAppInstallationCredential,
+  CredentialCapability,
+}
+import gunbc.runner.runner_jit_admission { JitAdmissionAxisStanding }
+import gunbc.runner_microvm_attempt { MicroVmAttempt, MicroVmCellBinding }
+import gunbc.runner_jit_mint {
+  JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
+  JitMintRefusedAttemptUnbound, plan_jit_mint,
+}
+
+data runner_jit_perform_disposition: Disposition = SingleAuthority
+
+// THIS MODULE IS THE NAMED CONSUMER OF gunbc.runner_jit_mint.plan_jit_mint, and landing it is what
+// deleted that module's consumer frontier. It performs no I/O and claims none: the two folds below
+// sit on either side of a transport this repository does not yet have, and the frontier at the foot
+// of this module says so rather than letting a green witness read as a working mint.
+//
+// THE DIRECTION IS PUSH, AND THAT IS THE WHOLE POINT OF SPLITTING THE FOLD IN TWO.
+//
+// The gap this addresses (gunbc#10733) is that a host fetches its JIT config from an endpoint on
+// the segment, so whichever host reaches it first takes the registration. The repair is not a better
+// endpoint: it is that no endpoint exists to ask. A credential is minted control-plane-side, against
+// a cell whose ownership was already proven, and its only destination is the drive path the proving
+// arm itself named.
+//
+// So the ordering has to be unwritable rather than documented. dispatch_jit_mint is the only way to
+// obtain a JitMintDispatchAuthorized, and it produces one only from JitMintAuthorized -- which
+// gunbc.runner_jit_mint produces only after BOTH cell ownership and the credential's organization
+// self-hosted-runners write capability hold. receive_jit_mint then requires that value to reach a
+// delivered credential. A caller therefore cannot mint first and prove ownership afterwards: the
+// value that names where the credential may go does not exist until both facts are established.
+//
+// A SINGLE FOLD TAKING THE MINT OUTCOME AS A PARAMETER WOULD HAVE INVERTED EXACTLY THAT. Its
+// caller would have had to call GitHub before the fold ran, which is mint-first-check-after with
+// the check moved after the spend -- the ordering gunbc.runner_jit_mint exists to make unwritable.
+//
+// THE INSTALLATION TOKEN IS NAMED, NEVER CARRIED. The dispatch holds the URL that mints the
+// installation access token and does not hold the token; nothing in this module has a field a
+// bearer secret could occupy. gunbc.credential_argv_exposure measures what this fleet already paid
+// for rendering a credential into a place other processes can read, and a token field here would be
+// that class re-opened one layer up from the argv it warns about.
+
+// WHY THE REFUSALS ARE RE-PROJECTED RATHER THAN PASSED THROUGH AS A JitMintPlan.
+//
+// The decision stays in gunbc.runner_jit_mint and is not re-derived here -- these arms report which
+// PLANNED refusal stopped the push, carrying that arm's own payload unchanged. Passing the plan
+// itself would make JitMintAuthorized representable inside a value whose name says nothing was
+// dispatched, which is a writable contradiction (DESIGN §4b). The projection is produced by an
+// exhaustive match on JitMintPlan, so a new plan arm fails to compile here rather than falling into
+// a default that silently reports the wrong cause.
+type JitDispatchRefusal
+  = DispatchRefusedCellNotOwned { cause: String }
+  | DispatchRefusedCredential {
+      organization: NonEmptyStr
+      unsatisfied: List<CredentialCapability>
+    }
+  | DispatchRefusedAttemptUnbound { cause: String }
+  | DispatchRefusedNoInstallationCredential { cause: String }
+
+// THE FOURTH REFUSAL IS A TOTALITY ARM AND IS DELIBERATELY NOT ENROLLED AS COVERAGE.
+//
+// The mint is the two-step App path gunbc.runner.runner_jit_admission names: an installation access
+// token, then generate-jitconfig with it. Step one presupposes an INSTALLATION, and the fold must
+// say what it does when the authorized credential names none -- so the arm exists, and it refuses
+// rather than reaching for some other credential, which would be the absorbing fallback DESIGN §5
+// forbids and would put a job-scoped token where an installation token belongs.
+//
+// NO WITNESS ASSERTS IT, BECAUSE NO INPUT REACHES IT. The only authority without an installation is
+// ActionsJobCredential, and extdeps.github.actions_token maps OrganizationSelfHostedRunnersAxis to
+// IntrinsicTokenGrantAbsent, hence ActionsGrantScopeUnavailable and CredentialKindCannotSatisfy --
+// so such a credential is refused by plan_jit_mint's own credential join before this branch is
+// reached, for every input including a fixture's. DESIGN §4b says to ask whether a check's RED is
+// authorable BEFORE writing the check: this one's is not authorable anywhere the check can run, so
+// a witness over it would be permanently green by construction and worse than absent, because it
+// would be cited as coverage. It is recorded here as a totality arm and counted as none.
+type JitMintDispatch
+  = JitMintDispatchAuthorized {
+      attempt: MicroVmAttempt
+      installation_token_url: String
+      endpoint_path: String
+      request: JitRunnerConfigRequest
+      drive_destination: String
+    }
+  | JitMintDispatchRefused { refusal: JitDispatchRefusal }
+
+fn authority_installation(authority: GitHubCredentialAuthority) -> GitHubAppInstallationId? {
+  match authority {
+    ActionsJobCredential { grant: _ } => none
+    ManagedAppInstallationCredential { app: _, installation: i, profile: _ } => Present { value: i }
+  }
+}
+
+fn dispatch_jit_mint(
+  binding: MicroVmCellBinding,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+  organization: GitHubOrganizationRef,
+  runner_group_id: JitRunnerGroupId,
+  labels: List<JitRunnerLabel>,
+  attempt_binding: JitAdmissionAxisStanding
+) -> JitMintDispatch {
+  match plan_jit_mint(
+    binding: binding,
+    authority: authority,
+    control_plane: control_plane,
+    organization: organization,
+    runner_group_id: runner_group_id,
+    labels: labels,
+    attempt_binding: attempt_binding,
+  ) {
+    JitMintRefusedCellNotOwned { cause: c } =>
+      JitMintDispatchRefused { refusal: DispatchRefusedCellNotOwned { cause: c } }
+    JitMintRefusedAttemptUnbound { cause: c } =>
+      JitMintDispatchRefused { refusal: DispatchRefusedAttemptUnbound { cause: c } }
+    JitMintRefusedCredential { organization: org, unsatisfied: u } =>
+      JitMintDispatchRefused {
+        refusal: DispatchRefusedCredential { organization: org, unsatisfied: u },
+      }
+    JitMintAuthorized {
+      attempt: attempt,
+      endpoint_path: path,
+      request: request,
+      drive_destination: destination,
+    } =>
+      match authority_installation(authority: authority) {
+        Absent =>
+          JitMintDispatchRefused {
+            refusal: DispatchRefusedNoInstallationCredential {
+              cause: "the authorized credential names no App installation, so no installation access token can be minted and the two-step generate-jitconfig path cannot be taken",
+            },
+          }
+        Present { value: installation } =>
+          JitMintDispatchAuthorized {
+            attempt: attempt,
+            installation_token_url: github_app_installation_access_token_url(
+              installation_id: installation.value,
+            ),
+            endpoint_path: path,
+            request: request,
+            drive_destination: destination,
+          }
+      }
+  }
+}
+
+// THE DELIVERY IS WHERE THE CREDENTIAL AND ITS DESTINATION BECOME INSEPARABLE.
+//
+// An EncodedJitConfig is obtainable from this module only alongside the drive path the ownership
+// proof produced, so there is no value here that hands a caller a credential it may send anywhere
+// it likes. That is the structural form of "there is no endpoint a host may ask": the credential is
+// not addressable independently of the attempt it belongs to.
+//
+// THE NOT-CREATED ARM CARRIES GitHub's OWN OUTCOME VALUE UNCHANGED. Re-coining upstream's four
+// failure shapes here would be a second authority for what GitHub answered (DESIGN §3), and those
+// shapes are upstream's to change. The cost is stated rather than hidden: JitConfigMinted is
+// representable inside an arm whose name says nothing was created. This fold never constructs that
+// state -- the match below sends every minted outcome to the delivered arm -- so the class sits at
+// mitigatable, and its next-rung trigger is a substrate capability for naming a sum minus one of
+// its arms, which does not exist today. Duplicating the vocabulary to reach rung four would trade a
+// state no fold writes for a fork that drifts.
+type JitCredentialDelivery
+  = JitCredentialBoundToDrive {
+      attempt: MicroVmAttempt
+      drive_destination: String
+      credential: EncodedJitConfig
+      runner_id: Int
+    }
+  | JitCredentialNotDispatched { refusal: JitDispatchRefusal }
+  | JitCredentialMintNotCreated { outcome: JitConfigMintOutcome }
+
+fn receive_jit_mint(
+  dispatch: JitMintDispatch,
+  outcome: JitConfigMintOutcome
+) -> JitCredentialDelivery {
+  match dispatch {
+    JitMintDispatchRefused { refusal: r } => JitCredentialNotDispatched { refusal: r }
+    JitMintDispatchAuthorized {
+      attempt: attempt,
+      installation_token_url: _,
+      endpoint_path: _,
+      request: _,
+      drive_destination: destination,
+    } =>
+      match outcome {
+        JitConfigMinted { config: config, runner_id: runner_id } =>
+          JitCredentialBoundToDrive {
+            attempt: attempt,
+            drive_destination: destination,
+            credential: config,
+            runner_id: runner_id,
+          }
+        JitConfigMintRefused { status: s, reason: reason } =>
+          JitCredentialMintNotCreated {
+            outcome: JitConfigMintRefused { status: s, reason: reason },
+          }
+        JitConfigMintNotFound { reason: reason } =>
+          JitCredentialMintNotCreated { outcome: JitConfigMintNotFound { reason: reason } }
+        JitConfigMintConflict { reason: reason } =>
+          JitCredentialMintNotCreated { outcome: JitConfigMintConflict { reason: reason } }
+        JitConfigMintValidationFailed { reason: reason } =>
+          JitCredentialMintNotCreated {
+            outcome: JitConfigMintValidationFailed { reason: reason },
+          }
+      }
+  }
+}
+
+fn jit_credential_delivered(delivery: JitCredentialDelivery) -> Bool {
+  match delivery {
+    JitCredentialBoundToDrive {
+      attempt: _,
+      drive_destination: _,
+      credential: _,
+      runner_id: _,
+    } => true
+    JitCredentialNotDispatched { refusal: _ } => false
+    JitCredentialMintNotCreated { outcome: _ } => false
+  }
+}
+
+// §3c: THESE FOLDS ARE NOT EXECUTED BY PRODUCTION, AND SAYING SO IS THE POINT OF THIS ROW.
+//
+// What stands between them is a transport: nothing in gunbc performs a GitHubEffect. A census of
+// the corpus finds GitHubEffect in exactly two places -- gunbc.auth.github_credential, which
+// decides authorization, and gunbc.runner_jit_mint, which plans -- and no realization anywhere
+// posts either step of this path. So the witnesses enrolled for this module are FIXTURE-ONLY and
+// establish the fold's discrimination, never that a credential has ever been minted this way.
+//
+// The trigger names the CAPABILITY rather than an artifact, because a trigger naming less than the
+// capability is satisfied while the capability stays dead (DESIGN §4b(3)). What is required is a
+// realization that PERFORMS a GitHubEffect and returns its typed outcome, sufficient for
+// receive_jit_mint to be reached with a JitConfigMintOutcome that GitHub produced. A curl argv is
+// not that capability and would not discharge this row: the installation token would ride in an
+// argv, which is the exposure gunbc.credential_argv_exposure already measures, so the effect
+// realization this names is blocked behind the declared input TYPE on v2.std.operation_argv
+// ShellTransportOperationRow that extdeps.github.actions_jit_runner names for the same reason.
+data jit_mint_effect_transport_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a realization that performs a GitHubEffect and returns JitConfigMintOutcome, reaching receive_jit_mint with an outcome GitHub produced. TRIGGER: that realization exists and this module's delivery is executed through it. SUFFICIENT FOR deleting this row. NOT satisfied by a witness, nor by an argv-rendered token, which re-opens gunbc.credential_argv_exposure." as NonEmptyStr)
+
+// §3c: THE HOST-SIDE FETCH IS STILL STANDING AND THIS CHANGE DID NOT DELETE IT.
+//
+// An inverted push with the pull still reachable is TWO authorities for one credential, and the
+// segment race survives in the one that is still answerable -- so this row exists to keep the
+// deletion countable rather than to imply it happened. It was not attempted here because the fetch
+// has no subject in source control: docs/plans/microvm-launch-displacement-analysis.md establishes,
+// by a code search carried with a positive control and a per-repository reachability control, that
+// the Mt. Collins host boot script is authored in no repository. It exists as bytes inside a host
+// image under the store gunbc.runner.runner_host_image_store records as not resilient, with no
+// source to rebuild it from, and that document routes recovering it to the operator as an
+// accepted-risk decision rather than a lane's choice.
+//
+// So the trigger is the recovery, not this module: no amount of pushing closes a pull that is still
+// listening.
+data host_side_jit_fetch_deletion_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED SUCCESSOR: the Mt. Collins host boot path stops fetching a JIT credential, and no endpoint on the segment serves one. TRIGGER: the boot script is recovered into source control and the fetch is deleted from it, SUFFICIENT FOR the pull surface being gone rather than merely unused. NOT satisfied by this module's push existing beside it." as NonEmptyStr)

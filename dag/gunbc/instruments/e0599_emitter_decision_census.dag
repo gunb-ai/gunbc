@@ -133,7 +133,7 @@ data e0599_im_vector_inherent_impl: E0599ExternalAuthority = E0599ExternalAuthor
   crate_version: "15.1.0",
   impl_site: "im::vector impl<A: Clone> Vector<A> (src/vector/mod.rs:180)",
   impl_bound: "impl<A: Clone> Vector<A>",
-  member_site: "im::vector Vector::is_empty | Vector::iter",
+  member_site: "im::vector Vector::is_empty | Vector::skip",
   cited_upstream: Absent,
 }
 
@@ -181,11 +181,11 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
     ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
     source_construct: "match over the FreeMonoid coproduct — the Cons { tail } binding",
     emitter_authority: "v1.compiler.emit_rust freemonoid_tail_let_from_fm",
-    emitted_literal: "let <tail>: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ",
+    emitted_literal: "let <tail>: Rc<Vec<_>> = Rc::new(__fm.skip(1)); ",
     cause: TargetApiRequirement,
     required_trait: "Clone",
     authority: e0599_im_vector_inherent_impl,
-    rationale: "iter() is in the same impl<A: Clone> block as is_empty. rustc reports the failure at .iter() and never reaches the .cloned() that follows it, so this site MASKS a co-located OwnedDeconstructionRequirement on the same expression; both discharge on the same A: Clone, but B1 must not read this row as evidence that the tail extract needs no owned element.",
+    rationale: "skip() is in the same impl<A: Clone> block as is_empty (it is self.clone().split_off(count)), so the bound survives the 2026-09-09 relowering; what that relowering removed was the O(n) tail MATERIALIZATION the old iter().skip(1).cloned().collect() site paid per cons-match — measured quadratic on the required-v2-native lane's whole-corpus lex fold (22KB file: 23.3s; 899B file: 70ms). The structural skip is O(log n) and shares the RRB tree, so the tail binding is now the read the source construct always was.",
   },
   E0599LoweringRow {
     operation: FreeMonoidHeadExtract,
@@ -284,7 +284,7 @@ fn e0599_receiver_is_field_access(receiver_expr: String) -> Bool {
 fn e0599_lowering_operation_for(method: String, receiver_expr: String) -> E0599LoweringOperation {
   if method == "is_empty" && receiver_expr == "__fm" {
     FreeMonoidEmptyTest
-  } else if method == "iter" && receiver_expr == "(*__fm)" {
+  } else if method == "skip" && receiver_expr == "__fm" {
     FreeMonoidTailIterate
   } else if method == "clone" && receiver_expr == "(*__fm)[0]" {
     FreeMonoidHeadExtract

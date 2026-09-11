@@ -578,7 +578,7 @@ pub struct CanonKey {
 }
 
 impl CanonKey {
-    fn new(key: Value) -> Option<CanonKey> {
+    pub(crate) fn new(key: Value) -> Option<CanonKey> {
         if key.is_reflexive() {
             Some(CanonKey { key })
         } else {
@@ -800,7 +800,7 @@ pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> St
     "termination unobserved".to_string()
 }
 
-fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
+pub(crate) fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
 }
 
@@ -10370,7 +10370,7 @@ macro_rules! v1_algebra_method_arms {
                 // String-straddle wall (`string_realization_straddle_detail`'s `Value::List`
                 // exemption). Closed by regrounding `Char`/codepoint-sequence so the realization
                 // is distinguishable (grounding root, sibling #5428).
-                let s = expect_str(Some(&$receiver), "chars")?;
+                let s = expect_str_free_monoid(Some(&$receiver), "chars")?;
                 let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
                 Ok(list_value(items))
             },
@@ -19654,6 +19654,107 @@ mod native_len_tests {
     }
 }
 
+#[cfg(test)]
+mod chars_receiver_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    use super::{
+        expect_str_free_monoid, list_value, str_value, with_active_context, ExecutionMode,
+        InterpContext, InterpError, Value,
+    };
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn empty_string(ctx: &InterpContext) -> Value {
+        Value::Variant {
+            type_name: ctx.sym("String"),
+            variant_name: ctx.sym("Empty"),
+            fields: Rc::new(vec![]),
+        }
+    }
+
+    fn cons_string(ctx: &InterpContext, text: &str) -> Value {
+        let mut cur = empty_string(ctx);
+        for cp in text.chars().rev() {
+            cur = Value::Variant {
+                type_name: ctx.sym("String"),
+                variant_name: ctx.sym("Cons"),
+                fields: Rc::new(vec![
+                    (ctx.sym("head"), Value::Int(cp as i64)),
+                    (ctx.sym("tail"), cur),
+                ]),
+            };
+        }
+        cur
+    }
+
+    #[test]
+    fn chars_receiver_grounds_every_string_realization() {
+        let ctx = fresh_ctx();
+        with_active_context(&ctx, || {
+            assert_eq!(
+                expect_str_free_monoid(Some(&str_value("ab")), "chars").unwrap(),
+                "ab"
+            );
+            assert_eq!(
+                expect_str_free_monoid(Some(&empty_string(&ctx)), "chars").unwrap(),
+                ""
+            );
+            assert_eq!(
+                expect_str_free_monoid(Some(&cons_string(&ctx, "hé")), "chars").unwrap(),
+                "hé"
+            );
+        });
+    }
+
+    #[test]
+    fn chars_receiver_still_refuses_non_strings() {
+        let ctx = fresh_ctx();
+        // A Cons chain whose head is not a codepoint is not a String.
+        let non_codepoint_chain = Value::Variant {
+            type_name: ctx.sym("String"),
+            variant_name: ctx.sym("Cons"),
+            fields: Rc::new(vec![
+                (ctx.sym("head"), str_value("x")),
+                (ctx.sym("tail"), empty_string(&ctx)),
+            ]),
+        };
+        // An unrelated variant is not an Empty/Cons chain at all.
+        let optional_some = Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Some"),
+            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(65))]),
+        };
+        with_active_context(&ctx, || {
+            for v in [
+                list_value(vec![Value::Int(97)]),
+                non_codepoint_chain,
+                optional_some,
+                Value::Int(97),
+            ] {
+                let err = expect_str_free_monoid(Some(&v), "chars").unwrap_err();
+                assert!(
+                    matches!(err, InterpError::TypeError { .. }),
+                    "expected TypeError, got {err:?}"
+                );
+            }
+        });
+    }
+}
+
 // The well-known free-monoid encoding symbols. Pre-interned at context construction
 // (`over_scope_indexes`) so a lookup for any of them can never miss -- see
 // `free_monoid_ctx_syms` for why a miss must not be possible, only detected.
@@ -19943,6 +20044,19 @@ fn expect_str(val: Option<&Value>, context: &str) -> InterpResult<String> {
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a string argument", context),
         }),
+    }
+}
+
+/// Like `expect_str`, but grounds a modeled String first: a String reaches a consumer in any
+/// of its realizations — native `Str`, `Empty`/`Cons` codepoint chain, or a compacted mix —
+/// and `free_monoid_to_string` already decides which values ARE strings (a generic
+/// `Value::List` and a non-codepoint chain are not, and keep `expect_str`'s typed refusal).
+/// `length`/`fold_list` already read every realization through `free_monoid_to_vec`; this is
+/// the same realization-agnosticism for a consumer that needs the codepoints as one string.
+fn expect_str_free_monoid(val: Option<&Value>, context: &str) -> InterpResult<String> {
+    match val.and_then(free_monoid_to_string) {
+        Some(s) => Ok(s),
+        None => expect_str(val, context),
     }
 }
 

@@ -2,10 +2,14 @@ module extdeps.colo.netrality
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { FreeSemigroup }
 import std.measure { watt }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, PublishedRealPower,
+  CabinetDensityClaim, DensityPublished, PublishedDensityFigure, PublishedRealPower,
+  FigureVerificationStanding, WordingVerbatim,
+  CoolingMediumStanding, CoolingMediumUnspecified,
+  PublishedPowerQuantity, MarketedAtMost,
   RetailGrainStanding, SingleCabinetOffered,
 }
 
@@ -54,10 +58,29 @@ data netrality_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // same figure Iron Mountain NJE-1 markets across the river. Read against a fleet drawing 650 W per
 // node, one such cabinet holds the whole fleet with room over, so the constraint moves off density
 // entirely and onto what a 30 kW cabinet costs - which this operator does not publish.
-data netrality_401_n_broad_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 30000) },
-  claim_wording: "Cabinet density up to 30kW",
-  citation: "netrality.com Philadelphia colocation page, read 2026-09-08 and RE-READ AS RAW BYTES 2026-09-09 (curl, HTTP 200, 757,846 bytes) under a subject control: 'Philadelphia' occurs 57 times and 'cabinet' 20 times, so the instrument reached this facility's own surface, and 'kW' occurs exactly once - this cell. WORDING: 'Cabinet density up to 30kW' occurs verbatim as ONE contiguous <p> inside ONE <li>, so it is an authored cell rather than adjacent cells fused, and nothing is truncated off it. SCOPE: the nearest headings above it in byte order are '401 N Broad' and 'Philadelphia Colocation Specifications', and the served bytes contain NO promotional or limited-time banner anywhere before it, so the figure belongs to this facility and not to another metro's offer. The page says kW, so this is REAL power and takes the PublishedRealPower arm; had it said kVA no conversion would have been possible. No liquid-cooled figure is stated, so the air-only arm carries it, and 'up to' makes this a marketed ceiling rather than a per-cabinet commitment.",
+// THE MEDIUM CHANGED IN THE CARRIER MIGRATION AND THE PAGE DID NOT. This row carried the air-only arm,
+// and its citation used to state the reason in the evidence payload itself: that no liquid-cooled
+// figure was stated, so the air-only arm carried it. That sentence is DELETED rather than merely
+// contradicted here, because a reader or renderer quoting the citation would otherwise still be told
+// the retracted inference. That inference is the defect the medium coordinate exists to remove - ABSENCE OF A
+// LIQUID FIGURE DOES NOT ESTABLISH AIR-COOLED CAPABILITY, and it fails in the admitting direction, so a
+// 30 kW electrical claim would have satisfied a requirement for a 30 kW AIR-COOLED cabinet on evidence
+// that never mentioned cooling. The page says "Cabinet density up to 30kW" and names no medium; the row
+// now says the same. Nothing about the reading changed - the figure, the wording, the byte-level
+// verification and the "up to" ceiling are all exactly as read. Only the inference is gone.
+data netrality_401_n_broad_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 30000) } },
+      wording: "Cabinet density up to 30kW",
+      citation: "netrality.com Philadelphia colocation page, read 2026-09-08 and RE-READ AS RAW BYTES 2026-09-09 (curl, HTTP 200, 757,846 bytes) under a subject control: 'Philadelphia' occurs 57 times and 'cabinet' 20 times, so the instrument reached this facility's own surface, and 'kW' occurs exactly once - this cell. WORDING: 'Cabinet density up to 30kW' occurs verbatim as ONE contiguous <p> inside ONE <li>, so it is an authored cell rather than adjacent cells fused, and nothing is truncated off it. SCOPE: the nearest headings above it in byte order are '401 N Broad' and 'Philadelphia Colocation Specifications', and the served bytes contain NO promotional or limited-time banner anywhere before it, so the figure belongs to this facility and not to another metro's offer. The page says kW, so this is REAL power and takes the PublishedRealPower arm; had it said kVA no conversion would have been possible. NO COOLING MEDIUM IS NAMED ANYWHERE ON THE PAGE, so the medium is unspecified and this figure answers no air or liquid question; 'up to' makes it a marketed ceiling rather than a per-cabinet commitment.",
+      verification: WordingVerbatim {
+        retrieval: "Raw-byte re-read 2026-09-09 (curl, HTTP 200, 757,846 bytes) under a subject control, with the wording confirmed as one contiguous <p> inside one <li> rather than adjacent cells fused. That is the strongest retrieval standing in this census and is why this row is verbatim rather than summarized.",
+      },
+    },
+    tail: [],
+  },
 }
 
 data netrality_401_n_broad_retail_grain: RetailGrainStanding = SingleCabinetOffered {

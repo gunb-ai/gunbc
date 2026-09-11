@@ -1,5 +1,12 @@
 module product.fabric.grant_issue
 
+import product.fabric.provider_route { provider_route_eq }
+import product.fabric.provider_admission {
+  permit_standing, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
+  PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+  ProviderUsePermit, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  ProviderUseRefusal,
+}
 import std.types { NonEmptyStr, List, Int, Timestamp }
 import std.measure { Measure }
 import std.nat { Nat }
@@ -78,6 +85,36 @@ import extdeps.accounting.encumbrance {
 // the cross-principal refusal. Two tenants who chose the same work key are two identities, and
 // nothing in this module can compare the key half alone.
 
+// A PERMIT IS ABOUT A USE, NOT A ROUTE, SO IT IS BOUND TO THE WORK AND THE DEMAND TOO.
+// product.fabric.provider_admission admits a route FOR a customer profile and a data-handling
+// profile, and both are properties of the WORK. A permit checked only against the offer and the
+// route would therefore authorise work B under the scope that was admitted for work A: the
+// customer and data class actually executing would not be the ones anybody admitted, which is
+// precisely the fabricated authority this module exists to refuse. It was also a section 3c defect
+// in the plainest form - permit.work and permit.demand were carried on the permit and read by
+// nothing, so the two fields recording WHAT was admitted could disagree with what ran and no
+// executed path could tell.
+//
+// THE PERMIT ARMS ARE WIRING FAULTS, AND THERE IS DELIBERATELY NO "no permit" ARM.
+// PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork and
+// PermitNamesAnotherDemand all describe a REAL permit presented about the wrong subject, and the
+// remedy is at the call site.
+//
+// A ProviderUseNotAdmitted arm stood here briefly and has been DELETED, because issue_grant takes
+// a permit and therefore cannot construct it: no producer in this corpus can inhabit it. It was
+// kept for one revision on the claim that the issuance witness exercised it, and that claim was
+// FALSE - the witness held it only as a fold init over a permit list the fixture always filled, so
+// the value was constructed and never reached, which is the unreachable-seed defect this module's
+// neighbours spent three review rounds removing. Keeping it would have been decoration later cited
+// as coverage (DESIGN section 4b), the same reason TransferOrLocationUnresolved and
+// ProviderAccessPathUnsupported were deleted from provider_admission rather than left standing.
+//
+// Absence of a permit is therefore not spelled as a refusal here. It is the caller's fact: a
+// resolver that looks for an admitted permit and finds none has nothing to hand issuance, so it
+// never calls it. The issuance witness models exactly that by returning an EMPTY LIST, which is the
+// idiom product.fabric.selection's witness already uses for a helper that cannot invent a value on
+// a refusal arm. If a production resolver ever needs to REPORT that absence in this vocabulary, the
+// arm returns with a producer and a red on the same commit.
 type GrantIssueRefusal<P, Q, S>
   = AttemptNamesAnotherWork {
       attempt_work: FabricIdentity<P, WorkKey>,
@@ -96,6 +133,19 @@ type GrantIssueRefusal<P, Q, S>
   | GrantAlreadyIssuedForAttempt { existing: FabricIdentity<P, GrantKey> }
   | MoneyReservationRefused { refusal: MoneyRefusal }
   | ResourceReservationRefused { refusal: EncumbranceRefusal<Q, S> }
+  | PermitNamesAnotherOffer {
+      offer: FabricIdentity<P, OfferKey>,
+      permit_names: FabricIdentity<P, OfferKey>,
+    }
+  | PermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
+  | PermitNamesAnotherWork {
+      permit_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | PermitNamesAnotherDemand {
+      permit_demand: FabricIdentity<P, DemandKey>,
+      subject_demand: FabricIdentity<P, DemandKey>,
+    }
 
 // BOTH LEDGERS ADMIT OR NEITHER COMMITMENT IS VISIBLE.
 //
@@ -339,10 +389,29 @@ type GrantIssue<P, Q, S>
 // ReservationRefs while the cell actuator needs a slot key, and nothing relates the two. Issuance
 // does not need that relation -- it MINTS the reference rather than interpreting one -- which is
 // why the kernel could land without it.
+// ISSUANCE TAKES THE PERMIT EXPLICITLY, AND DELIBERATELY NOT A CandidateOffer.
+//
+// The provider-use wall put the permit inside the sealed CandidateOffer so selection cannot RANK an
+// offer nobody admitted. Issuance took a bare SupplierOffer, so that wall stood on one path while
+// the other stayed open, and a wall with a way around it is not a wall. The obvious repair is to
+// take a CandidateOffer here - and residual capability ONE above rules that out in advance, for a
+// reason worth restating rather than stepping around: bind_candidate seals only that an offer and
+// its dispatch observations name the SAME offer, so it constructs a CandidateOffer for ANY
+// identity-consistent candidate, which is the PRE-SELECTION BOUND INPUT to the fold and not its
+// winner. Naming it here would be a trigger satisfied while the defect stood - exactly DESIGN
+// section 4b(3)'s rule that a trigger naming less than the capability it restores gets retired
+// while the capability stays dead. Capability ONE is untouched by this change and remains open.
+//
+// So the permit arrives as its own parameter and answers only its own question. It cannot be
+// forged: ProviderUsePermit is sole_constructor, so the only permit a caller can pass is one
+// admit_provider_use actually produced. The two refusals below check that the permit the caller
+// brought is about THIS offer and THIS route, which is the same wiring fault bind_candidate
+// refuses, caught at the second entrance.
 fn issue_grant<P, Q, S>(
   work: Work<P>,
   attempt: Attempt<P>,
   offer: SupplierOffer<P>,
+  permit: ProviderUsePermit<P>,
   outstanding: List<ExecutionGrant<P>>,
   account: MoneyAccount,
   money_request: MoneyReservationRequest,
@@ -363,6 +432,17 @@ fn issue_grant<P, Q, S>(
       refusal: AttemptPrincipalIsNotTheWorkPrincipal { attempt: attempt.id, subject_work: work.id },
     }
   } else {
+    match permit_standing(
+      permit: permit, offer: offer.id, route: offer.route, demand: demand, work: work.id) {
+    PermitNamesAnotherOfferThan { permit_names: n } =>
+      GrantRefused { refusal: PermitNamesAnotherOffer { offer: offer.id, permit_names: n } }
+    PermitNamesAnotherRouteThan =>
+      GrantRefused { refusal: PermitNamesAnotherRoute { offer: offer.id } }
+    PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+      GrantRefused { refusal: PermitNamesAnotherWork { permit_work: pw, subject_work: sw } }
+    PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+      GrantRefused { refusal: PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } }
+    PermitAuthorizesUse =>
     let fungibility = offer_fungibility_for(requirements: work.requirements, offer: offer)
     match fungibility {
       TrustDomainMismatch { required: _, offered: _ } =>
@@ -434,18 +514,15 @@ fn issue_grant<P, Q, S>(
           }
         }
     }
+    }
   }
 }
 
-// DECLARED FRONTIER (DESIGN 3c). grant_authorizes_reservation has NO production consumer in this
-// change: its only caller is test.claim.fabric_grant_authorization_witness, which exercises it
-// rather than asserting it exists. NAMED CONSUMER: the FCI-3 executor, whose exit predicate in
-// gunbc.fabric_ci_program is that a persistent executor re-reads the committed Grant before
-// starting and that an absent, corrupt or expired Grant yields zero target processes -- this rule
-// is the agreement half of that re-read. TRIGGER, stated because a frontier without one is a
-// dangling declaration: the rule stays uncalled until FCI-3 lands an executor that re-reads a
-// committed grant. It is homed here, beside issue_grant, so that consumer imports one fabric
-// module rather than reaching into a runner-layer module for fabric vocabulary.
+// DECLARED FRONTIER (DESIGN 3c). grant_authorizes_reservation is consumed by
+// gunbc.runner_attempt_launch plan_attempt_launch, which is the agreement half of FCI-3's
+// re-read: an absent, corrupt, or disagreeing Grant yields zero jailer argv. The durable
+// re-read from fabric_allocation_store remains a frontier of that same launch until the store
+// carries grant facts; this rule stays the agreement counterpart of issue_grant.
 
 // THE AGREEMENT COUNTERPART OF issue_grant, HOMED BESIDE THE ISSUER RATHER THAN AT A CONSUMER.
 // A grant that fences money proves the money; it proves nothing about WHICH execution was

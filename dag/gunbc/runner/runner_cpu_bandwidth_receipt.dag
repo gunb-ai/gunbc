@@ -1,6 +1,9 @@
 module gunbc.runner.runner_cpu_bandwidth_receipt
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
+import gunbc.runner.runner_guest_egress_attempt {
+  cpu_bound_write_refused, CpuBoundStanding, CpuBoundInterfacePresent,
+}
 
 // cpu.max NOW EXISTS ON THE ATTEMPT CGROUP, and that is a smaller claim than it sounds.
 // It gets its own module rather than a paragraph in the egress receipt because it rode the SAME
@@ -26,18 +29,14 @@ data cause_established: NonEmptyStr = "CONFIG_CFS_BANDWIDTH was unset, so cpu.ma
 
 // ── what the run shows ─────────────────────────────────────────────────────────────────────────
 
-type CpuBoundStanding
-  = CpuBoundInterfacePresent { value: NonEmptyStr, what_this_does_not_show: NonEmptyStr }
-  | CpuBoundEnforcementObserved { evidence: NonEmptyStr }
-  | CpuBoundAbsent { errno: NonEmptyStr }
-
-// A FILE THAT ACCEPTS A WRITE AND READS THE VALUE BACK IS AN INTERFACE, NOT A BOUND. Every previous
-// receipt in this lane that stopped at a successful read was later found to have proven less than
-// it claimed, and the cgroup-placement bug was exactly that shape: the forward read agreed with the
-// intent while the reverse read named init sitting in the leaf.
+// CpuBoundStanding lives on the attempt receipt. This row is the later standing on
+// filtered-egress-4: the interface exists; enforcement does not. It is not derived from
+// the earlier cgroup-placement run (that run's cpu bound was written and unread). 
+// cpu_bound_write_refused is the EPERM this rebuild closes.
 data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
   value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
   what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
+  closed_a_prior_refusal: cpu_bound_write_refused,
 }
 
 // THE NEXT RUNG IS ONE CONTROLLED LOAD, and it is named so this does not sit at the interface tier
@@ -47,6 +46,6 @@ data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
 data next_rung_trigger: NonEmptyStr = "a guest running a controlled CPU load above quota, with nr_throttled and throttled_usec advancing in the attempt leaf's cpu.stat"
 
 // AND THE MEMORY BOUND IS IN THE SAME STATE, which is worth saying beside this rather than leaving
-// implicit. memory.max reads 1073741824 and memory.current was observed at 88 MiB on an earlier
-// run: the limit is set, the accounting is live, and no run has yet driven a guest into it.
+// implicit. Memory current and max were observed on the earlier placement run; no run has yet
+// driven a guest into the limit.
 data memory_bound_standing: NonEmptyStr = "memory.max is set and memory.current tracks real usage, but no run has driven an attempt to the limit, so reclaim and kill behaviour at the boundary are unobserved"

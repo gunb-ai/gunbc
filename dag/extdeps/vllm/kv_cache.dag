@@ -97,6 +97,7 @@ fn vllm_observed_kv_pool_from_reading(
       } }
     MaximumConcurrency => KvPoolRefused { cause: ReadingIsNotTheKvCacheSizeLine { line: reading.line } }
     ResolvedKvCacheFormat => KvPoolRefused { cause: ReadingIsNotTheKvCacheSizeLine { line: reading.line } }
+    MemoryProfileSummary => KvPoolRefused { cause: ReadingIsNotTheKvCacheSizeLine { line: reading.line } }
   }
 }
 

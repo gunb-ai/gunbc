@@ -15,7 +15,8 @@ use crate::std_syntax::ItemFormKind::{
 };
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_syntax::{
-    BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
+    BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
+    SyntaxSpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -66,8 +67,17 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         has_params: true,
         has_return_type: true,
         return_required: true,
-        has_uses: true,
+        has_uses: false,
         body_kind: BodyKind::ExprBody,
+    }), Rc::new(ItemForm {
+        kind: ItemFormKind::FuncForm,
+        keyword: "func".to_string(),
+        has_type_params: false,
+        has_params: true,
+        has_return_type: true,
+        return_required: false,
+        has_uses: true,
+        body_kind: BodyKind::BlockBody,
     }), Rc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "resource".to_string(),
@@ -146,6 +156,7 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             __m.insert("alias".to_string(), true);
             __m.insert("type".to_string(), true);
             __m.insert("fn".to_string(), true);
+            __m.insert("func".to_string(), true);
             __m.insert("resource".to_string(), true);
             __m.insert("service".to_string(), true);
             __m.insert("data".to_string(), true);
@@ -339,4 +350,16 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
             };
         }
     CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
+}
+
+pub fn dag_parse_environment() -> Rc<ParseEnvironment> {
+    thread_local! {
+            static CACHED: Rc<ParseEnvironment> = {
+                Rc::new(ParseEnvironment {
+        syntax_spec: dag_syntax_spec(),
+        non_name_keywords: dag_non_name_keywords(),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ParseEnvironment>| c.clone())
 }

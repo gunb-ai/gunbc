@@ -1,0 +1,186 @@
+module gunbc.runner.runner_guest_network_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.measure { ByteSize, byte_size }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, PrefixLength }
+import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.linux.neighbour { NeighbourNudState, NudReachable }
+
+// GUEST USERSPACE, AND A HOST THAT CAN REACH IT. Attempt slice6b-net-05165ea5 on the Mt. Collins
+// unit, 2026-09-07. The guest mounted its squashfs root, ran /sbin/init, brought systemd 255.4 up on
+// arm64, and answered three of three pings from the host over a point-to-point TAP.
+data guest_network_attempt: NonEmptyStr = "slice6b-net-05165ea5"
+data guest_network_evidence: FilePath = "artifacts/bmc/mtcollins1-guest-network-userspace.log" as FilePath
+data guest_network_evidence_sha256: Sha256Digest = Sha256Digest {
+  hex: "7e3daec01709ffad7790d77f477ffee3379a3b7c1abb0cb53f9592c9330af8a2" as Sha256DigestHex,
+}
+data guest_network_evidence_byte_count: ByteSize = byte_size(11836)
+
+// ── guest userspace ─────────────────────────────────────────────────────────────────────────────
+
+type GuestUserspaceObservation {
+  root_mount: NonEmptyStr
+  init_started: NonEmptyStr
+  init_system: NonEmptyStr
+  guest_architecture: Architecture
+  guest_hostname: NonEmptyStr
+}
+
+data guest_userspace: GuestUserspaceObservation = GuestUserspaceObservation {
+  root_mount: "VFS: Mounted root (squashfs filesystem) readonly on device 254:0",
+  init_started: "Run /sbin/init as init process",
+  init_system: "systemd 255.4-1ubuntu8.5 running in system mode",
+  guest_architecture: Aarch64,
+  guest_hostname: "ubuntu-fc-uvm",
+}
+
+// ── the host reaches it ─────────────────────────────────────────────────────────────────────────
+
+// A PING IS A WEAKER FACT THAN IT LOOKS AND IS RECORDED AT ITS OWN GRAIN. A guest kernel that
+// processed ip= and brought eth0 up answers ARP and ICMP from the KERNEL, so a reply establishes the
+// tap, the link and the guest network stack -- not that any userspace service is listening. What
+// establishes userspace here is the guest log, separately.
+//
+// THE ARP ENTRY IS THE STRONGER HALF: the host resolved 172.16.0.2 to the exact guest_mac the
+// configuration assigned, so the reply came from the intended interface rather than from anything
+// else on a segment that has room for nobody else.
+type GuestReachability {
+  host_address: Ipv4Address
+  guest_address: Ipv4Address
+  prefix_length: PrefixLength
+  transmitted: Int
+  received: Int
+  arp_state: NeighbourNudState
+  resolved_mac: Eui48Address
+}
+
+// THE PREFIX IS /30: two usable addresses, host and guest, with no room for a third party on the
+// segment. These 172.16.0.x values and the MAC that embeds them are the Mt. Collins probe
+// observation, not gunbc.runner_microvm_network's slot-derived 172.30.slot.{1,2} -- that module is
+// the fleet authority; this row records what the probe actually used.
+//
+// §3b DIVERGENCE, MEASURED RATHER THAN CAUSED. This row has zero consuming files on the
+// gunbc#10921 branch: no import, no fold, no executing route. #10818 never closed that. It
+// asserted closure via folds whose results nothing read -- an open gap with a lid on it. This
+// change removes the lid. It does not close the gap. TRIGGER for the honest close: a consumer
+// that folds guest_reachability and whose own result reaches an executing route. A witness over
+// authored constants cannot redden on a live divergence and is not that consumer.
+data guest_reachability: GuestReachability = GuestReachability {
+  host_address: ipv4_address(octet1: 172, octet2: 16, octet3: 0, octet4: 1),
+  guest_address: ipv4_address(octet1: 172, octet2: 16, octet3: 0, octet4: 2),
+  prefix_length: 30,
+  transmitted: 3,
+  received: 3,
+  arp_state: NudReachable,
+  resolved_mac: mac_address(octet1: 6, octet2: 0, octet3: 172, octet4: 16, octet5: 0, octet6: 2),
+}
+
+// THE TAP IS ATTEMPT-SCOPED AND GOES WITH THE ATTEMPT. It is created before the jail because
+// Firecracker opens an EXISTING host device by name rather than creating one, and it is torn down
+// at retirement -- observed absent afterwards rather than assumed gone.
+type DeviceRetirement
+  = ObservedAbsentAfterRetirement { device: NonEmptyStr }
+  | AssumedGone
+
+data guest_tap_retired: DeviceRetirement = ObservedAbsentAfterRetirement {
+  device: "the attempt's tap device",
+}
+
+// ── a claim four earlier receipts carried, now corrected ────────────────────────────────────────
+
+// THE "NOT ESTABLISHED" WAS RIGHT; THE REASON ATTACHED TO IT WAS INVENTED. Earlier receipts listed
+// guest userspace as unobserved, which was accurate -- and two of them went further and said the
+// guest was "killed at the deadline while still early in boot". That was never measured. It was
+// inferred from rc=137 plus a `head -25` of the guest log, and the tail was simply never read.
+//
+// WHAT THE FULL LOG SHOWS is that the guest was reaching userspace and running systemd, so rc=137
+// means the deadline fired on a HEALTHY guest rather than on a stalled one. Those are different
+// facts about the same exit code, and the earlier phrasing asserted the wrong one.
+//
+// THE CORRECTION IS NARROW ON PURPOSE. The earlier receipts are not rewritten to claim success they
+// did not observe -- their attempts genuinely did not read the tail. What is removed from them is
+// the unmeasured clause about WHERE the guest was killed.
+type EarlierClaimCorrection
+  = InventedReasonWithdrawn {
+      observation_that_held: NonEmptyStr
+      invented_reason: NonEmptyStr
+      inferred_from: NonEmptyStr
+      later_observation: NonEmptyStr
+    }
+
+data corrected_claim: EarlierClaimCorrection = InventedReasonWithdrawn {
+  observation_that_held: "guest userspace unobserved on those earlier attempts",
+  invented_reason: "killed at the deadline while still early in boot",
+  inferred_from: "rc=137 plus a head -25 of the guest log",
+  later_observation: "the full log shows systemd reaching system mode; the deadline fired on a healthy guest",
+}
+
+// ── three defects this slice cost, all self-inflicted ───────────────────────────────────────────
+
+// PUBLISHING OVER THE PATH THE CONTROLLER IS SERVING. Two boots failed with "Boot option loading
+// failed" after a 302 MiB image was copied OVER the exact file the controller had mounted over NFS.
+// The on-disk digest matched what was built, so the file was intact and the controller's cached view
+// was not. Publishing under a fresh name fixed it on the next boot.
+//
+// THIS LANE ALREADY HAD THE RULE AND I WENT AROUND IT. gunbc.machine_intake_boot_image_fetch
+// publishes by atomic rename precisely so a reader never observes a path mid-write; a convenience
+// `cp` in a build script reintroduced the hazard that design exists to remove. Content-addressed
+// names would have made it structurally impossible rather than merely avoidable.
+type ImagePublishDefect
+  = PublishedOverALiveReaderPath {
+      reader: NonEmptyStr
+      on_disk_digest_matched_built: Bool
+      reader_view: NonEmptyStr
+      repair_that_worked: NonEmptyStr
+      construction_that_would_prevent: NonEmptyStr
+    }
+
+data defect_publish_over_live_path: ImagePublishDefect = PublishedOverALiveReaderPath {
+  reader: "the BMC firmware serving the boot image over NFS",
+  on_disk_digest_matched_built: true,
+  reader_view: "stale -- two boots failed with Boot option loading failed after a 302 MiB copy onto the mounted path",
+  repair_that_worked: "publish under a fresh name",
+  construction_that_would_prevent: "atomic rename, as gunbc.machine_intake_boot_image_fetch already does, or a content-addressed name",
+}
+
+// DEFINITIONS PLACED AFTER THEIR USE. $TAP and $GUEST_MAC were assigned below the heredoc that
+// writes vm.json, so both expanded EMPTY and Firecracker refused a blank guest_mac outright. The
+// refusal was loud, exact and named the field and column, which is the only reason it cost one run.
+type ConfigurationBindingDefect
+  = UseBeforeDefinition { variables: List<NonEmptyStr>, consumer: NonEmptyStr, refusal: NonEmptyStr }
+
+data defect_use_before_definition: ConfigurationBindingDefect = UseBeforeDefinition {
+  variables: ["TAP", "GUEST_MAC"],
+  consumer: "the heredoc that writes vm.json",
+  refusal: "Firecracker refused a blank guest_mac by field and column",
+}
+
+// A NAME TRUNCATED RATHER THAN BUILT SHORT. Deriving the interface name from the full attempt id and
+// cutting to the 15-character limit produced a trailing dash -- functional, and indistinguishable
+// from corruption in a diagnostic. It is now composed short.
+type InterfaceNameConstruction
+  = TruncatedToKernelLimit { limit_chars: Int, ended_in: NonEmptyStr, functional: Bool }
+  | ComposedShort
+
+data defect_truncated_interface_name: InterfaceNameConstruction = TruncatedToKernelLimit {
+  limit_chars: 15,
+  ended_in: "a trailing dash, from cutting the full attempt id",
+  functional: true,
+}
+
+// ── standing ────────────────────────────────────────────────────────────────────────────────────
+
+data guest_network_closed: List<NonEmptyStr> = [
+  "the guest mounts its squashfs root read-only and runs /sbin/init",
+  "the tap is absent from the host after retirement",
+]
+
+data guest_network_open: List<NonEmptyStr> = [
+  "any guest service listening on a port -- ICMP is answered by the guest kernel and establishes no service",
+  "egress policy: the guest has a route to the host and nothing filters it, which is not the default-deny the isolation profile requires",
+  "the guest's own process population, which is arbitrary by design and bounded only by its envelope",
+  "a JIT-registered Actions runner, which is the next thing the guest has to carry",
+  "whether the deadline is the right lifetime at all once a real job decides when it is finished",
+]

@@ -208,7 +208,11 @@ pub(crate) fn census_heads_both_readings(
 ) {
     let table = index.intern_table.borrow().clone();
     let read = |heads_only: bool| -> (Result<Rc<Node>, String>, u128) {
-        let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+        let tokens = v1_compiler_tokenize::tokenize(
+            source.content.clone(),
+            source.path.clone(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let nl_index = build_newline_index(source.path.clone(), source.content.clone());
         let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
             let mut m = HashMap::new();

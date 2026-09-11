@@ -259,11 +259,12 @@ type StaleAxis
 // out-of-roster-order list. Those are separate classes and neither one wall
 // closes both.
 //
-// EMPTINESS is closed by the SHAPE: std has no generic NonEmptyList carrier,
-// so this is the form the corpus already uses for a nonempty population
-// (extdeps.external_authority external_model_scope_citations_shape_note, the
-// gunbc.doc_graph_roots precedent) -- one required head plus the rest, so the
-// empty population has no constructor anywhere, this module included.
+// EMPTINESS is closed by the SHAPE: std.algebra FreeSemigroup is the generic nonempty
+// sequence, and this module does not re-invent that wall as a second vocabulary. StaleAxes
+// is not that generic -- it additionally forbids duplication and reordering -- so it stays
+// a sealed first_axis plus further_axes, derived by filtering stale_axes_all. The empty
+// population still has no constructor. The earlier sentence "std has no generic NonEmptyList"
+// is false now that FreeSemigroup has consumers; the emptiness argument does not lean on it.
 //
 // DUPLICATION AND ORDER are closed by SEALING: StaleAxes is sole_constructor,
 // so the only mints are in this module, both of which derive their population

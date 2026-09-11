@@ -2,7 +2,11 @@ module extdeps.colo.equinix
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -18,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.equinix",
-      decl_name: "equinix_secaucus_campus",
+      decl_name: "equinix_facilities",
       field: WholeDeclaration
     }
   },
@@ -64,7 +68,231 @@ data equinix_ny6: ColoFacilityRow = ColoFacilityRow {
 
 data equinix_secaucus_campus: List<ColoFacilityRow> = [equinix_ny2, equinix_ny4, equinix_ny5, equinix_ny6]
 
+data equinix_ny9: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY9",
+  address: AddressListed {
+    street: "111 8th Avenue, New York, NY 10011",
+    citation: "equinix.com NY9 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "35,898 square feet of colocation, N+1 UPS and generators, N+2 cooling, 120/208 V distribution per the New York campus listing read 2026-09-08. Adjacent IBX NY8 is named on a 2021 spec sheet as also at a Manhattan carrier hotel but is absent from that live campus listing.",
+}
+
+data equinix_ny9_density: CabinetDensityClaim = DensityUnread {
+  obligation: "equinix.com NY9 page. Raw fetch 2026-09-09: no User-Agent HTTP 403, 494 bytes; full Chrome User-Agent HTTP 200, 276964 bytes. Subject control in RAW 200 body: NY9=13. Spec table Minimum Cabinet Density 2kVA (RAW kVA=1) is a floor not a marketed maximum. Excluded kW: the one RAW substring kW sits inside a base64 blob, not a density sentence. Do not read 2 kVA as density. A quote or a later spec that names a maximum is required.",
+}
+
+data equinix_ny9_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Secure Cabinet Express",
+  citation: "equinix.com NY9 products table, read 2026-09-08",
+}
+
+data equinix_facilities: List<ColoFacilityRow> = concat(equinix_secaucus_campus, [equinix_ny1, equinix_ny3, equinix_ny7, equinix_ny9, equinix_ny13])
+
 data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "equinix.com sales",
   obligation: "No published cabinet pricing; the operator sells retail cabinets by quote and market surveys consistently place it at the premium end of the metro. Whether to solicit a quote at all is a consumer decision, not a fact about the operator.",
+}
+
+// THREE CORRIDOR IBXs THE 2026-08-18 PASS MISSED, all three read 2026-09-08 from the operator's
+// own PeeringDB facility entries rather than from equinix.com, because two fetches of the operator's
+// New York colocation pages from two different paths were refused with HTTP 403 on 2026-09-08. A
+// PeeringDB facility row is maintained by the operator itself, which is why it carries an address
+// here; it carries no density and no minimum, which is why the two rows below are unread.
+data equinix_ny1: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY1",
+  address: AddressListed {
+    street: "165 Halsey St, Floor 8, Newark, NJ 07102",
+    citation: "PeeringDB facility Equinix NY1 - New York, Newark, read 2026-09-08",
+  },
+  municipality: "Newark",
+  region_code: "NJ",
+  facility_note: "An Equinix IBX inside the 165 Halsey carrier hotel, on the eighth floor. The census already carries this building three other ways - the building operator (extdeps.colo.halsey_165), a Hivelocity suite, and DataBank EWR1 on floor 5 - so 165 Halsey now stands as the corridor's clearest instance of one building with four separate upstream authorities selling inside it.",
+}
+
+data equinix_ny3: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY3",
+  address: AddressListed {
+    street: "600 Jefferson Avenue, Secaucus, NJ 07094",
+    citation: "PeeringDB facility Equinix NY3 - New York, Secaucus, read 2026-09-08",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "A fifth Secaucus IBX, separate from the four-building 800 Secaucus Road campus that equinix_secaucus_campus enumerates - a different street, and a different PeeringDB facility. The 2026-08-18 pass carried the campus and missed this one, which is the failure shape a registry sweep catches and a campus page does not.",
+}
+
+data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY7",
+  address: AddressListed {
+    street: "5851 Westside Ave, North Bergen, NJ 07047",
+    citation: "PeeringDB facility Equinix NY7 - New York, North Bergen, read 2026-09-08",
+  },
+  municipality: "North Bergen",
+  region_code: "NJ",
+  facility_note: "The operator's North Bergen site, in Hudson County between the Secaucus cluster and the Weehawken waterfront. No operator-page reading exists for it; everything beyond name and address is unread.",
+}
+
+// THE REFUSAL WAS MINE, NOT THEIRS, AND THE CORRECTION IS THE POINT. This row first recorded two
+// HTTP 403s as the operator refusing readers, and built an obligation on it. Re-fetching from raw
+// bytes with an ordinary browser user-agent on 2026-09-09 returned 200 - the operator blocks
+// nothing, my client was being refused, and the two paths I had tried answer 404 rather than 403.
+//
+// An operator that blocks readers and an operator whose pages I failed to reach are DIFFERENT
+// FACTS, and only one of them is about the operator. Recording the first when the second is true
+// puts a claim about someone else's behaviour into an upstream module on the strength of my own
+// tooling, and it fails in the flattering direction: it makes an unread density look like the
+// operator's choice rather than my gap. The density stays unread either way; what changes is that
+// the obligation now names something a later reader can actually act on.
+// SEVEN FACILITIES, SEVEN DIFFERENT PUBLISHED FIGURES - SO ONE SHARED DENSITY ROW WAS ITSELF A FUSION.
+// This module carried a single equinix_cabinet_density for all seven corridor IBXs, which was defensible
+// only while nothing had been read for any of them. The operator publishes a per-facility figure and the
+// values genuinely differ - 2, 2, 8, 5, 5, 5 and 4 kVA - so a shared row would have asserted one fact
+// where the operator states seven. Split, one row per facility, on the same rule the address rows follow.
+//
+// HOW THE FIGURES WERE FOUND, because the earlier obligation said they did not exist. The index this
+// module first read publishes nothing and names no facility; it passed a SITE control (Equinix 61) and
+// would have passed forever. The per-IBX pages are named in the operator's own sitemap-core.xml, and each
+// one passes a SUBJECT control (its own IBX code, 13 to 19 occurrences). The distinction between those two
+// controls is the whole difference between "the operator publishes no density" and "I was reading the
+// wrong page", and this module asserted the first for a day on the evidence of the second.
+//
+// THE kW COUNT ON THESE PAGES IS A TRAP AND IS RECORDED SO NOBODY RE-TRIPS IT: a search for kW returns one
+// hit per page and every one is inside a base64 blob in an inline script, not a unit. The published unit
+// is kVA throughout.
+//
+// WHY A PUBLISHED FIGURE STILL LEAVES THESE ROWS Unread, stated ONCE here rather than seven times in
+// seven obligations. The figure is a MINIMUM - the operator's own row label is "Minimum Cabinet
+// Density" - and it is a floor a cabinet must commit to, not a ceiling on what one may draw. The two
+// arms that could hold a figure, DensityMarketedMax and DensityMarketedAirOnly, are MAXIMA, and a
+// minimum in a maximum's field would make cabinet_density_air_ceiling start answering: a consumer
+// screening "can this cabinet hold 5 kW" would read a 2 kVA FLOOR as a 2 kVA CAP and exclude a
+// facility that may well allow far more. That is strictly worse than an absence, because an absence
+// refuses and a wrong ceiling admits a wrong answer confidently. The figure is also APPARENT power -
+// kW = kVA x power factor, none published - so 2kVA does not establish 2kW either.
+//
+// THE FIGURES ARE THEREFORE CARRIED IN PROSE AND THAT IS A KNOWN DEFECT WITH A NAMED REPLACEMENT
+// ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is DESIGN
+// section 2's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
+// over VoltAmpere, and these seven readings are unreachable by ANY fold - including the census's read
+// count, which now matches claim_wording_standing rather than the density_claim_is_read predicate this
+// sentence used to name, and which counts these rows as unread for the same reason either spelling
+// would: they are DensityUnread, whatever asks the question.
+//
+// THE REPLACEMENT IS A DIRECTION-CARRYING FIGURE, AND IT IS NOT THE SHAPE THIS ANNOTATION FIRST NAMED.
+// It is stated as a capability rather than as a pull request because the wording here first named
+// gunbc#10885, which is now closed without landing - a trigger naming a dead pull request can never be
+// satisfied by anything. I recommended a
+// DensityMinimumCommitted arm on CabinetDensityClaim. The carrier owner declined that shape and was
+// right to: a fourth arm for a floor needs a fifth for an interval, a sixth for an average, and a
+// seventh the first time an operator publishes a floor for air beside a cap for liquid - the
+// quantifier forked once per combination, which is the re-invention section 2 forbids. The direction
+// of a published figure is ORTHOGONAL to its unit and to its cooling medium, so it becomes one type
+// applied at every figure site, PublishedPowerQuantity, with CapabilityAtLeast carrying exactly what
+// these seven rows have read. THAT CARRIER HAS NOW LANDED AND IT WENT FURTHER THAN THIS PARAGRAPH
+// PREDICTED: DensityMarketedMax and DensityMarketedAirOnly do NOT keep their names - they are deleted,
+// and one DensityPublished arm carries a non-empty list of figures each holding its own medium,
+// quantity, wording and verification. So the cooling standing became a coordinate on the figure rather
+// than a name on the claim.
+//
+// WHICH MEANS THE TRIGGER FOR THESE SEVEN ROWS HAS FIRED. CapabilityAtLeast over PublishedApparentPower
+// holds a published kVA MINIMUM exactly as read, and these readings are no longer unrepresentable in
+// any arm. They are still carried in prose here, and that remains DESIGN section 2's anemic
+// decomposition - but it is now an UNCONVERTED reading rather than an unrepresentable one, which is a
+// different and smaller debt. Converting them is a reading task for this module's owner: the numerals
+// and labels are in the obligations below, and whoever does it must check them against the pages
+// rather than against this annotation, because a numeral copied out of prose is how a census acquires
+// a figure nobody read.
+//
+// TWO PROPERTIES OF THAT DESIGN BEAR ON THESE ROWS, AND THE LANDED CARRIER MATCHES ONE OF THEM AND
+// NOT THE OTHER. This paragraph asserted both as machine behaviour and review 63019 was right that it
+// had gone stale; it is corrected here rather than deleted, because the difference is the whole
+// instruction to whoever converts these rows.
+//
+// KEPT: a floor still contributes nothing to an upper bound. `cabinet_density_air_ceiling` no longer
+// exists - nor does any ceiling carrier, since a marketed maximum must not become a physical "cannot
+// exceed" - but CapabilityAtLeast reaches `OutsidePublishedMaximum` on no requirement at all, so the
+// property this module needed survives its accessor.
+//
+// NOT KEPT, AND THIS IS THE PART A CONVERTER MUST READ: A kVA FLOOR ADMITS NOTHING. The claim that "a
+// 2 kVA minimum admits a 2 kVA requirement" is false on the landed carrier. `figure_covers` answers
+// false for every PublishedApparentPower, because kW = kVA x power factor and none is published, so
+// reading a kVA numeral as watts would be one power factor more generous than the operator's own
+// sentence. A CapabilityAtLeast over apparent power therefore lands in `NonBoundingPublication`:
+// carried at full precision, bounding in neither direction.
+//
+// SO THE CONVERSION IS STILL WORTH DOING AND BUYS LESS THAN THIS PARAGRAPH PROMISED. It moves these
+// seven readings out of prose and into figures a fold can reach - which is the section 2 defect -
+// while the SCREEN stays as empty as it is today, and stays that way until an operator publishes a
+// power factor or a watt figure. The resolve step below also stays owed, because a floor is genuinely
+// not a maximum and the maximum is still unread.
+
+// THE OPERATOR'S ONE NEW YORK-STATE IBX IN THIS REGION, and the census's Equinix rows were until
+// now entirely Secaucus. NY13 sits in Westchester County, which matters because the module's
+// existing quote-only note reasons about a New Jersey campus and a Westchester cabinet is a
+// different route, a different power market and a different latency to Manhattan.
+//
+// FETCH NOTE: equinix.com refuses a bare user-agent with HTTP 403 - a fact about the CLIENT STRING
+// and not about the host, which answers normally over HTTPS to a full browser user-agent. The
+// reading below was taken directly from the operator's own NY13 page on 2026-09-08, and the 403 is
+// recorded so the next reader does not conclude the page is gone.
+//
+// The earlier phrasing here said the reading was taken "over a plain HTTP client", which is
+// ambiguous between a client KIND and the http:// SCHEME - and it produced a false positive in a
+// scan for modules citing Https while having been read over HTTP (review 63016 found a real one in
+// extdeps.colo.vastnet). A word that reads as evidence for a proposition it does not discriminate is
+// the recurring defect this census keeps finding; this one was in my own note.
+data equinix_ny13: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY13",
+  address: AddressListed {
+    street: "401 Fieldcrest Drive, Elmsford, NY 10523",
+    citation: "equinix.com NY13 IBX page, read 2026-09-08",
+  },
+  municipality: "Elmsford",
+  region_code: "NY",
+  facility_note: "Westchester County. The operator's own page describes NY13 as serving large financial, media and enterprise companies with premium interconnection - the same wording family as the Secaucus rows, and the same absence of any retail-grain or density statement.",
+}
+
+data equinix_ny13_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The NY13 page states no kW-per-cabinet figure (read 2026-09-08). Equinix publishes density elsewhere in its marketing; nothing on this facility's page does, and a corporate figure is not a facility reading. Ask for the per-cabinet ceiling at NY13 specifically.",
+}
+
+data equinix_ny13_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The NY13 page names colocation and interconnection but does not state whether a single cabinet is a sellable unit at this IBX. The module's existing rate note asserts the operator sells retail cabinets by quote across the metro; that is an operator-level belief and this row does not convert it into a NY13 reading.",
+}
+
+data equinix_ny1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's own NY1 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny1, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY1 occurs 19 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY1 (165 Halsey Street, Newark)."
+}
+
+data equinix_ny2_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's own NY2 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny2, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY2 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY2 (275 Hartz Way, Secaucus)."
+}
+
+data equinix_ny3_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's own NY3 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny3, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY3 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"8kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY3 (600 Jefferson Ave, Secaucus)."
+}
+
+data equinix_ny4_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's own NY4 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny4, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY4 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY4 (800 Secaucus Road, Secaucus)."
+}
+
+data equinix_ny5_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's own NY5 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny5, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY5 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY5 (800 Secaucus Road, Secaucus)."
+}
+
+data equinix_ny6_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's own NY6 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny6, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY6 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY6 (800 Secaucus Road, Secaucus)."
+}
+
+data equinix_ny7_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's own NY7 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny7, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY7 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"4kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY7 (5851 Westside Ave, North Bergen)."
+}
+data equinix_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "Same correction as the density obligation: the operator's reachable index carries no cabinet, cage or suite wording, so no minimum footprint has been read from its own surface. Whether a single cabinet is contractable, and at which of the seven corridor IBXs, is a quote question.",
 }

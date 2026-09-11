@@ -1,0 +1,1087 @@
+module v2.test.v2_native_route
+
+import gunbc.witness_v2_native_route {
+  NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
+  native_route_identity_member,
+  native_route_universe_member,
+  NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
+  native_route_reference_for,
+  NativeRouteMemberRow,
+  NativeRouteModuleSource,
+  native_route_required_pass_identities,
+  NativeRouteExclusionCause, CompilerFrontierAttributed, NativeEntryResolutionLimit,
+  NativeEvalBoundary, UnattributedRefusal, classify_native_refusal,
+  NativeRouteDisposition, NativeAgreementPass, NativeAgreementExpectedRed,
+  NativeAgreementRouteGap, NativeExclusion, NativeDivergence,
+  NativeRouteDivergenceCause, NativePassedExpectedRed, NativeFalseExpectedPass,
+  NativeReturnedOtherVerdict, NativeReachedRouteGap,
+  native_route_disposition,
+  NativeRouteCensus, native_route_census,
+  NativeRouteMalformedControl, MalformedSpecimenRefused, MalformedSpecimenAccepted,
+  NativeRouteOldRouteControl, OldRouteWithdrawn, OldRouteFalsifierArmed, OldRouteControlAbsent,
+  NativeRouteReceipt,
+  NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
+  required_v2_native_job_name,
+  native_route_admission, native_route_admitted, native_route_admission_refused_with,
+  native_route_admission_summary
+}
+import v2.compiler.compile {
+  NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
+  NativeTestRefused,
+  NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
+  NativeTestStageEval,
+  NativeTestFileRefusal
+}
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.collection { List }
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.integer { Int }
+
+// ── synthetic receipt constructors ─────────────────────────────────────────────────────────
+//
+// The admission fold reads the REAL floor rosters (floor_expected_red_roster,
+// floor_route_gap_roster) from inside native_route_admission, so the synthetic identities here
+// are chosen OFF every roster: "v2.test.*" names no real module carries. The disposition,
+// reference and census functions take their rosters as arguments, so their tests are fully
+// synthetic.
+
+fn test_identity(module: String, declaration: String) -> NativeRouteTestIdentity {
+  NativeRouteTestIdentity { module: module, declaration: declaration }
+}
+
+fn passed_row(module: String, declaration: String) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    identity: test_identity(module: module, declaration: declaration),
+    verdict: NativeTestPassed
+  }
+}
+
+fn false_row(module: String, declaration: String) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    identity: test_identity(module: module, declaration: declaration),
+    verdict: NativeTestReturnedFalse
+  }
+}
+
+fn refused_row(
+  module: String,
+  declaration: String,
+  stage: NativeTestStage,
+  reason: Symbol
+) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    identity: test_identity(module: module, declaration: declaration),
+    verdict: NativeTestRefused { stage: stage, reason: reason }
+  }
+}
+
+fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
+  NativeTestFileRefusal { path: path, head_reason: head, fatal_reason: fatal }
+}
+
+// A receipt with every well-formedness field recorded and both live controls observed; the
+// universe, module-source index, population and file-refusal populations are the arguments
+// under test.
+fn receipt_over(
+  universe: List<NativeRouteTestIdentity>,
+  module_source_index: List<NativeRouteModuleSource>,
+  population: List<NativeRouteMemberRow>,
+  file_refusals: List<NativeTestFileRefusal>
+) -> NativeRouteReceipt {
+  NativeRouteReceipt {
+    job: required_v2_native_job_name,
+    tested_tree: "tree-sha",
+    preparation_seed_identity: "seed-sha",
+    emitted_closure_identity: "closure-sha",
+    executable_path: "/emitted/compiler",
+    executable_identity: "binary-sha",
+    universe: universe,
+    module_source_index: module_source_index,
+    population: population,
+    file_refusals: file_refusals,
+    false_control: Present { value: NativeTestReturnedFalse },
+    true_control: Present { value: NativeTestPassed },
+    malformed_control: MalformedSpecimenRefused {
+      path: "target/v2-native-lane/malformed-control-root/poison.dag",
+      reason: ^tokenize_lex_e1_unterminated_string
+    },
+    old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" }
+  }
+}
+
+// THE RATCHET'S ONE ROSTERED IDENTITY, AS A SYNTHETIC ROW. The required-pass roster is real
+// authority data, so every synthetic receipt that aims at admission must carry the smoke
+// member passing — the clause reads the roster, not the test's intent.
+fn smoke_identity() -> NativeRouteTestIdentity {
+  test_identity(
+    module: "v2.test.native_lane_smoke",
+    declaration: "native_route_positive_population_smoke"
+  )
+}
+
+fn smoke_source_row() -> NativeRouteModuleSource {
+  NativeRouteModuleSource {
+    module: "v2.test.native_lane_smoke",
+    path: ^src_v2_test_native_lane_smoke_test_dag
+  }
+}
+
+// The smallest green receipt: one passing member beside the rostered smoke member, universe
+// and population equal, and the module-source index covering both universe modules.
+fn green_receipt() -> NativeRouteReceipt {
+  receipt_over(
+    universe: [
+      test_identity(module: "v2.test.alpha", declaration: "passes"),
+      smoke_identity()
+    ],
+    module_source_index: [
+      NativeRouteModuleSource { module: "v2.test.alpha", path: ^alpha_path },
+      smoke_source_row()
+    ],
+    population: [
+      passed_row(module: "v2.test.alpha", declaration: "passes"),
+      passed_row(
+        module: "v2.test.native_lane_smoke",
+        declaration: "native_route_positive_population_smoke"
+      )
+    ],
+    file_refusals: []
+  )
+}
+
+// ── the universe is a prefix ───────────────────────────────────────────────────────────────
+
+test fn the_universe_is_the_prefix_and_nothing_else() -> Bool {
+  native_route_universe_member(module_qn: "v2.test.v2_native_route")
+  && native_route_universe_member(module_qn: "v2.test.")
+  && !native_route_universe_member(module_qn: "v2.compiler.compile")
+  && !native_route_universe_member(module_qn: "v2.test")
+  && !native_route_universe_member(module_qn: "dag.test.claim")
+}
+
+test fn identity_qualification_derives_the_dotted_spelling() -> Bool {
+  native_route_identity_qualified(
+    identity: test_identity(module: "v2.test.alpha", declaration: "passes")
+  ) == "v2.test.alpha.passes"
+}
+
+test fn duplicate_identities_are_detected_at_identity_grain() -> Bool {
+  let dup = test_identity(module: "v2.test.alpha", declaration: "passes")
+  !native_route_identities_unique(xs: [
+    dup,
+    test_identity(module: "v2.test.beta", declaration: "passes"),
+    dup
+  ])
+  && native_route_identities_unique(xs: [
+    test_identity(module: "v2.test.alpha", declaration: "passes"),
+    test_identity(module: "v2.test.alpha", declaration: "fails"),
+    test_identity(module: "v2.test.beta", declaration: "passes")
+  ])
+}
+
+// ── the reference is the floor's rosters joined at the identity ────────────────────────────
+
+test fn the_reference_is_the_floor_rosters_joined_at_the_identity() -> Bool {
+  match native_route_reference_for(qualified: "v2.test.alpha.red", expected_red: ["v2.test.alpha.red"], route_gap: []) {
+    FloorExpectedRed => true
+    FloorExpectedPass => false
+    FloorRouteGapRefusal => false
+  }
+}
+
+test fn the_reference_defaults_to_the_floors_standing_expectation() -> Bool {
+  match native_route_reference_for(qualified: "v2.test.alpha.green", expected_red: [], route_gap: []) {
+    FloorExpectedPass => true
+    FloorExpectedRed => false
+    FloorRouteGapRefusal => false
+  }
+}
+
+test fn route_gap_membership_wins_over_expected_red() -> Bool {
+  match native_route_reference_for(
+    qualified: "v2.test.alpha.gapped",
+    expected_red: ["v2.test.alpha.gapped"],
+    route_gap: ["v2.test.alpha.gapped"]
+  ) {
+    FloorRouteGapRefusal => true
+    FloorExpectedPass => false
+    FloorExpectedRed => false
+  }
+}
+
+// ── classification is stage- and provenance-keyed ──────────────────────────────────────────
+
+test fn an_entry_stage_refusal_is_a_driver_limit_only_at_a_known_reason() -> Bool {
+  match classify_native_refusal(stage: NativeTestStageEntry, reason: ^native_test_entry_declaration_not_arrow) {
+    NativeEntryResolutionLimit { reason: r } => r == ^native_test_entry_declaration_not_arrow
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: _ } => false
+  }
+  && match classify_native_refusal(stage: NativeTestStageEntry, reason: ^parse_g0_tokens_remain) {
+    NativeEntryResolutionLimit { reason: _ } => false
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: r } => r == ^parse_g0_tokens_remain
+  }
+}
+
+test fn an_eval_stage_refusal_is_the_boundary_only_at_a_boundary_reason() -> Bool {
+  match classify_native_refusal(stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound) {
+    NativeEvalBoundary { reason: r } => r == ^eval_rejected_effect_io_unbound
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEntryResolutionLimit { reason: _ } => false
+    UnattributedRefusal { reason: _ } => false
+  }
+  && match classify_native_refusal(stage: NativeTestStageEval, reason: ^eval_some_unowned_reason) {
+    NativeEvalBoundary { reason: _ } => false
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEntryResolutionLimit { reason: _ } => false
+    UnattributedRefusal { reason: r } => r == ^eval_some_unowned_reason
+  }
+}
+
+test fn a_context_stage_refusal_is_frontier_attributed_only_when_the_ledger_owns_it() -> Bool {
+  match classify_native_refusal(stage: NativeTestStageContext, reason: ^parse_g0_tokens_remain) {
+    CompilerFrontierAttributed { reason: r } => r == ^parse_g0_tokens_remain
+    NativeEntryResolutionLimit { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: _ } => false
+  }
+  && match classify_native_refusal(stage: NativeTestStageContext, reason: ^some_unowned_cause) {
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEntryResolutionLimit { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: r } => r == ^some_unowned_cause
+  }
+}
+
+test fn a_prepare_stage_refusal_is_frontier_attributed_only_when_the_ledger_owns_it() -> Bool {
+  match classify_native_refusal(stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain) {
+    CompilerFrontierAttributed { reason: r } => r == ^parse_g0_tokens_remain
+    NativeEntryResolutionLimit { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: _ } => false
+  }
+  && match classify_native_refusal(stage: NativeTestStagePrepare, reason: ^some_unowned_cause) {
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeEntryResolutionLimit { reason: _ } => false
+    NativeEvalBoundary { reason: _ } => false
+    UnattributedRefusal { reason: r } => r == ^some_unowned_cause
+  }
+}
+
+// ── the disposition matrix ─────────────────────────────────────────────────────────────────
+
+test fn a_pass_agrees_with_the_standing_expectation() -> Bool {
+  match native_route_disposition(verdict: NativeTestPassed, reference: FloorExpectedPass) {
+    NativeAgreementPass => true
+    NativeAgreementExpectedRed => false
+    NativeAgreementRouteGap => false
+    NativeExclusion { cause: _ } => false
+    NativeDivergence { cause: _ } => false
+  }
+}
+
+test fn a_pass_against_an_expected_red_identity_is_a_divergence() -> Bool {
+  match native_route_disposition(verdict: NativeTestPassed, reference: FloorExpectedRed) {
+    NativeDivergence { cause: c } =>
+      match c {
+        NativePassedExpectedRed => true
+        NativeFalseExpectedPass => false
+        NativeReturnedOtherVerdict => false
+        NativeReachedRouteGap => false
+      }
+    NativeAgreementPass => false
+    NativeAgreementExpectedRed => false
+    NativeAgreementRouteGap => false
+    NativeExclusion { cause: _ } => false
+  }
+}
+
+test fn a_false_against_an_expected_red_identity_is_the_expected_red_observed() -> Bool {
+  match native_route_disposition(verdict: NativeTestReturnedFalse, reference: FloorExpectedRed) {
+    NativeAgreementExpectedRed => true
+    NativeAgreementPass => false
+    NativeAgreementRouteGap => false
+    NativeExclusion { cause: _ } => false
+    NativeDivergence { cause: _ } => false
+  }
+}
+
+test fn a_false_against_the_standing_expectation_is_a_divergence() -> Bool {
+  match native_route_disposition(verdict: NativeTestReturnedFalse, reference: FloorExpectedPass) {
+    NativeDivergence { cause: c } =>
+      match c {
+        NativeFalseExpectedPass => true
+        NativePassedExpectedRed => false
+        NativeReturnedOtherVerdict => false
+        NativeReachedRouteGap => false
+      }
+    NativeAgreementPass => false
+    NativeAgreementExpectedRed => false
+    NativeAgreementRouteGap => false
+    NativeExclusion { cause: _ } => false
+  }
+}
+
+test fn a_non_boolean_return_is_a_divergence_on_every_reference() -> Bool {
+  match native_route_disposition(verdict: NativeTestReturnedOther, reference: FloorExpectedPass) {
+    NativeDivergence { cause: NativeReturnedOtherVerdict } => true
+    _ => false
+  }
+  && match native_route_disposition(verdict: NativeTestReturnedOther, reference: FloorExpectedRed) {
+    NativeDivergence { cause: NativeReturnedOtherVerdict } => true
+    _ => false
+  }
+  && match native_route_disposition(verdict: NativeTestReturnedOther, reference: FloorRouteGapRefusal) {
+    NativeDivergence { cause: NativeReturnedOtherVerdict } => true
+    _ => false
+  }
+}
+
+test fn a_reached_verdict_on_a_route_gap_identity_is_a_divergence() -> Bool {
+  match native_route_disposition(verdict: NativeTestPassed, reference: FloorRouteGapRefusal) {
+    NativeDivergence { cause: NativeReachedRouteGap } => true
+    _ => false
+  }
+  && match native_route_disposition(verdict: NativeTestReturnedFalse, reference: FloorRouteGapRefusal) {
+    NativeDivergence { cause: NativeReachedRouteGap } => true
+    _ => false
+  }
+}
+
+test fn the_route_gap_agrees_only_with_the_hermetic_boundary_refusal() -> Bool {
+  match native_route_disposition(
+    verdict: NativeTestRefused { stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound },
+    reference: FloorRouteGapRefusal
+  ) {
+    NativeAgreementRouteGap => true
+    _ => false
+  }
+}
+
+test fn a_route_gap_refusal_off_the_boundary_is_an_exclusion() -> Bool {
+  match native_route_disposition(
+    verdict: NativeTestRefused { stage: NativeTestStageEval, reason: ^some_unowned_cause },
+    reference: FloorRouteGapRefusal
+  ) {
+    NativeExclusion { cause: UnattributedRefusal { reason: r } } => r == ^some_unowned_cause
+    _ => false
+  }
+  && match native_route_disposition(
+    verdict: NativeTestRefused { stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain },
+    reference: FloorRouteGapRefusal
+  ) {
+    NativeExclusion { cause: CompilerFrontierAttributed { reason: r } } => r == ^parse_g0_tokens_remain
+    _ => false
+  }
+}
+
+// ── the census ─────────────────────────────────────────────────────────────────────────────
+
+test fn the_census_counts_every_disposition() -> Bool {
+  let census = native_route_census(
+    rows: [
+      passed_row(module: "v2.test.a", declaration: "one"),
+      false_row(module: "v2.test.b", declaration: "two"),
+      refused_row(module: "v2.test.c", declaration: "three", stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound),
+      refused_row(module: "v2.test.d", declaration: "four", stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain),
+      refused_row(module: "v2.test.e", declaration: "five", stage: NativeTestStageEntry, reason: ^native_test_entry_declaration_not_arrow),
+      refused_row(module: "v2.test.f", declaration: "six", stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound),
+      refused_row(module: "v2.test.g", declaration: "seven", stage: NativeTestStageContext, reason: ^some_unowned_cause),
+      passed_row(module: "v2.test.h", declaration: "eight")
+    ],
+    expected_red: ["v2.test.b.two", "v2.test.h.eight"],
+    route_gap: ["v2.test.c.three"]
+  )
+  census.agreement_pass == 1
+  && census.agreement_expected_red == 1
+  && census.agreement_route_gap == 1
+  && census.excluded_compiler_frontier == 1
+  && census.excluded_entry_limit == 1
+  && census.excluded_eval_boundary == 1
+  && census.excluded_unattributed == 1
+  && census.divergences == 1
+}
+
+// ── admission: the green shape ─────────────────────────────────────────────────────────────
+
+test fn a_green_receipt_is_admitted() -> Bool {
+  native_route_admitted(admission: native_route_admission(receipt: green_receipt()))
+}
+
+// ── admission: well-formedness clauses ─────────────────────────────────────────────────────
+
+test fn the_wrong_job_name_is_refused() -> Bool {
+  let receipt = NativeRouteReceipt {
+    job: "required-v2-native-but-wrong",
+    tested_tree: green_receipt().tested_tree,
+    preparation_seed_identity: green_receipt().preparation_seed_identity,
+    emitted_closure_identity: green_receipt().emitted_closure_identity,
+    executable_path: green_receipt().executable_path,
+    executable_identity: green_receipt().executable_identity,
+    universe: green_receipt().universe,
+    module_source_index: green_receipt().module_source_index,
+    population: green_receipt().population,
+    file_refusals: green_receipt().file_refusals,
+    false_control: green_receipt().false_control,
+    true_control: green_receipt().true_control,
+    malformed_control: green_receipt().malformed_control,
+    old_route_control: green_receipt().old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "job_name_mismatch"
+  )
+}
+
+test fn an_unrecorded_tested_tree_is_refused() -> Bool {
+  let receipt = NativeRouteReceipt {
+    job: green_receipt().job,
+    tested_tree: "",
+    preparation_seed_identity: green_receipt().preparation_seed_identity,
+    emitted_closure_identity: green_receipt().emitted_closure_identity,
+    executable_path: green_receipt().executable_path,
+    executable_identity: green_receipt().executable_identity,
+    universe: green_receipt().universe,
+    module_source_index: green_receipt().module_source_index,
+    population: green_receipt().population,
+    file_refusals: green_receipt().file_refusals,
+    false_control: green_receipt().false_control,
+    true_control: green_receipt().true_control,
+    malformed_control: green_receipt().malformed_control,
+    old_route_control: green_receipt().old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "tested_tree_unrecorded"
+  )
+}
+
+test fn an_unrecorded_preparation_seed_is_refused() -> Bool {
+  let receipt = NativeRouteReceipt {
+    job: green_receipt().job,
+    tested_tree: green_receipt().tested_tree,
+    preparation_seed_identity: "",
+    emitted_closure_identity: green_receipt().emitted_closure_identity,
+    executable_path: green_receipt().executable_path,
+    executable_identity: green_receipt().executable_identity,
+    universe: green_receipt().universe,
+    module_source_index: green_receipt().module_source_index,
+    population: green_receipt().population,
+    file_refusals: green_receipt().file_refusals,
+    false_control: green_receipt().false_control,
+    true_control: green_receipt().true_control,
+    malformed_control: green_receipt().malformed_control,
+    old_route_control: green_receipt().old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "preparation_seed_unrecorded"
+  )
+}
+
+test fn an_unrecorded_emitted_closure_is_refused() -> Bool {
+  let receipt = NativeRouteReceipt {
+    job: green_receipt().job,
+    tested_tree: green_receipt().tested_tree,
+    preparation_seed_identity: green_receipt().preparation_seed_identity,
+    emitted_closure_identity: "",
+    executable_path: green_receipt().executable_path,
+    executable_identity: green_receipt().executable_identity,
+    universe: green_receipt().universe,
+    module_source_index: green_receipt().module_source_index,
+    population: green_receipt().population,
+    file_refusals: green_receipt().file_refusals,
+    false_control: green_receipt().false_control,
+    true_control: green_receipt().true_control,
+    malformed_control: green_receipt().malformed_control,
+    old_route_control: green_receipt().old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "emitted_closure_unrecorded"
+  )
+}
+
+test fn an_unrecorded_route_identity_is_refused() -> Bool {
+  let base = green_receipt()
+  let no_path = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: "",
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control
+  }
+  let no_identity = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: "",
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: no_path),
+    cause_name: "route_identity_unrecorded"
+  )
+  && native_route_admission_refused_with(
+    admission: native_route_admission(receipt: no_identity),
+    cause_name: "route_identity_unrecorded"
+  )
+}
+
+// ── admission: the universe shape ──────────────────────────────────────────────────────────
+
+test fn an_empty_universe_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(universe: [], module_source_index: [], population: [], file_refusals: [])),
+    cause_name: "universe_underived"
+  )
+}
+
+test fn a_duplicated_universe_is_refused() -> Bool {
+  let member = test_identity(module: "v2.test.alpha", declaration: "passes")
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [member, member],
+      module_source_index: [],
+      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
+      file_refusals: []
+    )),
+    cause_name: "universe_duplicates_present"
+  )
+}
+
+test fn a_foreign_universe_member_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.compiler.compile", declaration: "not_a_test")],
+      module_source_index: [],
+      population: [passed_row(module: "v2.compiler.compile", declaration: "not_a_test")],
+      file_refusals: []
+    )),
+    cause_name: "universe_prefix_violations_present"
+  )
+}
+
+// ── admission: the exact join ──────────────────────────────────────────────────────────────
+
+test fn a_duplicated_population_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
+      module_source_index: [],
+      population: [
+        passed_row(module: "v2.test.alpha", declaration: "passes"),
+        passed_row(module: "v2.test.alpha", declaration: "passes")
+      ],
+      file_refusals: []
+    )),
+    cause_name: "population_duplicates_present"
+  )
+}
+
+test fn a_foreign_population_row_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
+      module_source_index: [],
+      population: [
+        passed_row(module: "v2.test.alpha", declaration: "passes"),
+        passed_row(module: "v2.test.beta", declaration: "extra")
+      ],
+      file_refusals: []
+    )),
+    cause_name: "population_foreign_rows_present"
+  )
+}
+
+test fn an_omitted_population_row_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [
+        test_identity(module: "v2.test.alpha", declaration: "passes"),
+        test_identity(module: "v2.test.beta", declaration: "missing")
+      ],
+      module_source_index: [],
+      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
+      file_refusals: []
+    )),
+    cause_name: "population_omissions_present"
+  )
+}
+
+// ── admission: the population must prove the route ─────────────────────────────────────────
+
+test fn an_all_refused_population_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "blocked")],
+      module_source_index: [],
+      population: [refused_row(
+        module: "v2.test.alpha",
+        declaration: "blocked",
+        stage: NativeTestStagePrepare,
+        reason: ^parse_g0_tokens_remain
+      )],
+      file_refusals: []
+    )),
+    cause_name: "positive_population_empty"
+  )
+}
+
+// ── admission: the required-native ratchet ────────────────────────────────────────────────
+
+// The rostered smoke identity, observed as an ATTRIBUTED exclusion — the exact collapse the
+// ratchet exists to block: every clause about classification greens, and coverage still lost
+// the identity.
+test fn a_regressed_required_native_pass_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [smoke_identity()],
+      module_source_index: [smoke_source_row()],
+      population: [refused_row(
+        module: "v2.test.native_lane_smoke",
+        declaration: "native_route_positive_population_smoke",
+        stage: NativeTestStagePrepare,
+        reason: ^parse_g0_tokens_remain
+      )],
+      file_refusals: []
+    )),
+    cause_name: "required_native_pass_regressed"
+  )
+}
+
+// The smoke identity is not in the universe at all — coverage shrank silently. The omission
+// clause cannot fire (the universe itself no longer names the member), so the ratchet is the
+// only wall, and it reads the roster against the OBSERVED population.
+test fn an_omitted_required_native_pass_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
+      module_source_index: [],
+      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
+      file_refusals: []
+    )),
+    cause_name: "required_native_pass_regressed"
+  )
+}
+
+test fn the_ratchet_roster_is_the_smoke_member_alone_today() -> Bool {
+  length(xs: native_route_required_pass_identities) == 1
+  && native_route_identity_member(target: smoke_identity(), xs: native_route_required_pass_identities)
+}
+
+test fn a_divergence_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "lies")],
+      module_source_index: [],
+      population: [false_row(module: "v2.test.alpha", declaration: "lies")],
+      file_refusals: []
+    )),
+    cause_name: "divergences_present"
+  )
+}
+
+test fn an_unattributed_exclusion_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [
+        test_identity(module: "v2.test.alpha", declaration: "passes"),
+        test_identity(module: "v2.test.beta", declaration: "blocked")
+      ],
+      module_source_index: [],
+      population: [
+        passed_row(module: "v2.test.alpha", declaration: "passes"),
+        refused_row(
+          module: "v2.test.beta",
+          declaration: "blocked",
+          stage: NativeTestStagePrepare,
+          reason: ^some_unowned_cause
+        )
+      ],
+      file_refusals: []
+    )),
+    cause_name: "unattributed_exclusions_present"
+  )
+}
+
+// ── admission: file-refusal ownership at both grains ───────────────────────────────────────
+
+test fn an_unattributed_file_refusal_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
+      module_source_index: [],
+      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
+      file_refusals: [file_refusal_row(
+        path: ^some_path,
+        head: ^parse_grammar_choice_overlap_residue,
+        fatal: ^some_unowned_cause
+      )]
+    )),
+    cause_name: "unattributed_file_refusals_present"
+  )
+}
+
+test fn an_unattributed_head_advisory_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
+      module_source_index: [],
+      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
+      file_refusals: [file_refusal_row(
+        path: ^some_path,
+        head: ^some_unowned_advisory,
+        fatal: ^parse_g0_tokens_remain
+      )]
+    )),
+    cause_name: "unattributed_head_advisories_present"
+  )
+}
+
+// ── admission: context refusals are bound to their observation ─────────────────────────────
+
+test fn a_context_refusal_without_its_file_refusal_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [
+        test_identity(module: "v2.test.alpha", declaration: "passes"),
+        test_identity(module: "v2.test.beta", declaration: "blocked")
+      ],
+      module_source_index: [
+        NativeRouteModuleSource { module: "v2.test.beta", path: ^beta_path }
+      ],
+      population: [
+        passed_row(module: "v2.test.alpha", declaration: "passes"),
+        refused_row(
+          module: "v2.test.beta",
+          declaration: "blocked",
+          stage: NativeTestStageContext,
+          reason: ^parse_g0_tokens_remain
+        )
+      ],
+      file_refusals: []
+    )),
+    cause_name: "context_refusals_unbacked"
+  )
+}
+
+// THE REASON-ONLY JOIN IS THE HOLE THIS CLAUSE CLOSED. The file refusal below carries the
+// Context row's exact fatal reason, but at ANOTHER MODULE'S path — under the pre-repair clause
+// (any file anywhere with the reason) this receipt was admitted.
+test fn a_context_refusal_backed_by_another_modules_file_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [
+        test_identity(module: "v2.test.alpha", declaration: "passes"),
+        test_identity(module: "v2.test.beta", declaration: "blocked")
+      ],
+      module_source_index: [
+        NativeRouteModuleSource { module: "v2.test.alpha", path: ^alpha_path },
+        NativeRouteModuleSource { module: "v2.test.beta", path: ^beta_path }
+      ],
+      population: [
+        passed_row(module: "v2.test.alpha", declaration: "passes"),
+        refused_row(
+          module: "v2.test.beta",
+          declaration: "blocked",
+          stage: NativeTestStageContext,
+          reason: ^parse_g0_tokens_remain
+        )
+      ],
+      file_refusals: [file_refusal_row(
+        path: ^alpha_path,
+        head: ^parse_grammar_choice_overlap_residue,
+        fatal: ^parse_g0_tokens_remain
+      )]
+    )),
+    cause_name: "context_refusals_unbacked"
+  )
+}
+
+// THE PATH WITHOUT THE REASON IS ALSO NOT THE OBSERVATION: the row's module resolves to the
+// refusal's path, but the file refused for a different cause than the row carries.
+test fn a_context_refusal_at_its_own_path_with_the_wrong_reason_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_over(
+      universe: [
+        test_identity(module: "v2.test.alpha", declaration: "passes"),
+        test_identity(module: "v2.test.beta", declaration: "blocked")
+      ],
+      module_source_index: [
+        NativeRouteModuleSource { module: "v2.test.beta", path: ^beta_path }
+      ],
+      population: [
+        passed_row(module: "v2.test.alpha", declaration: "passes"),
+        refused_row(
+          module: "v2.test.beta",
+          declaration: "blocked",
+          stage: NativeTestStageContext,
+          reason: ^parse_g0_tokens_remain
+        )
+      ],
+      file_refusals: [file_refusal_row(
+        path: ^beta_path,
+        head: ^parse_grammar_choice_overlap_residue,
+        fatal: ^resolve_module_not_found
+      )]
+    )),
+    cause_name: "context_refusals_unbacked"
+  )
+}
+
+test fn a_context_refusal_backed_by_its_file_refusal_is_not_refused_on_that_clause() -> Bool {
+  let admission = native_route_admission(receipt: receipt_over(
+    universe: [
+      test_identity(module: "v2.test.alpha", declaration: "passes"),
+      test_identity(module: "v2.test.beta", declaration: "blocked"),
+      smoke_identity()
+    ],
+    module_source_index: [
+      NativeRouteModuleSource { module: "v2.test.alpha", path: ^alpha_path },
+      NativeRouteModuleSource { module: "v2.test.beta", path: ^beta_path },
+      smoke_source_row()
+    ],
+    population: [
+      passed_row(module: "v2.test.alpha", declaration: "passes"),
+      refused_row(
+        module: "v2.test.beta",
+        declaration: "blocked",
+        stage: NativeTestStageContext,
+        reason: ^parse_g0_tokens_remain
+      ),
+      passed_row(
+        module: "v2.test.native_lane_smoke",
+        declaration: "native_route_positive_population_smoke"
+      )
+    ],
+    file_refusals: [file_refusal_row(
+      path: ^beta_path,
+      head: ^parse_grammar_choice_overlap_residue,
+      fatal: ^parse_g0_tokens_remain
+    )]
+  ))
+  !native_route_admission_refused_with(admission: admission, cause_name: "context_refusals_unbacked")
+  && native_route_admitted(admission: admission)
+}
+
+// ── admission: the controls ────────────────────────────────────────────────────────────────
+
+test fn a_missing_false_control_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: Absent,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "false_control_not_observed"
+  )
+}
+
+test fn a_passed_false_control_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: Present { value: NativeTestPassed },
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "false_control_not_observed"
+  )
+}
+
+test fn a_missing_true_control_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: Absent,
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "true_control_not_observed"
+  )
+}
+
+test fn a_falsified_true_control_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: Present { value: NativeTestReturnedFalse },
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "true_control_not_observed"
+  )
+}
+
+test fn an_accepted_malformed_specimen_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: MalformedSpecimenAccepted,
+    old_route_control: base.old_route_control
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "malformed_control_accepted_by_route"
+  )
+}
+
+test fn an_absent_old_route_control_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: OldRouteControlAbsent
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "old_route_control_never_installed"
+  )
+}
+
+// ── admission: the fold collects every violated clause ─────────────────────────────────────
+
+test fn one_red_run_names_every_violated_clause() -> Bool {
+  let admission = native_route_admission(receipt: NativeRouteReceipt {
+    job: "wrong-job",
+    tested_tree: "",
+    preparation_seed_identity: "",
+    emitted_closure_identity: "",
+    executable_path: "",
+    executable_identity: "",
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: [],
+    false_control: Absent,
+    true_control: Absent,
+    malformed_control: MalformedSpecimenAccepted,
+    old_route_control: OldRouteControlAbsent
+  })
+  native_route_admission_refused_with(admission: admission, cause_name: "job_name_mismatch")
+  && native_route_admission_refused_with(admission: admission, cause_name: "tested_tree_unrecorded")
+  && native_route_admission_refused_with(admission: admission, cause_name: "preparation_seed_unrecorded")
+  && native_route_admission_refused_with(admission: admission, cause_name: "emitted_closure_unrecorded")
+  && native_route_admission_refused_with(admission: admission, cause_name: "route_identity_unrecorded")
+  && native_route_admission_refused_with(admission: admission, cause_name: "universe_underived")
+  && native_route_admission_refused_with(admission: admission, cause_name: "positive_population_empty")
+  && native_route_admission_refused_with(admission: admission, cause_name: "required_native_pass_regressed")
+  && native_route_admission_refused_with(admission: admission, cause_name: "false_control_not_observed")
+  && native_route_admission_refused_with(admission: admission, cause_name: "true_control_not_observed")
+  && native_route_admission_refused_with(admission: admission, cause_name: "malformed_control_accepted_by_route")
+  && native_route_admission_refused_with(admission: admission, cause_name: "old_route_control_never_installed")
+}
+
+test fn the_admission_summary_names_every_violated_clause() -> Bool {
+  native_route_admission_summary(admission: native_route_admission(receipt: NativeRouteReceipt {
+    job: "wrong-job",
+    tested_tree: "",
+    preparation_seed_identity: "",
+    emitted_closure_identity: "",
+    executable_path: "",
+    executable_identity: "",
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: [],
+    false_control: Absent,
+    true_control: Absent,
+    malformed_control: MalformedSpecimenAccepted,
+    old_route_control: OldRouteControlAbsent
+  })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed"
+}

@@ -20,7 +20,7 @@ import product.fabric.work {
   work_for,
 }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
-import gunbc.required_ci_phase_roster { BuildLane, WitnessesLane, required_ci_lane_name }
+import gunbc.required_ci_phase_roster { BuildLane, WitnessesLane, V2NativeLane, required_ci_lane_name }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash, git_sha1_object_id }
 import product.fabric.supply {
   SupplierOffer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
@@ -553,6 +553,15 @@ fn witnesses_lane_measurement_command(measurement_receipt: String) -> ArgvComman
 // The build lane: regen's first-generation comparison and the v2 emission compile.
 fn build_lane_run_command() -> ArgvCommand {
   required_ci_lane_command(lane: required_ci_lane_build, measurement_receipt: "")
+}
+
+data required_ci_lane_v2_native: String = required_ci_lane_name(l: V2NativeLane)
+
+// The v2-native lane: the emitted-native compiler executes the derived v2.test.* universe
+// through its own whole-source-root Eval driver. The job contract and admission authority are
+// gunbc.witness_v2_native_route; this command is only the argv the workflow step runs.
+fn v2_native_lane_run_command() -> ArgvCommand {
+  required_ci_lane_command(lane: required_ci_lane_v2_native, measurement_receipt: "")
 }
 
 // THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.

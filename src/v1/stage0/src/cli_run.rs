@@ -89,14 +89,18 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
+mod native_lane_runner;
 mod required_floor_runner;
+mod required_lane_roster;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
+pub use native_lane_runner::run_required_v2_native;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
     run_claim_measured, run_required_floor,
 };
+pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
@@ -3454,7 +3458,11 @@ pub(crate) fn string_list_data_from_module_source(
     use crate::v1_std_core::{ExprData, LiteralValue};
 
     let filename = module_rel_path.to_string();
-    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        filename.clone(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index =
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
@@ -4870,10 +4878,17 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
 
-// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
-// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
-// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
-// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
+// DELETE WHEN dissolved: `UnlistedImportBindingSource`,
+// `classify_unlisted_import_binding_source`, `unlisted_import_rows_from_resolved`,
+// `UnlistedImportCensusRow`, and the unlisted-import-specific census helpers. The standalone bin
+// this marker once named was swept in gunbc#9160, and the dead `compile_clean_unlisted_import_census`
+// wrapper deleted when the per-class `compile_clean_diagnostic_census` subsumed it (its
+// `unlisted_import_rows` carries the same rows); what remains is the binding-source classification
+// the diagnostic census consumes. The census itself is NOT in this list: per DESIGN section 4b(4) it
+// stays enrolled after each class's climb as the executing evidence that the class stays at zero.
+// Receipt: the marker const below is itself the receipt -- present until deletion, gone with the
+// scaffold (a count receipt over the marker STRING counts this comment and the marker test too,
+// so the count form can never read what it claims).
 // namespace-only lane (docs/plans/namespace-resolution-design.md).
 pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_unlisted_import_census";
@@ -4904,10 +4919,16 @@ impl UnlistedImportBindingSource {
     }
 }
 
-/// One attributed row of the UnlistedImportUse census.
+/// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
+/// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
+/// NOT the occurrence identity the Step 0 binding-provenance census
+/// (gunbc.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
+/// edits: (file, position) locates the charge, but does not name the selected declaration, the
+/// producing rule, or the pre/post-edit targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnlistedImportCensusRow {
     pub file: String,
+    pub position: i64,
     pub referenced_name: String,
     pub referencing_module: String,
     pub definer_module: Option<String>,
@@ -8656,9 +8677,11 @@ fn module_self_declared_names(content: &str) -> BTreeSet<String> {
             "pub type ",
             "pub data ",
             "pub fn ",
+            "pub func ",
             "type ",
             "data ",
             "fn ",
+            "func ",
             "test fn ",
             "test data ",
         ]
@@ -20978,9 +21001,10 @@ fn entry_likely_has_unified_claim_owned_data(content: &str) -> bool {
 }
 
 fn top_level_decl_names(content: &str) -> Vec<String> {
-    const ITEM_KEYWORDS: [&str; 7] = [
+    const ITEM_KEYWORDS: [&str; 8] = [
         "data ",
         "fn ",
+        "func ",
         "type ",
         "service ",
         "const ",
@@ -30549,9 +30573,10 @@ pub fn layer_import_facts(
 // verdict logic; this bridge only projects top-level decl keys + content hashes from the
 // witness-layer trees. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared
 // host seam (Chunk D).
-const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 7] = [
+const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 8] = [
     "data ",
     "fn ",
+    "func ",
     "type ",
     "service ",
     "const ",
@@ -35290,7 +35315,11 @@ fn parse_module_items_for_transport_script(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path);
-    let tokens = v1_compiler_tokenize::tokenize(content.clone(), filename.to_string());
+    let tokens = v1_compiler_tokenize::tokenize(
+        content.clone(),
+        filename.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
@@ -36145,7 +36174,11 @@ pub fn parse_extdeps_module_items(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path);
-    let tokens = tokenize(content.clone(), filename.to_string());
+    let tokens = tokenize(
+        content.clone(),
+        filename.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices_map = HashMap::new();
     source_indices_map.insert(filename.to_string(), source_index);
@@ -37783,7 +37816,7 @@ mod import_closure_equivalence_tests {
             std::env::temp_dir().join(format!("gunbc-out-of-pool-entry-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).expect("scratch dir");
         let entry_path = scratch.join("out_of_pool_entry.dag");
-        let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfn out_of_pool_probe() -> Bool {\n  true\n}\n";
+        let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfunc out_of_pool_probe() -> Bool {\n  true\n}\n";
         std::fs::write(&entry_path, content).expect("write entry");
         let entry = Rc::new(crate::v1_compiler_compile::SourceFile {
             path: entry_path.to_string_lossy().into_owned(),
@@ -42351,10 +42384,10 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
-    required_ci_emit_compile_probe_root, required_emit_compile_entries,
-    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
-    EmitCompileSelection, MutationVerdict,
+    emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
+    local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
+    required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE

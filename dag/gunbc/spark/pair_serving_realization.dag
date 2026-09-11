@@ -3,11 +3,11 @@ module gunbc.spark.pair_serving_realization
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.measure { Percent, percent_count, token_count_value, millisecond_count }
+import std.measure { token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, ChunkedPrefillRequested, ChunkedPrefillNotRequested }
+import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, vllm_memory_request_argv, vllm_prefix_caching_argv, ChunkedPrefillRequested, ChunkedPrefillNotRequested }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory_name }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
@@ -131,11 +131,11 @@ fn spark_pair_model_path_in_container(snapshot: ModelSnapshotDesired) -> String?
   }
 }
 
-// vLLM spells the utilization as a fraction; the tuple carries a Percent.
-fn vllm_utilization_wire(p: Percent) -> String {
-  let n = percent_count(p: p)
-  if n >= 100 { "1.0" } else if n >= 10 { join(["0.", to_string(n)], "") } else { join(["0.0", to_string(n)], "") }
-}
+// `vllm_utilization_wire` STOOD HERE AND WAS THE THIRD SPELLING OF ONE UPSTREAM FLAG. It rendered an
+// integral Percent as a fraction, could not express 0.9112, and had no counterpart on the canary
+// route, which spelled the same argument by omitting it. The rendering now lives once in
+// extdeps.vllm.engine_args beside the field it renders, so both serving routes emit the same flag the
+// same way and neither can drift from the request it was built from.
 
 // THE PREFILL SCHEDULING FLAGS ARE RENDERED ONLY WHEN REQUESTED, and the unrequested case emits
 // NOTHING rather than emitting the upstream default. Rendering a value here because we happen to
@@ -174,9 +174,11 @@ fn spark_pair_vllm_serve_argv(args: VllmEngineArgs, snapshot: ModelSnapshotDesir
     "--enable-auto-tool-choice",
     "--tool-call-parser", spark_pair_tool_call_parser as String,
     "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: args.kv_cache_dtype) as String,
-    "--gpu-memory-utilization", vllm_utilization_wire(p: args.gpu_memory_utilization.fraction),
-    "--enable-prefix-caching",
-  ], spark_pair_prefill_scheduling_argv(args: args)) }
+  ], concat(
+    vllm_memory_request_argv(r: args.memory_request),
+    concat(
+      vllm_prefix_caching_argv(r: args.prefix_caching_request),
+      spark_pair_prefill_scheduling_argv(args: args)))) }
   }
 }
 

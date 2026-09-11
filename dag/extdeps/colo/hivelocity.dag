@@ -2,7 +2,13 @@ module extdeps.colo.hivelocity
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import std.measure { watt }
+import std.algebra { FreeSemigroup }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
+  RetailGrainStanding, RetailGrainUnread, DensityUnread,
+  CapabilityAtLeast, DensityPublished, PublishedDensityFigure, PublishedRealPower, WordingVerbatim,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -41,4 +47,66 @@ data hivelocity_jfk1: ColoFacilityRow = ColoFacilityRow {
 data hivelocity_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "phone per the directory profile, read 2026-08-18",
   obligation: "Hivelocity publishes instant pricing for dedicated servers but its Newark colocation is quote-only on the pages read 2026-08-18.",
+}
+
+// A ROCKLAND COUNTY PRESENCE THIS OPERATOR ACQUIRED RATHER THAN BUILT, AND ITS DENSITY PAGE HIDES
+// BEHIND A SECOND NAME FOR THE SAME BUILDING. The acquisition is why the census nearly missed the
+// site at all: colohouse.com/data-centers/new-york/ returns a 301 permanent redirect to
+// hivelocity.net (read 2026-09-08), so the ColoHouse rows a directory still shows are this
+// operator's. The SECOND name is why the first read of this row carried no density. The operator's
+// location index lists the site as "Orangeburg (OGB1)" and publishes no figures; the colocation
+// product page for the same building is titled "New York 4" / "NYC4 Colo Data Center", lives under
+// /products/colocation/new-york-city-4/, and is where the density is printed. Searching the
+// location code against the product pages never reaches it. The cross-name was found by
+// silent-heron-303 while reading Newark and re-read here on 2026-09-09 before being carried.
+data hivelocity_ogb1_orangeburg: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Hivelocity",
+  facility_label: "Hivelocity New York 4 / OGB1 Orangeburg (legacy ColoHouse)",
+  address: AddressListed {
+    street: "1 Ramland Rd, Orangeburg, NY 10962",
+    citation: "hivelocity.net New York 4 colocation page, read 2026-09-09. The operator's own location index names the same site Orangeburg (OGB1) and gives no address; the two names are one building.",
+  },
+  municipality: "Orangeburg",
+  region_code: "NY",
+  facility_note: "Rockland County, in-building retail on the same pattern as this operator's JFK1 suite at 165 Halsey - and the building is 1 Ramland Road, which 1547 operates as ORNY1 (extdeps.colo.critical_systems_realty). NOT the DataBank campus: that is 2000 Corporate Drive, a different building in the same village. Operator page (read 2026-09-09): 24 MW provisioned with 2N distribution, a pre-approved on-site 50 MW substation with diverse feeds from New York and New Jersey, FEMA Zone X, sub-millisecond latency claimed to 60 Hudson, 111 8th Avenue and 165 Halsey, and a transit list of fourteen named carriers. The 24 MW is the LANDLORD's building figure repeated on the tenant's page - 1547 publishes the same 24 MW provisioned in N+2 - so it says nothing about how much of the building this operator sells.",
+}
+
+// TWO OPERATORS PUBLISH A DENSITY FOR ONE BUILDING AND THE FIGURES DISAGREE BY A FACTOR OF TWO.
+// Hivelocity's page says 20 kW+ per cabinet; the landlord 1547 says "High density 10KW + per
+// cabinets" for the same 1 Ramland Road. Both are carried on their own operator's row because each
+// is a reading of that operator's own surface, and neither is corrected against the other: a
+// reseller may well sell a denser cabinet than the landlord's general marketing claims, and a
+// landlord may be describing a different hall. What a consumer may NOT do is treat the pair as
+// corroboration - they are two claims, and the quote decides which is purchasable.
+data hivelocity_ogb1_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 20000) } },
+      wording: "High density raised floor environment, 20 kW+ per cabinet",
+      citation: "hivelocity.net New York 4 colocation page, read 2026-09-08. No cooling medium is named anywhere on the page - unspecified BY EVIDENCE, not by default.",
+      verification: WordingVerbatim {
+        retrieval: "The plus sign is the operator's own, so this is a capability FLOOR of at least twenty kilowatts rather than a ceiling. \"Raised floor\" names a plenum and not a medium: raised-floor halls are cooled by air and by liquid alike, so it establishes nothing about the coolant and must not be read as an air label.",
+      },
+    },
+    tail: [],
+  },
+}
+
+data hivelocity_ogb1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The New York 4 page is a COLOCATION product page for this building and states density per cabinet, but no sentence on it read 2026-09-09 says a single cabinet is a sellable unit, and no rack-unit or partial-cabinet product is named. A peer lane reported reading a cabinet-level availability sentence on the same page; it could not be reproduced in this read, so it is recorded as the thing to confirm rather than carried. Ask whether one cabinet at 20 kW is sold here, and at what price.",
+}
+
+// A 20 kW CABINET CLAIM EXISTS ON THIS OPERATOR'S SITE AND IT IS NOT THIS FACILITY'S. The operator
+// publishes "20 kW+ per cabinet" on its New York 4 facility page, which is 1 Ramland Rd,
+// Orangeburg, NY - a different state, forty miles from Newark, and a different building from the
+// DataBank Orangeburg campus that carries the census's 35 kW claim. Carrying that figure to JFK1
+// would be the peer-facility inference this carrier was built to make unwritable, so JFK1's density
+// is UNREAD and the tempting number is named here as the thing NOT to import.
+data hivelocity_jfk1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "hivelocity.net publishes no per-cabinet kW figure for Newark JFK1: the operator's data-centers index read 2026-09-08 lists Newark (JFK1) as an EDGE location with a buy-server route and no colocation facility page, and the operator's own colocation product pages that do carry \"20 kW+ per cabinet\" are for New York 4 at 1 Ramland Rd, Orangeburg, NY, read the same day. Do not carry the Orangeburg figure to Newark. Resolve by asking whether colocation, as opposed to dedicated servers, is sold at 165 Halsey at all, and at what per-cabinet draw.",
+}
+
+data hivelocity_jfk1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The operator's index read 2026-09-08 offers only a server-purchase route for Newark JFK1 and no colocation page, so no minimum footprint is stated for this site. The operator sells full, quarter and half racks elsewhere in its portfolio; whether any of that is orderable in the 165 Halsey suite is unread. A caution for whoever resolves this from hivelocity.net: successive fetches of the same New York 4 colocation URL on 2026-09-08 and 2026-09-09 returned materially different renderings of that page - one carrying a cabinet-grain sentence that a raw fetch by another reader could not find, and one in which the word cabinet did not appear at all although the page's own density sentence contains it. Quote this operator's pages from raw HTML, not from a rendered capture.",
 }

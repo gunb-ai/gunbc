@@ -2,7 +2,7 @@ module gunbc.compile_clean_diagnostic_policy
 
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
-import std.types { Int, NonEmptyStr }
+import std.types { Int, NonEmptyStr, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -15,10 +15,17 @@ type UnlistedImportUseEnforcement
 // staging: the resolver emits UnlistedImportUse but compile-clean does not red). Enforced =
 // blocking (terminal promotion when namespace-only resolution deletes the import grammar —
 // DISSOLVES WHEN UnlistedImportUse promoted to an error per
-// namespace_import_closure_behavioral_transport.dag:15). BOTH the floor receipt path
+// namespace_import_closure_behavioral_transport.dag:15). CONSUMER TRUTH, corrected where this
+// annotation previously overstated it: the floor receipt path
 // (install_or_consume_floor_compile_clean_gate_receipt via floor_compile_clean_emit_ok_via_index)
-// and the standalone CLI transport (gunbc compile --target dag) read this row — never restate the
-// predicate in either consumer (DESIGN section 3).
+// reads this row through compile_clean_unlisted_import_use_blocks; the standalone CLI (gunbc
+// compile) does NOT — gunbc#8286 cut its policy read because the read mechanism was a full
+// interpreter run over this module's closure to answer one Bool, and its classify_diagnostic
+// consults is_interpreter_blocking_diagnostic alone. The flip's terminal shape therefore is not
+// "both consumers read the row" but promotion in the single authority both already read:
+// v1.std.core diagnostic_disposition gains UnlistedImportUse => GateBlocking, the override arm in
+// compile_clean_diagnostic_is_hard deletes, and this row dissolves — both consumers red by
+// construction, and no predicate is restated anywhere (DESIGN section 3).
 
 data compile_clean_unlisted_import_use_enforcement: UnlistedImportUseEnforcement = FloorNotYet
 
@@ -64,7 +71,7 @@ type UnlistedImportBindingSource
 // row, with an annotation calling that a guess -- which made it visible to a READER and not to a
 // CONSUMER, the distinction DESIGN section 5 turns on.
 
-data unlisted_import_use_census_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compile_clean_unlisted_import_census hand-Rust transport (CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER) — DISSOLVES WHEN namespace-only resolution deletes the import grammar and binding-source classification is modeled in the substrate (namespace-resolution-design.md section 8), or a floor-enrolled census lens subsumes the host transport; receipt rg cli_run_compile_clean_unlisted_import_census src/v1/stage0 == 1 until deletion.")
+data unlisted_import_use_census_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the UnlistedImportUse hand-Rust binding-source classification (CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: UnlistedImportBindingSource, classify_unlisted_import_binding_source, unlisted_import_rows_from_resolved and helpers, consumed by compile_clean_diagnostic_census) — DISSOLVES WHEN namespace-only resolution deletes the import grammar and binding-source classification is modeled in the substrate (namespace-resolution-design.md section 8), or a floor-enrolled census lens subsumes the host transport; receipt: the marker const stands until deletion. NOT SUBSUMED by the diagnostic census's reachability restoration: the census is the same hand-Rust transport made reachable, and the unmodeled-classification debt this trigger guards is unchanged.")
 
 data unlisted_import_use_census_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -75,51 +82,96 @@ data unlisted_import_use_census_hand_rust_scaffold: Disposition = Scaffold {
   }
 }
 
-data compile_clean_unlisted_import_use_enforcement_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compile_clean_unlisted_import_use_enforcement — DISSOLVES WHEN v1 04_resolve promotes UnlistedImportUse to an error (namespace_import_closure_behavioral_transport.dag:15 scaffold dissolution trigger); the row flips to Enforced and both consumers (floor_compile_clean_emit_ok_via_index + CLI) red together via compile_clean_unlisted_import_use_blocks().")
+data compile_clean_unlisted_import_use_enforcement_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compile_clean_unlisted_import_use_enforcement — DISSOLVES WHEN UnlistedImportUse is promoted to GateBlocking in v1.std.core diagnostic_disposition (namespace_import_closure_behavioral_transport.dag:15 scaffold dissolution trigger), at which point the override arm in compile_clean_diagnostic_is_hard deletes with this row and both consumers — the floor receipt path and the standalone CLI — red through the single disposition authority, not through this staging row.")
 
-// HOW BIG CONJUNCT (b) STILL IS, RECORDED AGAINST THE FLIP RATHER THAN LEFT IN AN INBOX.
+// HOW BIG CONJUNCT (b) IS, MEASURED BY ITS AUTHORITY AND RECORDED AGAINST THE FLIP.
 //
 // compile_clean_unlisted_import_use_enforcement flips to Enforced on two conditions, and the second
-// -- the corpus burndown of genuine unlisted uses reaching zero -- had no size attached to it
-// anywhere. A dissolution trigger whose remaining work is unmeasured cannot be scheduled, so the
-// row below carries that size at the one place the flip happens.
+// -- the corpus burndown of genuine unlisted uses reaching zero -- is sized by this row. A
+// dissolution trigger whose remaining work is unmeasured cannot be scheduled, so the size lives at
+// the one place the flip happens.
 //
-// IT IS AN OBSERVATION AND NOT A CORPUS FACT, and the distinction is the whole point of the shape.
-// DESIGN section 6 says to name the instrument rather than transcribe its output, so the numbers
-// travel bound to the producer that made them, to how far that producer was checked, and to how
-// they may be read. The producer is a static extractor written for one sizing pass by session
-// clever-ibex-130: it restricts to genuine type positions and subtracts locals, variants, kernel
-// types, containers, selective imports, glob re-exports and fully-qualified references, but it
-// cannot attribute a binding source, which is exactly the dimension the authority census can. It
-// was hand-checked at ten randomly drawn rows; one false positive was found (a single-line inline
-// coproduct whose variants read as undeclared references), corrected, and the count re-derived.
-// SizedByStandInExtractor with read_as OrderOnlyBothDirections is therefore the honest arm: it says
-// one module in roughly six, not 789 exactly. The over-reporting direction is not hypothetical --
-// it was MEASURED: a floor run compiled an isolated closure containing extdeps.uri, which this
-// extractor flags, and that closure compiled clean.
+// THE PRODUCER IS THE RESTORED AUTHORITY CENSUS, AND THE READING IS A LIVE, SOURCE-BOUND
+// OBSERVATION -- NOT A CERTIFIED COUNT. The per-class raw diagnostic census runs as the rostered
+// instrument target `gunbc test
+// //gunbc/instruments:compile-clean-diagnostic-census` (gunbc.instrument_targets
+// compile_clean_diagnostic_census_binding), reading the compiler's OWN diagnostics over the
+// whole-tree compile-clean closure -- the same source set the floor gate compiles -- counted
+// BEFORE any severity partition, with disposition carried as a row attribute and binding-source
+// attribution per UnlistedImportUse row. The count is the resolver's emission and not an
+// extractor's approximation: no filter decides what is scanned, so there is no position the
+// instrument cannot see, and the stand-in's measured over-report is not constructible here -- a
+// closure that compiles clean emits no row. Since the 2026-09-09 raw-census rework each reading
+// carries its identity block (gunbc.target_binding CompileCleanDiagnosticCensusIdentity): the
+// source-vector digest binds the exact bytes compiled (materialized into memory before hashing,
+// so a live-tree change mid-walk cannot produce a mixed population that hashes clean), and the
+// compiler-executable, resolver-policy, class-schema and closure digests bind the rest of the
+// provenance. What the reading still is NOT: re-derived by a gate at a pinned revision and joined
+// against a stored base -- the per-class ratchet is a later consumer, and until it lands this
+// row's transcribed figures are a live observation, named as such by read_as. Its routing is
+// witnessed by test.claim.target_invocation_witness
+// the_diagnostic_census_operand_routes_to_its_own_producer.
 //
-// THE AUTHORITY INSTRUMENT EXISTS AND HAS NEVER BEEN INVOKED. cli_run::compile_clean::
-// compile_clean_unlisted_import_census computes this same census over the whole tree WITH the
-// binding-source attribution UnlistedImportBindingSource above declares, and it has no call site
-// outside its own definition. Its entry point was not merely unwired: it was DELETED, as one member
-// of the 25-file unrostered-seed-probe sweep in gunbc#9160, and recorded as a deliberate Delete in
-// gunbc.live_deploy.srv1_residue_rehearsal. That is why the reachability arm is a separate fact
-// from the existence arm -- a function whose bin was deleted reads identically to one that was
-// never wired, and the burndown has consequently never once been measured by its own authority.
+// THE STAND-IN READING THIS REPLACED, KEPT AS HISTORY BECAUSE THE FAILURE MODE IS GENERATIVE.
+// Session clever-ibex-130's static extractor reported ~2,190 module/name pairs across 789 of 4,459
+// modules at OrderOnlyBothDirections: over-reporting measured (it flagged extdeps.uri, whose
+// `Optional` reference is not the class, in a closure measured compiling clean) and under-reporting
+// unbounded (positions outside its filter were invisible; binding source unattributable). Its
+// ten-row hand check found one false positive (a single-line inline coproduct whose variants read
+// as undeclared references). That reading named an order -- roughly one module in six -- and nothing
+// finer, and this row said so for its whole life. The first authority reading, at the flip, was
+// different in both directions at once: FEWER modules carry the class (553, not 789) and MORE pairs
+// survive the stricter key (1,648 against the stand-in's 2,190 was the over-report direction; the
+// occurrence count was 4,621 at 3,704 distinct positions). The denominator also moved honestly:
+// 4,057 is the modules the whole-tree closure actually compiles, not the corpus's file count. The
+// authority reading is the instrument's and moves with the corpus -- the data row below carries the
+// current one, and its first three moves landed the same day as the flip: the kernel-identity guard
+// closed the first defect carve-out the UnlistedImportUse ceiling row records, 4,621 -> 3,745
+// occurrences; the field-access alias peel (masked=false at
+// v1.compiler.infer peel_alias_once_for_field_access) closed the second, 3,745 -> 3,367; and the
+// qualified-spelling visibility fold (v1.compiler.infer build_type_env enters each imported name
+// under its qualified spelling) closed the third, 3,367 -> 3,249, moving exactly the listed-import
+// column 511 -> 393 while definer-resolvable (242) and pool-coincidence (2,614) stood unchanged.
 //
-// WHAT THE NEXT READER SHOULD DO, and it is not what it looks like. Restoring reachability from an
-// entry point that already earns its keep is the first task; authoring a new bin is not. A new bin
-// would recreate precisely the unrostered property that got the old one swept, and
-// unlisted_import_use_census_hand_rust_dissolve_trigger above is already a standing retirement
-// obligation on that hand-Rust transport, so a fresh bin would arrive owing its own dissolution.
+// THE ONE UNRECONCILED PAIR IN THAT HISTORY, NAMED RATHER THAN SMOOTHED OVER (review 2026-09-09,
+// finding 2). The peel's own source annotation (v1.compiler.infer peel_alias_once_for_field_access)
+// records the peel charging 316 occurrences across 56 modules; the whole-census delta across the
+// same commit is 378 occurrences (3,745 -> 3,367). The two are different instruments at possibly
+// different grains: 316 is a producer-side attribution -- charges whose emission path was the
+// peel's masked traversal, measured by a peel-side probe on the post-guard vintage; 378 is the
+// whole-population occurrence delta. Two candidate reconciliations were identified and NEITHER is
+// verifiable retrospectively: the probe may have counted distinct positions while the census counts
+// occurrences (the peel's own commit names double-charging, and 62 positions charged twice is
+// exactly the gap), or non-peel-path rows left in the same commit beside the peel's charges. The
+// peel-side probe no longer exists, so the pair cannot be re-measured; what the raw-census rework
+// changes is that no FUTURE pair needs this paragraph. Every reading now carries its
+// source-vector, compiler, policy, schema and closure digests, so a delta between two readings is
+// a content delta between two identified vectors rather than an ambiguity between two instruments
+// at unknown vintages.
 //
-// WHY THIS IS A PREREQUISITE AND NOT HYGIENE. At this order, roughly one module in six resolves a
-// type name it never imports. Every tool that compiles a SUBSET of the corpus fails on those
-// modules -- the synthetic-fixture instrument today, and any future projection machinery that has
-// to compute a closure -- while the full-corpus compile stays green and says nothing.
+// THE SWEEP THAT MADE THE ORDER-ONLY READING STAND SO LONG. The census's first entry point,
+// src/v1/stage0/src/bin/compile_clean_unlisted_import_census.rs, was deleted in gunbc#9160 as one
+// member of the 25-file unrostered-seed-probe sweep (a deliberate Delete in
+// gunbc.live_deploy.srv1_residue_rehearsal), and for its whole absence the burndown was never once
+// measured by its own authority. The restoration is a ROSTERED instrument target precisely so the
+// sweep's reason -- unrostered -- does not recur. The dead wrapper
+// cli_run::compile_clean_unlisted_import_census deleted with this flip: the diagnostic census's
+// unlisted_import_rows carry the same rows, and a second pub fn answering the same question was
+// DESIGN 3c's dangling declaration.
+//
+// GRAIN. module_name_pairs counts distinct (referencing_module, referenced_name) pairs in the
+// census's per-row worklist -- the stand-in's grain, carried by the authority instrument. The
+// census's per-class row counts occurrences (one diagnostic per emission) and distinct positions;
+// occurrences are the repair worklist's grain and exceed pairs because one pair recurs across
+// positions.
+//
+// WHY THE NUMBER GATES AND IS NOT HYGIENE. Every tool that compiles a SUBSET of the corpus fails
+// on modules that resolve names they never import -- the synthetic-fixture instrument today, and
+// any future projection machinery that has to compute a closure -- while the full-corpus compile
+// stays green and says nothing.
 
 type UnlistedImportUseSizingAuthority
-  = SizedByStandInExtractor { authoring_session: NonEmptyStr }
+  = SizedByStandInExtractor { authoring_session: NonEmptyStr, hand_checked_rows: Int, hand_checked_false_positives: Int }
   | SizedByAuthorityCensus { census: DeclarationRef }
 
 // READ_AS IS AN AXIS AND NOT A HEDGE. OrderOnlyBothDirections is the honest arm for a stand-in
@@ -127,43 +179,223 @@ type UnlistedImportUseSizingAuthority
 // it flags was measured compiling in an isolated closure -- extdeps.uri, whose `Optional` reference
 // is not the class) AND under-reports (a genuine instance at a position its filter does not scan is
 // invisible to it, and it cannot attribute a binding source at all). Neither direction is bounded,
-// so the number names an ORDER and nothing finer. CertifiedCount is reserved for the authority
-// census below and is unreachable until that census is reachable.
+// so the number names an ORDER and nothing finer. LiveDiagnosticObservation is the authority
+// census's arm: the instrument is the resolver's own diagnostic stream over the whole-tree
+// closure, so the count it reports is the class's population by construction rather than by
+// approximation, and since the 2026-09-09 raw-census rework each reading is bound by its identity
+// block to the exact source vector, compiler, policy, schema and closure it was taken from. It is
+// deliberately NOT named CertifiedCount -- the name this arm wore until the 2026-09-09 review
+// (finding 2) ruled it stronger than the producer's provenance: the figures then transcribed
+// predated the identity binding, and no gate re-derives the count at a pinned revision. The
+// figures below are the 2026-09-09 reading over the INTEGRATED tree (the branch's merge with
+// main), produced by the reworked producer whose every observation carries its identity block;
+// the digest itself is deliberately not transcribed because this file is inside the hashed
+// source vector, so any digest written here would self-invalidate on the next edit. The arm
+// earns a stronger name when the per-class ratchet lands and a stored base reading is joined
+// against head by an executing consumer, not before.
 type SizingReadAs
   = OrderOnlyBothDirections
-  | CertifiedCount
-
-type AuthorityCensusReachability
-  = AuthorityCensusReachable
-  | AuthorityCensusEntryPointDeleted { deleted_path: NonEmptyStr, swept_as: NonEmptyStr }
+  | LiveDiagnosticObservation
 
 type UnlistedImportUseSizingObservation sole_constructor {
   authority: UnlistedImportUseSizingAuthority
   denominator_modules: Int
   modules_carrying: Int
   module_name_pairs: Int
-  hand_checked_rows: Int
-  hand_checked_false_positives: Int
   read_as: SizingReadAs
-  authority_census_reachability: AuthorityCensusReachability
-  supersedes_when_reachable: DeclarationRef
 }
 
 data unlisted_import_use_burndown_sizing: UnlistedImportUseSizingObservation = UnlistedImportUseSizingObservation {
-  authority: SizedByStandInExtractor { authoring_session: "clever-ibex-130" as NonEmptyStr },
-  denominator_modules: 4459,
-  modules_carrying: 789,
-  module_name_pairs: 2190,
-  hand_checked_rows: 10,
-  hand_checked_false_positives: 1,
-  read_as: OrderOnlyBothDirections,
-  authority_census_reachability: AuthorityCensusEntryPointDeleted {
-    deleted_path: "src/v1/stage0/src/bin/compile_clean_unlisted_import_census.rs" as NonEmptyStr,
-    swept_as: "unrostered seed probe, gunbc#9160, recorded as a Delete in gunbc.live_deploy.srv1_residue_rehearsal" as NonEmptyStr
+  authority: SizedByAuthorityCensus {
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
   },
-  supersedes_when_reachable: DeclarationRef {
-    module_path: "gunbc.compile_clean_diagnostic_policy",
-    decl_name: "unlisted_import_use_census_hand_rust_dissolve_trigger",
-    field: WholeDeclaration
+  denominator_modules: 4166,
+  modules_carrying: 485,
+  module_name_pairs: 1306,
+  read_as: LiveDiagnosticObservation
+}
+
+// THE PER-CLASS CEILING ROSTER FOR EVERY ADVISORY-TYPECHECK CLASS THE CENSUS CAN REPORT.
+// Coverage is scoped to that one gate state: a rendered-uncounted row (ComplexityUnknown) is
+// expressly outside the advisory program's governance, and a blocking row is already refused by
+// the gate itself.
+//
+// The census (gunbc.instrument_targets compile_clean_diagnostic_census_binding) measures the
+// population; this roster records, per class, the ATTAINABLE CEILING the burndown is aimed at --
+// DESIGN 4b's derived-not-aspirational ceiling, decided from what the class IS rather than from
+// how large it is. class_name is the census's own class key, whose single authority is the total
+// match over v1.std.core CompilerDiagnostic in the seed projection
+// (cli_run::compile_clean_diagnostic_histogram_key): a class name here joins the census output by
+// string equality. The join is EXECUTED, not advised: the census producer refuses
+// DiagnosticCensusCeilingRosterUncovered on an observed advisory-typecheck class with no row
+// here, DiagnosticCensusCeilingRosterDuplicate on two rows naming one class, and
+// DiagnosticCensusCeilingRosterStale on a row naming a class the schema does not know or whose
+// gate is no longer CensusAdvisoryTypecheck -- the review tell this sentence used to describe is
+// now a typed refusal. No counts are carried: counts are the census's output and rot between
+// runs (DESIGN 6 -- name the instrument, never transcribe its output).
+//
+// THE WORK ORDER IS THE LIST ORDER, sorted by (population x mechanical-fixability) as measured by
+// the 2026-09-09 census over the whole-tree closure (4,057 modules, 24,907 advisories across the
+// 6 classes then observed, after the kernel-identity guard, the field-access alias peel and the
+// qualified-spelling visibility fold landed). The 2026-09-09 review corrected one premise of that
+// ordering: the two import-list classes are NOT mechanically fixable by enlarging import lists,
+// because the namespace-only design (docs/plans/namespace-resolution-design.md) deletes imports
+// as a naming authority and the repair must converge toward that state, not away from it. Both
+// are WallAfterGrounding on the Step 0 binding-provenance census. The remaining order stands: the
+// two declared-admission rosters whose instances each carry their own triggers
+// (ServiceConfigReferenceJudgmentDeferred 15, MethodExistenceFrontierAdmitted 2), then the
+// wall-after-grounding classes whose promotion waits on a named evidence capability
+// (WhereRefinementUnenforced 6,228, DeclaredTypeInhabitanceUndecided 11,743, and the two
+// effect-summary rows). THE TWO EFFECT-SUMMARY ROWS WERE ENROLLED BY THE WITNESS ITSELF: the raw
+// census's first run after the 2026-09-09 rework refused DiagnosticCensusCeilingRosterUncovered
+// on EffectSummaryIncompleteAtFunctionValue -- an observed advisory class with no row -- which is
+// the bijection witness doing the work finding 5 built it for, rather than a review tell someone
+// had to notice. Their populations are the completed census's own output (DESIGN 6: name the
+// instrument, never transcribe its output); both sort with the wall-after-grounding classes
+// because each names the effect-evidence capability its promotion waits on.
+
+type AdvisoryClassCeiling
+  = MechanicallyFixableNow { repair: NonEmptyStr }
+  | WallAfterGrounding { missing_capability: NonEmptyStr }
+  | DeclaredAdmissionRoster { roster: DeclarationRef }
+  | DiagnosticDefectAtEmission { defect: NonEmptyStr }
+  | DeliberatelyAdvisoryForever { reason: NonEmptyStr }
+
+// THE FIVE ARMS, AND WHY THE FIFTH IS EXPECTED TO STAY UNOCCUPIED. MechanicallyFixableNow: the
+// resolver already knows the binding, so the repair is derivable per site and the class burns to
+// zero. It stood occupied by the two import-list classes until the 2026-09-09 review (finding 3)
+// measured the premise false: their 'mechanical' repair was enlarging import lists, which is the
+// duplicate representation the namespace-only design deletes, so both moved to
+// WallAfterGrounding on the Step 0 binding-provenance census and the arm stands unoccupied -- an
+// unoccupied arm here is a fact about the corpus, not a defect in the taxonomy.
+// WallAfterGrounding: DESIGN 5's decidable-but-ungrounded class -- the check is decidable
+// (evidence present or not) but the evidence carrier is not yet modeled, so promoting now would
+// refuse programs that are right but unproven; the arm names the capability that grounds it.
+// DeclaredAdmissionRoster: the class's instances are not a defect population but a declared
+// frontier -- each admission is a roster row carrying its own cause, occurrence budget and
+// dissolution trigger, so the class empties as its roster empties and promoting the CLASS while
+// rows stand would refuse declared admissions. DiagnosticDefectAtEmission: the emission site fires
+// on something no author wrote, so the repair is at the emitter, not in the corpus.
+// DeliberatelyAdvisoryForever is the brief's fourth category and is expected to stay UNOCCUPIED:
+// DESIGN 5 admits no warnings, so a class that should stay advisory forever is usually a class
+// whose subject is wrong -- an occupation of this arm is a review finding, not a routine row.
+
+type AdvisoryClassCeilingRow {
+  class_name: NonEmptyStr
+  ceiling: AdvisoryClassCeiling
+  census: DeclarationRef
+}
+
+data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
+  AdvisoryClassCeilingRow {
+    class_name: "UnlistedImportUse" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "the Step 0 binding-provenance census (gunbc.namespace_step0_binding_provenance_contract): every warning joined to an exact occurrence identity and selected declaration, each family observed before AND after import stripping, with a typed disposition per occurrence -- no-source-edit diagnostic defect, preserve-by-minimal-qualification, preserve-by-containment-repair, resolver-selection defect, unresolved-must-refuse, ambiguous-must-refuse, target-changed, observation-incomplete. THERE IS NO DEFAULT ADDIMPORT ARM, and there must not be one: the controlling namespace design (docs/plans/namespace-resolution-design.md) deletes imports as a naming authority -- the reference is the sole representation of usage and dependency edges are derived from resolved references -- so adding module/name pairs to import lists manufactures the duplicate representation the terminal design exists to remove. The binding-source partition (the census's unlisted_import_rows SOURCE columns; the 2026-09-09 integrated-tree reading: 229 definer-resolvable, 2,607 pool-coincidence, 406 listed-import, 17 ambiguous-leaf) reads accordingly. DEFINER-RESOLVABLE rows already bind through namespace/containment -- the terminal shape; do not add imports to silence them, adjudicate the diagnostic's emission. POOL-COINCIDENCE rows are unsafe accidental coverage: establish the exact selected declaration, then preserve the target through qualification/containment or repair the resolver, under the before/after-strip observation. LISTED-IMPORT rows are legacy selective-import behavior: preserve the exact binding under the terminal resolver; enlarging the legacy list is never the end state. THE WORKLIST IS NOT AN EDIT SCRIPT UNTIL STEP 0: the census's per-row detail carries file, position, referenced name, referencing module and binding source, but not the occurrence identity, the selected declaration identity, or the pre/post-edit targets, so it can group and count and must not actuate edits. THREE CLOSED CARVE-OUTS, defects that lived inside the class and are already repaired at the emitter. FIRST: the emitter also charged references whose RESOLVED BINDING is a kernel-minted identity (ident span <kernel:NAME>) -- synthetic formal nodes of imported generic fns reached through the ancestry overlay, and authored occurrences of lexically-introduced type parameters. No import-list edit can discharge such a row: the binding is not import-governed, and adding the name would rebind the reference, not repair a listing gap. The pre-fix census under-counted the defect at 19 by measuring occurrence SPANS; measured by binding it was 876 of 4,621. v1.compiler.infer_resolve now guards the emission with v1.compiler.core resolved_node_is_kernel_identity_for_name, and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test imported_generic_call_charges_no_unlisted_import_use_on_the_formal is enrolled (RED pre-fix, GREEN post). SECOND: the field-access alias peel (v1.compiler.infer peel_alias_once_for_field_access) resolved an imported alias's EXPANSION under the importer's masked env, charging the definer tree's argument names against an import list that could never list them honestly -- the names are the definer's locals and the definer's own module compiles clean. The masked-boundary authority (v1.compiler.infer_resolve resolve_node_bounded_masked_boundary) states the invariant this violated: grounding recursions descend into defining-module structure with masked=false. The peel now resolves with masked=false, the census moved 3,745 -> 3,367 occurrences (501 modules, 1,330 pairs), and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test constructing_through_an_imported_alias_charges_no_unlisted_import_use_on_the_expansion is enrolled (RED pre-fix, GREEN post). THIRD: source_visible_names (v1.compiler.infer build_type_env) carried only BARE spellings, so the leaf check fired on every masked QUALIFIED use -- including `q.def.QFoo` beside `import q.def { QFoo }`, a row no import-list edit could discharge. The import-scoped policy's gate is that the import list says which qualified names are visible (namespace-resolution-design.md section 7); the fold now enters each imported name under its qualified spelling as well (selective imports qualify exactly the listed names; is-all imports qualify the module's own interface names, never ancestry names). The census moved 3,367 -> 3,249 occurrences (483 modules, 1,303 pairs), exactly the listed-import column 511 -> 393 with definer-resolvable (242) and pool-coincidence (2,614) unchanged, and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test qualified_use_of_a_listed_import_charges_no_unlisted_import_use is enrolled (RED pre-fix, GREEN post) beside qualified_use_without_any_import_still_charges_unlisted_import_use (the gate still gates). The class's terminal invariant is not 'every reference is duplicated in an import list' but 'every reference resolves to the intended exact declaration under namespace-only resolution, or refuses as unresolved/ambiguous; no binding depends on pool coincidence' -- and this diagnostic dissolves with the import grammar rather than standing as the permanent wall."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "UnlistedVariantValueUse" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "the same Step 0 binding-provenance census the UnlistedImportUse row names, read over the variant-value channel: each bare variant use joined to its exact occurrence and selected constructor declaration, observed before and after import stripping, with the same typed dispositions. The repair is the namespace/containment migration, NOT a blanket expansion of variant import lists -- under the namespace-only design the import list is deleted as a naming authority, so listing every used variant manufactures the duplicate representation the terminal state removes. The class exists separately from UnlistedImportUse on purpose -- v1.std.core's note on the variant records that the emitter's use-line synthesis must stay blind to it -- but the migration authority and the no-default-AddImport rule are the same."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "ServiceConfigReferenceJudgmentDeferred" as NonEmptyStr,
+    ceiling: DeclaredAdmissionRoster {
+      roster: DeclarationRef {
+        module_path: "v1.std.core",
+        decl_name: "service_config_field_for_property_name",
+        field: WholeDeclaration
+      }
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "MethodExistenceFrontierAdmitted" as NonEmptyStr,
+    ceiling: DeclaredAdmissionRoster {
+      roster: DeclarationRef {
+        module_path: "v1.compiler.infer",
+        decl_name: "unresolved_method_frontier",
+        field: WholeDeclaration
+      }
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "WhereRefinementUnenforced" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "refinement evidence at non-literal positions (refinement subtyping / parameter evidence): the check is decidable -- evidence present or not -- but the carrier is not modeled, and hard-refusing every non-literal site was measured to break dag_compile_clean across the Octet/Port/Milliseconds migration surfaces (extdeps.pin pin_refresh_window_positivity_note). Reasons observed: 'non-literal value at refined position' and 'predicate deferred at compile time'. Trigger authority: where_refinement_deferral_reason_scaffold_note (feature:where-refinement-deferral-reason-authority)."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "DeclaredTypeInhabitanceUndecided" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "inhabitance evidence through generic instantiation: 77% of sampled instances are 'generic formal' (membership undecidable from the declaration alone because payload types can be type variables), with 'produced identity erased', 'refinement introduction' and 'optional carrier' behind; the decider's reasons are a closed sum (v1.compiler.infer inhabitance_undecidable_reason_label) and each names the evidence it lacks. Promoting now would refuse ordinary generic code that is right but unproven -- the fabricated-refusal arm DESIGN 4b forbids. The class's ceiling is per-reason: a reason whose evidence becomes modeled leaves the class, and 'formal unresolved' in particular names a masked real defect (an unresolvable declared type) that should red as UnresolvedType rather than rest here."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "EffectSummaryIncompleteAtFunctionValue" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "effect evidence carried on function types -- an effect row in the function's own type. A call through a function value chooses its callee at runtime, so the caller's summary can be exact only when the function TYPE declares the effects any inhabitant may have and the call joins that row; v1.compiler.infer_service's note on the arm records that today the fact is not knowable at the function that carries the call. The check itself is decidable -- the incompleteness marker is present or not -- but promoting now would refuse every call through a function value, ordinary code that is right but unproven (the fabricated-refusal arm DESIGN 4b forbids). Until the row exists the published summary is honestly a lower bound and this diagnostic is the boundary marker, not a defect queue."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "EffectSummaryIncompleteAtLocalBinding" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "the effect registry's join through local bindings. A call to a local binding's value should read the summary the binding's own initializer established; the registry is keyed by callable identity and does not reach local bindings, so the join contributes nothing and the caller's summary is published as a lower bound. Decidable -- the marker is present or not -- but promoting now would refuse ordinary calls through locally-bound functions that are right but unproven. Where the binding's value is itself a runtime-chosen function this row degrades to the function-value row's capability, and the two burn down together."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
   }
+]
+
+// THE ROSTER PROJECTION THE CENSUS PRODUCER'S BIJECTION WITNESS READS. The host runs this through
+// the interpreter over the policy's own closure (the same read path as
+// compile_clean_unlisted_import_use_blocks) and checks the roster against the observed population
+// and the class schema: no duplicate rows, no row naming a class the schema does not know or whose
+// disposition is no longer advisory, and no observed advisory class without a row. A read failure
+// is DiagnosticCensusPolicyUnreadable -- the census refuses rather than reporting an unpoliced
+// population as an empty one.
+fn advisory_ceiling_roster_class_names() -> List<String> {
+  advisory_class_ceilings |> map(r => r.class_name as String)
 }
