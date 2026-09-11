@@ -29,6 +29,6 @@ data main_per_commit_floor_verdict: RungDrop = RungDrop {
     population: [
       "push events on refs/heads/main"
     ],
-    restoration_trigger: "every superseded pending refs/heads/main SHA receives a terminal adjudication, bound to that SHA, of every required acceptance obligation -- executed and passed, or coverage by a superseding execution proved. SUFFICIENT FOR: per-commit attribution and bisection grain on main, so a SHA GitHub removed while pending is not silent. Fleet cancellation safety (running_supersession_for_fleet_standing / SupersedeMutableHeadRuns) lives on the running-cancellation axis and does not retire this evidence-grain drop. Re-adding unique run_id to the group string is an artifact and does not discharge the row"
+    restoration_trigger: "every superseded pending refs/heads/main SHA receives a terminal adjudication, bound to that SHA, of every required acceptance obligation -- executed and passed, or coverage by a superseding execution proved. SUFFICIENT FOR: per-commit attribution and bisection grain on main, so a SHA GitHub removed while pending is not silent. Fleet cancellation safety (running_supersession_for_fleet_standing restoring pull_request-only running cancel) lives on the running-cancellation axis and does not retire this evidence-grain drop. Re-adding unique run_id to the group string is an artifact and does not discharge the row"
   }
 }

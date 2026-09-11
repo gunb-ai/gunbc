@@ -512,7 +512,8 @@ fn running_supersession_for_fleet_standing(
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
-    FleetCancellationSafe { hosts: _ } => SupersedeMutableHeadRuns
+    FleetCancellationSafe { hosts: _ } =>
+      SupersedeRunningForEvent { event: github_event_name_pull_request }
   }
 }
 
@@ -529,11 +530,13 @@ fn supersession_event_expression(event: String) -> String {
   concat(concat("${{ github.event_name == '", event), "' }}")
 }
 
-// THE MUTABLE-HEAD EVENT SET IS ONE ROSTER, same as the queue axis below: classifier membership
-// and the OR'd cancel Expression both fold this list, so they cannot disagree by a second edit.
+// RUNNING-CANCEL EVENTS ARE NOT THE GROUPING SET (review 63654). Occupancy grouping of push
+// lives in witness_floor_group_branches (pending replacement on github.ref). This roster is the
+// running-cancel event set for SupersedeMutableHeadRuns: classifier membership and the OR'd
+// cancel Expression both fold it. Push is not a member — an older refs/heads/main SHA is landed
+// work, and cancelling its RUNNING jobs is a rung drop that this PR does not declare.
 data mutable_ci_head_event_names: List<String> = [
   github_event_name_pull_request,
-  github_event_name_push,
 ]
 
 fn is_mutable_ci_head_event(event: String) -> Bool {

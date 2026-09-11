@@ -534,7 +534,7 @@ fn supersession_availability_rule_text_under(spec: RunningSupersessionPolicy) ->
     SupersedeRunningForEvent { event: e } =>
       concat("a RUNNING run may be superseded only for the event ", concat(e, "; a running run cancelled under any other event is external, and a pending run may be replaced by the queue regardless"))
     SupersedeMutableHeadRuns =>
-      "a RUNNING run may be superseded for pull_request and push (newest mutable head wins the whole workflow); merge_group, heal dispatch keyed by expected_healed_sha, and other dispatch are not cancelled across subjects; a pending run may be replaced by the queue regardless"
+      "a RUNNING run may be superseded for events in mutable_ci_head_event_names (currently pull_request); a running run cancelled under any other event is external, and a pending run may be replaced by the queue regardless"
   }
 }
 

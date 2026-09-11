@@ -41,7 +41,7 @@ import gunbc.witness_floor_workflow {
   NeverSupersedeRunning,
   SupersedeRunningForEvent,
   SupersedeMutableHeadRuns,
-  mutable_head_runs_cancel_expression,
+  supersession_event_expression,
   witness_floor_concurrency_policy,
   witness_floor_running_supersession_policy,
   concurrency_of_policy
@@ -633,25 +633,25 @@ test fn w_running_cancel_four_cell_through_the_producer() -> Bool {
     SupersedeRunningForEvent { event: _ } => false
     SupersedeMutableHeadRuns => false
   }
-  let safe_is_mutable = match safe {
-    SupersedeMutableHeadRuns => true
+  let safe_is_pr = match safe {
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
-    SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
   let unproven_cancel = match cancel_in_progress_of_policy(policy: unproven) {
     CancelInProgressBool { value: b } => b == false
     CancelInProgressExpression { expression: _ } => false
   }
   let safe_cancel = match cancel_in_progress_of_policy(policy: safe) {
-    CancelInProgressExpression { expression: e } => e == mutable_head_runs_cancel_expression()
+    CancelInProgressExpression { expression: e } => e == supersession_event_expression(event: "pull_request")
     CancelInProgressBool { value: _ } => false
   }
   unproven_is_never
-    && safe_is_mutable
+    && safe_is_pr
     && supersession_available_under(policy: unproven, event: "pull_request") == false
     && supersession_available_under(policy: unproven, event: "merge_group") == false
     && supersession_available_under(policy: safe, event: "pull_request") == true
-    && supersession_available_under(policy: safe, event: "push") == true
+    && supersession_available_under(policy: safe, event: "push") == false
     && supersession_available_under(policy: safe, event: "merge_group") == false
     && unproven_cancel
     && safe_cancel
@@ -744,9 +744,9 @@ test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
       safe_host(name: "srv2"),
     ]),
   ) {
-    SupersedeMutableHeadRuns => true
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
-    SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -820,9 +820,9 @@ test fn w_a_server_reclaiming_fleet_restores_supersession() -> Bool {
   match running_supersession_for_fleet_standing(
     standing: finalize_fleet_standing(acc: reclaiming_fleet_acc(), eligible_hosts: two_host_fleet()),
   ) {
-    SupersedeMutableHeadRuns => true
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
-    SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
