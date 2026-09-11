@@ -1,0 +1,114 @@
+module extdeps.vllm.deepseek_v4_1_flash_recipe
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash"
+  },
+}
+
+// WHAT THE PUBLISHER SAYS, AS THE PUBLISHER'S FIGURES AND NOT AS THIS FLEET'S.
+//
+// THE DISTINCTION IS THE WHOLE POINT OF THE MODULE. A vendor's minimum-VRAM number is a claim made
+// under a stated schema on stated hardware; it is evidence about what the publisher verified, never a
+// measurement of what this fleet would observe. Recording it as a plain number beside fleet
+// measurements is how a publisher's headroom convention becomes a fact nobody can attribute -- so
+// every row here says whose figure it is and, where the page states one, how it was derived.
+//
+// Fetched 2026-09-11 from the page cited above; the page itself records date_added 2026-09-09 and
+// date_updated 2026-09-10.
+type VllmPublishedFigure sole_constructor {
+  subject: NonEmptyStr
+  value: NonEmptyStr
+  derivation: NonEmptyStr
+}
+
+data v41_flash_checkpoint_on_disk: VllmPublishedFigure = VllmPublishedFigure {
+  subject: "checkpoint size on disk" as NonEmptyStr,
+  value: "511 GB (476 GiB)" as NonEmptyStr,
+  derivation: "stated by the recipe, with a component table: routed + DSpark experts MXFP4 557.2B params 259.5 GiB; Engram tables MXFP8 196.6B 188.8 GiB; attention, norms, routers MXFP8 6.0B 5.6 GiB; embedding + LM head + misc 3.0B 5.8 GiB; quantization scales 23.6B 21.9 GiB" as NonEmptyStr,
+}
+
+// THE 614 IS NOT A MEASUREMENT AND THE PAGE SAYS SO. It is the checkpoint total multiplied by the
+// recipe schema's 1.2 headroom factor, which is a publishing convention rather than an observed
+// floor -- so a fleet that wants a real floor measures one, and a fleet that wants to know whether it
+// is even in range compares against this.
+data v41_flash_vram_minimum: VllmPublishedFigure = VllmPublishedFigure {
+  subject: "vram_minimum_gb" as NonEmptyStr,
+  value: "614" as NonEmptyStr,
+  derivation: "the checkpoint total times the recipe schema's 1.2 headroom factor, stated verbatim on the page as `vram_minimum_gb: 614 is that total times the schema's 1.2 headroom factor`" as NonEmptyStr,
+}
+
+// THE FITS SENTENCE, KEPT AS THE PUBLISHER WROTE IT, including its own caveat -- which is the half a
+// summary drops.
+data v41_flash_fit_statement: NonEmptyStr = "It fits one GB200 NVL4 tray (768 GB) at TP4, or one 8-GPU H200 node (1128 GB) with room for KV cache, but 1M context will need the context or batch capped -- measure before assuming" as NonEmptyStr
+
+// THE VERIFIED-HARDWARE ROSTER THE PAGE CARRIES IN ITS OWN METADATA, and what is NOT in it matters as
+// much as what is: there is no GB10 / DGX Spark entry. The published image nonetheless compiles for
+// sm_121 (its TORCH_CUDA_ARCH_LIST is `8.7 8.9 9.0 10.0+PTX 12.0 12.1`), so "kernels exist for this
+// architecture" and "this architecture is a verified platform" are separate facts here, and only the
+// first is established.
+data v41_flash_verified_hardware: List<NonEmptyStr> = [
+  "h200" as NonEmptyStr,
+  "gb200" as NonEmptyStr,
+  "gb300" as NonEmptyStr,
+  "mi350x" as NonEmptyStr,
+]
+
+fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
+  fold(v41_flash_verified_hardware, init: false, f: (acc, h) =>
+    if acc { true } else { h as String == hardware as String })
+}
+
+// ── THE PUBLISHED IMAGE ───────────────────────────────────────────────────────────────────────
+//
+// THE TAG THE RECIPE NAMES DOES NOT EXIST, AND THE ONES THAT DO ARE DATED. The page's Prerequisites
+// section says to use `vllm/vllm-openai:deepseekv41-flash` (vLLM 0.30.0+); Docker Hub answers 404 for
+// that tag. What is published, on 2026-09-10, is a dated family -- deepseekv41-flash-0909 and its
+// -cu129 and per-architecture variants. A consumer that copied the documented tag gets nothing, which
+// is why the resolved reference is carried here rather than the documented one.
+data v41_flash_documented_tag: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
+data v41_flash_documented_tag_standing: NonEmptyStr = "absent from the registry: Docker Hub returns `httperror 404: tag 'deepseekv41-flash' not found` for vllm/vllm-openai, checked 2026-09-11" as NonEmptyStr
+
+data v41_flash_published_repository: NonEmptyStr = "vllm/vllm-openai" as NonEmptyStr
+data v41_flash_published_tag: NonEmptyStr = "deepseekv41-flash-0909" as NonEmptyStr
+data v41_flash_published_manifest_list_digest: NonEmptyStr = "sha256:00d577a6a63281e15336029d5bcee4e9a2cf182214a4f20ba6111b1c8e79893d" as NonEmptyStr
+data v41_flash_published_arm64_digest: NonEmptyStr = "sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr
+data v41_flash_published_amd64_digest: NonEmptyStr = "sha256:4f3c8bcf6328305b8cb6f61146dbfa125b0b04ae98eef3d091019ec30f564a9b" as NonEmptyStr
+data v41_flash_published_at: NonEmptyStr = "2026-09-10T06:47:50Z" as NonEmptyStr
+
+fn v41_flash_published_arm64_reference() -> NonEmptyStr {
+  join([v41_flash_published_repository as String, "@", v41_flash_published_arm64_digest as String], "") as NonEmptyStr
+}
+
+// THE IMAGE'S OWN BUILD METADATA, READ FROM ITS CONFIG BLOB THROUGH THE REGISTRY API RATHER THAN BY
+// PULLING IT. Two things it says and one it does not: it targets sm_121 explicitly, it was built
+// against CUDA 13.0.1, and it states NO provenance -- ai.vllm.build.commit and
+// org.opencontainers.image.revision both read `unknown`, ai.vllm.build.pipeline reads `local`, and
+// the image tag label reads `local/vllm-openai:dev`. A published artifact whose own labels decline to
+// name its source is exactly the case extdeps.vllm.runtime_defaults ImageSourceEquivalence exists for.
+data v41_flash_published_torch_cuda_arch_list: NonEmptyStr = "8.7 8.9 9.0 10.0+PTX 12.0 12.1" as NonEmptyStr
+data v41_flash_published_cuda_version: NonEmptyStr = "13.0.1" as NonEmptyStr
+data v41_flash_published_build_commit_label: NonEmptyStr = "unknown" as NonEmptyStr
+
+// THE REVISION IT WAS ACTUALLY BUILT FROM, AND WHY THAT SETTLES THE REGISTRATION QUESTION. The
+// installed distribution in the arm64 image is vllm-0.1.dev20904+g179dd0fa9, so the wheel's own
+// setuptools-scm stamp names commit 179dd0fa9 -- and the GitHub API answers `No commit found for SHA`
+// for that id against vllm-project/vllm. The image is therefore built from a revision that is not in
+// the public repository, which is why its registry.py carries entries public main does not.
+data v41_flash_published_distribution: NonEmptyStr = "vllm-0.1.dev20904+g179dd0fa9" as NonEmptyStr
+data v41_flash_published_revision_public_standing: NonEmptyStr = "not present in vllm-project/vllm: the GitHub commits API answers `No commit found for SHA: 179dd0fa9`, checked 2026-09-11" as NonEmptyStr
+
+// HOW IT MAPS THE ARCHITECTURE, READ OUT OF THE IMAGE'S OWN registry.py. It is an ORDINARY REGISTRY
+// ENTRY -- not a plugin entry point, not hf-overrides, not a launch-time registration. Two entries
+// point at vllm.models.deepseek_v4_1, and neither exists in public main at 07b75534. That is the
+// whole difference between the image this repository built from public source and the published one:
+// the same model code, wired in.
+data v41_flash_published_registry_entries: List<NonEmptyStr> = [
+  "DeepseekV41ForCausalLM -> (vllm.models.deepseek_v4_1, DeepseekV41ForCausalLM)" as NonEmptyStr,
+  "DSparkV41DraftModel -> (vllm.models.deepseek_v4_1, DSparkDeepseekV4ForCausalLM)" as NonEmptyStr,
+]

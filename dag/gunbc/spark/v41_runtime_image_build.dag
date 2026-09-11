@@ -10,12 +10,13 @@ import std.content_hash {
   serialize_content_hash,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
   DockerBuildArg, DockerBuildSpec,
-  docker_build_spec_command, docker_image_inspect_id_command, docker_run_ephemeral_command,
+  docker_build_spec_command, docker_image_digest_command,
 }
 import extdeps.git {
   git_clone_shallow_command, git_fetch_shallow_revision_command,
@@ -76,12 +77,24 @@ import gunbc.typed_argv_exec {
 
 // ── WHERE ─────────────────────────────────────────────────────────────────────────────────────
 //
-// ONE HOST, NAMED, AND NOT THE SERVING PAIR'S BUSINESS. spark-a3ee is a GB10 whose docker group the
-// operator holds, and it is where gunbc.spark.serving_runtime_capability_probe took every reading it
-// recorded -- so a capability read inside the built image here is comparable, host for host, with the
-// readings the published images produced. The build writes only under its own root and creates no
-// long-lived container; the pair runtime on this host is untouched.
-data v41_build_host: HostIdentity = "spark-a3ee" as HostIdentity
+// ONE HOST, NAMED BY ITS FLEET IDENTITY, AND THE VENDOR LABEL IS NOT THAT IDENTITY.
+//
+// THIS ROW SPELLED `spark-a3ee` AND THE MODEL REFUSED IT, WHICH IS THE POINT WORTH RECORDING. That is
+// the unit's vendor label, derived from an ethernet MAC tail; the fleet identity of the same box is
+// srv5, bound by gunbc.spark.dgx_procurement srv5_router_binding. Only the identity resolves:
+// fleet_probe_endpoint_for folds the router bindings, which are keyed by identity, so a label
+// produced a target with no enrolled host key and the first ssh leg refused -- typed, located, before
+// anything was touched. The brief this lane was given named the box by its label in one sentence and
+// the serving pair by its identity in another, and nothing in prose joins the two; the model did.
+//
+// IT IS ALSO WHERE THE SERVING PAIR RUNS, and that is stated here rather than left to be discovered.
+// srv5 and srv6 are the Spark serving pair. The build writes only under its own root, creates no
+// long-lived container, and the probe is a read-only `docker run --rm` -- but a source build is not a
+// free tenant, and whether this lane should hold that host at all is an operator question, not an
+// authorship one. 🟡 dissolve-on: re-homed to a non-serving Spark (srv7 carries spark-c2b1) once the
+// artifact does not have to stay where it was built; the build is content-keyed, so the tag is
+// unchanged by the move and only the local config digest, which is a per-host artifact, is not.
+data v41_build_host: HostIdentity = operator_host_srv5
 data v41_build_root: NonEmptyStr = "/home/briansrls/gunbc-v41-build" as NonEmptyStr
 data v41_source_dir: NonEmptyStr = "/home/briansrls/gunbc-v41-build/src" as NonEmptyStr
 data v41_source_remote_name: NonEmptyStr = "origin" as NonEmptyStr
@@ -313,25 +326,32 @@ func converge_v41_image(target: SshTarget, context: FleetSshExecutionContext, r:
   uses net: Network
 {
   let tag = v41_image_tag(r: r)
-  let inspect = v41_leg(target: target, context: context, step: "image-inspect" as NonEmptyStr, command: docker_image_inspect_id_command(image: tag))
-  match inspect {
-    V41LegRan { stdout: id } =>
-      V41ImageBuilt {
-        identity: V41ImageIdentity { tag: tag, local_config_digest: id as NonEmptyStr, built_from: r.source, build_key: v41_build_key(r: r) },
-        already_present: true,
-      }
-    V41LegFailed { step: _, cause: _ } =>
-      match v41_leg(target: target, context: context, step: "image-build" as NonEmptyStr, command: docker_build_spec_command(spec: v41_build_spec(r: r))) {
-        V41LegFailed { step: s, cause: why } => V41ImageBuildRefused { step: s, cause: why }
-        V41LegRan { stdout: _ } =>
-          match v41_leg(target: target, context: context, step: "image-readback" as NonEmptyStr, command: docker_image_inspect_id_command(image: tag)) {
-            V41LegFailed { step: s, cause: why } => V41ImageBuildRefused { step: s, cause: join(["the build reported success and the image could not be inspected: ", why], "") }
-            V41LegRan { stdout: id } =>
-              V41ImageBuilt {
-                identity: V41ImageIdentity { tag: tag, local_config_digest: id as NonEmptyStr, built_from: r.source, build_key: v41_build_key(r: r) },
-                already_present: false,
-              }
-          }
+  match v41_leg(target: target, context: context, step: "image-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+    V41LegFailed { step: st, cause: why } =>
+      V41ImageBuildRefused { step: st, cause: join(["the image query did not run, so nothing is known about whether the tag exists: ", why], "") }
+    V41LegRan { stdout: digest } =>
+      if digest != "" {
+        V41ImageBuilt {
+          identity: V41ImageIdentity { tag: tag, local_config_digest: digest as NonEmptyStr, built_from: r.source, build_key: v41_build_key(r: r) },
+          already_present: true,
+        }
+      } else {
+        match v41_leg(target: target, context: context, step: "image-build" as NonEmptyStr, command: docker_build_spec_command(spec: v41_build_spec(r: r))) {
+          V41LegFailed { step: st, cause: why } => V41ImageBuildRefused { step: st, cause: why }
+          V41LegRan { stdout: _ } =>
+            match v41_leg(target: target, context: context, step: "image-readback" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+              V41LegFailed { step: st, cause: why } => V41ImageBuildRefused { step: st, cause: join(["the build reported success and the readback did not run: ", why], "") }
+              V41LegRan { stdout: readback } =>
+                if readback == "" {
+                  V41ImageBuildRefused { step: "image-readback" as NonEmptyStr, cause: "the build reported success and no image carries the tag it was asked to write" }
+                } else {
+                  V41ImageBuilt {
+                    identity: V41ImageIdentity { tag: tag, local_config_digest: readback as NonEmptyStr, built_from: r.source, build_key: v41_build_key(r: r) },
+                    already_present: false,
+                  }
+                }
+            }
+        }
       }
   }
 }

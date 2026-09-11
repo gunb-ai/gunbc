@@ -96,6 +96,13 @@ data v41_probe_architecture_class: NonEmptyStr = "DeepseekV41ForCausalLM" as Non
 // ── THE SCRIPT ────────────────────────────────────────────────────────────────────────────────
 
 data v41_probe_script_path: NonEmptyStr = "/home/briansrls/gunbc-v41-build/v41_capability_probe.py" as NonEmptyStr
+
+// PATH-RESOLVED, DELIBERATELY. An absolute interpreter path would be a claim about the filesystem of
+// an image this repository built but has not read, and the image's own PATH is what its vLLM
+// installation was configured against -- the same reasoning extdeps.tools.mkdir records for a host
+// nobody has observed. A missing python3 is then a plain spawn failure, which reads as a refused
+// probe rather than as a capability the image lacks.
+data v41_probe_interpreter: NonEmptyStr = "python3" as NonEmptyStr
 // WORLD-READABLE BECAUSE THE READER IS A CONTAINER. The script is written by the operator login and
 // read by a process inside the container, which runs as root but through a read-only bind mount; an
 // owner-only mode is the right default for a credential and the wrong one for a file whose whole
@@ -243,7 +250,8 @@ fn v41_probe_command(image: NonEmptyStr) -> ArgvCommand {
     image: image,
     gpus_all: true,
     mounts: v41_probe_mounts(),
-    argv: ["python3", v41_probe_script_path as String],
+    entrypoint: v41_probe_interpreter,
+    argv: [v41_probe_script_path as String],
   )
 }
 
@@ -432,4 +440,82 @@ func v41_runtime_image_probe_wet() -> ProcessExit
         }
       }
   }
+}
+
+// ── THE READINGS THIS LANE TOOK ───────────────────────────────────────────────────────────────
+//
+// EXECUTED, NOT PREDICTED. Every row below was produced by the generated script above running inside
+// the digest named beside it, through `docker run --rm --entrypoint python3 --gpus all`, on srv5
+// (the GB10 whose vendor label is spark-a3ee), with the interpreter reporting compute capability 12.1
+// and vLLM reporting 0.1.dev1+g07b755346 -- the version string carries the commit, so the image
+// identifies its own source rather than being taken on this module's word.
+//
+// 🟡 dissolve-on: these rows move to gunbc.spark.serving_runtime_capability_probe's roster the moment
+// #11016 lands. One image's capability readings belong beside every other image's, or the sweep's
+// denominator silently splits in two; they are here only because that roster is not yet on main.
+type V41RecordedReading sole_constructor {
+  capability: NonEmptyStr
+  observed: NonEmptyStr
+  evidence: NonEmptyStr
+}
+
+data v41_probed_digest: NonEmptyStr = "sha256:b8b4ef35b17c2dd10c73f323819996f8928f0e5bd52f8980eedd9c634162461f" as NonEmptyStr
+data v41_probed_at: NonEmptyStr = "2026-09-11" as NonEmptyStr
+data v41_probed_on_host: NonEmptyStr = "srv5" as NonEmptyStr
+data v41_probed_compute_capability: NonEmptyStr = "12.1" as NonEmptyStr
+data v41_probed_framework_version: NonEmptyStr = "0.1.dev1+g07b755346" as NonEmptyStr
+data v41_probed_registry_count: NonEmptyStr = "383" as NonEmptyStr
+
+// THE ONE ABSENCE, AND IT IS THE ONE THE LANE EXISTED TO SETTLE. The image built from the lead commit
+// does not register DeepseekV41ForCausalLM. This is not a build failure and not an arch gate: the
+// CLASS is in the tree, at vllm/models/deepseek_v4_1/nvidia/vl_model.py, and vllm's registry carries
+// no entry mapping that name -- or any name -- to vllm.models.deepseek_v4_1. What it does carry is
+// DeepseekV4ForCausalLM and DeepseekV4ForConditionalGeneration, both pointing at vllm.models.deepseek_v4.
+// So at 07b75534 the V4.1 implementation exists and is unreachable by architecture name, which is
+// what the checkpoint's config.json declares.
+data v41_image_capability_readings: List<V41RecordedReading> = [
+  V41RecordedReading {
+    capability: v41_capability_architecture,
+    observed: "absent" as NonEmptyStr,
+    evidence: "ModelRegistry.get_supported_archs() returned 383 names inside the digest; DeepseekV41ForCausalLM is not among them, while DeepseekV4ForCausalLM and DeepseekV4ForConditionalGeneration are. The class exists at vllm/models/deepseek_v4_1/nvidia/vl_model.py and no registry entry maps to vllm.models.deepseek_v4_1" as NonEmptyStr,
+  },
+  V41RecordedReading {
+    capability: v41_capability_fp4_weight,
+    observed: "present" as NonEmptyStr,
+    evidence: "torch.ops._C.cutlass_scaled_fp4_mm and torch.ops._C.cutlass_scaled_mm_supports_fp4 both resolve, which is the SM12x FP4 block compiled for a 12.1 target -- the configure output recorded `Building SM12x NVFP4 for archs: 12.0f` against `CUDA target architectures: 12.1`" as NonEmptyStr,
+  },
+  V41RecordedReading {
+    capability: v41_capability_kv_layout,
+    observed: "present" as NonEmptyStr,
+    evidence: "DeepseekV4FlashInferMLASparseBackend.supports_combination, called inside the image at DeviceCapability(12, 1), admitted fp8, fp8_e4m3 and fp8_ds_mla and rejected auto, bfloat16 and nvfp4_ds_mla with `kv_cache_dtype not supported`. The admitted set is exactly what the source says for device major 12, measured rather than read" as NonEmptyStr,
+  },
+  V41RecordedReading {
+    capability: v41_capability_csa2,
+    observed: "present" as NonEmptyStr,
+    evidence: "vllm.models.deepseek_v4_1.compressor and .sparse_mla both import" as NonEmptyStr,
+  },
+  V41RecordedReading {
+    capability: v41_capability_dspark,
+    observed: "present" as NonEmptyStr,
+    evidence: "vllm.models.deepseek_v4_1.nvidia.dspark and vllm.v1.worker.gpu.spec_decode.dspark both import" as NonEmptyStr,
+  },
+  V41RecordedReading {
+    capability: v41_capability_flashinfer_sm120,
+    observed: "present" as NonEmptyStr,
+    evidence: "all four demands resolve: flashinfer.decode.trtllm_batch_decode_sparse_mla_dsv4, flashinfer.decode.trtllm_batch_decode_with_kv_cache_mla, flashinfer.autotuner.autotune and flashinfer.mla._sparse_mla_sm120._DECODE_DSV4_DISPATCH. The SM12 branch's FlashInfer requirement is satisfied on sm_121" as NonEmptyStr,
+  },
+]
+
+fn v41_reading_for(capability: NonEmptyStr) -> V41RecordedReading? {
+  fold(v41_image_capability_readings, init: none, f: (acc, r) =>
+    if (r.capability as String) == (capability as String) { Present { value: r } } else { acc })
+}
+
+// THE VERDICT THIS IMAGE EARNS, and it is deliberately not "the build failed". Every capability the
+// SM12 path needs of a RUNTIME is present; the one thing missing is a registry entry, which is a
+// different kind of gap with a different remedy -- a newer upstream commit, or vLLM's own
+// out-of-tree registration API at launch, neither of which is a patch to the image.
+fn v41_image_unmet_capabilities() -> List<NonEmptyStr> {
+  fold(v41_image_capability_readings, init: [], f: (acc, r) =>
+    if (r.observed as String) == "present" { acc } else { append(acc, r.capability) })
 }

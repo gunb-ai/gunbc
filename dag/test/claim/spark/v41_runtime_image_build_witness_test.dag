@@ -13,7 +13,14 @@ import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_demand_symbols, v41_sm12_kv_cache_dtype_admitted,
   v41_fp4_sm120_block, v41_fp4_sm100_block,
 }
+import extdeps.vllm.deepseek_v4_1_flash_recipe {
+  v41_flash_published_registry_entries, v41_flash_published_revision_public_standing,
+  v41_flash_published_distribution, v41_flash_published_torch_cuda_arch_list,
+  v41_flash_documented_tag_standing, v41_flash_hardware_verified,
+}
+import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint }
 import gunbc.spark.v41_runtime_image_build {
+  v41_build_host,
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
   v41_gb10_recipe, v41_build_key, v41_image_tag, v41_build_spec, v41_recipe_arch_is_buildable,
 }
@@ -21,6 +28,8 @@ import gunbc.spark.v41_runtime_image_probe {
   V41CapabilityPresent, V41CapabilityAbsent, V41CapabilityUnread,
   v41_capability_kv_layout, v41_capability_fp4_weight, v41_capability_architecture,
   v41_probe_script, v41_capability_reading, v41_probe_architecture_class,
+  v41_capability_flashinfer_sm120,
+  v41_image_unmet_capabilities, v41_reading_for,
 }
 
 // THE ONE FIELD THAT DIVERGES FROM UPSTREAM IS THE ONE THE LANE EXISTS FOR. Everything else in the
@@ -203,4 +212,59 @@ test fn the_fp4_kv_roster_carries_the_registered_operators_and_not_the_names_tha
     && !roster_contains(symbols: ops, needle: "nvfp4_ds_mla_cache")
     && roster_contains(symbols: v41_fp4_weight_surface.torch_operators, needle: "_C.cutlass_scaled_fp4_mm")
     && !roster_contains(symbols: v41_fp4_weight_surface.torch_operators, needle: "_C.scaled_fp4_quant")
+}
+
+
+// THE BUILD HOST MUST RESOLVE TO AN ENDPOINT THAT IS NOT ITS OWN NAME, and this witness exists
+// because the first modeled run refused for exactly the lack of it. fleet_probe_endpoint_for folds
+// the router bindings and, finding no match, RETURNS ITS INPUT rather than refusing -- so a host
+// named by a vendor label instead of a fleet identity yields a "endpoint" that is the label itself,
+// which no anchor has a key for. That fallback is upstream of this lane and is not fixed here; what
+// is fixed is that this lane cannot ship a host whose endpoint resolution silently did nothing.
+test fn the_build_host_resolves_to_an_endpoint_other_than_its_own_name() -> Bool {
+  match spark_reach_endpoint(host: v41_build_host, path: ReachManagementLan) {
+    Absent => false
+    Present { value: endpoint } => endpoint != (v41_build_host as String) && string_contains(s: endpoint, pattern: ".")
+  }
+}
+
+// THE RECORDED READINGS ARE ASSERTED AT THE GRAIN THEY WERE TAKEN, so the one absence cannot be
+// tidied into a pass and the five presences cannot drift into a claim nobody measured. The
+// architecture row is the finding: the image built from the lead commit carries every kernel
+// capability the SM12 path asks for and does not register the checkpoint's architecture.
+test fn the_built_image_meets_every_kernel_capability_and_registers_no_v41_architecture() -> Bool {
+  let unmet = v41_image_unmet_capabilities()
+  length(unmet) == 1
+    && (match v41_reading_for(capability: v41_capability_architecture) {
+      Absent => false
+      Present { value: r } =>
+        (r.observed as String) == "absent"
+          && string_contains(s: r.evidence as String, pattern: "383")
+          && string_contains(s: r.evidence as String, pattern: "DeepseekV4ForCausalLM")
+    })
+    && (match v41_reading_for(capability: v41_capability_flashinfer_sm120) {
+      Absent => false
+      Present { value: r } => (r.observed as String) == "present"
+    })
+    && (match v41_reading_for(capability: v41_capability_kv_layout) {
+      Absent => false
+      Present { value: r } =>
+        (r.observed as String) == "present"
+          && string_contains(s: r.evidence as String, pattern: "rejected auto, bfloat16 and nvfp4_ds_mla")
+    })
+}
+
+// THE PUBLISHED IMAGE ANSWERS THE QUESTION OUR BUILD COULD NOT, AND THE TWO FACTS THAT EXPLAIN WHY
+// ARE ASSERTED TOGETHER: it carries a registry entry for the architecture, and it is built from a
+// revision that is not in the public repository. Either alone would be a curiosity; together they say
+// the gap is wiring held outside public main rather than anything about this fleet's build.
+test fn the_published_image_registers_the_architecture_from_a_revision_public_main_does_not_have() -> Bool {
+  fold(v41_flash_published_registry_entries, init: false, f: (acc, e) =>
+    acc || string_contains(s: e as String, pattern: "DeepseekV41ForCausalLM -> (vllm.models.deepseek_v4_1"))
+    && string_contains(s: v41_flash_published_revision_public_standing as String, pattern: "No commit found for SHA: 179dd0fa9")
+    && string_contains(s: v41_flash_published_distribution as String, pattern: "g179dd0fa9")
+    && string_contains(s: v41_flash_published_torch_cuda_arch_list as String, pattern: "12.1")
+    && !v41_flash_hardware_verified(hardware: "gb10" as NonEmptyStr)
+    && v41_flash_hardware_verified(hardware: "gb200" as NonEmptyStr)
+    && string_contains(s: v41_flash_documented_tag_standing as String, pattern: "404")
 }

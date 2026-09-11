@@ -196,12 +196,18 @@ fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: docker_build_spec_arguments(spec: spec))
 }
 
-// The two questions a convergent build asks before and after it runs: does this exact tag already
-// name an image, and what digest does that image carry. `--format` is a Go template the engine
-// evaluates; the two spellings below are the only ones this repository asks for, so they are rows
-// rather than a template parameter a caller could fill with anything.
-fn docker_image_inspect_id_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["image", "inspect", "--format", "{{.Id}}", image as String])
+// THE TWO QUESTIONS A CONVERGENT BUILD ASKS ARE ONE QUESTION. Does this exact tag already name an
+// image, and what digest does that image carry, are answered by the same listing: `docker images
+// --no-trunc --quiet <ref>` prints the image's `sha256:<hex>` config digest, or prints NOTHING and
+// exits zero when the reference names no image. So absence is an empty answer rather than a failure,
+// which is what lets a caller keep "no such image" apart from "the query did not run".
+//
+// IT IS NOT `docker image inspect --format {{.Id}}`, AND THE REASON IS A MEASURED REFUSAL. That
+// spelling was written first and refused at the transport: a Go template carries braces and a dot,
+// and braces are outside the portable-word allowlist gunbc.typed_argv_exec enforces, so the argv
+// never reached the host. The listing form asks the same question in words the wire admits.
+fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
 }
 
 // THE SHORT MOUNT SPELLING, AND THE ONE REASON IT EXISTS BESIDE docker_mount_flag. `--mount` takes
@@ -225,13 +231,22 @@ fn docker_short_mount_flag(m: DockerMount) -> List<String> {
 // `docker run --rm` executes argv in a throwaway container from an image, which is how a question
 // about what an image CONTAINS is asked inside it rather than inferred from its provenance. The
 // container is removed on exit, so asking twice asks the same question of the same bytes.
-fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, argv: List<String>) -> ArgvCommand {
+// THE ENTRYPOINT MUST BE NAMED, NOT INHERITED, AND A REFUSAL TAUGHT THIS. An image built to serve a
+// model carries a serving entrypoint, so `docker run <image> python3 script.py` does not run python --
+// it passes those words to the server as arguments, which answered `unrecognized arguments:
+// .../v41_capability_probe.py`. A question about what an image CONTAINS is not a question its
+// entrypoint is equipped to answer, so the caller supplies the program and the image supplies only
+// the filesystem.
+fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
   argv_command(
     program: docker_binary_path,
     arguments: concat(
       concat(
-        concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
-        flat_map(mounts, m => docker_short_mount_flag(m: m)),
+        concat(
+          concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
+          flat_map(mounts, m => docker_short_mount_flag(m: m)),
+        ),
+        ["--entrypoint", entrypoint as String],
       ),
       concat([image as String], argv),
     ),
