@@ -118,27 +118,23 @@ type Home
   = HomeAuthority { authority: DeclarationRef }
   | NoHomeExists { nearest: DeclarationRef, why_it_is_not_the_home: NonEmptyStr }
 
-// REACHED-BY-ROUTE AND EXECUTED ARE TWO AXES, AND AN EARLIER CUT COLLAPSED THEM. It asserted that
-// validate_then_compile has no production caller, on a grep restricted to files OTHER than
-// 00_compile.dag. False: compile_source_root_ingest_with_admission and stage_translate both call the
-// door from inside that module, each with lenses: [], and the root roster fires regardless of
-// caller-supplied lenses — which is what required_lens_grain_note says. The emitted
-// SourceRootEvalDriver on the required-v2-native lane executes the first of those.
+// THE REACHED-BY-ROUTE AXIS IS DELETED, AND THE RULE THAT DELETED IT IS THIS MODULE'S OWN. It asked
+// which EXECUTING route names an obligation's door as a consumer, and it existed to separate two
+// facts that really were different while the required-v2-native lane ran: a door a route names, and
+// a door a route actually reaches. gunbc#11003 deleted that lane. With no required route naming the
+// door, ReachedByNativeRoute had no constructor anywhere in the tree, the predicate was constant
+// false, and census_counts published a permanently-zero column.
 //
-// REACHED AND EXECUTING ARE STILL TWO NUMBERS, AND THEY NO LONGER AGREE. Reached-by-route counts the
-// obligations whose door an executing route names as a consumer; executing-natively counts the ones
-// the lane's population actually contains. The gap between them is the rows the exclusion frontier
-// carves out of discovery, which the native harness therefore never sees.
+// KEEPING IT WOULD HAVE BEEN THE DECORATION DESIGN section 4b NAMES -- permanently green by
+// construction, carrying no information, and worse than absent because it would be cited as
+// coverage -- and this same change had already deleted the unread-verdict premise on exactly that
+// ground one column over. An earlier cut kept the axis and wrote an annotation CONCEDING it had gone
+// constant, which is the rule stated and then not applied; review 63691 named that correctly as the
+// module applying its own deletion rule inconsistently.
 //
-// THIS PARAGRAPH SAID "executing-natively is 0" UNTIL THE LANE LANDED, and that sentence is deleted
-// rather than softened: it was true of a tree where the only native evidence was the self-host
-// receipt family, and it became a present-tense coverage claim about a fold that had started
-// answering differently. Read census_counts for the current pair; this annotation does not carry
-// either number, for the reason DESIGN section 6 gives.
-type RouteReach
-  = ReachedByNativeRoute { driver: NonEmptyStr, upstream_refusal: NonEmptyStr }
-  | NotNamedByAnyExecutingRoute { note: NonEmptyStr }
-
+// IT RETURNS WITH THE LANE, from gunbc.rung_drop v2_native_route_off_the_merge_path, which is the
+// authority for when a required route names the door again. Until then the native standing carries
+// the whole of what this census can say about that route.
 // WHAT THE v1 SEED DOES OUTSIDE THE OBLIGATION'S REACH — the column that motivates the census. v2's
 // gates read the InferredTree the compile door is handed, and the seed is never handed to that door:
 // it is stage0 Rust compiled by rustc. So the reach of every obligation below stops at the corpus v2
@@ -432,28 +428,6 @@ fn native_standing(o: V2CompileObligation) -> PathExecution {
     } else {
       RouteGapHeld { stall: self_host_route_stall }
     }
-  }
-}
-
-// REACH IS DERIVED TOO, AND FOR ONE COMMIT IT WAS THE LAST AUTHORED COLUMN LEFT. The head that
-// followed the lane's deletion repaired native_standing and left this value -- an authored
-// NonEmptyStr naming "the required-v2-native lane" -- feeding reached_by_native_route. So one
-// published column reported reach through a lane the column beside it reported as deleted. That is
-// the class this change files, committed inside the census, and worse than the annotation form the
-// ledger row describes because a fold read it.
-//
-// WHAT REACH MEANS NOW, AND WHY IT COLLAPSES. The axis asks which EXECUTING route names this
-// obligation's door as a consumer. With the required lane deleted the answer is none: the route
-// model, harness and admission authority survive and still enter compile_source_root_ingest_with_admission
-// when someone invokes them, but an operator-invoked instrument is not an executing route in the
-// sense this axis was built to distinguish. So reach and native standing now give the same answer
-// for every row, and the axis carries no information it did not already carry -- which is stated
-// rather than hidden, because an axis that has gone constant is worth noticing. It separates again
-// the day gunbc.rung_drop v2_native_route_off_the_merge_path retires and a required route names the
-// door once more.
-fn route_reach_of(o: V2CompileObligation) -> RouteReach {
-  NotNamedByAnyExecutingRoute {
-    note: "no route on a required path names this obligation's door: the v2 native route entered it until gunbc#11003 deleted the required-v2-native lane, and what survives is an operator-invoked instrument. gunbc.rung_drop v2_native_route_off_the_merge_path owns the trigger for its return" as NonEmptyStr
   }
 }
 
@@ -956,13 +930,6 @@ fn obligation_executes_interpreted(o: V2CompileObligation) -> Bool {
   path_execution_is_executing(p: interpreted_standing(o: o))
 }
 
-fn obligation_is_reached_by_the_native_route(o: V2CompileObligation) -> Bool {
-  match route_reach_of(o: o) {
-    ReachedByNativeRoute { driver: _, upstream_refusal: _ } => true
-    NotNamedByAnyExecutingRoute { note: _ } => false
-  }
-}
-
 fn obligation_seed_escape_is_open(o: V2CompileObligation) -> Bool {
   match o.seed_escape {
     SeedEscapeOpen { what_the_seed_does: _ } => true
@@ -987,12 +954,6 @@ fn obligations_executing_interpreted() -> Int {
 
 fn obligations_executing_natively() -> Int {
   list_length(items: filter(v2_compile_obligation_census, o => obligation_executes_natively(o: o)))
-}
-
-fn obligations_reached_by_the_native_route() -> Int {
-  list_length(
-    items: filter(v2_compile_obligation_census, o => obligation_is_reached_by_the_native_route(o: o))
-  )
 }
 
 fn obligations_with_open_seed_escape() -> Int {
@@ -1253,21 +1214,18 @@ fn census_counts() -> String {
   concat(
     concat("claimed=", to_string(obligations_claimed())),
     concat(
-      concat(" reached_by_native_route=", to_string(obligations_reached_by_the_native_route())),
+      concat(" executing_natively=", to_string(obligations_executing_natively())),
       concat(
-        concat(" executing_natively=", to_string(obligations_executing_natively())),
+        concat(" executing_interpreted=", to_string(obligations_executing_interpreted())),
         concat(
-          concat(" executing_interpreted=", to_string(obligations_executing_interpreted())),
+          concat(" seed_escape_open=", to_string(obligations_with_open_seed_escape())),
           concat(
-            concat(" seed_escape_open=", to_string(obligations_with_open_seed_escape())),
+            concat(" without_a_home=", to_string(obligations_without_a_home())),
             concat(
-              concat(" without_a_home=", to_string(obligations_without_a_home())),
+              concat(" inflated_rung=", to_string(obligations_with_inflated_rung())),
               concat(
-                concat(" inflated_rung=", to_string(obligations_with_inflated_rung())),
-                concat(
-                  concat(" claiming_above_ceiling=", to_string(obligations_claiming_above_their_ceiling())),
-                  concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry()))
-                )
+                concat(" claiming_above_ceiling=", to_string(obligations_claiming_above_their_ceiling())),
+                concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry()))
               )
             )
           )
