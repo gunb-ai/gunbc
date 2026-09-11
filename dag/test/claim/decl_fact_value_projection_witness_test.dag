@@ -63,26 +63,27 @@ fn distinct_values_project_distinct_atoms(a: String, b: String) -> Bool {
   !same_atoms(a: a, b: b)
 }
 
-// BARE STRING initializers, one module, one declared type, different authored values.
-data bare_a: String = "compiler.self_host.emitter_producer_provenance.v1_seed_emit_rust_qualified_module"
+// THE SPECIMENS ARE PURPOSE-BUILT AND VALUE-ONLY, in
+// test.fixture.decl_fact_value_projection.specimens — see that file for why they are authored
+// rather than borrowed (review 63983: two of the three borrowed pairs differed in ARITY and in
+// referenced identifiers, so a projection carrying list cardinality could have greened them
+// while carrying no lexeme) and why they cannot live in this file (decl_facts skips any path
+// ending in _test.dag, so a specimen declared here is invisible to the reader under test).
+//
+// Within each pair the two rows share declared type, shape, element count, field names and the
+// LENGTH of every string; only the characters differ.
 
-data bare_b: String = "compiler.self_host.emitter_producer_provenance.v2_emit_interpreted_qualified_module"
+data bare_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen_bare_alpha"
 
-// LIST-OF-STRING initializers. The second is EMPTY, which is the sharpest case in the file:
-// a two-element list and a list with no elements at all project the same atoms, so element
-// lexemes are demonstrably not carried.
-data list_a: String = "lens.fn_index_depth_agreement.agreement_pool_roots"
+data bare_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_bare_beta"
 
-data list_b: String = "lens.fn_index_depth_agreement.empty_string_list"
+data list_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen_list_alpha"
 
-// RECORD initializers with the SAME constructor and different string-list fields. Holding the
-// constructor fixed is deliberate: v2.std.decl_facts_skeleton
-// decl_facts_outer_record_constructor_lexeme_authority_note records that ExprRecordLit
-// constructor SPELLING does surface as a skeleton atom, and this pair asks the separate
-// question of whether the authored VALUES inside surface too.
-data rec_a: String = "compiler.self_host.emitter_producer_provenance.cssl_harness_realized_closure"
+data list_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_list_beta"
 
-data rec_b: String = "compiler.self_host.emitter_producer_provenance.v2_interpreted_emitter_closure"
+data rec_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen_record_alpha"
+
+data rec_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_record_beta"
 
 // POSITIVE CONTROL — NOT enrolled expected-red, and it must stay green. It establishes that
 // decl_facts_at resolves all six qualified names and that every projected node yields a
