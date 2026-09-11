@@ -119,8 +119,13 @@ test fn each_shape_posts_to_its_own_path() -> Bool {
 // witness is worth reading. It asserted `count == 2` with the literals ".225" and ".236" against a
 // roster whose authority -- `gunbc.spark.pair_serving_desired` `spark_pair_serving_groups` -- now
 // carries ONE group. The assertion had been false for as long as that row has been a singleton and
-// nothing said so, because this module had no standing consumer to say it in (review 63385; the
-// enrollment is now `gunbc.commit_workflow` `commit_gate_roster`). DESIGN section 6: name the
+// nothing said so, because this module had no standing consumer to say it in (review 63385). IT
+// STILL HAS NONE, and saying otherwise here would read as coverage (review 63629): the
+// `gunbc.commit_workflow` `commit_gate_roster` row written for it was deleted once measured -- that
+// roster has no consumer on the required-CI path -- so this module runs only when a change touches
+// it, under the declared drop `gunbc.rung_drop` `required_gate_bankruptcy`. The receipt is
+// `gunbc.recurring_failure_mode` `unread_member_defaults_to_a_legal_value_of_its_domain`.
+// DESIGN section 6: name the
 // instrument, never transcribe its output. The count is read from the groups roster and each
 // address is joined against the head's own endpoint row, so a fleet move moves the witness with it.
 test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
@@ -304,4 +309,49 @@ test fn an_unmodelled_block_kind_is_skipped_not_refused() -> Bool {
 test fn a_duplicated_messages_tool_use_input_refuses() -> Bool {
   let c = messages_decode_cause(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"run_command\",\"input\":{},\"input\":{}}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
   c.contains("run_command") && c.contains("twice")
+}
+
+// NULLABLE IS NOT MALFORMED (side-chat review, 2026-09-11). The chat completion schema types the
+// assistant message's content and its reasoning field as NULLABLE strings, so a tool-only round
+// arrives as `"content": null` on a body the server was entitled to send. The first draft of this
+// repair read that as a type error and refused -- BEFORE decoding the tool calls, so the model's
+// commands were lost to a decoder defect. These are positive controls: they are green only if
+// present-null is its own outcome rather than an arm of malformed. The duplicate reds above are the
+// discriminating other half; both must hold, which is why the pair is enrolled together.
+test fn a_null_content_beside_tool_calls_still_decodes_the_calls() -> Bool {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \\\"ls\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
+      list_length(items: blocks) == 1
+        && (match blocks.first() {
+              Present { value: WireToolUseBlock { id, name, input } } =>
+                id == "c1" && name == "run_command" && serialize_json(v: input).contains("ls")
+              _ => false
+            })
+  }
+}
+
+test fn a_null_reasoning_field_decodes_rather_than_refusing() -> Bool {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"reasoning_content\":null,\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
+      list_length(items: blocks) == 1
+        && (match blocks.first() { Present { value: WireTextBlock { text: t } } => t == "done"  _ => false })
+  }
+}
+
+// AND NULL IS STILL A REFUSAL WHERE THE SHAPE REQUIRES A STRING: nullability is granted one member
+// at a time. Without this red the arm above would read as "null is always fine", which would put
+// back the fabrication this PR removed one member over -- a tool_call whose id is null is just as
+// unaddressable as one with no id at all.
+test fn a_null_tool_call_id_still_refuses() -> Bool {
+  let c = chat_decode_cause(body: chat_with_tool_call(call: "{\"id\":null,\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"}}"))
+  c.contains("run_command") && c.contains("null")
+}
+
+// A DUPLICATED content MEMBER STILL REFUSES EVEN WHEN ONE OF THE TWO IS NULL: present-null is an
+// answer, and two answers are still unknowable.
+test fn a_duplicated_content_member_with_a_null_still_refuses() -> Bool {
+  let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":null,\"content\":\"second\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
+  c.contains("content") && c.contains("more than once")
 }

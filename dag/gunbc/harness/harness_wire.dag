@@ -151,9 +151,20 @@ type HarnessResponseRead
 // which `harness_turn_round` reads as "the model finished talking", writes `turn.completed` for,
 // and exits zero on -- a duplicated member becoming a successful completion. Absence is the only
 // outcome that may take a no-op arm; a member this codec cannot read uniquely is a refusal.
+//
+// PRESENT-AND-NULL IS THE FOURTH ANSWER, and collapsing it into the third was this repair's own
+// over-correction (side-chat review, 2026-09-11). The OpenAI chat completion schema vLLM serves
+// types the assistant message's `content` and its reasoning field as NULLABLE strings, so a
+// tool-only round arrives as `"content": null` on a perfectly well-formed body. Reading that as
+// malformed refuses a response the peer was entitled to send -- and refuses it BEFORE its tool
+// calls are decoded, so the model's commands are lost to a decoder defect rather than to a wire
+// one. `null` is the peer SAYING there is no string here; absent is the peer not speaking; a
+// duplicate is unknowable; a number is a type error. Four wire facts, four outcomes, and each
+// consumer decides what present-null means for ITS member rather than the codec deciding once.
 type HarnessStringRead
   = StringRead { value: String }
   | StringAbsent
+  | StringNull
   | StringMalformed { cause: String }
 
 fn harness_member_string(doc: JsonValue, key: String) -> HarnessStringRead {
@@ -161,6 +172,7 @@ fn harness_member_string(doc: JsonValue, key: String) -> HarnessStringRead {
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: s } => StringRead { value: s }
+        JsonNull => StringNull
         _ => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
       }
     JsonMemberAbsent => StringAbsent
@@ -275,11 +287,17 @@ fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> 
 //
 // THE SHARPEST CASE IS `input`. A tool_use block whose input member is absent used to decode as an
 // EMPTY OBJECT, which is not a marker: it is a well-formed, dispatchable set of arguments. The
-// dispatcher in gunbc.harness.harness_tool then reads the tool's parameters off that object, finds
-// none, and runs the tool with its arguments silently removed. For a shell tool that is an empty
-// command; for anything with a default-shaped parameter it is an action nobody requested. The
-// fabricated value is INDISTINGUISHABLE at every consumer from a model that genuinely sent `{}`,
-// which is the property that makes it silent wrongness rather than a weak default.
+// dispatcher in gunbc.harness.harness_tool then reads the tool's parameters off that object and
+// finds none. WHAT HAPPENS NEXT IS NARROWER THAN AN EARLIER DRAFT OF THIS COMMENT CLAIMED (side-chat
+// review, 2026-09-11): harness_execute_tool_use declares run_command's `command` required and
+// refuses a call without it as ToolInputMemberMissing, so on today's one implemented tool nothing
+// executes. The harm is a MISATTRIBUTION plus a spent round -- the model's real arguments are
+// discarded and the model is told back that it sent a call with no command, which is a fact about
+// the codec reported as a fact about the model. That refusal is a property of run_command's single
+// required member, not of the decoder: a tool with an optional or defaulted parameter would
+// dispatch on the empty object. The fabricated value is INDISTINGUISHABLE at every consumer from a
+// model that genuinely sent `{}`, which is why the repair belongs here rather than in the
+// dispatcher, and why it is silent wrongness rather than a weak default.
 //
 // The rule is therefore: an unknown `type` is not modelled and is skipped; a MODELLED kind missing a
 // member its shape requires is a refusal naming the kind and the member.
@@ -292,21 +310,34 @@ fn harness_block_member_gap(kind: String, key: String) -> String {
   join(["a ", kind, " content block carries no string '", key, "' member"], "")
 }
 
+// PRESENT-AND-NULL IS A REFUSAL FOR EVERY MEMBER A SHAPE REQUIRES. Nullability is a fact about a
+// specific member of a specific schema, not a property of JSON, so it is granted one member at a
+// time: the chat assistant message's content and reasoning are typed nullable upstream and take a
+// no-text arm, and every other member here is required, so `null` there is the peer declining to
+// send something the shape says must be present. Naming it separately from a type error keeps the
+// diagnostic honest about which of the two happened.
+fn harness_null_member_cause(subject: String, key: String) -> String {
+  join([subject, " carries '", key, "' as null; the shape requires a string there"], "")
+}
+
 fn harness_decode_block(v: JsonValue) -> HarnessBlockRead {
   match harness_member_string(doc: v, key: "type") {
     StringAbsent => BlockUnreadable { cause: "a content block carries no string type member; its kind is unknown" }
+    StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a content block", key: "type") }
     StringMalformed { cause: c } => BlockUnreadable { cause: join(["a content block's type is unreadable: ", c], "") }
     StringRead { value: kind } =>
       if kind == "text" {
         match harness_member_string(doc: v, key: "text") {
           StringRead { value: t } => BlockRead { block: WireTextBlock { text: t } }
           StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "text", key: "text") }
+          StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a text block", key: "text") }
           StringMalformed { cause: c } => BlockUnreadable { cause: join(["a text block is unreadable: ", c], "") }
         }
       } else if kind == "thinking" {
         match harness_member_string(doc: v, key: "thinking") {
           StringRead { value: t } => BlockRead { block: WireThinkingBlock { thinking: t } }
           StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "thinking", key: "thinking") }
+          StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a thinking block", key: "thinking") }
           StringMalformed { cause: c } => BlockUnreadable { cause: join(["a thinking block is unreadable: ", c], "") }
         }
       } else if kind == "tool_use" {
@@ -314,10 +345,12 @@ fn harness_decode_block(v: JsonValue) -> HarnessBlockRead {
           StringAbsent => BlockUnreadable {
             cause: "a tool_use block carries no string id member; its result could not be addressed back to the call",
           }
+          StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a tool_use block", key: "id") }
           StringMalformed { cause: c } => BlockUnreadable { cause: join(["a tool_use block's id is unreadable: ", c], "") }
           StringRead { value: id } =>
             match harness_member_string(doc: v, key: "name") {
               StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "tool_use", key: "name") }
+              StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a tool_use block", key: "name") }
               StringMalformed { cause: c } => BlockUnreadable { cause: join(["a tool_use block's name is unreadable: ", c], "") }
               StringRead { value: name } =>
                 match json_object_unique_member(v: v, key: "input") {
@@ -393,6 +426,8 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
           HarnessResponseUnreadable {
             cause: "response carries no string stop_reason member; the turn's terminal state is unknown",
           }
+        StringNull =>
+          HarnessResponseUnreadable { cause: harness_null_member_cause(subject: "the response", key: "stop_reason") }
         StringMalformed { cause: c } =>
           HarnessResponseUnreadable { cause: join(["the response stop_reason is unreadable: ", c], "") }
         StringRead { value: wire } =>
@@ -680,13 +715,15 @@ fn harness_chat_finish_reason(wire: String) -> HarnessStopReasonRead {
 // when it was present but not parseable as JSON. The second is the worse of the pair, because
 // malformed arguments are a thing a model actually produces under sampling -- a truncated object, a
 // trailing comma -- and answering `{}` converts "the model emitted a call this codec could not
-// read" into "the model called this tool with no arguments". The turn then runs the tool stripped
-// of its arguments and reports success.
+// read" into "the model called this tool with no arguments" -- and hands that invented call to the
+// dispatcher, which on run_command refuses it as ToolInputMemberMissing for a member the model
+// actually sent, spending the round and reporting the codec's fault as the model's.
 fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
   match json_object_unique_member(v: v, key: "function") {
     JsonMemberFound { value: f } =>
       match harness_member_string(doc: f, key: "name") {
         StringAbsent => BlockUnreadable { cause: "a chat tool_call carries no string function.name member" }
+        StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a chat tool_call", key: "function.name") }
         StringMalformed { cause: c } => BlockUnreadable { cause: join(["a chat tool_call's function.name is unreadable: ", c], "") }
         StringRead { value: name } =>
           match harness_member_string(doc: v, key: "id") {
@@ -695,6 +732,9 @@ fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
                 "the chat tool_call for '", name, "' carries no string id member; its result could not ",
                 "be addressed back to the call",
               ], ""),
+            }
+            StringNull => BlockUnreadable {
+              cause: harness_null_member_cause(subject: join(["the chat tool_call for '", name, "'"], ""), key: "id"),
             }
             StringMalformed { cause: c } =>
               BlockUnreadable { cause: join(["the chat tool_call for '", name, "' has an unreadable id: ", c], "") }
@@ -705,6 +745,9 @@ fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
                     "the chat tool_call for '", name, "' carries no arguments member; refusing rather ",
                     "than dispatching that tool with its arguments removed",
                   ], ""),
+                }
+                StringNull => BlockUnreadable {
+                  cause: harness_null_member_cause(subject: join(["the chat tool_call for '", name, "'"], ""), key: "arguments"),
                 }
                 StringMalformed { cause: c } =>
                   BlockUnreadable { cause: join(["the chat tool_call for '", name, "' has unreadable arguments: ", c], "") }
@@ -751,25 +794,43 @@ fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> Harn
   }
 }
 
+// REASONING IS NULLABLE ON THIS SHAPE, AND A NULL PRIMARY STILL CONSULTS THE ALIASES. The upstream
+// schema types the reasoning field as an optional string, and a serving build that populates the
+// alias spelling while leaving the primary explicitly null is a shape this decoder has to read: the
+// two spellings are one fact, so a null on one of them is not yet an answer about the fact. Only
+// when the alias fold also reports null or absence is there no reasoning to carry.
 fn harness_chat_message_reasoning(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
   match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
     StringRead { value: r } => BlocksRead { blocks: [WireThinkingBlock { thinking: r }] }
     StringMalformed { cause: c } =>
       BlocksUnreadable { cause: join(["the chat message's reasoning field is unreadable: ", c], "") }
-    StringAbsent =>
-      match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
-        StringRead { value: r } =>
-          BlocksRead { blocks: if r == "" { [] } else { [WireThinkingBlock { thinking: r }] } }
-        StringMalformed { cause: c } =>
-          BlocksUnreadable { cause: join(["the chat message's reasoning alias is unreadable: ", c], "") }
-        StringAbsent => BlocksRead { blocks: [] }
-      }
+    StringNull => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
+    StringAbsent => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
   }
 }
 
+fn harness_chat_message_reasoning_alias(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
+  match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
+    StringRead { value: r } =>
+      BlocksRead { blocks: if r == "" { [] } else { [WireThinkingBlock { thinking: r }] } }
+    StringMalformed { cause: c } =>
+      BlocksUnreadable { cause: join(["the chat message's reasoning alias is unreadable: ", c], "") }
+    StringNull => BlocksRead { blocks: [] }
+    StringAbsent => BlocksRead { blocks: [] }
+  }
+}
+
+// CONTENT IS NULLABLE ON THIS SHAPE AND NULL IS NOT A FAULT. A tool-only round is served as
+// `"content": null` beside a populated `tool_calls`, so refusing here would discard the model's
+// commands over a member the schema explicitly permits to be null -- the decoder's own defect
+// wearing the costume of a wire fault. Present-null and absent both mean the same thing for THIS
+// member, no assistant text, and they are written as separate arms rather than one wildcard because
+// they are different wire facts and a later member may need to tell them apart. A duplicated or
+// wrong-typed content member still refuses: those are unknowable, not empty.
 fn harness_chat_message_text(msg: JsonValue) -> HarnessBlocksRead {
   match harness_member_string(doc: msg, key: "content") {
     StringRead { value: c } => BlocksRead { blocks: if c == "" { [] } else { [WireTextBlock { text: c }] } }
+    StringNull => BlocksRead { blocks: [] }
     StringAbsent => BlocksRead { blocks: [] }
     StringMalformed { cause: c } =>
       BlocksUnreadable { cause: join(["the chat message's content is unreadable: ", c], "") }
@@ -819,6 +880,9 @@ fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> Har
             Present { value: choice } =>
               match harness_member_string(doc: choice, key: "finish_reason") {
                 StringAbsent => HarnessResponseUnreadable { cause: "chat completion choice carries no finish_reason" }
+                StringNull => HarnessResponseUnreadable {
+                  cause: harness_null_member_cause(subject: "the chat completion choice", key: "finish_reason"),
+                }
                 StringMalformed { cause: c } =>
                   HarnessResponseUnreadable { cause: join(["the chat completion finish_reason is unreadable: ", c], "") }
                 StringRead { value: fr } =>
@@ -857,7 +921,9 @@ fn harness_decode_for_shape(unit: HarnessServingUnit, shape: HarnessWireShape, b
 // THE ALIAS FOLD. A unit may expose the same reasoning text under a second spelling -- vLLM's
 // "reasoning" beside the guide's reasoning_content -- and a unit may expose none. Folding a LIST
 // rather than branching on an empty sentinel keeps "this unit has no alias" as an empty list, which
-// is the state itself rather than a string standing in for it.
+// is the state itself rather than a string standing in for it. A spelling that is present and NULL
+// ends the scan rather than continuing it: null is the unit answering about that spelling, and the
+// caller decides what the answer means, which for reasoning is no thinking block.
 fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> HarnessStringRead {
   match keys.first() {
     Absent => StringAbsent
@@ -865,6 +931,7 @@ fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> Harne
       match harness_member_string(doc: doc, key: k as String) {
         StringRead { value: v } => StringRead { value: v }
         StringMalformed { cause: c } => StringMalformed { cause: c }
+        StringNull => StringNull
         StringAbsent => harness_first_member_string(doc: doc, keys: keys.skip(n: 1))
       }
   }
