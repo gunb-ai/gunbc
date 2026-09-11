@@ -18,7 +18,7 @@ permissions:
   contents: read
 concurrency:
   group: witness-floor-${{ github.event_name == 'merge_group' && format('mg-{0}', github.sha) || github.event_name == 'workflow_dispatch' && github.event.inputs.expected_healed_sha != '' && format('heal-{0}', github.event.inputs.expected_healed_sha) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref || format('run-{0}', github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  cancel-in-progress: false
 env:
   CARGO_TERM_COLOR: always
   GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv

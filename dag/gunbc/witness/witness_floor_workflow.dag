@@ -36,7 +36,6 @@ import gunbc.compile_permit_scope {
   FleetCompileCancellationStanding,
   FleetCancellationSafe,
   FleetCancellationNotSafe,
-  OccupancySupersedeMutableHeads,
   fleet_compile_cancellation_standing
 }
 import extdeps.github.actions {
@@ -340,13 +339,41 @@ type WitnessFloorConcurrencyPolicy {
 // cancellation the moment this workflow reached main, while hosts that had not yet restarted onto
 // the new unit went on losing a permit per kill. The unobserved fleet is on the refusing side, so
 // that interval is unwritable rather than merely unlikely.
+type MutableHeadStanding
+  = MutableHeadSupersedable
+  | ImmutableExecutionSubject
+
+fn mutable_head_standing_of_event(event: String) -> MutableHeadStanding {
+  if is_mutable_ci_head_event(event: event) {
+    MutableHeadSupersedable
+  } else {
+    ImmutableExecutionSubject
+  }
+}
+
+fn fleet_running_cancel_is_safe(standing: FleetCompileCancellationStanding) -> Bool {
+  match standing {
+    FleetCancellationSafe { hosts: _ } => true
+    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => false
+  }
+}
+
+fn running_cancel_authorized(
+  mutable: MutableHeadStanding,
+  fleet: FleetCompileCancellationStanding,
+) -> Bool {
+  match mutable {
+    ImmutableExecutionSubject => false
+    MutableHeadSupersedable => fleet_running_cancel_is_safe(standing: fleet)
+  }
+}
+
 fn running_supersession_for_fleet_standing(
   standing: FleetCompileCancellationStanding,
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
     FleetCancellationSafe { hosts: _ } => SupersedeMutableHeadRuns
-    OccupancySupersedeMutableHeads => SupersedeMutableHeadRuns
   }
 }
 

@@ -22,6 +22,7 @@ import gunbc.compile_permit_scope {
   BorrowerHeldCooperativeHostFifo,
   InvocationLocalCargo,
   fleet_cancellation_standing,
+  producer_absent_standing,
   fleet_compile_cancellation_standing,
   FleetCancellationFoldAcc,
   CapacityPreservedByServerReclamation,
@@ -31,6 +32,10 @@ import gunbc.compile_permit_scope {
 }
 import gunbc.witness_floor_workflow {
   running_supersession_for_fleet_standing,
+  running_cancel_authorized,
+  MutableHeadSupersedable,
+  ImmutableExecutionSubject,
+  cancel_in_progress_of_policy,
   WitnessFloorConcurrencyPolicy,
   PendingReplacementPolicy,
   ReplaceExistingPending,
@@ -121,13 +126,10 @@ data superseding_policy_event: String = "pull_request"
 // AND THE LIVE POLICY ITSELF IS PINNED, which is the arm that actually fails if containment is
 // reverted by accident rather than by decision. It is the reason the fixture above is not simply
 // hiding the change: one witness asserts what the fleet really emits.
-test fn w_live_cancel_policy_supersedes_mutable_heads() -> Bool {
-  supersession_available_under(policy: witness_floor_running_supersession_policy, event: "pull_request") == true
-    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "push") == true
-    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "merge_group") == false
-    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "workflow_dispatch") == false
-    && supersession_available_for_event(event: "pull_request") == true
-    && supersession_available_for_event(event: "push") == true
+test fn w_live_cancel_policy_supersedes_nothing() -> Bool {
+  supersession_available_under(policy: witness_floor_running_supersession_policy, event: "pull_request") == false
+    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "push") == false
+    && supersession_available_for_event(event: "pull_request") == false
 }
 
 // UNDER THE LIVE POLICY A CANCELLED PULL-REQUEST RUN IS AN EVICTION, NOT A SUPERSESSION, and that
@@ -142,24 +144,14 @@ test fn w_live_cancel_policy_supersedes_mutable_heads() -> Bool {
 // govern this record. Its live-entry counterpart is
 // w_the_live_entry_refuses_to_attribute_a_cancellation_it_cannot_date, and the two together say
 // what the classifier knows and what it declines to invent.
-test fn w_live_policy_makes_a_cancelled_pr_run_a_supersession() -> Bool {
+test fn w_live_policy_makes_a_cancelled_pr_run_an_eviction() -> Bool {
   let pr = cancelled_run(event: "pull_request")
   let d = classify_run_with_provenance(
     provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
     record: pr,
     replacement: ReplacementObserved { lag_seconds: 27 }
   )
-  disposition_name(disposition: d) == disposition_superseded_name
-}
-
-test fn w_live_policy_makes_a_cancelled_push_run_a_supersession() -> Bool {
-  let push = cancelled_run(event: "push")
-  let d = classify_run_with_provenance(
-    provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
-    record: push,
-    replacement: ReplacementObserved { lag_seconds: 27 }
-  )
-  disposition_name(disposition: d) == disposition_superseded_name
+  disposition_name(disposition: d) == disposition_externally_cancelled_name
 }
 
 test fn w_live_policy_does_not_supersede_a_cancelled_merge_group_run() -> Bool {
@@ -344,7 +336,7 @@ test fn w_RED_the_report_carries_its_classifier_rule() -> Bool {
   count(rows) == 5
     && string_contains(s: join(rows, "\n"), pattern: "lag < 0")
     && string_contains(s: join(rows, "\n"), pattern: "never external")
-    && string_contains(s: join(rows, "\n"), pattern: "newest mutable head")
+    && string_contains(s: join(rows, "\n"), pattern: "unconditionally false")
     && string_contains(
          s: supersession_availability_rule_text_under(spec: superseding_policy()),
          pattern: superseding_policy_event
@@ -576,8 +568,8 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
       match c {
         Present { value: v } =>
           match v {
-            CancelInProgressBool { value: _ } => false
-            CancelInProgressExpression { expression: e } => e == mutable_head_runs_cancel_expression()
+            CancelInProgressBool { value: b } => b == false
+            CancelInProgressExpression { expression: _ } => false
           }
         none => false
       }
@@ -589,8 +581,8 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
       match c {
         Present { value: v } =>
           match v {
-            QueueMaxCancelInProgressFalse => false
-            QueueMaxCancelInProgressExpression { expression: e } => e == mutable_head_runs_cancel_expression()
+            QueueMaxCancelInProgressFalse => true
+            QueueMaxCancelInProgressExpression { expression: _ } => false
           }
         none => false
       }
@@ -627,6 +619,31 @@ fn safe_host(name: String) -> HostCompileCancellationStanding {
     host: name as HostIdentity,
     realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
   }
+}
+
+fn observed_safe_fleet() -> FleetCompileCancellationStanding {
+  fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
+    safe_host(name: "srv1"),
+    safe_host(name: "srv2"),
+  ])
+}
+
+test fn w_running_cancel_join_is_supersedable_and_safe() -> Bool {
+  running_cancel_authorized(mutable: MutableHeadSupersedable, fleet: observed_safe_fleet()) == true
+    && running_cancel_authorized(mutable: MutableHeadSupersedable, fleet: producer_absent_standing(eligible_hosts: two_host_fleet())) == false
+    && running_cancel_authorized(mutable: ImmutableExecutionSubject, fleet: observed_safe_fleet()) == false
+    && running_cancel_authorized(mutable: ImmutableExecutionSubject, fleet: producer_absent_standing(eligible_hosts: two_host_fleet())) == false
+}
+
+test fn w_emitted_cancel_in_progress_is_the_join_projection() -> Bool {
+  running_cancel_authorized(
+    mutable: MutableHeadSupersedable,
+    fleet: fleet_compile_cancellation_standing
+  ) == false
+    && match cancel_in_progress_of_policy(policy: witness_floor_running_supersession_policy) {
+      CancelInProgressBool { value: b } => b == false
+      CancelInProgressExpression { expression: _ } => false
+    }
 }
 
 // THE CONTAINMENT IS A FUNCTION OF ITS OWN REASON, AND OF WHAT THE HOSTS ACTUALLY RUN.
@@ -717,11 +734,11 @@ test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
 
 // THE LIVE ROW STILL PROJECTS WHAT CI ACTUALLY RUNS, so the fixtures above cannot go green while the
 // emitted workflow quietly moves.
-test fn w_the_live_fleet_standing_projects_occupancy_supersession() -> Bool {
+test fn w_the_live_fleet_standing_still_refuses_running_supersession() -> Bool {
   match running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing) {
-    SupersedeMutableHeadRuns => true
-    NeverSupersedeRunning => false
+    NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 

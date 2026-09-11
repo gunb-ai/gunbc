@@ -474,7 +474,8 @@ test fn w_whole_workflow_concurrency_supersedes_mutable_heads_and_isolates_merge
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: witness_floor_concurrency_group)
-        && string_contains(s: yml, pattern: mutable_head_runs_cancel_expression())
+        && string_contains(s: yml, pattern: "cancel-in-progress: false")
+        && !string_contains(s: yml, pattern: mutable_head_runs_cancel_expression())
         && string_contains(s: yml, pattern: "timeout-minutes: 180")
         && !string_contains(s: yml, pattern: "timeout-minutes: 360")
     WitnessFloorGenerationRefused { reason: _ } => false

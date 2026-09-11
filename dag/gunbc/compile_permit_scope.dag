@@ -77,7 +77,6 @@ type HostCompileCancellationStanding
 type FleetCompileCancellationStanding
   = FleetCancellationSafe { hosts: List<HostIdentity> }
   | FleetCancellationNotSafe { unsafe_hosts: List<HostIdentity>, unobserved_hosts: List<HostIdentity> }
-  | OccupancySupersedeMutableHeads
 
 type FleetCancellationFoldAcc {
   unsafe_hosts: List<HostIdentity>
@@ -234,11 +233,4 @@ fn producer_absent_standing(eligible_hosts: List<HostIdentity>) -> FleetCompileC
   FleetCancellationNotSafe { unsafe_hosts: [], unobserved_hosts: eligible_hosts }
 }
 
-// LIVE STANDING IS OCCUPANCY, NOT AN UNOBSERVED-HOST REFUSAL (operator ruling 2026-09-10, P0a.1).
-// A superseded pull-request or main head is not load-bearing: once the head moves, the predecessor
-// workflow's required result is stale. The arm64 fleet is saturated by those predecessor runs.
-// merge_group and heal revalidation stay immutable (never superseded) in the policy this standing
-// projects; they are not this variant's population. Host-observation Safe/NotSafe remains the
-// fold over readback; production does not mint Safe without that fold. Occupancy is the reason
-// the live row authorizes cancel for pull_request and push.
-data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = OccupancySupersedeMutableHeads
+data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = producer_absent_standing(eligible_hosts: fleet_hosts())
