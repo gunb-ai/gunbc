@@ -16,7 +16,7 @@ import gunbc.spark.serving_arm_launch {
 }
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, VllmOpenaiGlm53Flash, FourSparkTp4, ArmBoundedExperiment,
-  serving_topology_rank_count, vllm_openai_glm53_flash_row, ArmNormalServing,
+  serving_topology_rank_count, vllm_openai_glm53_flash_row, ArmNormalServing, runtime_artifact_wire,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_compatibility {
@@ -664,7 +664,7 @@ fn glm_native_tp4_launch_plan(envelope: ResolvedDeviceMemoryEnvelope) -> ArmLaun
 // which is the mismatch RankEnvelopeForeignImage exists to catch -- and a check is a poor substitute for
 // there being only one place the value comes from.
 fn glm_native_tp4_runtime_image() -> NonEmptyStr {
-  vllm_openai_glm53_flash_row.image_reference
+  runtime_artifact_wire(a: vllm_openai_glm53_flash_row.artifact)
 }
 
 func glm_native_tp4_resolve_envelope(

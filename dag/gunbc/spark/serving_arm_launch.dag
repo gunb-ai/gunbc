@@ -18,7 +18,7 @@ import gunbc.spark.serving_arm {
   ServingCheckpointRow, serving_checkpoint_row,
   CheckpointQuantization,
   checkpoint_quantization_on_argv,
-  ServingRuntimeRow, serving_runtime_row,
+  ServingRuntimeRow, serving_runtime_row, runtime_artifact_wire,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
   ArmIntent, ArmNormalServing, serving_arm_admits_for,
@@ -378,7 +378,7 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
     "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
     "-v", join([arm_mount_plan(row: crow).host_dir as String, ":", arm_mount_plan(row: crow).container_dir as String, ":ro"], ""),
-    rrow.image_reference as String,
+    runtime_artifact_wire(a: rrow.artifact) as String,
     arm_mount_plan(row: crow).model_path as String,
     "--served-model-name", profile.served_alias as String,
     "--tensor-parallel-size", to_string(ranks),
@@ -649,7 +649,7 @@ fn selected_decision_parameters(s: ServingCompatibilitySubject) -> ServingDecisi
           speculative: if s.profile.speculation_enabled { SpeculationOn } else { SpeculationOff },
           enable_prefix_caching: false,
           runtime: runtime_revision(
-            image: rrow.image_reference,
+            image: runtime_artifact_wire(a: rrow.artifact),
             vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),
         ) }
       }

@@ -12,7 +12,7 @@ import std.goal_assessment {
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   ServingCheckpointRow, serving_checkpoint_row,
-  ServingRuntimeRow, serving_runtime_row,
+  ServingRuntimeRow, serving_runtime_row, runtime_artifact_wire,
   CheckpointQuantization, checkpoint_quantization_on_argv,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused, serving_arm_admits,
@@ -154,7 +154,7 @@ fn desired_arm_identity(goal: ServingArmGoal) -> DesiredArmIdentity {
           alias: goal.alias,
           quantization_on_argv: checkpoint_quantization_on_argv(q: row.quantization),
           rank_count_wire: to_string(serving_topology_rank_count(t: goal.topology)) as NonEmptyStr,
-          runtime_image_wire: rrow.image_reference,
+          runtime_image_wire: runtime_artifact_wire(a: rrow.artifact),
         ) }
       }
   }

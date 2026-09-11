@@ -12,6 +12,7 @@ import gunbc.spark.serving_arm {
   ServingTopology, SingleSparkTp1, SparkPairTp2, FourSparkTp4,
   ServingLaunchProfile, glm_native_initial_profile, glm_exl3_canary_profile,
   serving_launch_profile_key, ServingRuntimeRow, serving_runtime_row,
+  RuntimeArtifactIdentity, runtime_artifact_key, runtime_artifact_wire,
 }
 
 // ── COMPATIBILITY IS A RELATION, AND ATTACHING IT TO A RUNTIME ROW WAS THE DEFECT ───────────────
@@ -94,7 +95,7 @@ fn subject_with_accelerator(s: ServingCompatibilitySubject, accelerator: NonEmpt
 fn subject_runtime_bytes(r: ServingRuntime) -> String {
   match serving_runtime_row(r: r) {
     Absent => join(["<unmodelled-runtime:", serving_runtime_wire(r: r), ">"], "")
-    Present { value: row } => row.image_reference as String
+    Present { value: row } => runtime_artifact_key(a: row.artifact)
   }
 }
 

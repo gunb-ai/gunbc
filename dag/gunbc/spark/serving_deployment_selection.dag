@@ -6,7 +6,7 @@ import std.measure { TokenCount, token_count, token_count_value, basis_point, ba
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
-import gunbc.spark.serving_arm { gitcommit90_sm121_exl3_row }
+import gunbc.spark.serving_arm { gitcommit90_sm121_exl3_row, runtime_artifact_wire }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval, OrderedClosedInterval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
@@ -1514,7 +1514,7 @@ fn admit_shape(s: ServingDeploymentSelection) -> ShapeAdmission {
 // in its most ordinary form: two spellings of one measurement, agreeing on the day they were written
 // and free to diverge on any day after. The direction of the import is facts into decision.
 data spark_runtime: RuntimeRevision = runtime_revision(
-  image: gitcommit90_sm121_exl3_row.image_reference,
+  image: runtime_artifact_wire(a: gitcommit90_sm121_exl3_row.artifact),
   vllm_revision: gitcommit90_sm121_exl3_row.vllm_version,
 )
 

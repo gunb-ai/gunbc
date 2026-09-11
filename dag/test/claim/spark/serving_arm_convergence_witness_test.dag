@@ -6,7 +6,7 @@ import gunbc.spark.serving_arm {
   Glm53NativeFp8, Glm53Exl3_205, Glm53Nvfp4CompressedTensors,
   Gitcommit90Sm121Exl3, VllmOpenaiGlm53Flash,
   SingleSparkTp1, FourSparkTp4,
-  gitcommit90_sm121_exl3_row, vllm_openai_glm53_flash_row,
+  gitcommit90_sm121_exl3_row, vllm_openai_glm53_flash_row, runtime_artifact_wire,
 }
 import gunbc.spark.serving_arm_convergence {
   ServingArmGoal, serving_arm_goal,
@@ -67,8 +67,8 @@ data unmodelled_goal: ServingArmGoal = serving_arm_goal(
 // THE IMAGES ARE READ FROM THE ROWS, NOT SPELLED HERE. A digest copied into a fixture would let this
 // witness agree with itself after the roster changed under it, which is the transcribed-measurement failure
 // at test grain.
-data exl3_image: NonEmptyStr = gitcommit90_sm121_exl3_row.image_reference
-data official_image: NonEmptyStr = vllm_openai_glm53_flash_row.image_reference
+data exl3_image: NonEmptyStr = runtime_artifact_wire(a: gitcommit90_sm121_exl3_row.artifact)
+data official_image: NonEmptyStr = runtime_artifact_wire(a: vllm_openai_glm53_flash_row.artifact)
 
 data subject_group_b: NonEmptyStr = "the four hosts on fabric cage 2 (srv9, srv10, srv11, srv12)" as NonEmptyStr
 

@@ -7,7 +7,7 @@ import gunbc.spark.serving_arm {
   Glm53NativeFp8, Glm53Exl3_205, VllmOpenaiGlm53Flash, Gitcommit90Sm121Exl3,
   FourSparkTp4, SparkPairTp2, ArmBoundedExperiment, ArmNormalServing,
   glm_native_initial_profile, glm_exl3_canary_profile,
-  ServingLaunchProfile, profile_with_memory_basis_points, vllm_openai_glm53_flash_row,
+  ServingLaunchProfile, profile_with_memory_basis_points, vllm_openai_glm53_flash_row, runtime_artifact_wire,
 }
 import gunbc.spark.serving_compatibility {
   ServingCompatibilitySubject, compatibility_subject_text, compatibility_subject_eq,
@@ -126,7 +126,7 @@ test fn an_accelerator_only_change_is_not_covered_by_the_refusal() -> Bool {
 test fn the_subject_is_keyed_by_the_runtimes_bytes_not_its_variant_name() -> Bool {
   string_contains(
     s: compatibility_subject_text(s: glm_native_on_official_sm121_tp4),
-    pattern: vllm_openai_glm53_flash_row.image_reference as String)
+    pattern: runtime_artifact_wire(a: vllm_openai_glm53_flash_row.artifact) as String)
 }
 
 // AND THE GATE CONSUMES THAT COMPARISON, which is the row that joins the identity to the behaviour. The
