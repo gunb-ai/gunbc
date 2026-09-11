@@ -29,12 +29,13 @@ import gunbc.spark.glm_canary_converge { glm_canary_arm }
 // a derivation rather than a preference, and it is what stops a small model wandering into a
 // reasoning turn: nobody has said how to ask it anything.
 //
-// AND ADMITTING A MODEL IS NOT PROMOTING IT. gunbc.harness.harness_wire harness_serving_unit is the
-// global selector and it still names DeepSeek; nothing here changes what an unplaced caller
-// inherits, and the canary is still reached by selecting its own binding. What changes is that a
-// PLACED turn takes the unit of the route that answered, evidenced by that route's own probe, rather
-// than assuming the selector's. Widening an admitted set and promoting a canary to default are two
-// different acts, and this module performs only the first.
+// AND ADMITTING A MODEL IS NOT PROMOTING IT. There is no global selector left to promote anything
+// INTO: the row that named one unit for every caller is deleted with this cut, and a placed turn
+// takes the unit of the route that answered, evidenced by that route's own probe. The canary is
+// admitted here as a model this harness can speak to; it becomes a default nowhere, because nothing
+// inherits a model any more. Widening an admitted set and promoting a canary to default are two
+// different acts, and only the first is performed here -- which is a stronger statement than the one
+// this annotation made while a selector still stood.
 
 // THE ADVERTISED IDS A UNIT MAY ANSWER TO, EXHAUSTIVE OVER THE UNITS. A unit added to the seam
 // without a row here fails to compile rather than silently becoming unadmittable, which is the

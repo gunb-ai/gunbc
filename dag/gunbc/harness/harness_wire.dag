@@ -387,26 +387,23 @@ fn harness_backend_url_for_endpoint(shape: HarnessWireShape, endpoint: ServingRo
 // shared-standard modelling bought: a second implementation of the same wire reused the decoder
 // with no second decoder written.
 
-// WHICH SERVING UNIT THE HARNESS TALKS TO. This row replaced a bare model STRING, and the
-// replacement is the point: the string was one of three independent spellings of one model identity
-// (this row, the pair's observed served_model_name, and the llama.cpp router's observed alias), so
-// a model change had to be remembered in three places and could be forgotten in two. The unit is now
-// the single thing chosen, and the model id is DERIVED from it through the seam, which in turn
-// derives it from the model's own upstream authority.
+// THE GLOBAL SERVING SELECTOR IS DELETED, AND ITS DELETION IS THE POINT RATHER THAN A SIDE EFFECT.
 //
-// THE ORDINARY HARNESS TALKS TO DEEPSEEK, BECAUSE THAT IS WHAT THE PRODUCTION ROUTE SERVES. This row
-// briefly read Glm53FlashOnVllm while the pair route this harness reaches was restored to DeepSeek --
-// so the global selector carried a canary experiment, and every ordinary harness action would have
-// encoded GLM's reasoning kwargs, effort key and tool parser into requests aimed at an endpoint
-// serving DeepSeek from an image measured not to register GLM at all.
+// Two rows stood here: the unit the harness talks to, and the model id derived from it. Together
+// they were the reason a route serving anything else was unusable -- every request named the id this
+// selector chose, so the probe had to demand that id, and a group serving a perfectly good different
+// model was invisible to placement.
 //
-// A CANARY IS NOT A DEFAULT. The GLM arm is reached through gunbc.spark.glm_canary_converge, which
-// names its own host, port and alias together; a caller that wants it selects that binding explicitly
-// rather than inheriting it from a row every other caller also reads. Making the one global selector
-// carry an experiment is how an experiment becomes production without anyone deciding it should.
-data harness_serving_unit: HarnessServingUnit = DeepseekV4FlashOnVllm
-
-data harness_engine_model: String = harness_unit_model_id(unit: harness_serving_unit) as String
+// WHAT REPLACED THEM IS NOT ANOTHER DEFAULT. A placed turn takes its unit and its model id from the
+// route that granted the seat, observed on that route's own probe and carried on the binding
+// (gunbc.harness.harness_seat HarnessSeatBound). So there is nothing left for an unplaced caller to
+// inherit, which is exactly the property that keeps this widening from being a promotion: the canary
+// is not the new default, because there is no default.
+//
+// AND THE ROWS ARE DELETED RATHER THAN LEFT STANDING. A selector nothing reads is the declaration
+// DESIGN section 3c calls red -- and worse than ordinarily red, because the next entry point that
+// needs "the model" would reach for it and silently reintroduce the single-model demand this change
+// removed.
 
 // THE ROUTER'S WINDOW IS DECLARED BESIDE THE ROUTER, for the reason the model directly above it is.
 // gunbc.spark.serving_desired owns spark_serving_desired_context_length, and that row is the OLLAMA

@@ -153,15 +153,6 @@ fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStan
   }
 }
 
-fn harness_standing_is_serving(standing: HarnessBackendStanding) -> Bool {
-  match standing {
-    HarnessBackendServing { model: _, unit: _ } => true
-    HarnessBackendModelNotAdmitted { advertised: _ } => false
-    HarnessBackendUnreachable { url: _ } => false
-    HarnessBackendUnreadable { cause: _ } => false
-  }
-}
-
 // THE ROSTER IS OBSERVED ONE ROUTE AT A TIME AND THE ANSWER KEEPS BOTH HALVES. An earlier fold
 // answered for the whole backend with the first non-serving replica's standing, so one Spark down
 // refused every dispatch while the other served -- measured 2026-09-05 on srv1, .232 unreachable,
