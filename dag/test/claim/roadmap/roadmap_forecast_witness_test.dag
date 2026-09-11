@@ -19,9 +19,9 @@ import gunbc.roadmap_model {
   ManualAcceptance,
 }
 import gunbc.roadmap_authority {
-  accepted_roadmap_node_ids_projection,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
+  roadmap_authority_projection,
+  RoadmapAuthorityProjected,
+  RoadmapAuthorityProjectionRefused,
   active_roadmap_nodes_for_accepted,
 }
 import gunbc.roadmap_sizing {
@@ -509,10 +509,16 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // it, joined by identity in both directions, and the result is a refusal at all -- so there is no
 // forecast, hence no surviving population to shorten. It goes red the day the deriver answers,
 // which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring.
+// THE EXPECTED POPULATION IS READ OFF THE SAME PLAN THE FORECAST IS HANDED, not derived a second
+// time from the public carrier. gunbc#10987 made the plan a parameter precisely because a second
+// read answers about the PUBLIC roadmap while the nodes come from the caller's, and a control that
+// re-derived its own expectation would reintroduce exactly that split one layer up: today the two
+// agree, because roadmap_authority_projection fills `accepted` from the same projection, so the
+// join would look sound right up until someone hands this witness a plan of their own.
 fn live_active_node_ids() -> List<RoadmapNodeId> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: _ } => []
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
       active_roadmap_nodes_for_accepted(accepted: accepted) |> map(n => n.node)
   }
 }

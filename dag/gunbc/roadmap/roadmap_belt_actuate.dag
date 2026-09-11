@@ -25,7 +25,7 @@ import gunbc.roadmap_dispatch_actuator {
 }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
-  roadmap_authority_projection,
+  RoadmapAuthorityProjection, roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   authored_merged_prs,
 }
@@ -6057,9 +6057,16 @@ fn belt_page_sessions_need(standing: LaunchHostStanding, graph: LaunchGraphStand
   })
 }
 
-fn belt_launch_host_standing_for_page(instance: HostDashboardInstance) -> LaunchHostStanding {
+// The page's standing is decided against the plan the page is about to RENDER. Passing the plan in
+// rather than reading the public carrier here is what keeps the two halves of one response honest:
+// a caller rendering a different plan would otherwise get session-need decided from a roadmap its
+// reader never sees.
+fn belt_launch_host_standing_for_page_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+) -> LaunchHostStanding {
   let pre = belt_launch_host_standing(instance: instance)
-  match roadmap_authority_projection() {
+  match plan {
     RoadmapAuthorityProjectionRefused { detail: _ } => pre
     RoadmapAuthorityProjected { doc, accepted: _ } => {
       let graph = launch_graph_of_document(doc: doc)
@@ -6093,6 +6100,23 @@ fn belt_dispatch_node_for_instance(
   node_id: String,
 ) -> BeltSpawnOutcome {
   belt_dispatch_node_staged(instance: instance, standing: belt_launch_host_standing(instance: instance), node_id: node_id)
+}
+
+// The dispatch route reaches the SAME staged fold with a caller-supplied plan. belt_dispatch_node_staged_over
+// already took the graph as a parameter, so this adds no second decision path -- it only supplies
+// launch_graph_of_projection over the given plan instead of over the public one.
+fn belt_dispatch_node_for_instance_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  node_id: String,
+) -> BeltSpawnOutcome {
+  belt_dispatch_node_staged_over(
+    instance: instance,
+    standing: belt_launch_host_standing(instance: instance),
+    graph: launch_graph_of_projection(proj: plan),
+    merged: authored_merged_prs(),
+    node_id: node_id,
+  )
 }
 
 // THE ROUTE'S DECISION PATH after the staged host observation, and the seam the hermetic

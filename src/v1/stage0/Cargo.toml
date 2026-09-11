@@ -109,6 +109,12 @@ path = "src/bin/discover_source_root_ingest.rs"
 name = "v1_src_dag_parse"
 path = "src/bin/v1_src_dag_parse.rs"
 
+# Checkpoint 1 of gunbc.plans.joint_incompatibility_claim_join: the surface-removal x added-import-claim
+# join over the declaration index, retrospective over a commit range. An instrument; nothing gates on it.
+[[bin]]
+name = "joint_claim_join"
+path = "src/bin/joint_claim_join.rs"
+
 # Floor witness for extdep REST transport collection (cli_run::collect_rest_transport_operations).
 # Parses the eight-file authority closure live, resolves tracked ops, and checks
 # fingerprint uniqueness + derive_op_effect obligations. SCAFFOLD — dissolves when
