@@ -143,6 +143,101 @@ fn docker_build_command(tag: NonEmptyStr, context_dir: FilePath) -> ArgvCommand 
   argv_command(program: docker_binary_path, arguments: ["build", "--tag", tag as String, context_dir as String])
 }
 
+// A BUILD IS NOT ALWAYS A TAG AND A DIRECTORY. docker_build_command above is the whole invocation for
+// a context whose Dockerfile takes no arguments -- which is what the Spark pair runtime is, one FROM
+// and one RUN. An upstream Dockerfile that publishes ARGs answers differently depending on what it
+// is told, and a build that cannot say --build-arg, --target, --platform or --file cannot reach any
+// of those answers: it gets the defaults, whatever they happen to be at that revision.
+//
+// THE TWO ARE ONE OPERATION AT DIFFERENT WIDTHS, NOT TWO OPERATIONS, so this spec carries the same
+// tag-and-context pair and adds the fields the flags name. It is spelled as a record rather than as
+// more positional parameters for the reason DockerCreateSpec is: a desired build and a rendered
+// invocation stay comparable field by field, and a caller cannot silently omit one by miscounting
+// arguments.
+type DockerBuildArg {
+  name: NonEmptyStr
+  value: String
+}
+
+type DockerBuildSpec {
+  tag: NonEmptyStr
+  context_dir: FilePath
+  dockerfile: NonEmptyStr
+  target: NonEmptyStr
+  platform: NonEmptyStr
+  build_args: List<DockerBuildArg>
+}
+
+// `--build-arg NAME=VALUE` is ONE argv element carrying an equals sign, exactly as `--env` is for
+// docker_create_arguments, and splitting it into two would be a different command line that the
+// engine reads differently. The context directory is last, after every flag, which is where the CLI
+// requires it.
+fn docker_build_arg_flag(a: DockerBuildArg) -> List<String> {
+  ["--build-arg", join([a.name as String, "=", a.value], "")]
+}
+
+fn docker_build_spec_arguments(spec: DockerBuildSpec) -> List<String> {
+  concat(
+    concat(
+      [
+        "build",
+        "--file", spec.dockerfile as String,
+        "--target", spec.target as String,
+        "--platform", spec.platform as String,
+        "--tag", spec.tag as String,
+      ],
+      flat_map(spec.build_args, a => docker_build_arg_flag(a: a)),
+    ),
+    [spec.context_dir as String],
+  )
+}
+
+fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: docker_build_spec_arguments(spec: spec))
+}
+
+// The two questions a convergent build asks before and after it runs: does this exact tag already
+// name an image, and what digest does that image carry. `--format` is a Go template the engine
+// evaluates; the two spellings below are the only ones this repository asks for, so they are rows
+// rather than a template parameter a caller could fill with anything.
+fn docker_image_inspect_id_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "inspect", "--format", "{{.Id}}", image as String])
+}
+
+// THE SHORT MOUNT SPELLING, AND THE ONE REASON IT EXISTS BESIDE docker_mount_flag. `--mount` takes
+// its fields as a COMMA-separated list, and a comma is not in the portable-word allowlist
+// gunbc.typed_argv_exec enforces at the ssh seam, so a `--mount` argument cannot cross that seam at
+// all -- it is refused before it reaches a host. `-v src:dst[:ro]` and `--tmpfs dst` are the CLI's
+// own documented short forms of the same three mount kinds, spelled with colons and equals signs
+// that the allowlist admits. This is one fact with two renderings chosen by what the transport can
+// carry, not two answers to what a mount is: both fold the same DockerMount coproduct, exhaustively.
+fn docker_short_mount_flag(m: DockerMount) -> List<String> {
+  match m {
+    BindMount { host_path: h, container_path: c, readonly: ro } =>
+      ["-v", join([h as String, ":", c as String, if ro { ":ro" } else { "" }], "")]
+    VolumeMount { volume: v, container_path: c, readonly: ro } =>
+      ["-v", join([v as String, ":", c as String, if ro { ":ro" } else { "" }], "")]
+    TmpfsMount { container_path: c, size_bytes: n } =>
+      ["--tmpfs", join([c as String, ":size=", to_string(n)], "")]
+  }
+}
+
+// `docker run --rm` executes argv in a throwaway container from an image, which is how a question
+// about what an image CONTAINS is asked inside it rather than inferred from its provenance. The
+// container is removed on exit, so asking twice asks the same question of the same bytes.
+fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, argv: List<String>) -> ArgvCommand {
+  argv_command(
+    program: docker_binary_path,
+    arguments: concat(
+      concat(
+        concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
+        flat_map(mounts, m => docker_short_mount_flag(m: m)),
+      ),
+      concat([image as String], argv),
+    ),
+  )
+}
+
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["image", "pull", image as String])
 }

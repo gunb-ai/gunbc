@@ -1,0 +1,162 @@
+module extdeps.vllm.source_build
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/07b75534651a0dd584c6f3be75d8c62fb8426397/docker/Dockerfile"
+  },
+}
+
+// HOW UPSTREAM BUILDS ITS OWN CONTAINER, READ AT ONE REVISION, SO THIS REPOSITORY NEVER INVENTS A
+// BUILD RECIPE FOR A DEPENDENCY IT DOES NOT OWN.
+//
+// WHY THIS MODULE EXISTS AT ALL. extdeps.vllm already carries what a RUNNING vLLM does -- its routes,
+// its engine arguments, the defaults an omitted flag resolves to. None of that says how a wheel with
+// a given set of compiled kernels comes to exist, and that question became load-bearing the moment no
+// published image registered DeepseekV41ForCausalLM on sm_121: the remedy is a build, and a build
+// whose arguments this repository made up would be a fact about a dependency with no upstream behind
+// it. Every row here is read from the tree at the revision named below and cited to the file that
+// carries it.
+//
+// THE RECIPE IS NOT THE INVOCATION. What upstream publishes is a set of ARGs with defaults plus the
+// argument sets its own release pipeline passes for each target architecture. Which of those a fleet
+// build chooses -- which arch list, how much parallelism -- is a policy decision belonging to the
+// workflow that runs the build, not to this module (DESIGN section 3: interface, realization and
+// policy are three facts). So this module carries what upstream says, and the gunbc side carries
+// what this fleet asked for, with the divergence visible as a difference between two declarations
+// rather than buried in one.
+
+data vllm_deepseek_v4_1_sm12_repository: NonEmptyStr = "https://github.com/vllm-project/vllm" as NonEmptyStr
+
+// THE REVISION THAT FIRST CARRIES THE DeepSeek V4.1 SM12 PATH. vllm/models/deepseek_v4_1/nvidia/
+// model.py at this commit selects DeepseekV4FlashInferSM120Attention whenever the device capability
+// major is 12; extdeps.vllm.deepseek_v4_1_sm12 carries what that path then demands of the runtime.
+data vllm_deepseek_v4_1_sm12_revision: VllmSourceRevision = vllm_source_revision(
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+  full_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+)
+
+// ── THE ARGUMENTS UPSTREAM'S CONTAINER BUILD TAKES ─────────────────────────────────────────────
+//
+// One field per docker/Dockerfile ARG this repository sets or relies on. The names are upstream's
+// own spellings, lowercase where upstream spells them lowercase (torch_cuda_arch_list, max_jobs,
+// nvcc_threads), because a renamed build argument is a build argument that silently stops applying.
+type VllmContainerBuildRecipe sole_constructor {
+  source: VllmSourceRevision
+  dockerfile_path: NonEmptyStr
+  build_target: NonEmptyStr
+  cuda_version: NonEmptyStr
+  build_base_image: NonEmptyStr
+  final_base_image: NonEmptyStr
+  python_version: NonEmptyStr
+  torch_version: NonEmptyStr
+  flashinfer_version: NonEmptyStr
+  torch_cuda_arch_list: NonEmptyStr
+  max_jobs: NonEmptyStr
+  nvcc_threads: NonEmptyStr
+}
+
+// THE DEFAULTS, from docker/versions.json (itself generated from the Dockerfile ARGs) and
+// requirements/cuda.txt at the revision above. This row is what a `docker build` with no --build-arg
+// would use, and it is recorded so that every argument the fleet build overrides is visible as an
+// override rather than as a number with no baseline.
+//
+// ITS ARCH LIST DOES NOT CONTAIN 12.1, WHICH IS THE WHOLE REASON A BUILD IS NEEDED. GB10 reports
+// compute capability 12.1; the default list stops at 12.0, and 12.0 cubins are not loadable on
+// sm_121. A published image built from this default therefore cannot carry the kernels the SM12 path
+// dispatches to, however recent its vLLM is.
+data vllm_07b75534_default_recipe: VllmContainerBuildRecipe = VllmContainerBuildRecipe {
+  source: vllm_deepseek_v4_1_sm12_revision,
+  dockerfile_path: "docker/Dockerfile" as NonEmptyStr,
+  build_target: "vllm-openai" as NonEmptyStr,
+  cuda_version: "13.0.3" as NonEmptyStr,
+  build_base_image: "pytorch/manylinux2_28-builder:cuda13.0-78e737ad29420ffc4800e677c51e2a852caf8359" as NonEmptyStr,
+  final_base_image: "nvidia/cuda:13.0.3-base-ubuntu24.04" as NonEmptyStr,
+  python_version: "3.12" as NonEmptyStr,
+  torch_version: "2.13.0" as NonEmptyStr,
+  flashinfer_version: "0.6.18.post1" as NonEmptyStr,
+  torch_cuda_arch_list: "7.5 8.0 8.6 8.9 9.0 10.0 11.0 12.0" as NonEmptyStr,
+  max_jobs: "2" as NonEmptyStr,
+  nvcc_threads: "8" as NonEmptyStr,
+}
+
+// UPSTREAM'S OWN aarch64 RELEASE INVOCATION, from .buildkite/release-pipeline.yaml at the same
+// revision (the CUDA_ARCH_AARCH64 variable and the build-arg list beside it). It matters because the
+// default BUILD_BASE_IMAGE above is an amd64-only manifest -- Docker Hub lists exactly one image for
+// that tag, linux/amd64 -- so an arm64 build that did not override it has no base to start from. The
+// aarch64 builder tag here is the one upstream's own arm64 release job passes.
+data vllm_07b75534_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContainerBuildRecipe {
+  source: vllm_deepseek_v4_1_sm12_revision,
+  dockerfile_path: "docker/Dockerfile" as NonEmptyStr,
+  build_target: "vllm-openai" as NonEmptyStr,
+  cuda_version: "13.0.2" as NonEmptyStr,
+  build_base_image: "pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042" as NonEmptyStr,
+  final_base_image: "nvidia/cuda:13.0.2-base-ubuntu24.04" as NonEmptyStr,
+  python_version: "3.12" as NonEmptyStr,
+  torch_version: "2.13.0" as NonEmptyStr,
+  flashinfer_version: "0.6.18.post1" as NonEmptyStr,
+  torch_cuda_arch_list: "8.0 8.7 8.9 9.0 10.0 11.0 12.0" as NonEmptyStr,
+  max_jobs: "16" as NonEmptyStr,
+  nvcc_threads: "8" as NonEmptyStr,
+}
+
+// A FLEET BUILD IS UPSTREAM'S RECIPE WITH DECLARED OVERRIDES, AND THE OVERRIDE POINT IS HERE.
+//
+// The record is sole_constructor so a caller cannot assemble a recipe field by field and call the
+// result an upstream fact -- every field except the three this function takes is copied from a cited
+// row, so a recipe that diverges diverges in exactly the places a reader is told to look. The three
+// are the ones a deployment legitimately chooses: which architectures to compile for, and how much of
+// the build machine to use. Everything else -- the revision, the bases, the toolchain pins -- is
+// upstream's and is not a knob.
+fn vllm_recipe_targeting(
+  base: VllmContainerBuildRecipe,
+  torch_cuda_arch_list: NonEmptyStr,
+  max_jobs: NonEmptyStr,
+  nvcc_threads: NonEmptyStr,
+) -> VllmContainerBuildRecipe {
+  VllmContainerBuildRecipe {
+    source: base.source,
+    dockerfile_path: base.dockerfile_path,
+    build_target: base.build_target,
+    cuda_version: base.cuda_version,
+    build_base_image: base.build_base_image,
+    final_base_image: base.final_base_image,
+    python_version: base.python_version,
+    torch_version: base.torch_version,
+    flashinfer_version: base.flashinfer_version,
+    torch_cuda_arch_list: torch_cuda_arch_list,
+    max_jobs: max_jobs,
+    nvcc_threads: nvcc_threads,
+  }
+}
+
+// ── WHICH ARCHITECTURES THE BUILD SYSTEM WILL ACCEPT ───────────────────────────────────────────
+//
+// CUDA_SUPPORTED_ARCHS in CMakeLists.txt at the same revision. A value outside this set is rejected
+// by the build rather than silently producing an image with nothing compiled for it, so this is the
+// row that says a 12.1 request is a request upstream can answer at all. The arch-specific `12.1a`
+// variants the FP4 and Marlin kernel sets ask for are DERIVED by upstream's own
+// cuda_archs_loose_intersection from a plain 12.1 entry; a caller passes 12.1 and never 12.1a.
+data vllm_cuda_supported_archs: List<NonEmptyStr> = [
+  "7.5" as NonEmptyStr,
+  "8.0" as NonEmptyStr,
+  "8.6" as NonEmptyStr,
+  "8.7" as NonEmptyStr,
+  "8.9" as NonEmptyStr,
+  "9.0" as NonEmptyStr,
+  "10.0" as NonEmptyStr,
+  "10.1" as NonEmptyStr,
+  "10.3" as NonEmptyStr,
+  "12.0" as NonEmptyStr,
+  "12.1" as NonEmptyStr,
+]
+
+fn vllm_cuda_arch_supported(arch: NonEmptyStr) -> Bool {
+  fold(vllm_cuda_supported_archs, init: false, f: (acc, a) =>
+    if acc { true } else { a as String == arch as String })
+}

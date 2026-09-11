@@ -1,0 +1,420 @@
+module gunbc.spark.v41_runtime_image_probe
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.algebra { trim }
+import std.content_hash { serialize_content_hash }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.docker { DockerMount, BindMount }
+import extdeps.docker.cli { docker_run_ephemeral_command }
+import extdeps.vllm.deepseek_v4_1_sm12 {
+  VllmCompiledSurface,
+  v41_fp4_weight_surface, v41_csa2_surface, v41_dspark_surface,
+  v41_sm12_demand_symbols,
+  v41_kv_cache_dtype_candidates, v41_sm12_admitted_kv_cache_dtypes,
+  v41_sm12_kv_layout, v41_sparse_mla_backend_class, v41_device_capability_class,
+}
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext, SshTarget,
+  fleet_ssh_attempt_identity,
+  materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
+}
+import gunbc.fleet_ssh_credential_verify {
+  FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
+  fleet_ssh_credential_verification_refusal_reason,
+}
+import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
+import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint, spark_reach_path_wire }
+import gunbc.typed_argv_exec {
+  TypedArgvExecConverged, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh,
+}
+import gunbc.typed_remote_file_write {
+  RemoteFileMode, RemoteFileModeOwnerReadWriteWorldRead,
+  TypedRemoteFileConvergence, TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
+  typed_remote_file_write_seal, converge_typed_remote_file,
+}
+import gunbc.file_access { FileTreeScope }
+import gunbc.spark.v41_runtime_image_build {
+  V41ImageBuild, V41ImageBuilt, V41ImageBuildRefused, V41ImageIdentity,
+  v41_build_host, v41_build_root, v41_gb10_recipe, v41_image_tag,
+  converge_v41_runtime_image,
+}
+
+// ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
+//
+// WHY THE BUILD DOES NOT ANSWER THIS. gunbc.spark.v41_runtime_image_build ends with a digest, and a
+// digest is provenance: it says which inputs produced these bytes. It cannot say whether a kernel
+// compiled, because upstream's own build silently omits a kernel set whose architecture block found
+// no compatible arch -- it prints a `Not building ...` line and exits zero. So a green build log is
+// not a capability reading, which is exactly what gunbc.spark.serving_runtime_capability_probe's
+// build obligation says: the obligation is discharged by running the probe inside the digest.
+//
+// THE SCRIPT IS DERIVED FROM THE DEMANDS, NOT TYPED BESIDE THEM. Every symbol this probe looks for
+// comes from extdeps.vllm.deepseek_v4_1_sm12, which read them out of upstream's tree at the pinned
+// revision: the operator names from the STABLE_TORCH_LIBRARY registrations, the modules from the
+// files that exist. A hand-written probe script is a second spelling of that roster, and a second
+// spelling is how a probe comes to ask for a symbol upstream never defined -- which reads as a
+// measured absence in every image and makes the obligation undischargeable by construction.
+//
+// PYTHON IS THE IRREDUCIBLE KERNEL HERE, and it is worth saying why it is not the unmodeled
+// realization DESIGN §6 warns about. The question is "does this Python runtime resolve this name",
+// and only that runtime can answer it; there is no .dag expression of another process's import
+// table. What IS modelled is everything around it: which names are asked, in what image, on what
+// host, over what transport, and how the answer is read back.
+
+// ── THE CAPABILITY NAMES ──────────────────────────────────────────────────────────────────────
+//
+// 🟡 dissolve-on: these five labels are the strings gunbc.spark.serving_runtime_capability_probe
+// runtime_kernel_capability_label produces, and they are spelled here because that module is still
+// in flight (#11016). They are replaced by an import of it the moment it lands, and the probe rows
+// this lane produces are appended to ITS roster rather than kept here -- one image's capability
+// readings belong beside every other image's, or the sweep's denominator silently splits in two.
+data v41_capability_architecture: NonEmptyStr = "architecture-registered" as NonEmptyStr
+data v41_capability_fp4_weight: NonEmptyStr = "fp4-weight-kernels" as NonEmptyStr
+// RENAMED FROM fp4-kv-cache-kernels, and the rename is the finding rather than tidying. The four FP4
+// KV operators that exist at this revision are registered by the compiled extension unconditionally,
+// so asking whether they are present answers yes in any image that has the extension at all -- while
+// the layout those operators were being used to stand for, nvfp4_ds_mla, is rejected on device major
+// 12 by the backend's own admission rule whatever is compiled. The question that decides something on
+// this hardware is which KV layout the backend admits here, so that is the question asked.
+data v41_capability_kv_layout: NonEmptyStr = "mla-kv-cache-layout-admitted" as NonEmptyStr
+data v41_capability_csa2: NonEmptyStr = "csa2-compressor-kernels" as NonEmptyStr
+data v41_capability_dspark: NonEmptyStr = "dspark-speculator" as NonEmptyStr
+data v41_capability_flashinfer_sm120: NonEmptyStr = "flashinfer-sparse-mla-sm120" as NonEmptyStr
+
+// 🟡 dissolve-on: the architecture class name is owned by extdeps.deepseek.deepseek_v4_1_flash
+// (DSV41-0, #11007), which has not landed on main. It is spelled here so the probe is executable;
+// it is replaced by an import of that module the moment it lands. A second spelling of a model's
+// architecture name is the fork this repository consolidates later at interest.
+data v41_probe_architecture_class: NonEmptyStr = "DeepseekV41ForCausalLM" as NonEmptyStr
+
+// ── THE SCRIPT ────────────────────────────────────────────────────────────────────────────────
+
+data v41_probe_script_path: NonEmptyStr = "/home/briansrls/gunbc-v41-build/v41_capability_probe.py" as NonEmptyStr
+// WORLD-READABLE BECAUSE THE READER IS A CONTAINER. The script is written by the operator login and
+// read by a process inside the container, which runs as root but through a read-only bind mount; an
+// owner-only mode is the right default for a credential and the wrong one for a file whose whole
+// purpose is to be read by something else.
+data v41_probe_script_mode: RemoteFileMode = RemoteFileModeOwnerReadWriteWorldRead
+
+fn v41_py_quote(s: NonEmptyStr) -> String {
+  join(["\"", s as String, "\""], "")
+}
+
+fn v41_py_list(xs: List<NonEmptyStr>) -> String {
+  join(["[", join(map(xs, x => v41_py_quote(s: x)), ", "), "]"], "")
+}
+
+fn v41_py_capability_call(label: NonEmptyStr, surface: VllmCompiledSurface) -> String {
+  join([
+    "report(", v41_py_quote(s: label),
+    ", ops=", v41_py_list(xs: surface.torch_operators),
+    ", modules=", v41_py_list(xs: surface.python_modules),
+    ", attrs=[])\n",
+  ], "")
+}
+
+// THE THREE KINDS OF LOOKUP ARE THREE FUNCTIONS, because they fail differently and a single
+// `hasattr` over all of them would report a missing torch library and a missing .py file as the same
+// fact. An operator lives in a torch library namespace and is registered by the compiled extension;
+// a module is a file in the wheel; an attribute is a name inside an imported module, which is how
+// FlashInfer's decode entry points and its SM120 dispatch table are reached.
+// THE LAYOUT QUESTION IS ASKED BY CALLING THE ADMISSION RULE, NOT BY LOOKING UP SYMBOLS. The backend
+// class this imports is the one that decides -- its supports_combination returns None for an admitted
+// combination and a reason string otherwise -- so the answer is the engine's own, taken at the device
+// capability the host reports rather than at one this script assumed. That same call is what reaches
+// has_flashinfer_sparse_mla_sm120 on the major-12 arm, so a FlashInfer package that cannot serve the
+// SM120 sparse decode shows up here as a refusal reason instead of as a separate guess.
+//
+// AN EXCEPTION PRINTS NO VERDICT LINE, DELIBERATELY. If the import fails or the signature has moved,
+// the reading is UNREAD rather than absent: a probe that could not ask must not produce evidence
+// against the image, which is the same rule gunbc.spark.serving_runtime_capability_probe applies to a
+// refused probe.
+fn v41_py_kv_layout_block() -> String {
+  join([
+    "try:\n",
+    "    from vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse import DeepseekV4FlashInferMLASparseBackend as _backend\n",
+    "    from vllm.platforms.interface import DeviceCapability as _capability\n",
+    "    import torch as _torch\n",
+    "    _admitted = []\n",
+    "    for _dtype in ", v41_py_list(xs: v41_kv_cache_dtype_candidates), ":\n",
+    "        _reason = _backend.supports_combination(\n",
+    "            head_size=512, dtype=_torch.bfloat16, kv_cache_dtype=_dtype, block_size=64,\n",
+    "            use_mla=True, has_sink=True, use_sparse=True, use_mm_prefix=False,\n",
+    "            device_capability=_capability(major, minor))\n",
+    "        print(\"DETAIL\", ", v41_py_quote(s: v41_capability_kv_layout), ", \"layout\", _dtype, \"admitted\" if _reason is None else \"rejected:\" + str(_reason))\n",
+    "        if _reason is None:\n",
+    "            _admitted.append(_dtype)\n",
+    "    print(\"ADMITTED_LAYOUTS\", \",\".join(_admitted))\n",
+    "    print(\"VERDICT\", ", v41_py_quote(s: v41_capability_kv_layout),
+    " + \"=\" + (\"present\" if ", v41_py_quote(s: v41_sm12_kv_layout), " in _admitted else \"absent\"))\n",
+    "except Exception as _error:\n",
+    "    print(\"DETAIL\", ", v41_py_quote(s: v41_capability_kv_layout), ", \"error\", repr(_error))\n",
+  ], "")
+}
+
+fn v41_probe_script() -> String {
+  join([
+    "import importlib\n",
+    "import importlib.util\n",
+    "import sys\n",
+    "import torch\n",
+    "import vllm\n",
+    "import vllm._custom_ops\n",
+    "\n",
+    "def has_op(qualified):\n",
+    "    namespace, name = qualified.split(\".\", 1)\n",
+    "    library = getattr(torch.ops, namespace, None)\n",
+    "    if library is None:\n",
+    "        return False\n",
+    "    return hasattr(library, name)\n",
+    "\n",
+    "def has_module(path):\n",
+    "    try:\n",
+    "        return importlib.util.find_spec(path) is not None\n",
+    "    except Exception:\n",
+    "        return False\n",
+    "\n",
+    "def has_attr(path):\n",
+    "    module_path, _, name = path.rpartition(\".\")\n",
+    "    try:\n",
+    "        module = importlib.import_module(module_path)\n",
+    "    except Exception:\n",
+    "        return False\n",
+    "    return hasattr(module, name)\n",
+    "\n",
+    "def report(label, ops, modules, attrs):\n",
+    "    present = True\n",
+    "    for symbol in ops:\n",
+    "        found = has_op(symbol)\n",
+    "        present = present and found\n",
+    "        print(\"DETAIL\", label, \"op\", symbol, \"present\" if found else \"absent\")\n",
+    "    for symbol in modules:\n",
+    "        found = has_module(symbol)\n",
+    "        present = present and found\n",
+    "        print(\"DETAIL\", label, \"module\", symbol, \"present\" if found else \"absent\")\n",
+    "    for symbol in attrs:\n",
+    "        found = has_attr(symbol)\n",
+    "        present = present and found\n",
+    "        print(\"DETAIL\", label, \"attr\", symbol, \"present\" if found else \"absent\")\n",
+    "    print(\"VERDICT\", label + \"=\" + (\"present\" if present else \"absent\"))\n",
+    "\n",
+    "major, minor = torch.cuda.get_device_capability(0)\n",
+    "print(\"COMPUTE_CAPABILITY\", str(major) + \".\" + str(minor))\n",
+    "print(\"VLLM_VERSION\", vllm.__version__)\n",
+    "from vllm.model_executor.models.registry import ModelRegistry\n",
+    "architectures = sorted(ModelRegistry.get_supported_archs())\n",
+    "print(\"REGISTRY_COUNT\", len(architectures))\n",
+    "for architecture in architectures:\n",
+    "    print(\"REGISTERED\", architecture)\n",
+    "report(", v41_py_quote(s: v41_capability_architecture), ", ops=[], modules=[], attrs=[])\n",
+    "print(\"VERDICT\", ", v41_py_quote(s: v41_capability_architecture),
+    " + \"=\" + (\"present\" if ", v41_py_quote(s: v41_probe_architecture_class), " in architectures else \"absent\"))\n",
+    v41_py_capability_call(label: v41_capability_fp4_weight, surface: v41_fp4_weight_surface),
+    v41_py_kv_layout_block(),
+    v41_py_capability_call(label: v41_capability_csa2, surface: v41_csa2_surface),
+    v41_py_capability_call(label: v41_capability_dspark, surface: v41_dspark_surface),
+    "report(", v41_py_quote(s: v41_capability_flashinfer_sm120),
+    ", ops=[], modules=[], attrs=", v41_py_list(xs: v41_sm12_demand_symbols()), ")\n",
+  ], "")
+}
+
+// ── ASKING IT ─────────────────────────────────────────────────────────────────────────────────
+//
+// THE BUILD ROOT IS BIND-MOUNTED READ-ONLY AND THE SCRIPT IS RUN FROM IT, rather than the script
+// being baked into a derived image: a derived image would be a second artifact with its own digest,
+// and the reading has to be about the digest the build produced. `--rm` removes the container, so the
+// probe leaves the host exactly as it found it.
+//
+// THE SHORT `-v` MOUNT SPELLING IS NOT A STYLE CHOICE. `--mount` separates its fields with commas,
+// and a comma is outside the portable-word allowlist this transport enforces, so a `--mount`
+// argument is refused before it reaches the host; extdeps.docker.cli docker_short_mount_flag renders
+// the CLI's own documented short form of the same mount.
+fn v41_probe_mounts() -> List<DockerMount> {
+  [BindMount { host_path: v41_build_root as FilePath, container_path: v41_build_root as FilePath, readonly: true }]
+}
+
+fn v41_probe_command(image: NonEmptyStr) -> ArgvCommand {
+  docker_run_ephemeral_command(
+    image: image,
+    gpus_all: true,
+    mounts: v41_probe_mounts(),
+    argv: ["python3", v41_probe_script_path as String],
+  )
+}
+
+type V41CapabilityReading
+  = V41CapabilityPresent { capability: NonEmptyStr }
+  | V41CapabilityAbsent { capability: NonEmptyStr }
+  | V41CapabilityUnread { capability: NonEmptyStr, cause: String }
+
+// A CAPABILITY IS READ FROM THE LINE THE SCRIPT PRINTED FOR IT, AND FROM NOTHING ELSE. Neither arm
+// is a default: a probe whose output carries no VERDICT line for a capability is UNREAD, never
+// absent, because a script that died before reaching a question establishes nothing about it -- the
+// same distinction gunbc.spark.serving_runtime_capability_probe draws between a measured negative and
+// a refused probe, and the one that keeps a broken probe from ranking an image out.
+fn v41_capability_reading(stdout: String, capability: NonEmptyStr) -> V41CapabilityReading {
+  let present_line = join(["VERDICT ", capability as String, "=present"], "")
+  let absent_line = join(["VERDICT ", capability as String, "=absent"], "")
+  if string_contains(s: stdout, pattern: present_line) {
+    V41CapabilityPresent { capability: capability }
+  } else if string_contains(s: stdout, pattern: absent_line) {
+    V41CapabilityAbsent { capability: capability }
+  } else {
+    V41CapabilityUnread { capability: capability, cause: "the probe printed no VERDICT line for this capability" }
+  }
+}
+
+data v41_probed_capabilities: List<NonEmptyStr> = [
+  v41_capability_architecture,
+  v41_capability_fp4_weight,
+  v41_capability_kv_layout,
+  v41_capability_csa2,
+  v41_capability_dspark,
+  v41_capability_flashinfer_sm120,
+]
+
+fn v41_capability_reading_line(r: V41CapabilityReading) -> String {
+  match r {
+    V41CapabilityPresent { capability: c } => join(["capability ", c as String, " present\n"], "")
+    V41CapabilityAbsent { capability: c } => join(["capability ", c as String, " absent\n"], "")
+    V41CapabilityUnread { capability: c, cause: why } => join(["capability ", c as String, " UNREAD ", why, "\n"], "")
+  }
+}
+
+type V41ProbeOutcome
+  = V41ProbeRead { image: V41ImageIdentity, stdout: String, readings: List<V41CapabilityReading> }
+  | V41ProbeRefused { step: NonEmptyStr, cause: String }
+
+func converge_v41_probe_script(target: SshTarget, context: FleetSshExecutionContext) -> TypedRemoteFileConvergence
+  uses net: Network
+{
+  converge_typed_remote_file(
+    target: target,
+    context: context,
+    admission: typed_remote_file_write_seal(
+      path: v41_probe_script_path as FilePath,
+      content: v41_probe_script(),
+      allowed_scope: FileTreeScope { root_path: v41_build_root },
+    ),
+    mode: v41_probe_script_mode,
+  )
+}
+
+func v41_probe_image(target: SshTarget, context: FleetSshExecutionContext, identity: V41ImageIdentity) -> V41ProbeOutcome
+  uses net: Network
+{
+  match converge_v41_probe_script(target: target, context: context) {
+    TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
+      V41ProbeRefused { step: join(["probe-script-", st], "") as NonEmptyStr, cause: why }
+    TypedRemoteFileConverged { converged: _ } =>
+      match typed_argv_exec_over_fleet_ssh(
+        target: target,
+        context: context,
+        argv: argv_words(command: v41_probe_command(image: identity.local_config_digest)),
+      ) {
+        TypedArgvExecRefused { reason: why } => V41ProbeRefused { step: "probe-run" as NonEmptyStr, cause: why }
+        TypedArgvExecConverged { result: r } =>
+          if !r.success {
+            V41ProbeRefused {
+              step: "probe-run" as NonEmptyStr,
+              cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], ""),
+            }
+          } else {
+            let out = r.stdout
+            V41ProbeRead {
+              image: identity,
+              stdout: out,
+              readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: c)),
+            }
+          }
+      }
+  }
+}
+
+fn v41_probe_all_present(o: V41ProbeOutcome) -> Bool {
+  match o {
+    V41ProbeRefused { step: _, cause: _ } => false
+    V41ProbeRead { image: _, stdout: _, readings: rs } =>
+      fold(rs, init: true, f: (acc, r) =>
+        match r {
+          V41CapabilityPresent { capability: _ } => acc
+          V41CapabilityAbsent { capability: _ } => false
+          V41CapabilityUnread { capability: _, cause: _ } => false
+        })
+  }
+}
+
+fn v41_probe_body(o: V41ProbeOutcome) -> String {
+  match o {
+    V41ProbeRefused { step: st, cause: why } => join(["probe REFUSED step=", st as String, " cause=", why, "\n"], "")
+    V41ProbeRead { image: i, stdout: out, readings: rs } =>
+      join([
+        join(["probed image tag=", i.tag as String, " local_config_digest=", i.local_config_digest as String, " build_key=", serialize_content_hash(hash: i.build_key) as String, "\n"], ""),
+        join(map(rs, r => v41_capability_reading_line(r: r)), ""),
+        "--- probe stdout ---\n",
+        out,
+        "\n",
+      ], "")
+  }
+}
+
+data v41_probe_attempt_raw: String = "v41-runtime-image-probe"
+data v41_probe_receipt_path: String = "target/v41-runtime-image-probe-receipt.txt"
+
+// THE PROBE CONVERGES THE IMAGE FIRST, and that is convergence rather than a second build: the build
+// entry and this one ask the same question -- does an image with this tag exist -- and an image that
+// is already there is inspected, not rebuilt. What it will not do is probe an image it could not
+// identify, because a reading whose subject is unknown is not a reading.
+func v41_runtime_image_probe_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match fleet_ssh_attempt_identity(raw: v41_probe_attempt_raw) {
+    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+    Present { value: attempt } =>
+      match probe_agent_credential_verification(attempt: attempt) {
+        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+        FleetSshCredentialDerivationRefused { cause: cause } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+        FleetSshCredentialVerified { binding: binding } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+            Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+            Present { value: context } =>
+              match spark_reach_endpoint(host: v41_build_host, path: ReachManagementLan) {
+                Absent => exit_failure(reason: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", v41_build_host as String], ""))
+                Present { value: endpoint } => {
+                  let target = SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_operator_bootstrap_login as NonEmptyStr }
+                  let outcome = match converge_v41_runtime_image(target: target, context: context) {
+                    V41ImageBuildRefused { step: st, cause: why } => V41ProbeRefused { step: st, cause: why }
+                    V41ImageBuilt { identity: i, already_present: _ } => v41_probe_image(target: target, context: context, identity: i)
+                  }
+                  let body = join([
+                    join(["v41 runtime image probe probed_at=", probed_at_word(reading: now) as String, " host=", v41_build_host as String, " endpoint=", endpoint, "\n"], ""),
+                    known_hosts_materialization_receipt(outcome: materialization),
+                    join(["credential ", fleet_ssh_credential_locus_label(binding: binding), " public_material_identity=", serialize_content_hash(hash: fleet_ssh_credential_identity(binding: binding)) as String, "\n"], ""),
+                    join(["subject tag=", v41_image_tag(r: v41_gb10_recipe()) as String, "\n"], ""),
+                    v41_probe_body(o: outcome),
+                  ], "")
+                  let w = Filesystem.Write(path: v41_probe_receipt_path, content: body)
+                  if !w.success {
+                    exit_failure(reason: join(["v41 runtime image probe receipt write failed: ", w.error], ""))
+                  } else if v41_probe_all_present(o: outcome) {
+                    ExitSuccess
+                  } else {
+                    exit_failure(reason: join(["the built image does not carry every required capability:\n", body], ""))
+                  }
+                }
+              }
+          }
+        }
+      }
+  }
+}

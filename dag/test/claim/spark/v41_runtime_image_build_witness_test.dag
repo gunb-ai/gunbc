@@ -1,0 +1,162 @@
+module test.claim.spark.v41_runtime_image_build_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { serialize_content_hash }
+import extdeps.exec.command { argv_words }
+import extdeps.docker.cli { docker_build_spec_command }
+import extdeps.vllm.source_build {
+  vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
+  vllm_recipe_targeting, vllm_cuda_arch_supported,
+}
+import extdeps.vllm.deepseek_v4_1_sm12 {
+  v41_fp4_weight_surface, v41_csa2_surface, v41_dspark_surface,
+  v41_sm12_demand_symbols, v41_sm12_kv_cache_dtype_admitted,
+  v41_fp4_sm120_block, v41_fp4_sm100_block,
+}
+import gunbc.spark.v41_runtime_image_build {
+  v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+  v41_gb10_recipe, v41_build_key, v41_image_tag, v41_build_spec, v41_recipe_arch_is_buildable,
+}
+import gunbc.spark.v41_runtime_image_probe {
+  V41CapabilityPresent, V41CapabilityAbsent, V41CapabilityUnread,
+  v41_capability_kv_layout, v41_capability_fp4_weight, v41_capability_architecture,
+  v41_probe_script, v41_capability_reading, v41_probe_architecture_class,
+}
+
+// THE ONE FIELD THAT DIVERGES FROM UPSTREAM IS THE ONE THE LANE EXISTS FOR. Everything else in the
+// fleet recipe is copied from upstream's own aarch64 release row, and this asserts the copy rather
+// than trusting it: a future edit that quietly changed the CUDA version or the builder base would go
+// red here, which is the whole reason the recipe is derived through vllm_recipe_targeting instead of
+// spelled out a second time.
+test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parallelism() -> Bool {
+  let fleet = v41_gb10_recipe()
+  let upstream = vllm_07b75534_aarch64_release_recipe
+  (fleet.source.full_revision as String) == (upstream.source.full_revision as String)
+    && (fleet.cuda_version as String) == (upstream.cuda_version as String)
+    && (fleet.build_base_image as String) == (upstream.build_base_image as String)
+    && (fleet.torch_version as String) == (upstream.torch_version as String)
+    && (fleet.flashinfer_version as String) == (upstream.flashinfer_version as String)
+    && (fleet.build_target as String) == (upstream.build_target as String)
+    && (fleet.torch_cuda_arch_list as String) != (upstream.torch_cuda_arch_list as String)
+    && (fleet.torch_cuda_arch_list as String) == (v41_gb10_torch_cuda_arch_list as String)
+}
+
+// THE REASON A BUILD IS NEEDED AT ALL, ASSERTED RATHER THAN ASSUMED: neither upstream recipe targets
+// 12.1, so no image built from either can carry sm_121 kernels, and 12.1 is nonetheless an
+// architecture upstream's own build system accepts.
+test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> Bool {
+  !string_contains(s: vllm_07b75534_default_recipe.torch_cuda_arch_list as String, pattern: "12.1")
+    && !string_contains(s: vllm_07b75534_aarch64_release_recipe.torch_cuda_arch_list as String, pattern: "12.1")
+    && vllm_cuda_arch_supported(arch: v41_gb10_torch_cuda_arch_list)
+    && v41_recipe_arch_is_buildable()
+}
+
+// THE BUILD KEY IS A FUNCTION OF THE INPUTS AND THE TAG IS A FUNCTION OF THE KEY. The discriminating
+// half is the second pair: a key that ignored the arch list would give the sm_121 build and a 12.0
+// build the same tag, which is exactly the collision the key exists to prevent.
+test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bool {
+  let fleet = v41_gb10_recipe()
+  let other_arch = vllm_recipe_targeting(
+    base: vllm_07b75534_aarch64_release_recipe,
+    torch_cuda_arch_list: "12.0" as NonEmptyStr,
+    max_jobs: v41_build_max_jobs,
+    nvcc_threads: v41_build_nvcc_threads,
+  )
+  let other_jobs = vllm_recipe_targeting(
+    base: vllm_07b75534_aarch64_release_recipe,
+    torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+    max_jobs: "1" as NonEmptyStr,
+    nvcc_threads: "1" as NonEmptyStr,
+  )
+  let fleet_key = serialize_content_hash(hash: v41_build_key(r: fleet)) as String
+  (serialize_content_hash(hash: v41_build_key(r: other_arch)) as String) != fleet_key
+    && (serialize_content_hash(hash: v41_build_key(r: other_jobs)) as String) == fleet_key
+    && string_contains(s: v41_image_tag(r: fleet) as String, pattern: fleet_key)
+    && (v41_image_tag(r: other_arch) as String) != (v41_image_tag(r: fleet) as String)
+}
+
+// THE RENDERED INVOCATION CARRIES THE THREE FACTS THAT DECIDE WHAT IS BUILT, and ends with the
+// context. A --build-arg whose name and value were separate argv words would be a different command
+// line that the engine reads differently, so the joined spelling is asserted.
+test fn the_build_argv_carries_the_arch_list_the_aarch64_base_and_the_context_last() -> Bool {
+  let words = argv_words(command: docker_build_spec_command(spec: v41_build_spec(r: v41_gb10_recipe())))
+  let line = join(words, " ")
+  string_contains(s: line, pattern: "--build-arg torch_cuda_arch_list=12.1")
+    && string_contains(s: line, pattern: "--build-arg BUILD_BASE_IMAGE=pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042")
+    && string_contains(s: line, pattern: "--target vllm-openai")
+    && string_contains(s: line, pattern: "--platform linux/arm64")
+    && string_contains(s: line, pattern: "/home/briansrls/gunbc-v41-build/src/docker/Dockerfile")
+}
+
+// THE PROBE ASKS WHAT THE ROSTER SAYS, AND NOTHING IS SPELLED TWICE. Every symbol in every surface
+// appears in the generated script because the script is folded out of those lists; delete a row and
+// this goes red, which is the property that keeps the roster the single place a name is written.
+fn script_names_all(symbols: List<NonEmptyStr>) -> Bool {
+  fold(symbols, init: true, f: (acc, s) => acc && string_contains(s: v41_probe_script(), pattern: s as String))
+}
+
+test fn the_generated_probe_script_names_every_symbol_the_roster_declares() -> Bool {
+  script_names_all(symbols: v41_fp4_weight_surface.torch_operators)
+    && script_names_all(symbols: v41_csa2_surface.python_modules)
+    && script_names_all(symbols: v41_dspark_surface.python_modules)
+    && script_names_all(symbols: v41_sm12_demand_symbols())
+    && string_contains(s: v41_probe_script(), pattern: v41_probe_architecture_class as String)
+}
+
+// THE LAYOUT QUESTION IS ASKED BY CALLING THE ADMISSION RULE AND IT ASKS ABOUT THE LAYOUT THAT IS
+// REJECTED, which is what makes the answer informative: a probe that only asked about admitted
+// dtypes could not distinguish a backend that admits everything from one that admits the right set.
+test fn the_layout_block_calls_the_backend_and_asks_about_the_rejected_layout() -> Bool {
+  let script = v41_probe_script()
+  string_contains(s: script, pattern: "DeepseekV4FlashInferMLASparseBackend")
+    && string_contains(s: script, pattern: "supports_combination")
+    && string_contains(s: script, pattern: "nvfp4_ds_mla")
+    && string_contains(s: script, pattern: "fp8_ds_mla")
+    && !v41_sm12_kv_cache_dtype_admitted(dtype: "nvfp4_ds_mla" as NonEmptyStr)
+    && v41_sm12_kv_cache_dtype_admitted(dtype: "fp8_ds_mla" as NonEmptyStr)
+}
+
+// SILENCE IS NOT ABSENCE, AND THIS IS THE ARM THAT KEEPS A BROKEN PROBE FROM RANKING AN IMAGE OUT. A
+// stdout carrying no VERDICT line for a capability reads UNREAD; one carrying the absent line reads
+// absent. Collapsing the two would turn an import error inside the container into evidence against
+// the built image.
+test fn a_capability_with_no_verdict_line_reads_unread_and_never_absent() -> Bool {
+  let silent = "DETAIL mla-kv-cache-layout-admitted error ImportError\n"
+  let measured = "VERDICT mla-kv-cache-layout-admitted=absent\n"
+  let present = "VERDICT fp4-weight-kernels=present\n"
+  (match v41_capability_reading(stdout: silent, capability: v41_capability_kv_layout) {
+    V41CapabilityUnread { capability: _, cause: _ } => true
+    V41CapabilityAbsent { capability: _ } => false
+    V41CapabilityPresent { capability: _ } => false
+  })
+    && (match v41_capability_reading(stdout: measured, capability: v41_capability_kv_layout) {
+      V41CapabilityAbsent { capability: _ } => true
+      V41CapabilityUnread { capability: _, cause: _ } => false
+      V41CapabilityPresent { capability: _ } => false
+    })
+    && (match v41_capability_reading(stdout: present, capability: v41_capability_fp4_weight) {
+      V41CapabilityPresent { capability: _ } => true
+      V41CapabilityAbsent { capability: _ } => false
+      V41CapabilityUnread { capability: _, cause: _ } => false
+    })
+    && (match v41_capability_reading(stdout: present, capability: v41_capability_architecture) {
+      V41CapabilityUnread { capability: _, cause: _ } => true
+      V41CapabilityPresent { capability: _ } => false
+      V41CapabilityAbsent { capability: _ } => false
+    })
+}
+
+// THE ARCH GATE IS CARRIED AS TWO BLOCKS AND THE DS-MLA NVFP4 SOURCE IS IN EXACTLY ONE OF THEM. This
+// is the upstream cause a measured FP4 DS-MLA absence on sm_121 points at, so it is asserted rather
+// than left as prose that could drift from the lists beside it.
+fn block_lists_source(sources: List<NonEmptyStr>, needle: String) -> Bool {
+  fold(sources, init: false, f: (acc, s) => acc || string_contains(s: s as String, pattern: needle))
+}
+
+test fn the_ds_mla_nvfp4_kernels_are_listed_only_in_the_sm100_block() -> Bool {
+  block_lists_source(sources: v41_fp4_sm100_block.sources, needle: "nvfp4_ds_mla_cache_kernels.cu")
+    && !block_lists_source(sources: v41_fp4_sm120_block.sources, needle: "nvfp4_ds_mla_cache_kernels.cu")
+    && block_lists_source(sources: v41_fp4_sm120_block.sources, needle: "nvfp4_scaled_mm_sm120_kernels.cu")
+    && string_contains(s: v41_fp4_sm120_block.arch_set as String, pattern: "12.0f")
+    && string_contains(s: v41_fp4_sm100_block.defines as String, pattern: "ENABLE_NVFP4_SM100")
+}
