@@ -8,6 +8,7 @@ import std.human_intervention {
   DeviceOnce,
   NoDischargeSiteModeled,
   DischargedAt,
+  intervention_is_discharged,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.gcp_service_enablement {
@@ -125,13 +126,6 @@ data buyer_review_workspace_sharing_reading: BuyerReviewWorkspaceSharingReading 
 
 fn buyer_review_workspace_domain_sharing() -> WorkspaceDomainSharingPolicy {
   buyer_review_workspace_sharing_reading.policy
-}
-
-fn intervention_is_discharged(intervention: HumanIntervention) -> Bool {
-  match intervention.completion_evidence {
-    DischargedAt { evidence: _ } => true
-    NoDischargeSiteModeled => false
-  }
 }
 
 fn spreadsheet_create_intervention() -> HumanIntervention {
