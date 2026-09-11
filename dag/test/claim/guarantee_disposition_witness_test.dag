@@ -1,0 +1,679 @@
+module test.claim.guarantee_disposition_witness
+
+// THE DERIVATION'S CLAIM IS THAT A RUNG CANNOT BE OBTAINED WITHOUT THE EVIDENCE THAT ESTABLISHES
+// IT, so the controls here withhold or corrupt exactly one observation and assert the disposition
+// falls. The fold's ORDER is a separate claim with its own controls: each precedence step is a law
+// (below-floor dominance, frontier over unmeasured, unmeasured over a rung, minimum never maximum),
+// and a fold that got any one of them backwards would still look reasonable on a happy path.
+import gunbc.guarantee_measurement {
+  AcceptedClean,
+  GuaranteeClassId,
+  GuaranteePathId,
+  ProbeObservation,
+  AcceptedCounted,
+  BelowFloor,
+  ExecutionDiverged,
+  FrontierAccepted,
+  GuaranteeCeilingReason,
+  GuaranteeMeasurementReceipt,
+  GuaranteeProbeId,
+  GuaranteeRequirement,
+  GitRevision,
+  HarnessRevisionsDisagree,
+  MeasurementAnchor,
+  MeasurementRevision,
+  OneProbeUsedForBothDirections,
+  OnLadder,
+  OutsideModeledGuarantee,
+  PathEvidence,
+  PathEvidenceJoin,
+  PathEvidenceJoined,
+  PathEvidenceRefused,
+  ProbeSetsDisagree,
+  ReceiptClassesDisagree,
+  ReceiptPathsDisagree,
+  SubjectRevisionsDisagree,
+  PlantedRedAccepted,
+  PositiveControlRefused,
+  ObservationDiverged,
+  ProbeNotRunnable,
+  RefusedTyped,
+  Unmeasured,
+  WallAfterGrounding,
+  below_floor_cause,
+  class_disposition,
+  disposition_for_path,
+  AtCeiling,
+  BelowCeiling,
+  CeilingContradictedByEvidence,
+  ceiling_standing,
+  disposition_is_below_floor,
+  disposition_is_frontier,
+  disposition_is_unmeasured,
+  fold_dispositions,
+  measurement_revision_eq,
+  path_evidence_from_receipts,
+  probe_set_digest,
+}
+import gunbc.guarantee_rung {
+  GuaranteeRung,
+  MechanicallyPreventable,
+  Mitigatable,
+  OutsideTheLadder,
+  StructurallyGuaranteed,
+}
+import std.content_hash { Fnv1a64Structural }
+import std.types { Bool, CommitSha, NonEmptyStr, String }
+
+fn path_id() -> NonEmptyStr {
+  "guarantee-disposition-probe-path" as NonEmptyStr
+}
+
+fn refused() -> ProbeObservation {
+  RefusedTyped { diagnostic_class: "PlantedRed" as NonEmptyStr, count: 1 }
+}
+
+fn accepted_with_residue() -> ProbeObservation {
+  AcceptedCounted { diagnostic_class: "Advisory" as NonEmptyStr, count: 2 }
+}
+
+// EVERY FIXTURE NOW COMES THROUGH THE JOIN, so the controls below exercise the shape the carrier
+// will actually be handed rather than a hand-assembled pair the join would have refused. A helper
+// that built PathEvidence directly would leave the join witnessed only by its own tests while every
+// disposition control ran on evidence no receipt produced.
+fn anchor() -> MeasurementAnchor {
+  MeasurementAnchor {
+    class: "probe-class" as GuaranteeClassId,
+    path: path_id() as GuaranteePathId,
+    subject_revision: GitRevision { commit: "0123456789abcdef0123456789abcdef01234567" as CommitSha },
+    harness_revision: GitRevision { commit: "89abcdef0123456789abcdef0123456789abcdef" as CommitSha },
+    probe_set_digest: probe_set_digest(probe_ids: ["red-probe" as GuaranteeProbeId, "green-probe" as GuaranteeProbeId]),
+  }
+}
+
+fn receipt(probe: String, observed: ProbeObservation) -> GuaranteeMeasurementReceipt {
+  GuaranteeMeasurementReceipt {
+    anchor: anchor(),
+    probe: probe as GuaranteeProbeId,
+    observed: observed,
+  }
+}
+
+// EACH DISAGREEMENT FIXTURE VARIES ONE ANCHOR COMPONENT AND NOTHING ELSE, which is what makes the
+// controls below discriminate between causes rather than merely producing a refusal.
+fn receipt_anchored(a: MeasurementAnchor, probe: String, observed: ProbeObservation) -> GuaranteeMeasurementReceipt {
+  GuaranteeMeasurementReceipt { anchor: a, probe: probe as GuaranteeProbeId, observed: observed }
+}
+
+fn anchor_with_class(c: String) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: c as GuaranteeClassId, path: a.path,
+    subject_revision: a.subject_revision, harness_revision: a.harness_revision,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_path(q: String) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: q as GuaranteePathId,
+    subject_revision: a.subject_revision, harness_revision: a.harness_revision,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_subject_revision(r: MeasurementRevision) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: a.path,
+    subject_revision: r, harness_revision: a.harness_revision,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_harness_revision(r: MeasurementRevision) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: a.path,
+    subject_revision: a.subject_revision, harness_revision: r,
+    probe_set_digest: a.probe_set_digest,
+  }
+}
+
+fn anchor_with_probe_set(d: Fnv1a64Structural) -> MeasurementAnchor {
+  let a = anchor()
+  MeasurementAnchor {
+    class: a.class, path: a.path,
+    subject_revision: a.subject_revision, harness_revision: a.harness_revision,
+    probe_set_digest: d,
+  }
+}
+
+// THE REFUSAL ARM BELOW IS DELIBERATELY LOUD, NOT A SUBSTITUTE. Handing back the pair the join just
+// refused would be the absorbing fallback in miniature: every control in this file would keep
+// passing on evidence the carrier rejected, and the join defect would be invisible. Returning two
+// unrunnable probes instead makes EVERY disposition control fail at once, which is the only honest
+// thing an unreachable arm in a fixture can do. the_fixture_pair_actually_joins is what proves this
+// arm unreachable rather than merely unvisited.
+fn evidence(red: ProbeObservation, green: ProbeObservation) -> PathEvidence {
+  match path_evidence_from_receipts(
+    red: receipt(probe: "red-probe", observed: red),
+    green: receipt(probe: "green-probe", observed: green),
+  ) {
+    PathEvidenceJoined { evidence: e } => e
+    PathEvidenceRefused { cause: _ } =>
+      PathEvidence {
+        anchor: anchor(),
+        red_probe: ProbeNotRunnable { cause: "fixture receipts did not join" as NonEmptyStr },
+        green_probe: ProbeNotRunnable { cause: "fixture receipts did not join" as NonEmptyStr },
+      }
+  }
+}
+
+test fn the_fixture_pair_actually_joins() -> Bool {
+  match path_evidence_from_receipts(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt(probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceJoined { evidence: _ } => true
+    PathEvidenceRefused { cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the pair that DESIGN §4b(1) names — a discriminating RED refused and a
+// positive control accepted — is the only shape that puts a path on the ladder.
+test fn a_refused_red_and_an_accepted_green_is_on_the_ladder() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: AcceptedClean)) {
+    OnLadder { rung: r } => r == MechanicallyPreventable
+    _ => false
+  }
+}
+
+// PROBE EVIDENCE CAPS AT RUNG 2 AND MUST NOT CLIMB HIGHER. Rungs 3 and 4 are claims about what no
+// Accepted program can contain; no finite set of probe runs witnesses them, so a derivation that
+// returned one from observations would be manufacturing the inflation this carrier prevents.
+test fn probe_evidence_never_reaches_a_structural_rung() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: AcceptedClean)) {
+    OnLadder { rung: r } => r != StructurallyGuaranteed
+    _ => false
+  }
+}
+
+// THE WALL DID NOT FIRE: the planted red was accepted, so the gate is missing or misaimed.
+test fn an_accepted_planted_red_is_below_floor() -> Bool {
+  match disposition_for_path(evidence: evidence(red: AcceptedClean, green: AcceptedClean)) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+// THE WALL IS WRONG ABOUT CORRECT PROGRAMS: the positive control was refused. Same disposition,
+// different repair, which is why the cause is named rather than only counted.
+test fn a_refused_positive_control_is_below_floor() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: refused())) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+test fn the_two_below_floor_directions_are_named_apart() -> Bool {
+  match below_floor_cause(evidence: evidence(red: AcceptedClean, green: AcceptedClean)) {
+    Present { value: PlantedRedAccepted } =>
+      match below_floor_cause(evidence: evidence(red: refused(), green: refused())) {
+        Present { value: PositiveControlRefused } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A PROBE THAT COULD NOT RUN IS IGNORANCE, NOT A VERDICT: could-not-measure must never read as the
+// subject passing or failing (DESIGN §5, top-as-answer against top-as-ignorance).
+test fn an_unrunnable_probe_is_unmeasured_not_below_floor() -> Bool {
+  match disposition_for_path(evidence: evidence(
+    red: ProbeNotRunnable { cause: "toolchain absent" as NonEmptyStr },
+    green: AcceptedClean
+  )) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+// ACCEPTED WITH COUNTED RESIDUE IS THE FRONTIER, not a clean rung: the gate admitted the subject
+// and reported something, and flattening that into OnLadder would discard the residue.
+test fn an_accepted_green_with_residue_is_the_frontier() -> Bool {
+  match disposition_for_path(evidence: evidence(red: refused(), green: accepted_with_residue())) {
+    FrontierAccepted => true
+    _ => false
+  }
+}
+
+test fn a_diverged_observation_is_below_floor_and_named() -> Bool {
+  match below_floor_cause(evidence: evidence(
+    red: ExecutionDiverged { description: "harness crashed" as NonEmptyStr },
+    green: AcceptedClean
+  )) {
+    Present { value: ObservationDiverged } => true
+    _ => false
+  }
+}
+
+// ---- THE FOLD ORDER, one control per precedence law ----
+
+// BELOW-FLOOR DOMINATES: a class failing its floor on any path is below the floor, full stop.
+// Averaging a failing path against passing ones is the compensating-errors defect.
+test fn below_floor_dominates_a_passing_path() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: MechanicallyPreventable },
+    BelowFloor,
+  ]) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+// FRONTIER BEFORE UNMEASURED: an accepted-with-residue path is a MEASURED fact, and calling the
+// class unmeasured would discard evidence that exists.
+test fn frontier_outranks_unmeasured() -> Bool {
+  match fold_dispositions(dispositions: [Unmeasured, FrontierAccepted]) {
+    FrontierAccepted => true
+    _ => false
+  }
+}
+
+// UNMEASURED BEFORE A RUNG: a rung reported beside an unmeasured path is a claim about a path
+// nobody looked at.
+test fn unmeasured_outranks_a_rung() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: MechanicallyPreventable },
+    Unmeasured,
+  ]) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+// MINIMUM, NEVER MAXIMUM: §4b(1) — a class's rung is the minimum across its in-scope paths, and
+// citing the strongest while another stays silent is exactly the inflation the rule names.
+test fn the_fold_takes_the_minimum_rung_not_the_maximum() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: StructurallyGuaranteed },
+    OnLadder { rung: Mitigatable },
+  ]) {
+    OnLadder { rung: r } => r == Mitigatable
+    _ => false
+  }
+}
+
+// A PATH OUTSIDE THE MODELED GUARANTEE CONTRIBUTES NO RUNG rather than a weak one, and a class all
+// of whose paths are outside is outside — "we do not model this" said without masquerading as a
+// low rung.
+test fn an_outside_path_does_not_lower_a_rung() -> Bool {
+  match fold_dispositions(dispositions: [
+    OnLadder { rung: MechanicallyPreventable },
+    OutsideModeledGuarantee,
+  ]) {
+    OnLadder { rung: r } => r == MechanicallyPreventable
+    _ => false
+  }
+}
+
+test fn all_paths_outside_is_outside() -> Bool {
+  match fold_dispositions(dispositions: [OutsideModeledGuarantee, OutsideModeledGuarantee]) {
+    OutsideModeledGuarantee => true
+    _ => false
+  }
+}
+
+// THE CLASS-LEVEL DERIVATION over real evidence rows, so the fold is exercised through the door its
+// consumer will use rather than only through hand-built disposition lists.
+test fn a_class_with_one_failing_path_is_below_floor() -> Bool {
+  match class_disposition(evidence: [
+    evidence(red: refused(), green: AcceptedClean),
+    evidence(red: AcceptedClean, green: AcceptedClean),
+  ]) {
+    BelowFloor => true
+    _ => false
+  }
+}
+
+fn requirement_at(ceiling: GuaranteeRung) -> GuaranteeRequirement {
+  GuaranteeRequirement {
+    class: "probe-class" as GuaranteeClassId,
+    domain: "probe domain" as NonEmptyStr,
+    harm: "a wrong answer ships" as NonEmptyStr,
+    ceiling: ceiling,
+    ceiling_reason: WallAfterGrounding { missing_authority: "std.probe" as NonEmptyStr },
+    next_rung_trigger: "the authority lands" as NonEmptyStr,
+  }
+}
+
+// BELOW THE CEILING IS A CORRECTNESS GAP, and it is a comparison against the requirement rather
+// than a state anyone stored.
+test fn a_rung_below_its_ceiling_is_not_at_ceiling() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: StructurallyGuaranteed),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    BelowCeiling => true
+    _ => false
+  }
+}
+
+test fn a_rung_at_its_ceiling_is_at_ceiling() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: MechanicallyPreventable),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    AtCeiling => true
+    _ => false
+  }
+}
+
+// THE RED FOR THE INDEX-COMPARISON READING OF AT-CEILING. OutsideTheLadder is index 0 and every
+// non-rung disposition reports index 0, so `index(d) >= index(ceiling)` called every one of these
+// done against an outside-the-ladder ceiling - and a class at its ceiling stops owing its trigger.
+// These are the three arms that must never reach a ceiling, whatever the ceiling is.
+test fn a_below_floor_class_is_not_at_an_outside_the_ladder_ceiling() -> Bool {
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: BelowFloor) {
+    BelowCeiling => true
+    _ => false
+  }
+}
+
+test fn an_unmeasured_class_is_not_at_an_outside_the_ladder_ceiling() -> Bool {
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: Unmeasured) {
+    BelowCeiling => true
+    _ => false
+  }
+}
+
+test fn a_frontier_class_is_not_at_an_outside_the_ladder_ceiling() -> Bool {
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: FrontierAccepted) {
+    BelowCeiling => true
+    _ => false
+  }
+}
+
+// THE ARM THAT DOES REACH IT: a class outside the modeled guarantee against a ceiling that says the
+// class is outside the modeled guarantee is the one honest way an index-0 ceiling is met.
+test fn an_outside_modeled_class_is_at_an_outside_the_ladder_ceiling() -> Bool {
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: OutsideModeledGuarantee) {
+    AtCeiling => true
+    _ => false
+  }
+}
+
+test fn an_outside_modeled_class_is_not_at_a_rung_ceiling() -> Bool {
+  match ceiling_standing(r: requirement_at(ceiling: Mitigatable), d: OutsideModeledGuarantee) {
+    BelowCeiling => true
+    _ => false
+  }
+}
+
+// THE SHARED ELIMINATOR IS THE ONE THE PREDICATES ANSWER THROUGH: a disposition selects exactly one
+// arm, so the three membership predicates are mutually exclusive on every constructor.
+test fn the_disposition_predicates_are_mutually_exclusive() -> Bool {
+  !any([BelowFloor, Unmeasured, FrontierAccepted, OnLadder { rung: Mitigatable }, OutsideModeledGuarantee],
+    d => count_true([
+      disposition_is_below_floor(d: d),
+      disposition_is_frontier(d: d),
+      disposition_is_unmeasured(d: d),
+    ]) > 1)
+}
+
+fn count_true(bs: List<Bool>) -> Int {
+  fold(bs, init: 0, f: fn(acc, b) { if b { acc + 1 } else { acc } })
+}
+
+
+// ---- THE CAUSE AGREES WITH THE DISPOSITION, OVER THE WHOLE PRODUCT OF OBSERVATIONS ----
+
+// THE RED THIS CONTROL IS FOR IS THE ONE THIS MODULE SHIPPED. below_floor_cause was total: it named
+// PlantedRedAccepted for a red probe that could not RUN, and PositiveControlRefused for a green
+// probe that was ACCEPTED -- paths whose disposition is Unmeasured and OnLadder. A caller asking
+// for the repair location of a passing path got a plausible, named, false one. The check is not a
+// sample: it is every pair the two observation universes can form, so a future arm cannot slip
+// through a combination nobody wrote a case for.
+fn every_observation() -> List<ProbeObservation> {
+  [
+    refused(),
+    AcceptedClean,
+    accepted_with_residue(),
+    ExecutionDiverged { description: "harness crashed" as NonEmptyStr },
+    ProbeNotRunnable { cause: "toolchain absent" as NonEmptyStr },
+  ]
+}
+
+fn cause_is_present(evidence: PathEvidence) -> Bool {
+  match below_floor_cause(evidence: evidence) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn below_floor_cause_agrees_with_the_disposition() -> Bool {
+  !any(every_observation(), r =>
+    any(every_observation(), g => {
+      let e = evidence(red: r, green: g)
+      cause_is_present(evidence: e) != disposition_is_below_floor(d: disposition_for_path(evidence: e))
+    }))
+}
+
+// ---- ONE RED PER REFUSAL ARM OF THE RECEIPT JOIN ----
+
+// A rung is a claim about a measured thing. Two receipts that disagree on WHAT was measured are not
+// a pair, and folding them anyway is how a strong path comes to speak for a silent one -- so each
+// disagreement is its own named refusal rather than a shared "invalid" answer, because the repair
+// differs: a class mismatch is a wiring error, a revision mismatch is a stale measurement, and a
+// probe-set mismatch means the two ran different probes under the same name.
+fn joined_with(red: GuaranteeMeasurementReceipt, green: GuaranteeMeasurementReceipt) -> PathEvidenceJoin {
+  path_evidence_from_receipts(red: red, green: green)
+}
+
+fn other_revision() -> MeasurementRevision {
+  GitRevision { commit: "fedcba9876543210fedcba9876543210fedcba98" as CommitSha }
+}
+
+test fn receipts_from_different_classes_do_not_join() -> Bool {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_class(c: "other-class"), probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceRefused { cause: ReceiptClassesDisagree } => true
+    _ => false
+  }
+}
+
+test fn receipts_from_different_paths_do_not_join() -> Bool {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_path(q: "other-path"), probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceRefused { cause: ReceiptPathsDisagree } => true
+    _ => false
+  }
+}
+
+// THE SUBJECT REVISION IS THE ONE THAT LOOKS HARMLESS AND IS NOT: a red refused on yesterday's
+// compiler and a green accepted on today's is the pair that reports a wall which may no longer fire.
+test fn receipts_at_different_subject_revisions_do_not_join() -> Bool {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_subject_revision(r: other_revision()), probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceRefused { cause: SubjectRevisionsDisagree } => true
+    _ => false
+  }
+}
+
+test fn receipts_from_different_harnesses_do_not_join() -> Bool {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_harness_revision(r: other_revision()), probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceRefused { cause: HarnessRevisionsDisagree } => true
+    _ => false
+  }
+}
+
+test fn receipts_over_different_probe_sets_do_not_join() -> Bool {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt_anchored(a: anchor_with_probe_set(d: probe_set_digest(probe_ids: ["only-one" as GuaranteeProbeId])), probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceRefused { cause: ProbeSetsDisagree } => true
+    _ => false
+  }
+}
+
+// ONE PROBE CANNOT BE BOTH DIRECTIONS. DESIGN §4b(1) requires a discriminating RED *and* an accepted
+// positive control; one probe playing both parts is half the evidence reported as a whole pair, and
+// it is the arm a caller reaches by accident rather than by wiring error.
+test fn one_probe_cannot_serve_as_both_directions() -> Bool {
+  match joined_with(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt(probe: "red-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceRefused { cause: OneProbeUsedForBothDirections } => true
+    _ => false
+  }
+}
+
+// THE ANCHOR SURVIVES THE JOIN: a derived rung has to be traceable to what was measured, so the
+// class, path and all three revisions come through rather than being consumed by the comparison.
+test fn the_join_carries_the_anchor_through() -> Bool {
+  match path_evidence_from_receipts(
+    red: receipt(probe: "red-probe", observed: refused()),
+    green: receipt(probe: "green-probe", observed: AcceptedClean),
+  ) {
+    PathEvidenceJoined { evidence: e } =>
+      (e.anchor.class as String) == "probe-class"
+        && (e.anchor.path as String) == path_id()
+        && measurement_revision_eq(left: e.anchor.subject_revision, right: anchor().subject_revision)
+        && measurement_revision_eq(left: e.anchor.harness_revision, right: anchor().harness_revision)
+    PathEvidenceRefused { cause: _ } => false
+  }
+}
+
+
+// ---- THE EMPTY PATH SET ----
+
+// A CLASS WITH NO EVIDENCE IS UNMEASURED, AND THE RED IS THAT IT USED TO BE OUTSIDE THE MODELED
+// GUARANTEE. minimum_on_ladder seeds with OutsideModeledGuarantee so an outside path contributes no
+// rung -- correct for a path someone classified, and wrong for no paths at all, because the seed
+// then leaked out as the answer. Paired with the control below it is the whole defect: a class
+// nobody measured read as outside the guarantee, and an outside class AT an outside-the-ladder
+// ceiling is DONE -- so a class nobody looked at stopped owing its next-rung trigger.
+test fn a_class_with_no_evidence_is_unmeasured() -> Bool {
+  match class_disposition(evidence: []) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+test fn an_empty_disposition_set_is_unmeasured() -> Bool {
+  match fold_dispositions(dispositions: []) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+// THE CONSEQUENCE, asserted where it bites rather than only at the fold: an unmeasured class is not
+// at its ceiling, whatever the ceiling is, so the trigger stays owed.
+test fn a_class_with_no_evidence_still_owes_its_trigger() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: OutsideTheLadder),
+    d: class_disposition(evidence: [])
+  ) {
+    BelowCeiling => true
+    _ => false
+  }
+}
+
+// THE OTHER SIDE, so the repair does not swallow the honest case: a class whose paths are all
+// classified as outside the modeled guarantee IS outside, and that is a statement someone made.
+test fn a_classified_outside_class_is_still_outside() -> Bool {
+  match fold_dispositions(dispositions: [OutsideModeledGuarantee, OutsideModeledGuarantee]) {
+    OutsideModeledGuarantee => true
+    _ => false
+  }
+}
+
+
+// THE FOURTH ARM OF THE AT-CEILING LEAK, and the red is that it used to report DONE. A class
+// MEASURED on the ladder against a requirement declaring the class OUTSIDE the ladder is two facts
+// that contradict each other: the index comparison said at-ceiling, because OutsideTheLadder is
+// index 0 and every rung clears it, so a climbing class stopped owing its next-rung trigger on the
+// strength of a ceiling its own evidence falsifies. Neither side may quietly win -- reporting done
+// hides a climbable class, reporting below-ceiling hides that the CEILING is what is now known to
+// be wrong -- so the disagreement is named and carries the rung that falsified it.
+test fn a_measured_rung_against_an_off_ladder_ceiling_is_a_contradiction() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: OutsideTheLadder),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    CeilingContradictedByEvidence { measured: m } => m == MechanicallyPreventable
+    _ => false
+  }
+}
+
+// AND THE CONTRADICTION IS NOT A BACK DOOR TO DONE: it is its own arm, so a caller folding the
+// standing cannot read it as at-ceiling by omission.
+test fn a_contradicted_ceiling_is_not_at_ceiling() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: OutsideTheLadder),
+    d: OnLadder { rung: Mitigatable }
+  ) {
+    AtCeiling => false
+    BelowCeiling => false
+    CeilingContradictedByEvidence { measured: _ } => true
+  }
+}
+
+
+// ---- THE THREE-WAY COMPARISON AT A FINITE CEILING ----
+
+// THE RED THIS REPLACES WAS `>=`, AND IT RETIRED AN OBLIGATION THAT WAS STILL OWED. A class whose
+// requirement declares it can reach only Mitigatable, measured at MechanicallyPreventable, read as
+// AtCeiling -- and a class at its ceiling stops owing its next-rung trigger. So an UNDERSTATED
+// ceiling silently closed a class that had already climbed past it, which is the same
+// two-facts-disagree shape as the off-ladder case and was left in the one arm I had convinced
+// myself was handled. The evidence is not the doubtful half: DESIGN section 4b calls the ceiling
+// DERIVED, so a measurement above it falsifies the derivation and the requirement is what needs
+// rewriting.
+test fn a_rung_above_a_finite_ceiling_contradicts_it() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: Mitigatable),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    CeilingContradictedByEvidence { measured: m } => m == MechanicallyPreventable
+    _ => false
+  }
+}
+
+// EXACTLY AT A FINITE CEILING IS STILL DONE. Without this, the repair above could have been made by
+// answering the contradiction for everything at or above, which would refuse every class that
+// actually reached its ceiling -- the opposite failure, and just as wrong.
+test fn a_rung_exactly_at_a_finite_ceiling_is_at_ceiling() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: MechanicallyPreventable),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    AtCeiling => true
+    _ => false
+  }
+}
+
+// BELOW A FINITE CEILING STILL OWES ITS TRIGGER, which is the ordinary case the other two must not
+// disturb.
+test fn a_rung_below_a_finite_ceiling_still_owes_its_trigger() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: StructurallyGuaranteed),
+    d: OnLadder { rung: Mitigatable }
+  ) {
+    BelowCeiling => true
+    _ => false
+  }
+}
