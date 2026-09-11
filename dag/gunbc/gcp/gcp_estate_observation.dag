@@ -29,7 +29,7 @@ data operator_audit_method_identity: NonEmptyStr = "operator-readonly-audit-2026
 
 data operator_audit_observed_at: NonEmptyStr = "2026-09-11"
 
-data unread_project_number_314501921854: NonEmptyStr = "314501921854"
+data gunbai_auto_project_number: String = "314501921854"
 
 data gunbai_ci_secrets_sa_email: ServiceAccountEmail = "gunbai-ci-secrets@gunbai-secrets.iam.gserviceaccount.com"
 
@@ -247,7 +247,7 @@ data observed_github_pool: ObservedWifPool = ObservedWifPool {
 }
 
 data observed_gunbai_auto_github_pool: ObservedWifPool = ObservedWifPool {
-  project_number: unread_project_number_314501921854 as String,
+  project_number: gunbai_auto_project_number,
   pool_id: github_pool_id,
   display_name: "GitHub Actions Pool",
   disabled: false,
@@ -281,7 +281,7 @@ fn four_github_pools_are_keyed_by_project_number() -> Bool {
 }
 
 data observed_gunbai_auto_github_provider: ObservedWifProvider = ObservedWifProvider {
-  project_number: unread_project_number_314501921854 as String,
+  project_number: gunbai_auto_project_number,
   pool_id: github_pool_id,
   provider_id: "github" as NonEmptyStr,
   issuer_uri: "https://token.actions.githubusercontent.com/",
@@ -337,7 +337,7 @@ fn copied_malformed_github_pool_condition() -> CopiedMalformedGithubPoolConditio
       gunb_ci_project_number,
       gunb_test_project_number,
     ],
-    escaped_project_number: unread_project_number_314501921854 as String,
+    escaped_project_number: gunbai_auto_project_number,
   }
 }
 
@@ -353,7 +353,7 @@ fn copied_malformed_condition_has_three_instances() -> Bool {
         && observed_gunb_test_github_provider.attribute_condition == c
         && observed_gunbai_auto_github_provider.attribute_condition != c
         && ns.length() == 3
-        && escaped == unread_project_number_314501921854 as String
+        && escaped == gunbai_auto_project_number
   }
 }
 
@@ -366,7 +366,7 @@ fn secrets_github_pool_legacy_principal_set_member() -> String {
 
 fn gunbai_auto_legacy_principal_set_member() -> String {
   concat(
-    concat("principalSet://iam.googleapis.com/projects/", unread_project_number_314501921854 as String),
+    concat("principalSet://iam.googleapis.com/projects/", gunbai_auto_project_number),
     "/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunb.ai",
   )
 }
@@ -387,7 +387,7 @@ type LegacyFederationHygiene
 
 fn gunbai_auto_legacy_federation_hygiene() -> LegacyFederationHygiene {
   CorrectlyScopedPossiblyInertUndeclared {
-    pool_project_number: unread_project_number_314501921854 as String,
+    pool_project_number: gunbai_auto_project_number,
     pool_id: github_pool_id,
     provider_id: observed_gunbai_auto_github_provider.provider_id,
     federated_repo: legacy_federated_repo,
@@ -400,6 +400,7 @@ type FederationGenerationHypothesis
       auto_github_pool_condition: String
       secrets_github_pool_condition: String
       modeled_github_actions_condition: String
+      copied_malformed_instance_count: Int
     }
 
 fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
@@ -407,20 +408,23 @@ fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
     auto_github_pool_condition: observed_gunbai_auto_github_provider.attribute_condition,
     secrets_github_pool_condition: observed_secrets_github_pool_attribute_condition,
     modeled_github_actions_condition: observed_github_actions_attribute_condition,
+    copied_malformed_instance_count: 3,
   }
 }
 
-fn secrets_github_pool_condition_is_the_malformed_one() -> Bool {
+fn copied_malformed_condition_and_auto_escaped_well_formed() -> Bool {
   copied_malformed_condition_has_three_instances()
     && match github_pool_generation_hypothesis() {
       GithubPoolIsPriorGenerationUngrounded {
         auto_github_pool_condition: auto_c,
         secrets_github_pool_condition: secrets_c,
         modeled_github_actions_condition: _,
+        copied_malformed_instance_count: n,
       } =>
         (secrets_c).contains("repository_owner=='https:'")
           && (auto_c).contains(legacy_federated_repo)
           && !(auto_c).contains("https:")
+          && n == 3
     }
 }
 
@@ -428,14 +432,14 @@ data observed_ci_secrets_cross_project_binding: ObservedPrincipalSetBinding = Ob
   account: gunbai_ci_secrets_sa_email,
   role: role_iam_workload_identity_user,
   member: Present { value: gunbai_auto_legacy_principal_set_member() },
-  pool_project_number: Present { value: unread_project_number_314501921854 as String },
+  pool_project_number: Present { value: gunbai_auto_project_number },
 }
 
 data observed_ci_iap_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: gunbai_ci_iap_sa_email,
   role: role_iam_workload_identity_user,
   member: Present { value: gunbai_auto_legacy_principal_set_member() },
-  pool_project_number: Present { value: unread_project_number_314501921854 as String },
+  pool_project_number: Present { value: gunbai_auto_project_number },
 }
 
 data observed_secrets_ci_integration_tests_legacy_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
@@ -449,7 +453,7 @@ data observed_workspace_admin_legacy_binding: ObservedPrincipalSetBinding = Obse
   account: gunbai_ci_workspace_admin_sa_email,
   role: role_iam_workload_identity_user,
   member: Present { value: gunbai_auto_legacy_principal_set_member() },
-  pool_project_number: Present { value: unread_project_number_314501921854 as String },
+  pool_project_number: Present { value: gunbai_auto_project_number },
 }
 
 data observed_fleet_cloud_convergence_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
@@ -947,7 +951,7 @@ type TokenExchangeStsHypothesis
 
 fn gunbai_auto_token_exchange_sts_hypothesis() -> TokenExchangeStsHypothesis {
   TokenExchangeRequiresStsInPoolProjectUngrounded {
-    pool_project_number: unread_project_number_314501921854 as String,
+    pool_project_number: gunbai_auto_project_number,
     pool_id: github_pool_id,
     sts_enabled_in_pool_project: gunbai_auto_has_sts(),
     auto_is_the_only_pool_host_without_sts: gunbai_auto_is_the_only_pool_host_without_sts(),

@@ -14,7 +14,7 @@ import gunbc.gcp_estate_observation {
   census_gap_count,
   fleet_automation_has_no_principal_set_binding,
   operator_prose_project_name_slip,
-  unread_project_number_314501921854,
+  gunbai_auto_project_number,
   principal_set_pool_project_number,
   principal_set_citation,
   PrincipalSetCitesProject,
@@ -71,7 +71,7 @@ import gunbc.gcp_estate_observation {
   gunbai_auto_provider_condition_is_tight_legacy_repo,
   gunbai_auto_legacy_federation_hygiene,
   CorrectlyScopedPossiblyInertUndeclared,
-  secrets_github_pool_condition_is_the_malformed_one,
+  copied_malformed_condition_and_auto_escaped_well_formed,
   observed_secrets_github_pool_provider,
   observed_github_oidc_provider,
   observed_gunbai_auto_github_provider,
@@ -143,11 +143,11 @@ test fn unread_project_is_a_named_gap_not_an_absence() -> Bool {
         federated_repo: repo,
         modeled_repo: current,
       } =>
-        n == unread_project_number_314501921854 as String
+        n == gunbai_auto_project_number as String
           && repo == "gunb-ai/gunb.ai"
           && current == "gunb-ai/gunbc"
     }
-    && secrets_github_pool_condition_is_the_malformed_one()
+    && copied_malformed_condition_and_auto_escaped_well_formed()
 }
 
 test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
@@ -155,7 +155,7 @@ test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
 }
 
 test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
-  secrets_github_pool_condition_is_the_malformed_one()
+  copied_malformed_condition_and_auto_escaped_well_formed()
     && observed_secrets_github_pool_provider.provider_id as String == "github"
     && observed_github_oidc_provider.provider_id as String == "github-oidc"
     && operator_audit_census().wif_providers.length() == 5
@@ -164,7 +164,7 @@ test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
 
 test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
   let census = operator_audit_census()
-  let number = unread_project_number_314501921854 as String
+  let number = gunbai_auto_project_number as String
   census_subject_is_enumerated_project_number(census: census, number: number)
     && census_subject_is_observed_project_number(census: census, number: number)
     && !census_subject_is_named_gap(census: census, subject: concat("projects/", number))
@@ -196,7 +196,7 @@ test fn cited_project_without_gap_is_outstanding() -> Bool {
     && fold(
       outstanding,
       init: false,
-      f: fn(acc, n) { acc || n as String == unread_project_number_314501921854 as String },
+      f: fn(acc, n) { acc || n as String == gunbai_auto_project_number as String },
     )
 }
 
@@ -221,11 +221,11 @@ test fn undecomposable_principal_set_is_not_a_same_project_edge() -> Bool {
 test fn principal_set_parser_extracts_cross_project_number() -> Bool {
   match principal_set_pool_project_number(
     member: concat(
-      concat("principalSet://iam.googleapis.com/projects/", unread_project_number_314501921854 as String),
+      concat("principalSet://iam.googleapis.com/projects/", gunbai_auto_project_number as String),
       "/locations/global/workloadIdentityPools/x/attribute.repository/gunb-ai/gunb.ai",
     ),
   ) {
-    Present { value: n } => n == unread_project_number_314501921854 as String
+    Present { value: n } => n == gunbai_auto_project_number as String
     Absent => false
   }
 }
