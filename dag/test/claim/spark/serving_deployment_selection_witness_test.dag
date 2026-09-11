@@ -7,7 +7,7 @@ import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import std.pareto { LowerIsBetter, SelectionAxis }
-import std.decision { HardConstraint }
+import std.decision { HardConstraint, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
 import std.roster_frontier {
   FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
 }
@@ -45,7 +45,8 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentEvidenceSnapshot, serving_evidence_snapshot,
   ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
-  select_serving_deployment,
+  ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy,
+  select_serving_deployment, select_serving_deployment_at_sm12_admit,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
@@ -56,7 +57,7 @@ import gunbc.spark.serving_deployment_selection {
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token, ax_sm12_kv_admitted,
-  sm12_kv_admit_gaps, sm12_kv_admit_obligation, kv_layout_from_sm12_admit,
+  kv_layout_from_sm12_admit,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -66,7 +67,6 @@ import gunbc.spark.serving_deployment_selection {
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
   v41_sm12_kv_cache_dtype_admitted,
-  v41_sm12_admitted_kv_cache_dtypes,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -678,20 +678,31 @@ test fn empty_sm12_admit_roster_needs_evidence_and_keeps_the_complete_field() ->
         KvFp8Layout => false
         KvFp4Layout => false
       })
-    && match deepseek_v4_1_candidate_field.candidates.first() {
-      Absent => false
-      Present { value: c } =>
-        count(sm12_kv_admit_gaps(c: c, admitted: empty_admit)) == 1
-          && all(sm12_kv_admit_gaps(c: c, admitted: empty_admit), g =>
+    && match select_serving_deployment_at_sm12_admit(input: deepseek_v4_1_decision_input, admitted: empty_admit) {
+      ServingDeploymentNeedsEvidence { needs: n } =>
+        any(n, need => match need {
+          UnfundedAxis { gap: g } =>
             declaration_ref_eq(a: g.axis, b: ax_sm12_kv_admitted)
-              && (g.cause as String) == (sm12_kv_admit_obligation as String)
-              && string_contains(s: g.cause as String, pattern: "v41_sm12_admitted_kv_cache_dtypes"))
-          && count(sm12_kv_admit_gaps(c: c, admitted: v41_sm12_admitted_kv_cache_dtypes)) == 0
+              && string_contains(s: g.cause as String, pattern: "v41_sm12_kv_layout")
+              && string_contains(s: g.cause as String, pattern: "supports_combination")
+              && string_contains(s: g.cause as String, pattern: "v41_sm12_admitted_kv_cache_dtypes")
+          CandidateStandingIncomplete { candidate: _, cause: _ } => false
+          SubjectClosureIncomplete { subject: _, obligation: _ } => false
+        })
+      ServingDeploymentSelectionRefused { defects: _ } => false
+      ServingDeploymentSelected { selected: _ } => false
+      ServingDeploymentNeedsPolicy { survivors: _ } => false
+      NoFeasibleServingDeployment { causes: _ } => false
     }
-    && count(sm12_kv_admit_gaps(
-      c: cand(name: "glm_sm12", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)),
-      admitted: empty_admit,
-    )) == 0
+    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+      ServingDeploymentNeedsEvidence { needs: n } =>
+        !any(n, need => match need {
+          UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: ax_sm12_kv_admitted)
+          CandidateStandingIncomplete { candidate: _, cause: _ } => false
+          SubjectClosureIncomplete { subject: _, obligation: _ } => false
+        })
+      _ => false
+    }
 }
 
 fn v4_1_frontier_keys_contain(decl_name: String) -> Bool {

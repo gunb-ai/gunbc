@@ -1310,7 +1310,24 @@ fn kv_bytes_gap(c: DeploymentCandidate) -> List<AxisGap> {
   }
 }
 
-data sm12_kv_admit_obligation: NonEmptyStr = "Cite extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_admitted_kv_cache_dtypes; this candidate's kv_layout wire is not in that admit roster" as NonEmptyStr
+data sm12_kv_layout_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.vllm.deepseek_v4_1_sm12" as NonEmptyStr,
+  decl_name: "v41_sm12_kv_layout" as NonEmptyStr,
+  field: WholeDeclaration,
+}
+
+data sm12_kv_admit_roster_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.vllm.deepseek_v4_1_sm12" as NonEmptyStr,
+  decl_name: "v41_sm12_admitted_kv_cache_dtypes" as NonEmptyStr,
+  field: WholeDeclaration,
+}
+
+data sm12_kv_admit_obligation: NonEmptyStr = join([
+  "missing ",
+  declaration_ref_display_key(ref: sm12_kv_layout_ref),
+  " from DeepseekV4FlashInferMLASparseBackend.supports_combination for device major 12; cite ",
+  declaration_ref_display_key(ref: sm12_kv_admit_roster_ref),
+], "") as NonEmptyStr
 
 fn sm12_kv_admit_gaps(c: DeploymentCandidate, admitted: List<NonEmptyStr>) -> List<AxisGap> {
   if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
@@ -1341,7 +1358,7 @@ fn optional_reading(r: AxisReading?) -> List<AxisReading> {
   }
 }
 
-fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisReading> {
+fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, admitted: List<NonEmptyStr>) -> List<AxisReading> {
   concat(
     concat(
       concat(optional_reading(r: quality_reading(profile: execution_profile_of(c: c, p: p), e: e)),
@@ -1349,7 +1366,7 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
       concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
              optional_reading(r: workload_reading(e: e)))),
     concat(
-      optional_reading(r: sm12_kv_admit_reading(c: c, admitted: v41_sm12_admitted_kv_cache_dtypes)),
+      optional_reading(r: sm12_kv_admit_reading(c: c, admitted: admitted)),
     [
       reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
       reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c))),
@@ -1360,23 +1377,23 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
     ]))
 }
 
-fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisGap> {
+fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, admitted: List<NonEmptyStr>) -> List<AxisGap> {
   concat(
     concat(
       concat(quality_gap(profile: execution_profile_of(c: c, p: p), e: e),
              runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
       concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
     concat(
-      concat(kv_bytes_gap(c: c), sm12_kv_admit_gaps(c: c, admitted: v41_sm12_admitted_kv_cache_dtypes)),
+      concat(kv_bytes_gap(c: c), sm12_kv_admit_gaps(c: c, admitted: admitted)),
       map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
 }
 
-fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
+fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, admitted: List<NonEmptyStr>) -> ParetoEntry {
   ParetoEntry {
     identity: c.identity,
     display_label: c.label,
-    readings: candidate_readings(c: c, e: e, p: p),
-    missing_inputs: candidate_gaps(c: c, e: e, p: p),
+    readings: candidate_readings(c: c, e: e, p: p, admitted: admitted),
+    missing_inputs: candidate_gaps(c: c, e: e, p: p, admitted: admitted),
   }
 }
 
@@ -1587,13 +1604,17 @@ fn resolve_in_field(field: ServingDeploymentCandidateField, identity: Declaratio
 }
 
 fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDeploymentSelection {
+  select_serving_deployment_at_sm12_admit(input: input, admitted: v41_sm12_admitted_kv_cache_dtypes)
+}
+
+fn select_serving_deployment_at_sm12_admit(input: ServingDeploymentDecisionInput, admitted: List<NonEmptyStr>) -> ServingDeploymentSelection {
   match establish_serving_candidate_field(field: input.field) {
     ServingFieldUnestablished { causes: c } => ServingDeploymentSelectionRefused { defects: c }
     ServingFieldEstablished =>
       match select_realization(
         assessment: assessment_for(input: input),
         candidate_field_identity: input.field.identity,
-        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile)),
+        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile, admitted: admitted)),
         axes: input.axes,
         constraints: input.constraints,
         constraint_authority: input.constraint_authority,
