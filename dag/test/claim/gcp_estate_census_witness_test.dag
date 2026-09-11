@@ -45,7 +45,6 @@ import gunbc.gcp_estate_observation {
   gunb_test_enabled_service_ids,
   observed_project_roster_count,
   gunbai_auto_is_not_selected_as_sheets_home,
-  gap_workspace_admin_user_managed_keys,
   gap_workspace_admin_domain_wide_delegation,
   gap_gemini_project_beyond_identity,
   gap_pool_creation_timestamps,
@@ -83,6 +82,7 @@ import gunbc.gcp_estate_observation {
   gunb_test_is_deranked_scratch_not_a_sheets_candidate,
   workspace_admin_display_name_says_test,
   workspace_admin_has_no_gunb_ci_project_roles,
+  workspace_admin_has_no_user_managed_keys,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
@@ -373,7 +373,7 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && census.service_accounts.length() == 25
     && custody_sas_with_no_wif_bindings(census: census)
     && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
-    && census_subject_is_named_gap(census: census, subject: gap_workspace_admin_user_managed_keys.subject_identity as String)
+    && !census_subject_is_named_gap(census: census, subject: "gunbai-ci-workspace-admin@gunb-ci/keys?managed-by=user")
     && census_subject_is_named_gap(census: census, subject: gap_workspace_admin_domain_wide_delegation.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_gemini_project_beyond_identity.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_pool_creation_timestamps.subject_identity as String)
@@ -383,6 +383,7 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && gunb_test_is_deranked_scratch_not_a_sheets_candidate()
     && workspace_admin_display_name_says_test()
     && workspace_admin_has_no_gunb_ci_project_roles()
+    && workspace_admin_has_no_user_managed_keys()
 }
 
 test fn two_github_pools_are_keyed_by_project_not_name() -> Bool {

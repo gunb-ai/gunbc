@@ -481,18 +481,18 @@ data observed_workspace_admin_key_listings: List<ObservedSaKeyListing> = [
   },
 ]
 
-type SaKeyManagementStanding
-  = UserVersusSystemManagedUnread {
-      listed_without_managed_by_filter: Bool
-      shared_create_timestamp: Bool
-      one_year_validity: Bool
+type WorkspaceAdminKeyStanding
+  = UserManagedKeysNone {
+      google_managed: List<ObservedSaKeyListing>
     }
 
-fn workspace_admin_key_management_is_unread() -> SaKeyManagementStanding {
-  UserVersusSystemManagedUnread {
-    listed_without_managed_by_filter: true,
-    shared_create_timestamp: true,
-    one_year_validity: true,
+fn workspace_admin_key_standing() -> WorkspaceAdminKeyStanding {
+  UserManagedKeysNone { google_managed: observed_workspace_admin_key_listings }
+}
+
+fn workspace_admin_has_no_user_managed_keys() -> Bool {
+  match workspace_admin_key_standing() {
+    UserManagedKeysNone { google_managed: ks } => ks.length() == 2
   }
 }
 
@@ -500,19 +500,10 @@ fn workspace_admin_has_no_gunb_ci_project_roles() -> Bool {
   true
 }
 
-data gap_workspace_admin_user_managed_keys: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "gunbai-ci-workspace-admin@gunb-ci/keys?managed-by=user" as NonEmptyStr,
-  cause: "keys list without --managed-by returned two keys with identical createTime and one-year validity, which may be Google-managed signing keys or user-managed material; they are not recorded as downloadable credentials",
-  discharge: "gcloud iam service-accounts keys list --managed-by=user --iam-account=gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
-}
-
 data gap_workspace_admin_domain_wide_delegation: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "gunbai-ci-workspace-admin@gunb-ci/workspace-domain-wide-delegation" as NonEmptyStr,
-  cause: "no gunb-ci project roles does not mean unprivileged; Workspace power would be domain-wide delegation on the SA client ID, invisible to every IAM read",
-  discharge: "Google Workspace admin-console read of domain-wide delegation for this service account client ID, not a gcloud command",
+  cause: "the only remaining security-weight unread; no gcloud read can answer it. GCP silence (no project roles, no user keys) is not evidence the account is unprivileged -- Workspace power is domain-wide delegation on the SA client ID in the admin console. If it has delegation, an account impersonable from a pool is a path into the Workspace domain; if it does not, the account is inert and a cleanup candidate",
+  discharge: "Google Workspace admin-console read of domain-wide delegation for this service account client ID, not a gcloud command; do not ask the operator without routing through the direction session",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -521,7 +512,7 @@ data gap_workspace_admin_domain_wide_delegation: EstateCoverageGap = EstateCover
 data gap_token_creator_binding_members: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "gunbai-secrets/roles/iam.serviceAccountTokenCreator/members" as NonEmptyStr,
   cause: "gunbai-dev-secrets, gunbai-ci-secrets, and gunbai-ci-iap carry roles/iam.serviceAccountTokenCreator; the members of those bindings were not captured",
-  discharge: "gcloud iam service-accounts get-iam-policy on those three accounts for roles/iam.serviceAccountTokenCreator",
+  discharge: "gcloud iam service-accounts get-iam-policy on those three accounts for roles/iam.serviceAccountTokenCreator; unread, not an operator ask unless routed through the direction session",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -529,8 +520,8 @@ data gap_token_creator_binding_members: EstateCoverageGap = EstateCoverageGap {
 
 data gap_pool_creation_timestamps: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "workloadIdentityPools/createTime" as NonEmptyStr,
-  cause: "pool createTime is unread on every observed pool; project createTime is observed only for gunbai-auto",
-  discharge: "iam workloadIdentityPools.get createTime on each observed pool",
+  cause: "pool createTime is unread on every observed pool; would ground the github-pool-is-legacy-generation hypothesis; nice to have, not load-bearing",
+  discharge: "iam workloadIdentityPools.get createTime on each observed pool; do not ask the operator without routing through the direction session",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -1158,8 +1149,8 @@ fn gunbai_auto_is_not_selected_as_sheets_home() -> Bool {
 
 data gap_gemini_project_beyond_identity: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "projects/gen-lang-client-0162760657/beyond-identity" as NonEmptyStr,
-  cause: "Default Gemini Project identity is observed; enabled services, service accounts, and WIF pools are unread",
-  discharge: "serviceusage services.list, iam serviceAccounts.list, and workloadIdentityPools.list on gen-lang-client-0162760657",
+  cause: "Default Gemini Project identity is observed; enabled services, service accounts, and WIF pools are unread; almost certainly incidental, low value",
+  discharge: "do not spend an operator read unless closing the estate formally requires it; route any ask through the direction session",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -1199,7 +1190,6 @@ fn operator_audit_census() -> GcpEstateCensus {
       EstateObserved { value: observed_workspace_admin_legacy_binding },
     ],
     coverage_gaps: [
-      gap_workspace_admin_user_managed_keys,
       gap_workspace_admin_domain_wide_delegation,
       gap_gemini_project_beyond_identity,
       gap_pool_creation_timestamps,
