@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload: RecurringFailureMode = RecurringFailureMode {
+  identity: "sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload" as NonEmptyStr,
+
+  receipts: [
+    "**a single-field wrapper value passes a typecheck written for its payload and then fails at evaluation on a field the payload has and the wrapper does not** (the two ends disagree about the same coercion: acceptance is transparent, evaluation is not, so the declaration says the value is the payload and the runtime says it is the box. ",
+
+    "INVALID STATE: a value of a sole-constructor carrier stored into, or passed to, a position declared as the carrier's own field type. Nothing refuses. The program is Accepted, and the mismatch converts into a missing-field error at eval time, at a site that may be arbitrarily far from the assignment that caused it. ",
+
+    "HARM: a typed refusal is traded for a runtime crash, which is the ladder running backwards -- the class had a decidable, structural answer available at the point of acceptance and took a mitigation-tier one instead. It also destroys the property the wrapper was introduced for: a sole-constructor carrier exists to make the payload and the carrier DISTINCT, and a coercion that admits one for the other at the acceptance end deletes exactly that distinction while leaving the type name in place. ",
+
+    "DISTINGUISHING FACTS. The tell is a runtime `no field 'F' on type 'W'` where W is a sole-constructor carrier and F is a field of W's single payload -- and, read backwards from the source, a position declared as the payload type receiving the carrier with no cast, no unwrap, and no diagnostic. It is NOT [[modifier_accepted_on_a_shape_its_check_cannot_see]] or [[sealing_property_erases_structure]]: both of those are about the sole_constructor MODIFIER at a DECLARATION site -- what the marker may be written on, and what a consumer reading the declaration concludes from it. This class is about a VALUE at a USE site, and it fires on carriers whose declaration is entirely well formed. ",
+
+    "SPECIMEN, gunbc#11004, found by running a witness rather than by reading one. `v2.test.long.accumulator_copy_compile_gate` `normalized_of` binds what `v2.compiler.normalize` `normalize` returns -- a `NormalizedTree`, which is `sole_constructor { root: Node }` -- and stores it into `ProbeNormalized { root: Node }`, then hands it to a gate that reads `node.kind`. Three witnesses fail at eval with `no field 'kind' on type 'NormalizedTree'`; verified on the committed file before any edit in that PR, so the mismatch predates it. The site repair is one field, `root: normalized.root`, and it lands in the same PR as this row -- a fix without the row would hide the acceptance hole, and a row without the fix leaves a red that nobody executes. ",
+
+    "WHY IT SURVIVED, and this is a second finding the specimen carries rather than a property of the class: the whole entry is a `LegacyFrozenPathDeferral` in `gunbc.witness_deferral_freeze` -- admitted by path policy with NO EXECUTING CONSUMER -- so all four of its witnesses execute nowhere in any required lane and three of them could sit red indefinitely. The acceptance hole is what let the defect be written; the deferral is what let it live. ",
+
+    "RUNG FOUND AT: 1, and generously -- the failure is at least loud and located when it fires, but it fires at evaluation, on a path a required lane does not run. CEILING: 4, structurally impossible: whether a sole-constructor carrier may stand where its payload type is declared is decidable from the declaration alone, so the invalid state can be made unwritable rather than detected. NEXT TRIGGER: the compiler treating the carrier and its payload identically at BOTH ends -- either refusing the wrapper where the payload is declared, with a located diagnostic naming the unwrap, or coercing it at evaluation as acceptance already does. Either is a wall; what is forbidden is the present split, where one end coerces and the other does not.)",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.mandatory_gate_refuses_the_corpus_it_is_mandatory_on
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data mandatory_gate_refuses_the_corpus_it_is_mandatory_on: RecurringFailureMode = RecurringFailureMode {
+  identity: "mandatory_gate_refuses_the_corpus_it_is_mandatory_on" as NonEmptyStr,
+
+  receipts: [
+    "**a gate registered as mandatory on a door refuses the very corpus that door exists to admit, so the door is unreachable and the obligation reads enforced while nothing passes through it** (the registration is real, the gate executes, its refusal is typed and located -- and precisely because it always fires, no subject ever reaches the stages behind it, so every downstream obligation on that route is untested by construction rather than by anyone's decision. ",
+
+    "INVALID STATE: an always-run gate whose predicate is not satisfied by the population the route is required to carry. The gate is not broken and the corpus is not obviously wrong; what is missing is the fact that nobody ever asked whether the two are COMPATIBLE, because the question only becomes visible when someone looks for a green traversal and finds there is none. ",
+
+    "HARM: a route reported as gated is in fact a route nobody traverses, and the guarantee attributed to the gate is attributed to a wall nothing walks into. Worse than a missing gate, because the roster, the registration and the execution receipts all read as coverage -- the absent thing is a single ACCEPTED traversal, and absence of that is not on anyone's dashboard. The obligations stacked behind the gate inherit the same silence at rung 0 while presenting as enrolled. ",
+
+    "DISTINGUISHING FACTS, and why this is not [[constant_verdict_gate_stops_discriminating]]: that class is about a verdict that stops being a function of the change, in a window, for a cause outside the subjects. Here the verdict IS a function of the subject and would flip on a subject the gate admits; the defect is that the required route never presents one. It is also not [[witness_module_absent_from_the_executed_set]]: the gate executes on every call, and it is the ACCEPTING traversal, not the check, that is absent. The tell is mechanical and cheap: for each mandatory gate, ask for one subject from the route's own corpus that the gate ACCEPTS end to end, and treat inability to produce one as the finding. ",
+
+    "SPECIMEN, gunbc#11004, measured rather than argued. `v2.compiler.compile` `validate_then_compile` runs two required rosters before anything else. On the compiler's own clean resolved add fixture (`v2.test.manual.infer_ground_add` `fixture_add_resolved_tree`): `infer` ACCEPTS, the ROOT-grain required roster ACCEPTS the inferred tree, and the SUBTREE-grain roster -- fact_density plus unit_modeling plus lifecycle_carrier, run per node -- REFUSES it. Both compile modes were tried, TranslateTo against a stub target and Eval, and the refusal is upstream of emission in both. So no fixture in this corpus reaches Accepted through the v2 compile door, and the door-grain positive control for the required-lens coverage receipt landed in the same PR could not be written; it is carried as a declared frontier in `v2.test.lens_application.required_lens_coverage_join` instead. ",
+
+    "THIS IS THE WALL BEHIND THAT FRONTIER, which is why the two are one class and not two findings: the frontier says 'no Accepted traversal exists to attach the receipt to', and this row says WHY -- a mandatory gate whose predicate the corpus does not satisfy. Retiring the frontier and repairing this class are the same act. ",
+
+    "RUNG FOUND AT: 1. The refusal is typed and located and the line stops, which is the only thing the ladder credits here; nothing structural prevents a mandatory roster from being registered against a corpus it rejects wholesale. CEILING: 2, mechanically preventable -- a per-gate accepting-traversal control, one subject from the route's own corpus that the gate admits end to end, generated per registration rather than authored per lens. It cannot climb above that from the registration side, because whether a predicate suits a corpus is a semantic question about the predicate. NEXT TRIGGER: the lens-semantics repair -- fact_density, unit_modeling and lifecycle_carrier either admitting the compiler's own normalized node shapes, or being re-registered at a grain whose population they are meant to judge -- after which the accepting-traversal control is authorable and the frontier retires by execution.)",
+  ],
+
+  evidence: [],
+}
