@@ -1,6 +1,7 @@
 module test.claim.harness_chat_shape
 
 import std.types { list_length, Bool, String, Int, List }
+import std.measure { TokenCount, token_count_value }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.llm.anthropic_messages_api { ToolUse, EndTurn, MaxTokens }
 import gunbc.harness.harness_wire {
@@ -36,7 +37,7 @@ test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool {
         && (match blocks.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("wants files")  _ => false })
         && (match blocks.last() { Present { value: WireToolUseBlock { id, name, input: _ } } => id == "chatcmpl-tool-1" && name == "run_command"  _ => false })
         && (match stop_reason { ToolUse => true  _ => false })
-        && (match usage { UsageRead { input_tokens: i, output_tokens: o } => i == 365 && o == 41  UsageUnreadable { cause: _ } => false })
+        && (match usage { UsageRead { input_tokens: i, output_tokens: o } => token_count_value(t: i) == 365 && token_count_value(t: o) == 41  UsageUnreadable { cause: _ } => false })
   }
 }
 
@@ -220,6 +221,17 @@ test fn a_usage_object_missing_one_count_reads_as_unavailable_rather_than_half_a
   )
 }
 
+// A NEGATIVE COUNT IS NOT A COUNT. TokenCount is Nat-valued, so the Int-to-Nat crossing has to
+// happen somewhere in the decoder; this red holds it on the refusing side of the sign check, because
+// the tempting spelling -- take the magnitude and move on -- turns "-3 tokens" into "3 tokens",
+// which is this module's own failure class one field over.
+test fn a_negative_usage_count_reads_as_unavailable_rather_than_as_its_magnitude() -> Bool {
+  usage_is_unavailable_naming(
+    usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":-3,\"completion_tokens\":2}}"),
+    fragment: "negative",
+  )
+}
+
 // THE MESSAGES SHAPE CARRIES THE SAME REPAIR, because it carried the same fabrication: a tool_use
 // block with no input member decoded to an empty object there too.
 fn messages_decode_cause(body: String) -> String {
@@ -252,7 +264,7 @@ test fn a_well_formed_messages_response_still_decodes_with_its_input_and_counts(
                 id == "t1" && name == "run_command" && serialize_json(v: input).contains("ls")
               _ => false
             })
-        && (match usage { UsageRead { input_tokens: i, output_tokens: o } => i == 11 && o == 22  UsageUnreadable { cause: _ } => false })
+        && (match usage { UsageRead { input_tokens: i, output_tokens: o } => token_count_value(t: i) == 11 && token_count_value(t: o) == 22  UsageUnreadable { cause: _ } => false })
   }
 }
 

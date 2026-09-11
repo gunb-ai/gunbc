@@ -1,6 +1,7 @@
 module gunbc.harness.harness_wire
 
 import std.measure { TokenCount, token_count }
+import std.checked_arithmetic { nat_magnitude }
 import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -193,8 +194,25 @@ fn harness_int_read_gap(key: String, read: HarnessIntRead) -> String {
 // them is not a response with a missing field, it is a usage object this codec does not understand,
 // and reading the half that parsed would report a measurement that was never made.
 type HarnessUsageRead
-  = UsageRead { input_tokens: Int, output_tokens: Int }
+  = UsageRead { input_tokens: TokenCount, output_tokens: TokenCount }
   | UsageUnreadable { cause: String }
+
+// THE COUNTS ARE TokenCount, NOT Int, and that is the other half of this repair rather than a
+// flourish (review 63491). std.measure already owns the concept, and the same consumer already
+// speaks it: gunbc.harness.harness_turn declares context_budget: TokenCount, so a bare Int decoded
+// here had to be unwrapped through token_count_value to be compared against the budget -- and an
+// unwrap-to-compare is the tell that the carrier exists and is being stepped around (DESIGN
+// section 2: net concepts must not grow by re-invention). A PR whose thesis is that a token count
+// must not be INVENTED owes the matching half, that a token count must be TYPED as one.
+//
+// A NEGATIVE COUNT REFUSES RATHER THAN BECOMING A MAGNITUDE. TokenCount is Nat-valued, so the
+// crossing has to happen somewhere; it happens after the sign is checked, which is why
+// nat_magnitude is exact here and fabricates nothing -- for a value already proven nonnegative the
+// magnitude IS the value. Reversing that order would turn "-3 tokens" into "3 tokens", which is
+// this file's own failure class one field over.
+fn harness_token_count_of(n: Int) -> TokenCount {
+  token_count(count: nat_magnitude(a: n))
+}
 
 fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> HarnessUsageRead {
   match json_object_unique_member(v: doc, key: "usage") {
@@ -204,7 +222,17 @@ fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> 
       match i {
         IntRead { value: iv } =>
           match o {
-            IntRead { value: ov } => UsageRead { input_tokens: iv, output_tokens: ov }
+            IntRead { value: ov } =>
+              if iv < 0 {
+                UsageUnreadable { cause: join(["response usage member '", input_key, "' is negative"], "") }
+              } else if ov < 0 {
+                UsageUnreadable { cause: join(["response usage member '", output_key, "' is negative"], "") }
+              } else {
+                UsageRead {
+                  input_tokens: harness_token_count_of(n: iv),
+                  output_tokens: harness_token_count_of(n: ov),
+                }
+              }
             _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
           }
         _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }

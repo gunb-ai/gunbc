@@ -2092,6 +2092,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "a_completion_without_a_usage_object_reads_as_unavailable_not_as_zero",
         "a_usage_member_that_is_not_a_number_reads_as_unavailable_not_as_zero",
         "a_usage_object_missing_one_count_reads_as_unavailable_rather_than_half_a_measurement",
+        "a_negative_usage_count_reads_as_unavailable_rather_than_as_its_magnitude",
         "a_messages_tool_use_block_without_input_refuses",
         "a_messages_tool_use_block_without_an_id_refuses",
         "a_well_formed_messages_response_still_decodes_with_its_input_and_counts",
