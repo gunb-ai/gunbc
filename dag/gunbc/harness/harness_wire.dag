@@ -191,9 +191,23 @@ fn harness_member_string(doc: JsonValue, key: String) -> HarnessStringRead {
 // gunbc.harness.harness_turn harness_context_exhausted and harness_compaction_due compare against
 // the declared budget, so a defaulted 0 says "the context is empty" for a turn that may be at the
 // ceiling, and the two mechanisms that exist to stop the line never fire.
+//
+// THE LOOKUP'S FOUR OUTCOMES ARE CARRIED THROUGH HERE TOO, AND A WILDCARD IS WHAT LOST THEM
+// (review 63762). The first version of this reader closed with `_ => IntAbsent`, so a usage object
+// carrying `prompt_tokens` TWICE, and a `usage` member that is not an object at all, both arrived
+// at the diagnostic as "carries no 'prompt_tokens' member". Nothing failed open -- the turn still
+// refuses, and the count is still unavailable rather than zero -- but the refusal STATED A FALSE
+// FACT ABOUT THE WIRE, which is exactly the collapse this module removed one type over for strings,
+// surviving in the place a reader is least likely to look: the text of a message that is already
+// saying no. A diagnostic is read by a person deciding what to fix, and "the field is missing"
+// sends them somewhere different from "the field arrived twice". So the arms are written out and
+// there is no wildcard: adding a fifth lookup outcome must break this fold rather than be absorbed
+// by it.
 type HarnessIntRead
   = IntRead { value: Int }
   | IntAbsent
+  | IntDuplicated
+  | IntNotAnObject
   | IntNotANumber
   | IntNotAnInteger { lexeme: String }
 
@@ -208,7 +222,9 @@ fn harness_member_int(doc: JsonValue, key: String) -> HarnessIntRead {
           }
         _ => IntNotANumber
       }
-    _ => IntAbsent
+    JsonMemberAbsent => IntAbsent
+    JsonMemberDuplicated => IntDuplicated
+    JsonMemberNotAnObject => IntNotAnObject
   }
 }
 
@@ -216,6 +232,9 @@ fn harness_int_read_gap(key: String, read: HarnessIntRead) -> String {
   match read {
     IntRead { value: n } => join(["member '", key, "' was read as ", to_string(value: n)], "")
     IntAbsent => join(["carries no '", key, "' member"], "")
+    IntDuplicated =>
+      join(["carries member '", key, "' duplicated; which count the sender meant is unknowable"], "")
+    IntNotAnObject => join(["is not a JSON object, so member '", key, "' could not be read"], "")
     IntNotANumber => join(["member '", key, "' is not a JSON number"], "")
     IntNotAnInteger { lexeme: lx } => join(["member '", key, "' is not an integer: '", lx, "'"], "")
   }
@@ -270,8 +289,14 @@ fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> 
         _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
       }
     }
-    _ => UsageUnreadable {
+    JsonMemberAbsent => UsageUnreadable {
       cause: "response carries no usage object; the token counts the context budget is checked against were not observed",
+    }
+    JsonMemberDuplicated => UsageUnreadable {
+      cause: "response carries the usage object more than once; which counts the sender meant is unknowable",
+    }
+    JsonMemberNotAnObject => UsageUnreadable {
+      cause: "the response body is not a JSON object, so its usage could not be read",
     }
   }
 }

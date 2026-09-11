@@ -355,3 +355,32 @@ test fn a_duplicated_content_member_with_a_null_still_refuses() -> Bool {
   let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":null,\"content\":\"second\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("content") && c.contains("more than once")
 }
+
+// A REFUSAL MAY NOT STATE A FALSE FACT ABOUT THE WIRE (review 63762). The counterpart of these
+// reds inside the decoder is a WILDCARD, not a default: `harness_member_int` closed with
+// `_ => IntAbsent`, so a usage object carrying a count twice -- and a usage that is not an object
+// at all -- both reached the diagnostic as "carries no 'prompt_tokens' member". Nothing failed
+// open; the counts stayed unavailable either way. What was wrong is the sentence, and a diagnostic
+// is read by a person deciding what to fix, so "missing" and "sent twice" send them to different
+// places. These reds assert the WORD the arm exists to say, which is what makes reinstating the
+// wildcard fail here rather than pass quietly with a plausible message.
+test fn a_duplicated_usage_count_says_duplicated_rather_than_missing() -> Bool {
+  usage_is_unavailable_naming(
+    usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":7,\"prompt_tokens\":9,\"completion_tokens\":2}}"),
+    fragment: "duplicated",
+  )
+}
+
+test fn a_usage_member_that_is_not_an_object_says_so_rather_than_reading_as_a_missing_count() -> Bool {
+  usage_is_unavailable_naming(
+    usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":\"365 in, 41 out\"}"),
+    fragment: "not a JSON object",
+  )
+}
+
+test fn a_duplicated_usage_object_says_so_rather_than_reading_as_no_usage() -> Bool {
+  usage_is_unavailable_naming(
+    usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2},\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4}}"),
+    fragment: "more than once",
+  )
+}
