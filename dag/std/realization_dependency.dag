@@ -1,0 +1,301 @@
+module std.realization_dependency
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+
+// ── REALIZATION BEFORE USE ────────────────────────────────────────────────────────────────────
+//
+// A CONSUMER MAY USE A TARGET CAPABILITY ONLY THROUGH A GROUNDED HANDLE PRODUCED BY THAT CAPABILITY'S
+// CONVERGER. Declaring the use creates a REQUIREMENT; resolution binds that requirement to exactly one
+// provider, recursively closes the provider's own prerequisites, and derives the execution order. A missing,
+// ambiguous or cyclic provider is a PLAN-CONSTRUCTION refusal. A provider that exists but cannot converge is
+// a RUNTIME refusal, and its dependents are not attempted.
+//
+// SEQUENCING IS NOT DEPENDENCY ADMISSION, and that distinction is what this module exists for. The corpus
+// already orders effects three ways -- a hand-written chain of `let` bindings, std.temporal_effect's
+// prior-receipt cursor, and gunbc.spark.remote_step_sequence's linear fold -- and none of them can say that an
+// Apply is INADMISSIBLE because a prerequisite is not converged. The live specimen is
+// gunbc.spark.managed_access_apply: its annotation says each step's evidence is the next step's precondition,
+// and its body evaluates four legs and aggregates them afterwards, so nothing prevents the key install, the
+// inference identity or the authentication proof from being attempted after the account creation refused.
+// Statement order was present; prerequisite admission was not.
+//
+// WHY THIS IS NOT A SECOND UPSERT VOCABULARY. std.upsert_decision answers the question at ONE node -- is this
+// desired state already converged, applicable, or refused -- and almost every real convergence node eventually
+// depends on another. A `DependentUpsert` sum would mix the decision for a node with the relation between
+// nodes, and would fork the decision authority for no gain. Dependence belongs on the GRAPH. Each node keeps
+// using std.upsert_decision and gunbc.ensure inside itself.
+//
+// AND IT IS NOT A SCHEDULER. std.realization_schedule owns what a batch MEANS -- a set of things that may run
+// concurrently, and the batch list that orders them. This module derives the PARTIAL ORDER from the provider
+// graph and hands it over as batches of requirement keys. It deliberately does not rank, cost or clamp them.
+// NEXT-RUNG TRIGGER: `Schedule` in std.realization_schedule is `List<List<Runnable>>`, concretely typed to the
+// witness floor, so these batches cannot inhabit it today; generalising that carrier to `List<List<T>>` lets
+// the two join at the type level instead of by shape.
+
+// ── THE REQUIREMENT IS EXACT, AND ITS IDENTITY IS THE JOIN ─────────────────────────────────────
+//
+// THE KEY IS SUPPLIED BY THE CALLER RATHER THAN DERIVED HERE, because what makes two requirements the SAME
+// requirement is domain knowledge: a Git executable at a version floor on one host, a POSIX principal on
+// another. What this module owns is that the key is the only thing compared -- so "the same target capability
+// ensured once per consumer" collapses into one node instead of N, which is one of the tells this law exists
+// to catch.
+type CapabilityRequirement<C> sole_constructor {
+  key: NonEmptyStr
+  capability: C
+}
+
+fn capability_requirement<C>(key: NonEmptyStr, capability: C) -> CapabilityRequirement<C> {
+  CapabilityRequirement { key: key, capability: capability }
+}
+
+// A PROVIDER DECLARES WHAT IT PROVIDES AND WHAT IT NEEDS, and both are requirement KEYS rather than providers.
+// Naming a provider would let a consumer pick a realization, which is the layer inversion DESIGN section 3
+// forbids: the dispatch that selects a realization is itself realization, so it sits at resolution time under
+// target policy, never in the declaration.
+type CapabilityProvider<C> sole_constructor {
+  identity: NonEmptyStr
+  provides: NonEmptyStr
+  prerequisites: List<NonEmptyStr>
+  capability: C
+}
+
+fn capability_provider<C>(
+  identity: NonEmptyStr,
+  provides: NonEmptyStr,
+  prerequisites: List<NonEmptyStr>,
+  capability: C,
+) -> CapabilityProvider<C> {
+  CapabilityProvider { identity: identity, provides: provides, prerequisites: prerequisites, capability: capability }
+}
+
+// ── THE FOUR WAYS A CLOSURE FAILS TO EXIST, EACH LOCATED ──────────────────────────────────────
+//
+// EVERY ARM NAMES THE REQUIREMENT KEY IT FAILED ON. A refusal reading "dependencies could not be resolved" is
+// the located-half-of-a-diagnostic loss DESIGN section 5 names: the caller already knows it asked for a
+// closure, and what it cannot re-derive is WHICH capability has no provider.
+//
+// MULTIPLE PROVIDERS IS A REFUSAL AND NOT A CHOICE, which is the correction the existing precedent needs:
+// gunbc.roadmap_dispatch_environment's `dispatch_host_realization` filters its roster and takes the FIRST
+// match, so a second provider for one capability silently loses to list order. Target policy must produce
+// exactly one binding; resolution may not break the tie by position.
+type RealizationClosureRefusal
+  = RequirementWithoutProvider { requirement_key: NonEmptyStr, demanded_by: NonEmptyStr }
+  | RequirementWithMultipleProviders { requirement_key: NonEmptyStr, provider_identities: List<NonEmptyStr> }
+  | RealizationDependencyCycle { unresolved_keys: List<NonEmptyStr> }
+
+// THE BATCHES ARE THE DERIVED ORDER AND THE BOUND IS THE ACYCLICITY PROOF. Peeling requirements whose
+// prerequisites are all already placed is Kahn's algorithm, and it terminates because each round either
+// places at least one requirement or the graph has a cycle -- which is a cyclic RELATION expressed as a
+// bounded forward fold, exactly the encoding DESIGN section 4 requires instead of a cyclic value.
+type ClosedRealizationGraph<C> sole_constructor {
+  batches: List<List<NonEmptyStr>>
+  providers: List<CapabilityProvider<C>>
+}
+
+type RealizationClosure<C>
+  = RealizationClosed { graph: ClosedRealizationGraph<C> }
+  | RealizationClosureRefused { refusal: RealizationClosureRefusal }
+
+fn providers_for<C>(providers: List<CapabilityProvider<C>>, key: NonEmptyStr) -> List<CapabilityProvider<C>> {
+  filter(providers, p => (p.provides as String) == (key as String))
+}
+
+fn key_is_in(keys: List<NonEmptyStr>, key: NonEmptyStr) -> Bool {
+  any(keys, k => (k as String) == (key as String))
+}
+
+// EXACTLY ONE PROVIDER, AND THE TWO FAILURES ARE DISTINCT. Zero is an unbound capability -- somebody must
+// author a provider or the consumer must stop declaring the use. More than one is a POLICY gap -- both
+// providers are plausible and nothing chose. Collapsing them into "unresolved" would hide which of those two
+// very different pieces of work is owed.
+fn bind_provider<C>(
+  providers: List<CapabilityProvider<C>>,
+  key: NonEmptyStr,
+  demanded_by: NonEmptyStr,
+) -> RealizationClosureRefusal? {
+  let matches = providers_for(providers: providers, key: key)
+  if count(matches) == 0 {
+    Present { value: RequirementWithoutProvider { requirement_key: key, demanded_by: demanded_by } }
+  } else {
+    if count(matches) > 1 {
+      Present { value: RequirementWithMultipleProviders {
+        requirement_key: key,
+        provider_identities: map(matches, m => m.identity),
+      } }
+    } else {
+      none
+    }
+  }
+}
+
+// THE PREREQUISITE WALK IS THE RECURSIVE CLOSURE, and it is what makes a consumer's declaration reach facts
+// the consumer never mentioned: declaring a need for an authenticated principal pulls in the account and the
+// key install without the caller naming either.
+fn all_demanded_keys<C>(providers: List<CapabilityProvider<C>>, roots: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(providers, init: roots, f: (acc, p) =>
+    if key_is_in(keys: acc, key: p.provides) {
+      fold(p.prerequisites, init: acc, f: (inner, q) => if key_is_in(keys: inner, key: q) { inner } else { concat(inner, [q]) })
+    } else { acc })
+}
+
+fn closure_keys<C>(providers: List<CapabilityProvider<C>>, roots: List<NonEmptyStr>, rounds: Nat) -> List<NonEmptyStr> {
+  if rounds == 0 { roots } else {
+    let widened = all_demanded_keys(providers: providers, roots: roots)
+    if count(widened) == count(roots) { roots }
+    else { closure_keys(providers: providers, roots: widened, rounds: rounds - 1) }
+  }
+}
+
+fn first_binding_refusal<C>(
+  providers: List<CapabilityProvider<C>>,
+  keys: List<NonEmptyStr>,
+  demanded_by: NonEmptyStr,
+) -> RealizationClosureRefusal? {
+  fold(keys, init: none, f: (acc, k) => match acc {
+    Present { value: r } => Present { value: r }
+    Absent => bind_provider(providers: providers, key: k, demanded_by: demanded_by)
+  })
+}
+
+fn prerequisites_of<C>(providers: List<CapabilityProvider<C>>, key: NonEmptyStr) -> List<NonEmptyStr> {
+  fold(providers_for(providers: providers, key: key), init: [], f: (acc, p) => concat(acc, p.prerequisites))
+}
+
+fn ready_keys<C>(providers: List<CapabilityProvider<C>>, remaining: List<NonEmptyStr>, placed: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  filter(remaining, k => all(prerequisites_of(providers: providers, key: k), q => key_is_in(keys: placed, key: q)))
+}
+
+type PeelAcc sole_constructor {
+  batches: List<List<NonEmptyStr>>
+  placed: List<NonEmptyStr>
+  remaining: List<NonEmptyStr>
+  stalled: Bool
+}
+
+// ONE ROUND PLACES EVERY REQUIREMENT WHOSE PREREQUISITES ARE ALL PLACED, and a round that places NOTHING
+// while requirements remain sets `stalled` -- which is the cycle, detected rather than assumed. It is not an
+// error to report "cycle" only after exhausting the bound: a graph that stalls has a cycle by construction,
+// because every requirement with all-placed prerequisites is placed in the round it becomes ready.
+fn peel_round<C>(providers: List<CapabilityProvider<C>>, acc: PeelAcc) -> PeelAcc {
+  if count(acc.remaining) == 0 { acc } else {
+    let ready = ready_keys(providers: providers, remaining: acc.remaining, placed: acc.placed)
+    if count(ready) == 0 {
+      PeelAcc { batches: acc.batches, placed: acc.placed, remaining: acc.remaining, stalled: true }
+    } else {
+      PeelAcc {
+        batches: concat(acc.batches, [ready]),
+        placed: concat(acc.placed, ready),
+        remaining: filter(acc.remaining, k => !key_is_in(keys: ready, key: k)),
+        stalled: false,
+      }
+    }
+  }
+}
+
+fn peel_batches<C>(providers: List<CapabilityProvider<C>>, acc: PeelAcc, rounds: Nat) -> PeelAcc {
+  if rounds == 0 { acc } else {
+    if count(acc.remaining) == 0 { acc } else {
+      let next = peel_round(providers: providers, acc: acc)
+      if next.stalled { next } else { peel_batches(providers: providers, acc: next, rounds: rounds - 1) }
+    }
+  }
+}
+
+// ── RESOLUTION ────────────────────────────────────────────────────────────────────────────────
+//
+// THE ROOTS ARE WHAT THE CONSUMERS DECLARED; everything else in the graph is pulled in by the providers'
+// own prerequisites. The bound on both recursions is the provider population, which is the largest a chain
+// can be: every round of the closure walk adds at least one key or stops, and every peel round places at
+// least one key or stalls.
+fn resolve_realization_closure<C>(
+  providers: List<CapabilityProvider<C>>,
+  roots: List<NonEmptyStr>,
+) -> RealizationClosure<C> {
+  let bound = count(providers) + count(roots) + 1
+  let keys = closure_keys(providers: providers, roots: roots, rounds: bound)
+  match first_binding_refusal(providers: providers, keys: keys, demanded_by: "the declared root requirements and the prerequisites they close over" as NonEmptyStr) {
+    Present { value: r } => RealizationClosureRefused { refusal: r }
+    Absent => {
+      let peeled = peel_batches(
+        providers: providers,
+        acc: PeelAcc { batches: [], placed: [], remaining: keys, stalled: false },
+        rounds: bound,
+      )
+      if peeled.stalled || count(peeled.remaining) != 0 {
+        RealizationClosureRefused { refusal: RealizationDependencyCycle { unresolved_keys: peeled.remaining } }
+      } else {
+        RealizationClosed { graph: ClosedRealizationGraph { batches: peeled.batches, providers: providers } }
+      }
+    }
+  }
+}
+
+fn closure_refusal_text(r: RealizationClosureRefusal) -> String {
+  match r {
+    RequirementWithoutProvider { requirement_key: k, demanded_by: d } =>
+      join([
+        "no provider realizes the required capability ", k as String, ", demanded by ", d as String,
+        ". A requirement with no provider is a PLAN refusal rather than a late shell failure or a human",
+        " instruction: either a provider is authored, or the consumer stops declaring the use",
+      ], "")
+    RequirementWithMultipleProviders { requirement_key: k, provider_identities: ps } =>
+      join([
+        "the required capability ", k as String, " is realized by more than one provider (",
+        join(map(ps, p => p as String), ", "),
+        "), and resolution may not break the tie by list position. Target policy must produce exactly one binding",
+      ], "")
+    RealizationDependencyCycle { unresolved_keys: ks } =>
+      join([
+        "the realization graph has a cycle: these requirements never became ready because each waits on another (",
+        join(map(ks, k => k as String), ", "), ")",
+      ], "")
+  }
+}
+
+// ── THE WALL IS THE HANDLE'S OWN CONSTRUCTOR, NOT THIS PAIRING ────────────────────────────────
+//
+// THIS CARRIER PAIRS A REQUIREMENT WITH THE HANDLE ITS PROVIDER MINTED, and the handle's type is the DOMAIN's.
+// Only the effect that PERFORMED and independently OBSERVED the convergence may construct that handle, so the
+// handle's presence is evidence the capability is usable. std.realization_reconcile grounds a readback against
+// a supplied read; it explicitly does not prove the effect ran or that the read happened afterwards, so the
+// positive relation must be minted where the observation was taken.
+//
+// THE PAIRING WAS SEALED FIRST AND THAT WAS THE WRONG PLACE FOR THE WALL, which the compiler said immediately:
+// the witness could not build the positive control, and no domain provider could have built one either without
+// this std module enumerating every product provider as an admitted caller -- a growth surface in std for
+// product facts, which is the layer inversion DESIGN section 3 forbids.
+//
+// AND SEALING IT BOUGHT NOTHING ANYWAY. A caller who forges the pairing still cannot forge the H inside it, so
+// the forgery carries no usable capability; whereas sealing it here would have forced the wall into the wrong
+// module while leaving the handle's own constructor to do the actual work. The mint is public and the
+// annotation says what it does and does not establish: this pairing asserts that SOMETHING produced a handle
+// for this requirement, never that the handle is sound. That question belongs to H.
+type RealizedCapability<C, H> {
+  requirement: CapabilityRequirement<C>
+  provider_identity: NonEmptyStr
+  handle: H
+}
+
+fn realized_capability<C, H>(
+  requirement: CapabilityRequirement<C>,
+  provider_identity: NonEmptyStr,
+  handle: H,
+) -> RealizedCapability<C, H> {
+  RealizedCapability { requirement: requirement, provider_identity: provider_identity, handle: handle }
+}
+
+// A DEPENDENT IS RUNNABLE ONLY WHEN EVERY PREREQUISITE HAS PRODUCED ITS HANDLE, and the unmet keys are named
+// so a blocked dependent records WHICH capability it is waiting on rather than being silently skipped.
+type DependentAdmission
+  = DependentRunnable
+  | DependentUnattempted { unmet_keys: List<NonEmptyStr> }
+
+fn admit_dependent<C, H>(
+  required_keys: List<NonEmptyStr>,
+  realized: List<RealizedCapability<C, H>>,
+) -> DependentAdmission {
+  let have = map(realized, r => r.requirement.key)
+  let unmet = filter(required_keys, k => !key_is_in(keys: have, key: k))
+  if count(unmet) == 0 { DependentRunnable } else { DependentUnattempted { unmet_keys: unmet } }
+}

@@ -1,0 +1,208 @@
+module test.claim.realization_dependency_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.realization_dependency {
+  CapabilityRequirement, capability_requirement,
+  CapabilityProvider, capability_provider,
+  RealizationClosure, RealizationClosed, RealizationClosureRefused,
+  RealizationClosureRefusal, RequirementWithoutProvider, RequirementWithMultipleProviders, RealizationDependencyCycle,
+  ClosedRealizationGraph, resolve_realization_closure, closure_refusal_text,
+  RealizedCapability, realized_capability, DependentAdmission, DependentRunnable, DependentUnattempted, admit_dependent,
+}
+
+// ── THE FLEET-ACCESS CHAIN AS A FIXTURE, BECAUSE IT IS THE SUBJECT THIS AUTHORITY WAS BUILT FOR ──
+//
+// THE KEYS ARE THE REAL ONES. This is the graph gunbc.spark.managed_access_apply executes today as four
+// hand-sequenced `let` bindings: an administrator session reached with the bootstrap password, a managed POSIX
+// account, that account's authorized_keys, and finally a key-only session as that principal. The rows below
+// declare only the EDGES; what each provider does is the domain's business.
+//
+// THE ROOT IS THE LAST LINK, NOT THE FIRST, and that is the property under test: a consumer declares that it
+// needs an authenticated managed principal, and the account and the key install arrive because the providers
+// demanded them -- never because the consumer listed them in the right order.
+data cap_bootstrap_session: NonEmptyStr = "fleet.bootstrap_administrator_session" as NonEmptyStr
+data cap_posix_account: NonEmptyStr = "fleet.managed_posix_account" as NonEmptyStr
+data cap_authorized_key: NonEmptyStr = "fleet.managed_authorized_key" as NonEmptyStr
+data cap_principal_session: NonEmptyStr = "fleet.managed_principal_session" as NonEmptyStr
+
+fn p(identity: String, provides: NonEmptyStr, prerequisites: List<NonEmptyStr>) -> CapabilityProvider<NonEmptyStr> {
+  capability_provider(
+    identity: identity as NonEmptyStr,
+    provides: provides,
+    prerequisites: prerequisites,
+    capability: provides,
+  )
+}
+
+data fleet_access_providers: List<CapabilityProvider<NonEmptyStr>> = [
+  p(identity: "bootstrap-password-session", provides: cap_bootstrap_session, prerequisites: []),
+  p(identity: "managed-account-upsert", provides: cap_posix_account, prerequisites: [cap_bootstrap_session]),
+  p(identity: "authorized-keys-reconcile", provides: cap_authorized_key, prerequisites: [cap_posix_account, cap_bootstrap_session]),
+  p(identity: "key-only-authentication-probe", provides: cap_principal_session, prerequisites: [cap_authorized_key]),
+]
+
+fn closure_of(providers: List<CapabilityProvider<NonEmptyStr>>, roots: List<NonEmptyStr>) -> RealizationClosure<NonEmptyStr> {
+  resolve_realization_closure(providers: providers, roots: roots)
+}
+
+fn batches_of(c: RealizationClosure<NonEmptyStr>) -> List<List<NonEmptyStr>> {
+  match c {
+    RealizationClosed { graph: g } => g.batches
+    RealizationClosureRefused { refusal: _ } => []
+  }
+}
+
+fn batch_contains(b: List<NonEmptyStr>, key: NonEmptyStr) -> Bool {
+  any(b, k => (k as String) == (key as String))
+}
+
+// ── THE POSITIVE CONTROL, AND IT IS THE ONE THAT MAKES THE REFUSALS MEAN ANYTHING ──────────────
+//
+// A gate that refused every graph would pass every row below it.
+test fn the_fleet_access_chain_closes() -> Bool {
+  match closure_of(providers: fleet_access_providers, roots: [cap_principal_session]) {
+    RealizationClosed { graph: _ } => true
+    RealizationClosureRefused { refusal: _ } => false
+  }
+}
+
+// THE CONSUMER NAMED ONE CAPABILITY AND GOT FOUR. This is the recursive closure: declaring a need for the
+// authenticated principal pulls in the key install, the account and the bootstrap session without the
+// consumer mentioning any of them. A resolution that only bound what the root listed would place one batch.
+test fn declaring_the_last_link_closes_over_every_prerequisite() -> Bool {
+  count(batches_of(c: closure_of(providers: fleet_access_providers, roots: [cap_principal_session]))) == 4
+}
+
+// AND THE ORDER IS DERIVED, NOT DECLARED. The bootstrap session is alone in the first batch and the principal
+// session is alone in the last; nothing in the provider rows above is written in that order -- the account
+// provider appears before the key provider by coincidence of authoring, and the root is the LAST link.
+//
+// ITS RED IS AUTHORABLE AND CHEAP: reverse the prerequisite lists and this row goes red while
+// the_fleet_access_chain_closes stays green, which is exactly the difference between a closure and a list.
+test fn the_batches_place_prerequisites_before_dependents() -> Bool {
+  let bs = batches_of(c: closure_of(providers: fleet_access_providers, roots: [cap_principal_session]))
+  match bs.first() {
+    Absent => false
+    Present { value: first } =>
+      match bs.skip(n: 3).first() {
+        Absent => false
+        Present { value: last } =>
+          batch_contains(b: first, key: cap_bootstrap_session)
+            && batch_contains(b: last, key: cap_principal_session)
+            && !batch_contains(b: first, key: cap_principal_session)
+      }
+  }
+}
+
+// ── AN UNBOUND CAPABILITY IS A PLAN REFUSAL, NOT A LATE SHELL FAILURE ─────────────────────────
+//
+// THE ARM THAT REPLACES A HUMAN INSTRUCTION. Today a missing prerequisite surfaces as a command that fails on
+// the host, or as prose telling an operator to install something first. Dropping the bootstrap provider leaves
+// the account provider demanding a capability nobody realizes, and the refusal NAMES it -- which is what makes
+// the failure actionable before anything runs.
+data providers_without_bootstrap: List<CapabilityProvider<NonEmptyStr>> = [
+  p(identity: "managed-account-upsert", provides: cap_posix_account, prerequisites: [cap_bootstrap_session]),
+  p(identity: "authorized-keys-reconcile", provides: cap_authorized_key, prerequisites: [cap_posix_account]),
+  p(identity: "key-only-authentication-probe", provides: cap_principal_session, prerequisites: [cap_authorized_key]),
+]
+
+test fn a_capability_with_no_provider_refuses_and_names_it() -> Bool {
+  match closure_of(providers: providers_without_bootstrap, roots: [cap_principal_session]) {
+    RealizationClosureRefused { refusal: r } =>
+      match r {
+        RequirementWithoutProvider { requirement_key: k, demanded_by: _ } => (k as String) == (cap_bootstrap_session as String)
+        RequirementWithMultipleProviders { requirement_key: _, provider_identities: _ } => false
+        RealizationDependencyCycle { unresolved_keys: _ } => false
+      }
+    RealizationClosed { graph: _ } => false
+  }
+}
+
+// ── TWO PROVIDERS IS A POLICY GAP, AND RESOLVING IT BY LIST ORDER IS THE DEFECT ───────────────
+//
+// THE ROW THAT CORRECTS THE EXISTING PRECEDENT. gunbc.roadmap_dispatch_environment's realization lookup
+// filters its roster and takes the FIRST match, so a second provider for one capability silently loses to
+// authoring position -- a resolution that looks like a decision. Both identities are named here, because the
+// work owed is a POLICY that picks one, not a bug fix.
+data providers_with_two_key_installers: List<CapabilityProvider<NonEmptyStr>> = [
+  p(identity: "bootstrap-password-session", provides: cap_bootstrap_session, prerequisites: []),
+  p(identity: "managed-account-upsert", provides: cap_posix_account, prerequisites: [cap_bootstrap_session]),
+  p(identity: "authorized-keys-reconcile", provides: cap_authorized_key, prerequisites: [cap_posix_account]),
+  p(identity: "cloud-init-seeded-keys", provides: cap_authorized_key, prerequisites: []),
+  p(identity: "key-only-authentication-probe", provides: cap_principal_session, prerequisites: [cap_authorized_key]),
+]
+
+test fn two_providers_for_one_capability_refuse_rather_than_taking_the_first() -> Bool {
+  match closure_of(providers: providers_with_two_key_installers, roots: [cap_principal_session]) {
+    RealizationClosureRefused { refusal: r } =>
+      match r {
+        RequirementWithMultipleProviders { requirement_key: k, provider_identities: ps } =>
+          (k as String) == (cap_authorized_key as String) && count(ps) == 2
+        RequirementWithoutProvider { requirement_key: _, demanded_by: _ } => false
+        RealizationDependencyCycle { unresolved_keys: _ } => false
+      }
+    RealizationClosed { graph: _ } => false
+  }
+}
+
+// ── A CYCLE IS DETECTED, NOT ASSUMED ─────────────────────────────────────────────────────────
+//
+// The plausible mistake this graph invites: the key install needs a session, and a session needs the key.
+// Stated that way it reads as a chicken-and-egg an author would resolve with a comment. Here it is a refusal
+// that names both keys, and the bootstrap session is precisely the root that breaks it -- which is why the
+// real chain has a separate administrator session rather than a self-referential one.
+data providers_with_a_cycle: List<CapabilityProvider<NonEmptyStr>> = [
+  p(identity: "authorized-keys-reconcile", provides: cap_authorized_key, prerequisites: [cap_principal_session]),
+  p(identity: "key-only-authentication-probe", provides: cap_principal_session, prerequisites: [cap_authorized_key]),
+]
+
+test fn a_dependency_cycle_refuses_and_names_the_unresolved_keys() -> Bool {
+  match closure_of(providers: providers_with_a_cycle, roots: [cap_principal_session]) {
+    RealizationClosureRefused { refusal: r } =>
+      match r {
+        RealizationDependencyCycle { unresolved_keys: ks } => count(ks) == 2
+        RequirementWithoutProvider { requirement_key: _, demanded_by: _ } => false
+        RequirementWithMultipleProviders { requirement_key: _, provider_identities: _ } => false
+      }
+    RealizationClosed { graph: _ } => false
+  }
+}
+
+// ── AND THE REFUSAL TEXT IS LOCATED, because every consumer of a refusal reports it to somebody ─
+test fn every_refusal_text_names_the_capability_it_failed_on() -> Bool {
+  match closure_of(providers: providers_without_bootstrap, roots: [cap_principal_session]) {
+    RealizationClosureRefused { refusal: r } =>
+      string_contains(s: closure_refusal_text(r: r), pattern: cap_bootstrap_session as String)
+    RealizationClosed { graph: _ } => false
+  }
+}
+
+// ── A DEPENDENT WHOSE PREREQUISITE PRODUCED NOTHING IS UNATTEMPTED, NOT FAILED ────────────────
+//
+// THE DISTINCTION THAT MAKES A BLOCKED CHAIN READABLE. gunbc.spark.managed_access_apply evaluates four legs
+// and aggregates them, so a key install attempted after a failed account creation reports its OWN failure --
+// and a reader sees two broken things instead of one cause and one consequence. Unattempted names the unmet
+// capability and asserts nothing about the dependent.
+data no_realized_capabilities: List<RealizedCapability<NonEmptyStr, NonEmptyStr>> = []
+
+test fn a_dependent_with_no_realized_prerequisite_is_unattempted_and_names_it() -> Bool {
+  match admit_dependent(required_keys: [cap_principal_session], realized: no_realized_capabilities) {
+    DependentUnattempted { unmet_keys: ks } =>
+      count(ks) == 1 && any(ks, k => (k as String) == (cap_principal_session as String))
+    DependentRunnable => false
+  }
+}
+
+// AND THE POSITIVE ARM REQUIRES THE HANDLE TO EXIST, so the row above is not passing because admission always
+// withholds. The handle here is a witness stand-in; in production only the effect that performed and observed
+// the convergence may mint one, which is why this module can build a RealizedCapability at all and the
+// domain's own sealed carrier cannot be forged.
+data realized_principal_session: RealizedCapability<NonEmptyStr, NonEmptyStr> = realized_capability(requirement: capability_requirement(key: cap_principal_session, capability: cap_principal_session), provider_identity: "key-only-authentication-probe" as NonEmptyStr, handle: "a witness stand-in; the real handle is gunbc's own sealed session carrier, which only the authentication probe can mint" as NonEmptyStr)
+
+test fn a_dependent_whose_prerequisite_produced_a_handle_is_runnable() -> Bool {
+  match admit_dependent(required_keys: [cap_principal_session], realized: [realized_principal_session]) {
+    DependentRunnable => true
+    DependentUnattempted { unmet_keys: _ } => false
+  }
+}
