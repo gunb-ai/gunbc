@@ -1,6 +1,7 @@
 module test.claim.floor_attempt_standing_witness_test
 
 import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.floor_attempt_standing {
   FloorAttemptSubject,
@@ -17,21 +18,26 @@ import gunbc.floor_attempt_standing {
   LaneTerminalUnobservable,
   AttemptSuperseded,
   AttemptStandsGreen,
+  AttemptStandsRed,
+  AttemptStandsUnestablished,
+  AttemptStandsEnvironment,
   floor_lane_terminal_from_result,
   floor_lane_terminal_name,
   floor_rendered_verdict,
+  floor_rendered_verdict_with_receipts,
   floor_rendered_verdict_blocks,
   floor_rendered_verdict_name,
   floor_rendered_verdict_superseded_name,
   floor_rendered_verdict_green_name,
   floor_rendered_verdict_red_name,
   floor_rendered_verdict_unestablished_name,
+  floor_rendered_verdict_environment_name,
+  SubjectReceiptObserved,
+  SubjectReceiptUnobserved,
   floor_attempt_subject_receipt,
   floor_head_standing_unobserved,
   floor_head_standing_not_applicable,
   floor_head_standing_pull_request_event_name,
-  AttemptStandsRed,
-  AttemptStandsUnestablished,
   floor_evaluation_mechanism_name,
   floor_evaluation_attribution_name,
   MechanismEstablished,
@@ -41,7 +47,17 @@ import gunbc.floor_attempt_standing {
   floor_mechanism_unestablished_name,
   floor_mechanism_workflow_cancelled_name,
   floor_mechanism_runner_lost_name,
-  floor_attribution_unestablished_name
+  floor_mechanism_toolchain_identity_lost_name,
+  floor_attribution_unestablished_name,
+  class_wire_is_environment
+}
+import gunbc.ci_failure_class {
+  FloorFailed,
+  Infra,
+  Structural,
+  CommandInvokedCannotExecute,
+  floor_outcome_wire_infra,
+  floor_outcome_wire_structural
 }
 import gunbc.witness_floor_workflow {
   expected_witness_floor_yml,
@@ -212,14 +228,25 @@ test fn w_RED_an_unacquired_or_inapplicable_head_composes_as_a_current_one() -> 
 // THE `unobserved` CONJUNCT IS WHAT MAKES IT DISCRIMINATING. Without it the row would stay green
 // over a workflow that had dropped the head axis entirely, which is the same absence it is
 // supposed to be distinguishing from.
-test fn w_RED_no_emitted_gate_arm_reaches_superseded() -> Bool {
+test fn w_RED_no_emitted_gate_arm_reaches_superseded() -> ProcessExit {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: floor_head_standing_unobserved)
+      if string_contains(s: yml, pattern: floor_head_standing_unobserved)
         && string_contains(s: yml, pattern: floor_rendered_verdict_unestablished_name)
         && string_contains(s: yml, pattern: floor_rendered_verdict_red_name)
-        && string_contains(s: yml, pattern: floor_rendered_verdict_superseded_name) == false
-    WitnessFloorGenerationRefused => false
+        && string_contains(s: yml, pattern: floor_rendered_verdict_environment_name)
+        && string_contains(s: yml, pattern: floor_rendered_verdict_superseded_name) == false {
+        ExitSuccess
+      } else {
+        ExitFailure {
+          code: 1,
+          reason: "emitted witnesses.yml missing environment standing or unexpectedly carries superseded"
+        }
+      }
+    WitnessFloorGenerationRefused => ExitFailure {
+      code: 1,
+      reason: "expected_witness_floor_yml refused; cannot prove the environment standing is emitted"
+    }
   }
 }
 
@@ -276,6 +303,7 @@ test fn w_RED_a_cancelled_lane_establishes_neither_axis() -> Bool {
     AttemptStandsRed { standing: _, build: _, floor: _, interruption: _ } => false
     AttemptStandsGreen { standing: _ } => false
     AttemptSuperseded { measured: _, current: _ } => false
+    AttemptStandsEnvironment { standing: _, build: _, floor: _, interruption: _ } => false
   }
 }
 
@@ -324,7 +352,63 @@ test fn w_RED_a_failed_lane_carries_no_established_mechanism() -> Bool {
     AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: _ } => false
     AttemptStandsGreen { standing: _ } => false
     AttemptSuperseded { measured: _, current: _ } => false
+    AttemptStandsEnvironment { standing: _, build: _, floor: _, interruption: _ } => false
   }
+}
+
+test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool {
+  let env = floor_rendered_verdict_with_receipts(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneFailed,
+    floor: LaneSucceeded,
+    build_receipt: SubjectReceiptObserved {
+      outcome: FloorFailed { class: Infra { signature: CommandInvokedCannotExecute } }
+    },
+    floor_receipt: SubjectReceiptUnobserved
+  )
+  let still_red = floor_rendered_verdict_with_receipts(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneFailed,
+    floor: LaneSucceeded,
+    build_receipt: SubjectReceiptUnobserved,
+    floor_receipt: SubjectReceiptUnobserved
+  )
+  let mixed = floor_rendered_verdict_with_receipts(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneFailed,
+    floor: LaneFailed,
+    build_receipt: SubjectReceiptObserved {
+      outcome: FloorFailed { class: Infra { signature: CommandInvokedCannotExecute } }
+    },
+    floor_receipt: SubjectReceiptObserved {
+      outcome: FloorFailed { class: Structural { reason: "subject" } }
+    }
+  )
+  let cancelled = floor_rendered_verdict_with_receipts(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneCancelled,
+    floor: LaneSucceeded,
+    build_receipt: SubjectReceiptObserved {
+      outcome: FloorFailed { class: Infra { signature: CommandInvokedCannotExecute } }
+    },
+    floor_receipt: SubjectReceiptUnobserved
+  )
+  floor_rendered_verdict_name(verdict: env) == floor_rendered_verdict_environment_name
+    && floor_rendered_verdict_blocks(verdict: env) == true
+    && match env {
+      AttemptStandsEnvironment { standing: _, build: _, floor: _, interruption: i } =>
+        floor_evaluation_mechanism_name(mechanism: i.mechanism)
+          == floor_mechanism_unestablished_name
+          && floor_evaluation_attribution_name(attribution: i.attribution)
+            == floor_attribution_unestablished_name
+      _ => false
+    }
+    && floor_rendered_verdict_name(verdict: still_red) == floor_rendered_verdict_red_name
+    && floor_rendered_verdict_name(verdict: mixed) == floor_rendered_verdict_red_name
+    && floor_rendered_verdict_name(verdict: cancelled) == floor_rendered_verdict_unestablished_name
+    && class_wire_is_environment(raw: floor_outcome_wire_infra)
+    && (class_wire_is_environment(raw: floor_outcome_wire_structural) == false)
+    && (class_wire_is_environment(raw: "") == false)
 }
 
 // BOTH AXES REACH THE EMITTED GATE, so the population of unestablished mechanisms is countable
@@ -344,6 +428,9 @@ test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool {
       string_contains(s: yml, pattern: "mechanism=")
         && string_contains(s: yml, pattern: "attribution=")
         && string_contains(s: yml, pattern: floor_mechanism_workflow_cancelled_name) == false
+        && string_contains(s: yml, pattern: "\"$VERDICT\" '=' 'stands-red'")
+        && string_contains(s: yml, pattern: "could not execute the toolchain") == false
+        && string_contains(s: yml, pattern: "an environmental cause")
     WitnessFloorGenerationRefused => false
   }
 }

@@ -14,7 +14,7 @@ import gunbc.spark.credential_workflow {
   spark_administrator_credential_roster,
   spark_administrator_password_secret_ref_at_version,
 }
-import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host_reset_return { host_reset_return_receipt_path }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
@@ -976,7 +976,7 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
     entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
     function: gunbc_ci_live_deploy_apply_srv1_target.function,
     claim_run: false,
-    receipt_rel: "target/live-deploy-srv1-receipt.txt"
+    receipt_rel: none
   )
 }
 
@@ -1331,7 +1331,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
     },
     Do {
       run: ci_retry_body_run(
-        command: join(["export ", spark_grant_credential_path_env as String, "=\"$CRED_FILE\""], "")
+        command: join(["export ", fleet_bootstrap_credential_path_env as String, "=\"$CRED_FILE\""], "")
       )
     },
     Do {

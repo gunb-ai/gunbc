@@ -1,0 +1,53 @@
+module v2.test.claim.body_lowering.match_as_field_name
+
+import v2.compiler.body_lowering_fold {
+  body_lowering_match_field_name_spine_does_not_sniff_holds
+}
+import v2.test.claim.body_lowering.normalize_outcome_helpers {
+  body_lowering_normalize_outcome
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Cause F: a field literally named match, accessed as r.match, was sniffed as a
+// match-expression because kw_match headed an identity-absent sequence. The sniff now
+// requires a following lbrace. r.loop and r.type already accepted; they stay the
+// keyword-as-binder control.
+
+fn normalize_outcome(src: String) -> String {
+  body_lowering_normalize_outcome(src: src, file: ^match_as_field_name_subject)
+}
+
+data src_field_named_match: String = "module m.t\ntype R {\n  match: Int\n  other: Int\n}\nfn f(r: R) -> Int {\n  r.match\n}\n"
+
+data src_field_renamed_other: String = "module m.t\ntype R {\n  other: Int\n}\nfn f(r: R) -> Int {\n  r.other\n}\n"
+
+data src_field_named_loop: String = "module m.t\ntype R {\n  loop: Int\n}\nfn f(r: R) -> Int {\n  r.loop\n}\n"
+
+data src_field_named_type: String = "module m.t\ntype R {\n  type: Int\n}\nfn f(r: R) -> Int {\n  r.type\n}\n"
+
+data src_infix_field_named_match: String = "module m.t\ntype R {\n  match: Int\n}\nfn f(a: R, b: R) -> Bool {\n  a.match == b.match\n}\n"
+
+test fn field_named_match_normalizes_holds() -> Bool {
+  normalize_outcome(src: src_field_named_match) == "ACCEPTED"
+}
+
+test fn field_renamed_other_control_holds() -> Bool {
+  normalize_outcome(src: src_field_renamed_other) == "ACCEPTED"
+}
+
+test fn field_named_loop_control_holds() -> Bool {
+  normalize_outcome(src: src_field_named_loop) == "ACCEPTED"
+}
+
+test fn field_named_type_control_holds() -> Bool {
+  normalize_outcome(src: src_field_named_type) == "ACCEPTED"
+}
+
+test fn infix_field_named_match_normalizes_holds() -> Bool {
+  normalize_outcome(src: src_infix_field_named_match) == "ACCEPTED"
+}
+
+test fn match_keyword_after_dot_is_not_a_match_expr_sniff_holds() -> Bool {
+  body_lowering_match_field_name_spine_does_not_sniff_holds()
+}

@@ -1,0 +1,297 @@
+module v2.test.parse.d1_declaration_grammar_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_lex,
+  parse_subtree_find_production_captured,
+  ParseSubtreeAbsent,
+  ParseSubtreeFound
+}
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Edge, Named, Node, Positional, well_formed }
+import v2.std.optional { Absent, Optional, Present }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn d1_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn d1_parse_accepted(text: String, file: Symbol) -> Bool {
+  match d1_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn d1_tree_carries_where_clause(root: Node) -> Bool {
+  match parse_subtree_find_production_captured(
+    root: root,
+    emitted: ^dag_surface_where_refinement_clause
+  ) {
+    ParseSubtreeFound { captured: _ } => true
+    ParseSubtreeAbsent =>
+      match d1_find_where_host_conj(root: root) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn d1_edge_names_where_clause(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => n == ^dag_surface_where_refinement_clause
+    _ => false
+  }
+}
+
+fn d1_find_where_host_conj(root: Node) -> Optional<Node> {
+  match fold(root.children, init: false, f: fn(found, e) {
+    found || d1_edge_names_where_clause(e: e)
+  }) {
+    true => Present { value: root }
+    false =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => d1_find_where_host_conj(root: e.target)
+        }
+      })
+  }
+}
+
+fn d1_edge_label_text(e: Edge) -> String {
+  match e.label {
+    Named { name: n } => symbol_lexeme(sym: n)
+    Positional => "positional"
+  }
+}
+
+fn d1_child_labels(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) {
+    join([acc, "|", d1_edge_label_text(e: e)], "")
+  })
+}
+
+fn d1_find_flag(root: Node) -> String {
+  match d1_tree_carries_where_clause(root: root) {
+    true => "find=true"
+    false => "find=false"
+  }
+}
+
+fn d1_locus_from_root(root: Node) -> String {
+  match d1_find_where_host_conj(root: root) {
+    Present { value: host } =>
+      join(["variant_conj: [", d1_child_labels(n: host), "] ", d1_find_flag(root: root)], "")
+    Absent =>
+      join(
+        [
+          "host-conj-absent: root children [",
+          d1_child_labels(n: root),
+          "] ",
+          d1_find_flag(root: root)
+        ],
+        ""
+      )
+  }
+}
+
+data d1_where_reproducer: String = "module m\ntype A = NonEmptyStr where brand(\"A\")\nfn f() -> Int { 1 }\n"
+data d1_where_control: String = "module m\ntype A = NonEmptyStr\nfn f() -> Int { 1 }\n"
+data d1_where_bare: String = "module m\ntype A = NonEmptyStr where non_empty\nfn f() -> Int { 1 }\n"
+data d1_where_empty: String = "module m\ntype A = NonEmptyStr where\nfn f() -> Int { 1 }\n"
+
+data d1_cache_identity_where_source: String = "module probe.cache_identity\n\ntype CacheInterfaceId = NonEmptyStr where brand(\"CacheInterfaceId\")\ntype ArtifactKindId = NonEmptyStr where brand(\"ArtifactKindId\")\n\nfn f() -> Int {\n  1\n}\n"
+
+// THE SHARE POINTS. Four of the five sources above are parsed by more than one claim in this
+// file (the reproducer by four, the bare form by three, the control and the cache-identity
+// source by two each), and the required floor evaluates each claim in its own frame, so the
+// tokenize+parse of one module-constant string was re-derived once per demanding claim: the
+// floor's own cost receipt (main run 34556223550, required_floor_claim_cost.tsv) shows seven
+// of this file's eight rows INTERRUPTED at the 500ms per-claim CPU ceiling before reaching a
+// verdict. Each nullary producer below is enrolled WARM in v2.workflow.floor_pure_producer_share:
+// the floor forces it once during strict preparation, outside every per-claim budget, and every
+// claim is handed the parse tree. The seam is the parse tree because it is the value every
+// consumer branches on -- normalize stays per claim, so the normalize claims still execute the
+// stage they name -- and it is fully portable (an Outcome over a Node tree, no closure at any
+// depth), the same seam direct_rust_door_specimen_resolved shares at. The empty-where source is
+// not shared: one claim reads it, and a refusal is the cheap arm.
+fn d1_where_reproducer_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_reproducer)
+}
+
+fn d1_where_bare_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_bare)
+}
+
+fn d1_where_control_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_where_control, file: ^d1_where_control)
+}
+
+fn d1_cache_identity_where_parsed() -> Outcome<Node> {
+  d1_tokenize_parse(text: d1_cache_identity_where_source, file: ^d1_cache_identity_where)
+}
+
+fn d1_parsed_accepted(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn d1_parsed_normalizes(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn cause_a_where_refinement_clause_parses_holds() -> Bool {
+  d1_parsed_accepted(parsed: d1_where_reproducer_parsed())
+    && d1_parsed_accepted(parsed: d1_where_bare_parsed())
+    && d1_parsed_accepted(parsed: d1_where_control_parsed())
+}
+
+test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
+  match d1_where_reproducer_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: brand_tree, diagnostics: _ } =>
+      match d1_where_bare_parsed() {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: bare_tree, diagnostics: _ } =>
+          d1_tree_carries_where_clause(root: brand_tree)
+            && d1_tree_carries_where_clause(root: bare_tree)
+      }
+  }
+}
+
+test fn cause_a_where_control_normalizes_holds() -> Bool {
+  d1_parsed_normalizes(parsed: d1_where_control_parsed())
+}
+
+test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
+  d1_parsed_normalizes(parsed: d1_where_reproducer_parsed())
+}
+
+fn cause_a_where_clause_survives_normalize_locus() -> ProcessExit {
+  match d1_where_reproducer_parsed() {
+    Rejected { diagnostics: r } =>
+      exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
+    Accepted { value: brand_tree, diagnostics: _ } =>
+      match d1_where_bare_parsed() {
+        Rejected { diagnostics: r } =>
+          exit_failure(
+            reason: join(["bare-parse-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+          )
+        Accepted { value: bare_tree, diagnostics: _ } =>
+          match normalize(parse_tree: brand_tree) {
+            Rejected { diagnostics: r } =>
+              exit_failure(
+                reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+              )
+            Accepted { value: brand_normalized, diagnostics: _ } =>
+              match normalize(parse_tree: bare_tree) {
+                Rejected { diagnostics: r } =>
+                  exit_failure(
+                    reason: join(
+                      ["bare-normalize-refused: ", symbol_lexeme(sym: r.head.reason)],
+                      ""
+                    )
+                  )
+                Accepted { value: bare_normalized, diagnostics: _ } =>
+                  match d1_tree_carries_where_clause(root: brand_normalized.root) {
+                    false =>
+                      exit_failure(
+                        reason: join(
+                          ["brand ", d1_locus_from_root(root: brand_normalized.root)],
+                          ""
+                        )
+                      )
+                    true =>
+                      match d1_tree_carries_where_clause(root: bare_normalized.root) {
+                        true => ExitSuccess
+                        false =>
+                          exit_failure(
+                            reason: join(
+                              ["bare ", d1_locus_from_root(root: bare_normalized.root)],
+                              ""
+                            )
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
+  match d1_where_reproducer_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: brand_tree, diagnostics: _ } =>
+      match d1_where_bare_parsed() {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: bare_tree, diagnostics: _ } =>
+          match normalize(parse_tree: brand_tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: brand_normalized, diagnostics: _ } =>
+              match normalize(parse_tree: bare_tree) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: bare_normalized, diagnostics: _ } =>
+                  d1_tree_carries_where_clause(root: brand_normalized.root)
+                    && d1_tree_carries_where_clause(root: bare_normalized.root)
+              }
+          }
+      }
+  }
+}
+
+test fn cause_a_empty_where_clause_refuses_holds() -> Bool {
+  !d1_parse_accepted(text: d1_where_empty, file: ^d1_where_empty)
+}
+
+test fn cause_a_cache_identity_where_normalizes_holds() -> Bool {
+  d1_parsed_normalizes(parsed: d1_cache_identity_where_parsed())
+}
+
+test fn cause_a_cache_identity_where_normalizes_well_formed_holds() -> Bool {
+  match d1_cache_identity_where_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: normalized, diagnostics: _ } =>
+          well_formed(n: normalized.root)
+            && d1_tree_carries_where_clause(root: normalized.root)
+      }
+  }
+}
