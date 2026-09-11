@@ -1,6 +1,8 @@
 module v2.compiler.self_host.emitter_producer_provenance
 
 import std.content_hash { content_hash_atom }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -263,6 +265,10 @@ type EmitterProducerMintAdmission
 // The clauses common to every V2Emitter* producer: the closure must be evidence at all, and it
 // must reach neither half of the v1 seed. Factored so the two arms cannot drift, which is the
 // same reason this module refuses to let a consumer re-derive the verdict.
+data v1_seed_emitter_unconditional_admission_frontier: DissolutionCondition = unbound_dissolution(
+  description: "declared frontier for the V1SeedEmitter arm of emitter_producer_mint_admission, which admits unconditionally while the V2Emitter* arms refuse an empty closure, a seed-emitter reach and a seed-interpreter reach. An empty closure is exactly as uninformative for the seed as for a v2 producer; what differs is blast radius, not logic. The frontier closes when the seed-produced population is itself enumerated and closed -- when every V1SeedEmitter mint site is reachable from one roster rather than discovered by search -- so that tightening the arm is a change whose refused set can be COMPUTED rather than hoped for. NOT satisfied by adding the empty-closure clause to the seed arm and fixing whatever goes red: that is per-site exception pricing, and it would land the wall without ever establishing what it refuses. Unbound deliberately: the condition is a population becoming enumerable, which is neither a declaration appearing nor one retiring." as NonEmptyStr
+)
+
 fn v2_emitter_closure_admission(
   closure: RealizedEmitterClosure
 ) -> EmitterProducerMintAdmission {
@@ -297,12 +303,12 @@ fn v2_emitter_closure_admission(
 // is indistinguishable from one that is correct, and the arm's unconditional shape is load
 // bearing for callers that have not been written yet.
 //
-// TRIGGER: this frontier closes when the seed-produced population is itself enumerated and
-// closed — when every V1SeedEmitter mint site is reachable from one roster rather than
-// discovered by search — so that tightening the arm is a change whose refused set can be
-// computed instead of hoped for. Not satisfied by adding the empty-closure clause here and
-// fixing whatever goes red: that is the same per-site exception pricing DESIGN section 6
-// forbids, and it would land the wall without ever establishing what it refuses.
+// The trigger is carried as a typed row rather than as this prose — see
+// v1_seed_emitter_unconditional_admission_frontier above. A dissolution condition in a comment
+// is unreachable from the ledger that folds them (DESIGN section 4c: a dissolution condition
+// belongs in a typed carrier), and this module's sibling frontiers in
+// v2.compiler.self_host.ancestry are already carried that way, so prose here would be the one
+// frontier of the three that nothing could count.
 fn emitter_producer_mint_admission(
   producer: EmitterProducer,
   closure: RealizedEmitterClosure

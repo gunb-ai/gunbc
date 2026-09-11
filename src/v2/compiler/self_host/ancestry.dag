@@ -11,14 +11,11 @@ import v2.compiler.self_host.emitter_producer_provenance {
   EmitterProducer,
   RealizedEmitterClosure,
   V1SeedEmitter,
-  V2EmitterInterpreted,
   V2EmitterNative,
-  EmitterProducerMintAdmission,
   ProducerMintAdmitted,
   ProducerMintRefused,
   emitter_producer_mint_admission,
-  seed_emit_rust_reachable,
-  v2_emit_interpreted_qualified_module
+  seed_emit_rust_reachable
 }
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
