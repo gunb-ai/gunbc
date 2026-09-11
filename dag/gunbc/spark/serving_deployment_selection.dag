@@ -6,6 +6,10 @@ import std.measure { TokenCount, token_count, token_count_value, basis_point, ba
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
+import extdeps.vllm.deepseek_v4_1_sm12 {
+  v41_sm12_kv_layout,
+  v41_sm12_kv_cache_dtype_admitted,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -219,6 +223,25 @@ fn kv_layout_wire(k: KvLayoutPolicy) -> NonEmptyStr {
   }
 }
 
+fn kv_layout_policies() -> List<KvLayoutPolicy> {
+  [KvAutoLayout, KvFp8Layout, KvFp8DsMlaLayout, KvFp4Layout]
+}
+
+// THE SM12 MODULE OWNS THE WIRE SPELLING AND THE ADMIT SET. This fold is the join, not a second
+// list: it selects the KvLayoutPolicy whose wire equals v41_sm12_kv_layout, and only if that
+// spelling is admitted on major 12. Absent is KvAutoLayout, which that admit set refuses, so a
+// broken join cannot inhabit the GB10 request.
+fn kv_layout_from_sm12_wire(wire: NonEmptyStr) -> KvLayoutPolicy {
+  if !v41_sm12_kv_cache_dtype_admitted(dtype: wire) {
+    KvAutoLayout
+  } else {
+    match (filter(kv_layout_policies(), k => (kv_layout_wire(k: k) as String) == (wire as String))).first() {
+      Present { value: k } => k
+      Absent => KvAutoLayout
+    }
+  }
+}
+
 type VllmSourceStanding
   = VllmSourceRevisionEstablished { git: NonEmptyStr }
   | VllmSourceRevisionUnestablished { reported_version: NonEmptyStr, obligation: NonEmptyStr }
@@ -338,13 +361,13 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
-data v4_1_gb10_kv_layout: KvLayoutPolicy = KvFp8DsMlaLayout
+data v4_1_gb10_kv_layout: KvLayoutPolicy = kv_layout_from_sm12_wire(wire: v41_sm12_kv_layout)
 
 // V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
-// extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, cited to the SM12
-// row of v4_1_selection_frontier: the dtype must be set (auto is refused). Higher-precision KV does not
-// violate native quality. Speculation is DSpark. Per-token KV bytes stay an obligation;
-// the card's 890 does not apply.
+// extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, the KvLayoutPolicy
+// whose wire is extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_kv_layout and which
+// v41_sm12_kv_cache_dtype_admitted accepts. Higher-precision KV does not violate native quality.
+// Speculation is DSpark. Per-token KV bytes stay an obligation; the card's 890 does not apply.
 fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
   serving_decision_parameters(
     max_model_len: deepseek_v4_1_flash_context_length,
@@ -427,11 +450,6 @@ fn v4_1_selection_frontier_fact(decl_name: NonEmptyStr) -> DeclarationRef {
 }
 
 data v4_1_selection_frontier: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: v4_1_selection_frontier_fact(decl_name: "v4_1_gb10_kv_layout" as NonEmptyStr),
-    reason: "GB10 V4.1 KV layout waits on #11022 sm_12 admit set rather than a copied dtype list",
-    dissolution: unbound_dissolution(description: "TRIGGER: import extdeps.vllm.deepseek_v4_1_sm12 (clever-bat-173 #11022) v41_sm12_admitted_kv_cache_dtypes / v41_sm12_kv_cache_dtype_admitted, which record DeepseekV4FlashInferMLASparseBackend.supports_combination at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 for DeviceCapability(12,1). Until that module is importable here, this row names the serving KV layout as a frontier rather than copying the admit set. GB10 V4.1 candidates use KvFp8DsMlaLayout. Unset/auto kv_cache_dtype is a launch refusal on this backend, not a default. nvfp4_ds_mla is not reachable on sm_12x. SUFFICIENT FOR: v4_1_gb10_kv_layout is derived from that module." as NonEmptyStr),
-  ),
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "fleet_admitted_topologies" as NonEmptyStr),
     reason: "V4.1 domain stays the fleet cartesian until DSV41-1 names admitted TP widths",

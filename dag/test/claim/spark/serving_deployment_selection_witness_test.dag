@@ -60,7 +60,11 @@ import gunbc.spark.serving_deployment_selection {
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
   VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
-  NoFeasibleServingDeployment, v4_1_selection_frontier,
+  NoFeasibleServingDeployment, v4_1_selection_frontier, kv_layout_wire,
+}
+import extdeps.vllm.deepseek_v4_1_sm12 {
+  v41_sm12_kv_layout,
+  v41_sm12_kv_cache_dtype_admitted,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -640,6 +644,9 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
       KvFp8Layout => false
       KvFp4Layout => false
     }
+    && (kv_layout_wire(k: v4_1_gb10_kv_layout) as String) == (v41_sm12_kv_layout as String)
+    && v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: v4_1_gb10_kv_layout))
+    && !v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: KvAutoLayout))
     && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
     && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
       KvBytesPerTokenUnestablished { layout: k, obligation: _ } =>
@@ -660,10 +667,9 @@ fn v4_1_frontier_keys_contain(decl_name: String) -> Bool {
 test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool {
   frontier_rows_well_formed(rows: v4_1_selection_frontier)
     && match frontier_rows_keyed_roster_build(rows: v4_1_selection_frontier) {
-      KeyedRosterBuilt { rows: built } => count(built) == 4
+      KeyedRosterBuilt { rows: built } => count(built) == 3
       KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
     }
-    && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_layout")
     && v4_1_frontier_keys_contain(decl_name: "fleet_admitted_topologies")
     && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_bytes_obligation")
     && v4_1_frontier_keys_contain(decl_name: "engram_standing")
