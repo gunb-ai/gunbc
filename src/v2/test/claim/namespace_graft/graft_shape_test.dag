@@ -307,9 +307,39 @@ fn ng_graft_reason_is(root: Node, reason: Symbol) -> Bool {
   }
 }
 
+fn ng_is_type_decl_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_surface_type_decl
+    _ => false
+  }
+}
+
+fn ng_has_type_decl_identity_projection(n: Node) -> Bool {
+  fold(
+    n.children,
+    init: false,
+    f: fn(acc, e) {
+      acc || ng_edge_carries_type_decl_identity(e: e)
+    }
+  )
+}
+
+fn ng_edge_carries_type_decl_identity(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } =>
+      if (sym == ^grammar_production_identity_node_projection) && ng_is_type_decl_atom(n: e.target) {
+        true
+      } else {
+        ng_has_type_decl_identity_projection(n: e.target)
+      }
+    Positional => ng_has_type_decl_identity_projection(n: e.target)
+  }
+}
+
 test fn namespace_graft_type_decl_unit_is_not_dissolved_holds() -> Bool {
   match module_header_containment_graft(root: ng_type_decl_unit_root) {
-    Accepted { value: grafted, diagnostics: _ } => well_formed(n: grafted)
+    Accepted { value: grafted, diagnostics: _ } =>
+      well_formed(n: grafted) && ng_has_type_decl_identity_projection(n: grafted)
     Rejected { diagnostics: _ } => false
   }
 }
