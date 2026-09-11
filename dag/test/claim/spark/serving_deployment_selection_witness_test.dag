@@ -37,7 +37,7 @@ import gunbc.spark.serving_deployment_selection {
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
-  v4_1_runtime_supported_tp_widths_unestablished, deepseek_v4_1_selection_policy,
+  v4_1_runtime_supported_tp_widths_frontier, deepseek_v4_1_selection_policy,
   deepseek_v4_1_quality_requirement,
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
@@ -462,7 +462,7 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
         && topology_in(shapes: admitted, tp: 2, replicas: 1)
         && topology_in(shapes: admitted, tp: 1, replicas: 1)
         && count(v4_1_declared_profiles) == 2
-        && (v4_1_runtime_supported_tp_widths_unestablished as String).contains("does not guess")
+        && dissolution_description(condition: v4_1_runtime_supported_tp_widths_frontier).contains("does not guess")
     ServingFieldUnestablished { causes: _ } => false
   }
 }

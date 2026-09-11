@@ -339,7 +339,7 @@ fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
   )
 }
 
-data v4_1_runtime_supported_tp_widths_unestablished: NonEmptyStr = "DSV41-1 has not shown which tensor-parallel widths the GB10 vLLM lead accepts. The V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1" as NonEmptyStr
+data v4_1_runtime_supported_tp_widths_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: DSV41-1 (loyal-ram-346) shows which tensor-parallel widths the GB10 vLLM lead accepts. Until then the V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1. SUFFICIENT FOR: a derived admitted-width set from that runtime observation replaces an unfiltered fleet cartesian for this image." as NonEmptyStr)
 
 data v4_1_declared_profiles: List<ServingDecisionParameters> = [
   v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
