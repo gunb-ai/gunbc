@@ -86,7 +86,6 @@ import std.human_intervention {
   BreakGlassOnly,
   NoDischargeSiteModeled,
   DischargedAt,
-  intervention_is_discharged,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.review_sheet_operator {
@@ -982,7 +981,10 @@ test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bo
       DomainSharingPolicyUnobserved => false
       DomainSharingForbidsExternalPrincipals => false
     }
-    && !intervention_is_discharged(intervention: gcp_fleet_secrets_wif_binding_intervention())
+    && match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
+      NoDischargeSiteModeled => true
+      DischargedAt { evidence: _ } => false
+    }
     && match review_sheet_live_access(
       credential: SecretRef {
         project: "custody-only",
@@ -1261,8 +1263,14 @@ test fn iam_grant_is_fleet_once_per_project_not_per_api() -> Bool {
 }
 
 test fn fleet_secrets_wif_binding_is_still_undischarged() -> Bool {
-  !intervention_is_discharged(intervention: gcp_fleet_secrets_wif_binding_intervention())
-    && intervention_is_discharged(intervention: w_discharged_iam())
+  match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
+    NoDischargeSiteModeled =>
+      match w_discharged_iam().completion_evidence {
+        DischargedAt { evidence: _ } => true
+        NoDischargeSiteModeled => false
+      }
+    DischargedAt { evidence: _ } => false
+  }
 }
 
 test fn judgement_failures_are_unreadable_not_blank() -> Bool {

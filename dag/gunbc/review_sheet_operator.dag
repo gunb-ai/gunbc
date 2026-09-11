@@ -8,7 +8,6 @@ import std.human_intervention {
   DeviceOnce,
   NoDischargeSiteModeled,
   DischargedAt,
-  intervention_is_discharged,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.gcp_service_enablement {
@@ -194,7 +193,10 @@ fn admit_review_sheet_operator(
       match writer {
         ReviewSheetWriterAwaitingIdentification => review_sheet_estate_unresolved_writer()
         ReviewSheetWriterIdentified { email: sa } =>
-          if intervention_is_discharged(intervention: serviceusage_enable_iam) {
+          match serviceusage_enable_iam.completion_evidence {
+            NoDischargeSiteModeled =>
+              ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
+            DischargedAt { evidence: _ } =>
             match decide_service_enablement(
               desired: sheets_api_desired_enablement(project: p),
               observed: enablement,
@@ -212,10 +214,11 @@ fn admit_review_sheet_operator(
                           reason: "Google account tenancy unread" as NonEmptyStr
                         }
                       ReviewSheetPlainGoogleAccount =>
-                        if intervention_is_discharged(intervention: share) {
-                          ReviewSheetOperatorAdmitted { spreadsheet_id: id }
-                        } else {
-                          ReviewSheetAwaitingHuman { intervention: share }
+                        match share.completion_evidence {
+                          DischargedAt { evidence: _ } =>
+                            ReviewSheetOperatorAdmitted { spreadsheet_id: id }
+                          NoDischargeSiteModeled =>
+                            ReviewSheetAwaitingHuman { intervention: share }
                         }
                       ReviewSheetWorkspaceDomain =>
                         match sharing_policy {
@@ -234,17 +237,16 @@ fn admit_review_sheet_operator(
                               ) as NonEmptyStr
                             }
                           DomainSharingAllowsServiceAccountShare =>
-                            if intervention_is_discharged(intervention: share) {
-                              ReviewSheetOperatorAdmitted { spreadsheet_id: id }
-                            } else {
-                              ReviewSheetAwaitingHuman { intervention: share }
+                            match share.completion_evidence {
+                              DischargedAt { evidence: _ } =>
+                                ReviewSheetOperatorAdmitted { spreadsheet_id: id }
+                              NoDischargeSiteModeled =>
+                                ReviewSheetAwaitingHuman { intervention: share }
                             }
                         }
                     }
                 }
             }
-          } else {
-            ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
           }
       }
   }
