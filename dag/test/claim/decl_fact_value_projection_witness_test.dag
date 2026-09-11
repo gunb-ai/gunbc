@@ -1,0 +1,114 @@
+module test.claim.decl_fact_value_projection_witness
+
+import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.std.fn_index { atom_identities_in_node, fn_index_symbol_eq }
+import v2.std.algebra { contains, fold_list, for_all, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// WHAT THIS FILE MEASURES, and why it is enrolled red rather than written green.
+//
+// A consumer that asks "which declarations name v1" keys on the AUTHORED STRING VALUE of a
+// declaration — a row spelling "v1-compiler" or "v1.compiler.emit_rust" is the thing it is
+// looking for. The route such a consumer takes is v2.std.decl_index decl_facts_at composed
+// with v2.std.fn_index atom_identities_in_node over the returned DeclFact node.
+//
+// That route carries no authored string value at all. Measured on the tree at ec1571e892a by
+// the three pairs below: each pair differs ONLY in the value its rows author, and each pair
+// projects the IDENTICAL atom population. So every lexeme-keyed reader over declaration facts
+// answers the same thing for a row that names v1 and a row that names nothing — and it answers
+// it without refusing, which makes a discovery gate over this route green by construction on
+// exactly the population it exists to find. That is the false-negative class filed at
+// gunbc.recurring_failure_mode.projection_drops_the_value_its_consumer_keys_on.
+//
+// THE PAIRS ARE VALUE-ONLY, AND THE COMPARISON DOES NOT GUESS A SPELLING. An earlier probe
+// asked whether a particular lexeme was present and could not distinguish "the value is
+// absent" from "I guessed the wrong spelling for an atom". Comparing two populations against
+// EACH OTHER removes that variable: if the projection carried authored values at all, two rows
+// with different values could not project the same atoms, whatever the spelling.
+//
+// ENROLLED EXPECTED-RED (v2.workflow.floor_expected_red). The three same_atoms assertions are
+// written as the behaviour that SHOULD hold — different values project different atoms — so
+// they are red today and go green exactly when the projection carries values. They are the
+// acceptance red for that change and flip to permanent regression controls when it lands
+// (DESIGN section 4b(4): the evidence stays enrolled). The positive control below is NOT
+// enrolled, and is what separates "the projection drops values" from "the reader is broken".
+
+data value_projection_roots: List<String> = ["dag", "src/v2"]
+
+fn atoms_at(qn: String) -> List<Symbol> {
+  fold_list(
+    xs: decl_facts_at(pool_roots: value_projection_roots, qualified_name: qn),
+    empty: [],
+    cons: fn(acc, f) {
+      fold_list(
+        xs: atom_identities_in_node(node: f.node),
+        empty: acc,
+        cons: fn(a, sym) { list_snoc_item(xs: a, item: sym) }
+      )
+    }
+  )
+}
+
+fn same_atoms(a: String, b: String) -> Bool {
+  let xs = atoms_at(qn: a)
+  let ys = atoms_at(qn: b)
+  (length(xs: xs) == length(xs: ys))
+    && for_all(xs: xs, predicate: fn(s) { contains(xs: ys, item: s, eq: fn_index_symbol_eq) })
+}
+
+fn distinct_values_project_distinct_atoms(a: String, b: String) -> Bool {
+  !same_atoms(a: a, b: b)
+}
+
+// BARE STRING initializers, one module, one declared type, different authored values.
+data bare_a: String = "compiler.self_host.emitter_producer_provenance.v1_seed_emit_rust_qualified_module"
+
+data bare_b: String = "compiler.self_host.emitter_producer_provenance.v2_emit_interpreted_qualified_module"
+
+// LIST-OF-STRING initializers. The second is EMPTY, which is the sharpest case in the file:
+// a two-element list and a list with no elements at all project the same atoms, so element
+// lexemes are demonstrably not carried.
+data list_a: String = "lens.fn_index_depth_agreement.agreement_pool_roots"
+
+data list_b: String = "lens.fn_index_depth_agreement.empty_string_list"
+
+// RECORD initializers with the SAME constructor and different string-list fields. Holding the
+// constructor fixed is deliberate: v2.std.decl_facts_skeleton
+// decl_facts_outer_record_constructor_lexeme_authority_note records that ExprRecordLit
+// constructor SPELLING does surface as a skeleton atom, and this pair asks the separate
+// question of whether the authored VALUES inside surface too.
+data rec_a: String = "compiler.self_host.emitter_producer_provenance.cssl_harness_realized_closure"
+
+data rec_b: String = "compiler.self_host.emitter_producer_provenance.v2_interpreted_emitter_closure"
+
+// POSITIVE CONTROL — NOT enrolled expected-red, and it must stay green. It establishes that
+// decl_facts_at resolves all six qualified names and that every projected node yields a
+// non-empty atom population, so the three reds below report a projection that DROPS VALUES
+// rather than a lookup that found nothing or a reader that returns nothing.
+test fn every_specimen_resolves_and_projects_a_nonempty_atom_population() -> Bool {
+  for_all(
+    xs: [bare_a, bare_b, list_a, list_b, rec_a, rec_b],
+    predicate: fn(qn) {
+      (length(xs: decl_facts_at(pool_roots: value_projection_roots, qualified_name: qn)) == 1)
+        && (length(xs: atoms_at(qn: qn)) > 0)
+    }
+  )
+}
+
+// EXPECTED RED 1 — bare String initializer position.
+test fn bare_string_rows_with_different_values_project_different_atoms() -> Bool {
+  distinct_values_project_distinct_atoms(a: bare_a, b: bare_b)
+}
+
+// EXPECTED RED 2 — list-literal element position, including the empty-versus-two-element case.
+test fn list_rows_with_different_elements_project_different_atoms() -> Bool {
+  distinct_values_project_distinct_atoms(a: list_a, b: list_b)
+}
+
+// EXPECTED RED 3 — string values inside a record initializer, constructor held fixed.
+test fn record_rows_with_different_string_fields_project_different_atoms() -> Bool {
+  distinct_values_project_distinct_atoms(a: rec_a, b: rec_b)
+}
