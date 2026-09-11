@@ -93,7 +93,7 @@ import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.algebra { Cons, Empty, FreeMonoid, trim }
-import v2.std.algebra { fold_list, length, list_append, list_reverse, list_snoc_item }
+import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_reverse, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -1102,9 +1102,37 @@ fn native_lane_declared_module_name(content: String) -> String {
 // afterwards: the row and the module that owns it are minted together. The seed paid that join as
 // a hash lookup per row; a fold-based lookup here would be quadratic over the whole inventory,
 // which the standing bare-minimum-cost ruling prices as a defect at any realized n.
+// THE IMPORT EDGES ARE READ FROM THE SAME TEXT, FOR THE SAME REASON. The route must know which
+// sources the universe's modules transitively need BEFORE it pays a front end on any of them, so
+// the edge cannot come from a parse without paying the cost the closure exists to avoid. This is
+// the module-header scan's sibling and carries its shape: one line, one edge, no interpretation
+// beyond the qualified name. It is deliberately CONSERVATIVE about nothing — a line that begins
+// with `import ` names exactly one module, and a file that spells a dependency any other way is a
+// closure miss that surfaces as a located resolve refusal inside the route rather than as a silent
+// narrowing, because the module it needed was never ingested and the resolver says so by name.
+// NEXT-RUNG TRIGGER: the closure is computed from the front end's own import edges after a cheap
+// parse of the seed set, at which point this scan deletes rather than being kept beside it.
+fn native_lane_declared_imports(content: String) -> List<String> {
+  fold(
+    split(s: content, delimiter: "\n"),
+    init: [],
+    f: fn(acc, line) {
+      let trimmed = trim(line)
+      if starts_with(s: trimmed, prefix: "import ") {
+        let rest = trim(substring(s: trimmed, start: 7, end: string_length(s: trimmed)))
+        let name = floor_discovery_first_token_before_space(seg: rest)
+        if name == "" { acc } else { concat(acc, [name]) }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
 type NativeLaneSourceFacts {
   module: String
   path: Symbol
+  imports: List<String>
   discovery: FloorDiscoveryWalkState
 }
 
@@ -1116,6 +1144,7 @@ fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFa
       concat(acc, [NativeLaneSourceFacts {
         module: native_lane_declared_module_name(content: read.source.carried),
         path: read.compilation_unit,
+        imports: native_lane_declared_imports(content: read.source.carried),
         discovery: discover_floor_rows_for_source(
           repo_path: symbol_lexeme(sym: read.compilation_unit),
           content: read.source.carried
@@ -1235,6 +1264,201 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
   }
 }
 
+// ── the closure the route actually ingests ─────────────────────────────────────────────────
+//
+// THE ROUTE INGESTS THE UNIVERSE'S IMPORT CLOSURE, NEVER THE CORPUS (operator ruling 2026-09-11,
+// on a measurement: the emitted binary given a TWO-row universe ran 64 minutes single-threaded and
+// folded 2909 file refusals, because it tokenized, parsed and normalized all 5433 corpus sources
+// before evaluating anything — a fixed cost independent of the population it was asked about).
+// DESIGN section 2: minimize the demand graph before materializing its answers. A file that no
+// universe module transitively imports is not read into the front end, is not folded, and its
+// refusal is NOT a row in this receipt.
+//
+// THAT IS A NARROWING OF THE SUBJECT, AND IT IS STATED RATHER THAN SLID IN. The corpus-wide
+// front-end histogram is a different subject with a different consumer, and it keeps its producer:
+// the census mode, which ingests everything and reports every per-file refusal. The adjudication
+// receipt's file_refusals now mean "refusals among the sources this population needed", which is
+// exactly what the Context-stage classification joins against — a refusal outside the closure
+// could never have explained a member's verdict, so carrying it here was never evidence.
+// Membership over module names. `contains` takes the equality it uses rather than assuming one, so
+// the name comparison is supplied here once instead of at each of the three call sites.
+fn native_lane_module_named(xs: List<String>, name: String) -> Bool {
+  contains(xs: xs, item: name, eq: fn(a, b) { a == b })
+}
+
+fn native_lane_module_reachable(
+  facts: List<NativeLaneSourceFacts>,
+  frontier: List<String>,
+  seen: List<String>,
+  fuel: Int
+) -> List<String> {
+  if fuel <= 0 {
+    seen
+  } else if is_empty(xs: frontier) {
+    seen
+  } else {
+    let next = fold_list(
+      xs: frontier,
+      empty: [],
+      cons: fn(acc, needed) {
+        concat(acc, fold_list(
+          xs: facts,
+          empty: [],
+          cons: fn(inner, f) {
+            if f.module == needed { concat(inner, f.imports) } else { inner }
+          }
+        ))
+      }
+    )
+    let unseen = fold_list(
+      xs: next,
+      empty: [],
+      cons: fn(acc, candidate) {
+        if native_lane_module_named(xs: seen, name: candidate) || native_lane_module_named(xs: acc, name: candidate) {
+          acc
+        } else {
+          concat(acc, [candidate])
+        }
+      }
+    )
+    native_lane_module_reachable(
+      facts: facts,
+      frontier: unseen,
+      seen: concat(seen, unseen),
+      fuel: fuel - 1
+    )
+  }
+}
+
+// The seed set is every universe module plus the module the authority's live-verdict controls live
+// in: the controls are executed by this route, so their own closure is part of what it needs.
+fn native_lane_closure_seed_modules(universe: NativeLaneUniverse) -> List<String> {
+  concat(
+    fold_list(
+      xs: universe.modules,
+      empty: [],
+      cons: fn(acc, m) { concat(acc, [m.module]) }
+    ),
+    [native_route_live_control_module]
+  )
+}
+
+fn native_lane_closure_modules(
+  facts: List<NativeLaneSourceFacts>,
+  universe: NativeLaneUniverse
+) -> List<String> {
+  let seeds = native_lane_closure_seed_modules(universe: universe)
+  native_lane_module_reachable(facts: facts, frontier: seeds, seen: seeds, fuel: 512)
+}
+
+// The ingest restricted to that closure, in the order the reads arrived. A source whose header
+// declares no module is not in any closure by construction: nothing can import it.
+fn native_lane_closure_ingest(
+  ingest: SourceRootIngest,
+  closure: List<String>
+) -> SourceRootIngest {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      let declared = native_lane_declared_module_name(content: read.source.carried)
+      if (declared != "") && native_lane_module_named(xs: closure, name: declared) {
+        list_snoc_item(xs: acc, item: read)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE INGEST RECEIPT IS THE ACCEPTANCE SURFACE FOR THE CLOSURE, and it exists because a faster
+// clock is not evidence (operator ruling 2026-09-11): a hidden whole-corpus prepass survives a
+// timer improvement, and only a POPULATION with a discriminating RED catches it.
+//
+// TWO POPULATIONS, NAMED SEPARATELY BECAUSE THEY COST DIFFERENT THINGS. `scanned` is what the route
+// OPENED for textual discovery — the corpus, because discovery is a floor authority whose subject
+// is the corpus and a `test`-marked declaration outside a sidecar must still be found. `ingested`
+// is what it TOKENIZED, PARSED AND FOLDED, and the acceptance is an identity join on that one: it
+// equals the transitive import closure of the universe's modules plus the controls' module,
+// exactly. The RED is a module OUTSIDE that closure, malformed or expensive, whose edits change
+// neither a verdict nor `ingested` — and which never appears in a refusal row, because it is never
+// tokenized.
+//
+// TWO OBLIGATIONS THIS SHAPE OWES, recorded so they are not lost to the fact that it currently
+// works. FIRST: the universe is one of the artifact forms the provider spine will key by corpus
+// content, so `native_lane_universe` is written as its PRODUCER and not as an inline step the route
+// must always pay — when that spine lands, the scan becomes a miss-path cost and a hit reads
+// nothing. SECOND: the textual reads here are a REALIZATION of the discovery authority, never a
+// second authority, so they owe a witness joining this route's universe against the discovery
+// producer's own population at identity grain on the same tree. That witness is the wall and it is
+// NOT yet built; until it is, the same-universe property is diligence rather than a check.
+type NativeLaneIngestReceipt {
+  closure_modules: List<String>
+  ingested_paths: List<String>
+  scanned_paths: List<String>
+}
+
+fn native_lane_ingest_receipt(
+  facts: List<NativeLaneSourceFacts>,
+  closure: List<String>,
+  ingest: SourceRootIngest
+) -> NativeLaneIngestReceipt {
+  NativeLaneIngestReceipt {
+    closure_modules: closure,
+    ingested_paths: fold_list(
+      xs: ingest,
+      empty: [],
+      cons: fn(acc, read) { concat(acc, [symbol_lexeme(sym: read.compilation_unit)]) }
+    ),
+    scanned_paths: fold_list(
+      xs: facts,
+      empty: [],
+      cons: fn(acc, f) { concat(acc, [symbol_lexeme(sym: f.path)]) }
+    )
+  }
+}
+
+// THE JOIN THE ACCEPTANCE ASKS FOR, ASKED BY THE ROUTE ITSELF rather than by a reader comparing two
+// logs: every ingested source's declared module is in the closure, and every closure module that
+// any source declares was ingested. A source whose header declares no module cannot be in a closure
+// and cannot be reached by an import, so its presence in the ingest would be exactly the hidden
+// prepass this check exists to refuse.
+fn native_lane_ingest_matches_closure(
+  facts: List<NativeLaneSourceFacts>,
+  receipt: NativeLaneIngestReceipt,
+  ingest: SourceRootIngest
+) -> Bool {
+  let every_ingested_in_closure = fold_list(
+    xs: ingest,
+    empty: true,
+    cons: fn(acc, read) {
+      let declared = native_lane_declared_module_name(content: read.source.carried)
+      acc && (declared != "") && native_lane_module_named(xs: receipt.closure_modules, name: declared)
+    }
+  )
+  let every_declared_closure_module_ingested = fold_list(
+    xs: facts,
+    empty: true,
+    cons: fn(acc, f) {
+      if native_lane_module_named(xs: receipt.closure_modules, name: f.module) {
+        acc && native_lane_module_named(
+          xs: fold_list(
+            xs: ingest,
+            empty: [],
+            cons: fn(inner, read) {
+              concat(inner, [native_lane_declared_module_name(content: read.source.carried)])
+            }
+          ),
+          name: f.module
+        )
+      } else {
+        acc
+      }
+    }
+  )
+  every_ingested_in_closure && every_declared_closure_module_ingested
+}
+
 // ── the observed population ────────────────────────────────────────────────────────────────
 //
 // THE PREPARE-REFUSAL FAN-OUT AND THE CONTEXT RECLASSIFICATION ARE ONE FOLD, HERE. Both used to
@@ -1267,81 +1491,90 @@ fn native_lane_member_row(module: String, declaration: String, verdict: NativeTe
   }
 }
 
-fn native_lane_module_rows(
+// WHAT THE POPULATION↔UNIVERSE JOIN STILL DISCRIMINATES, STATED RATHER THAN ASSUMED. Every
+// universe member gets exactly one row, so admission's omission and foreign-row clauses cannot fire
+// from in-process drift the way they could when a second process echoed a universe file back. That
+// is a rung statement, not a hole: the fact those clauses protected — a DISCOVERED identity the
+// execution route cannot reach — is not lost, it MOVES, and it moves to a better-located carrier.
+// The route refuses such an identity at the Entry stage
+// (native_test_entry_declaration_not_found / native_test_entry_module_scope_unresolved), the
+// exclusion taxonomy classifies that refusal, and an unclassified one still blocks admission by
+// name. The clauses stay enrolled because the receipt is a data shape a future producer can still
+// violate; the discriminating evidence for the class now lives on the exclusion clauses.
+
+// THE PER-MODULE DECISION IS SPLIT AT ITS TWO COST GRAINS, and the split is load-bearing rather
+// than cosmetic. Preparation (resolve + infer) is paid ONCE per module; evaluation is paid per
+// declaration. A caller that must PRICE them separately — the rendered main, which owns the clock
+// the substrate does not have — needs to enter each one itself, so the decision returns either the
+// prepared module or the rows already decided without it, and evaluation is a second call per
+// identity. Composing them here instead would hand the host one opaque call and force it to label
+// the whole thing with one phase name, which is the measurement defect this shape exists to avoid.
+type NativeLaneModulePreparation
+  = NativeLaneModulePrepared { prepared: NativeTestPreparedModule }
+  | NativeLaneModuleRowsDecided { rows: List<NativeRouteMemberRow> }
+
+fn native_lane_module_preparation(
   context: NativeTestContext,
   entry: NativeLaneUniverseModule
-) -> List<NativeRouteMemberRow> {
+) -> NativeLaneModulePreparation {
   match native_lane_file_refusal_for_path(refusals: context.file_refusals, path: entry.path) {
     Present { value: fr } =>
-      fold_list(
-        xs: entry.declarations,
-        empty: [],
-        cons: fn(acc, d) {
-          concat(acc, [native_lane_member_row(
-            module: entry.module,
-            declaration: d,
-            verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
-          )])
-        }
-      )
+      NativeLaneModuleRowsDecided {
+        rows: fold_list(
+          xs: entry.declarations,
+          empty: [],
+          cons: fn(acc, d) {
+            concat(acc, [native_lane_member_row(
+              module: entry.module,
+              declaration: d,
+              verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
+            )])
+          }
+        )
+      }
     Absent =>
       match native_test_prepare_module(
         context: context,
         module: qualified_name_from_dotted_string(dotted: entry.module)
       ) {
         Rejected { diagnostics: d } =>
-          fold_list(
-            xs: entry.declarations,
-            empty: [],
-            cons: fn(acc, decl) {
-              concat(acc, [native_lane_member_row(
-                module: entry.module,
-                declaration: decl,
-                verdict: NativeTestRefused {
-                  stage: NativeTestStagePrepare,
-                  reason: native_test_fatal_reason(d: d)
-                }
-              )])
-            }
-          )
+          NativeLaneModuleRowsDecided {
+            rows: fold_list(
+              xs: entry.declarations,
+              empty: [],
+              cons: fn(acc, decl) {
+                concat(acc, [native_lane_member_row(
+                  module: entry.module,
+                  declaration: decl,
+                  verdict: NativeTestRefused {
+                    stage: NativeTestStagePrepare,
+                    reason: native_test_fatal_reason(d: d)
+                  }
+                )])
+              }
+            )
+          }
         Accepted { value: prepared, diagnostics: _ } =>
-          fold_list(
-            xs: entry.declarations,
-            empty: [],
-            cons: fn(acc, decl) {
-              let observation = native_test_eval_one(
-                prepared: prepared,
-                declaration: symbol_intern_lexeme(lexeme: decl)
-              )
-              concat(acc, [native_lane_member_row(
-                module: entry.module,
-                declaration: decl,
-                verdict: observation.verdict
-              )])
-            }
-          )
+          NativeLaneModulePrepared { prepared: prepared }
       }
   }
 }
 
-// WHAT THE POPULATION↔UNIVERSE JOIN STILL DISCRIMINATES, STATED RATHER THAN ASSUMED. Every
-// universe member gets exactly one row from this fold, so admission's omission and foreign-row
-// clauses cannot fire from in-process drift the way they could when a second process echoed a
-// universe file back. That is a rung statement, not a hole: the fact those clauses protected — a
-// DISCOVERED identity the execution route cannot reach — is not lost, it MOVES, and it moves to a
-// better-located carrier. The route refuses such an identity at the Entry stage
-// (native_test_entry_declaration_not_found / native_test_entry_module_scope_unresolved), the
-// exclusion taxonomy classifies that refusal, and an unclassified one still blocks admission by
-// name. The clauses stay enrolled because the receipt is a data shape a future producer can still
-// violate; the discriminating evidence for the class now lives on the exclusion clauses.
-fn native_lane_population(
-  context: NativeTestContext,
-  universe: NativeLaneUniverse
-) -> List<NativeRouteMemberRow> {
-  fold_list(
-    xs: universe.modules,
-    empty: [],
-    cons: fn(acc, entry) { concat(acc, native_lane_module_rows(context: context, entry: entry)) }
+// ONE IDENTITY, EVALUATED. The per-declaration grain the profile lane prices: this call and nothing
+// else is what identity_evaluation measures.
+fn native_lane_identity_row(
+  prepared: NativeTestPreparedModule,
+  module: String,
+  declaration: String
+) -> NativeRouteMemberRow {
+  let observation = native_test_eval_one(
+    prepared: prepared,
+    declaration: symbol_intern_lexeme(lexeme: declaration)
+  )
+  native_lane_member_row(
+    module: module,
+    declaration: declaration,
+    verdict: observation.verdict
   )
 }
 
@@ -1403,15 +1636,6 @@ type NativeLaneHostFacts {
   malformed_control: NativeRouteMalformedControl
 }
 
-type NativeLaneReport {
-  universe: List<NativeRouteTestIdentity>
-  population: List<NativeRouteMemberRow>
-  file_refusals: List<NativeTestFileRefusal>
-  admission: NativeRouteAdmission
-  summary: String
-  admitted: Bool
-}
-
 fn native_lane_receipt(
   context: NativeTestContext,
   universe: NativeLaneUniverse,
@@ -1434,37 +1658,5 @@ fn native_lane_receipt(
     true_control: controls.true_control,
     malformed_control: facts.malformed_control,
     old_route_control: facts.old_route_control
-  }
-}
-
-// THE LANE, END TO END, AS ONE FOLD OVER THE INGEST THE DRIVER ALREADY HAS. The rendered main
-// reads the source roots and the host facts and calls exactly this; nothing between the ingest
-// and the admission verdict is decided by the seed.
-fn native_lane_run(ingest: SourceRootIngest, facts: NativeLaneHostFacts) -> Outcome<NativeLaneReport> {
-  match native_test_context_from_ingest(ingest: ingest) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: context, diagnostics: _ } =>
-      match native_lane_universe(ingest: ingest) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: universe, diagnostics: _ } => {
-          let population = native_lane_population(context: context, universe: universe)
-          let receipt = native_lane_receipt(
-            context: context,
-            universe: universe,
-            population: population,
-            controls: native_lane_controls(context: context),
-            facts: facts
-          )
-          let admission = native_route_admission(receipt: receipt)
-          outcome_accepted(value: NativeLaneReport {
-            universe: universe.identities,
-            population: population,
-            file_refusals: receipt.file_refusals,
-            admission: admission,
-            summary: native_route_admission_summary(admission: admission),
-            admitted: native_route_admitted(admission: admission)
-          })
-        }
-      }
   }
 }
