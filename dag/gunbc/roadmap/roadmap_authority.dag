@@ -63,6 +63,7 @@ import gunbc.roadmap_execution_contract {
   PublicWorktreeLayout,
   contract_has_closing_validation,
   gunbc_claim_execution_contract,
+  closing_contract_authoring_contract,
 }
 import gunbc.roadmap_focus {
   RoadmapFocus,
