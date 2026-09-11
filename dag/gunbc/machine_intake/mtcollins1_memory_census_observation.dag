@@ -112,19 +112,52 @@ data mtcollins1_edac_topology: MtCollins1EdacTopologyObservation = MtCollins1Eda
   uncorrected_error_count: 0,
 }
 
-// THE EDAC-CLEAN VERDICT THE EXIT CLAUSE ASKS FOR, and it is worth being exact about what it does
-// and does not establish. mc0 reports ce_count 0 and ue_count 0, and every one of the 32 per-DIMM
-// counters (16 DIMMs x dimm_ce_count/dimm_ue_count) reads 0. That is a clean reading at the moment
-// of capture, on a machine that had been up for about 20 seconds.
+// THE EDAC-CLEAN VERDICT, AND IT IS NOW LOAD-BACKED RATHER THAN A SNAPSHOT. The first capture read
+// zero counters on a host up about 20 seconds, which bounds nothing: an idle machine that has
+// touched almost no memory cannot demonstrate that its memory is sound. That reading was recorded
+// here as EdacSnapshotClean precisely so it could not be quoted as a qualification.
 //
-// IT IS NOT A SOAK. A zero counter on a freshly booted host bounds nothing about hours of load;
-// the memtest pass recorded elsewhere in the intake is the endurance evidence and this is the
-// structural one. Saying "EDAC clean" without that distinction would be the inflation DESIGN
-// section 4b(1) names, because the reading's strength would be read from its name rather than from
-// what executed.
+// THE SECOND CAPTURE RUNS A NAMED WORKLOAD AND READS THE COUNTERS ON BOTH SIDES OF IT. Four 16 GiB
+// tmpfs chunks (64 GiB total) are written from /dev/urandom, then hashed twice and the two passes
+// compared. All 34 EDAC counters read 0 BEFORE and 0 AFTER; mc0's ce_count, ue_count,
+// ce_noinfo_count and ue_noinfo_count are 0 on both sides.
+//
+// THE DIGEST COMPARISON IS AN INDEPENDENT CHECK AND THAT IS WHY IT IS THERE. EDAC counters are the
+// memory controller's own account of itself; if the controller fails to notice a fault, its
+// counters stay zero and a receipt reading only those counters would report clean. Hashing 64 GiB
+// twice and requiring the digests to match tests the DATA rather than the controller's opinion of
+// the data, so a silent corruption the ECC path missed would still surface as a mismatch. Both
+// passes agreed.
+//
+// WHAT THIS STILL IS NOT. 64 GiB is a quarter of the installed 256 GiB, the passes take minutes
+// rather than hours, and nothing here exercises thermal or long-duration failure modes. This
+// discharges "Linux EDAC pass clean" for the hw-first-host clause; it does NOT discharge a soak,
+// and the memtest86 pass recorded earlier in the intake remains the endurance evidence.
 data mtcollins1_edac_clean_at_capture: Bool = true
 
 data mtcollins1_edac_uptime_at_capture_seconds: Int = 20
+
+type MtCollins1MemoryWorkload {
+  description: NonEmptyStr
+  bytes_exercised: Int
+  write_exit_status: Int
+  digest_stable_across_passes: Bool
+  edac_corrected_before: Int
+  edac_corrected_after: Int
+  edac_uncorrected_before: Int
+  edac_uncorrected_after: Int
+}
+
+data mtcollins1_memory_workload: MtCollins1MemoryWorkload = MtCollins1MemoryWorkload {
+  description: "4 x 16 GiB tmpfs chunks seeded from /dev/urandom, sha256 hashed twice and the passes compared; EDAC tree read immediately before and immediately after.",
+  bytes_exercised: 68719476736,
+  write_exit_status: 0,
+  digest_stable_across_passes: true,
+  edac_corrected_before: 0,
+  edac_corrected_after: 0,
+  edac_uncorrected_before: 0,
+  edac_uncorrected_after: 0,
+}
 
 // ── the per-connector population, joined to the memory channel ─────────────────────────────────
 
@@ -359,21 +392,91 @@ data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObli
   mtcollins1_rank_mixing_rule_obligation,
 ]
 
-// ── what this receipt does NOT bind, stated because the gap is a correctness gap ───────────────
+// ── why the second capture took five attempts, and the defect that caused it ───────────────────
 
-// THE CAPTURE IS BOUND TO A MT. COLLINS BOARD, NOT TO THIS PHYSICAL UNIT. The census carries
-// `DMI: FOXCONN Mt. Collins/Mt. Collins, BIOS 0ACOC017` from the kernel log, which establishes the
-// MODEL. It does not carry SMBIOS Type 1/2/3, so the board serial 02030A800TEXFT02L that
-// gunbc.machine_intake_mtcollins1_access_observation reads over IPMI FRU appears NOWHERE in these
-// bytes. What ties the capture to unit 1 is the DELIVERY PATH — the image was presented by the
-// controller at 192.168.1.228 and the console is that controller's SOL — which is provenance held
-// by the author, not a fact a reader can check inside the artifact.
+// THE HOST WOULD NOT BOOT THE PRESENTED MEDIUM, AND THE REASON IS A FIELD THE BOOT-HANDOFF MODEL
+// DOES NOT CARRY. IPMI boot parameter 5 encodes TWO decisions: the device selector, and the BIOS
+// boot type (byte 1 bit 5 — 0 = PC-compatible/legacy, 1 = EFI). gunbc.machine_intake_oob_boot_handoff
+// and gunbc.machine_intake_mtcollins1_actuate model the SELECTOR and have no concept of the boot
+// type at all: `efiboot`, `boot_type` and `legacy` appear nowhere in that path. So every handoff
+// this repository performs requests the device under the DEFAULT boot type, which reads back as
+// "BIOS PC Compatible (legacy) boot".
 //
-// SO THIS IS RECORDED AS AN OPEN BINDING RATHER THAN QUIETLY RELIED ON. A reader must not treat
-// these sixteen serial numbers as unit 1's inventory on the strength of the filename. The
-// dissolution is one command — `dmidecode --type 2` in the same capture — and the attempt that
-// would have carried it is the failed attempt below.
-data mtcollins1_subject_binding_gap: NonEmptyStr = "The capture establishes the BOARD MODEL (kernel DMI line: FOXCONN Mt. Collins/Mt. Collins, BIOS 0ACOC017) and not the physical unit: SMBIOS Type 1/2/3 was not captured, so board serial 02030A800TEXFT02L is absent from the bytes. The tie to unit 1 is the delivery path (controller 192.168.1.228 presented the image; the console is that controller's SOL), which is author-held provenance, not a reader-checkable fact. Dissolved by capturing dmidecode --type 2 alongside type 17 in a future attempt."
+// ON aarch64 THERE IS NO LEGACY BIOS BOOT PATH. A legacy-boot request for the virtual CD is
+// therefore unsatisfiable, the firmware cannot honour it, and it falls through to its own boot
+// order — PXE, which nothing on this segment answers, and then the UEFI shell. That is the
+// observed behaviour on every failed attempt.
+//
+// SETTING THE BIT FIXES IT, MEASURED: `chassis bootdev cdrom options=efiboot,persistent` reads back
+// "BIOS EFI boot" / "Force Boot from CD/DVD", and the very next reset booted the census image and
+// produced the capture this module now carries. One argv word is the whole difference.
+//
+// THE MODEL SAID THE HANDOFF SUCCEEDED EVERY TIME, WHICH IS THE DEEPER DEFECT AND THE REASON THIS
+// SURVIVED. oob_boot_handoff mints BootHandoffCompleted once the override reads back with the
+// expected rendering and the power action is accepted. Both were true on every failed attempt: the
+// selector really did say "Force Boot from CD/DVD", and the power cycle really was accepted. The
+// arm confirms a PRECONDITION and reports it as an EFFECT, so a handoff that provably never booted
+// anything is indistinguishable, in the model, from one that did. That is DESIGN section 5's
+// specification-without-execution, and it is why a legacy/EFI mismatch could persist undetected
+// across an entire intake lane.
+//
+// Fixing the argv without fixing the postcondition would remove this instance and leave the class:
+// the next unsatisfiable boot request would again be reported as completed.
+type MtCollins1BootDeliveryDefect {
+  missing_field: NonEmptyStr
+  why_it_fails_here: NonEmptyStr
+  measured_fix: NonEmptyStr
+  postcondition_defect: NonEmptyStr
+}
+
+data mtcollins1_boot_delivery_defect: MtCollins1BootDeliveryDefect = MtCollins1BootDeliveryDefect {
+  missing_field: "IPMI boot parameter 5 BIOS boot type (byte 1 bit 5: 0 = PC-compatible/legacy, 1 = EFI). Absent from gunbc.machine_intake_oob_boot_handoff and gunbc.machine_intake_mtcollins1_actuate, which model the device selector alone.",
+  why_it_fails_here: "The default reads back as \"BIOS PC Compatible (legacy) boot\". aarch64 has no legacy BIOS boot path, so a legacy-boot request for the virtual CD is unsatisfiable; the firmware falls through to PXE (unanswered on this segment) and then the UEFI shell.",
+  measured_fix: "chassis bootdev cdrom options=efiboot,persistent reads back \"BIOS EFI boot\" and the next reset booted the census image, producing mtcollins1-host-capture.txt.",
+  postcondition_defect: "oob_boot_handoff mints BootHandoffCompleted from override-readback plus power-action-accepted, never from host-side evidence that the intended device booted. Both preconditions held on every failed attempt, so the model reported success throughout. The argv fix without a real postcondition would close this instance and leave the class.",
+}
+
+// ── the unit binding, CLOSED by a later capture ────────────────────────────────────────────────
+
+// THIS RECEIPT'S FIRST CAPTURE BOUND ONLY TO THE BOARD MODEL and said so. It carried the kernel's
+// `DMI: FOXCONN Mt. Collins/Mt. Collins` line, which names a MODEL, and no SMBIOS Type 1/2/3, so
+// the board serial appeared nowhere in its bytes; what tied it to unit 1 was the delivery path,
+// which is provenance held by the author rather than a fact a reader can check inside the artifact.
+//
+// A SECOND CAPTURE CLOSES IT, and the closure is an EQUALITY BETWEEN TWO INDEPENDENT READS rather
+// than a stronger assertion of the same one. The host, reading its own SMBIOS Type 2 under Linux,
+// reports board serial 02030A800TEXFT02L. gunbc.machine_intake_mtcollins1_access_observation
+// reports the same serial from the CONTROLLER's IPMI FRU, over a different transport, from a
+// different agent, recorded days earlier. Host-side DMI and controller-side FRU agreeing on one
+// serial is what makes this an observation OF A UNIT; either alone is an observation of a reading.
+data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
+
+data mtcollins1_host_capture_byte_count: Int = 270880
+
+data mtcollins1_host_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a",
+})
+
+data mtcollins1_host_capture_observed_at: EpochMs = 1789428410000
+
+// EVERY SECTION OF THAT CAPTURE CARRIES ITS ARGV AND ITS EXIT STATUS, which is what makes a
+// missing reading distinguishable from a zero one. All nineteen sections exited 0, so no field
+// below is standing on a command that failed quietly.
+type MtCollins1SubjectBinding {
+  smbios_board_serial: NonEmptyStr
+  smbios_system_serial: NonEmptyStr
+  smbios_system_uuid: NonEmptyStr
+  baseboard_product: NonEmptyStr
+  corroborating_controller_read: NonEmptyStr
+}
+
+data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBinding {
+  smbios_board_serial: "02030A800TEXFT02L",
+  smbios_system_serial: "MXX2080619",
+  smbios_system_uuid: "d5b80e46-903a-1000-01e6-4cd68a3cc128",
+  baseboard_product: "FOXCONN Mt. Collins, board version 02030A800-600-G",
+  corroborating_controller_read: "gunbc.machine_intake_mtcollins1_access_observation reads board serial 02030A800TEXFT02L from the controller's IPMI FRU. The host reads the same serial from its own SMBIOS Type 2 under Linux. Two transports, two agents, one serial.",
+}
 
 // THE FAILED ATTEMPT IS PRESERVED, WHICH IS THE POINT OF PRESERVING IT. Attempt 3 was built to
 // close the binding gap above and to add a named memory workload with before/after EDAC counters.
