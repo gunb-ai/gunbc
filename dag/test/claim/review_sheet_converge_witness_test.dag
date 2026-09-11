@@ -511,6 +511,7 @@ test fn absent_listing_appends_a_located_row() -> Bool {
           Present { value: a } =>
             (a.listing_id as String) == "L2"
               && a.sheet_row == 2
+              && (a.a1 as String) == "A2:D2"
               && match a.cells |> first {
                 Present { value: id } =>
                   id == "L2"
