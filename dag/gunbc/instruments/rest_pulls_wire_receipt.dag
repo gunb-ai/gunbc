@@ -9,9 +9,14 @@ import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
-// Wet GET /repos/<gunbc_repository>/pulls through github.Pulls.List. RestOk is the live green after
-// the performer refuses Null under RestOk. The diagnostic dump that measured the raw body lived
-// only long enough to take that receipt and is not a standing interpreter surface.
+// Wet github.Pulls.List against gunbc_repository. RestOk is the live green; a 200 whose body
+// does not inhabit the declared List is RestBodyUndecodable. An entry point rather than a shell
+// script because DESIGN rules an ad-hoc .sh in this repository unmodeled realization: a
+// measurement worth re-deriving is worth an entry point. Run it as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/rest_pulls_wire_receipt.dag \
+//     --function list_open_pulls_wire_receipt
 func list_open_pulls_wire_receipt() -> ProcessExit uses net: Network {
   let result = github.Pulls.List(
     auth_token: "" as Secret,
