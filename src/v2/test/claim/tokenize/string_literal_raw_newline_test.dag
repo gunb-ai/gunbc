@@ -10,33 +10,33 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn dag_lex(src: String) -> Outcome<TokenStream> {
+fn tokenize_probe_with_dag_lex_rules(src: String) -> Outcome<TokenStream> {
   tokenize(text: src, file: ^probe, rules: ModeledLexRules { root: dag_lex_rules() })
 }
 
 test fn string_literal_with_raw_newline_lexes_holds() -> Bool {
-  match dag_lex(src: "data d: String = \"line one\nline two\"") {
+  match tokenize_probe_with_dag_lex_rules(src: "data d: String = \"line one\nline two\"") {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn escaped_newline_in_string_still_lexes_holds() -> Bool {
-  match dag_lex(src: "data d: String = \"line one\\nline two\"") {
+  match tokenize_probe_with_dag_lex_rules(src: "data d: String = \"line one\\nline two\"") {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn em_dash_in_identifier_position_still_refuses_holds() -> Bool {
-  match dag_lex(src: "x—y") {
+  match tokenize_probe_with_dag_lex_rules(src: "x—y") {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
   }
 }
 
 test fn unterminated_string_locus_covers_the_opening_quote_holds() -> Bool {
-  match dag_lex(src: "\"oops") {
+  match tokenize_probe_with_dag_lex_rules(src: "\"oops") {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ds } =>
       (ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
