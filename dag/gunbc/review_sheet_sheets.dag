@@ -1,6 +1,7 @@
 module gunbc.review_sheet_sheets
 
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.upsert_decision { UpsertDecision }
 import gunbc.ensure {
   EnsurePolicy,
@@ -157,6 +158,13 @@ fn sheets_workspace_suite() -> NonEmptyStr {
   google_workspace_product
 }
 
-data live_sheets_transport_frontier: Disposition = Terminal {
-  reason: "sunny-carp-475 binds ReviewSheetProjection to a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter; this change's executing consumer of the decision is test.claim.review_sheet_converge_witness"
+// sunny-carp-475 binds a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter onto
+// review_sheet_from_readback. Until that lands this is owed work, not a terminal.
+data live_sheets_transport_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_sheets",
+    decl_name: "review_sheet_from_readback",
+    field: WholeDeclaration
+  }
 }

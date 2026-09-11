@@ -182,11 +182,31 @@ fn projection_row_for(projection: ReviewSheetProjection, listing_id: NonEmptyStr
   projection.rows |> filter(r => r.listing_id == listing_id) |> first
 }
 
-fn derived_value_for(row: ProjectionRow, column: NonEmptyStr) -> String {
-  match row.derived |> filter(c => c.column == column) |> map(c => c.value) |> first {
-    Present { value: v } => v
-    Absent => ""
-  }
+fn derived_value_for(row: ProjectionRow, column: NonEmptyStr) -> String? {
+  row.derived |> filter(c => c.column == column) |> map(c => c.value) |> first
+}
+
+fn omitted_derived_column_reason(listing_id: NonEmptyStr, column: NonEmptyStr) -> NonEmptyStr {
+  concat("projection omitted derived column ", col_and_listing(column: column, listing_id: listing_id)) as NonEmptyStr
+}
+
+fn col_and_listing(column: NonEmptyStr, listing_id: NonEmptyStr) -> String {
+  concat(column as String, concat(" listing=", listing_id as String))
+}
+
+fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -> NonEmptyStr? {
+  schema.columns
+    |> filter(c => match c.kind {
+      DerivedField { source_field: _ } => true
+      OperatorEntered => false
+      ListingStanding => false
+    })
+    |> filter(c => match derived_value_for(row: row, column: c.name) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    |> map(c => c.name)
+    |> first
 }
 
 fn schema_column(schema: ReviewSheetSchema, name: NonEmptyStr) -> ReviewColumn? {
@@ -385,24 +405,40 @@ fn fold_columns_for_row(
                   ),
                 )
               OperatorEntered => ReviewSheetNeedsWrite { plan: p }
-              DerivedField { source_field: _ } => {
-                let desired = if in_projection {
+              DerivedField { source_field: _ } =>
+                if in_projection {
                   match prow {
-                    Present { value: pr } => derived_value_for(row: pr, column: col.name)
-                    Absent => observed
+                    Absent =>
+                      ReviewSheetUnreadable {
+                        reason: omitted_derived_column_reason(listing_id: listing_id, column: col.name)
+                      }
+                    Present { value: pr } =>
+                      match derived_value_for(row: pr, column: col.name) {
+                        Absent =>
+                          ReviewSheetUnreadable {
+                            reason: omitted_derived_column_reason(listing_id: listing_id, column: col.name)
+                          }
+                        Present { value: desired } =>
+                          classification_from_cell_decision(
+                            plan: p,
+                            listing_id: listing_id,
+                            column: col.name,
+                            column_index: idx,
+                            data_index: row.data_index,
+                            decision: decide_derived_field_cell(observed: observed, desired: desired),
+                          )
+                      }
                   }
                 } else {
-                  observed
+                  classification_from_cell_decision(
+                    plan: p,
+                    listing_id: listing_id,
+                    column: col.name,
+                    column_index: idx,
+                    data_index: row.data_index,
+                    decision: decide_derived_field_cell(observed: observed, desired: observed),
+                  )
                 }
-                classification_from_cell_decision(
-                  plan: p,
-                  listing_id: listing_id,
-                  column: col.name,
-                  column_index: idx,
-                  data_index: row.data_index,
-                  decision: decide_derived_field_cell(observed: observed, desired: desired),
-                )
-              }
             }
           }
         }
@@ -424,7 +460,11 @@ fn append_row_for(projection_row: ProjectionRow, schema: ReviewSheetSchema) -> A
         value: match c.kind {
           ListingStanding => listing_standing_label(state: StandingObserved)
           OperatorEntered => ""
-          DerivedField { source_field: _ } => derived_value_for(row: projection_row, column: c.name)
+          DerivedField { source_field: _ } =>
+            match derived_value_for(row: projection_row, column: c.name) {
+              Present { value: v } => v
+              Absent => ""
+            }
         },
       },
     )
@@ -485,13 +525,34 @@ fn finish_classify(
     ReviewSheetNeedsWrite { plan: p } => {
       let observed_id_set = observed_ids(sheet: observed, identity_index: identity_index)
       let missing = projection.rows |> filter(r => count_id(xs: observed_id_set, id: r.listing_id) == 0)
-      let with_appends = fold(missing, init: p, f: fn(acc, prow) {
-        plan_plus_append(plan: acc, row: append_row_for(projection_row: prow, schema: projection.schema))
+      let after_appends = fold(missing, init: ReviewSheetNeedsWrite { plan: p }, f: fn(acc, prow) {
+        match acc {
+          ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
+          ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
+          ReviewSheetConverged => ReviewSheetConverged
+          ReviewSheetNeedsWrite { plan: accp } =>
+            match first_omitted_derived_column(row: prow, schema: projection.schema) {
+              Present { value: col } =>
+                ReviewSheetUnreadable {
+                  reason: omitted_derived_column_reason(listing_id: prow.listing_id, column: col)
+                }
+              Absent =>
+                ReviewSheetNeedsWrite {
+                  plan: plan_plus_append(plan: accp, row: append_row_for(projection_row: prow, schema: projection.schema))
+                }
+            }
+        }
       })
-      if write_plan_nonempty(plan: with_appends) {
-        ReviewSheetNeedsWrite { plan: with_appends }
-      } else {
-        ReviewSheetConverged
+      match after_appends {
+        ReviewSheetNeedsWrite { plan: final_plan } =>
+          if write_plan_nonempty(plan: final_plan) {
+            ReviewSheetNeedsWrite { plan: final_plan }
+          } else {
+            ReviewSheetConverged
+          }
+        ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
+        ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
+        ReviewSheetConverged => ReviewSheetConverged
       }
     }
   }

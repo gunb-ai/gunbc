@@ -62,7 +62,7 @@ import extdeps.google.sheets {
 }
 import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import std.disposition { Terminal, Scaffold }
+import std.disposition { Terminal, Scaffold, RealizationDispatch, SingleAuthority, SubstrateMandatoryTag }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -393,6 +393,41 @@ test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool 
   }
 }
 
+test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool {
+  let projection = w_projection(rows: [
+    ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },
+  ])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "", w_standing_observed(), ""]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "projection omitted derived column title")
+        && string_contains(s: r as String, pattern: "listing=L1")
+        && !string_contains(s: r as String, pattern: "derived cell conflict")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
+  let projection = w_projection(rows: [
+    ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },
+  ])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", w_standing_observed(), ""]],
+  )
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "projection omitted derived column title")
+        && !string_contains(s: r as String, pattern: "derived cell conflict")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
 test fn sheets_cited_facts_have_executing_readers() -> Bool {
   (sheets_rate_limits |> count) == 3
     && sheets_write_requests_per_minute_per_project.requests == 300
@@ -415,8 +450,12 @@ test fn sheets_cited_facts_have_executing_readers() -> Bool {
     && (sheets_api_edition() as String) == (sheets_api_version as String)
     && (sheets_serviceusage_api_id as String) == "sheets.googleapis.com"
     && match live_sheets_transport_frontier {
-      Terminal { reason: r } => string_contains(s: r as String, pattern: "sunny-carp-475")
-      Scaffold { dissolves_to: _, bind: _ } => false
+      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+        (b.module_path as String) == "gunbc.review_sheet_sheets"
+          && (b.decl_name as String) == "review_sheet_from_readback"
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+      Terminal { reason: _ } => false
     }
     && sheets_access(
       spreadsheet_id: "sheet" as NonEmptyStr,
