@@ -3,7 +3,7 @@ module v2.test.long.mandatory_tag_gate_witness
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.normalize { normalize }
-import v2.compiler.compile { CompileLens, always_required_root_lenses }
+import v2.compiler.compile { CompileLens, CompileLensRoot, required_lenses_at_grain }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
@@ -177,7 +177,7 @@ fn roster_rejects_with(probe: GrainProbe, reason: Symbol) -> Bool {
     GrainStageRejected => false
     GrainTree { root: root } =>
       let inferred = InferredTree { root: root, facts: empty_map() }
-      fold(always_required_root_lenses(), init: false, f: fn(acc, lens) {
+      fold(required_lenses_at_grain(grain: CompileLensRoot), init: false, f: fn(acc, lens) {
         acc
           || match lens.gate(inferred) {
             Accepted { value: _, diagnostics: _ } => false
