@@ -16,7 +16,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { FreeSemigroup, list_append, list_map, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list, list_head, skip, HeadFound, HeadAbsent }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -49,7 +49,11 @@ import extdeps.github.actions {
   CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
   RunnerSpec,
-  checkout_action, setup_rust_action
+  checkout_action, setup_rust_action,
+  github_event_name_pull_request,
+  github_event_name_push,
+  github_event_name_merge_group,
+  github_event_name_workflow_dispatch
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_heal_credential {
@@ -72,7 +76,29 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
-import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
+import extdeps.github.expressions {
+  ContextAccess,
+  Github,
+  Needs,
+  interpolate,
+  Expression,
+  FunctionCall,
+  Format,
+  StringLiteral,
+  LogicalOr,
+  LogicalAnd,
+  Equals,
+  NotEquals,
+  evaluate_expression,
+  github_path_key,
+  GithubPathValue,
+  GithubPathUnmodeled,
+  GithubPathResolution,
+  ExpressionValue,
+  ExpressionEvaluationRefused,
+  ExpressionEvaluation,
+  ExpressionEvaluationRefusal
+}
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_finalize_stmts,
@@ -80,7 +106,7 @@ import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_build_outcome_var
 }
 import v2.std.diagnostic { Outcome }
-import std.types { List, String, Int }
+import std.types { Bool, List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
@@ -215,36 +241,188 @@ data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 // admission comparing against a name nothing produces, refusing every candidate forever.
 data witness_floor_workflow_name: String = "witnesses"
 
-// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling 2026-08-17:
-// every push to main must finish; only pull-request runs may be superseded. The predecessor
-// collapsed both axes into one group keyed on `github.ref` with an unconditional `true`, so
-// consecutive pushes to main landed in the single group `witness-floor-refs/heads/main` and each
-// new push killed the previous commit's run -- main's floor coverage was decided by push arrival,
-// the empty-observation narrow section 5 forbids: a cancelled run reports no verdict, and no
-// verdict was being read as nothing to report.
-//
-// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels PENDING
-// runs in a group regardless of that flag -- it only protects a run that has already started -- so
-// a main run queued behind a busy fleet could still be superseded before it executed. The group
-// must therefore be unique per main run, which `github.run_id` gives, and the flag must
-// additionally be false there so the two mechanisms agree rather than one relying on the other.
-//
-// The cost is that N concurrent main runs may execute where one used to. That is the intended
-// trade -- coverage of every landed commit, at fleet occupancy -- and the reason the dep-info race
-// under `target/` is worth identifying before this is widened further.
-//
-// AND QUEUEING IS NOT THE THIRD ARM IT LOOKS LIKE. Sharing one main group with cancellation off
-// makes GitHub QUEUE same-group runs rather than drop them, which reads as coverage without
-// concurrency cost -- but the floor's merge-critical wall runs hours against a main push gap of
-// minutes (run 31672107941, the last main run to complete before the 2026-08-13 measurement), so a
-// queued policy accumulates an unbounded backlog and delivers each verdict long after the commit it
-// judges. A unique key runs them concurrently instead, which is the only arm that yields a verdict
-// per main commit at this arrival rate. This paragraph is carried here because it was the only
-// record of that measurement, and it lived in `gunbc.ci_workflow_expressions` -- a SECOND
-// concurrency authority left behind when the floor cut deleted the workflow it fed. That module's
-// note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
-// its rows are deleted with this one standing as the single authority.
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
+// GROUPING AND RUNNING CANCEL ARE TWO AXES. The 2026-09-10 occupancy ruling supersedes the
+// 2026-08-17 per-main-commit grouping policy (unique github.run_id so every main push finished).
+// PRs group by PR identity; main pushes group by github.ref. GitHub may replace obsolete PENDING
+// members of those mutable-head groups; a replaced pending run is not a green verdict. Running
+// cancellation is derived independently from fleet_compile_cancellation_standing: the live
+// producer-absent standing yields NeverSupersedeRunning, so cancel-in-progress is literal false.
+// merge_group and heal revalidation stay immutable and separately keyed (mg-{sha},
+// heal-{expected_healed_sha}); other dispatch uses run_id.
+fn github_event_name_equals(event: String) -> Expression {
+  Equals {
+    left: ContextAccess { context: Github, path: ["event_name"] },
+    right: StringLiteral { value: event }
+  }
+}
+
+fn gha_format_prefix(prefix: String, arg: Expression) -> Expression {
+  FunctionCall {
+    function: Format,
+    args: [StringLiteral { value: concat(prefix, "{0}") }, arg]
+  }
+}
+
+fn github_sha_expr() -> Expression { ContextAccess { context: Github, path: ["sha"] } }
+fn github_ref_expr() -> Expression { ContextAccess { context: Github, path: ["ref"] } }
+fn github_run_id_expr() -> Expression { ContextAccess { context: Github, path: ["run_id"] } }
+fn github_pr_number_expr() -> Expression { ContextAccess { context: Github, path: ["event", "pull_request", "number"] } }
+fn github_dispatch_input_expr(name: String) -> Expression { ContextAccess { context: Github, path: ["event", "inputs", name] } }
+
+fn gha_and(left: Expression, right: Expression) -> Expression {
+  LogicalAnd { left: left, right: right }
+}
+
+fn gha_or(left: Expression, right: Expression) -> Expression {
+  LogicalOr { left: left, right: right }
+}
+
+type WitnessFloorGroupBranch
+  = ShaAfterEvent { event: String, prefix: String }
+  | NonemptyInputAfterEvent { event: String, input: String, prefix: String }
+  | PrNumberAfterEvent { event: String, prefix: String }
+  | RefAfterEvent { event: String }
+  | RunIdFallback { prefix: String }
+
+fn gha_not_equals(left: Expression, right: Expression) -> Expression {
+  NotEquals { left: left, right: right }
+}
+
+fn nonempty_input_after_event_expr(event: String, input: String, prefix: String) -> Expression {
+  gha_and(
+    left: github_event_name_equals(event: event),
+    right: gha_and(
+      left: gha_not_equals(left: github_dispatch_input_expr(name: input), right: StringLiteral { value: "" }),
+      right: gha_format_prefix(prefix: prefix, arg: github_dispatch_input_expr(name: input))
+    )
+  )
+}
+
+fn group_branch_expr(branch: WitnessFloorGroupBranch) -> Expression {
+  match branch {
+    ShaAfterEvent { event: e, prefix: p } =>
+      gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr()))
+    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
+      nonempty_input_after_event_expr(event: e, input: i, prefix: p)
+    PrNumberAfterEvent { event: e, prefix: p } =>
+      gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr()))
+    RefAfterEvent { event: e } =>
+      gha_and(left: github_event_name_equals(event: e), right: github_ref_expr())
+    RunIdFallback { prefix: p } =>
+      gha_format_prefix(prefix: p, arg: github_run_id_expr())
+  }
+}
+
+fn witness_floor_group_expression() -> Expression {
+  match list_head(xs: witness_floor_group_branches()) {
+    HeadAbsent => gha_format_prefix(prefix: "run-", arg: github_run_id_expr())
+    HeadFound { value: first } =>
+      fold_list(
+        xs: skip(xs: witness_floor_group_branches(), n: 1),
+        empty: group_branch_expr(branch: first),
+        cons: fn(acc, b) { gha_or(left: acc, right: group_branch_expr(branch: b)) }
+      )
+  }
+}
+
+fn witness_floor_concurrency_group() -> String {
+  concat("witness-floor-", interpolate(expression: witness_floor_group_expression()))
+}
+
+fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
+  [
+    ShaAfterEvent { event: github_event_name_merge_group, prefix: "mg-" },
+    NonemptyInputAfterEvent {
+      event: github_event_name_workflow_dispatch,
+      input: ci_heal_expected_healed_sha_input_name,
+      prefix: "heal-"
+    },
+    PrNumberAfterEvent { event: github_event_name_pull_request, prefix: "pr-" },
+    RefAfterEvent { event: github_event_name_push },
+    RunIdFallback { prefix: "run-" }
+  ]
+}
+
+type DispatchInputBinding {
+  name: String
+  value: String
+}
+
+type WitnessFloorGroupFixture {
+  event: String
+  sha: String
+  run_id: String
+  pull_request_number: String
+  github_ref: String
+  dispatch_inputs: List<DispatchInputBinding>
+}
+
+fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> String {
+  fold_list(
+    xs: bindings,
+    empty: "",
+    cons: fn(acc, b) {
+      if acc != "" {
+        acc
+      } else {
+        if b.name == name {
+          b.value
+        } else {
+          ""
+        }
+      }
+    }
+  )
+}
+
+fn fixture_github_path(fx: WitnessFloorGroupFixture, path: List<String>) -> GithubPathResolution {
+  let key = github_path_key(path: path)
+  if key == "event_name" {
+    GithubPathValue { value: fx.event }
+  } else {
+    if key == "sha" {
+      GithubPathValue { value: fx.sha }
+    } else {
+      if key == "ref" {
+        GithubPathValue { value: fx.github_ref }
+      } else {
+        if key == "run_id" {
+          GithubPathValue { value: fx.run_id }
+        } else {
+          if key == "event.pull_request.number" {
+            GithubPathValue { value: fx.pull_request_number }
+          } else {
+            if starts_with(s: key, prefix: "event.inputs.") {
+              GithubPathValue {
+                value: dispatch_input_value(
+                  bindings: fx.dispatch_inputs,
+                  name: substring(s: key, start: string_length(s: "event.inputs."), end: string_length(s: key))
+                )
+              }
+            } else {
+              GithubPathUnmodeled
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn evaluate_against_group_fixture(expression: Expression, fx: WitnessFloorGroupFixture) -> ExpressionEvaluation {
+  evaluate_expression(expression: expression, github_path: fn(path) { fixture_github_path(fx: fx, path: path) })
+}
+
+type WitnessFloorGroupResolution
+  = WitnessFloorGroupResolved { group: String }
+  | WitnessFloorGroupRefused { cause: ExpressionEvaluationRefusal }
+
+fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> WitnessFloorGroupResolution {
+  match evaluate_against_group_fixture(expression: witness_floor_group_expression(), fx: fx) {
+    ExpressionValue { value: suffix } => WitnessFloorGroupResolved { group: concat("witness-floor-", suffix) }
+    ExpressionEvaluationRefused { cause: c } => WitnessFloorGroupRefused { cause: c }
+  }
+}
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
@@ -269,9 +447,11 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // reseeded, still medians 22.8 minutes against srv4's 11.8.
 //
 // THE COST OF THIS ROW IS N CONCURRENT RUNS PER PULL REQUEST where one used to survive. That is
-// the same trade the concurrency group above already accepts for main, for the same reason: stale
-// work completing is expensive, and capacity silently disappearing is not recoverable. Cancelling
-// is only cheaper than not cancelling while the permits come back.
+// not the grouping trade: witness_floor_group_branches keys push by github.ref
+// (RefAfterEvent), so GitHub may replace PENDING members of witness-floor-refs/heads/main —
+// declared as gunbc.rung_drop.main_per_commit_floor_verdict — while this running-cancel row stays
+// false for every event, including those main runs. Cancelling a RUNNING job is only cheaper than
+// letting it finish while the permits come back; replacing a pending one never held a permit.
 //
 // DISSOLVE-ON, and it is the CAPABILITY rather than any artifact: no client of the required floor
 // holds a host-persistent cooperative permit -- either the ctrl host FIFO is deleted and compile
@@ -333,7 +513,8 @@ fn running_supersession_for_fleet_standing(
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
-    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+    FleetCancellationSafe { hosts: _ } =>
+      SupersedeRunningForEvent { event: github_event_name_pull_request }
   }
 }
 
@@ -2505,6 +2686,12 @@ fn required_lanes_aggregate_job() -> Job {
 // from exactly these, so a lane added here is a lane in the emitted yaml, and a reader folding
 // `witness_floor_lane_jobs` covers every witness-bearing lane by construction rather than by a
 // hand-listed roster that could fall behind.
+data witness_floor_pull_request_activity_types: List<PullRequestActivity> = [
+  Opened,
+  Synchronize,
+  Reopened,
+]
+
 fn witness_floor_triggers() -> List<WorkflowTrigger> {
   [
     WorkflowDispatch { inputs: [ci_heal_expected_healed_sha_input] },
@@ -2512,7 +2699,7 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened]
+      types: witness_floor_pull_request_activity_types
     }
   ]
 }
@@ -2596,7 +2783,7 @@ data witness_floor_workflow: Workflow = {
   concurrency: Present {
     value: concurrency_of_policy(
       policy: witness_floor_concurrency_policy,
-      group: witness_floor_concurrency_group)
+      group: witness_floor_concurrency_group())
   },
   env: Present {
     value: [

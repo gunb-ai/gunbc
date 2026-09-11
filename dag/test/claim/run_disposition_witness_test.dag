@@ -22,6 +22,7 @@ import gunbc.compile_permit_scope {
   BorrowerHeldCooperativeHostFifo,
   InvocationLocalCargo,
   fleet_cancellation_standing,
+  producer_absent_standing,
   fleet_compile_cancellation_standing,
   FleetCancellationFoldAcc,
   CapacityPreservedByServerReclamation,
@@ -31,12 +32,15 @@ import gunbc.compile_permit_scope {
 }
 import gunbc.witness_floor_workflow {
   running_supersession_for_fleet_standing,
+  cancel_in_progress_of_policy,
   WitnessFloorConcurrencyPolicy,
   PendingReplacementPolicy,
   ReplaceExistingPending,
   RetainPendingQueue,
   RunningSupersessionPolicy,
+  NeverSupersedeRunning,
   SupersedeRunningForEvent,
+  supersession_event_expression,
   witness_floor_concurrency_policy,
   witness_floor_running_supersession_policy,
   concurrency_of_policy
@@ -141,6 +145,16 @@ test fn w_live_policy_makes_a_cancelled_pr_run_an_eviction() -> Bool {
   let d = classify_run_with_provenance(
     provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
     record: pr,
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  )
+  disposition_name(disposition: d) == disposition_externally_cancelled_name
+}
+
+test fn w_live_policy_does_not_supersede_a_cancelled_merge_group_run() -> Bool {
+  let mg = cancelled_run(event: "merge_group")
+  let d = classify_run_with_provenance(
+    provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
+    record: mg,
     replacement: ReplacementObserved { lag_seconds: 27 }
   )
   disposition_name(disposition: d) == disposition_externally_cancelled_name
@@ -603,6 +617,50 @@ fn safe_host(name: String) -> HostCompileCancellationStanding {
   }
 }
 
+fn observed_safe_fleet() -> FleetCompileCancellationStanding {
+  fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
+    safe_host(name: "srv1"),
+    safe_host(name: "srv2"),
+  ])
+}
+
+test fn w_running_cancel_four_cell_through_the_producer() -> Bool {
+  let unproven = running_supersession_for_fleet_standing(standing: producer_absent_standing(eligible_hosts: two_host_fleet()))
+  let safe = running_supersession_for_fleet_standing(standing: observed_safe_fleet())
+  let unproven_is_never = match unproven {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+  let safe_is_pr = match safe {
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    NeverSupersedeRunning => false
+  }
+  let unproven_cancel = match cancel_in_progress_of_policy(policy: unproven) {
+    CancelInProgressBool { value: b } => b == false
+    CancelInProgressExpression { expression: _ } => false
+  }
+  let safe_cancel = match cancel_in_progress_of_policy(policy: safe) {
+    CancelInProgressExpression { expression: e } => e == supersession_event_expression(event: "pull_request")
+    CancelInProgressBool { value: _ } => false
+  }
+  unproven_is_never
+    && safe_is_pr
+    && supersession_available_under(policy: unproven, event: "pull_request") == false
+    && supersession_available_under(policy: unproven, event: "merge_group") == false
+    && supersession_available_under(policy: safe, event: "pull_request") == true
+    && supersession_available_under(policy: safe, event: "push") == false
+    && supersession_available_under(policy: safe, event: "merge_group") == false
+    && unproven_cancel
+    && safe_cancel
+}
+
+test fn w_emitted_cancel_in_progress_is_the_live_unproven_projection() -> Bool {
+  match cancel_in_progress_of_policy(policy: witness_floor_running_supersession_policy) {
+    CancelInProgressBool { value: b } => b == false
+    CancelInProgressExpression { expression: _ } => false
+  }
+}
+
 // THE CONTAINMENT IS A FUNCTION OF ITS OWN REASON, AND OF WHAT THE HOSTS ACTUALLY RUN.
 //
 // Authored as a literal, NeverSupersedeRunning outlives the condition that required it. Derived from
@@ -679,8 +737,8 @@ test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
       safe_host(name: "srv2"),
     ]),
   ) {
-    SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
   }
 }
 
@@ -751,8 +809,8 @@ test fn w_a_server_reclaiming_fleet_restores_supersession() -> Bool {
   match running_supersession_for_fleet_standing(
     standing: finalize_fleet_standing(acc: reclaiming_fleet_acc(), eligible_hosts: two_host_fleet()),
   ) {
-    SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
   }
 }
 
