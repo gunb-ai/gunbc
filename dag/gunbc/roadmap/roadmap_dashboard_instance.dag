@@ -1211,17 +1211,21 @@ fn dashboard_host_lookup_subjects_are_unique() -> Bool {
 // out rather than written twice. The public law below quantifies it over its own roster; a caller
 // holding an instance that is NOT in that roster -- a deployment declared in another repository --
 // asks the same question against the same judgment instead of coining a second disjointness rule.
-// Identity equality is the diagonal skip: a record is consistent with itself, and the safety
-// property is about distinct members, so this is correct whether or not the candidate is in others.
+//
+// NO IDENTITY SKIP HERE. A caller-chosen instance_id is not record identity: the public uniqueness
+// law only quantifies over the roster, so an outside deployment can spell "srv1-live" and, if the
+// skip were on that tag, be treated as "itself" against the production row while sitting on that
+// row's owned paths. HostDashboardInstance is not an equality-admissible record (it carries
+// function-bearing environment and capability members), so the skip cannot be `candidate == b`
+// either. The diagonal lives only in the roster law, which filters by instance_id among members
+// whose uniqueness is a separate conjunct. This fold always asks the owned-path judgment.
 fn dashboard_instance_is_disjoint_from_each(
   candidate: HostDashboardInstance,
   others: List<HostDashboardInstance>,
 ) -> Bool {
   all(
     others,
-    b =>
-      candidate.instance_id == b.instance_id
-        || dashboard_instances_have_disjoint_owned_paths(a: candidate, b: b),
+    b => dashboard_instances_have_disjoint_owned_paths(a: candidate, b: b),
   )
 }
 
@@ -1240,12 +1244,20 @@ fn dashboard_instance_is_disjoint_from_public_builtins(
 
 // THE DISJOINTNESS LAW OVER THE SET, not over the pairs a witness remembered. The pairwise
 // predicate is the judgment and dashboard_instance_is_disjoint_from_each is one candidate against
-// the set; this is the quantification over the roster. A new roster row is in the cross product the
-// moment it is declared, so a lab that overlaps production cannot sit green until someone writes a
-// second call.
+// the set; this is the quantification over the roster. The diagonal is THIS filter: instance_id
+// among members whose uniqueness is a separate law, not a skip inside the join an outside
+// caller uses. A new roster row is in the cross product the moment it is declared, so a lab
+// that overlaps production cannot sit green until someone writes a second call.
 fn dashboard_declared_instances_owned_paths_are_pairwise_consistent() -> Bool {
   let xs = public_builtin_dashboard_instances()
-  all(xs, a => dashboard_instance_is_disjoint_from_each(candidate: a, others: xs))
+  all(
+    xs,
+    a =>
+      dashboard_instance_is_disjoint_from_each(
+        candidate: a,
+        others: xs |> filter(b => b.instance_id != a.instance_id),
+      ),
+  )
 }
 
 fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {

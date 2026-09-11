@@ -2236,18 +2236,10 @@ fn dashboard_instance_ensure_roots_cli(instance_id: String) -> ProcessExit {
   }
 }
 
-fn macbook_local_dashboard_ensure_roots() -> DashboardApplyFold {
-  dashboard_instance_ensure_dispatch_roots(instance: macbook_local_dashboard_instance())
-}
-
 fn macbook_local_ensure_roots_cli() -> ProcessExit {
   dashboard_instance_ensure_roots_cli(
     instance_id: macbook_local_dashboard_instance().instance_id as String,
   )
-}
-
-fn srv2_deploy_dashboard_ensure_roots() -> DashboardApplyFold {
-  dashboard_instance_ensure_dispatch_roots(instance: srv2_deploy_dashboard_instance())
 }
 
 fn srv2_deploy_ensure_roots_cli() -> ProcessExit {

@@ -1081,3 +1081,43 @@ test fn an_outside_instance_on_a_public_root_is_refused() -> Bool {
     candidate: outside_instance_at(root: srv1_dashboard_lab_root),
   )
 }
+
+// THE HOLE THE TAG-SKIP OPENED. The witness above uses a distinct instance_id, so it stayed
+// green even while dashboard_instance_is_disjoint_from_each treated matching ids as the
+// diagonal. An outside deployment that spells srv1-live and occupies srv1-live's owned
+// footprint is the discriminating input: the only pair that overlaps is the pair the skip would
+// have excused. serve_function and listen_port differ so the candidate is not the public
+// constructor under another name.
+fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstance {
+  let live = srv1_live_dashboard_instance()
+  HostDashboardInstance {
+    instance_id: live.instance_id,
+    host_identity: live.host_identity,
+    provision_parent_root: live.provision_parent_root,
+    instance_root: live.instance_root,
+    local_origin_root: live.local_origin_root,
+    local_origin_publish_ref: live.local_origin_publish_ref,
+    repo_root: live.repo_root,
+    dispatch_base_ref: live.dispatch_base_ref,
+    dispatch_state_scope: live.dispatch_state_scope,
+    execution_environment: live.execution_environment,
+    provider_state: live.provider_state,
+    serve_binary: live.serve_binary,
+    serve_function: "outside_serve_handle" as NonEmptyStr,
+    listen_host: live.listen_host,
+    listen_port: 18099,
+    tmux_server: live.tmux_server,
+    actuation: live.actuation,
+    provision_transport: live.provision_transport,
+    source_seed: live.source_seed,
+    admitted_revision: live.admitted_revision,
+    toolchain: live.toolchain,
+    dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+  }
+}
+
+test fn an_outside_instance_claiming_a_public_id_on_that_footprint_is_refused() -> Bool {
+  !dashboard_instance_is_disjoint_from_public_builtins(
+    candidate: outside_instance_claiming_live_id_on_live_footprint(),
+  )
+}
