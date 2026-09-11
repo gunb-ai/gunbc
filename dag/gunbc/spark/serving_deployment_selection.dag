@@ -804,6 +804,10 @@ fn derived_candidates(stem: String, artifacts: List<ModelArtifact>, topologies: 
   flat_map(artifacts, art => candidates_for_artifact(stem: stem, art: art, topologies: topologies, profiles: profiles))
 }
 
+fn derived_candidates_for(stem: String, domain: ServingDeploymentChoiceDomain) -> List<DeploymentCandidate> {
+  derived_candidates(stem: stem, artifacts: domain.artifacts, topologies: domain.topologies, profiles: domain.profiles)
+}
+
 // THE SHARE OF EQUAL-CAPACITY REPLICAS LOST WHEN ONE REPLICA IS LOST -- not a physical blast radius,
 // which would need rank-to-host partitions and declared failure domains this module does not carry.
 fn replica_capacity_share_lost_percent(c: DeploymentCandidate) -> Nat {
@@ -1591,31 +1595,10 @@ data glm_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   parameters: serving_parameters_current,
 )
 
-fn glm_candidate(name: String, label: NonEmptyStr, art: ModelArtifact, t: TopologyShape) -> DeploymentCandidate {
-  deployment_candidate(
-    identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: name),
-    label: label,
-    artifact: art,
-    topology: t,
-  )
-}
-
-data glm_native_tp8_x1: DeploymentCandidate = glm_candidate(name: "glm_native_tp8_x1", label: "GLM native, one eight-rank replica" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
-data glm_native_tp4_x2: DeploymentCandidate = glm_candidate(name: "glm_native_tp4_x2", label: "GLM native, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
-data glm_native_tp2_x4: DeploymentCandidate = glm_candidate(name: "glm_native_tp2_x4", label: "GLM native, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
-data glm_native_tp1_x8: DeploymentCandidate = glm_candidate(name: "glm_native_tp1_x8", label: "GLM native, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
-data glm_2bit_tp8_x1: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp8_x1", label: "GLM 2.05-bpw, one eight-rank replica" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
-data glm_2bit_tp4_x2: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp4_x2", label: "GLM 2.05-bpw, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
-data glm_2bit_tp2_x4: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp2_x4", label: "GLM 2.05-bpw, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
-data glm_2bit_tp1_x8: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp1_x8", label: "GLM 2.05-bpw, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
-
 data glm_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_candidate_field"),
   domain: glm_domain,
-  candidates: [
-    glm_native_tp8_x1, glm_native_tp4_x2, glm_native_tp2_x4, glm_native_tp1_x8,
-    glm_2bit_tp8_x1, glm_2bit_tp4_x2, glm_2bit_tp2_x4, glm_2bit_tp1_x8,
-  ],
+  candidates: derived_candidates_for(stem: "glm", domain: glm_domain),
 )
 
 // ── WHAT CONSUMES THIS MODULE TODAY, STATED PLAINLY ───────────────────────────────────────────
@@ -1673,24 +1656,10 @@ data deepseek_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   parameters: serving_parameters_current,
 )
 
-fn deepseek_candidate(name: String, label: NonEmptyStr, t: TopologyShape) -> DeploymentCandidate {
-  deployment_candidate(
-    identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: name),
-    label: label,
-    artifact: artifact_deepseek_v4_flash_native,
-    topology: t,
-  )
-}
-
-data deepseek_tp8_x1: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp8_x1", label: "DeepSeek, one eight-rank replica" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
-data deepseek_tp4_x2: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp4_x2", label: "DeepSeek, two four-rank replicas (DEPLOYED TODAY)" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
-data deepseek_tp2_x4: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp2_x4", label: "DeepSeek, four two-rank replicas" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
-data deepseek_tp1_x8: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp1_x8", label: "DeepSeek, eight single-rank replicas" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
-
 data deepseek_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_candidate_field"),
   domain: deepseek_domain,
-  candidates: [deepseek_tp8_x1, deepseek_tp4_x2, deepseek_tp2_x4, deepseek_tp1_x8],
+  candidates: derived_candidates_for(stem: "deepseek", domain: deepseek_domain),
 )
 
 data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
@@ -1732,12 +1701,7 @@ data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = serving_deployment_do
 data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_candidate_field"),
   domain: deepseek_v4_1_domain,
-  candidates: derived_candidates(
-    stem: "deepseek_v4_1",
-    artifacts: [artifact_deepseek_v4_1_flash_native],
-    topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
-    profiles: v4_1_declared_profiles,
-  ),
+  candidates: derived_candidates_for(stem: "deepseek_v4_1", domain: deepseek_v4_1_domain),
 )
 
 data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = serving_decision_input(

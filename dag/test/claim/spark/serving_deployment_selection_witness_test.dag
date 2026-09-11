@@ -39,6 +39,7 @@ import gunbc.spark.serving_deployment_selection {
   deepseek_quality_requirement,
   KvFp4Layout, v4_1_runtime_supported_tp_widths_unestablished, deepseek_v4_1_selection_policy,
   deepseek_v4_1_quality_requirement,
+  glm_candidate_field, deepseek_candidate_field,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -485,6 +486,16 @@ test fn v4_1_profiles_do_not_inherit_v4_flash_window_or_kv() -> Bool {
 
 test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool {
   !declaration_ref_eq(a: deepseek_v4_1_selection_policy, b: deepseek_v4_1_quality_requirement.identity)
+}
+
+test fn glm_and_deepseek_fields_are_the_derived_covering_cartesian() -> Bool {
+  match establish_serving_candidate_field(field: glm_candidate_field) {
+    ServingFieldEstablished => count(glm_candidate_field.candidates) == 8
+    ServingFieldUnestablished { causes: _ } => false
+  } && match establish_serving_candidate_field(field: deepseek_candidate_field) {
+    ServingFieldEstablished => count(deepseek_candidate_field.candidates) == 4
+    ServingFieldUnestablished { causes: _ } => false
+  }
 }
 
 test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool {
