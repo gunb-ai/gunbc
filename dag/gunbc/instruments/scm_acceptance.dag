@@ -56,6 +56,7 @@ import tools.scm_acceptance_binary {
   ScmAcceptanceBinaryRetentionRefused,
   ScmAcceptanceBinaryNotRunnableHere,
   scm_acceptance_binary_still_holds,
+  release_scm_acceptance_binary,
   acquire_scm_acceptance_binary,
   scm_acceptance_binary_executable,
 }
@@ -946,7 +947,28 @@ fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) 
     ScmAcceptanceBinaryNotRunnableHere { detail: d } =>
       exit_failure(reason: concat("acceptance refused: ", d))
     ScmAcceptanceBinaryReady { binary: binary } =>
-      scm_acceptance_exit(outcome: scm_acceptance_population(binary: binary))
+      scm_acceptance_population_exit(
+        outcome: scm_acceptance_population(binary: binary),
+        released: release_scm_acceptance_binary(binary: binary),
+      )
+  }
+}
+
+// THE POPULATION'S VERDICT SURVIVES ITS CLEANUP, and a cleanup failure is only the verdict when
+// nothing else failed -- the same rule the per-scenario finalizer follows. Reporting "the artifact
+// directory could not be removed" in place of a real scenario failure would replace the answer with
+// an unrelated one; silently dropping it would leak a release binary with no signal.
+fn scm_acceptance_population_exit(outcome: ScmAcceptanceOutcome, released: Bool) -> ProcessExit {
+  match scm_acceptance_exit(outcome: outcome) {
+    ExitSuccess =>
+      if released {
+        ExitSuccess
+      } else {
+        exit_failure(
+          reason: "the acceptance population passed but its retained artifact directory could not be removed",
+        )
+      }
+    other => other
   }
 }
 

@@ -99,9 +99,28 @@ import std.types { Bool, String, FilePath }
 // SEALED, AND THE SEAL IS ONLY AS STRONG AS ITS ROUTES. There is exactly one producer below,
 // `acquire_scm_acceptance_binary`, and it takes NO arguments -- nothing a caller supplies can
 // influence which bytes end up in the carrier, so there is no argument to forge.
+// THE HOLD DIRECTORY IS PART OF THE CARRIER because the artifact must OUTLIVE its acquisition --
+// every scenario spends it -- so acquisition cannot clean up after itself on the success path the
+// way it does on every refusal path. An earlier revision cleaned only the refusals and therefore
+// LEAKED one attempt-owned directory, containing a release binary, per successful acquisition. The
+// lifetime belongs to whoever spends the artifact, so the carrier names the directory and the
+// aggregate releases it once the population is finished.
 type ScmAcceptanceBinary sole_constructor {
   executable: String,
-  digest: Sha512Digest
+  digest: Sha512Digest,
+  hold: String
+}
+
+fn scm_acceptance_binary_hold(binary: ScmAcceptanceBinary) -> String {
+  binary.hold
+}
+
+// RELEASING IS SEPARATE FROM SPENDING, and it answers whether it succeeded rather than swallowing a
+// failure: a leaked directory holding a release binary is worth reporting, and a cleanup that
+// reported its own success as the run's verdict would overwrite the answer the population produced.
+fn release_scm_acceptance_binary(binary: ScmAcceptanceBinary) -> Bool {
+  let cleaned = shell.Remove.RecursiveForce(path: binary.hold)
+  cleaned.success
 }
 
 fn scm_acceptance_binary_executable(binary: ScmAcceptanceBinary) -> String {
@@ -309,7 +328,11 @@ fn acquire_scm_acceptance_binary() -> ScmAcceptanceBinaryAcquisition {
                 ScmAcceptanceBinaryNotRunnableHere { detail: d }
               ArtifactRetained { retained: r } =>
                 ScmAcceptanceBinaryReady {
-                  binary: ScmAcceptanceBinary { executable: r.executable, digest: r.digest },
+                  binary: ScmAcceptanceBinary {
+                    executable: r.executable,
+                    digest: r.digest,
+                    hold: held,
+                  },
                 }
             }
           }
