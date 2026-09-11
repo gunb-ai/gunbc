@@ -12,8 +12,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // `match t { }` does not reach that red: the brace is taken as a record on the ident
 // scrutinee, so parse refuses before body-lowering. `match (t) { }` is the empty arm
-// list. `zero_arm_match_still_refuses_holds` is the ordinary-floor D discriminator
-// (review 63588): restored off floor_cost_debt censored_chunk_04 after #11032.
+// list. `zero_arm_match_still_refuses_holds` stays on floor_cost_debt
+// censored_chunk_04: post-#11032 restore BUDGET-REFUSED on required-floor job
+// 103370532596 / run 34631915615.
 
 fn normalize_outcome(src: String) -> String {
   body_lowering_normalize_outcome(src: src, file: ^single_arm_match_subject)

@@ -11,10 +11,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // record literal inside a fn body already accepted. The shells are now structure-preserved after
 // the child fold, same door as field_init.
 //
-// The two data-record claims stay off floor_cost_debt so they remain ordinary-floor
-// regression controls for the classifier widening (review 63356). They were enrolled
-// on censored_chunk_04 after D4's floor-of-record interrupt (review 63588) and
-// restored after #11032.
+// The two data-record claims are enrolled on floor_cost_debt censored_chunk_04
+// (review 63588). A post-#11032 ordinary-floor restore BUDGET-REFUSED on
+// required-floor job 103370532596 / run 34631915615. Cause F's sniff and
+// ChangedCostDebtVerdictOnly when this file is touched remain the §4b(4) path.
 
 fn normalize_outcome(src: String) -> String {
   body_lowering_normalize_outcome(src: src, file: ^data_initializer_fn_value_subject)
