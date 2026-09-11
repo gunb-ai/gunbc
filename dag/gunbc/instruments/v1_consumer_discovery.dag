@@ -1,0 +1,274 @@
+module tools.v1_consumer_discovery
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at }
+import v2.std.fn_index { atom_identities_in_node }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.node { Node, NodeFold, Symbol, fold_node }
+import gunbc.replacement_cut { Undecided }
+import gunbc.v1_consumer_census {
+  V1ConsumerRow, DiscoveryProducer,
+  V1LiteralSignature, v1_literal_signatures, v1cd_module_path_from,
+  discovery_producer_unobserved,
+  v1_row_key, v1cc_boundary, v1_consumer_population, consumer_population_rows, v1_consumers_undisposed
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE JOINED PRODUCER gunbc.v1_consumer_census v1_consumer_census_next_rung_trigger names, built
+// for the one medium where the join is DERIVABLE and refusing to pretend for the rest. That
+// census's first named hole is that no producer classifies the .dag argv rows: a v1 binary named in
+// a string position inside a .dag declaration is a real consumer relation, and the seven hand
+// sweeps that produced the roster read FILES, so the population was a list of what an author
+// remembered to look at.
+//
+// WHY THE .dag MEDIUM IS THE ONE A SUBSTRATE INSTRUMENT CAN CLOSE, and why the others being open is
+// a scope rather than a gap this module hides. The census keys a relation at consumer x
+// consumed-authority DECLARATION identity. For .dag source both halves are derivable: v2.std.decl_index
+// decl_facts carries every declaration in the named roots WITH ITS NODE, so the consumer half is the
+// declaration the literal occurs in -- not the file it was grepped out of -- and the literal itself
+// names the authority through the census's signature table. For Rust, Cargo manifests, committed
+// mirrors and serialized artifact paths there is no declaration namespace a text hit can be
+// attributed to at that grain, so a hit there cannot become a keyed row without an author inventing
+// the consumer half. That is the fabricated-reference move the census already refuses through
+// V1UncitableConsumer, and this module does not reopen it: it produces .dag rows and nothing else.
+//
+// IT MINTS NO SUBJECT, MEDIUM, DISPOSITION OR COMPLETENESS VOCABULARY -- every one of those is
+// gunbc.v1_consumer_census's or gunbc.replacement_cut's and is imported, and the signature table it
+// folds is homed in the census beside the DeclarationRef declarations it resolves to. The key a
+// discovered row carries is v1_row_key's, CALLED rather than re-spelled, so a discovered key and a
+// rostered key cannot disagree about their shape.
+//
+// EVERY DISCOVERED ROW IS Undecided BY CONSTRUCTION, and that is the design rather than a default
+// this module was too lazy to improve. Discovery establishes that a relation EXISTS; what should
+// happen to it is a judgement against the terminal design, which is the census's authored fact.
+// Undecided is what admit_replacement_cut_plan refuses as UndispositionedConsumer, so a newly
+// discovered relation BLOCKS the cutover until someone dispositions it -- the direction a census
+// must fail in.
+
+// THE PRODUCER'S PIN IS UNOBSERVED BY CONSTRUCTION, and that is a fact about this instrument
+// rather than a shortcut taken because the value was inconvenient. Its subject is not a fixed
+// revision: it walks whatever tree the caller stands in, so the honest pin is the one that says
+// which reading was not made. The rows it produces are Undecided and carry no judgement, so nothing
+// downstream depends on pinning them; the census's AUTHORED rows keep observed pins, because a
+// judgement really was made against a tree somebody read.
+
+fn v1cd_producer() -> DiscoveryProducer {
+  discovery_producer_unobserved(
+    instrument: "tools.v1_consumer_discovery -- whole-atom join from v2.std.decl_index decl_facts declaration nodes to the v1 authority each matched literal names",
+    command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/v1_consumer_discovery.dag --function v1_discovery_gate",
+    basis: "the fold reads the live corpus under the caller's source roots, so its subject is whatever tree the invocation stands on rather than a revision this declaration could name. A pinned-looking value here would be an observation nobody made",
+  )
+}
+
+fn v1cd_consumer_ref(fact: DeclFact) -> DeclarationRef {
+  decl_ref(
+    module_path: v1cd_module_path_from(
+      qualified_name: fact.qualified_name,
+      name: fact.name,
+      rel_path: fact.rel_path,
+    ),
+    decl_name: fact.name,
+  )
+}
+
+fn v1cd_row(fact: DeclFact, sig: V1LiteralSignature, producer: DiscoveryProducer) -> V1ConsumerRow {
+  V1ConsumerRow {
+    boundary: v1cc_boundary(
+      consumer: v1cd_consumer_ref(fact: fact),
+      authority: sig.authority,
+      disposition: Undecided,
+    ),
+    medium: sig.medium,
+    subject: sig.subject,
+    discovered_by: producer,
+  }
+}
+
+data v1cd_empty_rows: List<V1ConsumerRow> = []
+
+fn v1cd_key_present(xs: List<V1ConsumerRow>, key: String) -> Bool {
+  xs |> any(x => v1_row_key(r: x) == key)
+}
+
+fn v1cd_push_unique(xs: List<V1ConsumerRow>, item: V1ConsumerRow) -> List<V1ConsumerRow> {
+  if v1cd_key_present(xs: xs, key: v1_row_key(r: item)) {
+    xs
+  } else {
+    list_snoc_item(xs: xs, item: item)
+  }
+}
+
+fn v1cd_merge_rows(left: List<V1ConsumerRow>, right: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
+  fold_list(xs: right, empty: left, cons: fn(acc, row) { v1cd_push_unique(xs: acc, item: row) })
+}
+
+fn v1cd_rows_for_lexeme(
+  fact: DeclFact,
+  text: String,
+  producer: DiscoveryProducer,
+  acc: List<V1ConsumerRow>
+) -> List<V1ConsumerRow> {
+  fold_list(xs: v1_literal_signatures(), empty: acc, cons: fn(inner, sig) {
+    if text == sig.lexeme {
+      v1cd_push_unique(xs: inner, item: v1cd_row(fact: fact, sig: sig, producer: producer))
+    } else {
+      inner
+    }
+  })
+}
+
+fn v1cd_rows_at_node(
+  node: Node,
+  fact: DeclFact,
+  producer: DiscoveryProducer,
+  acc: List<V1ConsumerRow>
+) -> List<V1ConsumerRow> {
+  fold_list(xs: atom_identities_in_node(node: node), empty: acc, cons: fn(inner, sym) {
+    v1cd_rows_for_lexeme(fact: fact, text: symbol_lexeme(sym: sym), producer: producer, acc: inner)
+  })
+}
+
+// ONE LINEAR PASS OVER THE DECLARATION TREE, not a materialized subtree list. v2.std.node
+// node_subtree_nodes would answer the same population by concatenating a list at every node, which
+// is the copied-accumulator cost shape DESIGN section 6 rules is always fixed regardless of the
+// realized n -- and n here is every declaration node in the corpus. atom_identities_in_node reads
+// the atoms among a node's immediate children, so visiting every node covers every atom; the
+// overlap is a repeat, and v1cd_push_unique already keys on the row identity.
+fn v1cd_rows_in_fact(fact: DeclFact, producer: DiscoveryProducer) -> List<V1ConsumerRow> {
+  fold_node(
+    n: fact.node,
+    algebra: NodeFold {
+      init: fn(self) { v1cd_rows_at_node(node: self, fact: fact, producer: producer, acc: v1cd_empty_rows) },
+      step: fn(acc, _edge, sub) { v1cd_merge_rows(left: acc, right: sub) }
+    }
+  )
+}
+
+// THE FOLD OVER THE UNIVERSE. The universe is the declarations decl_facts answers for the supplied
+// roots -- independently discovered and closed in the sense DESIGN section 5 requires of an oracle:
+// this module does not choose which declarations exist, and a declaration authored tomorrow enters
+// the population without anyone editing a roster.
+
+// THE INSTRUMENT DOES NOT COUNT ITS OWN TABLE. The signature rows are literals naming v1 binaries,
+// so the first run reported gunbc.v1_consumer_census v1_literal_signatures as a five-fold consumer
+// of the subjects it exists to describe. That is a real self-observation defect and not a rounding
+// error: a census that discovers itself reports a dependency that deleting v1 would not break, and
+// every reader would then have to know to subtract it. The exclusion is at DECLARATION identity --
+// the one declaration whose atoms ARE the table -- and never a filter on the module, because the
+// census's other declarations name v1 authorities for real reasons and must keep being found.
+// extdeps.filesystem.filesystem_io filesystem_read_outcome_adoption_standing carries the same
+// carve-out for the same reason: an instrument may not count its own prose.
+
+data v1cd_self_excluded_qualified_name: String = "gunbc.v1_consumer_census.v1_literal_signatures"
+
+fn v1cd_fact_is_the_signature_table(fact: DeclFact) -> Bool {
+  fact.qualified_name == v1cd_self_excluded_qualified_name
+}
+
+// THE FOLD TAKES ITS FACTS AS AN ARGUMENT, and that is what makes it testable at ordinary cost
+// rather than only at whole-corpus cost. Over the live corpus the population is every declaration
+// decl_facts answers -- independently discovered and closed in the sense DESIGN section 5 requires
+// of an oracle, since this module does not choose which declarations exist. Over a KEYED read it is
+// one real declaration node, which is the same fold on the same shape of input and is what the
+// per-PR witness executes. The two differ in their subject, never in their mechanism, so a defect
+// in the fold reddens the cheap arm as surely as the expensive one.
+fn v1_discovered_rows_over(facts: List<DeclFact>) -> List<V1ConsumerRow> {
+  let producer = v1cd_producer()
+  fold_list(xs: facts, empty: v1cd_empty_rows, cons: fn(acc, fact) {
+    if v1cd_fact_is_the_signature_table(fact: fact) {
+      acc
+    } else {
+      v1cd_merge_rows(left: acc, right: v1cd_rows_in_fact(fact: fact, producer: producer))
+    }
+  })
+}
+
+fn v1_discovered_rows_for(pool_roots: List<String>) -> List<V1ConsumerRow> {
+  v1_discovered_rows_over(facts: decl_facts(pool_roots: pool_roots))
+}
+
+// THE KEYED ARM. decl_facts_at filters host-side, before any of it becomes interpreter values, so
+// asking for one declaration by name costs the index the caller's resolve already built rather than
+// a walk over the corpus. This is the entry a witness uses to execute the fold against a REAL
+// declaration node -- not a fabricated DeclFact, which could not be built without inventing a Node
+// and would test the assertion rather than the producer.
+fn v1_discovery_rows_at_name(qualified_name: String) -> List<V1ConsumerRow> {
+  v1_discovered_rows_over(facts: decl_facts_at(pool_roots: v1cd_pool_roots, qualified_name: qualified_name))
+}
+
+fn v1_discovery_keys_at_name(qualified_name: String) -> List<String> {
+  v1_discovery_rows_at_name(qualified_name: qualified_name) |> map(r => v1_row_key(r: r))
+}
+
+data v1cd_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn v1_discovery_rows() -> List<V1ConsumerRow> {
+  v1_discovered_rows_for(pool_roots: v1cd_pool_roots)
+}
+
+fn v1_discovery_keys() -> List<String> {
+  v1_discovery_rows() |> map(r => v1_row_key(r: r))
+}
+
+// THE JOIN, AND IT LIVES HERE RATHER THAN IN THE CENSUS ON PURPOSE. v1_consumers_undisposed takes
+// the discovered population as a PARAMETER, because a census that supplies its own denominator
+// asserts completeness by writing it down -- the change-detector shape DESIGN section 5 names,
+// where automating the literal collapses the assertion to measure() == measure(). This module is
+// the outside supplier that refusal was waiting for, so the join happens at the one place holding
+// both halves and neither half can edit the other.
+//
+// A NON-EMPTY ANSWER IS THE FINDING, not a failure of the instrument: it is the list of .dag
+// declarations that reach a v1 authority and carry no disposition in the roster. Each is a row
+// somebody has to write, and until they do the cutover is refused by construction.
+
+fn v1_discovery_undisposed() -> List<String> {
+  v1_consumers_undisposed(discovered: v1_discovery_keys(), rows: consumer_population_rows(p: v1_consumer_population()))
+}
+
+// WHY THIS GATE IS NOT AN ENROLLED WITNESS, and the reason is MEASURED rather than assumed. It WAS
+// enrolled -- four witnesses in the long home over the whole-corpus fold -- and the required floor
+// answered interrupted_before_verdict on every one of them. That is the floor stating that this
+// SUBJECT exceeds what a merge-path claim may cost, and it is a fact about the subject rather than
+// about the fold: the same fold over one declaration, fetched by name through
+// v1_discovery_rows_at_name, runs inside the ordinary per-PR budget and IS enrolled, in
+// dag/test/claim/self_host_v1_consumer_census_witness_test.dag. So the mechanism has an executed
+// arm and the whole-corpus JOIN does not, which is an honest split rather than a silence: what is
+// unenrolled is one specific claim -- that the corpus contains no undisposed .dag relation today --
+// and it is available on demand at the command v1cd_producer carries.
+//
+// WHAT WOULD RETIRE THAT GAP is a capability rather than an artifact: a whole-corpus declaration
+// walk whose cost the floor admits, which is what the long home's storage agreement exists to
+// grant and is not this lane's decision to take.
+//
+// ITS RED IS AUTHORABLE AND HAS BEEN AUTHORED, which is the question DESIGN section 4b says to ask
+// of a check before writing it: the forbidden state is an ordinary .dag declaration naming a v1
+// binary with no row beside it, expressible in the accepted corpus, and the refusal fires on the
+// real path. Re-derive both arms rather than trusting a sentence: run the command v1cd_producer
+// carries, then delete one row from gunbc.v1_consumer_census v1_dag_argv_consumers and run it again.
+//
+// THE RUNNABLE ENTRY REFUSES rather than reporting. A run that found undisposed relations has found
+// exactly the thing that blocks the cutover, so answering ExitSuccess with a list printed beside it
+// would be a green run over a red fact -- the shape DESIGN section 5 forbids in the arm it forbids
+// it in. The refusal carries the count and the keys, so a reader gets the finding from the exit.
+fn v1_discovery_gate() -> ProcessExit {
+  let undisposed = v1_discovery_undisposed()
+  if count(undisposed) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "V1ConsumerRelationUndisposed: ",
+      concat(
+        to_string(count(undisposed)),
+        concat(
+          " .dag declaration(s) reach a v1 authority with no disposition in gunbc.v1_consumer_census. Each is a row somebody has to write before the cutover can be admitted: ",
+          join(undisposed, "; ")
+        )
+      )
+    ))
+  }
+}
