@@ -7,10 +7,12 @@ import std.content_hash { serialize_content_hash }
 import extdeps.exec.command { argv_words }
 import extdeps.git { git_status_porcelain_command }
 import extdeps.docker.cli { docker_build_spec_command }
+import extdeps.gpu.types { GpuCapabilityLabelOk, GpuCapabilityLabelRejected }
 import extdeps.vllm.source_build {
   vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
   vllm_recipe_targeting, vllm_cuda_arch_supported,
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
+  vllm_torch_cuda_arch_entry,
   vllm_07b75534_registry_maps_deepseek_v4_1, vllm_07b75534_registry_answers_for,
   vllm_clone_url,
 }
@@ -74,25 +76,43 @@ test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parall
     && (fleet.flashinfer_version as String) == (upstream.flashinfer_version as String)
     && (fleet.build_target as String) == (upstream.build_target as String)
     && vllm_torch_cuda_arch_list_wire(archs: fleet.torch_cuda_arch_list) != vllm_torch_cuda_arch_list_wire(archs: upstream.torch_cuda_arch_list)
-    && vllm_torch_cuda_arch_list_targets(archs: fleet.torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
+    && (match vllm_torch_cuda_arch_entry(cap: gb10_observed_compute_capability) {
+          GpuCapabilityLabelRejected { reason: _ } => false
+          GpuCapabilityLabelOk { label: observed } =>
+            vllm_torch_cuda_arch_list_targets(archs: fleet.torch_cuda_arch_list, arch: observed as NonEmptyStr)
+        })
 }
 
 // THE REASON A BUILD IS NEEDED AT ALL, ASSERTED RATHER THAN ASSUMED: neither upstream recipe targets
 // 12.1, so no image built from either can carry sm_121 kernels, and 12.1 is nonetheless an
 // architecture upstream's own build system accepts.
-// THE SUBJECT ARCHITECTURE IS PINNED HERE, and the literal is grounded rather than copied from the
-// declaration it checks: GB10 reports compute capability (12, 1) from torch.cuda.get_device_capability
-// inside every container probed on spark-a3ee, and this lane's own probe re-derives it on every run
-// (it prints COMPUTE_CAPABILITY before it asks anything else), so a build targeting anything else is
-// building for hardware the fleet does not have. 🟡 dissolve-on: replaced by a join to
-// gunbc.spark.serving_runtime_capability_probe gb10_observed_compute_capability when #11016 lands,
-// which is the declared home for that measurement.
+// THE SUBJECT ARCHITECTURE IS NOT SPELLED HERE ANY MORE, AND THAT IS THE WHOLE POINT OF THE JOIN. The
+// 🟡 that stood here deferred this to #11016 landing; it has landed, in this branch, and this file
+// already imports the measurement it named. So the arch every clause asks about is RENDERED from
+// gunbc.spark.serving_runtime_capability_probe gb10_observed_compute_capability -- what
+// torch.cuda.get_device_capability reported inside every container probed on spark-a3ee -- through
+// upstream's own spelling of a TORCH_CUDA_ARCH_LIST entry.
+//
+// WHICH MAKES THE RECIPE'S LITERAL CHECKED RATHER THAN COMPARED TO ITSELF. v41_gb10_torch_cuda_arch_list
+// stays a literal deliberately: what a build is TOLD to target is a policy choice, not a measurement,
+// and a recipe that derived its target from whatever device was last seen would silently re-target on
+// the next reading. What this witness asserts is that the policy and the observation agree -- a build
+// aimed at hardware the fleet does not have goes red, and it can no longer go green by an author
+// editing one string in two places.
+//
+// THE VENDOR ARM REFUSES RATHER THAN DEFAULTING. A capability from a vendor whose toolchain has no
+// TORCH_CUDA_ARCH_LIST fails this witness instead of rendering a number the compiler would not
+// understand.
 test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> Bool {
-  vllm_torch_cuda_arch_list_targets(archs: v41_gb10_torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
-    && !vllm_torch_cuda_arch_list_targets(archs: vllm_07b75534_default_recipe.torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
-    && !vllm_torch_cuda_arch_list_targets(archs: vllm_07b75534_aarch64_release_recipe.torch_cuda_arch_list, arch: "12.1" as NonEmptyStr)
-    && vllm_cuda_arch_supported(arch: "12.1" as NonEmptyStr)
-    && vllm_recipe_arch_is_buildable(r: v41_gb10_recipe())
+  match vllm_torch_cuda_arch_entry(cap: gb10_observed_compute_capability) {
+    GpuCapabilityLabelRejected { reason: _ } => false
+    GpuCapabilityLabelOk { label: observed } =>
+      vllm_torch_cuda_arch_list_targets(archs: v41_gb10_torch_cuda_arch_list, arch: observed as NonEmptyStr)
+        && !vllm_torch_cuda_arch_list_targets(archs: vllm_07b75534_default_recipe.torch_cuda_arch_list, arch: observed as NonEmptyStr)
+        && !vllm_torch_cuda_arch_list_targets(archs: vllm_07b75534_aarch64_release_recipe.torch_cuda_arch_list, arch: observed as NonEmptyStr)
+        && vllm_cuda_arch_supported(arch: observed as NonEmptyStr)
+        && vllm_recipe_arch_is_buildable(r: v41_gb10_recipe())
+  }
 }
 
 // THE BUILD KEY IS A FUNCTION OF THE INPUTS AND THE TAG IS A FUNCTION OF THE KEY. The discriminating

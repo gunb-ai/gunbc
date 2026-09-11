@@ -5,6 +5,11 @@ import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import extdeps.gpu.types {
+  GpuComputeCapability, GpuCapabilityLabelOutcome, GpuCapabilityLabelOk, GpuCapabilityLabelRejected,
+  UnsubstantiatedGpuCapabilityLabel,
+}
+import extdeps.vendor.nvidia { nvidia }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -80,6 +85,24 @@ fn vllm_torch_cuda_arch_list_wire(archs: List<NonEmptyStr>) -> String {
 
 fn vllm_torch_cuda_arch_list_targets(archs: List<NonEmptyStr>, arch: NonEmptyStr) -> Bool {
   fold(archs, init: false, f: (acc, a) => if acc { true } else { a as String == arch as String })
+}
+
+// AND HOW AN OBSERVED DEVICE IS SPELLED AS ONE OF THOSE ENTRIES, so a caller with a compute
+// capability in hand never has to write the string. TORCH_CUDA_ARCH_LIST takes `major.minor`, which
+// is a different rendering of the same fact extdeps.gpu.types already renders as `sm_major_minor`;
+// this is that toolchain's spelling, not a second notion of what a capability is.
+//
+// IT REUSES THE LABEL OUTCOME RATHER THAN MINTING A SECOND ONE. The question is the same question --
+// render this capability in some toolchain's vocabulary, or refuse because that toolchain has no
+// vocabulary for this vendor -- and TORCH_CUDA_ARCH_LIST is CUDA's list: an AMD capability has no
+// entry in it at all, and a fallback spelling would put a number in a build argument that means
+// nothing to the compiler reading it.
+fn vllm_torch_cuda_arch_entry(cap: GpuComputeCapability) -> GpuCapabilityLabelOutcome {
+  if cap.vendor == nvidia {
+    GpuCapabilityLabelOk { label: concat(to_string(cap.major), concat(".", to_string(cap.minor))) }
+  } else {
+    GpuCapabilityLabelRejected { reason: UnsubstantiatedGpuCapabilityLabel { vendor: cap.vendor } }
+  }
 }
 
 // THE DEFAULTS, from docker/versions.json (itself generated from the Dockerfile ARGs) and
