@@ -160,10 +160,15 @@ fn item_superseded_by(item: RoadmapItem) -> String {
 
 // node_title, item_description and item_exit_criterion fold RoadmapItem, so they live with
 // RoadmapItem. node_title used to live in gunbc.roadmap_spawner, which is a consumer; it moved here
-// when gunbc.roadmap_sizing needed the same fold to build a SizingSubject, because two folds of one
-// coproduct answering the same question is the section 3 fork. item_exit_criterion is Optional
-// rather than an empty String: a line kind that declares no statement of done genuinely declares
-// none, and "" would be a subject the deriver could not distinguish from an authored blank.
+// when gunbc.roadmap_model node_sizing_subject needed the same fold to project a node into a
+// gunbc.roadmap_sizing SizingSubject, because two folds of one coproduct answering the same
+// question is the section 3 fork. The sizing authority itself imports nothing from the roadmap --
+// its subject is a task -- so the projection, and this fold's second caller, live on the roadmap
+// side.
+//
+// item_exit_criterion is Optional rather than an empty String: a line kind that declares no
+// statement of done genuinely declares none, and "" would be a subject the deriver could not
+// distinguish from an authored blank.
 fn node_title(item: RoadmapItem) -> String {
   match item {
     DerivableLine { prs: _, title, description: _ } => title

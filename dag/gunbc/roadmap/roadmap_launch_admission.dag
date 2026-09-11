@@ -47,10 +47,10 @@ import extdeps.languages.json.parse {
 // node, an unobservable session set, the three non-running liveness arms, and the cause/mode arm.
 // `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS one with no dispatch
 // binding, so it is one fact (LaunchDispatchBindingMissing) with SchedulingUnplanned as its
-// presentation. The arm was named LaunchDispatchBindingMissing and its wire word was size_missing until sizing
-// was unbundled from the binding; it never checked a size, and keeping the old spelling once size
-// left the row would have been a section 3 meaning fork -- the same name for a materially
-// different fact.
+// presentation. The arm was named LaunchSizeMissing and its wire word was size_missing until sizing
+// was unbundled from the binding; it never checked a size -- it checked whether the row carries a
+// repository and an acceptance route -- and keeping that spelling once size left the row would
+// have been a section 3 meaning fork, the same name for a materially different fact.
 
 type LaunchCause
   = Operator
