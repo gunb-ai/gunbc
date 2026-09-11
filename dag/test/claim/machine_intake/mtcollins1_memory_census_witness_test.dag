@@ -16,7 +16,15 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation {
   SlotPopulated,
   MtCollins1ConsumptionFrontier,
   MtCollins1MediaRedirectionSample,
+  MtCollins1ConnectorIdentificationBasis,
   mtcollins1_acquisition_standing,
+  mtcollins1_census_observed_at,
+  mtcollins1_connector_identification_basis,
+  mtcollins1_edac_clean_at_capture,
+  mtcollins1_edac_uptime_at_capture_seconds,
+  mtcollins1_host_capture_attempt_label_defect,
+  mtcollins1_host_capture_observed_at,
+  mtcollins1_media_attach_observed_at,
   mtcollins1_consumption_frontier,
   mtcollins1_media_redirection_samples,
   mtcollins1_edac_topology,
@@ -244,7 +252,69 @@ fn frontier_row_is_complete(f: MtCollins1ConsumptionFrontier) -> Bool {
   !(f.awaited_consumer == "") && !(f.trigger_capability == "") && !(f.declaration.decl_name == "")
 }
 
+// NO ROW-COUNT LITERAL HERE, and the omission is deliberate rather than lazy. An earlier version
+// asserted the list had exactly four entries; the frontier then grew to fourteen and the assertion
+// failed for no reason except that a number had gone stale. DESIGN section 5 names that shape: a
+// merge-blocking test comparing a live population to a literal measured from the same tree is a
+// change detector, not a check -- automating the literal collapses it to measure() == measure().
+// What is actually load-bearing is that the list is non-empty and that EVERY row earns its
+// admission, which is a property of the rows rather than of how many there are.
 test fn the_declared_frontier_names_a_consumer_and_a_trigger() -> Bool {
-  list_length(items: mtcollins1_consumption_frontier) == 4
+  list_length(items: mtcollins1_consumption_frontier) > 0
     && fold(mtcollins1_consumption_frontier, init: true, f: fn(acc, r) { acc && frontier_row_is_complete(f: r) })
+}
+
+
+// ── the rows a frontier would have been the lazy answer for ────────────────────────────────────
+
+// REVIEW 63909 FOUND ELEVEN DANGLING ROWS and it was right. Most acquired a declared frontier,
+// because their real consumer is an effect this pure witness cannot perform. THESE THREE DID NOT,
+// because a frontier would have been a label standing in for a check that was available all along.
+
+// THE CLEAN-EDAC FLAG MUST AGREE WITH THE COUNTERS IT SUMMARISES, and it must not be readable as
+// health on its own. A zero-counter reading taken at zero uptime says nothing; the observation
+// window is part of the observation, so both are read here and a flag that disagreed with either
+// goes red rather than sitting beside them.
+test fn the_clean_flag_agrees_with_the_counters_and_has_an_observation_window() -> Bool {
+  mtcollins1_edac_clean_at_capture
+    == (mtcollins1_edac_topology.corrected_error_count == 0
+        && mtcollins1_edac_topology.uncorrected_error_count == 0)
+    && second_count(s: mtcollins1_edac_uptime_at_capture_seconds) > 0
+}
+
+// THE ATTEMPT LABEL IS UNRELIABLE AND THE RECEIPT SAYS SO; this is what makes that statement
+// CHECKABLE rather than merely stated. The defect row claims the artifacts are distinguished by
+// wall-clock window instead of by the duplicated attempt=3 label. If those windows ever collapsed
+// -- two captures claiming one instant, or the second preceding the first -- the distinguishing
+// fact the row rests on would be gone while the row went on asserting it.
+test fn the_capture_windows_actually_distinguish_the_attempts() -> Bool {
+  mtcollins1_census_observed_at < mtcollins1_host_capture_observed_at
+    && mtcollins1_media_attach_observed_at < mtcollins1_host_capture_observed_at
+    && !(mtcollins1_host_capture_attempt_label_defect == "")
+}
+
+// THE CONNECTOR IDENTIFICATION RESTS ON A ONE-OF-SIXTEEN PART, and that is a structural property
+// of the bindings, not a matter of opinion: the argument is that a part occurring EXACTLY ONCE
+// agrees with the pair table at the single position that carries it, which no shift or reversal of
+// the sequence reproduces. If a later edit duplicated that part, the identification argument would
+// collapse while its prose went on claiming it. So the property is asserted against the rows, and
+// the basis's upstream citation is bound rather than left as a sentence.
+fn part_occurrence_count(target: MtCollins1FirmwareChannelBinding, bindings: List<MtCollins1FirmwareChannelBinding>) -> Int {
+  fold(bindings, init: 0, f: fn(acc, b) { if b.part_number == target.part_number { acc + 1 } else { acc } })
+}
+
+fn singleton_part_count(bindings: List<MtCollins1FirmwareChannelBinding>) -> Int {
+  fold(bindings, init: 0, f: fn(acc, b) {
+    if part_occurrence_count(target: b, bindings: bindings) == 1 { acc + 1 } else { acc }
+  })
+}
+
+fn basis_cites_the_pair_authority(basis: MtCollins1ConnectorIdentificationBasis) -> Bool {
+  basis.upstream_pair_authority.module_path == "extdeps.ampere.mt_collins_product_brief.memory_population"
+    && basis.upstream_pair_authority.decl_name == "mt_collins_channel_connector_pairs"
+}
+
+test fn the_one_of_sixteen_discriminator_the_identification_rests_on_still_exists() -> Bool {
+  singleton_part_count(bindings: mtcollins1_firmware_channel_bindings) == 1
+    && basis_cites_the_pair_authority(basis: mtcollins1_connector_identification_basis)
 }

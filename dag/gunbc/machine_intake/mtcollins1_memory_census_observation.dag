@@ -434,10 +434,10 @@ data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample
   MtCollins1MediaRedirectionSample { offset_from_attach: second(count: 267), redirection_status: 1, session_index: 0 },
 ]
 
-// The last sample is +4m27s; status 1 held from there through the whole boot that followed, which
-// is a fact about duration rather than a further sample, so it is stated here and not minted as a
-// row the sequence does not contain.
-data mtcollins1_media_redirection_held_through_boot: Bool = true
+// The last sample is +4m27s. The status observed there held through the whole boot that followed;
+// that is a statement about duration rather than a further sample, so it is annotation and not a
+// Bool row -- an unconsumed flag restating what the final sample already carries would be one more
+// dangling declaration, which is the defect this section exists to answer.
 
 // ── why the second capture took five attempts, and the defect that caused it ───────────────────
 
@@ -569,23 +569,57 @@ type MtCollins1ConsumptionFrontier {
   trigger_capability: NonEmptyStr
 }
 
-fn census_frontier_row(decl_name: String) -> MtCollins1ConsumptionFrontier {
+fn census_frontier_row(decl_name: String, awaited: NonEmptyStr, trigger: NonEmptyStr) -> MtCollins1ConsumptionFrontier {
   MtCollins1ConsumptionFrontier {
     declaration: DeclarationRef {
       module_path: "gunbc.machine_intake_mtcollins1_memory_census_observation",
       decl_name: decl_name,
       field: WholeDeclaration,
     },
-    awaited_consumer: "A modelled capture producer that re-derives the artifact and adjudicates the observed digest against the declared one as a typed outcome, rather than a reader trusting a hand-authored hash.",
-    trigger_capability: "The machine-intake capture producer capability: an operation whose stdout, stderr and exit status are redirected into attempt-owned immutable output, whose digest is computed by the same run that produced the bytes, and which is SUFFICIENT FOR every artifact this module declares -- not one verifier pointed at one file.",
+    awaited_consumer: awaited,
+    trigger_capability: trigger,
   }
 }
 
+fn artifact_identity_frontier(decl_name: String) -> MtCollins1ConsumptionFrontier {
+  census_frontier_row(
+    decl_name: decl_name,
+    awaited: "A modelled capture producer that re-derives the artifact and adjudicates observed against declared -- path, byte count and digest together, since a digest authenticates bytes and says nothing about which file or how many bytes were expected.",
+    trigger: "The machine-intake capture producer capability: an operation whose stdout, stderr and exit status are redirected into attempt-owned immutable output, whose digest is computed by the same run that produced the bytes, and which is SUFFICIENT FOR every artifact this module declares -- not one verifier pointed at one file.",
+  )
+}
+
+fn boot_delivery_frontier(decl_name: String) -> MtCollins1ConsumptionFrontier {
+  census_frontier_row(
+    decl_name: decl_name,
+    awaited: "The boot-path migration's carriers: this is evidence ABOUT boot delivery -- the measured flags on failing and succeeding attempts, and what the model reported throughout -- and its consumer is the model that adjudicates a boot request, not this census.",
+    trigger: "A boot-delivery model whose subject-level terminal takes a host-originating attestation as a constructor argument, SUFFICIENT FOR every machine-intake actuation that currently concludes from an accepted command. In flight as gunbc#11001; this row is consumed when that model reads these observations as its regression case rather than restating them.",
+  )
+}
+
 data mtcollins1_consumption_frontier: List<MtCollins1ConsumptionFrontier> = [
-  census_frontier_row(decl_name: "mtcollins1_census_digest"),
-  census_frontier_row(decl_name: "mtcollins1_census_sol_digest"),
-  census_frontier_row(decl_name: "mtcollins1_census_evidence_manifest_digest"),
-  census_frontier_row(decl_name: "mtcollins1_host_capture_digest"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_digest"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_sol_digest"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_evidence_manifest_digest"),
+  artifact_identity_frontier(decl_name: "mtcollins1_host_capture_digest"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_artifact_path"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_sol_artifact_path"),
+  artifact_identity_frontier(decl_name: "mtcollins1_host_capture_artifact_path"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_byte_count"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_sol_byte_count"),
+  artifact_identity_frontier(decl_name: "mtcollins1_census_kernel"),
+  boot_delivery_frontier(decl_name: "mtcollins1_boot_delivery_observation"),
+  boot_delivery_frontier(decl_name: "mtcollins1_attempt3_failure"),
+  census_frontier_row(
+    decl_name: "mtcollins1_memtotal_kb",
+    awaited: "A capacity join: populated connector count x per-module capacity should account for MemTotal, less firmware reservation. That join needs a catalog row for EVERY installed part, and one of the three -- HMA82GR7CJR8N-VK -- had none, which is why the join cannot be written here rather than why it was forgotten.",
+    trigger: "A catalog-complete population capability: an SK Hynix catalog row for every part this unit carries, so a HostMemoryPopulation can be constructed and MemTotal checked against it. The missing row is in flight as gunbc#11066.",
+  ),
+  census_frontier_row(
+    decl_name: "mtcollins1_edac_channel_map_unavailable_reason",
+    awaited: "A Linux upstream capability carrier stating that under ACPI APEI firmware-first, ghes_edac is an error-attribution shim rather than a memory-controller topology authority. That is a fact about a kernel arrangement, not about this unit; this row should RESOLVE against it rather than restate it.",
+    trigger: "An extdeps Linux carrier for the GHES/APEI topology-capability question, keyed to kernel version, SUFFICIENT FOR any platform where EDAC is expected to supply a channel map -- not a note scoped to Ampere Altra.",
+  ),
 ]
 
 data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
