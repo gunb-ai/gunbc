@@ -740,6 +740,26 @@ fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List
     }
 }
 
+test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool {
+  let empty_admit: List<NonEmptyStr> = []
+  let unadmitted = kv_layout_wire(k: KvAutoLayout)
+  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
+    match kv_layout_policy_matching_wire(wire: d) {
+      Absent => true
+      Present { value: _ } => false
+    })).first()
+  match nomatch_opt {
+    Absent => false
+    Present { value: nomatch } =>
+      decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
+        != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
+          != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
+          != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
+  }
+}
+
 test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> Bool {
   let empty_admit: List<NonEmptyStr> = []
   let unadmitted = kv_layout_wire(k: KvAutoLayout)

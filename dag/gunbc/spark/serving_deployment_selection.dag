@@ -1233,8 +1233,34 @@ fn domain_profiles_defect(d: ServingDeploymentChoiceDomain) -> List<NonEmptyStr>
   )
 }
 
+fn sm12_kv_standing_key(st: Sm12KvLayoutStanding) -> String {
+  match st {
+    Sm12KvLayoutAdmitted { policy: k } => join(["admitted|", kv_layout_wire(k: k) as String], "")
+    Sm12KvLayoutJoinFailed { wire: w, obligation: o } =>
+      join(["join-failed|wire:", w as String, "|obl:", o as String], "")
+  }
+}
+
+fn serving_profile_standing_key(s: ServingProfileStanding) -> String {
+  match s {
+    ServingProfileReady { profile: p } => join(["ready|", parameters_key(p: p)], "")
+    ServingProfileSm12JoinFailed { runtime: r, standing: st } =>
+      join(["sm12-join-failed|", runtime_revision_key(r: r), "|", sm12_kv_standing_key(st: st)], "")
+  }
+}
+
+// THE DOMAIN KEY IS THE STANDING POPULATION, not only ready combinations. Failed standings are
+// load-bearing: a different wire or obligation is a different field even when no ready profile exists.
 fn domain_key_render(d: ServingDeploymentChoiceDomain) -> String {
-  join(map(expected_combinations(d: d), k => combination_key_render(k: k)), ",")
+  join([
+    join(map(d.artifacts, a => declaration_ref_display_key(ref: a.identity)), ","),
+    "|topo",
+    join(map(d.topologies, t => join(["tp", to_string(t.tensor_parallel_degree), "x", to_string(t.replica_count)], "")), ","),
+    "|stand",
+    join(map(d.profiles, s => serving_profile_standing_key(s: s)), ","),
+    "|comb",
+    join(map(expected_combinations(d: d), k => combination_key_render(k: k)), ","),
+  ], "")
 }
 
 type ServingDeploymentCandidateField sole_constructor {
