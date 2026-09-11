@@ -1,0 +1,144 @@
+module gunbc.runner_provider_survey
+
+import std.types { List, String }
+import extdeps.ci_runner.types {
+  CatalogSnapshot, RunnerCatalogAvailability, RunnerLabelCatalog, RunnerLabelRow,
+  catalog_is_on_surface,
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.github.hosted_runners {
+  GithubHostedRunnerCatalogRow, RepoVisibility, PublicRepo, PrivateRepo,
+  github_hosted_ubuntu_catalog,
+}
+import extdeps.languages.yaml.gha_workflow { runner_label_string }
+import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog, blacksmith_label_catalog }
+import extdeps.ci_runner.circleci { circleci_runner_catalog, circleci_label_catalog }
+import extdeps.ci_runner.depot { depot_runner_catalog, depot_label_catalog }
+import extdeps.ci_runner.github_actions {
+  github_actions_runner_catalog, github_actions_label_catalog, github_actions_provider_identity,
+}
+import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog, warpbuild_label_catalog }
+import extdeps.cloud.ubicloud { ubicloud_runner_catalog_shapes, ubicloud_label_catalog }
+
+// WHICH CI RUNNER PROVIDERS THIS REPOSITORY HAS READ. One roster, and it lives here rather than
+// in the extdeps hub for the reason gunbc.runner_shape_census already gives: which providers we
+// looked at is an observation this repository made, a receipt in the observing layer, and
+// DESIGN's external-upstream decomposition rule forbids a generic hub from enumerating concrete
+// products or dispatching among their authorities.
+//
+// IT LIVES IN ITS OWN MODULE BECAUSE IT HAS TWO CONSUMERS. The shape census reads these
+// providers to derive memory-per-vCPU; the label resolution reads them to answer what a
+// runs-on label is. Those are different questions over the SAME roster, and a roster copied
+// into the second consumer would be a fork that goes stale the first time a provider is added
+// to one list and not the other. Adding a provider is one module beside its peers and one line
+// in each list below - never a second enumeration somewhere else.
+fn surveyed_runner_catalogs() -> List<RunnerCatalogAvailability> {
+  [
+    ubicloud_runner_catalog_shapes,
+    blacksmith_runner_catalog,
+    github_actions_runner_catalog,
+    depot_runner_catalog,
+    warpbuild_runner_catalog,
+    circleci_runner_catalog,
+  ]
+}
+
+// THE SAME PROVIDERS, READ FOR THEIR LABELS. Not derivable from the list above: a label catalog
+// carries the snapshot provenance the shape catalogs do not, and GitHub's contributes standard
+// runner labels that have no visibility-free shape at all.
+fn surveyed_label_catalogs() -> List<RunnerLabelCatalog> {
+  [
+    ubicloud_label_catalog,
+    blacksmith_label_catalog,
+    github_actions_label_catalog,
+    depot_label_catalog,
+    warpbuild_label_catalog,
+    circleci_label_catalog,
+    github_hosted_standard_label_catalog,
+  ]
+}
+
+// -------------------------------------------------------------------------------------
+// THE STANDARD GitHub-HOSTED LABELS, ENROLLED FROM THE AUTHORITY THAT ALREADY OWNS THEM.
+//
+// An earlier revision of this change re-authored these as free strings inside
+// extdeps.ci_runner.github_actions, and a review caught it as the fork it was. GitHub's standard
+// hosted runners already have one home: extdeps.github.hosted_runners keys them by
+// extdeps.github.actions RunnerLabel with a REPOSITORY-VISIBILITY axis, which is precisely the
+// axis whose absence from RunnerShapeRow made a sized row impossible - so the problem this join
+// exists to solve was already solved upstream, one module over. The wire spelling comes from
+// runner_label_string, the single place a hosted label becomes text.
+//
+// THE JOIN IS HERE AND NOT IN EITHER UPSTREAM MODULE. extdeps.ci_runner.github_actions answers
+// for the larger-runners reference and extdeps.github.hosted_runners for the standard one; making
+// either import the other to produce a combined roster would put a consumer's question inside an
+// upstream authority. Which catalogs this repository consults is an observation this repository
+// makes, and this module is where those observations live.
+//
+// ARCHITECTURE IS TAKEN FROM THE PUBLIC ROWS AND THE CHOICE IS CHECKED, NOT ASSUMED. Every label
+// appears twice, once per visibility, and the two rows differ in vCPU and memory while agreeing
+// on architecture. Reading one of them is therefore sound and would stop being sound silently, so
+// test.claim.runner_label_resolution_witness_test asserts the agreement over the whole catalog
+// rather than trusting this comment.
+//
+// ubuntu-latest IS DELIBERATELY ABSENT and that is upstream's ruling, not an omission here:
+// hosted_runners declines to carry it because it is "a vendor-floating alias of the current x64
+// row" and pinning by alias lets the vendor move the fact. A scan meeting ubuntu-latest therefore
+// gets an unresolved reading with a cause, which is the correct answer to a label whose meaning
+// is not fixed.
+fn github_hosted_public_rows() -> List<GithubHostedRunnerCatalogRow> {
+  filter(github_hosted_ubuntu_catalog(), r => r.visibility == PublicRepo)
+}
+
+fn github_hosted_label_row(row: GithubHostedRunnerCatalogRow) -> RunnerLabelRow {
+  RunnerLabelRow {
+    provider: github_actions_provider_identity,
+    label: runner_label_string(label: row.runs_on_label),
+    architecture: row.cpu_architecture,
+  }
+}
+
+data github_hosted_standard_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-07-11T00:00:00Z",
+  declared_scope: "The version-pinned Ubuntu standard GitHub-hosted labels carried by extdeps.github.hosted_runners: ubuntu-slim, ubuntu-24.04 and ubuntu-24.04-arm. Windows and macOS standard runners are on the same upstream tables and are NOT modelled there, and ubuntu-latest is deliberately excluded as a vendor-floating alias. A label from any of those is absent from this catalog because this repository has not modelled it, not because GitHub does not publish it.",
+}
+
+data github_hosted_standard_label_catalog: RunnerLabelCatalog = RunnerLabelCatalog {
+  catalog: decl_ref(module_path: "gunbc.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog"),
+  provider: github_actions_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
+  snapshot: github_hosted_standard_snapshot,
+  rows: map(github_hosted_public_rows(), r => github_hosted_label_row(row: r)),
+}
+
+// -------------------------------------------------------------------------------------
+// THE SURFACE FILTER, AND WHY IT IS A FILTER RATHER THAN A SHORTER ROSTER.
+//
+// surveyed_label_catalogs is the roster of every provider label catalog this repository has read,
+// and CircleCI belongs in it - this repository HAS read CircleCI's resource classes and a census of
+// what we surveyed should say so. What CircleCI's rows are not is GitHub Actions `runs-on` values.
+//
+// MEASURED BEFORE THIS FILTER EXISTED, on the resolver as it stood with two approvals on it:
+//   resolve_runner_label("small")      -> NotArmConfirmed x86_64, sourced from CircleCI
+//   resolve_runner_label("large")      -> NotArmConfirmed x86_64, sourced from CircleCI
+//   resolve_runner_label("arm.medium") -> ArmConfirmed,           sourced from CircleCI
+// The third is promotion 1 - an x64 label may not become Arm evidence - running in reverse through
+// the resolver written to prevent it, and the first two are ordinary self-hosted runner names.
+//
+// REMOVING CircleCI FROM THE ROSTER WOULD HAVE FIXED THIS INSTANCE AND LEFT THE CLASS OPEN. The next
+// non-GitHub CI system enrolled here would reintroduce it silently, because nothing would have
+// recorded WHY CircleCI had to go. Filtering on a declared surface makes the category error
+// unwritable rather than remembered: a catalog that does not name the runs-on surface cannot answer
+// a runs-on question, whoever adds it and whenever.
+fn runs_on_label_catalogs() -> List<RunnerLabelCatalog> {
+  filter(surveyed_label_catalogs(), c => catalog_is_on_surface(catalog: c, surface: github_actions_runs_on_surface))
+}
+
+// EVERY LABEL THE RUNS-ON SURFACE CARRIES, so a consumer can fold the ACTUAL population rather
+// than a list someone typed while looking at it. A collision claim over a hand-copied sample is
+// the copied-population defect: it passes because the sample was chosen after the answer was
+// known, and it goes on passing when a provider is enrolled that the sample never named.
+fn runs_on_label_rows() -> List<RunnerLabelRow> {
+  fold(runs_on_label_catalogs(), init: [], f: (acc, c) => concat(acc, c.rows))
+}

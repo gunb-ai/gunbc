@@ -144,30 +144,34 @@ fn where_refinement_locus_exit(root: Node) -> ProcessExit {
   }
 }
 
-fn where_refinement_positive_parse_carries_clause_holds() -> Bool {
-  match where_refinement_tokenize_parse(
+// THE SHARE POINT. The bare source is the one both the carry claim and the normalize-graft
+// claim parse, and the required floor evaluates each claim in its own frame, so its
+// tokenize+parse was re-derived once per demanding claim: the floor's own cost receipt (main run
+// 34556223550, required_floor_claim_cost.tsv) shows both rows INTERRUPTED at the 500ms per-claim
+// CPU ceiling before reaching a verdict. This nullary producer is enrolled WARM in
+// v2.workflow.floor_pure_producer_share: the floor forces it once during strict preparation,
+// outside every per-claim budget, and each claim is handed the parse tree; normalize stays per
+// claim. The brand and range sources are each read by exactly one claim, so they are not
+// shared -- a single-consumer warm row would be the per-claim budget relocated, not a
+// recurrence removed -- and the three-source conjunction they used to ride in is instead
+// three rows, each exercising one source.
+fn where_refinement_bare_parsed() -> Outcome<Node> {
+  where_refinement_tokenize_parse(
     text: where_refinement_positive_bare_source,
     file: ^where_refinement_positive_bare
-  ) {
+  )
+}
+
+fn where_refinement_positive_parse_carries_clause_holds() -> Bool {
+  match where_refinement_bare_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       where_refinement_tree_carries_clause(root: tree)
-        && where_refinement_parse_accepted(
-          text: where_refinement_positive_brand_source,
-          file: ^where_refinement_positive_brand
-        )
-        && where_refinement_parse_accepted(
-          text: where_refinement_positive_range_source,
-          file: ^where_refinement_positive_range
-        )
   }
 }
 
 fn where_refinement_clause_survives_normalize_locus() -> ProcessExit {
-  match where_refinement_tokenize_parse(
-    text: where_refinement_positive_bare_source,
-    file: ^where_refinement_normalize_bare
-  ) {
+  match where_refinement_bare_parsed() {
     Rejected { diagnostics: r } =>
       exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
     Accepted { value: tree, diagnostics: _ } =>
@@ -193,11 +197,22 @@ test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
   where_refinement_positive_parse_carries_clause_holds()
 }
 
+test fn where_refinement_brand_clause_parses_holds() -> Bool {
+  where_refinement_parse_accepted(
+    text: where_refinement_positive_brand_source,
+    file: ^where_refinement_positive_brand
+  )
+}
+
+test fn where_refinement_range_clause_parses_holds() -> Bool {
+  where_refinement_parse_accepted(
+    text: where_refinement_positive_range_source,
+    file: ^where_refinement_positive_range
+  )
+}
+
 test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
-  match where_refinement_tokenize_parse(
-    text: where_refinement_positive_bare_source,
-        file: ^where_refinement_normalize_bare
-  ) {
+  match where_refinement_bare_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match normalize(parse_tree: tree) {

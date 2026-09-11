@@ -1,0 +1,37 @@
+module v2.test.claim.body_lowering.data_initializer_fn_value
+
+import v2.test.claim.body_lowering.normalize_outcome_helpers {
+  body_lowering_normalize_outcome
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Cause R: a function value in a data-record field wrapper-retained at admit_normalized_tree
+// because dag_surface_arrow_lambda and dag_surface_fn_literal had no producer. The identical
+// record literal inside a fn body already accepted. The shells are now structure-preserved after
+// the child fold, same door as field_init.
+//
+// The two data-record claims stay off floor_cost_debt so they remain ordinary-floor
+// regression controls for the classifier widening (review 63356).
+
+fn normalize_outcome(src: String) -> String {
+  body_lowering_normalize_outcome(src: src, file: ^data_initializer_fn_value_subject)
+}
+
+data src_data_lambda_field: String = "module m.t\ntype A { meet: fn(Int, Int) -> Int }\ndata d: A = A { meet: (a, b) => a }\n"
+
+data src_data_fn_literal_field: String = "module m.t\ntype A { meet: fn(Int, Int) -> Int }\ndata d: A = A { meet: fn(a, b) { a } }\n"
+
+data src_lambda_in_fn_body: String = "module m.t\ntype A {\n  meet: fn(Int, Int) -> Int\n}\nfn f() -> A {\n  A {\n    meet: (a, b) => a\n  }\n}\n"
+
+test fn data_record_arrow_lambda_field_is_not_retained_holds() -> Bool {
+  normalize_outcome(src: src_data_lambda_field) == "ACCEPTED"
+}
+
+test fn data_record_fn_literal_field_is_not_retained_holds() -> Bool {
+  normalize_outcome(src: src_data_fn_literal_field) == "ACCEPTED"
+}
+
+test fn lambda_in_fn_body_control_holds() -> Bool {
+  normalize_outcome(src: src_lambda_in_fn_body) == "ACCEPTED"
+}

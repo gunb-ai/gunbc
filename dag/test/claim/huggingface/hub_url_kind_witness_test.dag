@@ -1,0 +1,37 @@
+module test.claim.huggingface.hub_url_kind_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.huggingface.hub {
+  HubRepoId, HubModelRepo, HubDatasetRepo, HubSpaceRepo,
+  hub_blob_url, hub_repo_https_uri, hub_repo_tree_api_url,
+}
+import extdeps.uri { uri_wire }
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+data same_path: NonEmptyStr = "org/same" as NonEmptyStr
+data rev: NonEmptyStr = "abc" as NonEmptyStr
+data file_path: NonEmptyStr = "README.md" as NonEmptyStr
+
+data model_repo: HubRepoId = HubRepoId { kind: HubModelRepo, path: same_path }
+data dataset_repo: HubRepoId = HubRepoId { kind: HubDatasetRepo, path: same_path }
+data space_repo: HubRepoId = HubRepoId { kind: HubSpaceRepo, path: same_path }
+
+test fn same_path_different_kind_web_and_blob_and_tree_urls_diverge() -> Bool {
+  let model_page = uri_wire(uri: hub_repo_https_uri(repo: model_repo)) as String
+  let dataset_page = uri_wire(uri: hub_repo_https_uri(repo: dataset_repo)) as String
+  let space_page = uri_wire(uri: hub_repo_https_uri(repo: space_repo)) as String
+  let model_blob = hub_blob_url(repo: model_repo, revision: rev, path_in_repo: file_path) as String
+  let dataset_blob = hub_blob_url(repo: dataset_repo, revision: rev, path_in_repo: file_path) as String
+  let dataset_tree = hub_repo_tree_api_url(repo: dataset_repo, revision: rev) as String
+  model_page == "https://huggingface.co/org/same"
+    && dataset_page == "https://huggingface.co/datasets/org/same"
+    && space_page == "https://huggingface.co/spaces/org/same"
+    && model_page != dataset_page
+    && model_page != space_page
+    && dataset_page != space_page
+    && model_blob == "https://huggingface.co/org/same/blob/abc/README.md"
+    && dataset_blob == "https://huggingface.co/datasets/org/same/blob/abc/README.md"
+    && model_blob != dataset_blob
+    && dataset_tree == "https://huggingface.co/api/datasets/org/same/tree/abc?recursive=1"
+}
