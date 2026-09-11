@@ -62,6 +62,8 @@ fn resolve_decl_fact_by_qualified_name(
 
 data authored_string_literal_edge_name: Symbol = ^authored_string_literal
 
+data skeleton_edge_is_authored_string_literal_predicate_disposition: String = "🟡 MODELED-INERT `*_is_*` over EdgeLabel (Named intern equality, Positional => false). Owner: v2.std.decl_facts_skeleton. Lane: DataItem LitStr attach / constructor-spelling skip. Dissolve-on: named edges are a closed roster that includes authored_string_literal_edge_name so the skip is inhabitance of that constructor rather than a Bool predicate — the same capability as collect_authored_string_literals_dissolve_on (typechecked projection intern deletes the attach and this skip together)."
+
 fn skeleton_edge_is_authored_string_literal(e: Edge) -> Bool {
   match e.label {
     Named { name: nm } => nm == authored_string_literal_edge_name
