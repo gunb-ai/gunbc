@@ -257,7 +257,8 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
             // scratch root, and a path is re-read by git after this writer's write: a concurrent
             // writer's O_TRUNC published git's empty blob as a partition head (the harness's
             // "event e69de29... undecodable"), and a completed foreign write published another
-            // writer's event under this writer's admitted append. Probe step 10 is the executed RED.
+            // writer's event under this writer's admitted append. The enrolled evidence is
+            // test.claim.fabric_event_log_append_real_execution.
             let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: pool_event_wire_text(event: event))
             if h.exit_code != 0 {
               EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
