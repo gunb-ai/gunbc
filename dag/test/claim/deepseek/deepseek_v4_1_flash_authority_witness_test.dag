@@ -1,0 +1,98 @@
+module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.measure { token_count, token_count_value, parameter_count_value, byte_size_count }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision, deepseek_v4_1_flash_encoder_path,
+  deepseek_v4_1_flash_config_path, deepseek_v4_1_flash_encoder_source_url, deepseek_v4_1_flash_config_source_url,
+  deepseek_v4_1_flash_model_type, deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_native_context_length,
+  deepseek_v4_1_flash_yarn_factor, deepseek_v4_1_flash_kv_source_layers,
+  deepseek_v4_1_flash_backbone_parameters, deepseek_v4_1_flash_activated_parameters_prefill,
+  deepseek_v4_1_flash_activated_parameters_decode, deepseek_v4_1_flash_engram_parameters,
+  deepseek_v4_1_flash_prefill_activates_half_of_decode, deepseek_v4_1_flash_global_kv_bytes_per_token,
+  deepseek_v4_1_flash_global_kv_bytes_for_tokens,
+  DeepseekV41EncoderChat, DeepseekV41EncoderThinking,
+  DeepseekV41EffortLow, DeepseekV41EffortHigh, DeepseekV41EffortMax,
+  deepseek_v4_1_flash_encoder_prefill, deepseek_v4_1_flash_thinking_start_token, deepseek_v4_1_flash_thinking_end_token,
+  deepseek_v4_1_flash_named_effort_wire, deepseek_v4_1_flash_named_effort_budget,
+  deepseek_v4_1_flash_named_effort_values, deepseek_v4_1_flash_default_named_effort,
+  deepseek_v4_1_flash_budget_is_admissible, deepseek_v4_1_flash_effort_preamble,
+  deepseek_v4_1_flash_effort_is_rendered, deepseek_v4_1_flash_dsml_tool_calls_open,
+  deepseek_v4_1_flash_standalone_tool_role, deepseek_v4_1_flash_vllm_tokenizer_mode,
+  deepseek_v4_1_flash_vllm_tool_call_parser, deepseek_v4_1_flash_vllm_reasoning_parser,
+  deepseek_v4_1_flash_num_hidden_layers, deepseek_v4_1_flash_causal_encoder_layers,
+  deepseek_v4_1_flash_decoder_layers, deepseek_v4_1_flash_hosted_api_model_id,
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+test fn the_pin_names_the_hub_commit_and_both_source_files() -> Bool {
+  let enc = deepseek_v4_1_flash_encoder_source_url()
+  let cfg = deepseek_v4_1_flash_config_source_url()
+  string_contains(s: enc, pattern: "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/")
+    && string_contains(s: enc, pattern: deepseek_v4_1_flash_revision as String)
+    && string_contains(s: enc, pattern: deepseek_v4_1_flash_encoder_path as String)
+    && string_contains(s: cfg, pattern: deepseek_v4_1_flash_revision as String)
+    && string_contains(s: cfg, pattern: deepseek_v4_1_flash_config_path as String)
+    && (deepseek_v4_1_flash_hub_repo as String) == "deepseek-ai/DeepSeek-V4.1-Flash"
+    && (deepseek_v4_1_flash_hosted_api_model_id as String) == "deepseek-flash"
+}
+
+test fn config_window_is_scaled_one_million_over_sixty_four_k() -> Bool {
+  token_count_value(t: deepseek_v4_1_flash_context_length) == 1048576
+    && token_count_value(t: deepseek_v4_1_flash_native_context_length) == 65536
+    && deepseek_v4_1_flash_yarn_factor == 16
+    && (deepseek_v4_1_flash_model_type as String) == "deepseek_v41"
+    && deepseek_v4_1_flash_num_hidden_layers == 40
+    && deepseek_v4_1_flash_causal_encoder_layers + deepseek_v4_1_flash_decoder_layers
+      == deepseek_v4_1_flash_num_hidden_layers
+    && deepseek_v4_1_flash_kv_source_layers.layer_a == 2
+    && deepseek_v4_1_flash_kv_source_layers.layer_d == 20
+}
+
+test fn publisher_footprint_is_backbone_activation_split_and_kv_bytes() -> Bool {
+  parameter_count_value(p: deepseek_v4_1_flash_backbone_parameters) == 552000
+    && parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_prefill) == 8000
+    && parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_decode) == 16000
+    && parameter_count_value(p: deepseek_v4_1_flash_engram_parameters) == 196000
+    && deepseek_v4_1_flash_prefill_activates_half_of_decode()
+    && byte_size_count(b: deepseek_v4_1_flash_global_kv_bytes_per_token) == 890
+    && byte_size_count(b: deepseek_v4_1_flash_global_kv_bytes_for_tokens(tokens: token_count(count: 2))) == 1780
+}
+
+test fn encoder_effort_is_numeric_and_defaults_to_high() -> Bool {
+  deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortLow) == 50
+    && deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortHigh) == 75
+    && deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortMax) == 100
+    && (deepseek_v4_1_flash_named_effort_wire(e: DeepseekV41EffortMax) as String) == "max"
+    && match deepseek_v4_1_flash_default_named_effort {
+      DeepseekV41EffortHigh => true
+      DeepseekV41EffortLow => false
+      DeepseekV41EffortMax => false
+    }
+    && list_length(items: deepseek_v4_1_flash_named_effort_values) == 3
+    && deepseek_v4_1_flash_budget_is_admissible(budget: 1)
+    && deepseek_v4_1_flash_budget_is_admissible(budget: 100)
+    && !deepseek_v4_1_flash_budget_is_admissible(budget: 0)
+    && !deepseek_v4_1_flash_budget_is_admissible(budget: 101)
+}
+
+test fn effort_preamble_is_the_encoders_template_and_only_renders_on_thinking_index_zero() -> Bool {
+  string_contains(s: deepseek_v4_1_flash_effort_preamble(budget: 100), pattern: "Reasoning Effort: 100")
+    && string_contains(s: deepseek_v4_1_flash_effort_preamble(budget: 75), pattern: "range 1-100")
+    && deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderThinking, message_index: 0)
+    && !deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderThinking, message_index: 1)
+    && !deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderChat, message_index: 0)
+}
+
+test fn chat_prefills_end_token_and_dsml_block_has_the_leading_space() -> Bool {
+  (deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderChat) as String)
+      == (deepseek_v4_1_flash_thinking_end_token as String)
+    && (deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinking) as String)
+      == (deepseek_v4_1_flash_thinking_start_token as String)
+    && deepseek_v4_1_flash_dsml_tool_calls_open() == "<｜DSML｜ calls>"
+    && !deepseek_v4_1_flash_standalone_tool_role
+    && (deepseek_v4_1_flash_vllm_tokenizer_mode as String) == "deepseek_v41"
+    && (deepseek_v4_1_flash_vllm_tool_call_parser as String) == "deepseek_v41"
+    && (deepseek_v4_1_flash_vllm_reasoning_parser as String) == "deepseek_v41"
+}

@@ -1,0 +1,308 @@
+module extdeps.deepseek.deepseek_v4_1_flash
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  ParameterCount, parameter_count, parameter_count_value,
+  ByteSize, byte_size, byte_size_count,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// DEEPSEEK-V4.1-FLASH, as its own extdeps authority because it is an independently versioned
+// upstream product, not a revision of DeepSeek-V4-Flash and not a property of whatever happens to
+// serve it. The V4 family lives in extdeps.deepseek.deepseek_v4; this module must not import that
+// one, and a caller that wants V4.1 facts must ask here. A repointed V4 import would be the same
+// fork under a new name: the encoder file, the DSML tags, the effort algebra, and the KV
+// footprint are all different facts.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+  }
+}
+
+// THE MODEL IDENTITY ON THE PUBLISHER REPOSITORY, and the hosted-API spelling as a second named
+// fact rather than a second name for the same row. The Hub path is what the weights are; the API
+// string `deepseek-flash` is what the official endpoint accepts after the 2026-09-10 cutover
+// (api-docs.deepseek.com/news/news260910). A serving realization that wants a different alias
+// declares the alias beside this row.
+data deepseek_v4_1_flash_hub_repo: NonEmptyStr = "deepseek-ai/DeepSeek-V4.1-Flash" as NonEmptyStr
+data deepseek_v4_1_flash_hosted_api_model_id: NonEmptyStr = "deepseek-flash" as NonEmptyStr
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.deepseek.deepseek_v4_1_flash",
+      decl_name: "deepseek_v4_1_flash_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE PIN. Every config, footprint, and encoder row below is read from this Hub commit, not from
+// `main` and not from a serving runtime's copy. The commit is the 2026-09-10 encoder namespace
+// fix (`fix(encoding): preserve tool namespaces in prompts and completions`), which is also HEAD
+// of the repository at the time of this transcription.
+data deepseek_v4_1_flash_revision: NonEmptyStr = "dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr
+data deepseek_v4_1_flash_revision_committed: NonEmptyStr = "2026-09-10T08:18:10Z" as NonEmptyStr
+
+data deepseek_v4_1_flash_config_path: NonEmptyStr = "config.json" as NonEmptyStr
+data deepseek_v4_1_flash_encoder_path: NonEmptyStr = "encoding/encoding.py" as NonEmptyStr
+
+fn deepseek_v4_1_flash_config_source_url() -> String {
+  join(["https://huggingface.co/", deepseek_v4_1_flash_hub_repo, "/blob/", deepseek_v4_1_flash_revision, "/", deepseek_v4_1_flash_config_path], "")
+}
+
+fn deepseek_v4_1_flash_encoder_source_url() -> String {
+  join(["https://huggingface.co/", deepseek_v4_1_flash_hub_repo, "/blob/", deepseek_v4_1_flash_revision, "/", deepseek_v4_1_flash_encoder_path], "")
+}
+
+// ===========================================================================================
+// CONFIG, transcribed from config.json at the pinned revision.
+// ===========================================================================================
+
+data deepseek_v4_1_flash_architectures: List<NonEmptyStr> = ["DeepseekV41ForCausalLM" as NonEmptyStr]
+data deepseek_v4_1_flash_model_type: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+data deepseek_v4_1_flash_quant_method: NonEmptyStr = "fp8" as NonEmptyStr
+data deepseek_v4_1_flash_expert_dtype: NonEmptyStr = "fp4" as NonEmptyStr
+
+data deepseek_v4_1_flash_hidden_size: Nat = 5120
+data deepseek_v4_1_flash_num_hidden_layers: Nat = 40
+data deepseek_v4_1_flash_num_attention_heads: Nat = 64
+data deepseek_v4_1_flash_vocab_size: Nat = 129280
+data deepseek_v4_1_flash_n_routed_experts: Nat = 384
+data deepseek_v4_1_flash_n_shared_experts: Nat = 1
+data deepseek_v4_1_flash_num_experts_per_tok: Nat = 6
+data deepseek_v4_1_flash_sliding_window: Nat = 128
+data deepseek_v4_1_flash_index_topk: Nat = 512
+data deepseek_v4_1_flash_candidate_topk_blocks: Nat = 2048
+data deepseek_v4_1_flash_candidate_block_size: Nat = 8
+data deepseek_v4_1_flash_num_nextn_predict_layers: Nat = 3
+data deepseek_v4_1_flash_dspark_block_size: Nat = 5
+
+// THE FOUR LAYERS THAT COMPRESS THEIR OWN KV. config.json `kv_source_layer_ids` is exactly these
+// four; the rest of the stack reads that cache. Carried as a record rather than a comment so a
+// consumer can ask which layers they are.
+type DeepseekV41KvSourceLayers {
+  layer_a: Nat
+  layer_b: Nat
+  layer_c: Nat
+  layer_d: Nat
+}
+
+data deepseek_v4_1_flash_kv_source_layers: DeepseekV41KvSourceLayers = DeepseekV41KvSourceLayers {
+  layer_a: 2,
+  layer_b: 8,
+  layer_c: 14,
+  layer_d: 20,
+}
+
+// CED IS TWENTY-AND-TWENTY, cited to the model card, not inferred from the layer count alone. The
+// config says 40 hidden layers; the card states they are organized as a 20-layer causal encoder
+// followed by a 20-layer decoder. A reader who treated 40 as a uniform stack would miss the
+// prefill/decode activation split below.
+data deepseek_v4_1_flash_causal_encoder_layers: Nat = 20
+data deepseek_v4_1_flash_decoder_layers: Nat = 20
+
+data deepseek_v4_1_flash_vision_num_hidden_layers: Nat = 32
+data deepseek_v4_1_flash_vision_hidden_size: Nat = 1024
+data deepseek_v4_1_flash_vision_patch_size: Nat = 14
+data deepseek_v4_1_flash_vision_max_image_tokens: Nat = 1024
+data deepseek_v4_1_flash_image_token_id: Nat = 129264
+
+// THE CONTEXT CEILING AND THE NATIVE WINDOW ARE TWO FACTS, as on V4, because they are two keys in
+// the same config. `text_config.max_position_embeddings` is 1048576; `rope_scaling` is yarn with
+// `original_max_position_embeddings` 65536 and `factor` 16. The 1M figure is therefore a SCALED
+// ceiling over a 64K native window, and the model card agrees: sparse attention trained at 64K,
+// extended to 1M at 34T tokens. A consumer that treats 1M as "designed for" has read the ceiling
+// as a capability.
+data deepseek_v4_1_flash_context_length: TokenCount = token_count(count: 1048576)
+data deepseek_v4_1_flash_native_context_length: TokenCount = token_count(count: 65536)
+data deepseek_v4_1_flash_yarn_factor: Nat = 16
+
+// THE ONLY DOCUMENTED OUTPUT FIGURE IS A RECOMMENDED FLOOR, not a model-side ceiling. The model
+// card's sampling table says `max_tokens` ≥ 256K. No primary source at this revision states a
+// maximum output token count, so the absence is the fact, and what bounds a completion is the
+// serving engine's input-plus-output admission against the window.
+data deepseek_v4_1_flash_recommended_max_tokens_floor: TokenCount = token_count(count: 262144)
+data deepseek_v4_1_flash_declares_no_output_ceiling: Bool = true
+
+fn deepseek_v4_1_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
+  let w = token_count_value(t: window)
+  let i = token_count_value(t: input_tokens)
+  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+}
+
+data deepseek_v4_1_flash_recommended_temperature: NonEmptyStr = "1.0" as NonEmptyStr
+data deepseek_v4_1_flash_recommended_top_p: NonEmptyStr = "0.95" as NonEmptyStr
+
+// ===========================================================================================
+// FOOTPRINT, cited to the model card at the pinned revision. These are publisher figures, not
+// measurements of a serving unit.
+// ===========================================================================================
+
+// BACKBONE VERSUS ACTIVATED VERSUS ENGRAM ARE THREE FACTS, because stuffing them into one total
+// would hide the quantity a consumer actually needs. The card: 552B backbone parameters; 8B
+// active per token during prefill and 16B during decode (the CED split); Engram conditional memory
+// of 196B parameters, sparsely accessed. A vLLM recipe page at the same date writes "522B total"
+// — that is a different page, it disagrees with the card and with this config's expert counts, and
+// copying it here would be authority substitution. The recipe's serving flags are cited below; its
+// parameter total is not.
+data deepseek_v4_1_flash_backbone_parameters: ParameterCount = parameter_count(millions: 552000)
+data deepseek_v4_1_flash_activated_parameters_prefill: ParameterCount = parameter_count(millions: 8000)
+data deepseek_v4_1_flash_activated_parameters_decode: ParameterCount = parameter_count(millions: 16000)
+data deepseek_v4_1_flash_engram_parameters: ParameterCount = parameter_count(millions: 196000)
+
+fn deepseek_v4_1_flash_prefill_activates_half_of_decode() -> Bool {
+  parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_prefill) * 2
+    == parameter_count_value(p: deepseek_v4_1_flash_activated_parameters_decode)
+}
+
+// GLOBAL KV CACHE BYTES PER TOKEN, cited to the card's CSA2 + FP4 main-KV paragraph: 890 bytes
+// per token, roughly 1/4 of DeepSeek-V4-Flash. This is a publisher architecture figure, not a
+// measured vLLM kv_cache_bytes on some host.
+data deepseek_v4_1_flash_global_kv_bytes_per_token: ByteSize = byte_size(count: 890)
+
+fn deepseek_v4_1_flash_global_kv_bytes_for_tokens(tokens: TokenCount) -> ByteSize {
+  byte_size(count: byte_size_count(b: deepseek_v4_1_flash_global_kv_bytes_per_token) * token_count_value(t: tokens))
+}
+
+// ===========================================================================================
+// ENCODER, transcribed from encoding/encoding.py at the pinned revision. The release ships no
+// Jinja chat template; the model card says so and points at this file. A runtime template is one
+// realization of this encoder and can differ from it.
+// ===========================================================================================
+
+data deepseek_v4_1_flash_encoder_has_no_jinja_chat_template: Bool = true
+
+// THINKING IS STILL A PREFILL, with the same start/end tokens as V4's encoder, declared HERE
+// because they are this file's constants, not a re-export. encode_messages takes thinking_mode
+// "chat" or "thinking". Turning thinking off is a prefill of the end token.
+type DeepseekV41EncoderThinkingMode
+  = DeepseekV41EncoderChat
+  | DeepseekV41EncoderThinking
+
+fn deepseek_v4_1_flash_encoder_thinking_mode_wire(m: DeepseekV41EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    DeepseekV41EncoderChat => "chat" as NonEmptyStr
+    DeepseekV41EncoderThinking => "thinking" as NonEmptyStr
+  }
+}
+
+data deepseek_v4_1_flash_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
+data deepseek_v4_1_flash_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+
+fn deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    DeepseekV41EncoderChat => deepseek_v4_1_flash_thinking_end_token
+    DeepseekV41EncoderThinking => deepseek_v4_1_flash_thinking_start_token
+  }
+}
+
+// EFFORT IS A NUMERIC BUDGET, which is the structural difference from V4. V4's encoder accepts
+// "max"/"high"/None and ships a prose preamble for max alone. This encoder accepts an int in
+// [1, 100] or the names "low"/"high"/"max" mapped to 50/75/100, defaults to "high", and renders
+//
+//   Reasoning Effort: {budget} (range 1-100, the higher the value, the more thorough the reasoning)
+//
+// and only when thinking_mode is thinking and the message index is 0. An unknown name ASSERTs
+// in the reference encoder; it does not silently become max (that is GLM-5.3-Flash's rule, and
+// carrying it here would be the wrong model's default).
+type DeepseekV41NamedEffort
+  = DeepseekV41EffortLow
+  | DeepseekV41EffortHigh
+  | DeepseekV41EffortMax
+
+fn deepseek_v4_1_flash_named_effort_wire(e: DeepseekV41NamedEffort) -> NonEmptyStr {
+  match e {
+    DeepseekV41EffortLow => "low" as NonEmptyStr
+    DeepseekV41EffortHigh => "high" as NonEmptyStr
+    DeepseekV41EffortMax => "max" as NonEmptyStr
+  }
+}
+
+fn deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41NamedEffort) -> Nat {
+  match e {
+    DeepseekV41EffortLow => 50
+    DeepseekV41EffortHigh => 75
+    DeepseekV41EffortMax => 100
+  }
+}
+
+data deepseek_v4_1_flash_named_effort_values: List<NonEmptyStr> = [
+  "low" as NonEmptyStr, "high" as NonEmptyStr, "max" as NonEmptyStr,
+]
+
+data deepseek_v4_1_flash_default_named_effort: DeepseekV41NamedEffort = DeepseekV41EffortHigh
+
+fn deepseek_v4_1_flash_budget_is_admissible(budget: Nat) -> Bool {
+  budget >= 1 && budget <= 100
+}
+
+fn deepseek_v4_1_flash_effort_preamble(budget: Nat) -> String {
+  join([
+    "Reasoning Effort: ",
+    to_string(budget),
+    " (range 1-100, the higher the value, the more thorough the reasoning)\n\n",
+  ], "")
+}
+
+fn deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderThinkingMode, message_index: Nat) -> Bool {
+  match m {
+    DeepseekV41EncoderChat => false
+    DeepseekV41EncoderThinking => message_index == 0
+  }
+}
+
+// DSML TAG NAMES CARRY A LEADING SPACE, which is the first numbered change in this encoder relative
+// to V4. Tool calls are wrapped in `<｜DSML｜ calls>` with `<｜DSML｜ invoke>` /
+// `<｜DSML｜ parameter>` tags. Copying V4's `<｜DSML｜tool_calls>` spelling onto this model is a
+// different protocol.
+data deepseek_v4_1_flash_dsml_token: NonEmptyStr = "｜DSML｜" as NonEmptyStr
+data deepseek_v4_1_flash_dsml_tool_calls_block_name: NonEmptyStr = " calls" as NonEmptyStr
+data deepseek_v4_1_flash_dsml_invoke_tag_name: NonEmptyStr = " invoke" as NonEmptyStr
+data deepseek_v4_1_flash_dsml_parameter_tag_name: NonEmptyStr = " parameter" as NonEmptyStr
+
+fn deepseek_v4_1_flash_dsml_tool_calls_open() -> String {
+  join(["<", deepseek_v4_1_flash_dsml_token as String, deepseek_v4_1_flash_dsml_tool_calls_block_name as String, ">"], "")
+}
+
+// THERE IS NO STANDALONE TOOL ROLE. merge_tool_messages folds role=tool into the preceding user
+// message as a `<tool_result>` content block. A client that emits OpenAI-shaped role=tool turns
+// and expects them to survive as their own messages is speaking a different encoder.
+data deepseek_v4_1_flash_standalone_tool_role: Bool = false
+
+// WITH TOOLS DEFINED, REASONING IS RETAINED. encode_messages sets effective_drop_thinking = False
+// the moment any message defines tools, same condition as V4's encoder, independently declared
+// because this file reimplements it.
+data deepseek_v4_1_flash_tools_force_reasoning_retention: Bool = true
+data deepseek_v4_1_flash_missing_closer_under_thinking_is_invalid_format: Bool = true
+data deepseek_v4_1_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+
+// MID-CONVERSATION SYSTEM MESSAGES ARE FIRST-CLASS, via the `<｜System｜>` token. A mid-conversation
+// system message behaves like a user message for appending the assistant generation header.
+data deepseek_v4_1_flash_system_token: NonEmptyStr = "<｜System｜>" as NonEmptyStr
+data deepseek_v4_1_flash_mid_conversation_system_messages_supported: Bool = true
+
+// ===========================================================================================
+// vLLM RECIPE FLAGS, cited to recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash. These are upstream's
+// own serving prescriptions for this model. Whether a given engine build has the named parsers is
+// a different fact, owned by the serving unit, not by this row.
+// ===========================================================================================
+
+data deepseek_v4_1_flash_vllm_tokenizer_mode: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+data deepseek_v4_1_flash_vllm_tool_call_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+data deepseek_v4_1_flash_vllm_reasoning_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+
+// WHAT THIS MODULE DOES NOT CARRY. No KV-pool token figure, no max-num-seqs, no measured
+// throughput, no rendering observation against a serving endpoint. Those are properties of a
+// scenario, and a number measured under one and read under another is the failure already named
+// on the GLM peer. This change grounds the publisher authority; a measurement belongs to the
+// unit that made it.
+data deepseek_v4_1_flash_carries_no_serving_measurements: Bool = true
