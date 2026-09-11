@@ -310,11 +310,21 @@ data fixture_oidc_wide: ObservedWifProvider = ObservedWifProvider {
   attribute_condition: "true",
 }
 
+data fixture_oidc_narrow_other_project: ObservedWifProvider = ObservedWifProvider {
+  project_number: gunbai_auto_project_number as String,
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
 test fn editing_an_attribute_condition_changes_the_census_identity() -> Bool {
   let before = census_with_observed_provider(provider: fixture_oidc_narrow)
   let after = census_with_observed_provider(provider: fixture_oidc_wide)
+  let same_ids_other_project = census_with_observed_provider(provider: fixture_oidc_narrow_other_project)
   census_measured_fingerprint_eq(left: before, right: before)
     && !census_measured_fingerprint_eq(left: before, right: after)
+    && !census_measured_fingerprint_eq(left: before, right: same_ids_other_project)
     && copied_malformed_condition_has_three_instances()
     && copied_malformed_instance_count_in_census(census: after) == 0
 }

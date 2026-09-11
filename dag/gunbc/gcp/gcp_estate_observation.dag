@@ -1760,7 +1760,25 @@ fn census_measured_fingerprint(census: GcpEstateCensus) -> String {
         EstateUnread { gap: g } => concat(acc, concat("|unread-provider|", g.cause as String))
         EstateObserved { value: p } => concat(
           acc,
-          concat("|provider|", concat(p.provider_id as String, concat("|", concat(p.issuer_uri, concat("|", p.attribute_condition))))),
+          concat(
+            "|provider|",
+            concat(
+              p.project_number,
+              concat(
+                "/",
+                concat(
+                  p.pool_id as String,
+                  concat(
+                    "/",
+                    concat(
+                      p.provider_id as String,
+                      concat("|", concat(p.issuer_uri, concat("|", p.attribute_condition))),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         )
       }
     },
