@@ -151,32 +151,9 @@ fn a1_readback_standing(range: String) -> A1ReadbackStanding {
   }
 }
 
-fn qualify_write_plan(plan: ReviewSheetWritePlan, tab: NonEmptyStr) -> ReviewSheetWritePlan {
-  ReviewSheetWritePlan {
-    patches: map(plan.patches, w => DerivedCellWrite {
-      listing_id: w.listing_id,
-      column: w.column,
-      a1: sheet_qualified_a1(tab: tab, a1: w.a1),
-      value: w.value,
-    }),
-    appends: plan.appends,
-  }
-}
-
-fn decision_with_sheet_qualified_a1(
-  decision: UpsertDecision<ReviewSheetWritePlan>,
-  tab: NonEmptyStr,
-) -> UpsertDecision<ReviewSheetWritePlan> {
-  match decision {
-    Noop => Noop
-    Refuse { reason: r } => Refuse { reason: r }
-    Apply { plan: p } => Apply { plan: qualify_write_plan(plan: p, tab: tab) }
-  }
-}
-
-fn value_range_from_derived_write(write: DerivedCellWrite) -> ValueRange {
+fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> ValueRange {
   ValueRange {
-    range: write.a1 as String,
+    range: sheet_qualified_a1(tab: tab, a1: write.a1) as String,
     majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
     values: Present { value: [[write.value]] },
   }
@@ -197,10 +174,9 @@ fn value_range_from_append(row: AppendListingRow, tab: NonEmptyStr) -> ValueRang
 }
 
 fn value_ranges_from_write_plan(plan: ReviewSheetWritePlan, tab: NonEmptyStr) -> List<ValueRange> {
-  let qualified = qualify_write_plan(plan: plan, tab: tab)
   concat(
-    map(qualified.patches, w => value_range_from_derived_write(write: w)),
-    fold(qualified.appends, init: [], f: fn(acc, row) {
+    map(plan.patches, w => value_range_from_derived_write(write: w, tab: tab)),
+    fold(plan.appends, init: [], f: fn(acc, row) {
       match value_range_from_append(row: row, tab: tab) {
         Absent => acc
         Present { value: vr } => concat(acc, [vr])
@@ -248,11 +224,8 @@ fn review_sheet_from_readback(
 ) -> UpsertDecision<ReviewSheetWritePlan> {
   match observed_sheet_from_value_range(range: range) {
     ReadbackUnreadable { reason: r } => Refuse { reason: r }
-    ReadbackObserved { observed: observed, tab: tab } =>
-      decision_with_sheet_qualified_a1(
-        decision: decide_review_sheet(observed: observed, projection: projection),
-        tab: tab,
-      )
+    ReadbackObserved { observed: observed, tab: _ } =>
+      decide_review_sheet(observed: observed, projection: projection)
   }
 }
 
@@ -272,27 +245,24 @@ fn review_sheet_ensure(
 ) -> UpsertDecision<ReviewSheetWritePlan> {
   match observed_sheet_from_value_range(range: range) {
     ReadbackUnreadable { reason: r } => Refuse { reason: r }
-    ReadbackObserved { observed: observed, tab: tab } => {
+    ReadbackObserved { observed: observed, tab: _ } => {
       let classified = classify_review_sheet(observed: observed, projection: projection)
-      decision_with_sheet_qualified_a1(
-        decision: ensure_decide(
-          policy: policy,
-          observation: EnsureObserved { evidence: observed },
-          observation_satisfies: match classified {
-            ReviewSheetConverged => true
-            ReviewSheetNeedsWrite { plan: _ } => false
-            ReviewSheetConflict { conflict: _ } => false
-            ReviewSheetUnreadable { reason: _ } => false
-          },
-          mismatch_reason: match classified {
-            ReviewSheetConverged => "derived region already equals the projection"
-            ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
-            ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
-            ReviewSheetUnreadable { reason: r } => r as String
-          },
-          plan: review_sheet_ensure_plan(classified: classified),
-        ),
-        tab: tab,
+      ensure_decide(
+        policy: policy,
+        observation: EnsureObserved { evidence: observed },
+        observation_satisfies: match classified {
+          ReviewSheetConverged => true
+          ReviewSheetNeedsWrite { plan: _ } => false
+          ReviewSheetConflict { conflict: _ } => false
+          ReviewSheetUnreadable { reason: _ } => false
+        },
+        mismatch_reason: match classified {
+          ReviewSheetConverged => "derived region already equals the projection"
+          ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
+          ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
+          ReviewSheetUnreadable { reason: r } => r as String
+        },
+        plan: review_sheet_ensure_plan(classified: classified),
       )
     }
   }
