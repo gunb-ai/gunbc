@@ -57,7 +57,7 @@ service diagnostic.edac.RasMcCtl {
 
 // WHO CONSUMES THESE FOLDS (DESIGN §3c). Today: test.claim.linux_edac_topology_authority_witness
 // exercises every arm of every fold below, including the discriminating red control on the dmesg
-// detector. The named later consumer is the observing layer's receipt — gunbc#10965's
+// detector and the release every channel-topology reading carries. The named later consumer is the observing layer's receipt — gunbc#10965's
 // mtcollins1_edac_channel_map_unavailable_reason, which currently restates this mechanism as prose
 // inside a single unit's observation; its trigger is that PR merging, after which the receipt keeps
 // its readings (driver ghes_edac, apei_firmware_first true, csrow_node_count 0, the dmesg line) and
@@ -66,8 +66,12 @@ service diagnostic.edac.RasMcCtl {
 
 // THE KERNEL RELEASE THESE TOPOLOGY ROWS WERE READ AGAINST. ExternalModelScope deliberately carries
 // no revision (a subject module legitimately models several releases), so the release belongs on
-// the fact rows that need it — this one. ghes_edac's shape below is read from the v6.8 source cited
-// in further_citations; it is not asserted for releases nobody read.
+// the fact rows that need it. It is not a decorative provenance note: this module's whole claim is
+// that an absent channel map is STRUCTURAL rather than a missing driver, and that claim is only
+// falsifiable against a stated release — a mainline kernel that grew a native Altra memory-controller
+// driver would make the same reading come back ChannelTopologyEnumerated. So the release travels
+// WITH the reading, in the same value, rather than sitting beside it where a consumer can quote the
+// answer and drop the thing that makes it checkable.
 data edac_topology_model_read_at_release: LinuxKernelRelease = "6.8.0" as LinuxKernelRelease
 
 // THE ROSTER OF NATIVE DRIVERS IS OPEN, SO IT IS NOT AN ENUM. Every new memory controller upstream
@@ -117,11 +121,23 @@ type EdacChannelTopologyAvailability
   = ChannelTopologyEnumerated { kernel_module: LinuxKernelModuleName }
   | ChannelTopologyAbsent { cause: EdacChannelTopologyAbsenceCause }
 
-fn edac_channel_topology_availability(binding: EdacDriverBinding) -> EdacChannelTopologyAvailability {
-  match binding {
-    NativeMemoryControllerEdac { kernel_module: m } => ChannelTopologyEnumerated { kernel_module: m }
-    GhesEdac => ChannelTopologyAbsent { cause: FirmwareFirstErrorAttributionShim }
-    NoEdacDriverBound => ChannelTopologyAbsent { cause: NoMemoryControllerDriverBound }
+// ONE FOLD, AND ITS ANSWER CARRIES THE RELEASE IT WAS READ AT. There is deliberately no second
+// release-free fold beside this one: a parallel route that answers the same question without the
+// provenance is the path every consumer would take, and the release would be dangling again one
+// caller later.
+type EdacChannelTopologyReading {
+  availability: EdacChannelTopologyAvailability
+  read_at_release: LinuxKernelRelease
+}
+
+fn edac_channel_topology_availability(binding: EdacDriverBinding) -> EdacChannelTopologyReading {
+  EdacChannelTopologyReading {
+    availability: match binding {
+      NativeMemoryControllerEdac { kernel_module: m } => ChannelTopologyEnumerated { kernel_module: m }
+      GhesEdac => ChannelTopologyAbsent { cause: FirmwareFirstErrorAttributionShim }
+      NoEdacDriverBound => ChannelTopologyAbsent { cause: NoMemoryControllerDriverBound }
+    },
+    read_at_release: edac_topology_model_read_at_release,
   }
 }
 

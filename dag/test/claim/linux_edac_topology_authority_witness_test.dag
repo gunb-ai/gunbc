@@ -8,6 +8,7 @@ import extdeps.linux.edac {
   MemoryControllerEnumerated,
   ErrorAttributionOnly,
   NoEdacAuthority,
+  EdacChannelTopologyReading,
   ChannelTopologyEnumerated,
   ChannelTopologyAbsent,
   FirmwareFirstErrorAttributionShim,
@@ -18,6 +19,7 @@ import extdeps.linux.edac {
   SmbiosType17MemoryDeviceTable,
   edac_driver_topology_authority,
   edac_channel_topology_availability,
+  edac_topology_model_read_at_release,
   edac_channel_topology_absence_standing,
   edac_dimm_node_source,
   apei_firmware_first_from_dmesg,
@@ -76,7 +78,7 @@ test fn unbound_edac_is_no_authority_holds() -> Bool {
 }
 
 test fn ghes_edac_exposes_no_channel_topology_holds() -> Bool {
-  match edac_channel_topology_availability(binding: GhesEdac) {
+  match edac_channel_topology_availability(binding: GhesEdac).availability {
     ChannelTopologyAbsent { cause: FirmwareFirstErrorAttributionShim } => true
     ChannelTopologyAbsent { cause: NoMemoryControllerDriverBound } => false
     ChannelTopologyEnumerated { kernel_module: _ } => false
@@ -84,7 +86,7 @@ test fn ghes_edac_exposes_no_channel_topology_holds() -> Bool {
 }
 
 test fn native_driver_exposes_channel_topology_holds() -> Bool {
-  match edac_channel_topology_availability(binding: skx_binding) {
+  match edac_channel_topology_availability(binding: skx_binding).availability {
     ChannelTopologyEnumerated { kernel_module: m } => m as String == "skx_edac"
     ChannelTopologyAbsent { cause: _ } => false
   }
@@ -153,6 +155,18 @@ test fn unbound_edac_has_no_controller_count_holds() -> Bool {
     ControllerCountFixedByDriver { count: _ } => false
     ControllerCountIsAPlatformReading => false
   }
+}
+
+// THE READING CARRIES THE RELEASE IT WAS READ AT, on every arm and not only the interesting one.
+// The claim this module exists to make -- that the absence is structural rather than a missing
+// driver -- is falsifiable only against a stated kernel, since a mainline that grew a native Altra
+// memory-controller driver would answer ChannelTopologyEnumerated for the same question.
+test fn every_reading_carries_the_release_it_was_read_at_holds() -> Bool {
+  (edac_channel_topology_availability(binding: GhesEdac).read_at_release as String == "6.8.0")
+    && (edac_channel_topology_availability(binding: skx_binding).read_at_release
+      == edac_topology_model_read_at_release)
+    && (edac_channel_topology_availability(binding: NoEdacDriverBound).read_at_release
+      == edac_topology_model_read_at_release)
 }
 
 test fn firmware_first_detector_reads_the_real_dmesg_line_holds() -> Bool {
