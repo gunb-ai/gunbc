@@ -341,6 +341,10 @@ fn required_lanes_any_structural_class_test(lanes: FreeSemigroup<RequiredLane>) 
   )
 }
 
+// The environment rewrite is only admitted over stands-red. That is
+// `floor_rendered_verdict_with_receipts`: infra without structural rewrites AttemptStandsRed
+// and leaves AttemptStandsUnestablished (timeout/cancel) alone. A cancelled lane plus a
+// leftover infra class must not become stands-environment.
 fn required_lanes_verdict_stmts(
   lanes: FreeSemigroup<RequiredLane>,
   verdict_var: String
@@ -365,8 +369,14 @@ fn required_lanes_verdict_stmts(
     ),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(
-        left: required_lanes_any_class_test(lanes: lanes),
-        right: bash_build_negation(inner: required_lanes_any_structural_class_test(lanes: lanes))
+        left: required_lane_var_equals_lit_test(
+          var_name: verdict_var,
+          text: floor_rendered_verdict_red_name
+        ),
+        right: bash_build_and_then(
+          left: required_lanes_any_class_test(lanes: lanes),
+          right: bash_build_negation(inner: required_lanes_any_structural_class_test(lanes: lanes))
+        )
       ),
       then_stmts: [
         bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_environment_name)

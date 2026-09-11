@@ -14,6 +14,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_assign_lit,
   bash_build_command_with_words,
   bash_build_if_from_stmts,
+  bash_build_negation,
+  bash_build_or_else,
   bash_build_pipe,
   bash_build_subshell_from_stmts,
   bash_build_test_bracket,
@@ -385,6 +387,70 @@ fn receipt_log_infra_class_stmts() -> List<Node> {
   })
 }
 
+fn floor_attempt_receipt_class_rank(class: String) -> Int {
+  if class == floor_outcome_wire_structural {
+    2
+  } else {
+    if class == floor_outcome_wire_infra {
+      1
+    } else {
+      0
+    }
+  }
+}
+
+fn floor_attempt_receipt_class_may_replace(next: String, prior: String) -> Bool {
+  floor_attempt_receipt_class_rank(class: next) >= floor_attempt_receipt_class_rank(class: prior)
+}
+
+fn floor_attempt_receipt_file_class_eq_test(class: String) -> Node {
+  bash_build_and_then(
+    left: bash_build_test_bracket(
+      words: [
+        bash_build_word_lit(text: "-f"),
+        bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+      ]
+    ),
+    right: bash_build_command_with_words(
+      words: [
+        bash_build_word_lit(text: "grep"),
+        bash_build_word_lit(text: "-q"),
+        bash_build_word_lit(text: concat("class=", class)),
+        bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+      ]
+    )
+  )
+}
+
+fn floor_attempt_receipt_may_replace_test() -> Node {
+  bash_build_or_else(
+    left: bash_build_negation(
+      inner: bash_build_test_bracket(
+        words: [
+          bash_build_word_lit(text: "-f"),
+          bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+        ]
+      )
+    ),
+    right: bash_build_or_else(
+      left: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_structural),
+      right: bash_build_or_else(
+        left: bash_build_and_then(
+          left: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_infra),
+          right: bash_build_negation(inner: floor_attempt_receipt_file_class_eq_test(class: floor_outcome_wire_structural))
+        ),
+        right: bash_build_and_then(
+          left: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_none),
+          right: bash_build_and_then(
+            left: bash_build_negation(inner: floor_attempt_receipt_file_class_eq_test(class: floor_outcome_wire_infra)),
+            right: bash_build_negation(inner: floor_attempt_receipt_file_class_eq_test(class: floor_outcome_wire_structural))
+          )
+        )
+      )
+    )
+  )
+}
+
 fn floor_attempt_receipt_write_stmts() -> List<Node> {
   concat(
     [
@@ -420,53 +486,58 @@ fn floor_attempt_receipt_write_stmts() -> List<Node> {
     concat(
       receipt_log_infra_class_stmts(),
       [
-        bash_build_with_redir_to_file(
-          inner: bash_build_command_with_words(
-            words: [
-              bash_build_word_lit(text: "printf"),
-              bash_build_word_lit(text: "class=%s\\nsignature=%s\\nexit=%s\\n"),
-              bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
-              bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE"),
-              bash_build_word_var(name: "GUNBC_FLOOR_EXIT")
-            ]
-          ),
-          path: bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
-        ),
         bash_build_if_from_stmts(
-          cond: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_infra),
+          cond: floor_attempt_receipt_may_replace_test(),
           then_stmts: [
-            bash_build_command_with_words(
-              words: [
-                bash_build_word_lit(text: "echo"),
-                bash_build_word_concat_parts(
-                  parts: [
-                    bash_build_word_lit(text: "::error title=environment::floor_class="),
-                    bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
-                    bash_build_word_lit(text: " signature="),
-                    bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE"),
-                    bash_build_word_lit(text: " exit="),
-                    bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
-                    bash_build_word_lit(text: "; this is not a verdict about the diff. Attempt receipt: "),
-                    bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+            bash_build_with_redir_to_file(
+              inner: bash_build_command_with_words(
+                words: [
+                  bash_build_word_lit(text: "printf"),
+                  bash_build_word_lit(text: "class=%s\\nsignature=%s\\nexit=%s\\n"),
+                  bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
+                  bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE"),
+                  bash_build_word_var(name: "GUNBC_FLOOR_EXIT")
+                ]
+              ),
+              path: bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+            ),
+            bash_build_if_from_stmts(
+              cond: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_infra),
+              then_stmts: [
+                bash_build_command_with_words(
+                  words: [
+                    bash_build_word_lit(text: "echo"),
+                    bash_build_word_concat_parts(
+                      parts: [
+                        bash_build_word_lit(text: "::error title=environment::floor_class="),
+                        bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
+                        bash_build_word_lit(text: " signature="),
+                        bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE"),
+                        bash_build_word_lit(text: " exit="),
+                        bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
+                        bash_build_word_lit(text: "; this is not a verdict about the diff. Attempt receipt: "),
+                        bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+                      ]
+                    )
                   ]
                 )
               ]
-            )
-          ]
-        ),
-        bash_build_if_from_stmts(
-          cond: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_structural),
-          then_stmts: [
-            bash_build_command_with_words(
-              words: [
-                bash_build_word_lit(text: "echo"),
-                bash_build_word_concat_parts(
-                  parts: [
-                    bash_build_word_lit(text: "::error title=subject::floor_class="),
-                    bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
-                    bash_build_word_lit(text: " exit="),
-                    bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
-                    bash_build_word_lit(text: "; read the step log for the subject defect")
+            ),
+            bash_build_if_from_stmts(
+              cond: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_structural),
+              then_stmts: [
+                bash_build_command_with_words(
+                  words: [
+                    bash_build_word_lit(text: "echo"),
+                    bash_build_word_concat_parts(
+                      parts: [
+                        bash_build_word_lit(text: "::error title=subject::floor_class="),
+                        bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
+                        bash_build_word_lit(text: " exit="),
+                        bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
+                        bash_build_word_lit(text: "; read the step log for the subject defect")
+                      ]
+                    )
                   ]
                 )
               ]
