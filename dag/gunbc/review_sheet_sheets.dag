@@ -179,10 +179,15 @@ fn value_range_from_append(row: AppendListingRow, tab: NonEmptyStr) -> ValueRang
   }
 }
 
-fn value_ranges_from_write_plan(plan: ReviewSheetWritePlan, tab: NonEmptyStr) -> List<ValueRange> {
+type TabBoundWritePlan {
+  tab: NonEmptyStr
+  plan: ReviewSheetWritePlan
+}
+
+fn value_ranges_from_write_plan(bound: TabBoundWritePlan) -> List<ValueRange> {
   concat(
-    map(plan.patches, w => value_range_from_derived_write(write: w, tab: tab)),
-    map(plan.appends, row => value_range_from_append(row: row, tab: tab)),
+    map(bound.plan.patches, w => value_range_from_derived_write(write: w, tab: bound.tab)),
+    map(bound.plan.appends, row => value_range_from_append(row: row, tab: bound.tab)),
   )
 }
 
@@ -239,11 +244,16 @@ fn observed_sheet_from_row_major_range(range: ValueRange) -> ObservedSheetFromRe
   }
 }
 
-fn review_sheet_ensure_plan(classified: ReviewSheetClassification) -> EnsurePlan<ReviewSheetWritePlan> {
+fn review_sheet_ensure_plan(
+  classified: ReviewSheetClassification,
+  tab: NonEmptyStr,
+) -> EnsurePlan<TabBoundWritePlan> {
   match classified {
     ReviewSheetConverged => EnsurePlanUnavailable { reason: "already converged" }
-    ReviewSheetNeedsWrite { plan: p } => EnsurePlanAvailable { plan: p }
-    ReviewSheetConflict { conflict: c } => EnsurePlanUnavailable { reason: conflict_reason(conflict: c) as String }
+    ReviewSheetNeedsWrite { plan: p } =>
+      EnsurePlanAvailable { plan: TabBoundWritePlan { tab: tab, plan: p } }
+    ReviewSheetConflict { conflict: c } =>
+      EnsurePlanUnavailable { reason: conflict_reason(conflict: c) as String }
     ReviewSheetUnreadable { reason: r } => EnsurePlanUnavailable { reason: r as String }
   }
 }
@@ -252,10 +262,10 @@ fn review_sheet_ensure(
   policy: EnsurePolicy,
   range: ValueRange,
   projection: ReviewSheetProjection,
-) -> UpsertDecision<ReviewSheetWritePlan> {
+) -> UpsertDecision<TabBoundWritePlan> {
   match observed_sheet_from_value_range(range: range) {
     ReadbackUnreadable { reason: r } => Refuse { reason: r }
-    ReadbackObserved { observed: observed, tab: _ } => {
+    ReadbackObserved { observed: observed, tab: tab } => {
       let classified = classify_review_sheet(observed: observed, projection: projection)
       ensure_decide(
         policy: policy,
@@ -272,7 +282,7 @@ fn review_sheet_ensure(
           ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
           ReviewSheetUnreadable { reason: r } => r as String
         },
-        plan: review_sheet_ensure_plan(classified: classified),
+        plan: review_sheet_ensure_plan(classified: classified, tab: tab),
       )
     }
   }
