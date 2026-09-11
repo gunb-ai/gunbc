@@ -317,3 +317,33 @@ test fn required_lens_coverage_closes_over_executed_gates_holds() -> Bool {
   }
 }
 
+
+// THE SIXTH ARM, WHICH HAD NO RED UNTIL A REVIEW COUNTED THEM. RegistrationDuplicated is the arm
+// whose whole job is to catch a roster that acquired a second row for one identity, and it was the
+// one arm no control fired. It is unreachable through the DOOR -- validate_then_compile always
+// passes required_compile_lens_roster(), a duplicate-free literal -- but §4b's authorability rule
+// decides the question at the fixture, not at the door: a state unrepresentable in the accepted
+// corpus may still be perfectly representable as source handed to the join by a fixture, and where
+// the refusal is authorable there, declining it is specification without execution. It is one
+// call: hand the join a roster with a repeated row.
+test fn required_lens_coverage_refuses_duplicate_registration_holds() -> Bool {
+  match join_required_lens_coverage(
+    lenses: list_append(
+      left: required_compile_lens_roster(),
+      right: [first_root_registration()]
+    ),
+    witnesses: complete_observations()
+  ) {
+    RequiredLensCoverageRefused { cause: cause } =>
+      match cause {
+        RegistrationDuplicated { lens: l } =>
+          declaration_ref_eq(a: l, b: first_root_registration().identity)
+        RequiredLensRosterEmpty => false
+        RegistrationUnobserved { lens: _ } => false
+        ObservationUnregistered { lens: _ } => false
+        ObservedAtWrongGrain { lens: _ } => false
+        RootLensObservedMoreThanOnce { lens: _ } => false
+      }
+    RequiredLensCoverageClosed { roster_digest: _, rows: _ } => false
+  }
+}
