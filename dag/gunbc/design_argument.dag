@@ -146,6 +146,29 @@ data conformance_domains: List<ConformanceDomain> = [
     ],
     narrative: "allocation, placement and negotiation of resources: work contracts, compute layouts, fabric cell reservations, capacity class admission",
   },
+  ConformanceDomain {
+    key: "conformance-decision",
+    label: "decision / selection",
+    question: "When this change chooses among candidates under objectives and constraints, does it inhabit the corpus's decision and Pareto models -- a DecisionSubject, a candidate field of ParetoEntry rows over declared SelectionAxis identities, a RealizationSelectionResult whose SelectedWithin arm binds a SelectionReceipt -- and where it uses another representation or another choosing route, is that departure and its reason stated?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.decision", decl_name: "DecisionSubject"),
+      rest: [
+        decl_ref(module_path: "std.decision", decl_name: "RealizationSelectionResult"),
+        decl_ref(module_path: "std.decision", decl_name: "SelectionReceipt"),
+        decl_ref(module_path: "std.decision", decl_name: "select_realization"),
+        decl_ref(module_path: "std.pareto", decl_name: "SelectionAxis"),
+        decl_ref(module_path: "std.pareto", decl_name: "ParetoEntry"),
+        decl_ref(module_path: "std.pareto", decl_name: "DominanceVerdict"),
+      ],
+    },
+    tells: [
+      "a locally authored candidate-selection result (a chosen/none/needs-more sum, a ranked list, a best-of fold) beside RealizationSelectionResult",
+      "a parallel dominance, orientation, interval or evidence-gap representation where std.pareto already carries DominanceVerdict, AxisGoal and AxisGap",
+      "a local convention for candidate-field identity, funded-axis identity or policy identity where SelectionReceipt already names them as declaration references",
+      "a new choosing route that neither consumes select_realization nor states, beside itself, why it does not"
+    ],
+    narrative: "a choice must remain attributable to its subject, candidate field, constraints, evidence and policy, and conformance exposes accidental forks of that authority; the hard selection laws -- no answer outrunning its evidence, no front standing as a winner -- stay with the §3d reviewer, and goal assessment (std.goal_assessment) is a boundary of this row, not a member of it",
+  },
 ]
 
 fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {
@@ -294,13 +317,13 @@ data design_section_2_to_7_rows: List<DesignRow> = [
     },
     review: ReviewableOnChange { parts: [yes_no_review(
       part: "selection-precedes-convergence",
-      question: "Does the change choose or converge a realization while the candidate field, constraints, funded-axis evidence or policy are unresolved; redeclare Pareto dominance/orientation/interval/gap vocabulary; treat a Pareto front as a winner; mint SelectedWithin over an incomplete closure; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or policy choice?",
+      question: "Does the change let a selected or settled answer outrun its candidate-field completeness, constraints, required evidence or policy; treat a Pareto front with several survivors as a chosen winner; turn missing funded evidence into a fabricated zero, a default score or a settled fact; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or choice of desired policy? These are the hard laws, and a stated departure from the decision home (admitted by conformance-decision) does not excuse any of them.",
       tells: [
         "a convergence or ensure path that enumerates candidates or selects a realization",
-        "a second dominance, orientation, interval or evidence-gap algebra beside std.pareto",
-        "Optimal or first-list-element standing in for SelectedWithin / SelectionNeedsPolicy",
-        "a missing funded-axis reading filled with 0 W or a worst-score default",
-        "SelectedWithin (or Settled) minted while required (term, variable) cells, constraints or candidate-field identity are incomplete"
+        "Optimal or first-list-element standing where several non-dominated survivors remain and no policy was named",
+        "a missing funded-axis reading filled with 0 W, a worst-score default, or silently dropped from the comparison",
+        "SelectedWithin (or Settled) minted while required (term, variable) cells, constraints, funded-axis evidence or candidate-field identity are incomplete",
+        "a departure note that explains a different representation and is offered as the reason an incomplete choice may stand"
       ]
     )] },
   },
