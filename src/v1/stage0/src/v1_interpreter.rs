@@ -15027,7 +15027,7 @@ fn decide_rest_exchange(
         };
         map_response_to_value_json(&json, op_node, ctx)?
     };
-    if let Some(missing) = rest_payload_null_fields(&mapped, outcome_field, ctx) {
+    if let Some(missing) = rest_payload_null_fields(&mapped, op_node, outcome_field, ctx) {
         let cause = format!(
             "HTTP {} body did not inhabit the declared output (null at {})",
             status, missing
@@ -15658,18 +15658,45 @@ fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
     authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("List")
 }
 
+fn rest_output_child_is_optional(child: &Rc<Node>) -> bool {
+    child.return_cardinality == Cardinality::CardOptional
+}
+
+fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
+    op_node
+        .inferred
+        .as_deref()
+        .and_then(|inferred| match inferred {
+            InferredNode::Resolved { node } => Some(node),
+            _ => None,
+        })
+        .map(|return_type| {
+            return_type
+                .children
+                .iter()
+                .filter(|child| rest_output_child_is_optional(child))
+                .map(|child| authored_name_at(ctx.si(), child.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn rest_payload_null_fields(
     mapped: &Value,
+    op_node: &Rc<Node>,
     outcome_field: Option<&str>,
     ctx: &InterpContext,
 ) -> Option<String> {
+    let optional = rest_optional_output_field_names(op_node, ctx);
     match mapped {
         Value::Record { fields, .. } => {
             let missing: Vec<String> = fields
                 .iter()
                 .filter(|(name, value)| {
                     let field = ctx.resolve(*name);
-                    Some(field.as_str()) != outcome_field && matches!(value, Value::Null)
+                    Some(field.as_str()) != outcome_field
+                        && matches!(value, Value::Null)
+                        && !optional.contains(&field)
                 })
                 .map(|(name, _)| ctx.resolve(*name))
                 .collect();

@@ -63,6 +63,16 @@ service test.RestReplay {
     transport rest { method: GET, path: "/answer" }
   }
 
+  operation OptionalObserve {
+    output {
+      message: String from "message"
+      expires_on: String? from "expires_on"
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+  }
+
   operation Legacy {
     output { message: String from "message" }
     readonly

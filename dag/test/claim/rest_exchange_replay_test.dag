@@ -310,6 +310,26 @@ test fn rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok() -> 
   }
 }
 
+test fn rest_200_absent_optional_from_path_stays_rest_ok() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "OptionalObserve",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "{\"message\":\"accepted\"}" }
+      }
+    )]),
+    subject: fn(_scope) { test.RestReplay.OptionalObserve() }
+  )
+  match result {
+    WitnessReturned { value } => value.message == "accepted" && match value.observed {
+      RestOk => true
+      _ => false
+    }
+    WitnessRefused { diagnostic } => false
+  }
+}
+
 test fn rest_replay_binding_does_not_escape_its_frame() -> Bool {
   let inside = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: []),
