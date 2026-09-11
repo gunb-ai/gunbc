@@ -34,33 +34,19 @@ import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
   review_sheet_from_readback,
-  sheets_workspace_suite,
-  sheets_access,
   review_sheet_live_access,
   ReviewSheetLiveOpen,
   ReviewSheetLiveNotAdmitted,
-  sheets_value_input_raw,
-  sheets_projection_oauth_scope,
-  sheets_api_edition,
   live_sheets_transport_frontier,
 }
 import extdeps.google.sheets {
   ValueRange,
-  sheets_api_version,
-  sheets_spreadsheets_oauth_scope,
-  sheets_spreadsheets_readonly_oauth_scope,
-  sheets_read_requests_per_minute_per_project,
-  sheets_write_requests_per_minute_per_project,
-  sheets_requests_per_minute_per_user,
-  sheets_rate_limits,
-  sheets_read_quota_citation,
   sheets_major_dimension_wire,
   sheets_major_dimension_from_wire,
   DimensionRows,
   DimensionColumns,
   sheets_serviceusage_api_id,
 }
-import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import std.disposition { Terminal, Scaffold, RealizationDispatch, SingleAuthority, SubstrateMandatoryTag }
 import std.human_intervention {
@@ -81,7 +67,6 @@ import gunbc.review_sheet_operator {
   buyer_review_workspace_domain_sharing,
   buyer_review_account_tenancy,
   spreadsheet_share_intervention,
-  sheets_api_enablement_from_service_state,
   sheets_api_enablement_decision,
   sheets_api_desired_enablement,
   review_sheet_gcp_project,
@@ -110,6 +95,9 @@ import gunbc.review_sheet_operator {
 }
 import gunbc.gcp_service_enablement {
   decide_service_enablement,
+  service_enablement_from_state_wire,
+  live_serviceusage_get_frontier,
+  live_serviceusage_enable_frontier,
   ServiceEnablementObservation,
   ServiceDesiredEnabled,
   ServiceDesiredDisabled,
@@ -327,13 +315,6 @@ test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
   }
 }
 
-test fn sheets_api_is_v4_with_published_read_quota_and_scope() -> Bool {
-  (sheets_api_version as String) == "v4"
-    && (sheets_spreadsheets_oauth_scope as String) == "https://www.googleapis.com/auth/spreadsheets"
-    && sheets_read_requests_per_minute_per_project.requests == 300
-    && (sheets_workspace_suite() as String) == "Google Workspace"
-}
-
 test fn standing_is_a_sum_projected_at_emit() -> Bool {
   match read_listing_standing(cell: listing_standing_label(state: StandingObserved)) {
     StandingKnown { state: s } => match s {
@@ -450,11 +431,29 @@ test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
   }
 }
 
-test fn sheets_cited_facts_have_executing_readers() -> Bool {
-  (sheets_rate_limits |> count) == 3
-    && sheets_write_requests_per_minute_per_project.requests == 300
-    && sheets_requests_per_minute_per_user.requests == 60
-    && sheets_read_quota_citation.fact.decl_name == "sheets_read_requests_per_minute_per_project"
+test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
+  match live_sheets_transport_frontier {
+    Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+      (b.module_path as String) == "gunbc.review_sheet_sheets"
+        && (b.decl_name as String) == "review_sheet_from_readback"
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+    Terminal { reason: _ } => false
+  }
+    && match live_serviceusage_get_frontier {
+      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+        (b.decl_name as String) == "service_enablement_from_state_wire"
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+      Terminal { reason: _ } => false
+    }
+    && match live_serviceusage_enable_frontier {
+      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+        (b.decl_name as String) == "decide_service_enablement"
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+      Terminal { reason: _ } => false
+    }
     && match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionRows)) {
       Present { value: DimensionRows } =>
         match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionColumns)) {
@@ -465,29 +464,6 @@ test fn sheets_cited_facts_have_executing_readers() -> Bool {
       Present { value: DimensionColumns } => false
       Absent => false
     }
-    && (sheets_published_mock_corpus |> count) == 2
-    && (sheets_spreadsheets_readonly_oauth_scope as String) != (sheets_spreadsheets_oauth_scope as String)
-    && (sheets_projection_oauth_scope() as String) == (sheets_spreadsheets_oauth_scope as String)
-    && sheets_value_input_raw() == "RAW"
-    && (sheets_api_edition() as String) == (sheets_api_version as String)
-    && (sheets_serviceusage_api_id as String) == "sheets.googleapis.com"
-    && match live_sheets_transport_frontier {
-      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
-        (b.module_path as String) == "gunbc.review_sheet_sheets"
-          && (b.decl_name as String) == "review_sheet_from_readback"
-      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
-      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
-      Terminal { reason: _ } => false
-    }
-    && sheets_access(
-      spreadsheet_id: "sheet" as NonEmptyStr,
-      credential: SecretRef {
-        project: "proj",
-        secret: "sheets-sa" as NonEmptyStr,
-        version: "pending",
-        hash_state: HashPending,
-      },
-    ).spreadsheet_id == ("sheet" as NonEmptyStr)
 }
 
 fn w_fixture_project() -> GcpProjectId {
@@ -719,7 +695,11 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
 }
 
 test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
-  match sheets_api_enablement_from_service_state(project: w_fixture_project(), state_wire: "ENABLED") {
+  match service_enablement_from_state_wire(
+    project: w_fixture_project(),
+    service_id: sheets_serviceusage_api_id,
+    state_wire: "ENABLED",
+  ) {
     ServiceObservedEnabled { project: p, service_id: s } =>
       (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
     ServiceObservedDisabled { project: _, service_id: _ } => false

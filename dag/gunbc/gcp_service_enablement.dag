@@ -2,6 +2,8 @@ module gunbc.gcp_service_enablement
 
 import std.types { NonEmptyStr, String, Bool }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ensure {
   EnsureMayApply,
   EnsureObserved,
@@ -129,5 +131,26 @@ fn decide_service_enablement(
             }
           }
       }
+  }
+}
+
+// GetService / EnableService have no live caller in this PR. The folds consume an observation and
+// an EnableApiPlan; sunny-carp-475 (or a later adapter) binds the operations. Until then this is
+// owed work, not a terminal.
+data live_serviceusage_get_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.gcp_service_enablement",
+    decl_name: "service_enablement_from_state_wire",
+    field: WholeDeclaration
+  }
+}
+
+data live_serviceusage_enable_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.gcp_service_enablement",
+    decl_name: "decide_service_enablement",
+    field: WholeDeclaration
   }
 }

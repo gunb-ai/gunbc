@@ -27,14 +27,9 @@ import gunbc.review_sheet_projection {
 }
 import extdeps.google.sheets {
   ValueRange,
-  sheets_spreadsheets_oauth_scope,
-  sheets_api_version,
-  InputRaw,
-  sheets_value_input_option_wire,
 }
 import extdeps.cloud.gcp.gcp { GcpOAuth2AccessTokenStrategy, AdcRefresh }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.google.workspace { google_workspace_product }
 import gunbc.review_sheet_operator {
   fleet_review_sheet_operator_admission,
   ReviewSheetOperatorAdmission,
@@ -82,14 +77,6 @@ fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
     ReviewSheetOperatorRefused { reason: r } =>
       ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorRefused { reason: r } }
   }
-}
-
-fn sheets_projection_oauth_scope() -> NonEmptyStr {
-  sheets_spreadsheets_oauth_scope
-}
-
-fn sheets_value_input_raw() -> String {
-  sheets_value_input_option_wire(o: InputRaw)
 }
 
 fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheet {
@@ -156,14 +143,6 @@ fn review_sheet_ensure(
     },
     plan: review_sheet_ensure_plan(classified: classified),
   )
-}
-
-fn sheets_api_edition() -> NonEmptyStr {
-  sheets_api_version
-}
-
-fn sheets_workspace_suite() -> NonEmptyStr {
-  google_workspace_product
 }
 
 // sunny-carp-475 binds a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter onto

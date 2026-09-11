@@ -18,7 +18,6 @@ import gunbc.gcp_service_enablement {
   ServiceEnablementUnobserved,
   EnableApiPlan,
   decide_service_enablement,
-  service_enablement_from_state_wire,
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
@@ -44,14 +43,6 @@ data serviceusage_services_enable_permission: NonEmptyStr = "serviceusage.servic
 
 fn sheets_api_desired_enablement(project: GcpProjectId) -> ServiceEnablementDesire {
   ServiceDesiredEnabled { project: project, service_id: sheets_serviceusage_api_id }
-}
-
-fn sheets_api_enablement_from_service_state(project: GcpProjectId, state_wire: String) -> ServiceEnablementObservation {
-  service_enablement_from_state_wire(
-    project: project,
-    service_id: sheets_serviceusage_api_id,
-    state_wire: state_wire,
-  )
 }
 
 fn sheets_api_enablement_decision(
