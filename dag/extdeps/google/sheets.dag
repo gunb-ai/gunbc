@@ -183,8 +183,7 @@ service sheets.Spreadsheets {
       range: String
     }
     output {
-      range: String from "range"
-      major_dimension: String from "majorDimension"
+      value_range: ValueRange
       outcome: RestOutcome
     }
     readonly
