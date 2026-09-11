@@ -8,7 +8,7 @@ import std.nat { Nat }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.docker.cli { docker_run_ephemeral_command, docker_image_pull_command, docker_image_digest_command }
+import extdeps.docker.cli { docker_run_ephemeral_command, docker_image_pull_command, docker_image_inspect_id_command }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   VllmCompiledSurface,
   v41_fp4_weight_surface, v41_csa2_surface, v41_dspark_surface,
@@ -589,7 +589,7 @@ fn v41_probe_pull_argv(image_reference: NonEmptyStr) -> List<String> {
 }
 
 fn v41_probe_digest_argv(image_reference: NonEmptyStr) -> List<String> {
-  argv_words(command: docker_image_digest_command(image: image_reference))
+  argv_words(command: docker_image_inspect_id_command(image: image_reference))
 }
 
 // A REMOTE RUN THAT DID NOT LAND AND ONE THAT RAN AND FAILED ARE DIFFERENT FACTS, and spark_remote_run

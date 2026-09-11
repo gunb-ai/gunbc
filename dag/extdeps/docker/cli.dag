@@ -196,23 +196,32 @@ fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: docker_build_spec_arguments(spec: spec))
 }
 
-// THE TAGGED QUESTION AND THE DIGEST-PINNED QUESTION ARE THE SAME IDENTITY READBACK, rendered
-// two ways because Docker's listing and inspect APIs do not answer both spellings.
+// THE TWO QUESTIONS A CONVERGENT BUILD ASKS ARE ONE QUESTION. Does this exact tag already name an
+// image, and what digest does that image carry, are answered by the same listing: `docker images
+// --no-trunc --quiet <ref>` prints the image's `sha256:<hex>` config digest, or prints NOTHING and
+// exits zero when the reference names no image. So absence is an empty answer rather than a failure,
+// which is what lets a caller keep "no such image" apart from "the query did not run".
 //
-// A TAG uses `docker images --no-trunc --quiet <tag>`. That prints the local config id, or prints
-// NOTHING and exits zero when the tag names no image, so converge_vllm_image can keep "not present"
-// apart from "the query did not run". `docker images <ref>` matches REPOSITORY[:TAG] only.
+// THIS COMMAND MATCHES REPOSITORY[:TAG] ONLY. A digest-pinned pull is invisible here — measured
+// empty by fleet-converge 34642398773 with `--filter=reference=` as well. The digest-pinned
+// identity readback is docker_image_inspect_id_command, a different symbol with a different
+// absence contract (inspect exits non-zero when the object is missing).
+fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
+}
+
+// DIGEST-PINNED IDENTITY. `docker image inspect --format {{.Id}} <ref>` names repo@sha256:... and
+// prints the local config id. fleet-converge 34643985099 on srv9 read back
+// sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040 after a successful pull.
+// Absence is a non-zero exit, not empty stdout — callers that need empty-means-absent stay on
+// docker_image_digest_command.
 //
-// A DIGEST-PINNED REFERENCE (`repo@sha256:<hex>`) is invisible to that listing. fleet-converge
-// run 34642398773 executed `--filter=reference=<repo>@sha256:<hex> --digests` on srv9 against an
-// image the preceding pull had just accepted, and stdout was still empty. Inspect is the CLI
-// that names a digest reference: `docker image inspect --format {{.Id}} <ref>`.
-//
-// BRACES ARE ASSEMBLED, NOT SPELLED. A Go template cannot inhabit a .dag string literal (the
-// interpolator eats `{.Id}`), and the same braces sit outside gunbc.typed_argv_exec's portable-word
-// allowlist. The probe's actual transport is spark_remote_run, which shell-quotes every word, so
-// the template reaches the daemon. The tagged listing stays the listing, so inspect's non-zero
-// exit on absence cannot collapse converge_vllm_image's "need to build" into "the query failed".
+// 🟡 dissolve-on: docker_inspect_id_format — NAMED CAPABILITY: a .dag string literal can carry a Go
+// template, or typed_argv admits a non-shell format word, so this inspect format is a spelled string.
+// SUFFICIENT FOR deleting docker_template_open, docker_template_close, and docker_inspect_id_format.
+// NOT satisfied by spark_remote_run quoting. Braces are assembled because a .dag string interpolates
+// `{.Id}` and they sit outside typed_argv_exec's portable-word allowlist. spark_remote_run quotes,
+// so the template reaches the daemon (run 34643985099). The typed-argv refusal is witnessed.
 data docker_template_open: NonEmptyStr = "{" as NonEmptyStr
 data docker_template_close: NonEmptyStr = "}" as NonEmptyStr
 
@@ -224,16 +233,11 @@ fn docker_inspect_id_format() -> String {
   ], "")
 }
 
-fn docker_image_digest_arguments(image: NonEmptyStr) -> List<String> {
-  if string_contains(s: image as String, pattern: "@sha256:") {
-    ["image", "inspect", "--format", docker_inspect_id_format(), image as String]
-  } else {
-    ["images", "--no-trunc", "--quiet", image as String]
-  }
-}
-
-fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: docker_image_digest_arguments(image: image))
+fn docker_image_inspect_id_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: docker_binary_path,
+    arguments: ["image", "inspect", "--format", docker_inspect_id_format(), image as String],
+  )
 }
 
 // THE SHORT MOUNT SPELLING, AND THE ONE REASON IT EXISTS BESIDE docker_mount_flag. `--mount` takes

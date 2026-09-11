@@ -1,40 +1,32 @@
 module test.claim.docker_image_digest_command_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.exec.command { argv_words }
-import extdeps.docker.cli { docker_image_digest_command }
+import extdeps.docker.cli { docker_image_digest_command, docker_image_inspect_id_command }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Controlled fixtures, not live pins: this file asserts argv SHAPE. A digest-pinned reference is
-// any repo@sha256:... word; a tagged one is any repository:tag without that at-digest form.
 data digest_pinned_fixture: NonEmptyStr = "example.invalid/repo:tag@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr
 data tagged_fixture: NonEmptyStr = "example.invalid/repo:tag" as NonEmptyStr
-
-fn digest_readback_words(image: NonEmptyStr) -> List<String> {
-  argv_words(command: docker_image_digest_command(image: image))
-}
 
 fn argv_has_exact_word(words: List<String>, want: String) -> Bool {
   fold(words, init: false, f: (acc, w) => acc || w == want)
 }
 
-fn digest_readback_is_portable(words: List<String>) -> Bool {
-  match typed_argv_shell_safe_refusal_argv(argv: words) {
-    Absent => true
-    Present { value: _ } => false
-  }
+fn digest_listing_words(image: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_digest_command(image: image))
 }
 
-// THE RED: a digest-pinned pull is named to inspect, not to docker images' REPOSITORY[:TAG] match.
-// Revert to a trailing `images --quiet <ref>` word and this fixture is no longer an inspect subject.
-// fleet-converge 34642398773 proved the filter listing still reads empty on srv9.
+fn inspect_id_words(image: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_inspect_id_command(image: image))
+}
+
+// THE RED: a digest-pinned identity is inspect, not docker images' REPOSITORY[:TAG] match.
 test fn a_digest_pinned_identity_readback_inspects_the_digest_reference() -> Bool {
   let image = digest_pinned_fixture
-  let words = digest_readback_words(image: image)
+  let words = inspect_id_words(image: image)
   argv_has_exact_word(words: words, want: "inspect")
     && argv_has_exact_word(words: words, want: "--format")
     && argv_has_exact_word(words: words, want: image as String)
@@ -42,24 +34,28 @@ test fn a_digest_pinned_identity_readback_inspects_the_digest_reference() -> Boo
     && string_contains(s: image as String, pattern: "@sha256:")
 }
 
-// THE CONTROL: converge_vllm_image still lists a tag, so absence stays empty stdout / exit 0.
+// THE TAGGED CONTROL: converge_vllm_image still lists; absence stays empty stdout / exit 0.
 test fn a_tagged_identity_readback_still_lists() -> Bool {
   let tag = tagged_fixture
-  let words = digest_readback_words(image: tag)
+  let words = digest_listing_words(image: tag)
   argv_has_exact_word(words: words, want: "images")
     && argv_has_exact_word(words: words, want: "--quiet")
     && argv_has_exact_word(words: words, want: "--no-trunc")
     && argv_has_exact_word(words: words, want: tag as String)
     && !argv_has_exact_word(words: words, want: "inspect")
     && !string_contains(s: tag as String, pattern: "@sha256:")
-    && digest_readback_is_portable(words: words)
+    && match typed_argv_shell_safe_refusal_argv(argv: words) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
-func docker_image_digest_command_argv_witnesses() -> ProcessExit {
-  if a_digest_pinned_identity_readback_inspects_the_digest_reference()
-    && a_tagged_identity_readback_still_lists() {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "docker_image_digest_command argv witnesses failed")
+// THE DIGEST ARM IS REFUSED ON typed_argv_exec. spark_remote_run quotes and is the executing path
+// (fleet-converge 34643985099). Omitting this check would cite the working transport while the
+// other stayed silent (DESIGN §4b(1)).
+test fn a_digest_inspect_argv_is_refused_on_typed_argv_exec() -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: inspect_id_words(image: digest_pinned_fixture)) {
+    Present { value: why } => string_contains(s: why, pattern: "allowlist")
+    Absent => false
   }
 }
