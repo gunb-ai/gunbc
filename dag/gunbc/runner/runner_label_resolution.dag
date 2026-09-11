@@ -82,7 +82,7 @@ type RunnerLabelResolution
     }
   | RunnerLabelAmbiguousAcrossCatalogs {
       label: String
-      matches: List<RunnerLabelRow>
+      matches: List<LabelMatch>
       cause: NonEmptyStr
     }
 
@@ -96,18 +96,24 @@ type RunnerLabelResolution
 // label is a defect in the roster. They have different owners and different repairs.
 type LabelMatch {
   row: RunnerLabelRow
-  catalog_provider: DeclarationRef
+  catalog: DeclarationRef
   snapshot: CatalogSnapshot
 }
 
 fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatch> {
   map(filter(catalog.rows, r => r.label == label),
-      r => LabelMatch { row: r, catalog_provider: catalog.provider, snapshot: catalog.snapshot })
+      r => LabelMatch { row: r, catalog: catalog.catalog, snapshot: catalog.snapshot })
 }
 
+// KEYED ON THE CATALOG, NOT ON THE PROVIDER, and the difference is not hypothetical: the two
+// catalogs this module names as its live growth surface - GitHub's sized larger-runner families and
+// its standard runners - BOTH carry github_actions_provider_identity. Keyed on provider, an overlap
+// between them would still have refused, but the refusal would have said the duplicate lives in one
+// provider's projection when the join is in the survey: the right destination reached by a false
+// statement, sending the reader to the wrong module to repair it.
 fn matches_share_one_catalog(matches: List<LabelMatch>) -> Bool {
-  let first_provider = first(matches).catalog_provider
-  count(filter(matches, m => declaration_ref_eq(a: m.catalog_provider, b: first_provider) == false)) == 0
+  let first_catalog = first(matches).catalog
+  count(filter(matches, m => declaration_ref_eq(a: m.catalog, b: first_catalog) == false)) == 0
 }
 
 fn surveyed_matches(label: String) -> List<LabelMatch> {
@@ -145,7 +151,7 @@ fn resolve_from_matches(
   if count(matches) > 1 {
     RunnerLabelAmbiguousAcrossCatalogs {
       label: label,
-      matches: map(matches, m => m.row),
+      matches: matches,
       cause: if matches_share_one_catalog(matches: matches) {
         join(["the label '", label, "' appears ", to_string(count(matches)),
           " times in ONE catalog's rows. That is a defect in that provider's own projection rather than in the roster: its published surface was read into duplicate rows, and the repair belongs to that module."], "")

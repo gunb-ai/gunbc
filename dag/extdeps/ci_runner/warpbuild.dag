@@ -90,6 +90,7 @@ data warpbuild_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 }
 
 data warpbuild_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.warpbuild", decl_name: "warpbuild_label_catalog"),
   provider: warpbuild_provider_identity,
   selection_surface: github_actions_runs_on_surface,
   snapshot: warpbuild_catalog_snapshot,

@@ -324,12 +324,22 @@ data control_snapshot: CatalogSnapshot = CatalogSnapshot {
 // snapshot and no catalog identity, so the pair was indistinguishable from one catalog listing a
 // label twice — it never tested two CATALOGS at all. The provider is now part of the match, and
 // the claims below drive both shapes separately.
-fn control_match_from(row: RunnerLabelRow, provider: DeclarationRef) -> LabelMatch {
-  LabelMatch { row: row, catalog_provider: provider, snapshot: control_snapshot }
+fn control_match_from(row: RunnerLabelRow, catalog: DeclarationRef) -> LabelMatch {
+  LabelMatch { row: row, catalog: catalog, snapshot: control_snapshot }
 }
 
+// TWO CONTROL CATALOGS THAT SHARE A PROVIDER, which is the case the old key could not see. GitHub's
+// sized larger-runner catalog and its standard-runner catalog both carry
+// github_actions_provider_identity, so a pair keyed on provider reads as ONE catalog listing a
+// label twice - and the refusal would then name the wrong module as the place to repair it.
+data control_catalog_one: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.github_actions", decl_name: "github_actions_label_catalog")
+
+data control_catalog_two: DeclarationRef = decl_ref(
+  module_path: "gunbc.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog")
+
 fn control_match(row: RunnerLabelRow) -> LabelMatch {
-  control_match_from(row: row, provider: row.provider)
+  control_match_from(row: row, catalog: control_catalog_one)
 }
 
 fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
@@ -339,6 +349,59 @@ fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
     RunnerLabelResolved { row, snapshot } => false
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => false
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+  }
+}
+
+// TWO CATALOGS SHARING ONE PROVIDER MUST READ AS TWO CATALOGS. Both rows below carry GitHub as
+// their provider and differ only in which catalog matched, which is exactly the pair the old
+// provider-keyed check collapsed. The claim asserts the refusal names the ROSTER rather than a
+// provider's own projection - the difference between "gunbc.runner_provider_survey enrolled it
+// twice" and "extdeps.ci_runner.github_actions listed it twice", which are different repairs.
+data github_row_larger: RunnerLabelRow = RunnerLabelRow {
+  provider: github_actions_provider_identity,
+  label: "contested-label-8",
+  architecture: X86_64,
+}
+
+data github_row_standard: RunnerLabelRow = RunnerLabelRow {
+  provider: github_actions_provider_identity,
+  label: "contested-label-8",
+  architecture: Aarch64,
+}
+
+test fn witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs() -> Bool {
+  match resolve_from_matches(
+    label: "contested-label-8",
+    observed_at: biome_observed_at,
+    matches: [
+      control_match_from(row: github_row_larger, catalog: control_catalog_one),
+      control_match_from(row: github_row_standard, catalog: control_catalog_two),
+    ],
+  ) {
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } =>
+      count(matches) == 2
+        && declaration_ref_eq(a: first(matches).row.provider, b: github_actions_provider_identity)
+        && string_contains(s: cause as String, pattern: "DIFFERENT surveyed catalogs")
+        && string_contains(s: cause as String, pattern: "repair is to the roster")
+    other => false
+  }
+}
+
+// AND ONE CATALOG LISTING A LABEL TWICE MUST READ AS THAT, so the two causes are not
+// interchangeable and the claim above is not satisfied by a refusal that always says "roster".
+test fn witness_one_catalog_listing_a_label_twice_names_that_catalog() -> Bool {
+  match resolve_from_matches(
+    label: "contested-label-8",
+    observed_at: biome_observed_at,
+    matches: [
+      control_match_from(row: github_row_larger, catalog: control_catalog_one),
+      control_match_from(row: github_row_standard, catalog: control_catalog_one),
+    ],
+  ) {
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } =>
+      string_contains(s: cause as String, pattern: "in ONE catalog's rows")
+        && string_contains(s: cause as String, pattern: "repair belongs to that module")
+    other => false
   }
 }
 
@@ -487,7 +550,9 @@ test fn witness_the_untrusted_partition_is_readable_from_the_value() -> Bool {
 }
 
 fn all_claims_hold() -> Bool {
-  witness_the_untrusted_partition_is_readable_from_the_value()
+  witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs()
+    && witness_one_catalog_listing_a_label_twice_names_that_catalog()
+    && witness_the_untrusted_partition_is_readable_from_the_value()
     &&
   witness_an_unorderable_snapshot_is_not_reported_as_an_old_one()
     &&

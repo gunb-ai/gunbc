@@ -227,7 +227,15 @@ type CatalogSnapshot {
 // central enum of surfaces would have to be widened by every CI system anyone ever enrolls, which
 // is the concrete-product enumeration DESIGN section 3 forbids a generic hub. A surface names the
 // declaration that defines it and a consumer compares refs.
+// WHICH CATALOG THIS IS, WHICH IS NOT THE SAME FACT AS WHO PUBLISHED ITS ROWS. One provider can
+// have SEVERAL catalogs in a survey - GitHub's sized larger-runner families and its standard
+// runners are two readings of two different published references, and both carry GitHub as the
+// provider. A consumer that identified a catalog by its provider could not tell "this catalog
+// lists a label twice" from "two catalogs both claim it", which are defects with different owners
+// and different repairs: the first belongs to the module that projected the rows, the second to
+// the roster that enrolled them.
 type RunnerLabelCatalog {
+  catalog: DeclarationRef
   provider: DeclarationRef
   selection_surface: DeclarationRef
   snapshot: CatalogSnapshot
@@ -241,12 +249,14 @@ fn catalog_is_on_surface(catalog: RunnerLabelCatalog, surface: DeclarationRef) -
 // The projection every provider whose published sizes are visibility-free uses, so that
 // enrolling a provider's labels is one line in that provider's own module and no second list.
 fn label_catalog_of_shapes(
+  catalog: DeclarationRef,
   provider: DeclarationRef,
   selection_surface: DeclarationRef,
   snapshot: CatalogSnapshot,
   availability: RunnerCatalogAvailability,
 ) -> RunnerLabelCatalog {
   RunnerLabelCatalog {
+    catalog: catalog,
     provider: provider,
     selection_surface: selection_surface,
     snapshot: snapshot,

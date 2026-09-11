@@ -106,6 +106,7 @@ data github_actions_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 }
 
 data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.github_actions", decl_name: "github_actions_label_catalog"),
   provider: github_actions_provider_identity,
   selection_surface: github_actions_runs_on_surface,
   snapshot: github_actions_catalog_snapshot,

@@ -283,6 +283,7 @@ data ubicloud_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 }
 
 data ubicloud_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "ubicloud_label_catalog"),
   provider: ubicloud_provider_identity,
   selection_surface: github_actions_runs_on_surface,
   snapshot: ubicloud_catalog_snapshot,

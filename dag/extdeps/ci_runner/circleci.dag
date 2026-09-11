@@ -111,6 +111,7 @@ data circleci_resource_class_surface: DeclarationRef = decl_ref(
 )
 
 data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.circleci", decl_name: "circleci_label_catalog"),
   provider: circleci_provider_identity,
   selection_surface: circleci_resource_class_surface,
   snapshot: circleci_catalog_snapshot,

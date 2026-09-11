@@ -105,6 +105,7 @@ data github_hosted_standard_snapshot: CatalogSnapshot = CatalogSnapshot {
 }
 
 data github_hosted_standard_label_catalog: RunnerLabelCatalog = RunnerLabelCatalog {
+  catalog: decl_ref(module_path: "gunbc.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog"),
   provider: github_actions_provider_identity,
   selection_surface: github_actions_runs_on_surface,
   snapshot: github_hosted_standard_snapshot,

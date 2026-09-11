@@ -96,6 +96,7 @@ data blacksmith_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 }
 
 data blacksmith_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.blacksmith", decl_name: "blacksmith_label_catalog"),
   provider: blacksmith_provider_identity,
   selection_surface: github_actions_runs_on_surface,
   snapshot: blacksmith_catalog_snapshot,
