@@ -1,0 +1,12 @@
+module test.fixture.grounded_shared_carrier
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+
+// THE ONE SHAPE THIS FIXTURE EXISTS FOR: a Cons whose tail is the grounded FreeMonoid empty. The
+// emitter renders `Empty {}` as the already-shared value, and the record-literal sites used to
+// share it a second time; the test beside this fixture asserts the single share and refuses the
+// double one by name.
+fn one_row() -> List<String> {
+  Cons { head: "a", tail: Empty {} }
+}
