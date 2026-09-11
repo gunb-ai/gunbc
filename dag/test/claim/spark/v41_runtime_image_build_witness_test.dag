@@ -9,10 +9,11 @@ import extdeps.vllm.source_build {
   vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
   vllm_recipe_targeting, vllm_cuda_arch_supported,
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
+  vllm_07b75534_registry_maps_deepseek_v4_1, vllm_07b75534_registry_answers_for,
 }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_fp4_weight_surface, v41_fp4_kv_cache_surface, v41_csa2_surface, v41_dspark_surface,
-  v41_sm12_demand_symbols, v41_sm12_kv_cache_dtype_admitted,
+  v41_sm12_demand_symbols, v41_sm12_kv_cache_dtype_admitted, v41_sm12_admitted_kv_cache_dtypes,
   v41_fp4_sm120_block, v41_fp4_sm100_block,
 }
 import extdeps.vllm.deepseek_v4_1_flash_recipe { v41_flash_hardware_verified, v41_flash_vram_minimum_gb }
@@ -32,7 +33,9 @@ import gunbc.spark.v41_runtime_image_probe {
   v41_capability_kv_layout, v41_capability_fp4_weight, v41_capability_architecture,
   v41_probe_script, v41_capability_reading, v41_probe_architecture_class,
   v41_capability_flashinfer_sm120,
-  v41_image_unmet_capabilities, v41_reading_for,
+  v41_image_unmet_capabilities, v41_reading_for, v41_reading_is_present,
+  v41_probed_architecture_present, v41_probed_sibling_architecture, v41_probed_sibling_architecture_present,
+  v41_probed_admitted_kv_layouts, v41_probed_rejected_kv_layouts, v41_probed_layout_admitted,
 }
 
 // THE ONE FIELD THAT DIVERGES FROM UPSTREAM IS THE ONE THE LANE EXISTS FOR. Everything else in the
@@ -219,29 +222,53 @@ test fn the_fp4_kv_roster_carries_the_registered_operators_and_not_the_names_tha
 
 
 
-// THE RECORDED READINGS ARE ASSERTED AT THE GRAIN THEY WERE TAKEN, so the one absence cannot be
-// tidied into a pass and the five presences cannot drift into a claim nobody measured. The
-// architecture row is the finding: the image built from the lead commit carries every kernel
-// capability the SM12 path asks for and does not register the checkpoint's architecture.
+// THE IN-IMAGE READING AND THE SOURCE READING ARE JOINED, WHICH IS WHAT MAKES EITHER ONE EVIDENCE.
+// These are two independently obtained answers to one question -- what vLLM at 07b75534 admits and
+// registers -- one read out of upstream's files, one taken by executing inside a built image on a
+// GB10. Asserting that they AGREE goes red if the source reading was wrong, if the image is not what
+// it claims, or if either row is edited alone; asserting a sentence against itself, which an earlier
+// revision of this witness did, cannot go red for any of those reasons.
+fn layout_sets_agree() -> Bool {
+  fold(v41_sm12_admitted_kv_cache_dtypes, init: true, f: (acc, d) => acc && v41_probed_layout_admitted(dtype: d))
+    && fold(v41_probed_admitted_kv_layouts, init: true, f: (acc, d) => acc && v41_sm12_kv_cache_dtype_admitted(dtype: d))
+    && length(v41_probed_admitted_kv_layouts) == length(v41_sm12_admitted_kv_cache_dtypes)
+}
+
+test fn the_in_image_layout_admission_agrees_with_the_source_at_the_pinned_revision() -> Bool {
+  layout_sets_agree()
+    && fold(v41_probed_rejected_kv_layouts, init: true, f: (acc, d) => acc && !v41_sm12_kv_cache_dtype_admitted(dtype: d))
+    && fold(v41_probed_rejected_kv_layouts, init: false, f: (acc, d) => acc || (d as String) == "nvfp4_ds_mla")
+    && !v41_probed_layout_admitted(dtype: "nvfp4_ds_mla" as NonEmptyStr)
+}
+
+// THE ARCHITECTURE, THE SAME WAY: the registry inside the image did not answer for the checkpoint's
+// name, and upstream's registry.py at that revision maps no name to vllm.models.deepseek_v4_1. The
+// sibling is the discriminator -- the registry is not missing DeepSeek entries, it is missing this
+// one -- and both sources are asserted to agree about it too.
+test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped() -> Bool {
+  !v41_probed_architecture_present
+    && !vllm_07b75534_registry_maps_deepseek_v4_1
+    && v41_probed_sibling_architecture_present
+    && vllm_07b75534_registry_answers_for(architecture: v41_probed_sibling_architecture)
+    && !vllm_07b75534_registry_answers_for(architecture: v41_probe_architecture_class)
+}
+
+// EVERY KERNEL CAPABILITY IS PRESENT AND EXACTLY ONE THING IS NOT, asserted over the typed outcome
+// rather than over a word in a sentence.
 test fn the_built_image_meets_every_kernel_capability_and_registers_no_v41_architecture() -> Bool {
   let unmet = v41_image_unmet_capabilities()
   length(unmet) == 1
     && (match v41_reading_for(capability: v41_capability_architecture) {
       Absent => false
-      Present { value: r } =>
-        (r.observed as String) == "absent"
-          && string_contains(s: r.evidence as String, pattern: "383")
-          && string_contains(s: r.evidence as String, pattern: "DeepseekV4ForCausalLM")
+      Present { value: r } => !v41_reading_is_present(r: r)
     })
     && (match v41_reading_for(capability: v41_capability_flashinfer_sm120) {
       Absent => false
-      Present { value: r } => (r.observed as String) == "present"
+      Present { value: r } => v41_reading_is_present(r: r)
     })
     && (match v41_reading_for(capability: v41_capability_kv_layout) {
       Absent => false
-      Present { value: r } =>
-        (r.observed as String) == "present"
-          && string_contains(s: r.evidence as String, pattern: "rejected auto, bfloat16 and nvfp4_ds_mla")
+      Present { value: r } => v41_reading_is_present(r: r)
     })
 }
 

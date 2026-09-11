@@ -173,3 +173,27 @@ fn vllm_cuda_arch_supported(arch: NonEmptyStr) -> Bool {
   fold(vllm_cuda_supported_archs, init: false, f: (acc, a) =>
     if acc { true } else { a as String == arch as String })
 }
+
+// ── WHAT THE MODEL REGISTRY AT THIS REVISION MAPS ─────────────────────────────────────────────
+//
+// READ FROM vllm/model_executor/models/registry.py AT THE PINNED REVISION, and carried because it is
+// the fact that decides whether a checkpoint declaring an architecture can be loaded at all. The V4.1
+// MODEL CODE is in the tree -- the class is at the path below -- and no registry entry maps its name,
+// or any name, to vllm.models.deepseek_v4_1. What the registry does carry for this family points at
+// vllm.models.deepseek_v4.
+//
+// THIS IS A SOURCE FACT AND IT EXISTS TO BE DISAGREED WITH. An image built from this revision either
+// answers for that name or does not, and a probe inside one is an independent way to ask the same
+// question; the two are joined in the witness rather than one being assumed from the other.
+data vllm_07b75534_deepseek_v4_1_class_path: NonEmptyStr = "vllm/models/deepseek_v4_1/nvidia/vl_model.py" as NonEmptyStr
+data vllm_07b75534_registry_maps_deepseek_v4_1: Bool = false
+
+data vllm_07b75534_registered_deepseek_v4_architectures: List<NonEmptyStr> = [
+  "DeepseekV4ForCausalLM" as NonEmptyStr,
+  "DeepseekV4ForConditionalGeneration" as NonEmptyStr,
+]
+
+fn vllm_07b75534_registry_answers_for(architecture: NonEmptyStr) -> Bool {
+  fold(vllm_07b75534_registered_deepseek_v4_architectures, init: false, f: (acc, a) =>
+    if acc { true } else { a as String == architecture as String })
+}
