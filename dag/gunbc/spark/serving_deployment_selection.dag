@@ -2,7 +2,7 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, byte_size_count }
+import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
@@ -68,8 +68,8 @@ import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculativ
 // identically to one read on a Spark. Its own `how` field said as much while its constructor name
 // said "measured".
 type ArtifactFootprint
-  = FootprintObservedOnFleet { bytes: Nat, how: NonEmptyStr }
-  | FootprintReportedExternally { bytes: Nat, source: NonEmptyStr }
+  = FootprintObservedOnFleet { bytes: ByteSize, how: NonEmptyStr }
+  | FootprintReportedExternally { bytes: ByteSize, source: NonEmptyStr }
   | FootprintUnread { obligation: NonEmptyStr }
 
 // WHETHER THE BYTES ARE THE PUBLISHED CHECKPOINT IS A FACT, NOT A SCORE. A requantised build is
@@ -90,7 +90,7 @@ data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_flash_native", field: WholeDeclaration },
   label: "DeepSeek V4 Flash, native checkpoint" as NonEmptyStr,
   footprint: FootprintObservedOnFleet {
-    bytes: 168683720987,
+    bytes: byte_size(count: 168683720987),
     how: "summed safetensors byte size read inside the serving container on a Spark, 2026-09-07" as NonEmptyStr,
   },
   weight_treatment: PublishedNativeWeights,
@@ -100,7 +100,7 @@ data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
   label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
   footprint: FootprintReportedExternally {
-    bytes: byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size),
+    bytes: deepseek_v4_1_flash_safetensors_index_total_size,
     source: join([
       "extdeps.deepseek.deepseek_v4_1_flash CitedToAuthority payload bytes=",
       to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)),
@@ -133,7 +133,7 @@ data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_2bit", field: WholeDeclaration },
   label: "GLM 5.3 Flash, 2.05 bits per weight" as NonEmptyStr,
   footprint: FootprintReportedExternally {
-    bytes: 85230000000,
+    bytes: byte_size(count: 85230000000),
     source: "a third-party single-host deployment report; not read on this fleet, so it cannot support a feasibility verdict here" as NonEmptyStr,
   },
   weight_treatment: RequantisedWeights {
@@ -144,13 +144,13 @@ data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
 // ── THE FLEET AS A SNAPSHOT ───────────────────────────────────────────────────────────────────
 type FleetSnapshot {
   host_count: Nat
-  bytes_per_host: Nat
+  bytes_per_host: ByteSize
   how: NonEmptyStr
 }
 
 data spark_fleet_snapshot: FleetSnapshot = FleetSnapshot {
   host_count: 8,
-  bytes_per_host: 130663231488,
+  bytes_per_host: byte_size(count: 130663231488),
   how: "torch.cuda.get_device_properties(0).total_memory read inside the serving container on a GB10, 2026-09-07; NVML refuses this query on unified memory and must not be used for it" as NonEmptyStr,
 }
 
@@ -658,7 +658,7 @@ type WeightFit
 // percent, which could not represent the fractions this fleet's engines actually receive; the
 // arithmetic is identical, at the precision the request carries.
 fn usable_bytes_per_rank(fleet: FleetSnapshot, utilisation_basis_points: Nat) -> Nat {
-  (fleet.bytes_per_host * utilisation_basis_points) / 10000
+  (byte_size_count(b: fleet.bytes_per_host) * utilisation_basis_points) / 10000
 }
 
 // AN OMITTED FRACTION HAS NO EFFECTIVE VALUE UNTIL IT IS RESOLVED AGAINST A REVISION, so this screen
@@ -701,7 +701,7 @@ fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisio
         because: join(["the only footprint for this artifact is externally reported and not read on this fleet, so it cannot support a feasibility verdict here: ", src as String], "") as NonEmptyStr,
       }
     FootprintObservedOnFleet { bytes: b, how: _ } =>
-      match per_rank_bytes_ceiling(total: b, ranks: c.topology.tensor_parallel_degree) {
+      match per_rank_bytes_ceiling(total: byte_size_count(b: b), ranks: c.topology.tensor_parallel_degree) {
         Absent => WeightFitUnderivable { because: "a zero tensor-parallel degree has no per-rank share" as NonEmptyStr }
         Present { value: per_rank } =>
           match requested_utilisation_basis_points(r: p.memory_request) {
@@ -1010,7 +1010,7 @@ fn evidence_snapshot_key(e: ServingDeploymentEvidenceSnapshot) -> String {
     "q[", join(map(e.quality, a => quality_assessment_key(a: a)), ","), "]",
     "|r[", join(map(e.runtime_feasibility, r => runtime_feasibility_key(r: r)), ","), "]",
     "|w", demand_key(d: e.workload),
-    "|f", to_string(e.fleet.host_count), "x", to_string(e.fleet.bytes_per_host),
+    "|f", to_string(e.fleet.host_count), "x", to_string(byte_size_count(b: e.fleet.bytes_per_host)),
   ], "")
 }
 
@@ -1284,6 +1284,7 @@ type ServingDeploymentDecisionInput sole_constructor {
   selection_policy: DeclarationRef
   constraints: List<HardConstraint>
   constraint_authority: DeclarationRef
+  axes: List<SelectionAxis>
 }
 
 fn serving_decision_input(
@@ -1293,6 +1294,7 @@ fn serving_decision_input(
   selection_policy: DeclarationRef,
   constraints: List<HardConstraint>,
   constraint_authority: DeclarationRef,
+  axes: List<SelectionAxis>,
 ) -> ServingDeploymentDecisionInput {
   ServingDeploymentDecisionInput {
     field: field,
@@ -1301,6 +1303,7 @@ fn serving_decision_input(
     selection_policy: selection_policy,
     constraints: constraints,
     constraint_authority: constraint_authority,
+    axes: axes,
   }
 }
 
@@ -1323,6 +1326,7 @@ fn decision_snapshot_key(input: ServingDeploymentDecisionInput) -> String {
       to_string(c.bound_micro),
     ], "")), ","), "}",
     "|authority{", declaration_ref_display_key(ref: input.constraint_authority), "}",
+    "|axes{", join(map(input.axes, a => declaration_ref_display_key(ref: a.identity)), ","), "}",
   ], "")
 }
 
@@ -1394,14 +1398,6 @@ fn constraint_dispositions_for(input: ServingDeploymentDecisionInput) -> List<Co
 
 fn assessment_constraint_identities(input: ServingDeploymentDecisionInput) -> List<DeclarationRef> {
   unique_constraint_identities(cs: input.constraints)
-}
-
-fn selection_axes_for(input: ServingDeploymentDecisionInput) -> List<SelectionAxis> {
-  if declaration_ref_eq(a: input.constraint_authority, b: id_v4_1_constraint_authority) {
-    v4_1_selection_axes
-  } else {
-    serving_selection_axes
-  }
 }
 
 // DERIVED, NOT ACCEPTED. The parameter's binding evidence quotes the actual declared parameters, so
@@ -1479,7 +1475,7 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
         assessment: assessment_for(input: input),
         candidate_field_identity: input.field.identity,
         field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile)),
-        axes: selection_axes_for(input: input),
+        axes: input.axes,
         constraints: input.constraints,
         constraint_authority: input.constraint_authority,
         policy: UniqueSurvivorRequired { identity: input.selection_policy },
@@ -1690,6 +1686,7 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_selection_policy"),
   constraints: serving_selection_constraints,
   constraint_authority: id_constraint_authority,
+  axes: serving_selection_axes,
 )
 
 
@@ -1726,6 +1723,7 @@ data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_flash_selection_policy"),
   constraints: serving_selection_constraints,
   constraint_authority: id_constraint_authority,
+  axes: serving_selection_axes,
 )
 
 // ── V4.1 FLASH: NATIVE CANDIDATES, CONSTRAINTS AGAINST FACTS, WIDTH DERIVED ────────────────
@@ -1768,4 +1766,5 @@ data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = serving_deci
   selection_policy: deepseek_v4_1_selection_policy,
   constraints: v4_1_selection_constraints,
   constraint_authority: id_v4_1_constraint_authority,
+  axes: v4_1_selection_axes,
 )

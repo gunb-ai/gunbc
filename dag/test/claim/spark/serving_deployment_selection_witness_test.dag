@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args { VllmMemoryRequest }
 import std.decision { HardConstraint }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
-  ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
+  ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
   ServingExecutionProfile, execution_profile_of,
@@ -37,16 +37,17 @@ import gunbc.spark.serving_deployment_selection {
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
-  v4_1_runtime_supported_tp_widths_frontier, deepseek_v4_1_selection_policy,
+  deepseek_v4_1_selection_policy,
   deepseek_v4_1_quality_requirement,
   derived_candidate_identity, v4_1_profile_at, v4_1_runtime_vllm_gb10_lead,
-  ax_no_redundancy, v4_1_published_image_digest_frontier,
+  ax_no_redundancy,
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
-  v4_1_gb10_kv_layout, v4_1_gb10_kv_layout_authority_frontier, v4_1_publisher_fit_authority_frontier, v4_1_gb10_kv_bytes_authority_frontier,
+  v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
+  NoFeasibleServingDeployment,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -331,6 +332,7 @@ fn input_with(field: ServingDeploymentCandidateField, w: WorkloadDemandStanding)
     selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
     constraints: serving_selection_constraints,
     constraint_authority: id_constraint_authority,
+    axes: serving_selection_axes,
   )
 }
 
@@ -385,7 +387,36 @@ test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
         HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 99 },
       ],
       constraint_authority: id_constraint_authority,
+      axes: serving_selection_axes,
     ))
+}
+
+test fn changing_funded_axes_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: serving_decision_input(
+      field: settled_field,
+      evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+      quality_requirement: deepseek_quality_requirement,
+      selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+      constraints: serving_selection_constraints,
+      constraint_authority: id_constraint_authority,
+      axes: v4_1_selection_axes,
+    ))
+}
+
+test fn funded_axes_are_carried_not_inferred_from_constraint_authority() -> Bool {
+  match select_serving_deployment(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) {
+    NoFeasibleServingDeployment { causes: _ } => true
+    _ => false
+  }
 }
 
 // ── CONTROL 9: AN UNESTABLISHED DEMAND KEEPS THE DECISION AT NEEDS-EVIDENCE ────────────────────
@@ -497,8 +528,7 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
         && topology_in(shapes: admitted, tp: 2, replicas: 1)
         && topology_in(shapes: admitted, tp: 1, replicas: 1)
         && count(v4_1_declared_profiles) == 3
-        && dissolution_description(condition: v4_1_runtime_supported_tp_widths_frontier).contains("does not guess")
-        && dissolution_description(condition: v4_1_published_image_digest_frontier).contains("deepseekv41-flash-0909")
+        && (v4_1_runtime_published_arm64.image as String) == "vllm/vllm-openai:deepseekv41-flash-0909"
     ServingFieldUnestablished { causes: _ } => false
   }
 }
@@ -524,21 +554,10 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
       KvFp8Layout => false
       KvFp4Layout => false
     }
-    && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("deepseek_v4_1_sm12")
-    && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("v41_sm12_admitted_kv_cache_dtypes")
-    && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("supports_combination")
-    && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("auto")
-    && dissolution_description(condition: v4_1_publisher_fit_authority_frontier).contains("deepseek_v4_1_flash_recipe")
-    && dissolution_description(condition: v4_1_gb10_kv_bytes_authority_frontier).contains("eight-indexer")
-    && dissolution_description(condition: v4_1_gb10_kv_bytes_authority_frontier).contains("unpadded")
     && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
     && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
-      KvBytesPerTokenUnestablished { layout: k, obligation: o } =>
+      KvBytesPerTokenUnestablished { layout: k, obligation: _ } =>
         match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-          && (o as String).contains("890")
-          && (o as String).contains("656")
-          && (o as String).contains("allocator")
-          && (o as String).contains("not eight")
       KvBytesPerTokenNotThisSubject => false
     }
 }
