@@ -184,6 +184,8 @@ import gunbc.roadmap_dispatch_destination {
   DispatchDestinationResolved,
   DispatchDestinationMissing,
   dispatch_spawn_origin_basename,
+  destination_is_this_spawn_tree,
+  destination_not_this_spawn_tree_reason,
 }
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
@@ -2553,6 +2555,19 @@ fn dispatch_spawn_commands_for_resolved_instance(
   model: ProviderModelSelection,
   origin: AttemptOrigin,
 ) -> DispatchSpawnPlan {
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason } =>
+      DispatchSpawnRefused {
+        step: "spawn-destination" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchDestinationResolved { identity } =>
+      if !destination_is_this_spawn_tree(identity: identity) {
+        DispatchSpawnRefused {
+          step: "spawn-destination" as NonEmptyStr,
+          detail: destination_not_this_spawn_tree_reason(identity: identity) as String,
+        }
+      } else {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
     environment: instance.execution_environment,
@@ -2671,6 +2686,8 @@ fn dispatch_spawn_commands_for_resolved_instance(
     }
     }
   }
+}
+}
 }
 
 fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
@@ -2812,7 +2829,10 @@ fn classify_dispatch_request_for_process_fingerprint(
     match node_dispatch_destination(node: node) {
       DispatchDestinationMissing { reason } =>
         DispatchRefused { reason: reason }
-      DispatchDestinationResolved { identity: _ } => {
+      DispatchDestinationResolved { identity } =>
+        if !destination_is_this_spawn_tree(identity: identity) {
+          DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) }
+        } else {
         let scope = dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: node.node,
           process_fingerprint: process_fingerprint,
@@ -2865,7 +2885,10 @@ fn classify_dispatch_request(
     match node_dispatch_destination(node: node) {
       DispatchDestinationMissing { reason } =>
         DispatchRefused { reason: reason }
-      DispatchDestinationResolved { identity: _ } =>
+      DispatchDestinationResolved { identity } =>
+        if !destination_is_this_spawn_tree(identity: identity) {
+          DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) }
+        } else {
         match selection {
           DispatchActuatorSelectionRefused { reason } =>
             DispatchRefused { reason: reason }
@@ -2879,6 +2902,7 @@ fn classify_dispatch_request(
               effort: effort,
               model: model,
             )
+        }
         }
     }
   }

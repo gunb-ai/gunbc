@@ -27,7 +27,8 @@ import gunbc.roadmap_dispatch_destination {
   DestinationPrivacyObserved, DestinationPrivacyUnobserved,
   DestinationDefaultBranchObserved, DestinationDefaultBranchUnobserved,
   destination_is_known_public, DispatchSpawnOrigin, dispatch_spawn_origin_json,
-  spawn_origin_is_public_gunbc,
+  spawn_origin_is_public_gunbc, destination_is_this_spawn_tree,
+  destination_not_this_spawn_tree_reason,
 }
 import gunbc.roadmap_belt_actuate {
   belt_publication_subject_for_node,
@@ -103,6 +104,9 @@ test fn a_named_destination_is_not_known_public() -> Bool {
             base_sha: dest_head as NonEmptyStr,
           },
         )
+        && !destination_is_this_spawn_tree(identity: identity)
+        && (destination_not_this_spawn_tree_reason(identity: identity) as String)
+          .contains("working in gunbc and publishing to example/other")
   }
 }
 

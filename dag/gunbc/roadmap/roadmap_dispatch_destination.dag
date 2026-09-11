@@ -181,6 +181,34 @@ fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
   destination_from_sizing(sizing: node.sizing)
 }
 
+// Destination identity and spawn actuation are different facts. repository_from_repo_slug
+// resolves any well-formed owner/name so publication can name that repository. This
+// instance still creates worktrees in instance.repo_root against dispatch_git_remote_ref
+// (gunbc_merge_target_ref). Admitting a resolved non-gunbc destination onto that tree
+// would work in gunbc and publish elsewhere — DESIGN section 5 widen. Until spawn binds
+// worktree and remote to the destination, actuation is only the known-public gunbc tree.
+// TRIGGER to retire this refuse: worktree-add and the merge remote are taken from the
+// node's destination, not from the instance gunbc constants.
+
+fn destination_is_this_spawn_tree(identity: DestinationIdentity) -> Bool {
+  identity.full_name == gunbc_repository.full_name
+    && destination_is_known_public(identity: identity)
+}
+
+fn destination_not_this_spawn_tree_reason(identity: DestinationIdentity) -> NonEmptyStr {
+  join(
+    [
+      "this instance creates attempts in the public gunbc tree at ",
+      gunbc_repository.full_name,
+      "; destination ",
+      identity.full_name,
+      " is not that tree, so dispatch refuses rather than working in gunbc and publishing to ",
+      identity.full_name,
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
 // Recorded at spawn so an attempt can later say which repository and which exact base
 // revision it was branched from. The instance's dispatch_base_ref is a name; the SHA
 // is the fact. Privacy and default branch are recorded as standings, not as GitHub
@@ -215,8 +243,7 @@ fn destination_default_branch_json_member(standing: DestinationDefaultBranchStan
 }
 
 fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
-  origin.identity.full_name == gunbc_repository.full_name
-    && destination_is_known_public(identity: origin.identity)
+  destination_is_this_spawn_tree(identity: origin.identity)
 }
 
 fn dispatch_spawn_origin_json_members(origin: DispatchSpawnOrigin) -> List<String> {

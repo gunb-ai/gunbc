@@ -655,6 +655,25 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
   }
 }
 
+test fn witness_named_destination_refuses_this_spawn_tree() -> Bool {
+  let node = sized_derivable_in_repo(id: "ready-node", prs: [10], title: "Ready", repo: "example/other")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let ready = next_spawnable(doc: doc, merged: [])
+  match classify_dispatch_request_for_process_fingerprint(
+    node: node,
+    ready: ready,
+    tmux_entries: [],
+    attempt_key: "feedfacefeedface",
+    process_fingerprint: dispatch_codex_process_fingerprint,
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+  ) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "working in gunbc and publishing to example/other")
+    _ => false
+  }
+}
+
 test fn witness_missing_destination_reason_reaches_classify() -> Bool {
   let node = sized_derivable_in_repo(id: "ready-node", prs: [10], title: "Ready", repo: "not-a-slug")
   let doc = fixture_doc(nodes: [node], edges: [])
