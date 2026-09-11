@@ -1,0 +1,243 @@
+module test.claim.heal_publication_boundary_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, NonEmptyStr, Bool, Int, CommitSha }
+import std.content_hash { Sha256Digest }
+import extdeps.github.effect { RepositoryPath }
+import gunbc.heal_publication_boundary {
+  PhaseCredentialStanding, PhasesIsolated,
+  CandidatePhaseHoldsPublicationCredential, PublicationPhaseExecutesCandidateCode,
+  phase_isolation, phases_are_isolated,
+  CandidateEntry, HealRepairCandidate,
+  PathAdmission, PathAdmitted, PathIsWorkflowProjection, PathIsAuthorCommitRequired, PathNotInAdmittedClass,
+  publisher_path_admission,
+  CandidateValidation, CandidateAdmitted, CandidateRefused,
+  CandidateRefusalCause, RepositoryMismatch, PullRequestMismatch, HeadMoved, BaseMismatch, CandidateEntriesEmpty,
+  validate_candidate,
+  PublicationOutcome, Published, PublicationRefused, PublicationUnverified,
+  publication_outcome, publication_is_published,
+  DriftObservation, DriftObserved, DriftObservationRequired,
+  partition_for_publication, drift_requires_observation
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data good_head: CommitSha = "72d2584a3e0e898e1a6622c7e992696ed4c11366"
+data other_head: CommitSha = "0000000000000000000000000000000000000000"
+data a_blob: Sha256Digest = Sha256Digest { hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }
+
+fn an_entry(p: String) -> CandidateEntry {
+  CandidateEntry { path: RepositoryPath { value: p as NonEmptyStr }, blob: a_blob, mode_octal: "100644" }
+}
+
+fn a_candidate(repo: NonEmptyStr, pr: Int, head: CommitSha, base: NonEmptyStr, entries: List<CandidateEntry>) -> HealRepairCandidate {
+  HealRepairCandidate {
+    repository_full_name: repo,
+    pull_number: pr,
+    head_ref: "heal-branch",
+    expected_head_sha: head,
+    base_ref: base,
+    entries: entries
+  }
+}
+
+fn validated(c: HealRepairCandidate) -> CandidateValidation {
+  validate_candidate(candidate: c, observed_repository: "gunb-ai/gunbc", observed_pull_number: 42, observed_head_sha: good_head, observed_base_ref: "main")
+}
+
+// ── isolation, both directions ──────────────────────────────────────────────────────────────
+
+// THE POSITIVE CONTROL. Isolation must be achievable, or the two violation arms below are
+// satisfied by a predicate that never admits anything.
+test fn witness_isolated_phases_are_admitted() -> Bool {
+  phases_are_isolated(s: phase_isolation(
+    candidate_holds_publication_credential: false, candidate_credential_detail: "none",
+    publication_executes_candidate_code: false, publication_execution_detail: "none"
+  ))
+}
+
+// gunbc#10887's first violation: a PR-controlled job federated to Secret Manager and read a
+// long-lived App private key.
+test fn witness_candidate_phase_holding_the_credential_is_a_violation() -> Bool {
+  match phase_isolation(
+    candidate_holds_publication_credential: true, candidate_credential_detail: "App private key read in the pull_request job",
+    publication_executes_candidate_code: false, publication_execution_detail: "none"
+  ) {
+    CandidatePhaseHoldsPublicationCredential { detail } => detail == "App private key read in the pull_request job"
+    PhasesIsolated => false
+    PublicationPhaseExecutesCandidateCode { detail: _ } => false
+  }
+}
+
+// THE SECOND DIRECTION IS A SEPARATE ARM, and stating only the first would admit a publisher that
+// checks out the branch it publishes. Different remedy: credential placement versus execution
+// placement.
+test fn witness_publisher_executing_candidate_code_is_a_distinct_violation() -> Bool {
+  match phase_isolation(
+    candidate_holds_publication_credential: false, candidate_credential_detail: "none",
+    publication_executes_candidate_code: true, publication_execution_detail: "publisher checked out the PR head"
+  ) {
+    PublicationPhaseExecutesCandidateCode { detail } => detail == "publisher checked out the PR head"
+    PhasesIsolated => false
+    CandidatePhaseHoldsPublicationCredential { detail: _ } => false
+  }
+}
+
+// ── the publisher's own path policy ─────────────────────────────────────────────────────────
+
+test fn witness_an_admitted_generated_path_is_publishable() -> Bool {
+  match publisher_path_admission(path: RepositoryPath { value: "docs/plans/x.md" }, is_workflow_projection: false, is_author_commit_required: false, is_admitted_generated_class: true) {
+    PathAdmitted => true
+    _ => false
+  }
+}
+
+// A WORKFLOW FILE IS THE ONE PATH WHOSE CONTENTS DECIDE WHAT LATER RUNS MAY DO, so it is refused
+// by the publisher's own policy rather than by whatever the branch claims about it.
+test fn witness_workflow_projection_is_refused_by_the_publisher() -> Bool {
+  match publisher_path_admission(path: RepositoryPath { value: ".github/workflows/witnesses.yml" }, is_workflow_projection: true, is_author_commit_required: false, is_admitted_generated_class: true) {
+    PathIsWorkflowProjection { path } => path.value == ".github/workflows/witnesses.yml"
+    _ => false
+  }
+}
+
+test fn witness_author_commit_required_path_is_refused() -> Bool {
+  match publisher_path_admission(path: RepositoryPath { value: ".gitattributes" }, is_workflow_projection: false, is_author_commit_required: true, is_admitted_generated_class: true) {
+    PathIsAuthorCommitRequired { path: _ } => true
+    _ => false
+  }
+}
+
+// THE DECISIVE ARM FOR THE PERMIT RULE. A path the branch would classify as generated but which
+// the publisher's OWN admitted class does not contain is refused. If this ever admitted, a branch
+// could name an arbitrary path and have a privileged process write it.
+test fn witness_a_path_outside_the_publishers_own_class_is_refused() -> Bool {
+  match publisher_path_admission(path: RepositoryPath { value: "src/v1/stage0/src/main.rs" }, is_workflow_projection: false, is_author_commit_required: false, is_admitted_generated_class: false) {
+    PathNotInAdmittedClass { path } => path.value == "src/v1/stage0/src/main.rs"
+    _ => false
+  }
+}
+
+// ── independent validation ──────────────────────────────────────────────────────────────────
+
+test fn witness_a_matching_candidate_is_admitted() -> Bool {
+  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: good_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
+    CandidateAdmitted { candidate: _ } => true
+    CandidateRefused { cause: _ } => false
+  }
+}
+
+// A CORRECT BLOB FOR THE WRONG REPOSITORY IS WORSE THAN A WRONG ONE, so identity is checked first.
+test fn witness_repository_mismatch_refuses() -> Bool {
+  match validated(c: a_candidate(repo: "someone/else", pr: 42, head: good_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
+    CandidateRefused { cause } => match cause {
+      RepositoryMismatch { expected, candidate } => expected == "gunb-ai/gunbc" && candidate == "someone/else"
+      _ => false
+    }
+    CandidateAdmitted { candidate: _ } => false
+  }
+}
+
+test fn witness_pull_request_mismatch_refuses() -> Bool {
+  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 99, head: good_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
+    CandidateRefused { cause } => match cause {
+      PullRequestMismatch { expected, candidate } => expected == 42 && candidate == 99
+      _ => false
+    }
+    CandidateAdmitted { candidate: _ } => false
+  }
+}
+
+// THE COMPARE-AND-SWAP. Checked here AND carried into the push, because a head that moves between
+// validation and push is exactly the race a single check cannot close.
+test fn witness_moved_head_refuses_and_names_both() -> Bool {
+  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: other_head, base: "main", entries: [an_entry(p: "docs/plans/x.md")])) {
+    CandidateRefused { cause } => match cause {
+      HeadMoved { expected, observed } => expected == other_head && observed == good_head
+      _ => false
+    }
+    CandidateAdmitted { candidate: _ } => false
+  }
+}
+
+test fn witness_base_mismatch_refuses() -> Bool {
+  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: good_head, base: "some-release", entries: [an_entry(p: "docs/plans/x.md")])) {
+    CandidateRefused { cause } => match cause {
+      BaseMismatch { expected, candidate } => expected == "main" && candidate == "some-release"
+      _ => false
+    }
+    CandidateAdmitted { candidate: _ } => false
+  }
+}
+
+// NOTHING TO WRITE IS NOT A SUCCESSFUL PUBLICATION. This is the gunbc#10887 failure shape one
+// level up: an empty population must refuse, never report a clean result.
+test fn witness_an_empty_candidate_refuses_rather_than_publishing_nothing() -> Bool {
+  match validated(c: a_candidate(repo: "gunb-ai/gunbc", pr: 42, head: good_head, base: "main", entries: [])) {
+    CandidateRefused { cause } => match cause {
+      CandidateEntriesEmpty => true
+      _ => false
+    }
+    CandidateAdmitted { candidate: _ } => false
+  }
+}
+
+// ── what counts as evidence the publication happened ────────────────────────────────────────
+
+test fn witness_a_confirmed_readback_is_published() -> Bool {
+  publication_is_published(o: publication_outcome(
+    push_succeeded: true, readback_observed: true,
+    readback_head: good_head, readback_parent: other_head, expected_parent: other_head,
+    readback_paths: [RepositoryPath { value: "docs/plans/x.md" }], detail: "ok"
+  ))
+}
+
+// A SUCCESSFUL PUSH IS NOT TERMINAL EVIDENCE. The exit says the transport accepted the request; it
+// does not say what the ref points at. An unconfirmed readback is Unverified -- not Published, and
+// not a refusal either, because the write may well have landed.
+test fn witness_a_push_without_readback_is_unverified_not_published() -> Bool {
+  match publication_outcome(
+    push_succeeded: true, readback_observed: false,
+    readback_head: good_head, readback_parent: other_head, expected_parent: other_head,
+    readback_paths: [], detail: "readback not observed"
+  ) {
+    PublicationUnverified { detail } => detail == "readback not observed"
+    Published { head: _, parent: _, changed_paths: _ } => false
+    PublicationRefused { cause: _ } => false
+  }
+}
+
+// A WRONG PARENT MEANS THE COMMIT IS NOT THE ONE THIS TRANSACTION BUILT, even though the push
+// succeeded and a readback happened.
+test fn witness_a_wrong_parent_is_unverified() -> Bool {
+  match publication_outcome(
+    push_succeeded: true, readback_observed: true,
+    readback_head: good_head, readback_parent: good_head, expected_parent: other_head,
+    readback_paths: [], detail: "parent disagreed"
+  ) {
+    PublicationUnverified { detail: _ } => true
+    Published { head: _, parent: _, changed_paths: _ } => false
+    PublicationRefused { cause: _ } => false
+  }
+}
+
+// ── the observation / authorization split ───────────────────────────────────────────────────
+
+// THE gunbc#10887 P1 AT ITS ROOT. An unobservable credential grant emptied the auto-push
+// population, the emitted script lost all 37 git add lines, and an emptiness check then reported
+// HealNoChange over a real divergence. Here an unobservable grant yields DriftObservationRequired,
+// which is a REFUSAL STATE and not an empty set.
+test fn witness_unobservable_drift_requires_observation_rather_than_reporting_empty() -> Bool {
+  drift_requires_observation(d: DriftObservationRequired { detail: "installation grant unobserved" })
+    && !drift_requires_observation(d: DriftObserved { paths: [RepositoryPath { value: "docs/plans/x.md" }] })
+}
+
+// And the partition carries nothing publishable when the observation itself is missing, so no
+// downstream consumer can read an empty publishable set as "nothing drifted".
+test fn witness_a_missing_observation_publishes_nothing() -> Bool {
+  count(partition_for_publication(
+    observed: DriftObservationRequired { detail: "grant unobserved" },
+    admissions: [],
+    publishable: [RepositoryPath { value: "docs/plans/x.md" }]
+  ).publishable) == 0
+}
