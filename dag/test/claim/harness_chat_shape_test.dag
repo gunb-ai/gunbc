@@ -153,10 +153,17 @@ test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
 // Every fixture below decoded SUCCESSFULLY before this repair, and that is what makes these reds
 // discriminating rather than decorative: the old decoder answered `{}` for absent or unparseable
 // tool arguments, `""` for an absent tool id, and `0` for an absent or non-numeric usage member.
-// None of those is a marker -- each is a legal, dispatchable, plausible value -- so the harness ran
-// argument-less commands, wrote tool results addressed to an id that matches no call, and compared
-// a fabricated 0 against its context budget. Reverting any arm of the repair turns its fixture back
-// into a green parse, which is exactly what these witnesses are enrolled to prevent.
+// None of those is a marker -- each is a legal, dispatchable, plausible value -- so the harness
+// handed the dispatcher a call the model never made, wrote tool results addressed to an id that
+// matches no call, and compared a fabricated 0 against its context budget. THE FIRST OF THOSE DOES
+// NOT END IN AN EXECUTION on today's one implemented tool, and the correction is worth carrying
+// here as well as in the decoder: `harness_execute_tool_use` declares run_command's `command`
+// required and refuses the empty object as ToolInputMemberMissing, so what the fabrication produces
+// is a misattribution plus a spent round -- the model told back that it sent a call with no
+// command. A tool with an optional or defaulted parameter would dispatch on it, which is why the
+// repair is in the decoder. Reverting any arm turns its fixture back into a green parse, which is
+// what these reds exist to catch -- when a change touches this module, which under the declared
+// drop `gunbc.rung_drop` `required_gate_bankruptcy` is when they run at all.
 //
 // The positive control is a_chat_completion_decodes_to_thinking_text_and_tool_use above: the same
 // decoder on a well-formed body still yields three blocks, a tool call with its arguments, and both
@@ -317,7 +324,8 @@ test fn a_duplicated_messages_tool_use_input_refuses() -> Bool {
 // repair read that as a type error and refused -- BEFORE decoding the tool calls, so the model's
 // commands were lost to a decoder defect. These are positive controls: they are green only if
 // present-null is its own outcome rather than an arm of malformed. The duplicate reds above are the
-// discriminating other half; both must hold, which is why the pair is enrolled together.
+// discriminating other half; both must hold, which is why the pair is authored together -- neither
+// is enrolled beyond this module's own change-selected runs.
 test fn a_null_content_beside_tool_calls_still_decodes_the_calls() -> Bool {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \\\"ls\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
@@ -383,4 +391,33 @@ test fn a_duplicated_usage_object_says_so_rather_than_reading_as_no_usage() -> B
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2},\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4}}"),
     fragment: "more than once",
   )
+}
+
+// FIRST REFUSAL WINS, AND IT IS THE FIRST IN WIRE ORDER (review 63807). The two per-shape folds are
+// one parameterized fold now, and the recursion that short-circuited on the first bad element was
+// replaced by a scan over the decoded reads -- so "which refusal is reported" became a property of
+// the scan rather than of where evaluation stopped. These pin both halves: a list whose SECOND
+// element is unreadable still refuses, and the cause names that element rather than the readable
+// one beside it. Without them the fold could report any refusal, or the last, and every existing
+// red would still pass.
+test fn a_readable_call_before_an_unreadable_one_still_refuses_and_names_the_bad_one() -> Bool {
+  let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"content\":\"x\",\"tool_calls\":[{\"id\":\"c1\",\"function\":{\"name\":\"first_tool\",\"arguments\":\"{}\"}},{\"id\":\"c2\",\"function\":{\"name\":\"second_tool\"}}]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
+  c.contains("second_tool") && !c.contains("first_tool")
+}
+
+test fn the_earlier_of_two_unreadable_blocks_is_the_one_reported() -> Bool {
+  let c = messages_decode_cause(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"earlier_tool\"},{\"type\":\"tool_use\",\"id\":\"t2\",\"name\":\"later_tool\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
+  c.contains("earlier_tool") && !c.contains("later_tool")
+}
+
+// AND THE READ BLOCKS KEEP WIRE ORDER ACROSS A SKIPPED ONE, which the flat_map has to preserve: an
+// unmodelled block between two modelled ones must vanish without reordering its neighbours.
+test fn an_unmodelled_block_between_two_others_vanishes_without_reordering() -> Bool {
+  match harness_decode_response(body: "{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"server_tool_use\",\"id\":\"s1\"},{\"type\":\"text\",\"text\":\"second\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}") {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
+      list_length(items: blocks) == 2
+        && (match blocks.first() { Present { value: WireTextBlock { text: t } } => t == "first"  _ => false })
+        && (match blocks.last() { Present { value: WireTextBlock { text: t } } => t == "second"  _ => false })
+  }
 }

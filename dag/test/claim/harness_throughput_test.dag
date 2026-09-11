@@ -61,7 +61,8 @@ test fn a_single_clocked_round_refuses_rather_than_dividing() -> Bool {
 }
 
 // DISCRIMINATING RED. A usage row whose clock read was refused carries clock_refused and no
-// epoch_ms; it must not be absorbed as if it had a time.
+// epoch_ms; it must not be absorbed as if it had a time -- nor, as the interior-round red below
+// shows, dropped as if it had not happened.
 test fn an_unclocked_usage_row_is_not_counted_as_a_reading() -> Bool {
   match harness_throughput_from_events(
     body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"clock_refused\":\"no clock\"}",
@@ -239,4 +240,57 @@ test fn an_older_row_without_the_optional_counts_still_reads() -> Bool {
     RoundsUnobserved { reason: _ } => false
     RoundsObserved { rounds } => list_length(items: rounds) == 3
   }
+}
+
+
+// AN UNCLOCKED INTERIOR ROUND MAY NOT BE DELETED FROM THE POPULATION (side-chat review,
+// 2026-09-11). Dropping it is the zero-default's understatement reached by subtraction instead of
+// substitution: the endpoints' interval stays in the denominator while the dropped round's tokens
+// leave the numerator and its row leaves the count. THE ARITHMETIC, SO A FAILURE IS READABLE:
+// 100/200/300 at t=1000, unclocked, t=5000. The honest reading of rounds 2..N over 1000..5000 is
+// 500/4000ms = 125.00 tok/s over 3 rounds; dropping the middle row reports 300/4000 = 75.00 tok/s
+// over 2. This asserts the refusal rather than either number, because a round whose time is unknown
+// cannot be placed in an interval-denominated aggregate at all -- and it asserts NOT 75.00
+// explicitly, since a reader that silently dropped the row would otherwise satisfy every other
+// witness in this file.
+fn three_rounds_with_an_unclocked_middle() -> String {
+  join([
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"clock_refused\":\"no clock\"}",
+    "{\"type\":\"round.usage\",\"step\":3,\"input_tokens\":30,\"output_tokens\":300,\"epoch_ms\":5000}",
+  ], "\n")
+}
+
+test fn an_unclocked_interior_round_is_not_dropped_from_the_rate() -> Bool {
+  let t = harness_throughput_from_events(body: three_rounds_with_an_unclocked_middle())
+  throughput_refusal_naming(t: t, fragment: "epoch_ms")
+    && throughput_rate_text(t: t) != "75.00 tok/s"
+    && throughput_rate_text(t: t) == "-- tok/s"
+}
+
+test fn an_unclocked_interior_round_does_not_shorten_the_ledger() -> Bool {
+  match harness_round_ledger_from_events(body: three_rounds_with_an_unclocked_middle()) {
+    RoundsUnobserved { reason: _ } => true
+    RoundsObserved { rounds: _ } => false
+  }
+}
+
+// THE DISCRIMINATOR ITSELF IS A READING, AND AN UNREADABLE ONE IS NOT SOMEBODY ELSE'S EVENT. A line
+// carrying `type` twice used to answer "not a usage row" and be skipped, so its counts never
+// reached the reader that refuses -- the same class one frame earlier, in the test that decides
+// whether a measurement is ours to read.
+test fn a_row_with_a_duplicated_type_member_refuses_rather_than_being_skipped() -> Bool {
+  throughput_refusal_naming(
+    t: harness_throughput_from_events(body: join([
+      "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+      "{\"type\":\"round.usage\",\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"epoch_ms\":3000}",
+    ], "\n")),
+    fragment: "more than once",
+  )
+}
+
+// AND A RECOGNISED NON-USAGE EVENT IS STILL SKIPPED, not refused: the stream carries turn.started
+// and round.usage_unavailable by design, and the fixture at the top of this file leads with one.
+test fn another_event_type_is_still_skipped_rather_than_refusing() -> Bool {
+  throughput_rate_text(t: harness_throughput_from_events(body: three_clocked_rounds())) == "125.00 tok/s"
 }

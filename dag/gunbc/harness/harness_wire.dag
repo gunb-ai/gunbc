@@ -406,28 +406,49 @@ type HarnessBlocksRead
   = BlocksRead { blocks: List<HarnessWireBlock> }
   | BlocksUnreadable { cause: String }
 
-// THE FOLD IS FAIL-CLOSED ACROSS THE WHOLE LIST: one unreadable block makes the response unreadable,
-// because a partially decoded content list is exactly the fabricated-plausible-output shape -- it
-// reads as a complete turn that happens to be shorter.
-fn harness_decode_blocks_from(els: List<JsonValue>) -> HarnessBlocksRead {
-  match els.first() {
-    Absent => BlocksRead { blocks: [] }
-    Present { value: e } =>
-      match harness_decode_block(v: e) {
-        BlockUnreadable { cause: c } => BlocksUnreadable { cause: c }
-        BlockNotModelled => harness_decode_blocks_from(els: els.skip(n: 1))
-        BlockRead { block: b } =>
-          match harness_decode_blocks_from(els: els.skip(n: 1)) {
-            BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
-            BlocksRead { blocks: rest } => BlocksRead { blocks: concat([b], rest) }
-          }
-      }
+// ONE FOLD FOR BOTH SHAPES, PARAMETERIZED BY THE PER-ELEMENT DECODER. The two wire shapes decode
+// DIFFERENT elements -- a messages content block, a chat tool_call -- but they fold them the same
+// way: skip what is not modelled, keep what read, and let the first refusal decide for the list.
+// That is one concept, and it had been written twice (review 63807); the copy is what let the
+// SEMANTICS drift too, since a later edit to either arm has no reason to reach the other.
+//
+// THE FOLD IS FAIL-CLOSED ACROSS THE WHOLE LIST: one unreadable element makes the response
+// unreadable, because a partially decoded content list is exactly the fabricated-plausible-output
+// shape -- it reads as a complete turn that happens to be shorter.
+//
+// AND IT IS LINEAR. Both predecessors recursed on `els.skip(n: 1)`, which COPIES the remainder in
+// this realization, so decoding n elements copied n + (n-1) + ... elements -- quadratic in the
+// block count for a fold that reads each element once. DESIGN section 6: a proven cost-shape defect
+// is always fixed regardless of the realized n, because n is not a time-stable fact. Three linear
+// passes over the decoded reads -- map, the first-refusal scan, flat_map -- replace the recursion,
+// and the only behaviour that changes is that a refused list still decodes its remaining elements
+// before answering, which is work on the path that ends the turn.
+fn harness_decode_each(els: List<JsonValue>, decode: fn(JsonValue) -> HarnessBlockRead) -> HarnessBlocksRead {
+  let reads = map(els, e => decode(e))
+  match fold(reads, init: none, f: (acc, r) =>
+         match acc {
+           Present { value: c } => Present { value: c }
+           Absent =>
+             match r {
+               BlockUnreadable { cause: c } => Present { value: c }
+               BlockNotModelled => none
+               BlockRead { block: _ } => none
+             }
+         }) {
+    Present { value: c } => BlocksUnreadable { cause: c }
+    Absent =>
+      BlocksRead { blocks: flat_map(reads, r =>
+        match r {
+          BlockRead { block: b } => [b]
+          BlockNotModelled => []
+          BlockUnreadable { cause: _ } => []
+        }) }
   }
 }
 
 fn harness_decode_blocks(v: JsonValue) -> HarnessBlocksRead {
   match v {
-    JsonArray { elements: els } => harness_decode_blocks_from(els: els)
+    JsonArray { elements: els } => harness_decode_each(els: els, decode: e => harness_decode_block(v: e))
     _ => BlocksUnreadable { cause: "the response content member is not an array of content blocks" }
   }
 }
@@ -866,7 +887,8 @@ fn harness_chat_message_calls(msg: JsonValue) -> HarnessBlocksRead {
   match json_object_unique_member(v: msg, key: "tool_calls") {
     JsonMemberFound { value: tc } =>
       match tc {
-        JsonArray { elements: es } => harness_chat_tool_calls_from(els: es)
+        JsonArray { elements: es } =>
+          harness_decode_each(els: es, decode: e => harness_chat_tool_call_block(v: e))
         _ => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
       }
     JsonMemberAbsent => BlocksRead { blocks: [] }
@@ -874,22 +896,6 @@ fn harness_chat_message_calls(msg: JsonValue) -> HarnessBlocksRead {
       cause: "the chat message carries tool_calls more than once; refusing rather than reporting a round with no tool calls, which reads as a completed turn",
     }
     JsonMemberNotAnObject => BlocksUnreadable { cause: "the chat completion message is not a JSON object" }
-  }
-}
-
-fn harness_chat_tool_calls_from(els: List<JsonValue>) -> HarnessBlocksRead {
-  match els.first() {
-    Absent => BlocksRead { blocks: [] }
-    Present { value: e } =>
-      match harness_chat_tool_call_block(v: e) {
-        BlockUnreadable { cause: c } => BlocksUnreadable { cause: c }
-        BlockNotModelled => harness_chat_tool_calls_from(els: els.skip(n: 1))
-        BlockRead { block: b } =>
-          match harness_chat_tool_calls_from(els: els.skip(n: 1)) {
-            BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
-            BlocksRead { blocks: rest } => BlocksRead { blocks: concat([b], rest) }
-          }
-      }
   }
 }
 
@@ -949,6 +955,12 @@ fn harness_decode_for_shape(unit: HarnessServingUnit, shape: HarnessWireShape, b
 // is the state itself rather than a string standing in for it. A spelling that is present and NULL
 // ends the scan rather than continuing it: null is the unit answering about that spelling, and the
 // caller decides what the answer means, which for reasoning is no thinking block.
+//
+// THIS ONE RECURSES ON `keys.skip` AND STAYS, unlike the two block folds (review 63807): the list
+// is a unit's declared alias spellings -- one, today -- so the copy is bounded by a constant the
+// corpus authors rather than by anything on the wire. Said out loud because a reader who has just
+// seen the block folds linearized will ask, and because the exemption is the bound, not the size:
+// if a unit ever declared aliases by the dozen this would be the same defect.
 fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> HarnessStringRead {
   match keys.first() {
     Absent => StringAbsent

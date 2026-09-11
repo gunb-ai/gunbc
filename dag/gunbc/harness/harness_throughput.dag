@@ -59,13 +59,22 @@ type HarnessRoundLedger
 // in the sibling reader while the module next door was being repaired for it.
 //
 // There is no second reader now: `harness_member_int` and `harness_int_read_gap` are
-// `gunbc.harness.harness_wire`'s, which is where the module that WRITES round.usage already keeps
-// its integer reading. A reader here would be a second authority on the same wire fact.
+// `gunbc.harness.harness_wire`'s. That module does not write the event -- `gunbc.harness.harness_turn`
+// `harness_event_round_usage` does, from counts harness_wire decoded -- but it is where the integer
+// reading of a wire member is already modelled, and one wire fact may have one reader. A second
+// `Int?` here was that reader forked.
 //
 // ABSENT IS STILL AN ANSWER FOR THE MEMBERS THAT ARE DECLARED OPTIONAL -- files_changed and
 // tool_calls, which older streams do not carry and whose absence is `not measured` rather than a
-// fault -- and is still a SKIP for epoch_ms, because a usage row written while the host clock
-// refused genuinely carries no time. Every other gap refuses.
+// fault. Every other gap refuses, INCLUDING A MISSING epoch_ms, which the first version of this
+// repair still skipped: dropping an unclocked INTERIOR round keeps the endpoints' interval in the
+// denominator while removing that round's tokens from the numerator and its row from the
+// population, so three rounds of 100/200/300 spanning 1000..5000 ms with the middle round's clock
+// refused reported 75 tok/s over 2 rounds instead of 125 over 3 (side-chat review, 2026-09-11).
+// That is the same understatement the zero-default produced, reached by deletion instead of by
+// substitution. A round whose time is unknown cannot be placed in an interval-denominated
+// aggregate, so the aggregate is unavailable and says why; the remedy it names is the host clock,
+// which is a different remedy from a malformed member and therefore a different cause.
 fn throughput_optional_int(doc: JsonValue, key: String) -> OptionalIntRead {
   match harness_member_int(doc: doc, key: key) {
     IntRead { value: n } => OptionalIntRead { value: Present { value: n } }
@@ -87,21 +96,46 @@ fn throughput_gap_text(key: String, read: HarnessIntRead) -> String {
 }
 
 // ONE ROW IS READ, IS UNCLOCKED, OR REFUSES -- the same three answers the block decoder gives, for
-// the same reason. Unclocked is the only one that may be skipped silently, because the writer emits
-// it deliberately when the host clock refused; a row this reader cannot understand is not that.
+// the same reason. Unclocked is its own arm because its REMEDY is its own -- `harness_event_round_usage`
+// emits the row deliberately when the host clock refused, so the fix is on the host rather than in
+// this stream -- but it refuses like the rest: an unplaceable round may not be deleted from an
+// interval-denominated aggregate.
 type RoundRead
   = RoundReadOk { round: RoundObservation }
   | RoundReadUnclocked
   | RoundReadGap { cause: String }
 
-fn throughput_is_usage_row(doc: JsonValue) -> Bool {
+// THE DISCRIMINATOR IS READ, OR THE LINE IS NOT OURS, OR IT REFUSES -- and the `Bool` that used to
+// stand here collapsed the third into the second (side-chat review, 2026-09-11). A line whose
+// `type` member appeared TWICE, or was not a string, answered `false` and was skipped as if it were
+// somebody else's event, so its counts never reached the reader that refuses. That is the same
+// class one frame earlier than the counts: the gap is not in a measurement but in the test that
+// decides whether a measurement is ours to read, and a row skipped there is invisible to every
+// refusal downstream of it.
+//
+// A LINE THAT IS NOT A USAGE ROW IS NOT A GAP, and that arm has to stay: this stream carries
+// turn.started, round.usage_unavailable and whatever later writers add, by design.
+type UsageRowRead
+  = UsageRowIsOurs
+  | UsageRowIsAnotherEvent
+  | UsageRowUnreadable { cause: String }
+
+fn throughput_is_usage_row(doc: JsonValue) -> UsageRowRead {
   match json_object_unique_member(v: doc, key: "type") {
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: s } => s == "round.usage"
-        _ => false
+        JsonString { value: s } => if s == "round.usage" { UsageRowIsOurs } else { UsageRowIsAnotherEvent }
+        _ => UsageRowUnreadable {
+          cause: "an event line carries a 'type' member that is not a string; whether it is a round.usage row is unknowable",
+        }
       }
-    _ => false
+    JsonMemberAbsent => UsageRowIsAnotherEvent
+    JsonMemberDuplicated => UsageRowUnreadable {
+      cause: "an event line carries 'type' more than once; whether it is a round.usage row is unknowable",
+    }
+    JsonMemberNotAnObject => UsageRowUnreadable {
+      cause: "an event line is not a JSON object, so its 'type' could not be read",
+    }
   }
 }
 
@@ -207,14 +241,17 @@ fn ledger_absorb_line(acc: LedgerRead, line: String) -> LedgerRead {
         match parse_json_document(s: line) {
           JsonDocumentUnreadable { gap: _ } => LedgerRows { rows: rows }
           JsonDocumentParsed { value: doc } =>
-            if throughput_is_usage_row(doc: doc) {
-              match round_observation_of(doc: doc) {
-                RoundReadOk { round: r } => LedgerRows { rows: concat(rows, [r]) }
-                RoundReadUnclocked => LedgerRows { rows: rows }
-                RoundReadGap { cause: c } => LedgerGap { cause: c }
-              }
-            } else {
-              LedgerRows { rows: rows }
+            match throughput_is_usage_row(doc: doc) {
+              UsageRowIsAnotherEvent => LedgerRows { rows: rows }
+              UsageRowUnreadable { cause: c } => LedgerGap { cause: c }
+              UsageRowIsOurs =>
+                match round_observation_of(doc: doc) {
+                  RoundReadOk { round: r } => LedgerRows { rows: concat(rows, [r]) }
+                  RoundReadUnclocked => LedgerGap {
+                    cause: "a round.usage row carries no epoch_ms; its counts belong to a time this ledger cannot place, so the rate and the strip over these rounds are unavailable rather than computed without it",
+                  }
+                  RoundReadGap { cause: c } => LedgerGap { cause: c }
+                }
             }
         }
       }
