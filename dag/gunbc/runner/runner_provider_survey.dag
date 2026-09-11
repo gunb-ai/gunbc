@@ -133,3 +133,11 @@ data github_hosted_standard_label_catalog: RunnerLabelCatalog = RunnerLabelCatal
 fn runs_on_label_catalogs() -> List<RunnerLabelCatalog> {
   filter(surveyed_label_catalogs(), c => catalog_is_on_surface(catalog: c, surface: github_actions_runs_on_surface))
 }
+
+// EVERY LABEL THE RUNS-ON SURFACE CARRIES, so a consumer can fold the ACTUAL population rather
+// than a list someone typed while looking at it. A collision claim over a hand-copied sample is
+// the copied-population defect: it passes because the sample was chosen after the answer was
+// known, and it goes on passing when a provider is enrolled that the sample never named.
+fn runs_on_label_rows() -> List<RunnerLabelRow> {
+  fold(runs_on_label_catalogs(), init: [], f: (acc, c) => concat(acc, c.rows))
+}

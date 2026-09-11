@@ -12,6 +12,7 @@ import extdeps.time.rfc3339 {
   Rfc3339Simultaneous, Rfc3339OrderUndecidable, rfc3339_compare,
 }
 import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow, github_hosted_ubuntu_catalog }
+import gunbc.runner_provider_survey { runs_on_label_rows }
 import gunbc.runner_label_resolution {
   RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
   RunnerLabelAmbiguousAcrossCatalogs,
@@ -317,8 +318,16 @@ data control_snapshot: CatalogSnapshot = CatalogSnapshot {
   declared_scope: "constructed for this claim; not a vendor reading",
 }
 
+// TWO CONTROL CATALOGS, NOT ONE. An earlier revision built both competing matches with one
+// snapshot and no catalog identity, so the pair was indistinguishable from one catalog listing a
+// label twice — it never tested two CATALOGS at all. The provider is now part of the match, and
+// the claims below drive both shapes separately.
+fn control_match_from(row: RunnerLabelRow, provider: DeclarationRef) -> LabelMatch {
+  LabelMatch { row: row, catalog_provider: provider, snapshot: control_snapshot }
+}
+
 fn control_match(row: RunnerLabelRow) -> LabelMatch {
-  LabelMatch { row: row, snapshot: control_snapshot }
+  control_match_from(row: row, provider: row.provider)
 }
 
 fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
@@ -348,40 +357,53 @@ test fn witness_two_catalogs_carrying_one_label_refuse_rather_than_race() -> Boo
   disagreeing_refused && agreeing_refused && order_does_not_decide && single_match_still_resolves
 }
 
-// AND THE ARM MUST NOT FIRE ON THE LIVE SURVEY TODAY. If it does, two enrolled catalogs already
-// carry one label and that is a corpus defect to fix rather than a claim to relax - this is the
-// control that says the refusal above is a wall over a real corpus and not one that has already
-// swallowed the ordinary case.
+// AND THE ARM MUST NOT FIRE ON THE LIVE SURVEY TODAY — ASSERTED OVER THE ACTUAL POPULATION.
+//
+// An earlier revision folded ten labels typed by hand while looking at the catalogs. That is the
+// copied-population defect: the sample was chosen after the answer was known, so it passed by
+// construction, and it would have gone on passing when a provider was enrolled that the sample
+// never named. This folds every row runs_on_label_rows() produces, so the claim's denominator is
+// the corpus rather than a reader's memory of it.
+//
+// If this ever fires, two enrolled catalogs carry one label and that is a corpus defect to repair
+// rather than a claim to relax — which is why the refusal above must exist even while this holds.
 test fn witness_no_surveyed_label_is_carried_by_two_catalogs() -> Bool {
-  let live_labels = [
-    "depot-ubuntu-24.04-arm-16", "depot-ubuntu-24.04-16", "ubuntu-24.04", "ubuntu-24.04-arm",
-    "ubuntu-slim", "ubuntu-latest-64core", "ubuntu-latest-arm-64core",
-    "ubicloud-standard-16-arm", "blacksmith-16vcpu-ubuntu-2404-arm", "warp-ubuntu-latest-arm64-8x",
-  ]
-  count(filter(live_labels, l =>
-    match resolve_runner_label(label: l, observed_at: biome_observed_at) {
+  let rows = runs_on_label_rows()
+  let colliding = filter(rows, r =>
+    match resolve_runner_label(label: r.label, observed_at: biome_observed_at) {
       RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => true
       other => false
-    })) == 0
+    })
+  count(rows) > 0 && count(colliding) == 0
+}
+
+// AND EVERY ROW IN THE POPULATION RESOLVES TO SOMETHING, which is the positive control the
+// collision claim needs beside it: a resolver that refused every label would satisfy "no
+// collisions" trivially. Each row's own label must come back resolved, since by construction it is
+// carried by a catalog on the surface being asked about.
+test fn witness_every_surveyed_runs_on_label_resolves() -> Bool {
+  let rows = runs_on_label_rows()
+  let unresolved = filter(rows, r =>
+    match resolve_runner_label(label: r.label, observed_at: biome_observed_at) {
+      RunnerLabelResolved { row, snapshot } => false
+      other => true
+    })
+  count(rows) > 0 && count(unresolved) == 0
 }
 
 // -------------------------------------------------------------------------------------
 // A LABEL FROM ANOTHER CI SYSTEM'S SELECTION SURFACE IS NOT AN ANSWER TO A runs-on QUESTION.
 //
 // This is the claim whose absence let a soundness defect reach two approvals. Every unresolved arm
-// above is a response to a MISS; this is a HIT from the wrong ecosystem, and no miss-shaped wall can
-// see it. CircleCI publishes small, medium, large, xlarge and arm.medium as `resource_class` values
-// in .circleci/config.yml. Those are ordinary words, and they are exactly what a self-hosted GitHub
-// runner gets labelled.
+// in this module answers a MISS; this is a HIT from the wrong ecosystem, and no miss-shaped wall
+// can see it. CircleCI publishes small, medium, large, xlarge and arm.medium as `resource_class`
+// values in .circleci/config.yml — ordinary words, and exactly what a self-hosted GitHub runner
+// gets labelled.
 //
-// MEASURED ON THE RESOLVER BEFORE THE SURFACE AXIS EXISTED: "small" and "large" returned
-// NotArmConfirmed x86_64, and "arm.medium" returned ArmConfirmed - a GitHub Actions job reported as
-// CONFIRMED ARM on the authority of a catalog that has nothing to do with GitHub Actions. That is
-// promotion 1 running in reverse through the resolver written to prevent it.
-//
-// arm.medium IS THE LOAD-BEARING CASE and the other two are not redundant beside it. arm.medium is
-// the one that fabricates Arm evidence; small and large are the ones an ordinary fleet actually
-// writes. A fix that caught only the arm-spelled one would leave the common case wrong.
+// MEASURED BEFORE THE SURFACE AXIS EXISTED: "small" and "large" returned NotArmConfirmed x86_64 and
+// "arm.medium" returned ArmConfirmed — a GitHub Actions job reported as CONFIRMED ARM on the
+// authority of a catalog that has nothing to do with GitHub Actions. arm.medium is the load-bearing
+// case because it fabricates Arm evidence; small and large are the ones a fleet actually writes.
 test fn witness_another_ci_systems_label_namespace_is_not_consulted() -> Bool {
   let circleci_resource_classes = ["small", "medium", "large", "xlarge", "2xlarge", "arm.medium", "arm.large"]
   count(filter(circleci_resource_classes, l => arm_undetermined(label: l, observed_at: biome_observed_at) == false)) == 0
@@ -390,7 +412,8 @@ test fn witness_another_ci_systems_label_namespace_is_not_consulted() -> Bool {
 }
 
 fn all_claims_hold() -> Bool {
-  witness_another_ci_systems_label_namespace_is_not_consulted()
+  witness_every_surveyed_runs_on_label_resolves()
+    && witness_another_ci_systems_label_namespace_is_not_consulted()
     && witness_two_catalogs_carrying_one_label_refuse_rather_than_race()
     && witness_no_surveyed_label_is_carried_by_two_catalogs()
     && witness_biome_selected_label_resolves_arm_from_depots_catalog()

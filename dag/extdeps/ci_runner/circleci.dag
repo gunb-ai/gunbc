@@ -94,9 +94,20 @@ data circleci_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 // words - small, medium, large, arm.medium - which are exactly what a self-hosted GitHub runner
 // gets labelled, so a resolver that searched this catalog for a runs-on label would answer
 // confidently from the wrong ecosystem. Naming the surface is what keeps that unwritable.
+// THE SURFACE IS ITS OWN DECLARATION AND NOT THE PROVIDER'S. An earlier revision pointed this at
+// circleci_catalog_authority, which is byte-for-byte the ref circleci_provider_identity already
+// uses - so "which key are these labels written in" and "who publishes them" were the same fact,
+// and a provider identity passed where a surface was expected would have compared equal. That is
+// the interface/realization/policy conflation DESIGN section 3 names, one level up from the defect
+// this axis was added to fix.
+//
+// GitHub's side names the declaration that IS the key: extdeps.github.actions RunnerSpec. There is
+// no CircleCI analogue in this repository - `resource_class` is not modelled here at all - so this
+// row names ITSELF rather than borrowing a neighbour, and says so instead of implying a modelled
+// key exists. When resource_class is modelled, this ref moves to it.
 data circleci_resource_class_surface: DeclarationRef = decl_ref(
   module_path: "extdeps.ci_runner.circleci",
-  decl_name: "circleci_catalog_authority",
+  decl_name: "circleci_resource_class_surface",
 )
 
 data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(

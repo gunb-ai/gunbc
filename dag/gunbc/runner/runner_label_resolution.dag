@@ -2,7 +2,7 @@ module gunbc.runner_label_resolution
 
 import std.types { Bool, List, NonEmptyStr, String }
 
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, Architecture }
 import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelCatalog, RunnerLabelRow }
 import extdeps.time.rfc3339 {
@@ -89,13 +89,25 @@ type RunnerLabelResolution
 // A match carries the snapshot it came from, so the provenance of an answer is produced by the
 // same pass that produced the answer. Looking the snapshot up again afterwards would be a second
 // traversal that could disagree with the first.
+// A MATCH CARRIES WHICH CATALOG IT CAME FROM, not only that catalog's snapshot. Two matches sharing
+// one snapshot value are indistinguishable from two matches out of one catalog, so without the
+// catalog identity the multiplicity arm cannot say WHICH defect it found - a catalog that lists a
+// label twice is a defect in that catalog's own projection, and two catalogs that both claim a
+// label is a defect in the roster. They have different owners and different repairs.
 type LabelMatch {
   row: RunnerLabelRow
+  catalog_provider: DeclarationRef
   snapshot: CatalogSnapshot
 }
 
 fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatch> {
-  map(filter(catalog.rows, r => r.label == label), r => LabelMatch { row: r, snapshot: catalog.snapshot })
+  map(filter(catalog.rows, r => r.label == label),
+      r => LabelMatch { row: r, catalog_provider: catalog.provider, snapshot: catalog.snapshot })
+}
+
+fn matches_share_one_catalog(matches: List<LabelMatch>) -> Bool {
+  let first_provider = first(matches).catalog_provider
+  count(filter(matches, m => declaration_ref_eq(a: m.catalog_provider, b: first_provider) == false)) == 0
 }
 
 fn surveyed_matches(label: String) -> List<LabelMatch> {
@@ -134,9 +146,13 @@ fn resolve_from_matches(
     RunnerLabelAmbiguousAcrossCatalogs {
       label: label,
       matches: map(matches, m => m.row),
-      cause: join(["the label '", label, "' is carried by ",
-        to_string(count(matches)),
-        " surveyed catalogs. One label is one authority's fact, so there is no answer to give here: taking either row would make the result depend on which catalog is enrolled first in gunbc.runner_provider_survey. Remove the label from every catalog but the one that owns it."], ""),
+      cause: if matches_share_one_catalog(matches: matches) {
+        join(["the label '", label, "' appears ", to_string(count(matches)),
+          " times in ONE catalog's rows. That is a defect in that provider's own projection rather than in the roster: its published surface was read into duplicate rows, and the repair belongs to that module."], "")
+      } else {
+        join(["the label '", label, "' is carried by ", to_string(count(matches)),
+          " DIFFERENT surveyed catalogs. One label on one selection surface is one authority's fact, so there is no answer to give: taking either row would make the result depend on which catalog is enrolled first in gunbc.runner_provider_survey. The repair is to the roster - remove the label from every catalog but the one that owns it."], "")
+      },
     }
   } else if count(matches) > 0 {
     let hit = first(matches)
