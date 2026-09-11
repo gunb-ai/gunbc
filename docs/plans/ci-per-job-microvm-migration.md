@@ -164,7 +164,7 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 | `host_image_placeability_wet_probe_frontier` | Unbound; BMC HTTPS 200; standing still access-refused |
 | `jit_mint_http_realization_frontier` | Unbound; #10923 merged; named performer module still absent |
 | `jail_jit_device_staging_frontier` | Unbound |
-| `toolchain_filesystem_probe_dissolution_condition` | Unbound |
+| `toolchain_filesystem_probe_dissolution_condition` | Unbound. Proposed home of the two-conjunct bind is gunbc#10985; identifying a deleter on the shared slot is not a substitute. |
 | `dogfood-started` | Not started (public CI still on srv slots) |
 | This plan's cutover | **Not taken** — operator decision |
 | Seed-build cache as a cutover gate | **Retired as a gate.** Working assumption: accepted-cold. Trigger to reopen: Aarch64 + wiped `CARGO_HOME` whole-job near the cancel class of run 34523487941. |
