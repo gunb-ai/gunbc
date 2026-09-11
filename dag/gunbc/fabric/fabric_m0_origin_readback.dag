@@ -24,12 +24,20 @@ import extdeps.crypto.hash
 //
 // WHAT THIS CLOSES AND WHAT IT DOES NOT, measured rather than asserted (DESIGN 4b(1)). It closes
 // AUTHORED CONFIRMATION: the confirming digest is computed by this function, over the file named in
-// the same value, and read_origin_staged_file is the only constructor. That negative is TRACKED
-// rather than asserted, which is what makes it safe to write: OriginReading is sole_constructor, so
-// every construction outside this module is a COMPILE REFUSAL and adding one cannot pass; and the
-// only mutation that could add a second mint -- writing one into this module -- is an edit to this
-// very file, so the claim cannot rot out from under a reader elsewhere. There is no fixture mint
-// beside it and no admitted caller list.
+// the same value, and read_origin_staged_file is the only constructor. That negative is admissible
+// because it is STRUCTURALLY TRACKED, and for that reason alone: OriginReading is sole_constructor,
+// so every construction outside this module is a COMPILE REFUSAL and a second mint cannot pass.
+// The claim is enforced by the acceptance path rather than maintained by a reader.
+//
+// AN EARLIER CUT OF THIS SENTENCE ALSO ARGUED THAT THE ONLY IN-MODULE MUTATION IS AN EDIT TO THIS
+// FILE, SO THE CLAIM COULD NOT ROT UNDER A READER. THAT HALF IS WITHDRAWN: it is refuted by
+// gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit, which records an author
+// retracting a claim at its definition site while leaving a restatement two screens below IN THE
+// SAME FILE AND THE SAME DIFF, surviving four review rounds. Co-location makes the join available to
+// an author who looks; it does not perform it. Falsifier locality is a recognition heuristic for
+// where to look, never a licence for a live open-world negative -- what licenses one is a mechanical
+// invalidator, which here is the compiler. There is no fixture mint beside it and no admitted caller
+// list.
 //
 // THERE WAS ONE, IT WAS A HOLE, AND IT MERGED -- recorded here rather than quietly removed because
 // a guarantee that was reported and not held is the one thing DESIGN 4b(1) says must not stand.

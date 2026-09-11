@@ -227,43 +227,42 @@ fn manifest_observation(
 
 // The consumer: one call from a real commit attempt to a published outcome.
 //
-// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c), AND THE CONSUMERS ARE NAMED. This sentence used
-// to read `exercised by the enrolled witnesses and by nothing else: no production route reaches
-// it`. That was true when it was written and is now false, which is the decay 3c's own instruction
-// prevents: NAME THE CONSUMER AND THE ROUTE, because a named join survives a change that an absence
-// claim does not.
+// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). gunbc.fabric_m0_publication publish_work is the
+// named join that holds a run's Work and calls this function; the instrument
+// tools.fabric_m0_origin_readback_probe is the second caller, driving the whole gate over real
+// bytes. That join is itself a DECLARED FRONTIER. Rewriting this paragraph as CONSUMED while the
+// route terminated in a test was false.
 //
-// THE CONSUMERS, with their routes: gunbc.fabric_m0_publication publish_work calls this function,
-// and is the join that holds a run's Work, resolves its obligations at the admission gate, and
-// returns the publication; and the instrument tools.fabric_m0_origin_readback_probe calls it to
-// drive the whole gate over real bytes. Both are in-tree and both execute.
+// THIS PARAGRAPH IS MAIN'S, RESTORED, AND THE RESTORATION IS THE POINT. gunbc#10933 corrected it in
+// the same commit that added publish_work -- an atomic, correct edit -- and this branch silently
+// carried the superseded `exercised by the enrolled witnesses and by nothing else` text back over
+// it. No conflict was raised and no merge commit touched the file: the resurrection came from a
+// `--ours` resolution taken when the squash of gunbc#10934 collided, at a moment when the check I
+// ran asked only whether main had touched the file AFTER the squash. It had touched it BEFORE. A
+// clean merge is exactly the thing that will not tell you, which is why the receipt is here rather
+// than in a commit message.
 //
-// SO THE FRONTIER MOVED RATHER THAN VANISHED, and it is one layer up, at publish_work. It is
-// stated below as the CAPABILITY THAT CLOSES IT and deliberately not as a claim about what does not
-// yet call publish_work.
+// WHAT IS CHANGED FROM MAIN'S TEXT, and only this: the second consumer is named, and the clause
+// `today it is reached by enrolled witnesses and by no job-ending on a run path` is DROPPED. That
+// clause is a live open-world negative with no producer and no date -- nothing derives it, nothing
+// recomputes it, and the mutation that falsifies it is the one least likely to touch this comment.
+// The trigger below states the same fact positively, as the capability that closes the frontier,
+// which is the tracked shape and carries the whole meaning.
 //
-// THE DRAFT OF THIS REPAIR SAID `reached by enrolled witnesses and by no JOB-ENDING`, WHICH IS THE
-// SHAPE THIS ANNOTATION EXISTS TO REMOVE, one layer up, in the edit that removes it. The defect is
-// not that a negative was stated; it is that the negative was LIVE, OPEN-WORLD and UNTRACKED --
-// nothing derives it, nothing recomputes it, and the single mutation that falsifies it (someone
-// adding a job-ending caller) is the mutation least likely to touch this comment. A claim is
-// admissible when a mutation able to falsify it must also invalidate or recompute it: structurally
-// tracked (`A calls B`, derived from named identities, which adding a caller does not falsify), or
-// derived from a complete population that call-edge changes invalidate, or bound to a named
-// immutable snapshot. The positive trigger below is the first of those and carries the whole
-// meaning, so the negative is dropped rather than snapshot-bound: it added nothing the capability
-// sentence does not already say, and section 3c asks who consumes this and by what route, never for
-// the complement of the current consumer set.
+// THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a required-CI (or other real job)
+// ending that already possesses that run's Work, the attempt's commit transport, and an independent
+// origin readback of the commit manifest -- the roadmap's compute-artifact-return-and-
+// materialization capability -- and that decides the process/check conclusion from the
+// JobPublication this function returns. Naming a smaller artifact -- one fold, one witness file, one
+// emitted script -- would be satisfied while the capability stayed dead. Sibling lanes own origin
+// binding and cache; fabricating a confirming readback on the required-CI path would be the silent
+// default this gate exists to refuse, and main's text said `DurableOriginRead` there, a variant
+// gunbc#10934 deleted -- the decayed citation DESIGN 3's cite-the-symbol rule exists to prevent. It
+// is no longer expressible at all: a confirming readback carries an OriginReading, which only
+// gunbc.fabric_m0_origin_readback read_origin_staged_file can produce.
 //
-// THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a job-publication path that
-// holds a run's required work and decides its ending -- the roadmap's compute-artifact-return-
-// and-materialization capability, where a computation's declared outputs come back identified by
-// content through a manifest the caller reads. When that path exists, it calls this function to
-// turn a commit attempt into an ending, and the frontier closes. Naming a smaller artifact -- one
-// caller, one job, one emitted script -- would be satisfied while the capability stayed dead.
-//
-// This is a consumption frontier, NOT a guarantee drop: the gate's walls are enrolled and
-// executing over the population they are declared for, so no rung is being lowered by the wait.
+// This is a consumption frontier, NOT a guarantee drop: the gate's walls are enrolled and executing
+// over the population they are declared for, so no rung is being lowered by the wait.
 fn publish_after_commit(
   namespace: CommitNamespace,
   attempt: AttemptIdentity,
