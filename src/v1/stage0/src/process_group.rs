@@ -36,21 +36,16 @@ pub(crate) enum ProcessGroupWait {
 }
 
 /// Spawn with the child as leader of a NEW process group, so a later signal reaches its descendants
-/// too. The `pre_exec` runs in the forked child before `exec`.
+/// too. `process_group(0)` rather than a `pre_exec` closure: a closure forces a real `fork()` of
+/// this whole process, charging its page-table copy to the caller as system time
+/// (v1_interpreter configure_shell_process_group_for_wall_kill carries the measurement).
 pub(crate) fn spawn_in_new_process_group(cmd: &mut Command) -> std::io::Result<Child> {
     use std::os::unix::process::CommandExt;
-    unsafe {
-        cmd.pre_exec(|| {
-            if libc::setpgid(0, 0) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
+    cmd.process_group(0);
     cmd.spawn()
 }
 
-/// Signal the leader AND the group. Both are sent because a child that never reached `pre_exec`
+/// Signal the leader AND the group. Both are sent because a child whose group was never set up
 /// is not a group leader, so the group signal alone can miss it.
 pub(crate) fn signal_process_group(pid: u32, signal: i32) {
     unsafe {

@@ -1,23 +1,35 @@
 module test.claim.self_host_v1_consumer_census_witness_test
 
-import std.types { Bool }
+import std.types { Bool, Int, List, String }
 import gunbc.replacement_cut { BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty }
 import gunbc.rust_item_host_observation {
+  RustObservedTree,
   RustSourceNamespaceRow, rust_source_namespace_rows, rust_source_prefix_tooling,
-  rust_module_path_for_repo_path, RustModulePathProjected, RustModulePathRefused
+  rust_module_path_for_repo_path, RustModulePathProjected, RustModulePathRefused,
+  RustFileChangeInput, RustReferenceObservation, RustReferencesObserved, RustReferenceHostRefused,
+  observe_rust_references
 }
 import gunbc.v1_consumer_census {
-  v1_consumers, v1_uncitable_consumers, v1_consumer_population, v1_row_keys,
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
-  v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
+  v1_bankruptcy_transaction_admitted,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
-  v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors,
+  v1_consumer_population_for, v1_reference_tokens, v1_seed_link_tokens, v1_shim_partition_over,
+  V1BlockingCount, V1BlockingCounted, V1BlockingUnmeasured, v1_blocking_count_of,
+  V1ShimPopulation, V1ShimPopulationObserved, V1ShimPopulationRefused, v1_shim_population_of,
+  MintedManifestJoin, MintedManifestJoined, MintedManifestJoinUnobserved,
+  v1_minted_manifest_join_over, minted_manifest_join_is_clean, v1_join_uncitable_consumers, v1_join_stale_renderers,
+  v1_cargo_manifest_dependencies, v1_seed_manifest_dependencies, cargo_dependency_is_seed_edge,
+  CargoManifestRenderedFromPartition, CargoManifestHandMaintained, CargoManifestMinted,
+  consumer_disposition_blocks,
+  v1_row_keys,
   v1_rows_undecided, v1_undecided_row_count, v1_deletion_worklist, v1_worklist_is_a_permutation,
   v1_worklist_leading_unjudged_count, v1_worklist_leads_with_the_unjudged,
   v1_blocking_consumers, v1_native_lane_consumers, v1_native_lane_row_count,
   v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
 import tools.v1_consumer_discovery { v1_discovery_keys_at_name }
+import std.decl_ref { declaration_ref_display_key }
+import gunbc.stage0_partition_package_graph { stage0_host_shell_package_name }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
   planted_undisposed_discovered, planted_stale_discovered, planted_same_size_discovered,
@@ -27,6 +39,18 @@ import test.fixture.v1_consumer_census.specimens {
   planted_mixed_disposition_rows, planted_all_judged_rows
 }
 
+data planted_observed_tree: RustObservedTree = RustObservedTree { revision: "0000000000000000000000000000000000000001", tree: "0000000000000000000000000000000000000002" }
+
+// THERE IS NO LIVE HALF ON THE FLOOR ANY MORE. Since the Rust reference population became a
+// produced observation (gunbc.rust_item_host_observation head_rust_sources reaches
+// git.Inspect.HeadCommit, ListTreePathsAtRevision, ShowTree and git.Core.Show),
+// v1_consumer_population() is a live read the hermetic envelope has no route for, and
+// v2.workflow.floor_changed_witness refuses a changed witness that ends in a route gap. The two
+// assertions that read the live population are therefore deleted, the loss is the declared drop
+// gunbc.rung_drop v1_consumer_census_live_population_off_the_merge_path, and the executing consumer
+// of the live census is the operator instrument v1_blocking_consumer_count_report. Everything here
+// folds planted sources through the same producer.
+//
 // WHAT THIS WITNESS ESTABLISHES, AND WHAT IT DOES NOT.
 //
 // It does NOT measure the repository. The live roster in gunbc.v1_consumer_census is a hand sweep
@@ -101,56 +125,243 @@ fn live_rows_without_tooling() -> List<RustSourceNamespaceRow> {
   rust_source_namespace_rows |> filter(r => r.repo_prefix != rust_source_prefix_tooling)
 }
 
+// THE PLANTED REFERENCE POPULATION: three hand-Rust files under the tooling tree, authored here so
+// the producer's fold is exercised on inputs this file controls rather than on whatever the tree
+// happens to carry. One reaches v1_rt at file level, one through a `mod` item, one names nothing
+// and must produce no row at all -- the negative control that shows the fold is keyed on the token
+// rather than on the tree.
+fn planted_source(path: String, content: String) -> RustFileChangeInput {
+  RustFileChangeInput {
+    repo_path: path, base_content: "", head_content: content,
+    present_at_base: false, present_at_head: true, old_ranges: [], new_ranges: []
+  }
+}
+
+fn planted_sources() -> List<RustFileChangeInput> {
+  [
+    planted_source(path: "dag/gunbc/instruments/planted_use_shims/lib.rs", content: "#![allow(dead_code)]\npub use v1_compiler::v1_rt;\npub fn bridge() {}\n"),
+    planted_source(path: "dag/gunbc/instruments/planted_mod_shims/lib.rs", content: "pub mod v1_rt;\npub mod other;\n"),
+    planted_source(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs", content: "pub fn nothing_here() {}\n"),
+  ]
+}
+
+fn planted_observation(rows: List<RustSourceNamespaceRow>) -> RustReferenceObservation {
+  observe_rust_references(observed_at: planted_observed_tree, sources: planted_sources(), generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rows)
+}
+
+// A TOKEN THE AUTHORITY TABLE DOES NOT CARRY IS AN UNDECIDED CONSUMER, NOT A V1RuntimeBridge ROW:
+// the producer is handed a token the census never declared, and the partition refuses to guess.
+fn an_unknown_token_refuses_rather_than_borrowing_the_first_authority() -> Bool {
+  match observe_rust_references(observed_at: planted_observed_tree, sources: planted_sources(), generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: _ } => {
+      let unknown_sources = [planted_source(path: "dag/gunbc/instruments/planted_unknown_shims/lib.rs", content: "pub use v1_compiler::planted_unknown_token;\n")]
+      match observe_rust_references(observed_at: planted_observed_tree, sources: unknown_sources, generated_repo_paths: [], tokens: ["v1_rt", "planted_unknown_token"], rows: rust_source_namespace_rows) {
+        RustReferenceHostRefused { detail: _ } => false
+        RustReferencesObserved { observed_at: _, rows: rs2, unattributed: u2, unscannable: _ } => {
+          let p = v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs2, unattributed: u2)
+          count(rs2) == 1 && count(p.cited) == 0 && count(p.uncitable) == 1
+            && (p.uncitable |> all(x => consumer_disposition_blocks(d: x.disposition) && string_contains(s: x.refusal_detail, pattern: "planted_unknown_token")))
+            && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs, unattributed: u).cited) == count(rs)
+        }
+      }
+    }
+  }
+}
+
+// TWO LINES, ONE RELATION: a crate root naming v1_rt on two file-level `use` lines is one consumer
+// of one authority, not two -- the produced grain is the line, the census grain is consumer x
+// authority. (A `pub mod v1_rt;` beside a `pub use` is NOT this case: the scan mints the mod as
+// its own item, so that is two consumers.)
+fn two_lines_naming_one_authority_are_one_consumer() -> Bool {
+  let twice = [planted_source(path: "dag/gunbc/instruments/planted_twice_shims/lib.rs", content: "pub use v1_compiler::v1_rt;\npub use v1_compiler::v1_rt as rt;\n")]
+  match observe_rust_references(observed_at: planted_observed_tree, sources: twice, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rust_source_namespace_rows) {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: _ } =>
+      count(rs) == 2 && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs, unattributed: u).cited) == 1
+  }
+}
+
+// ONE ITEM, TWO AUTHORITIES, TWO RELATIONS -- the opposite case to two-lines-one-authority. A crate
+// root that names v1_rt AND v1_interpreter at file level is one item reaching two consumed
+// authorities, so the census keeps two rows in BOTH columns: cited under the live table, and
+// uncitable under the table without the tooling row (where the dedup key must carry the authority,
+// or the two would collapse to one and the count would undercount in the fail-open direction).
+fn one_item_naming_two_authorities_is_two_relations() -> Bool {
+  let sources = [planted_source(path: "dag/gunbc/instruments/planted_two_authority_shims/lib.rs", content: "pub use v1_compiler::v1_rt;\npub use v1_compiler::v1_interpreter;\n")]
+  match observe_rust_references(observed_at: planted_observed_tree, sources: sources, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rust_source_namespace_rows) {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: _ } =>
+      match observe_rust_references(observed_at: planted_observed_tree, sources: sources, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: live_rows_without_tooling()) {
+        RustReferenceHostRefused { detail: _ } => false
+        RustReferencesObserved { observed_at: _, rows: rs2, unattributed: u2, unscannable: _ } =>
+          count(rs) == 2
+            && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs, unattributed: u).cited) == 2
+            && count(v1_shim_partition_over(observed_at: planted_observed_tree, rows: rs2, unattributed: u2).uncitable) == 2
+      }
+  }
+}
+
+fn planted_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPopulation {
+  v1_shim_population_of(observation: planted_observation(rows: rows))
+}
+
+fn planted_row_count() -> Int {
+  match planted_observation(rows: rust_source_namespace_rows) {
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: _, unscannable: _ } => count(rs)
+    RustReferenceHostRefused { detail: _ } => 0
+  }
+}
+
 fn the_tooling_row_decides_shim_citability() -> Bool {
-  let with = v1_shim_partition(rows: rust_source_namespace_rows)
-  let without = v1_shim_partition(rows: live_rows_without_tooling())
-  count(with.cited) == count(v1_shim_items()) && count(with.uncitable) == 0
-    && count(without.uncitable) == count(v1_shim_items()) && count(without.cited) == 0
-    && count(live_rows_without_tooling()) == count(rust_source_namespace_rows) - 1
-    && (with.cited |> all(r => starts_with(s: r.boundary.consumer.module_path as String, prefix: "v1_compiled.")))
+  match planted_partition(rows: rust_source_namespace_rows) {
+    V1ShimPopulationRefused { reason: _ } => false
+    V1ShimPopulationObserved { partition: cited_partition } =>
+      match planted_partition(rows: live_rows_without_tooling()) {
+        V1ShimPopulationRefused { reason: _ } => false
+        V1ShimPopulationObserved { partition: uncited_partition } =>
+          planted_row_count() == 2
+            && count(cited_partition.cited) == planted_row_count() && count(cited_partition.uncitable) == 0
+            && count(uncited_partition.uncitable) == planted_row_count() && count(uncited_partition.cited) == 0
+            && count(live_rows_without_tooling()) == count(rust_source_namespace_rows) - 1
+            && (cited_partition.cited |> all(r => starts_with(s: r.boundary.consumer.module_path as String, prefix: "v1_compiled.")))
+            && (cited_partition.cited |> all(r => r.boundary.consumed_old_authority.module_path as String == "v1_compiler.v1_rt"))
+      }
+  }
 }
 
-// THE POPULATION IS DERIVED FROM THE SAME PARTITION: with the row, the uncitable column is empty;
-// without it, four. Both arms stay LowerBound -- the row was necessary for Complete, not sufficient.
+// THE POPULATION IS DERIVED FROM THE SAME PARTITION: with the row, the uncitable column carries
+// only what the manifest join contributes; without it, every planted reference joins it. Both arms
+// stay LowerBound -- the row was necessary for Complete, not sufficient -- and a host refusal on
+// EITHER observation is the Unmeasured arm, never an empty list.
 fn the_population_carries_the_partition() -> Bool {
-  count(consumer_population_uncitable(p: v1_consumer_population_for(rows: rust_source_namespace_rows))) == 0
-    && count(consumer_population_uncitable(p: v1_consumer_population_for(rows: live_rows_without_tooling()))) == count(v1_shim_items())
-    && !consumer_population_is_complete(p: v1_consumer_population_for(rows: rust_source_namespace_rows))
-    && !consumer_population_is_complete(p: v1_consumer_population_for(rows: live_rows_without_tooling()))
+  let join_uncitable = count(v1_join_uncitable_consumers(j: v1_minted_manifest_join_over(observation: clean_seed_link_observation())))
+  count(consumer_population_uncitable(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: clean_seed_link_observation()))) == join_uncitable
+    && count(consumer_population_uncitable(p: v1_consumer_population_for(observation: planted_observation(rows: live_rows_without_tooling()), seed_links: clean_seed_link_observation()))) == planted_row_count() + join_uncitable
+    && !consumer_population_is_complete(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: clean_seed_link_observation()))
+    && !consumer_population_is_complete(p: v1_consumer_population_for(observation: planted_observation(rows: live_rows_without_tooling()), seed_links: clean_seed_link_observation()))
+    && count(consumer_population_rows(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }, seed_links: clean_seed_link_observation()))) == 0
+    && count(consumer_population_uncitable(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }, seed_links: clean_seed_link_observation()))) == 0
+    && !consumer_population_is_complete(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }, seed_links: clean_seed_link_observation()))
+    && !consumer_population_is_complete(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: RustReferenceHostRefused { detail: "planted host refusal" }))
+    && count(consumer_population_rows(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: RustReferenceHostRefused { detail: "planted host refusal" }))) == 0
+    && match v1_blocking_count_of(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }, seed_links: clean_seed_link_observation())) {
+         V1BlockingUnmeasured { reason: r } => string_contains(s: r, pattern: "planted host refusal")
+         V1BlockingCounted { blocking: _, members: _ } => false
+       }
+    && match v1_blocking_count_of(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: clean_seed_link_observation())) {
+         V1BlockingCounted { blocking: b, members: m } => b > 0 && b <= m
+         V1BlockingUnmeasured { reason: _ } => false
+       }
 }
 
-// THE LIVE TREE REFUSES, AND FOR THE REASONS THE CENSUS RECORDS. Stated as a conjunction because
-// 'the gate is false' is also what a broken gate returns: the population is a lower bound AND there
-// is at least one blocking consumer AND not every consumer blocks -- three independent facts whose
-// conjunction is what 'XL-5 has not run yet' means.
-fn the_live_transaction_refuses_for_recorded_reasons() -> Bool {
-  !consumer_population_is_complete(p: v1_consumer_population())
-    && v1_blocking_consumer_count() > 0
-    && v1_blocking_consumer_count() < v1_consumer_member_count()
+// THE CARGO MANIFEST MEDIUM, ON PLANTED SEED-LINK SITES. The roster of Rust renderers is authored
+// to one site (the cssl stale-red control) and one uncitable site (the behavioral receipt's rlib
+// oracle); the sources below are planted so each join direction is exercised: the rostered site
+// produced (joined), an extra citable site with the token (undisposed, becomes an Undecided
+// consumer that blocks), the rostered site absent (stale, excluded from consumers), the rostered
+// impl method produced (rostered uncitable, carried with its oracle disposition), a different impl
+// method with the token (undisposed uncitable), and a comment line carrying the token (no row).
+fn seed_link_observation(sources: List<RustFileChangeInput>) -> RustReferenceObservation {
+  observe_rust_references(observed_at: planted_observed_tree, sources: sources, generated_repo_paths: [], tokens: v1_seed_link_tokens(), rows: rust_source_namespace_rows)
 }
 
-// THE GATE ITSELF, EXECUTED ON THE LIVE POPULATION. The assertion above establishes the reasons;
-// this one establishes the verdict, and against the most generous realized population that can be
-// written -- every successor this census claims, handed to the gate as realized -- so the false
-// cannot be coming from an unrealized successor. It comes from the population being a lower bound
-// and from blocking consumers, which are the two facts XL-5's gate has not yet discharged.
-fn the_live_gate_refuses_even_with_every_successor_realized() -> Bool {
-  !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: [])
-    && !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: v1_claimed_successors(rows: v1_consumers()))
+data cssl_assembly_path: String = "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs"
+
+data behavioral_receipt_path: String = "src/v1/stage0/src/behavioral_receipt_host.rs"
+
+data planted_cssl_test_source: String = "#[cfg(test)]\nmod tests {\n    fn normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo() {\n        let toml = \"v1-compiler = {{ path = \\\"{}\\\" }}\";\n    }\n}\n"
+
+data planted_extra_renderer_source: String = "pub fn another_minted_manifest() -> String {\n    \"v1-compiler = { path = \\\"x\\\" }\".to_string()\n}\n"
+
+data planted_behavioral_source: String = "struct ReceiptCrate {\n    package: String,\n}\n\nimpl ReceiptCrate {\n    fn v1_compiler() -> Self {\n        Self {\n            package: \"v1-compiler\".to_string(),\n        }\n    }\n}\n"
+
+data planted_other_impl_source: String = "struct Other {\n    package: String,\n}\n\nimpl Other {\n    fn seed() -> Self {\n        Self {\n            package: \"v1-compiler\".to_string(),\n        }\n    }\n}\n"
+
+data planted_comment_only_source: String = "// the rendered rows carried `v1-compiler = { path = <workspace>/src/v1/stage0 }` once\npub fn documented() -> u32 {\n    1\n}\n"
+
+fn clean_seed_link_observation() -> RustReferenceObservation {
+  seed_link_observation(sources: [
+    planted_source(path: cssl_assembly_path, content: planted_cssl_test_source),
+    planted_source(path: behavioral_receipt_path, content: planted_behavioral_source),
+  ])
 }
 
-// THE ROSTER AND THE POPULATION NAME ONE LIST. Two declarations naming one list can disagree in
-// exactly one way -- an author filing a row and forgetting the population -- which would leave a
-// consumer recorded and unread by the gate.
-fn the_live_population_carries_the_whole_roster() -> Bool {
-  v1_every_discovered_consumer_disposed(
-      discovered: v1_row_keys(rows: v1_consumers()),
-      rows: consumer_population_rows(p: v1_consumer_population())
-    ) && v1_every_row_names_a_live_consumer(
-      discovered: v1_row_keys(rows: v1_consumers()),
-      rows: consumer_population_rows(p: v1_consumer_population())
-    )
-    && count(v1_uncitable_consumers()) == count(consumer_population_uncitable(p: v1_consumer_population()))
+fn join_of(sources: List<RustFileChangeInput>) -> MintedManifestJoin {
+  v1_minted_manifest_join_over(observation: seed_link_observation(sources: sources))
+}
+
+fn the_manifest_join_is_clean_when_every_rostered_site_is_produced() -> Bool {
+  let j = v1_minted_manifest_join_over(observation: clean_seed_link_observation())
+  minted_manifest_join_is_clean(j: j)
+    && count(v1_join_stale_renderers(j: j)) == 0
+    && count(v1_join_uncitable_consumers(j: j)) == 1
+    && (v1_join_uncitable_consumers(j: j) |> all(u => consumer_disposition_blocks(d: u.disposition)))
+    && match j {
+         MintedManifestJoined { observed_at: _, produced: p, undisposed_sites: _, undisposed_uncitable: _, uncitable: _, stale_rows: _, stale_uncitable: _, unattributed_lines: _ } =>
+           count(p) == 1 && (p |> all(r => declaration_ref_display_key(ref: r) == "v1_compiler.cssl_seed_linked_closure_assembly.tests::normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo"))
+         MintedManifestJoinUnobserved { reason: _ } => false
+       }
+}
+
+fn an_unrostered_seed_link_site_is_an_undecided_consumer_that_blocks() -> Bool {
+  let j = join_of(sources: [
+    planted_source(path: cssl_assembly_path, content: planted_cssl_test_source),
+    planted_source(path: behavioral_receipt_path, content: planted_behavioral_source),
+    planted_source(path: "src/v1/stage0/src/planted_extra.rs", content: planted_extra_renderer_source),
+  ])
+  !minted_manifest_join_is_clean(j: j)
+    && count(v1_join_uncitable_consumers(j: j)) == 2
+    && (v1_join_uncitable_consumers(j: j) |> all(u => consumer_disposition_blocks(d: u.disposition)))
+    && (v1_join_uncitable_consumers(j: j) |> any(u => u.item_key == "v1_compiler.planted_extra::another_minted_manifest"))
+}
+
+// A STALE ROW SUBTRACTS A CONSUMER ROW ONLY BY ADDING A BLOCKING ONE THAT NAMES IT: the consumer
+// count drops by one, and the uncitable column gains an Undecided row for the stale renderer.
+fn a_rostered_renderer_the_tree_no_longer_carries_is_stale_and_excluded() -> Bool {
+  let j = join_of(sources: [planted_source(path: behavioral_receipt_path, content: planted_behavioral_source)])
+  !minted_manifest_join_is_clean(j: j)
+    && count(v1_join_stale_renderers(j: j)) == 1
+    && count(v1_join_uncitable_consumers(j: j)) == count(v1_join_uncitable_consumers(j: v1_minted_manifest_join_over(observation: clean_seed_link_observation()))) + 1
+    && (v1_join_uncitable_consumers(j: j) |> any(u => consumer_disposition_blocks(d: u.disposition) && string_contains(s: u.refusal_detail, pattern: "stale row")))
+    && (v1_join_stale_renderers(j: j) |> all(r => declaration_ref_display_key(ref: r) == "v1_compiler.cssl_seed_linked_closure_assembly.tests::normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo"))
+    && count(consumer_population_rows(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: seed_link_observation(sources: [planted_source(path: behavioral_receipt_path, content: planted_behavioral_source)]))))
+       == count(consumer_population_rows(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: clean_seed_link_observation()))) - 1
+}
+
+fn an_unrostered_uncitable_site_is_undisposed_and_a_comment_is_not_a_site() -> Bool {
+  let j = join_of(sources: [
+    planted_source(path: cssl_assembly_path, content: planted_cssl_test_source),
+    planted_source(path: behavioral_receipt_path, content: planted_behavioral_source),
+    planted_source(path: "src/v1/stage0/src/planted_other.rs", content: planted_other_impl_source),
+    planted_source(path: "src/v1/stage0/src/planted_comment.rs", content: planted_comment_only_source),
+  ])
+  match j {
+    MintedManifestJoinUnobserved { reason: _ } => false
+    MintedManifestJoined { observed_at: _, produced: p, undisposed_sites: a, undisposed_uncitable: b, uncitable: _, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
+      count(p) == 1 && count(a) == 0 && count(b) == 1 && count(c) == 0 && count(d) == 0 && count(e) == 0
+        && (b |> all(k => k == "src/v1/stage0/src/planted_other.rs::impl_method::Other::seed"))
+  }
+}
+
+// THE RELATION ITSELF: derived edges carry the partition's names, only seed edges become consumers,
+// and the seed edges are exactly the hand tests manifest plus the minted rows.
+fn the_manifest_relation_keys_on_the_package_graph() -> Bool {
+  let all = v1_cargo_manifest_dependencies()
+  let seed = v1_seed_manifest_dependencies()
+  count(all) > count(seed)
+    && (seed |> all(d => d.dependency_package == stage0_host_shell_package_name()))
+    && (all |> filter(d => !cargo_dependency_is_seed_edge(d: d)) |> all(d => d.dependency_package != stage0_host_shell_package_name()))
+    && count(seed |> filter(d => match d.origin {
+         CargoManifestHandMaintained { repo_path: rp } => rp == "src/v1/tests/Cargo.toml"
+         CargoManifestRenderedFromPartition { renderer: _ } => false
+         CargoManifestMinted { renderer: _ } => false
+       })) == 1
+    && (all |> filter(d => match d.origin {
+         CargoManifestRenderedFromPartition { renderer: _ } => true
+         CargoManifestHandMaintained { repo_path: _ } => false
+         CargoManifestMinted { renderer: _ } => false
+       }) |> all(d => !cargo_dependency_is_seed_edge(d: d)))
 }
 
 test fn consumer_census_catches_an_undisposed_consumer() -> Bool { undisposed_consumer_is_caught() }
@@ -162,9 +373,14 @@ test fn consumer_census_admission_refuses_an_unrealized_successor() -> Bool { ad
 test fn consumer_census_boundary_census_enumerates_the_rows() -> Bool { boundary_census_enumerates_the_rows() }
 test fn consumer_census_tooling_row_decides_shim_citability() -> Bool { the_tooling_row_decides_shim_citability() }
 test fn consumer_census_population_carries_the_partition() -> Bool { the_population_carries_the_partition() }
-test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
-test fn consumer_census_live_gate_refuses_even_with_every_successor_realized() -> Bool { the_live_gate_refuses_even_with_every_successor_realized() }
-test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }
+test fn consumer_census_manifest_join_is_clean_when_every_rostered_site_is_produced() -> Bool { the_manifest_join_is_clean_when_every_rostered_site_is_produced() }
+test fn consumer_census_unrostered_seed_link_site_blocks() -> Bool { an_unrostered_seed_link_site_is_an_undecided_consumer_that_blocks() }
+test fn consumer_census_stale_rostered_renderer_is_excluded() -> Bool { a_rostered_renderer_the_tree_no_longer_carries_is_stale_and_excluded() }
+test fn consumer_census_unrostered_uncitable_site_is_undisposed_and_comment_is_not_a_site() -> Bool { an_unrostered_uncitable_site_is_undisposed_and_a_comment_is_not_a_site() }
+test fn consumer_census_manifest_relation_keys_on_the_package_graph() -> Bool { the_manifest_relation_keys_on_the_package_graph() }
+test fn consumer_census_unknown_token_refuses_rather_than_borrowing_an_authority() -> Bool { an_unknown_token_refuses_rather_than_borrowing_the_first_authority() }
+test fn consumer_census_two_lines_naming_one_authority_are_one_consumer() -> Bool { two_lines_naming_one_authority_are_one_consumer() }
+test fn consumer_census_one_item_naming_two_authorities_is_two_relations() -> Bool { one_item_naming_two_authorities_is_two_relations() }
 
 // THE TOOLING TREE CARRIES THE NAME OF THE PACKAGE IT ASSEMBLES INTO. dag/gunbc/instruments/ is the
 // scaffold's rust_source_prefix_tooling; its shim crates are assembled into the `v1_compiled`
@@ -227,11 +443,16 @@ test fn consumer_census_worklist_is_a_permutation_that_leads_with_the_unjudged()
 // so the check inverts: every native-lane relation is now a rostered row, and the live uncitable
 // column is empty. The second conjunct is what stops this passing vacuously -- a frontier list that
 // had simply been deleted rather than promoted would satisfy the first.
+// THE POPULATION IS THE ONE THE PLANTED OBSERVATION YIELDS: the Rust medium is a live read now,
+// so the join is asked of the same planted sources every other assertion here folds, and the
+// native-lane rows -- static rows -- are in it regardless of what the planted Rust half carries;
+// the uncitable column carries exactly what the seed-link join contributes (the rostered oracle).
 test fn consumer_census_native_lane_rows_joined_the_population() -> Bool {
+  let p = v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows), seed_links: clean_seed_link_observation())
   v1_native_lane_row_count() > 0
-    && count(v1_uncitable_consumers()) == 0
+    && count(consumer_population_uncitable(p: p)) == count(v1_join_uncitable_consumers(j: v1_minted_manifest_join_over(observation: clean_seed_link_observation())))
     && (v1_native_lane_consumers()
-        |> all(row => v1_row_keys(rows: v1_consumers()) |> any(k => k == v1_row_key(r: row))))
+        |> all(row => v1_row_keys(rows: consumer_population_rows(p: p)) |> any(k => k == v1_row_key(r: row))))
 }
 
 // THE DISCOVERY PROJECTION RESTORES THE ROOT PREFIX, and the RED half is the one that matters: a

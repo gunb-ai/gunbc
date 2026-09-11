@@ -1,0 +1,107 @@
+module test.claim.decl_fact_value_projection_witness
+
+import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.std.fn_index { atom_identities_in_node, fn_index_symbol_eq }
+import v2.std.algebra { contains, fold_list, for_all, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// WHAT THIS FILE MEASURES. A consumer that asks "which declarations name v1" keys on the
+// AUTHORED STRING VALUE of a declaration. The route is v2.std.decl_index decl_facts_at
+// composed with v2.std.fn_index atom_identities_in_node. That route used to drop those
+// values (class gunbc.recurring_failure_mode.projection_drops_the_value_its_consumer_keys_on).
+// DataItem decl_facts now carry parse-tree LitStr atoms, so the three pairs below must
+// project DIFFERENT atom populations. They stay executing as regression controls.
+// THE PAIRS ARE VALUE-ONLY, AND THE COMPARISON DOES NOT GUESS A SPELLING. An earlier probe
+// asked whether a particular lexeme was present and could not distinguish "the value is
+// absent" from "I guessed the wrong spelling for an atom". Comparing two populations against
+// EACH OTHER removes that variable: if the projection carried authored values at all, two rows
+// with different values could not project the same atoms, whatever the spelling.
+//
+// REGRESSION CONTROLS (no longer expected-red). The three same_atoms assertions are
+// the behaviour that holds now that the projection carries authored values — different
+// values project different atoms. They stay executing (DESIGN section 4b(4): the
+// evidence stays enrolled). The positive control below was never expected-red.
+
+data value_projection_roots: List<String> = ["dag", "src/v2"]
+
+fn atoms_at(qn: String) -> List<Symbol> {
+  fold_list(
+    xs: decl_facts_at(pool_roots: value_projection_roots, qualified_name: qn),
+    empty: [],
+    cons: fn(acc, f) {
+      fold_list(
+        xs: atom_identities_in_node(node: f.node),
+        empty: acc,
+        cons: fn(a, sym) { list_snoc_item(xs: a, item: sym) }
+      )
+    }
+  )
+}
+
+fn same_atoms(a: String, b: String) -> Bool {
+  let xs = atoms_at(qn: a)
+  let ys = atoms_at(qn: b)
+  (length(xs: xs) == length(xs: ys))
+    && for_all(xs: xs, predicate: fn(s) { contains(xs: ys, item: s, eq: fn_index_symbol_eq) })
+}
+
+fn distinct_values_project_distinct_atoms(a: String, b: String) -> Bool {
+  !same_atoms(a: a, b: b)
+}
+
+// THE SPECIMENS ARE PURPOSE-BUILT AND VALUE-ONLY, in
+// test.fixture.decl_fact_value_projection.specimens — see that file for why they are authored
+// rather than borrowed (review 63983: two of the three borrowed pairs differed in ARITY and in
+// referenced identifiers, so a projection carrying list cardinality could have greened them
+// while carrying no lexeme) and why they cannot live in this file (decl_facts skips any path
+// ending in _test.dag, so a specimen declared here is invisible to the reader under test).
+//
+// Within each pair the two rows share declared type, shape, element count, field names and the
+// LENGTH of every string; only the characters differ.
+
+data bare_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen_bare_alpha"
+
+data bare_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_bare_beta"
+
+data list_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen_list_alpha"
+
+data list_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_list_beta"
+
+data rec_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen_record_alpha"
+
+data rec_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_record_beta"
+
+// POSITIVE CONTROL — NOT enrolled expected-red, and it must stay green. It establishes that
+// decl_facts_at resolves all six qualified names and that every projected node yields a
+// non-empty atom population, so the three reds below report a projection that DROPS VALUES
+// rather than a lookup that found nothing or a reader that returns nothing.
+test fn every_specimen_resolves_and_projects_a_nonempty_atom_population() -> Bool {
+  for_all(
+    xs: [bare_a, bare_b, list_a, list_b, rec_a, rec_b],
+    predicate: fn(qn) {
+      (length(xs: decl_facts_at(pool_roots: value_projection_roots, qualified_name: qn)) == 1)
+        && (length(xs: atoms_at(qn: qn)) > 0)
+    }
+  )
+}
+
+// EXPECTED RED 1 — bare String initializer position.
+test fn bare_string_rows_with_different_values_project_different_atoms() -> Bool {
+  distinct_values_project_distinct_atoms(a: bare_a, b: bare_b)
+}
+
+// EXPECTED RED 2 — list-literal element position. Both specimens hold TWO elements and share
+// their second, so arity and element count are held fixed and only the first element's characters
+// differ; an earlier revision paired a two-element list against an EMPTY one, which a projection
+// carrying cardinality alone could have greened (review 64012).
+test fn list_rows_with_different_elements_project_different_atoms() -> Bool {
+  distinct_values_project_distinct_atoms(a: list_a, b: list_b)
+}
+
+// EXPECTED RED 3 — string values inside a record initializer, constructor held fixed.
+test fn record_rows_with_different_string_fields_project_different_atoms() -> Bool {
+  distinct_values_project_distinct_atoms(a: rec_a, b: rec_b)
+}

@@ -7,9 +7,10 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
 }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
+import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant }
 import product.capacity.lease { QuiescenceRequired, FencedResource }
 import gunbc.harness.harness_seat {
-  harness_seat_partition, SeatCeilingByQualityPolicy, AdmissionCeilingUnestablished,
+  harness_seat_partition, SeatCeilingByDeclaredPolicy, AdmissionCeilingUnestablished,
   harness_seat_capacity, harness_interactive_quality_seats, harness_seat_reference,
 }
 import gunbc.harness.harness_cli {
@@ -17,8 +18,18 @@ import gunbc.harness.harness_cli {
 }
 
 fn w_ceiling(group: FabricGroup) -> Int {
-  match harness_seat_capacity(group: group) {
-    SeatCeilingByQualityPolicy { pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
+  match harness_seat_capacity(group: group, class: InteractiveQualitySensitive) {
+    SeatCeilingByDeclaredPolicy { class: _, pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
+    AdmissionCeilingUnestablished { group: _, cause: _ } => -1
+  }
+}
+
+// THE TOLERANT POOL'S CEILING, read the same way, so the two are compared as POOLS rather than as
+// the rows they came from: a pool built with the wrong ceiling is the defect, not a row that reads
+// differently.
+fn w_tolerant_ceiling(group: FabricGroup) -> Int {
+  match harness_seat_capacity(group: group, class: BatchQualityTolerant) {
+    SeatCeilingByDeclaredPolicy { class: _, pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
     AdmissionCeilingUnestablished { group: _, cause: _ } => -1
   }
 }
@@ -37,8 +48,8 @@ fn w_engine_max_num_seqs(group: FabricGroup) -> Int {
 }
 
 test fn each_group_has_its_own_partition() -> Bool {
-  (harness_seat_partition(group: FabricGroupA) as String) == "group-group-a-quality-seat-v1"
-    && (harness_seat_partition(group: FabricGroupB) as String) == "group-group-b-quality-seat-v1"
+  (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-a-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-b-quality-seat-v1"
 }
 
 // THE DISCRIMINATING ROW: THE SEAT CEILING IS NOT THE ENGINE'S SEQUENCE LIMIT.
@@ -62,16 +73,16 @@ test fn the_seat_ceiling_is_a_quality_policy_and_never_the_engines_sequence_limi
     && w_ceiling(group: FabricGroupB) != w_engine_max_num_seqs(group: FabricGroupB)
 }
 
-// The interim arm SAYS quality policy in its own constructor, so no consumer can read a derived
+// The interim arm SAYS declared policy in its own constructor, so no consumer can read a derived
 // capacity out of it, and the unestablished arm exists and is reachable by name.
-test fn the_interim_ceiling_names_itself_quality_policy_and_the_refusal_arm_exists() -> Bool {
-  (match harness_seat_capacity(group: FabricGroupA) {
-     SeatCeilingByQualityPolicy { pool: _, seats: n } => n == harness_interactive_quality_seats
+test fn the_interim_ceiling_names_itself_declared_policy_and_the_refusal_arm_exists() -> Bool {
+  (match harness_seat_capacity(group: FabricGroupA, class: InteractiveQualitySensitive) {
+     SeatCeilingByDeclaredPolicy { class: _, pool: _, seats: n } => n == harness_interactive_quality_seats
      AdmissionCeilingUnestablished { group: _, cause: _ } => false
    })
     && (match AdmissionCeilingUnestablished { group: FabricGroupA, cause: "probe" as NonEmptyStr } {
           AdmissionCeilingUnestablished { group: _, cause: c } => (c as String) == "probe"
-          SeatCeilingByQualityPolicy { pool: _, seats: _ } => false
+          SeatCeilingByDeclaredPolicy { class: _, pool: _, seats: _ } => false
         })
 }
 
@@ -100,6 +111,21 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
     && w_ceiling(group: FabricGroupB) == 1
     && w_engine_max_num_seqs(group: FabricGroupA) == 32
     && w_ceiling(group: FabricGroupA) != w_engine_max_num_seqs(group: FabricGroupA)
+}
+
+// ── THE TOLERANT POOL IS A SECOND POOL, AND IT IS NOT THE ENGINE'S LIMIT EITHER ───────────────
+//
+// The second class did not arrive by raising the first one's number: the quality ceiling above is
+// still one on both routes, and the tolerant ceiling is the route's own declared allocation. Both
+// halves are asserted, and the tolerant one is asserted DIFFERENT from the desired unit's
+// max_num_seqs -- the stale launch-line reading this lane declined to inherit -- so a future edit
+// that quietly re-derived it from that row goes red here.
+test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_sequence_limit() -> Bool {
+  w_tolerant_ceiling(group: FabricGroupA) == 4
+    && w_tolerant_ceiling(group: FabricGroupB) == 1
+    && w_ceiling(group: FabricGroupA) == 1
+    && w_ceiling(group: FabricGroupB) == 1
+    && w_tolerant_ceiling(group: FabricGroupA) != w_engine_max_num_seqs(group: FabricGroupA)
 }
 
 // ── AN ACQUISITION REFERENCE IS UNIQUE FOR THE LIFE OF THE PARTITION ──────────────────────────

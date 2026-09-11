@@ -72,6 +72,7 @@ type WifProvider {
   pool: String
   issuer_uri: String
   attribute_mapping: Map<String, String>?
+  attribute_condition: String?
 }
 
 fn wif_pool_resource(project_number: String, pool_id: String) -> String {

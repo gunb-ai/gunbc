@@ -990,7 +990,7 @@ fn obs_phase_emoji() -> bool {
 /// Pure Rust mirror of `gunbc.observation_seed_render.phase_begin_line` —
 /// `ci_event_line(Begin) ∘ ci_render_line`. Justified divergence from the
 /// interpreter seed boundary used by floor prelude marks: `trace_mark` runs
-/// inside compile itself (hand-synced path and interpreter intrinsic), and
+/// inside compile itself (generated-mirror path and interpreter intrinsic), and
 /// calling back into the interpreter to render would recurse. Proven
 /// byte-equal to the `.dag` oracle by the seed RED.
 pub fn render_phase_begin_line_mirror(phase: &str, emoji: bool) -> String {
@@ -1059,8 +1059,8 @@ pub fn trace_process_tree_cpu_ms() -> Option<u64> {
 /// not project `event.rss` — explicit divergence from the deleted rss-mib field).
 ///
 /// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
-/// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
-/// `trace_mark(...)` marks in `compile.dag` (+ hand-synced `v1_compiler_compile.rs`), and
+/// `04_method.dag` (+ generated mirror `v1_compiler_infer_method.rs`), the nine
+/// `trace_mark(...)` marks in `compile.dag` (+ generated mirror `v1_compiler_compile.rs`), and
 /// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
 /// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
 /// per-stage carrier that a floor witness consumes by execution (the same retirement event
