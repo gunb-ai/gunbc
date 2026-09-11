@@ -971,20 +971,6 @@ fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>,
   }
 }
 
-fn v1_exit_program_progress_view(ready_count: Int) -> ProgramProgressView {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
-      ProgramProgressView {
-        name: "v1 exit (acceptance carrier refused)",
-        completed: 0,
-        total: 0,
-        ready_obligation_count: ready_count,
-      }
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
-      v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count)
-  }
-}
-
 fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
   el_class("section", "program-progress", [
     el_class("span", "program-progress-name", [ txt(v.name) ]),
@@ -1088,29 +1074,6 @@ fn daily_workspace_view_of_for_accepted(
     observation: observation,
     families: live_work_family_decls(),
     members: live_work_family_members_for_accepted(accepted: accepted_ids))
-}
-
-fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, standings: RoadmapStandings, launch: LaunchHostStanding) -> DailyWorkspaceView {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
-      daily_workspace_view_of_for_accepted(
-        doc: doc,
-        merged: merged,
-        accepted_ids: [],
-        attempts: attempts,
-        attempts_refused: attempts_refused, standings: standings,
-        launch: launch,
-      )
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
-      daily_workspace_view_of_for_accepted(
-        doc: doc,
-        merged: merged,
-        accepted_ids: accepted_ids,
-        attempts: attempts,
-        attempts_refused: attempts_refused, standings: standings,
-        launch: launch,
-      )
-  }
 }
 
 fn roadmap_daily_workspace_page_impl_for_accepted(
@@ -1341,9 +1304,10 @@ fn roadmap_daily_workspace_page_for_projection_observed(
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
-      roadmap_daily_workspace_page_impl(
+      roadmap_daily_workspace_page_impl_for_accepted(
         doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
         merged: [],
+        accepted_ids: [],
         main_prefix: [
           dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),

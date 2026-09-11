@@ -61,7 +61,14 @@ import gunbc.roadmap_static_site {
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
-import gunbc.roadmap_site_surface_render { page_render_refusal_body }
+import gunbc.roadmap_site_surface_render {
+  page_render_refusal_body,
+  roadmap_site_health_path,
+  roadmap_site_roadmap_url_path,
+  roadmap_site_dispatch_url_path,
+  roadmap_site_daily_url_path,
+  roadmap_site_full_url_path,
+}
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   served_observation_surface_response_for_instance,
@@ -224,14 +231,21 @@ type RoadmapServeTableBuild
 // what is being decided and nothing else; the button on that page POSTs to the same path, and
 // that request is the only one that commits. Same capability in both, different consequence, and
 // the split is what keeps "opened the link" distinguishable from "decided".
+// THE SERVED PATH IS ONE FACT. gunbc.roadmap_site_surface_render already declared each of these
+// paths as data -- the static site, the surface-observation bundle and the deploy witnesses all
+// cite those constants -- while these rows carried a second spelling of the same string. Two copies
+// of a path agree until one moves, and the one that moves silently is the one nothing reads back:
+// a witness spelling "/roadmap.md" reaches a 404 and asserts nothing (review 63317, and the
+// operator's live check against the running instance). The rows now consume the declaration, so a
+// renamed route moves the routing table, the static artifact and every witness together.
 fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
   [
-    RoadmapServeRouteSpec { method: GET, raw: "/", handler: RoadmapDailyPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/roadmap", handler: RoadmapFullPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_health_path as String, handler: HealthzHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/provider.json", handler: ProviderReadinessHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sessions.json", handler: SessionsJsonHandler },
