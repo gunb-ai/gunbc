@@ -16,6 +16,7 @@ import gunbc.review_sheet_projection {
   ObservedSheet,
   ObservedSheetRow,
   ReviewSheetWritePlan,
+  DerivedCellWrite,
   write_plan_preserves_operator_columns,
   write_plan_touches_column,
   decide_review_sheet,
@@ -37,6 +38,8 @@ import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
   review_sheet_from_readback,
+  value_ranges_from_write_plan,
+  review_sheet_batch_value_input_option,
   review_sheet_live_access,
   review_sheet_live_access_from,
   ReviewSheetLiveOpen,
@@ -50,6 +53,10 @@ import extdeps.google.sheets {
   DimensionRows,
   DimensionColumns,
   sheets_serviceusage_api_id,
+  sheets_value_input_option_wire,
+  sheets_value_input_option_from_wire,
+  InputRaw,
+  InputUserEntered,
 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import std.disposition { Terminal, Scaffold, RealizationDispatch, SingleAuthority, SubstrateMandatoryTag }
@@ -482,7 +489,48 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
     && match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionRows)) {
       Present { value: DimensionRows } =>
         match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionColumns)) {
-          Present { value: DimensionColumns } => true
+          Present { value: DimensionColumns } =>
+            match sheets_value_input_option_from_wire(
+              raw: sheets_value_input_option_wire(o: review_sheet_batch_value_input_option()),
+            ) {
+              Present { value: InputUserEntered } =>
+                match sheets_value_input_option_from_wire(raw: sheets_value_input_option_wire(o: InputRaw)) {
+                  Present { value: InputRaw } =>
+                    match value_ranges_from_write_plan(
+                      plan: ReviewSheetWritePlan {
+                        patches: [
+                          DerivedCellWrite {
+                            listing_id: "L1" as NonEmptyStr,
+                            column: "title" as NonEmptyStr,
+                            a1: "B2" as NonEmptyStr,
+                            value: "Widget",
+                          }
+                        ],
+                        appends: [],
+                      },
+                    ) |> first {
+                      Present { value: vr } =>
+                        vr.range == "B2"
+                          && match vr.values {
+                            Present { value: rows } =>
+                              match rows |> first {
+                                Present { value: cells } =>
+                                  match cells |> first {
+                                    Present { value: v } => v == "Widget"
+                                    Absent => false
+                                  }
+                                Absent => false
+                              }
+                            Absent => false
+                          }
+                      Absent => false
+                    }
+                  Present { value: InputUserEntered } => false
+                  Absent => false
+                }
+              Present { value: InputRaw } => false
+              Absent => false
+            }
           Present { value: DimensionRows } => false
           Absent => false
         }
