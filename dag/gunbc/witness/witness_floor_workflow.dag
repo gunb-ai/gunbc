@@ -16,7 +16,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { FreeSemigroup, list_append, list_map, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -232,44 +232,129 @@ fn github_event_name_equals_expr(event: String) -> String {
   concat(concat("github.event_name == '", event), "'")
 }
 
+type WitnessFloorGroupBranch
+  = ShaAfterEvent { event: String, prefix: String }
+  | NonemptyInputAfterEvent { event: String, input: String, prefix: String }
+  | PrNumberAfterEvent { event: String, prefix: String }
+  | RefAfterEvent { event: String }
+  | RunIdFallback { prefix: String }
+
+fn gha_format_arg0(prefix: String, arg: String) -> String {
+  concat(concat("format('", prefix), concat("{0}', ", concat(arg, ")")))
+}
+
+fn gha_branch_predicate(branch: WitnessFloorGroupBranch) -> String {
+  match branch {
+    ShaAfterEvent { event: e, prefix: p } =>
+      concat(concat(github_event_name_equals_expr(event: e), " && "), gha_format_arg0(prefix: p, arg: "github.sha"))
+    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
+      concat(
+        concat(github_event_name_equals_expr(event: e), concat(" && github.event.inputs.", concat(i, " != '' && "))),
+        gha_format_arg0(prefix: p, arg: concat("github.event.inputs.", i))
+      )
+    PrNumberAfterEvent { event: e, prefix: p } =>
+      concat(concat(github_event_name_equals_expr(event: e), " && "), gha_format_arg0(prefix: p, arg: "github.event.pull_request.number"))
+    RefAfterEvent { event: e } =>
+      concat(github_event_name_equals_expr(event: e), " && github.ref")
+    RunIdFallback { prefix: p } =>
+      gha_format_arg0(prefix: p, arg: "github.run_id")
+  }
+}
+
+fn gha_or_join(acc: String, next: String) -> String {
+  if acc == "" {
+    next
+  } else {
+    concat(concat(acc, " || "), next)
+  }
+}
+
+fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
+  [
+    ShaAfterEvent { event: github_event_name_merge_group, prefix: "mg-" },
+    NonemptyInputAfterEvent {
+      event: github_event_name_workflow_dispatch,
+      input: ci_heal_expected_healed_sha_input_name,
+      prefix: "heal-"
+    },
+    PrNumberAfterEvent { event: github_event_name_pull_request, prefix: "pr-" },
+    RefAfterEvent { event: github_event_name_push },
+    RunIdFallback { prefix: "run-" }
+  ]
+}
+
 fn witness_floor_concurrency_group() -> String {
   concat(
     "witness-floor-${{ ",
     concat(
-      github_event_name_equals_expr(event: github_event_name_merge_group),
-      concat(
-        " && format('mg-{0}', github.sha) || ",
-        concat(
-          github_event_name_equals_expr(event: github_event_name_workflow_dispatch),
-          concat(
-            " && github.event.inputs.",
-            concat(
-              ci_heal_expected_healed_sha_input_name,
-              concat(
-                " != '' && format('heal-{0}', github.event.inputs.",
-                concat(
-                  ci_heal_expected_healed_sha_input_name,
-                  concat(
-                    ") || ",
-                    concat(
-                      github_event_name_equals_expr(event: github_event_name_pull_request),
-                      concat(
-                        " && format('pr-{0}', github.event.pull_request.number) || ",
-                        concat(
-                          github_event_name_equals_expr(event: github_event_name_push),
-                          " && github.ref || format('run-{0}', github.run_id) }}"
-                        )
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
+      fold_list(
+        xs: witness_floor_group_branches(),
+        empty: "",
+        cons: fn(acc, b) { gha_or_join(acc: acc, next: gha_branch_predicate(branch: b)) }
+      ),
+      " }}"
     )
   )
+}
+
+type WitnessFloorGroupFixture {
+  event: String
+  sha: String
+  run_id: String
+  pull_request_number: String
+  expected_healed_sha: String
+  github_ref: String
+}
+
+type ChosenGroupSuffix
+  = UnchosenGroupSuffix
+  | ChosenGroupSuffix { value: String }
+
+fn group_branch_matches(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> Bool {
+  match branch {
+    ShaAfterEvent { event: e, prefix: _ } => fx.event == e
+    NonemptyInputAfterEvent { event: e, input: _, prefix: _ } => fx.event == e && fx.expected_healed_sha != ""
+    PrNumberAfterEvent { event: e, prefix: _ } => fx.event == e
+    RefAfterEvent { event: e } => fx.event == e
+    RunIdFallback { prefix: _ } => true
+  }
+}
+
+fn group_branch_suffix(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> String {
+  match branch {
+    ShaAfterEvent { event: _, prefix: p } => concat(p, fx.sha)
+    NonemptyInputAfterEvent { event: _, input: _, prefix: p } => concat(p, fx.expected_healed_sha)
+    PrNumberAfterEvent { event: _, prefix: p } => concat(p, fx.pull_request_number)
+    RefAfterEvent { event: _ } => fx.github_ref
+    RunIdFallback { prefix: p } => concat(p, fx.run_id)
+  }
+}
+
+fn choose_group_suffix(acc: ChosenGroupSuffix, branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> ChosenGroupSuffix {
+  match acc {
+    ChosenGroupSuffix { value: v } => ChosenGroupSuffix { value: v }
+    UnchosenGroupSuffix =>
+      if group_branch_matches(branch: branch, fx: fx) {
+        ChosenGroupSuffix { value: group_branch_suffix(branch: branch, fx: fx) }
+      } else {
+        UnchosenGroupSuffix
+      }
+  }
+}
+
+fn resolve_witness_floor_group_suffix(fx: WitnessFloorGroupFixture) -> String {
+  match fold_list(
+    xs: witness_floor_group_branches(),
+    empty: UnchosenGroupSuffix,
+    cons: fn(acc, b) { choose_group_suffix(acc: acc, branch: b, fx: fx) }
+  ) {
+    ChosenGroupSuffix { value: v } => v
+    UnchosenGroupSuffix => ""
+  }
+}
+
+fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> String {
+  concat("witness-floor-", resolve_witness_floor_group_suffix(fx: fx))
 }
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
