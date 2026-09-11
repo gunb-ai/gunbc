@@ -10,7 +10,9 @@ import std.algebra {
   LinearInOperand,
   LogarithmicInOperand,
   LinearithmicInOperand,
+  CallerBodyPerElementIn,
   StructuredCost,
+  ShapeIterateBody,
   ShapeLinearScan,
   ShapeSortBody,
   structured_cost_growth_in_operand,
@@ -23,6 +25,7 @@ import std.realization_cost_fidelity {
   ModeledStructuredCostFact,
   RealizationCostFact,
   RealizationCostUnknown,
+  RealizationCostBodyDependent,
   RealizationDivergesByOperand,
   RealizationFasterThanModeled,
   RealizationSlowerThanModeled,
@@ -63,6 +66,7 @@ test fn concat_model_over_prices_the_left_operand() -> Bool {
     CostShapePreserved => false
     RealizationSlowerThanModeled => false
     RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -95,6 +99,7 @@ test fn slower_realization_is_reported() -> Bool {
     CostShapePreserved => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -106,6 +111,7 @@ test fn identical_costs_are_preserved() -> Bool {
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -130,6 +136,7 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
     },
   ) {
     RealizationDivergesByOperand => true
+    RealizationCostBodyDependent => false
     CostShapePreserved => false
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
@@ -211,6 +218,7 @@ test fn log_squared_and_linear_do_not_collide() -> Bool {
     CostShapePreserved => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -269,5 +277,69 @@ test fn linear_and_sorting_single_operand_costs_still_project() -> Bool {
         Absent => false
         Present { value: sorting } => linear == ShapeLinearScan && sorting == ShapeSortBody
       }
+  }
+}
+
+// ShapeIterateBody HAS A PREIMAGE NOW, and it is the reason the body factor exists. fold_list and
+// index_by carry ShapeIterateBody in std.primitive_identity today; before the body count, the only
+// honest structured spelling for them was LinearInOperand, which projected back as ShapeLinearScan
+// — a different arm of the same authority, silently. Each of the four arms has exactly one preimage
+// and the two that used to collide are kept apart here by execution.
+test fn iterate_body_and_linear_scan_project_to_different_arms() -> Bool {
+  match structured_cost_to_shape(
+    c: StructuredCost { terms: [CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] }] }
+  ) {
+    Absent => false
+    Present { value: with_body } =>
+      match structured_cost_to_shape(
+        c: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] }
+      ) {
+        Absent => false
+        Present { value: without_body } =>
+          with_body == ShapeIterateBody && without_body == ShapeLinearScan
+      }
+  }
+}
+
+// A PER-ELEMENT BODY IS NOT KNOWN TO BE WORSE THAN NO BODY: the body may be O(1). Two costs that
+// agree on growth in every operand and differ only in whether a caller's body runs per element are
+// UNDECIDED on evidence, and that answer is its own arm — reporting preserved would hide a real
+// difference, reporting slower would invent one, and folding it into RealizationCostUnknown would
+// say "not measured" about something measured.
+test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
+  match cost_fidelity_of(
+    modeled: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] },
+    realized: StructuredCost {
+      terms: [CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] }]
+    },
+  ) {
+    RealizationCostBodyDependent => true
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// The body does not become a growth: a body over a linear operand is still degree 1, so a
+// realization that turns it into a SORT is slower for the reason the growth says, not the body.
+test fn a_body_does_not_outrank_a_real_growth_difference() -> Bool {
+  match cost_fidelity_of(
+    modeled: StructuredCost {
+      terms: [CostTerm { factors: [CallerBodyPerElementIn { operand: "n" }] }]
+    },
+    realized: StructuredCost {
+      terms: [CostTerm { factors: [LinearithmicInOperand { operand: "n" }] }]
+    },
+  ) {
+    RealizationSlowerThanModeled => true
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
   }
 }

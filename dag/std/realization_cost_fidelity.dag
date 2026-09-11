@@ -2,7 +2,11 @@ module std.realization_cost_fidelity
 
 import std.algebra {
   CostShape,
+  Equal,
+  Greater,
+  Less,
   Ordering,
+  operand_growth_body_disagreement,
   StructuredCost,
   operand_growth_order,
   structured_cost_growth_in_operand,
@@ -17,6 +21,8 @@ import std.pareto {
   Equivalent,
   Incomparable,
   LowerIsBetter,
+  Same,
+  UndecidedOnEvidence,
   axis_comparison,
   dominance_of_comparisons,
 }
@@ -79,11 +85,16 @@ type CostFidelity
   | RealizationSlowerThanModeled
   | RealizationFasterThanModeled
   | RealizationDivergesByOperand
+  | RealizationCostBodyDependent
   | RealizationCostUnknown
   | ModeledCostNotStructured
 
-// FIVE ARMS WHERE THE BRIEF ASKED FOR FOUR, and the two additions are the ones that keep the other
-// three honest. RealizationDivergesByOperand is a PROVEN TRADE-OFF -- cheaper in one operand,
+// SIX ARMS WHERE THE BRIEF ASKED FOR FOUR, and every addition exists to keep an honest answer from
+// being reported as one of the other five. RealizationCostBodyDependent is the newest: when two
+// costs agree on growth in every operand and differ in whether a caller-supplied body runs per
+// element, neither is known to be worse -- the body may be O(1) -- so the comparison is UNDECIDED
+// on evidence, which std.pareto already separates from Incomparable. Answering preserved there
+// would hide a real difference and answering slower would invent one. RealizationDivergesByOperand is a PROVEN TRADE-OFF -- cheaper in one operand,
 // dearer in another -- which is a finding, not an absence, and collapsing it into Unknown would be
 // the absorbing fallback (DESIGN section 5): it would read as "measured, nothing to report" while
 // meaning "measured, and the two disagree". ModeledCostNotStructured is the migration frontier: a
@@ -151,17 +162,30 @@ fn operand_axis_comparisons(
   realized: StructuredCost,
 ) -> List<AxisComparison> {
   operand_union(modeled: modeled, realized: realized) |> fold(init: [], f: fn(acc, o) {
-    concat(
-      [axis_comparison(
-        goal: LowerIsBetter,
-        value_order: operand_growth_order(
-          a: structured_cost_growth_in_operand(c: realized, operand: o),
-          b: structured_cost_growth_in_operand(c: modeled, operand: o),
-        ),
-      )],
-      acc,
-    )
+    concat([operand_axis_comparison(modeled: modeled, realized: realized, operand: o)], acc)
   })
+}
+
+// AN AXIS WHOSE GROWTHS AGREE AND WHOSE BODIES DO NOT IS UNDECIDED ON EVIDENCE, not Same. The
+// missing evidence is the caller's body cost, which no cost in this vocabulary carries, so the axis
+// says so in std.pareto's own word for it rather than being silently called equal.
+fn operand_axis_comparison(
+  modeled: StructuredCost,
+  realized: StructuredCost,
+  operand: String,
+) -> AxisComparison {
+  let modeled_growth = structured_cost_growth_in_operand(c: modeled, operand: operand)
+  let realized_growth = structured_cost_growth_in_operand(c: realized, operand: operand)
+  match operand_growth_order(a: realized_growth, b: modeled_growth) {
+    Equal =>
+      if operand_growth_body_disagreement(a: realized_growth, b: modeled_growth) {
+        UndecidedOnEvidence
+      } else {
+        Same
+      }
+    Less => axis_comparison(goal: LowerIsBetter, value_order: Less)
+    Greater => axis_comparison(goal: LowerIsBetter, value_order: Greater)
+  }
 }
 
 fn cost_fidelity_of(modeled: StructuredCost, realized: StructuredCost) -> CostFidelity {
@@ -172,7 +196,7 @@ fn cost_fidelity_of(modeled: StructuredCost, realized: StructuredCost) -> CostFi
     Dominated => RealizationSlowerThanModeled
     Equivalent => CostShapePreserved
     Incomparable => RealizationDivergesByOperand
-    DominanceUndecided => RealizationCostUnknown
+    DominanceUndecided => RealizationCostBodyDependent
   }
 }
 
@@ -260,6 +284,7 @@ fn cost_fidelity_is_finding(fidelity: CostFidelity) -> Bool {
     RealizationSlowerThanModeled => true
     RealizationFasterThanModeled => true
     RealizationDivergesByOperand => true
+    RealizationCostBodyDependent => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -279,6 +304,7 @@ fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int
       RealizationSlowerThanModeled => acc
       RealizationFasterThanModeled => acc
       RealizationDivergesByOperand => acc
+      RealizationCostBodyDependent => acc
       ModeledCostNotStructured => acc
     }
   })
@@ -293,6 +319,7 @@ fn count_cost_model_unmigrated(rows: List<RealizationCostFidelityRow>) -> Int {
       RealizationSlowerThanModeled => acc
       RealizationFasterThanModeled => acc
       RealizationDivergesByOperand => acc
+      RealizationCostBodyDependent => acc
     }
   })
 }

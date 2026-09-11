@@ -314,6 +314,7 @@ type CostFactor
   | LogarithmicInOperand { operand: String }
   | LinearInOperand { operand: String }
   | LinearithmicInOperand { operand: String }
+  | CallerBodyPerElementIn { operand: String }
 
 // A term is a PRODUCT of factors (m * n is one term with two linear factors) and a cost is a SUM of
 // terms (n + m is two terms). That is the whole grammar, and it is closed: every cost these
@@ -336,28 +337,47 @@ type StructuredCost {
 type OperandGrowth {
   degree: Int
   logs: Int
+  bodies: Int
 }
 
+// THE CALLER'S BODY IS A THIRD FACT, NOT A FOURTH RANK. CostShape is not a pure growth vocabulary:
+// ShapeIterateBody means "once per element, times whatever the caller's body costs", which is the
+// cost std.primitive_identity carries today for fold_list and index_by. Without a factor for it,
+// those primitives could only be written as LinearInOperand when they migrate, and the projection
+// would answer ShapeLinearScan -- a DIFFERENT arm from the one the authority declares, silently.
+// So the body is carried, and it is deliberately NOT an exponent: a body of unknown cost multiplies
+// the work without changing the growth in the operand, which is why it counts separately and why a
+// comparison that turns on it is UNDECIDED rather than decided in either direction.
 fn cost_factor_growth(f: CostFactor) -> OperandGrowth {
   match f {
-    ConstantFactor => OperandGrowth { degree: 0, logs: 0 }
-    LogarithmicInOperand { operand: _ } => OperandGrowth { degree: 0, logs: 1 }
-    LinearInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 0 }
-    LinearithmicInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 1 }
+    ConstantFactor => OperandGrowth { degree: 0, logs: 0, bodies: 0 }
+    LogarithmicInOperand { operand: _ } => OperandGrowth { degree: 0, logs: 1, bodies: 0 }
+    LinearInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 0, bodies: 0 }
+    LinearithmicInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 1, bodies: 0 }
+    CallerBodyPerElementIn { operand: _ } => OperandGrowth { degree: 1, logs: 0, bodies: 1 }
   }
 }
 
 fn operand_growth_zero() -> OperandGrowth {
-  OperandGrowth { degree: 0, logs: 0 }
+  OperandGrowth { degree: 0, logs: 0, bodies: 0 }
 }
 
 // A TERM IS A PRODUCT, so the exponents ADD -- separately, which is the whole point. Two linear
 // factors over one operand are quadratic in it; two log factors are log-squared; and those are
 // different facts that now have different values.
 fn operand_growth_multiply(a: OperandGrowth, b: OperandGrowth) -> OperandGrowth {
-  OperandGrowth { degree: a.degree + b.degree, logs: a.logs + b.logs }
+  OperandGrowth {
+    degree: a.degree + b.degree,
+    logs: a.logs + b.logs,
+    bodies: a.bodies + b.bodies,
+  }
 }
 
+// THE ORDER IS OVER GROWTH ONLY, and the body count is deliberately outside it. A cost that runs a
+// caller-supplied body once per element is not KNOWN to be worse than one that does not: the body
+// may be O(1). Ordering them would be a fabricated answer in one direction and hiding a real
+// difference in the other, so the order decides growth and operand_growth_body_disagreement reports
+// the rest — a consumer that needs a verdict asks both and answers undecided when they disagree.
 fn operand_growth_order(a: OperandGrowth, b: OperandGrowth) -> Ordering {
   if a.degree < b.degree {
     Less
@@ -370,10 +390,14 @@ fn operand_growth_order(a: OperandGrowth, b: OperandGrowth) -> Ordering {
   }
 }
 
+fn operand_growth_body_disagreement(a: OperandGrowth, b: OperandGrowth) -> Bool {
+  a.bodies != b.bodies
+}
+
 fn operand_growth_max(a: OperandGrowth, b: OperandGrowth) -> OperandGrowth {
   match operand_growth_order(a: a, b: b) {
     Less => b
-    Equal => a
+    Equal => if b.bodies > a.bodies { b } else { a }
     Greater => a
   }
 }
@@ -384,6 +408,7 @@ fn cost_factor_operand(f: CostFactor) -> String? {
     LogarithmicInOperand { operand: o } => Present { value: o }
     LinearInOperand { operand: o } => Present { value: o }
     LinearithmicInOperand { operand: o } => Present { value: o }
+    CallerBodyPerElementIn { operand: o } => Present { value: o }
   }
 }
 
@@ -425,19 +450,31 @@ fn structured_cost_operands(c: StructuredCost) -> List<String> {
 // operands at once, so projecting one would have to round -- and a rounded rank presented as the
 // operation's shape is the fabricated answer this whole authority exists to prevent. The absent
 // arm is the vocabulary gap stated out loud, not a failure to compute.
-// CostShape CAN SAY EXACTLY THREE OF THESE GROWTHS and no others: constant, linear, and
-// linearithmic in a single operand. A logarithmic cost, a quadratic one, a log-squared one — each
-// is a real growth CostShape has no spelling for, and each answers absent rather than being rounded
-// to the nearest thing it can say. That is the same refusal the two-operand case makes, applied
-// within one operand.
+// EACH CostShape ARM HAS EXACTLY ONE PREIMAGE HERE, which is what makes this a projection rather
+// than a second vocabulary: constant is (0,0,0), iterate-body is (1,0,1), linear-scan is (1,0,0),
+// sort-body is (1,1,0). Before the body count existed, ShapeIterateBody had NO preimage and
+// ShapeLinearScan had two -- so fold_list's cost, which is ShapeIterateBody today, would have
+// projected back as ShapeLinearScan when it migrated: two names answering one question and
+// disagreeing (DESIGN section 3), and a rounded answer this function's own annotation forbids.
+// Everything outside those four -- a logarithmic cost, a quadratic one, a log-squared one, a body
+// over a non-linear operand -- is a real growth CostShape has no spelling for, and answers absent
+// rather than being rounded to the nearest thing it can say.
 fn shape_for_operand_growth(growth: OperandGrowth) -> CostShape? {
-  if growth.degree == 0 && growth.logs == 0 {
+  if growth.degree == 0 && growth.logs == 0 && growth.bodies == 0 {
     Present { value: ShapeConstant }
   } else {
-    if growth.degree == 1 && growth.logs == 0 {
-      Present { value: ShapeLinearScan }
+    if growth.degree == 1 && growth.logs == 0 && growth.bodies == 1 {
+      Present { value: ShapeIterateBody }
     } else {
-      if growth.degree == 1 && growth.logs == 1 { Present { value: ShapeSortBody } } else { none }
+      if growth.degree == 1 && growth.logs == 0 && growth.bodies == 0 {
+        Present { value: ShapeLinearScan }
+      } else {
+        if growth.degree == 1 && growth.logs == 1 && growth.bodies == 0 {
+          Present { value: ShapeSortBody }
+        } else {
+          none
+        }
+      }
     }
   }
 }
