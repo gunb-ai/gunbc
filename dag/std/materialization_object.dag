@@ -460,8 +460,9 @@ fn store_lookup_decide(
         StoreObjectDecoded { manifest: m, payloads: ps } =>
           match store_payload_refusal(manifest: m, payloads: ps) {
             Present { value: r } => StoreLookupRefused { key: key, refusal: r }
-            Absent =>
-                  match artifact_from_manifest(m: m) {
+            Absent => {
+                  let decode = artifact_from_manifest(m: m)
+                  match decode {
                     ManifestDecoded { artifact: a } => {
                       let served = provider_serve(
                         req: req,
@@ -490,11 +491,12 @@ fn store_lookup_decide(
                       )
                     }
                     ManifestKindUndeclared { kind: _ } =>
-                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: artifact_from_manifest(m: m) } }
+                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: decode } }
                     ManifestPartUndeclared { kind: _, part: _ } =>
-                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: artifact_from_manifest(m: m) } }
+                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: decode } }
                     ManifestPartRepeated { kind: _, part: _ } =>
-                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: artifact_from_manifest(m: m) } }
+                      StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: decode } }
+                  }
                   }
           }
       }
@@ -531,30 +533,34 @@ fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>) -
     request_key: key,
     parts: payloads |> map(p => payload_part(payload: p))
   }
-  match artifact_from_manifest(m: offered) {
-    ManifestDecoded { artifact: a } =>
-      match request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) {
+  let decode = artifact_from_manifest(m: offered)
+  match decode {
+    ManifestDecoded { artifact: a } => {
+      let offered_digest = artifact_content_digest(artifact: a)
+      let binding = request_artifact_binding(req: req, artifact: a, observed_digest: offered_digest)
+      match binding {
         BindingOk => StoreCommitPrepared {
           key: key,
           object_name: store_object_name(key: key),
           object: encode_store_object(manifest: artifact_manifest(artifact: a), payloads: payloads),
-          offered_digest: artifact_content_digest(artifact: a)
+          offered_digest: offered_digest
         }
         BindingKindMismatch { requested: _, found: _ } =>
-          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: binding } } }
         BindingWrongArtifact { key: _, found_key: _ } =>
-          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: binding } } }
         BindingWrongContent { recorded: _, observed: _ } =>
-          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: binding } } }
         BindingIncomplete { missing: _ } =>
-          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: request_artifact_binding(req: req, artifact: a, observed_digest: artifact_content_digest(artifact: a)) } } }
+          StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitContractRefused { binding: binding } } }
       }
+    }
     ManifestKindUndeclared { kind: _ } =>
-      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: artifact_from_manifest(m: offered) } } }
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: decode } } }
     ManifestPartUndeclared { kind: _, part: _ } =>
-      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: artifact_from_manifest(m: offered) } } }
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: decode } } }
     ManifestPartRepeated { kind: _, part: _ } =>
-      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: artifact_from_manifest(m: offered) } } }
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: key, refusal: StoreCommitManifestUninterpretable { decode: decode } } }
   }
 }
 
@@ -593,8 +599,9 @@ fn store_commit_verify(
   disposition: RealizationDisposition
 ) -> StoreCommit {
   match read_back {
-    StoreLookupHit { artifact: a, payloads: _, receipt: r } =>
-      if artifact_content_digest(artifact: a) == offered {
+    StoreLookupHit { artifact: a, payloads: _, receipt: r } => {
+      let committed = artifact_content_digest(artifact: a)
+      if committed == offered {
         StoreCommitSettled {
           receipt: RealizationReceipt {
             request_key: r.request_key,
@@ -606,8 +613,9 @@ fn store_commit_verify(
           }
         }
       } else {
-        StoreCommitRefused { key: key, refusal: StoreCommitConflict { committed: artifact_content_digest(artifact: a), offered: offered } }
+        StoreCommitRefused { key: key, refusal: StoreCommitConflict { committed: committed, offered: offered } }
       }
+    }
     StoreLookupMiss { key: _ } =>
       StoreCommitRefused { key: key, refusal: StoreCommitReadBackRefused { read_back: read_back } }
     StoreLookupRefused { key: _, refusal: _ } =>
