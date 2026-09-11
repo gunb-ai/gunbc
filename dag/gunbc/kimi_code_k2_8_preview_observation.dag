@@ -1,0 +1,99 @@
+module gunbc.kimi_code_k2_8_preview_observation
+
+import std.types { NonEmptyStr, Bool, List }
+import extdeps.moonshot.kimi_code_k2_8_preview {
+  KimiCodeAliasAssignment,
+  kimi_for_coding_wire_id,
+  kimi_for_coding_k28_preview_assignment,
+}
+
+// RECEIPTS ABOUT THIS REPOSITORY'S COVERAGE OF THE KIMI CODE K2.8 PREVIEW SERVICE, not facts the
+// vendor published. DESIGN §3: observations live in the observing product layer; Missing coverage
+// is never an Unobserved property inside extdeps.moonshot.kimi_code_k2_8_preview.
+
+data kimi_k28_checkpoint_search_observed_on: NonEmptyStr = "2026-09-11" as NonEmptyStr
+
+type KimiCodeExecutedVersionStanding
+  = ExecutedVersionUnobserved { reason: NonEmptyStr }
+  | ExecutedVersionObserved { version: NonEmptyStr, receipt: NonEmptyStr }
+
+type KimiCodeVersionEvidence
+  = RequestedModelIdEvidence { model_id: NonEmptyStr }
+  | ProviderDeclaredServedVersionEvidence { assignment: KimiCodeAliasAssignment }
+  | ExecutedVersionEvidence { standing: KimiCodeExecutedVersionStanding }
+
+data kimi_code_executed_version_without_receipt: KimiCodeExecutedVersionStanding = ExecutedVersionUnobserved {
+  reason: "no version-bearing execution receipt observed" as NonEmptyStr,
+}
+
+data kimi_code_requested_id_evidence: KimiCodeVersionEvidence = RequestedModelIdEvidence {
+  model_id: kimi_for_coding_wire_id,
+}
+
+data kimi_code_provider_declared_served_version_evidence: KimiCodeVersionEvidence = ProviderDeclaredServedVersionEvidence {
+  assignment: kimi_for_coding_k28_preview_assignment,
+}
+
+data kimi_code_executed_version_evidence: KimiCodeVersionEvidence = ExecutedVersionEvidence {
+  standing: kimi_code_executed_version_without_receipt,
+}
+
+type KimiK28SearchedSurface
+  = MoonshotHuggingFaceOrg { locator: NonEmptyStr }
+  | MoonshotGitHubOrg { locator: NonEmptyStr }
+
+data kimi_k28_hf_org_surface: KimiK28SearchedSurface = MoonshotHuggingFaceOrg {
+  locator: "huggingface.co/moonshotai" as NonEmptyStr,
+}
+
+data kimi_k28_github_org_surface: KimiK28SearchedSurface = MoonshotGitHubOrg {
+  locator: "github.com/MoonshotAI" as NonEmptyStr,
+}
+
+type KimiK28ArtifactStanding
+  = OfficialCheckpointLocated { locator: NonEmptyStr, observed_at: NonEmptyStr }
+  | OfficialCheckpointNotLocated {
+      observed_at: NonEmptyStr
+      searched_surfaces: List<KimiK28SearchedSurface>
+      trigger: NonEmptyStr
+    }
+
+data kimi_k28_artifact_standing: KimiK28ArtifactStanding = OfficialCheckpointNotLocated {
+  observed_at: kimi_k28_checkpoint_search_observed_on,
+  searched_surfaces: [kimi_k28_hf_org_surface, kimi_k28_github_org_surface],
+  trigger: "an official K2.8 checkpoint published on a searched surface with a citable revision, sufficient to construct a local ModelArtifact" as NonEmptyStr,
+}
+
+type KimiK28LocalConstructionKind
+  = KimiK28LocalModelArtifact
+  | KimiK28VllmCandidate
+  | KimiK28FitCalculation
+
+type KimiK28LocalConstruction
+  = KimiK28LocalConstructionUnconstructible {
+      kind: KimiK28LocalConstructionKind
+      standing: KimiK28ArtifactStanding
+    }
+  | KimiK28LocalConstructionDeferredToLocatedWeights {
+      kind: KimiK28LocalConstructionKind
+      locator: NonEmptyStr
+    }
+
+fn kimi_k28_local_construction(
+  standing: KimiK28ArtifactStanding,
+  kind: KimiK28LocalConstructionKind,
+) -> KimiK28LocalConstruction {
+  match standing {
+    OfficialCheckpointLocated { locator: loc, observed_at: _ } =>
+      KimiK28LocalConstructionDeferredToLocatedWeights { kind: kind, locator: loc }
+    OfficialCheckpointNotLocated { observed_at: _, searched_surfaces: _, trigger: _ } =>
+      KimiK28LocalConstructionUnconstructible { kind: kind, standing: standing }
+  }
+}
+
+fn kimi_k28_local_construction_is_unconstructible(attempt: KimiK28LocalConstruction) -> Bool {
+  match attempt {
+    KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
+    KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
+  }
+}
