@@ -90,6 +90,7 @@ fn clean_emitted_build() -> NativeRouteEmittedBuild {
   NativeRouteEmittedBuild {
     cargo_argv: ["cargo", "build", "--release", "--manifest-path", "/emitted/Cargo.toml"],
     rustflags: repo_self_warning_denial_rustflags(),
+    compiler_path: "/toolchain/bin/rustc",
     rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); host: aarch64-unknown-linux-gnu",
     exit_status: 0,
     warning_count: 0
@@ -100,6 +101,7 @@ fn emitted_build_with(rustflags: String, rustc_identity: String, exit_status: In
   NativeRouteEmittedBuild {
     cargo_argv: clean_emitted_build().cargo_argv,
     rustflags: rustflags,
+    compiler_path: clean_emitted_build().compiler_path,
     rustc_identity: rustc_identity,
     exit_status: exit_status,
     warning_count: warning_count
@@ -1095,6 +1097,27 @@ fn receipt_with_build(build: NativeRouteEmittedBuild) -> NativeRouteReceipt {
   }
 }
 
+test fn an_unbound_compiler_is_refused() -> Bool {
+  let base = clean_emitted_build()
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_with_build(
+      build: NativeRouteEmittedBuild {
+        cargo_argv: base.cargo_argv,
+        rustflags: base.rustflags,
+        compiler_path: "",
+        rustc_identity: base.rustc_identity,
+        exit_status: base.exit_status,
+        warning_count: base.warning_count
+      }
+    )),
+    cause_name: "emitted_build_compiler_unbound"
+  )
+  && !native_route_admission_refused_with(
+    admission: native_route_admission(receipt: green_receipt()),
+    cause_name: "emitted_build_compiler_unbound"
+  )
+}
+
 test fn an_unrecorded_rustc_identity_is_refused() -> Bool {
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt_with_build(
@@ -1151,7 +1174,7 @@ test fn one_red_run_names_every_violated_clause() -> Bool {
     true_control: Absent,
     malformed_control: MalformedSpecimenAccepted,
     old_route_control: OldRouteControlAbsent,
-    emitted_build: emitted_build_with(rustflags: "", rustc_identity: "", exit_status: 101, warning_count: 2)
+    emitted_build: NativeRouteEmittedBuild { cargo_argv: [], rustflags: "", compiler_path: "", rustc_identity: "", exit_status: 101, warning_count: 2 }
   })
   native_route_admission_refused_with(admission: admission, cause_name: "job_name_mismatch")
   && native_route_admission_refused_with(admission: admission, cause_name: "tested_tree_unrecorded")
@@ -1166,6 +1189,7 @@ test fn one_red_run_names_every_violated_clause() -> Bool {
   && native_route_admission_refused_with(admission: admission, cause_name: "malformed_control_accepted_by_route")
   && native_route_admission_refused_with(admission: admission, cause_name: "old_route_control_never_installed")
   && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_rustc_unrecorded")
+  && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_compiler_unbound")
   && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_warnings_not_denied")
   && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_not_clean")
 }
@@ -1186,6 +1210,6 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
     true_control: Absent,
     malformed_control: MalformedSpecimenAccepted,
     old_route_control: OldRouteControlAbsent,
-    emitted_build: emitted_build_with(rustflags: "", rustc_identity: "", exit_status: 101, warning_count: 2)
-  })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed, emitted_build_rustc_unrecorded, emitted_build_warnings_not_denied, emitted_build_not_clean"
+    emitted_build: NativeRouteEmittedBuild { cargo_argv: [], rustflags: "", compiler_path: "", rustc_identity: "", exit_status: 101, warning_count: 2 }
+  })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed, emitted_build_rustc_unrecorded, emitted_build_compiler_unbound, emitted_build_warnings_not_denied, emitted_build_not_clean"
 }

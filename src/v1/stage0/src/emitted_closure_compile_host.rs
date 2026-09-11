@@ -816,13 +816,16 @@ fn warning_header_count(stderr: &str) -> usize {
 }
 
 /// The exact cargo invocation `run_cargo` spawns for a probe crate, as receipt content: the
-/// argv (program first) and the RUSTFLAGS value the spawn SETS. Built by the one function that
+/// argv (program first), the RUSTFLAGS value the spawn SETS, the one compiler executable cargo
+/// is bound to, and that executable's self-reported identity. Built by the one function that
 /// also builds the `Command`, so the receipt cannot describe a different spawn than the one
 /// that ran.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProbeCargoInvocation {
     pub argv: Vec<String>,
     pub rustflags: String,
+    pub compiler_path: String,
+    pub rustc_identity: String,
 }
 
 /// Mirror of `gunbc.repo_self_build` `repo_self_warning_denial_rustflags`: the lint arguments
@@ -832,14 +835,102 @@ pub(crate) struct ProbeCargoInvocation {
 /// `emitted_build_warnings_not_denied` rather than passing silently.
 pub(crate) const WARNING_DENIAL_RUSTFLAGS: &str = "-D warnings";
 
-/// The `Command` and its receipt description, from one construction. The environment variable
-/// name is READ from cargo's own authority through its stage0 mirror
-/// (`extdeps.rust.cargo` `RustflagsEnv` via `cargo_environment_variable_name`), not spelled
-/// here, and it is SET, never extended: an ambient RUSTFLAGS would make the verdict a fact
-/// about the runner rather than the crate.
-fn probe_cargo_command(
+/// The same denial in cargo's ENCODED form: `CARGO_ENCODED_RUSTFLAGS` is read BEFORE
+/// `RUSTFLAGS` and separates arguments with 0x1f. Setting only the plain form would let an
+/// ambient encoded value win the build while the receipt still said `-D warnings`.
+pub(crate) const WARNING_DENIAL_ENCODED_RUSTFLAGS: &str = "-D\x1fwarnings";
+
+/// THE ENVIRONMENT CHANNELS CARGO READS TO CHOOSE FLAGS AND A COMPILER, all of which this
+/// construction OWNS (cargo's environment-variables reference, cited by `extdeps.rust.cargo`
+/// `cargo_environment_variables_authority`): the two flag channels above; `RUSTC`, which wins
+/// over `build.rustc` config; and the two wrapper channels `RUSTC_WRAPPER` /
+/// `RUSTC_WORKSPACE_WRAPPER`, which when PRESENT (even empty) short-circuit their
+/// `build.rustc-wrapper` / `build.rustc-workspace-wrapper` config — so setting them empty is
+/// the one spelling that disables a wrapper from every source. A receipt that recorded
+/// `-D warnings` and compiler X while cargo compiled under an ambient encoded flag, a config
+/// compiler or a wrapper fronting X would be admission evidence about a build that did not
+/// happen (side-chat landing ruling on #11011, 2026-09-11).
+const CARGO_ENCODED_RUSTFLAGS_ENV: &str = "CARGO_ENCODED_RUSTFLAGS";
+const RUSTC_ENV: &str = "RUSTC";
+const RUSTC_WRAPPER_ENV: &str = "RUSTC_WRAPPER";
+const RUSTC_WORKSPACE_WRAPPER_ENV: &str = "RUSTC_WORKSPACE_WRAPPER";
+
+/// The ONE compiler executable the probe build is bound to: `RUSTC` when the caller's
+/// environment names one (cargo's own precedence), else the first `rustc` on PATH — resolved
+/// to an absolute path HERE so the identity probe and the build cannot resolve differently.
+/// No executable is a typed refusal, never a bare `"rustc"` handed to cargo to resolve again.
+fn resolve_probe_compiler() -> Result<PathBuf, String> {
+    if let Some(named) = std::env::var_os(RUSTC_ENV) {
+        let path = PathBuf::from(&named);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(format!(
+            "ProbeCompilerUnresolved: RUSTC names {} which is not a file",
+            path.display()
+        ));
+    }
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join("rustc");
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err("ProbeCompilerUnresolved: no RUSTC in the environment and no rustc on PATH".to_string())
+}
+
+/// rustc's self-reported identity in its keyed `--version --verbose` form
+/// (`extdeps.rust.rustc` `rustc_version_verbose`): the release line plus every `key: value`
+/// line, joined by `; `. Asked of THE BOUND EXECUTABLE, from THE CRATE'S OWN DIRECTORY — a
+/// rustup proxy selects its toolchain per working directory, and cargo runs the compiler from
+/// the package dir, so a probe from elsewhere could name a different toolchain than the build
+/// used. Unreadable is a refusal, not an empty identity.
+fn probe_compiler_identity(compiler: &Path, crate_dir: &Path) -> Result<String, String> {
+    let output = std::process::Command::new(compiler)
+        .arg("--version")
+        .arg("--verbose")
+        .current_dir(crate_dir)
+        .output()
+        .map_err(|e| {
+            format!(
+                "RustcIdentityUnreadable: spawning {}: {e}",
+                compiler.display()
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "RustcIdentityUnreadable: {} --version --verbose exited {}",
+            compiler.display(),
+            output.status
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let identity = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    if identity.is_empty() {
+        return Err(format!(
+            "RustcIdentityUnreadable: {} --version --verbose printed nothing",
+            compiler.display()
+        ));
+    }
+    Ok(identity)
+}
+
+/// The `Command` and its receipt description, from one construction, with `compiler` and its
+/// `identity` supplied by the caller that resolved them (so the pure env shape is testable
+/// without a toolchain, and the resolving arm is testable separately). Every channel named
+/// above is SET on the spawn — never inherited, never left to config: an ambient value would
+/// make the verdict a fact about the runner rather than the crate.
+fn probe_cargo_command_bound(
     crate_dir: &Path,
     workspace: &Path,
+    compiler: &Path,
+    identity: &str,
 ) -> (std::process::Command, ProbeCargoInvocation) {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let manifest = crate_dir.join("Cargo.toml");
@@ -861,20 +952,45 @@ fn probe_cargo_command(
             cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
             WARNING_DENIAL_RUSTFLAGS,
         )
+        .env(
+            CARGO_ENCODED_RUSTFLAGS_ENV,
+            WARNING_DENIAL_ENCODED_RUSTFLAGS,
+        )
+        .env(RUSTC_ENV, compiler)
+        .env(RUSTC_WRAPPER_ENV, "")
+        .env(RUSTC_WORKSPACE_WRAPPER_ENV, "")
         .current_dir(crate_dir);
     (
         command,
         ProbeCargoInvocation {
             argv,
             rustflags: WARNING_DENIAL_RUSTFLAGS.to_string(),
+            compiler_path: compiler.display().to_string(),
+            rustc_identity: identity.to_string(),
         },
     )
 }
 
+/// Resolve the compiler, take its identity from the crate's directory, and build the bound
+/// spawn. The receipt's compiler is the executable cargo is bound to, by construction.
+fn probe_cargo_command(
+    crate_dir: &Path,
+    workspace: &Path,
+) -> Result<(std::process::Command, ProbeCargoInvocation), String> {
+    let compiler = resolve_probe_compiler()?;
+    let identity = probe_compiler_identity(&compiler, crate_dir)?;
+    Ok(probe_cargo_command_bound(
+        crate_dir, workspace, &compiler, &identity,
+    ))
+}
+
 /// The receipt description of the spawn `run_cargo` would make for `crate_dir` — the same
-/// construction, without spawning.
-pub(crate) fn probe_cargo_invocation(crate_dir: &Path, workspace: &Path) -> ProbeCargoInvocation {
-    probe_cargo_command(crate_dir, workspace).1
+/// construction, without spawning cargo (the compiler identity probe does run).
+pub(crate) fn probe_cargo_invocation(
+    crate_dir: &Path,
+    workspace: &Path,
+) -> Result<ProbeCargoInvocation, String> {
+    probe_cargo_command(crate_dir, workspace).map(|(_, invocation)| invocation)
 }
 
 /// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: a
@@ -897,7 +1013,10 @@ pub(crate) fn run_cargo(
     workspace: &Path,
     attribution_symbol: &str,
 ) -> CargoVerdict {
-    let (mut command, invocation) = probe_cargo_command(crate_dir, workspace);
+    let (mut command, invocation) = match probe_cargo_command(crate_dir, workspace) {
+        Ok(bound) => bound,
+        Err(reason) => return CargoVerdict::NotAttempted { reason },
+    };
     let cargo = &invocation.argv[0];
     match command.output() {
         Err(e) => CargoVerdict::DidNotComplete {
@@ -2113,30 +2232,62 @@ mod tests {
     /// A NON-ZERO COMPLETED VERDICT MUST NAME WHAT RUSTC SAID. The native lane's refusal
     /// interpolates only this summary; a status-only render is how a cargo failure reached CI
     /// as `Completed status=101` with the diagnostic sitting unread in the same verdict.
-    /// THE SPAWN SETS THE DENIAL AND THE RECEIPT DESCRIBES THE SPAWN. The `Command`'s own
-    /// environment table is read back rather than the receipt trusted: a receipt that said
-    /// `-D warnings` beside a spawn that inherited would be the fabricated provenance this
-    /// construction exists to make unwritable.
+    fn env_of(command: &std::process::Command, name: &str) -> Option<Option<String>> {
+        command
+            .get_envs()
+            .find(|(n, _)| *n == std::ffi::OsStr::new(name))
+            .map(|(_, v)| v.map(|v| v.to_string_lossy().to_string()))
+    }
+
+    /// THE SPAWN OWNS EVERY CHANNEL CARGO READS, AND THE RECEIPT DESCRIBES THE SPAWN. The
+    /// `Command`'s own environment table is read back rather than the receipt trusted: a
+    /// receipt that said `-D warnings` and compiler X beside a spawn that let cargo read an
+    /// ambient encoded flag, a config compiler or a wrapper would be the fabricated provenance
+    /// this construction exists to make unwritable.
     #[test]
-    fn the_probe_cargo_spawn_sets_the_warning_denial_and_the_receipt_names_that_spawn() {
+    fn the_probe_cargo_spawn_binds_flags_compiler_and_wrappers_and_the_receipt_names_that_spawn() {
         let crate_dir = Path::new("/tmp/probe-crate");
         let workspace = Path::new("/tmp/workspace");
-        let (command, invocation) = probe_cargo_command(crate_dir, workspace);
-        let set_rustflags = command
-            .get_envs()
-            .find(|(name, _)| *name == std::ffi::OsStr::new("RUSTFLAGS"))
-            .and_then(|(_, value)| value.map(|v| v.to_string_lossy().to_string()));
+        let compiler = Path::new("/toolchain/bin/rustc");
+        let (command, invocation) =
+            probe_cargo_command_bound(crate_dir, workspace, compiler, "rustc 1.93.0; host: x");
         assert_eq!(
-            set_rustflags.as_deref(),
-            Some(WARNING_DENIAL_RUSTFLAGS),
+            env_of(&command, "RUSTFLAGS"),
+            Some(Some(WARNING_DENIAL_RUSTFLAGS.to_string())),
             "RUSTFLAGS is SET on the spawn, not inherited"
+        );
+        assert_eq!(
+            env_of(&command, CARGO_ENCODED_RUSTFLAGS_ENV),
+            Some(Some(WARNING_DENIAL_ENCODED_RUSTFLAGS.to_string())),
+            "the encoded channel cargo reads FIRST carries the same denial"
+        );
+        assert_eq!(
+            WARNING_DENIAL_ENCODED_RUSTFLAGS
+                .split('\x1f')
+                .collect::<Vec<_>>()
+                .join(" "),
+            WARNING_DENIAL_RUSTFLAGS,
+            "the two channels spell one denial"
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_ENV),
+            Some(Some(compiler.display().to_string())),
+            "cargo is bound to the exact executable whose identity the receipt records"
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WRAPPER_ENV),
+            Some(Some(String::new()))
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WORKSPACE_WRAPPER_ENV),
+            Some(Some(String::new())),
+            "both wrapper channels are present-and-empty, which disables config wrappers too"
         );
         assert_eq!(
             cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
             "RUSTFLAGS",
             "the spawn's env name is the authority's row, and that row spells cargo's name"
         );
-        assert_eq!(invocation.rustflags, WARNING_DENIAL_RUSTFLAGS);
         let spawned: Vec<String> =
             std::iter::once(command.get_program().to_string_lossy().to_string())
                 .chain(command.get_args().map(|a| a.to_string_lossy().to_string()))
@@ -2145,12 +2296,70 @@ mod tests {
             spawned, invocation.argv,
             "the receipt argv is the spawned argv"
         );
-        assert_eq!(
-            &invocation.argv[1..4],
-            ["build", "--release", "--manifest-path"],
-            "the operation is the release build of the probe manifest"
+        assert_eq!(invocation.compiler_path, compiler.display().to_string());
+        assert_eq!(invocation.rustc_identity, "rustc 1.93.0; host: x");
+    }
+
+    /// RED CONTROLS: conflicting AMBIENT values on every channel are planted in this
+    /// process's environment and the spawn's table must override each one. Without the
+    /// binding, cargo would have read the planted values and the receipt would have stayed
+    /// falsely unchanged. The planted values are removed again so sibling tests are not
+    /// steered (the harness runs this crate's tests single-threaded, `.cargo/config.toml`).
+    #[test]
+    fn planted_ambient_flags_compiler_and_wrappers_cannot_reach_the_probe_build() {
+        let planted = [
+            (CARGO_ENCODED_RUSTFLAGS_ENV, "-C\x1fopt-level=0"),
+            ("RUSTFLAGS", "-C opt-level=0"),
+            (RUSTC_ENV, "/planted/other-rustc"),
+            ("CARGO_BUILD_RUSTC", "/planted/config-rustc"),
+            (RUSTC_WRAPPER_ENV, "/planted/wrapper"),
+            ("CARGO_BUILD_RUSTC_WRAPPER", "/planted/config-wrapper"),
+            (RUSTC_WORKSPACE_WRAPPER_ENV, "/planted/workspace-wrapper"),
+        ];
+        for (name, value) in planted {
+            std::env::set_var(name, value);
+        }
+        let compiler = Path::new("/toolchain/bin/rustc");
+        let (command, invocation) = probe_cargo_command_bound(
+            Path::new("/tmp/probe-crate"),
+            Path::new("/tmp/workspace"),
+            compiler,
+            "rustc 1.93.0",
         );
-        assert_eq!(probe_cargo_invocation(crate_dir, workspace), invocation);
+        let resolved_named = resolve_probe_compiler();
+        for (name, _) in planted {
+            std::env::remove_var(name);
+        }
+        assert_eq!(
+            env_of(&command, CARGO_ENCODED_RUSTFLAGS_ENV),
+            Some(Some(WARNING_DENIAL_ENCODED_RUSTFLAGS.to_string())),
+            "a planted encoded flag is overridden on the spawn"
+        );
+        assert_eq!(
+            env_of(&command, "RUSTFLAGS"),
+            Some(Some(WARNING_DENIAL_RUSTFLAGS.to_string()))
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_ENV),
+            Some(Some(compiler.display().to_string())),
+            "a planted RUSTC is overridden by the bound executable"
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WRAPPER_ENV),
+            Some(Some(String::new()))
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WORKSPACE_WRAPPER_ENV),
+            Some(Some(String::new()))
+        );
+        assert_eq!(invocation.rustflags, WARNING_DENIAL_RUSTFLAGS);
+        // A planted RUSTC that is not a file is a typed refusal from the resolver, never a
+        // bare name handed on to cargo.
+        let refusal = resolved_named.expect_err("a RUSTC naming no file must refuse");
+        assert!(
+            refusal.starts_with("ProbeCompilerUnresolved"),
+            "typed refusal, got: {refusal}"
+        );
     }
 
     #[test]

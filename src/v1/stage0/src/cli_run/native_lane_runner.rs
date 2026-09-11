@@ -98,45 +98,10 @@ struct EmittedPreparation {
 struct EmittedBuildObserved {
     cargo_argv: Vec<String>,
     rustflags: String,
+    compiler_path: String,
     rustc_identity: String,
     exit_status: i64,
     warning_count: i64,
-}
-
-/// rustc's self-reported identity in its keyed `--version --verbose` form
-/// (`extdeps.rust.rustc` `rustc_version_verbose`): the release line plus every `key: value`
-/// line, joined by `; `. The binary asked is the one cargo will spawn — `RUSTC` when set, else
-/// `rustc` on PATH, which is cargo's own resolution order. Unreadable is a refusal, not an
-/// empty identity: admission refuses `emitted_build_rustc_unrecorded` on an empty string, and
-/// this returns the cause before the build is paid for.
-fn rustc_identity() -> Result<String, String> {
-    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-    let output = Command::new(&rustc)
-        .arg("--version")
-        .arg("--verbose")
-        .output()
-        .map_err(|e| {
-            format!("V2-NATIVE REFUSAL cause=RustcIdentityUnreadable — spawning {rustc}: {e}")
-        })?;
-    if !output.status.success() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=RustcIdentityUnreadable — {rustc} --version --verbose exited {}",
-            output.status
-        ));
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    let identity = text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("; ");
-    if identity.is_empty() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=RustcIdentityUnreadable — {rustc} --version --verbose printed nothing"
-        ));
-    }
-    Ok(identity)
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -351,9 +316,13 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
          rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
     );
-    let rustc = rustc_identity()?;
+    // The invocation resolves and binds the one compiler the build runs under and takes its
+    // identity from the crate's own directory; a compiler that cannot be resolved or named is
+    // a refusal before the build is paid for.
     let invocation =
-        super::emitted_closure_compile_host::probe_cargo_invocation(&crate_dir, &workspace);
+        super::emitted_closure_compile_host::probe_cargo_invocation(&crate_dir, &workspace)
+            .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
+    let rustc = invocation.rustc_identity.clone();
     let verdict = super::emitted_closure_compile_host::run_cargo(
         &crate_dir,
         &workspace,
@@ -386,14 +355,15 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     let build = EmittedBuildObserved {
         cargo_argv: invocation.argv,
         rustflags: invocation.rustflags,
+        compiler_path: invocation.compiler_path,
         rustc_identity: rustc,
         exit_status,
         warning_count,
     };
     eprintln!(
-        "required-ci: v2-native emitted crate built — argv={:?} RUSTFLAGS={:?} exit_status={exit_status} \
-         warning_count={warning_count} rustc={}",
-        build.cargo_argv, build.rustflags, build.rustc_identity
+        "required-ci: v2-native emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
+         exit_status={exit_status} warning_count={warning_count} rustc={}",
+        build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
     );
     let binary_path = workspace.join("target").join("release").join(
         super::emitted_closure_compile_host::probe_package_name(NATIVE_COMPILE_ENTRY),
@@ -811,6 +781,10 @@ fn receipt_value(
             (
                 ctx.sym("rustflags"),
                 str_value(&preparation.build.rustflags),
+            ),
+            (
+                ctx.sym("compiler_path"),
+                str_value(&preparation.build.compiler_path),
             ),
             (
                 ctx.sym("rustc_identity"),
