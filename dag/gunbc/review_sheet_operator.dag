@@ -11,13 +11,11 @@ import std.human_intervention {
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.fleet_ssh_access { fleet_automation_sa_email }
 import gunbc.gcp_service_enablement {
   ServiceEnablementDesire,
   ServiceDesiredEnabled,
   ServiceEnablementObservation,
-  ServiceObservedDisabled,
+  ServiceEnablementUnobserved,
   EnableApiPlan,
   decide_service_enablement,
   service_enablement_from_state_wire,
@@ -25,31 +23,27 @@ import gunbc.gcp_service_enablement {
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
 
-// Operator path for the buyer-review sheet. API enablement is a converge (gunbc.gcp_service_enablement),
-// not a console click. Custody stays on the secrets project; the Sheets API project is a declared
-// parameter (currently gunb-test — the name is not assumed permanent).
+// Sheets API project and calling SA are UNRESOLVED parameters. This module must not land
+// gunbai-secrets as the API project (custody stays there; blast radius stays small) and must not
+// pick fleet-automation@ or any other SA. Which automation project and which SA is an estate
+// inventory question, not a default in this PR.
 
-data review_sheet_gcp_project: GcpProjectId = "gunb-test"
+type ReviewSheetGcpProjectStanding
+  = ReviewSheetGcpProjectUnresolved
+  | ReviewSheetGcpProjectIdentified { project: GcpProjectId }
+
+data review_sheet_gcp_project: ReviewSheetGcpProjectStanding = ReviewSheetGcpProjectUnresolved
+
+type ReviewSheetWriterStanding
+  = ReviewSheetWriterUnresolved
+  | ReviewSheetWriterIdentified { email: ServiceAccountEmail }
+
+data review_sheet_writer: ReviewSheetWriterStanding = ReviewSheetWriterUnresolved
 
 data serviceusage_services_enable_permission: NonEmptyStr = "serviceusage.services.enable"
 
-data sheets_api_desired_enablement: ServiceEnablementDesire = ServiceDesiredEnabled {
-  project: review_sheet_gcp_project
-  service_id: sheets_serviceusage_api_id
-}
-
-// Operator-stated Service Usage readback for this project: Sheets is DISABLED. That is the
-// first RED (desired enabled, observed disabled, Apply), not a state to route around.
-data sheets_api_enablement_observation: ServiceEnablementObservation = ServiceObservedDisabled {
-  project: review_sheet_gcp_project
-  service_id: sheets_serviceusage_api_id
-}
-
-fn sheets_api_enablement_decision() -> UpsertDecision<EnableApiPlan> {
-  decide_service_enablement(
-    desired: sheets_api_desired_enablement,
-    observed: sheets_api_enablement_observation,
-  )
+fn sheets_api_desired_enablement(project: GcpProjectId) -> ServiceEnablementDesire {
+  ServiceDesiredEnabled { project: project, service_id: sheets_serviceusage_api_id }
 }
 
 fn sheets_api_enablement_from_service_state(project: GcpProjectId, state_wire: String) -> ServiceEnablementObservation {
@@ -60,7 +54,24 @@ fn sheets_api_enablement_from_service_state(project: GcpProjectId, state_wire: S
   )
 }
 
-fn serviceusage_enable_iam_grant_intervention(project: GcpProjectId) -> HumanIntervention {
+fn sheets_api_enablement_decision(
+  project: ReviewSheetGcpProjectStanding,
+  observed: ServiceEnablementObservation,
+) -> UpsertDecision<EnableApiPlan> {
+  match project {
+    ReviewSheetGcpProjectUnresolved =>
+      Refuse {
+        reason: "review sheet GCP project unresolved; must not default to gunbai-secrets (custody-only)" as NonEmptyStr
+      }
+    ReviewSheetGcpProjectIdentified { project: p } =>
+      decide_service_enablement(desired: sheets_api_desired_enablement(project: p), observed: observed)
+  }
+}
+
+fn serviceusage_enable_iam_grant_intervention(
+  project: GcpProjectId,
+  writer: ServiceAccountEmail,
+) -> HumanIntervention {
   HumanIntervention {
     identity: concat("gcp-serviceusage-enable-iam-", project as String) as HumanInterventionIdentity,
     frequency: FleetOnce,
@@ -68,7 +79,7 @@ fn serviceusage_enable_iam_grant_intervention(project: GcpProjectId) -> HumanInt
     instruction: join(
       [
         "Grant ",
-        fleet_automation_sa_email as String,
+        writer as String,
         " ",
         serviceusage_services_enable_permission as String,
         " on project ",
@@ -86,6 +97,13 @@ type BuyerReviewSpreadsheet
   | SpreadsheetIdentified { spreadsheet_id: NonEmptyStr, owner: NonEmptyStr }
 
 data buyer_review_spreadsheet: BuyerReviewSpreadsheet = SpreadsheetAwaitingCreation
+
+type ReviewSheetAccountTenancy
+  = AccountTenancyUnobserved
+  | ReviewSheetWorkspaceDomain
+  | ReviewSheetPlainGoogleAccount
+
+data buyer_review_account_tenancy: ReviewSheetAccountTenancy = ReviewSheetWorkspaceDomain
 
 type WorkspaceDomainSharingPolicy
   = DomainSharingPolicyUnobserved
@@ -111,7 +129,7 @@ fn spreadsheet_create_intervention() -> HumanIntervention {
   }
 }
 
-fn spreadsheet_share_intervention(spreadsheet_id: NonEmptyStr) -> HumanIntervention {
+fn spreadsheet_share_intervention(spreadsheet_id: NonEmptyStr, writer: ServiceAccountEmail) -> HumanIntervention {
   HumanIntervention {
     identity: concat("buyer-review-spreadsheet-share-", spreadsheet_id as String) as HumanInterventionIdentity,
     frequency: DeviceOnce,
@@ -121,7 +139,7 @@ fn spreadsheet_share_intervention(spreadsheet_id: NonEmptyStr) -> HumanIntervent
         "Share spreadsheet ",
         spreadsheet_id as String,
         " with ",
-        fleet_automation_sa_email as String,
+        writer as String,
         " as Editor. A service account is a distinct principal and cannot see the sheet until this share exists; being in the owner's Workspace is not enough. Recurs for every new sheet.",
       ],
       "",
@@ -134,50 +152,86 @@ type ReviewSheetOperatorAdmission
   = ReviewSheetOperatorAdmitted { spreadsheet_id: NonEmptyStr }
   | ReviewSheetAwaitingHuman { intervention: HumanIntervention }
   | ReviewSheetNeedsApiEnable { plan: EnableApiPlan }
+  | ReviewSheetEstateUnresolved { subject: NonEmptyStr, reason: NonEmptyStr }
   | ReviewSheetOperatorRefused { reason: NonEmptyStr }
 
 fn admit_review_sheet_operator(
-  desired: ServiceEnablementDesire,
+  project: ReviewSheetGcpProjectStanding,
+  writer: ReviewSheetWriterStanding,
   enablement: ServiceEnablementObservation,
   spreadsheet: BuyerReviewSpreadsheet,
-  wif_binding: HumanIntervention,
   serviceusage_enable_iam: HumanIntervention,
 ) -> ReviewSheetOperatorAdmission {
-  if intervention_is_discharged(intervention: serviceusage_enable_iam) {
-    match decide_service_enablement(desired: desired, observed: enablement) {
-      Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
-      Apply { plan: p } => ReviewSheetNeedsApiEnable { plan: p }
-      Noop =>
-        if intervention_is_discharged(intervention: wif_binding) {
-          match spreadsheet {
-            SpreadsheetAwaitingCreation =>
-              ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
-            SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
-              ReviewSheetAwaitingHuman { intervention: spreadsheet_share_intervention(spreadsheet_id: id) }
+  match project {
+    ReviewSheetGcpProjectUnresolved =>
+      ReviewSheetEstateUnresolved {
+        subject: "review_sheet_gcp_project" as NonEmptyStr,
+        reason: "API project unresolved; must not default to gunbai-secrets (custody-only). Estate inventory settles the automation project." as NonEmptyStr,
+      }
+    ReviewSheetGcpProjectIdentified { project: p } =>
+      match writer {
+        ReviewSheetWriterUnresolved =>
+          ReviewSheetEstateUnresolved {
+            subject: "review_sheet_writer" as NonEmptyStr,
+            reason: "calling SA unresolved; must not reuse fleet-automation@ (SSH identity, no bindings) or pick a SA in this PR." as NonEmptyStr,
           }
-        } else {
-          ReviewSheetAwaitingHuman { intervention: wif_binding }
-        }
-    }
-  } else {
-    ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
+        ReviewSheetWriterIdentified { email: sa } =>
+          if intervention_is_discharged(intervention: serviceusage_enable_iam) {
+            match decide_service_enablement(
+              desired: sheets_api_desired_enablement(project: p),
+              observed: enablement,
+            ) {
+              Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
+              Apply { plan: plan } => ReviewSheetNeedsApiEnable { plan: plan }
+              Noop =>
+                match spreadsheet {
+                  SpreadsheetAwaitingCreation =>
+                    ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
+                  SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
+                    ReviewSheetAwaitingHuman {
+                      intervention: spreadsheet_share_intervention(spreadsheet_id: id, writer: sa),
+                    }
+                }
+            }
+          } else {
+            ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
+          }
+      }
   }
 }
 
 fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
-  admit_review_sheet_operator(
-    desired: sheets_api_desired_enablement,
-    enablement: sheets_api_enablement_observation,
-    spreadsheet: buyer_review_spreadsheet,
-    wif_binding: gcp_fleet_secrets_wif_binding_intervention(),
-    serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: review_sheet_gcp_project),
-  )
+  match review_sheet_gcp_project {
+    ReviewSheetGcpProjectUnresolved =>
+      ReviewSheetEstateUnresolved {
+        subject: "review_sheet_gcp_project" as NonEmptyStr,
+        reason: "API project unresolved; must not default to gunbai-secrets (custody-only). Estate inventory settles the automation project." as NonEmptyStr,
+      }
+    ReviewSheetGcpProjectIdentified { project: p } =>
+      match review_sheet_writer {
+        ReviewSheetWriterUnresolved =>
+          ReviewSheetEstateUnresolved {
+            subject: "review_sheet_writer" as NonEmptyStr,
+            reason: "calling SA unresolved; must not reuse fleet-automation@ (SSH identity, no bindings) or pick a SA in this PR." as NonEmptyStr,
+          }
+        ReviewSheetWriterIdentified { email: sa } =>
+          admit_review_sheet_operator(
+            project: ReviewSheetGcpProjectIdentified { project: p },
+            writer: ReviewSheetWriterIdentified { email: sa },
+            enablement: ServiceEnablementUnobserved {
+              project: p,
+              service_id: sheets_serviceusage_api_id,
+            },
+            spreadsheet: buyer_review_spreadsheet,
+            serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: sa),
+          )
+      }
+  }
 }
 
-fn review_sheet_uses_fleet_secrets_project() -> GcpProjectId {
-  fleet_secrets_gcp_project
-}
-
-fn review_sheet_writer_service_account() -> ServiceAccountEmail {
-  fleet_automation_sa_email
+fn fleet_secrets_wif_is_not_assumed_live() -> Bool {
+  match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
+    NoDischargeSiteModeled => true
+    DischargedAt { evidence: _ } => false
+  }
 }
