@@ -280,9 +280,17 @@ test fn every_line_names_its_quantisation_and_rank_count() -> Bool {
 // THE MEMORY ENVELOPE IS SPELLED, and it is spelled as a fraction rather than omitted. On this hardware an
 // omitted flag is not a harmless default: NVML answers [N/A] for memory, which is the same absence that
 // produced the 2048 batched-token budget.
+//
+// AND THE EXPECTED WORD IS RENDERED FROM THE FIXTURE, NOT SPELLED BESIDE IT. This row asserted the literal
+// "0.90" while the fixture it plans from has been 8400 basis points -- so it was RED, and it was red at every
+// revision of this file including the one a review inspected. Two spellings of one number drift the moment
+// either moves, which is the transcribed-measurement failure at test grain: the instrument that turns basis
+// points into a wire word is exercised by four other rows in this very module, and this one wrote the answer
+// out by hand instead of calling it.
 test fn every_line_spells_the_memory_envelope() -> Bool {
   count(filter(planned_lines(p: admissible_tp4_plan()), l =>
-    argv_has(argv: l.argv, word: "--gpu-memory-utilization") && argv_has(argv: l.argv, word: "0.90"))) == 4
+    argv_has(argv: l.argv, word: "--gpu-memory-utilization")
+      && argv_has(argv: l.argv, word: render_utilization_fraction(basis_points: witness_fraction_basis_points)))) == 4
 }
 
 // THE MODEL PATH COMES FROM THE CHECKPOINT'S PLACEMENT. This arm is placed as a local checkout, so its
