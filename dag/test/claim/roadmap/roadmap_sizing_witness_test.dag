@@ -1,0 +1,162 @@
+module test.claim.roadmap_sizing_witness
+
+import std.types { String, Bool }
+import gunbc.roadmap_status { TicketLine, TicketFields, TicketUpdate, PlainLine, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge,
+  Dispatchable, NotDispatchable, ManualAcceptance, PrsMerged,
+  node_sizing_subject, node_sizing_derivation,
+}
+import gunbc.roadmap_sizing {
+  SizingSubject, SizingSubjectId,
+  NodeSizing, Intricacy, IntricacyHigh, Volume, VolumeLarge,
+  NodeSizingDerivation, SizingDerived, SizingNotDerivable,
+  sizing_deriver_unbuilt_detail,
+  derive_task_sizing, intricacy_label, volume_label,
+}
+import gunbc.dispatch_selection {
+  SizingProfileExpectation, NoDerivedSizingExpectation, DerivedSizingExpectation,
+  sizing_profile_expectation,
+}
+import gunbc.roadmap_spawner { node_json }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_ticket() -> TicketFields {
+  TicketFields {
+    headline: "Teach the belt to size its own work",
+    brief: "Read the task and answer how hard it is and how much of it there is.",
+    displaced_cost: "",
+    current_state: "",
+    first_slice: "",
+    red_control: "",
+    out_of_scope: "",
+    handback: "The derived cell and the control that separates two subjects.",
+    updates: [],
+    authored_on: "",
+    last_verified_on: "",
+  }
+}
+
+fn fixture_node() -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_SIZING000000000000000001" as RoadmapNodeIdentity,
+    node: "sizing-fixture" as RoadmapNodeId,
+    line: TicketLine { done: false, ticket: fixture_ticket() },
+    carriers: [],
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
+    owner: "fixture",
+    signoff: Unsigned,
+  }
+}
+
+// THE SUBJECT IS PROJECTED FROM THE TASK'S OWN WORDS, and carries nothing about the lane. A subject
+// that picked up the repository or the owner would let a later deriver size by who filed the row.
+// Its IDENTITY is the node's minted identity rather than its slug, because roadmap_node_identity_law
+// forbids the slug as an identity input and sizing evidence derived later must join to something
+// that survives a rename.
+test fn witness_sizing_subject_is_the_task_and_not_the_lane() -> Bool {
+  let s = node_sizing_subject(rn: fixture_node())
+  s.subject == ("rnfx_SIZING000000000000000001" as SizingSubjectId)
+    && s.title == "Teach the belt to size its own work"
+    && s.description == "Read the task and answer how hard it is and how much of it there is."
+    && match s.exit_criterion {
+      Present { value: e } => e == "The derived cell and the control that separates two subjects."
+      Absent => false
+    }
+}
+
+// A LINE KIND WITH NO STATEMENT OF DONE SAYS SO, rather than handing the deriver an empty string it
+// could not tell from an authored blank.
+test fn witness_subject_without_an_exit_criterion_is_absent_not_empty() -> Bool {
+  let n = RoadmapNode {
+    identity: "rnfx_SIZING000000000000000002" as RoadmapNodeIdentity,
+    node: "sizing-plain" as RoadmapNodeId,
+    line: PlainLine { content: "a plain row" },
+    carriers: [],
+    dispatch: NotDispatchable,
+    execution: ExecutionContractUnspecified,
+    owner: "",
+    signoff: Unsigned,
+  }
+  match node_sizing_subject(rn: n).exit_criterion {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE STUB REFUSES AND NAMES ITS GAP. This is the discriminating RED for "the stub does not lie":
+// it goes red the moment derive_task_sizing starts answering through SizingDerived, which is
+// exactly when the declared drop gunbc.rung_drop.roadmap_sizing_authored_to_derived retires.
+test fn witness_stub_deriver_refuses_rather_than_fabricating_a_cell() -> Bool {
+  match derive_task_sizing(subject: node_sizing_subject(rn: fixture_node())) {
+    SizingDerived { subject: _, sizing: _ } => false
+    SizingNotDerivable { subject, detail } =>
+      subject == ("rnfx_SIZING000000000000000001" as SizingSubjectId)
+        && detail == sizing_deriver_unbuilt_detail
+  }
+}
+
+test fn witness_refused_derivation_yields_no_cell() -> Bool {
+  match node_sizing_derivation(rn: fixture_node()) {
+    SizingNotDerivable { subject: _, detail: _ } => true
+    SizingDerived { subject: _, sizing: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, authored as a fixture value because no production path can construct one
+// yet. It proves the derived arm is a real arm and not decoration: the same folds that report
+// "nothing derived" for the stub report the cell here.
+fn fixture_derived() -> NodeSizingDerivation {
+  SizingDerived {
+    subject: "rnfx_SIZING000000000000000001" as SizingSubjectId,
+    sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeLarge },
+  }
+}
+
+test fn witness_derived_arm_carries_the_cell_through_every_fold() -> Bool {
+  match fixture_derived() {
+    SizingDerived { subject: _, sizing: cell } =>
+      cell.intricacy == IntricacyHigh
+        && cell.volume == VolumeLarge
+        && intricacy_label(i: cell.intricacy) == "high"
+        && volume_label(v: cell.volume) == "large"
+    SizingNotDerivable { subject: _, detail: _ } => false
+  }
+}
+
+// SELECTION SEES THE TWO ARMS AS TWO ARMS. The operator ruling of 2026-09-10 puts sizing outside
+// admission and inside profile expectation, so the thing dispatch_selection must never be able to
+// do is receive a stub answer that looks derived. These two assertions are that property: the
+// refusal maps to the absent arm and only a real cell maps to the present one.
+test fn witness_dispatch_selection_sees_absence_as_absence() -> Bool {
+  match sizing_profile_expectation(d: node_sizing_derivation(rn: fixture_node())) {
+    NoDerivedSizingExpectation => true
+    DerivedSizingExpectation { sizing: _ } => false
+  }
+}
+
+test fn witness_dispatch_selection_sees_a_derived_cell_as_derived() -> Bool {
+  match sizing_profile_expectation(d: fixture_derived()) {
+    DerivedSizingExpectation { sizing } => sizing.volume == VolumeLarge
+    NoDerivedSizingExpectation => false
+  }
+}
+
+// THE DISPATCH REQUEST OMITS THE SIZE KEYS RATHER THAN DEFAULTING THEM. The dashboard's argument
+// pair is both-or-neither, so absent is a valid request; a substituted cell would publish the
+// stub's silence as a measurement.
+test fn witness_spawn_request_omits_size_keys_while_no_size_is_derived() -> Bool {
+  let json = node_json(
+    n: fixture_node(),
+    repo: "gunbc",
+    acceptance: PrsMerged,
+    edges: [],
+  )
+  !string_contains(s: json, pattern: "\"intricacy\"")
+    && !string_contains(s: json, pattern: "\"volume\"")
+    && string_contains(s: json, pattern: "\"repo\": \"gunbc\"")
+}

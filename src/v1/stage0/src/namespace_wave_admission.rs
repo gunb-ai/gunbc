@@ -1695,54 +1695,213 @@ pub struct TransitionAdmission {
 /// merge and was never authored on this branch; that is not evidence of anything, and the reason it
 /// goes is that the wall computed its transition as merged and printed it.
 ///
-/// THE RESTING STATE WAS EMPTY AND THIS CHANGE AUTHORS ONE ROW BACK INTO IT, which is the ordinary
-/// motion and not a regression of the dissolution above: the twentieth dissolution retired a row
-/// whose delta had stopped being producible, and the row below admits a different delta that this
-/// change produces. Empty is not permissive and non-empty is not permission - a run with any delta
-/// no row names still refuses it as UNADJUDICATED.
-///
-/// gunbc#10956 runner provider roster rehome (2026-09-10). `gunbc.runner_shape_census` authored
-/// `surveyed_runner_catalogs`, the roster of which CI runner providers this repository has read.
-/// That roster acquired a SECOND consumer — `gunbc.runner_label_resolution`, which asks the same
-/// list a different question: not what a provider's sizes are, but what one of its `runs-on` labels
-/// means. A roster copied into the second consumer is a fork that goes stale the first time a
-/// provider is added to one list and not the other (DESIGN §3), so the declaration moved to
-/// `gunbc.runner_provider_survey` and both consumers import it.
-///
-/// WHY THIS IS `TargetChanged` AND WHY THAT CLASSIFICATION IS CORRECT HERE. The spelling
-/// `surveyed_runner_catalogs` is authored on both sides inside `surveyed_runner_shapes`, and what
-/// changed is which declaration it admits: base `{gunbc.runner_shape_census}`, head
-/// `{gunbc.runner_provider_survey}`. That is exactly the motion this wall exists to make an author
-/// say out loud, because a spelling that silently starts denoting a different declaration is how a
-/// rehome smuggles a semantic change past review. It is not the `AuthoredReferenceResolution`
-/// pattern the 2026-08-27 ruling auto-admits: the name was not previously unresolved or bound to
-/// nothing, it was bound to a real declaration that this change deliberately relocated.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. The moved declaration is
-/// byte-identical to the one it replaces — same name, same signature, same six-element body — and
-/// the four `SameDeclarationIdentityRebind` membership rows the required floor on this branch's
-/// first head reported (run 34517395009, `gunbc.runner_shape_census ->
-/// extdeps.ci_runner.{blacksmith,circleci,depot,github_actions}`, removed) are the mechanical
-/// evidence: every name the census stopped importing directly still
-/// denotes the same declaration through the new module, and a binding that did not would have been
-/// refused on its own row. The closure blast radius that run measured is 407 modules, the census's
-/// own reach and not new reach — `gunbc.runner_provider_survey` imports nothing the census did not already
-/// import.
-///
-/// TRIGGER: this row goes when #10956 merges. The base then authors `surveyed_runner_catalogs` in
-/// `gunbc.runner_provider_survey`, the delta stops being producible, and CONSUMED comes due on the
-/// roster's next touch — adjudicated by the declaring-module join, not by this sentence.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#10956 runner provider roster rehome",
-    subject: AdmissionSubject::Binding {
-        module: "gunbc.runner_shape_census",
-        in_declaration: "surveyed_runner_shapes",
-        spelling: "surveyed_runner_catalogs",
-        target: "gunbc.runner_provider_survey",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+/// UNION, THEN A CONSUMPTION (2026-09-11 merge). Both sides carried LIVE rows: `main` admitted the
+/// gunbc#10956 runner-roster rehome and this branch admits the gunbc#10994 sizing relocations, so
+/// the rosters were appended rather than one side taken whole -- an unadjudicated delta is what
+/// this wall exists to refuse. #10956 then merged, and the wall said so rather than this paragraph
+/// guessing: the required floor on gunbc#10994 reported `CONSUMED ADMISSION gunbc#10956 runner
+/// provider roster rehome ... already satisfied at the base -- consumed by its own merge`, and
+/// refused adjudication because a roster-touching change owes that deletion. This change is the
+/// toucher, so the deletion is paid here rather than deferred, and main's account of that subject
+/// goes with its row. The sizing rows below retire the same way, by their own merge.
 
+/// The resting state was empty again as of THAT change, and this one authors rows back into it,
+/// which is the ordinary motion rather than a regression: empty is not permissive and non-empty is
+/// not permission, because a run with any delta no row names still refuses it as UNADJUDICATED.
+///
+/// THE SIZING UNBUNDLING (gunbc#10994) RELOCATES TWO GROUPS OF SPELLINGS, AND EVERY ROW BELOW IS
+/// ONE OF THEM AT EXACT IDENTITY. `Intricacy*` and `Volume*` were declared by
+/// `gunbc.roadmap_model` inside the `NodeSizing` coproduct; that coproduct fused a size with the
+/// repository and acceptance route, and the unbundling moves the size vocabulary to its own
+/// authority `gunbc.roadmap_sizing` while `repo`/`acceptance` stay behind as
+/// `WorkItemDispatch`. `node_title` folds `RoadmapItem`, so it moved from the consumer that
+/// happened to host it (`gunbc.roadmap_spawner`) to the module that declares the coproduct
+/// (`gunbc.roadmap_status`), because `gunbc.roadmap_sizing` needed the same fold and two folds of
+/// one coproduct answering one question is the DESIGN section 3 fork.
+///
+/// NONE OF THESE CHANGES WHICH DECLARATION A SPELLING DENOTES. `IntricacyHigh` is the same variant
+/// of the same three-arm coproduct before and after; `node_title` is the same function body moved
+/// between files. The membership half of each motion is reported separately as
+/// `SameDeclarationIdentityRebind` and auto-admits, and a binding whose MEANING had moved would
+/// refuse on its own row rather than be covered here. Rows are enumerated by exact identity rather
+/// than by a pattern over the module pair, so a genuine rebind landing in the same pair still
+/// refuses.
+///
+/// TRIGGER: these rows are consumed by their own merge. Once gunbc#10994 is on main the base binds
+/// each spelling to the module named in `target`, the delta stops being producible, and the wall
+/// reports them CONSUMED on the next roster-touching change, which is what deletes them.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.dispatch_selection",
+            in_declaration: "automatic_codex_behavior_preservation_holds",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.dispatch_selection",
+            in_declaration: "automatic_codex_behavior_preservation_holds",
+            spelling: "VolumeMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_belt_actuate",
+            in_declaration: "belt_audit_spawn",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_belt_actuate",
+            in_declaration: "belt_review_plan_for_head",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dispatch_actuator",
+            in_declaration: "dispatch_slot_fields",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "node_json_value",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "roadmap_dispatch_json_value",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "upcoming_array_json",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "upcoming_node_json",
+            spelling: "node_title",
+            target: "gunbc.roadmap_status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "fixture_cell",
+            spelling: "IntricacyMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "fixture_cell",
+            spelling: "VolumeMedium",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dispatch_selection_witness",
+            in_declaration: "witness_intricacy_does_not_change_automatic_effort",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dispatch_selection_witness",
+            in_declaration: "witness_intricacy_does_not_change_automatic_effort",
+            spelling: "IntricacyLow",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dispatch_actuator",
+            in_declaration: "witness_dispatch_effort_ignores_intricacy",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dispatch_actuator",
+            in_declaration: "witness_dispatch_effort_ignores_intricacy",
+            spelling: "IntricacyLow",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_empty_calibration_cell_refuses",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeSmall` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_empty_calibration_cell_refuses",
+            spelling: "VolumeSmall",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

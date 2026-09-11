@@ -20,19 +20,12 @@ import std.upsert_decision {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapNodeId,
-  Intricacy,
-  IntricacyLow,
-  IntricacyMedium,
-  IntricacyHigh,
-  Volume,
-  VolumeSmall,
-  VolumeMedium,
-  VolumeLarge,
-  NodeSizing,
-  Sized,
-  Unsized,
+  NotDispatchable,
+  Dispatchable,
+  node_sizing_derivation,
 }
-import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
+import gunbc.roadmap_spawner { dispatch_brief_template }
+import gunbc.roadmap_status { node_title }
 import gunbc.roadmap.roadmap_attempt_continuation { AttemptOrigin, FreshFromBase, attempt_origin_base_ref, continuation_brief_prefix }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
@@ -108,6 +101,10 @@ import gunbc.dispatch_selection {
   DispatchExecutionReceipt,
   DispatchSelectionResolved,
   DispatchSelectionRefused,
+  SizingProfileExpectation,
+  NoDerivedSizingExpectation,
+  DerivedSizingExpectation,
+  sizing_profile_expectation,
   default_provider_selection_request,
   provider_selection_request_for_kind,
   dispatch_selection_for_instance,
@@ -340,15 +337,21 @@ fn dispatch_harness_selection() -> DispatchActuatorSelection {
   }
 }
 
-fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+// WHAT THESE SELECTORS TAKE IS AN EXPECTATION, NOT A SIZE. The parameter used to be a hand-authored
+// NodeSizing read off the roadmap node; it is now gunbc.dispatch_selection
+// SizingProfileExpectation, which a caller with a task derives from that task and a caller without
+// one (a harness probe) states as absent. The harness arm ignores it for the same reason it always
+// did -- there is one harness and nothing to choose -- and says so here rather than leaving a silent
+// unused parameter.
+fn dispatch_actuator_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
   dispatch_harness_selection()
 }
 
-fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: default_provider_selection_request(),
-    node_sizing: node_sizing,
+    sizing_expectation: sizing_expectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       DispatchActuatorSelectionOk {
@@ -357,7 +360,7 @@ fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuat
         model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
   }
 }
@@ -369,7 +372,7 @@ fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuat
 // path instead.
 fn dispatch_actuator_selection_for_provider(
   provider: DispatchCliProvider,
-  node_sizing: NodeSizing,
+  sizing_expectation: SizingProfileExpectation,
 ) -> DispatchActuatorSelection {
   match dispatch_cli_to_provider_kind(provider: provider) {
     DispatchExecutorHasNoVendorKind { executor: e } =>
@@ -385,7 +388,7 @@ fn dispatch_actuator_selection_for_provider(
     request: provider_selection_request_for_kind(
       kind: vendor_kind,
     ),
-    node_sizing: node_sizing,
+    sizing_expectation: sizing_expectation,
   ) {
     DispatchSelectionResolved { receipt } =>
       DispatchActuatorSelectionOk {
@@ -394,7 +397,7 @@ fn dispatch_actuator_selection_for_provider(
         model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
   }
   }
@@ -601,7 +604,7 @@ fn dispatch_provider_instance_for_kind(
 // The alternative was to invent one so the shape stayed populated, which would put a fabricated
 // vendor row into every session observation downstream.
 fn dispatch_provider_instance() -> ProviderInstance? {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       match dispatch_cli_to_provider_kind(provider: provider) {
         DispatchProviderKindIs { kind: k } =>
@@ -636,7 +639,7 @@ fn dispatch_worker_observation() -> WorkerObservation? {
 }
 
 fn dispatch_applied_effort() -> ReasoningEffort? {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint: _ } =>
       Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
@@ -646,7 +649,7 @@ fn dispatch_applied_effort() -> ReasoningEffort? {
 fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
   match dispatch_actuator_selection_for_provider(
     provider: provider,
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present { value: process_fingerprint }
@@ -1565,8 +1568,8 @@ fn dispatch_brief_fields_for_environment(
     contract: node.execution,
     environment: environment,
   )
-  match node.sizing {
-  Sized { intricacy, volume, repo, acceptance: _ } => {
+  match node.dispatch {
+  Dispatchable { repo, acceptance: _ } => {
     let f = dispatch_slot_fields(node: node, repo: repo)
     DispatchBriefFields {
       node_id: f.node_id,
@@ -1581,7 +1584,7 @@ fn dispatch_brief_fields_for_environment(
       expected_artifact: "implementation diff plus receipts from the declared validation operations",
     }
   }
-  Unsized => {
+  NotDispatchable => {
     let f = dispatch_slot_fields(node: node, repo: "")
     DispatchBriefFields {
       node_id: f.node_id,
@@ -2490,9 +2493,9 @@ fn dispatch_spawn_commands_for_inventory(
   match resolve_dispatch_selection(
     inventory: inventory,
     request: request,
-    node_sizing: node.sizing,
+    sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
       DispatchSpawnRefused {
         step: "dispatch-selection" as NonEmptyStr,
         detail: reason as String,

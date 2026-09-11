@@ -13,13 +13,11 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
+import gunbc.roadmap_model { RoadmapNode, WorkItemDispatch, Dispatchable, NotDispatchable }
 
 // A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
-// TODAY it is read from NodeSizing.repo. When eager-gull-33 lands, RoadmapNode.sizing becomes
-// RoadmapNode.dispatch: WorkItemDispatch = NotDispatchable | Dispatchable { repo, acceptance },
-// and destination_from_sizing's match is the one mechanical rewrite (Sized/Unsized ->
-// Dispatchable/NotDispatchable). The resolver itself does not change.
+// It is read from WorkItemDispatch.repo. destination_from_sizing matches
+// Dispatchable/NotDispatchable. The resolver itself does not change.
 //
 // THIS MODULE NAMES NO PRIVATE REPOSITORY. A node whose work lives elsewhere supplies its
 // own owner/name via the repo slug; the public authority only knows gunbc_repository as an
@@ -175,19 +173,19 @@ fn repository_from_repo_slug(repo: String) -> DispatchDestination {
   }
 }
 
-fn destination_from_sizing(sizing: NodeSizing) -> DispatchDestination {
-  match sizing {
-    Unsized =>
+fn destination_from_sizing(dispatch: WorkItemDispatch) -> DispatchDestination {
+  match dispatch {
+    NotDispatchable =>
       DispatchDestinationMissing {
-        reason: "the node is unsized, so it has no destination repository" as NonEmptyStr,
+        reason: "the node carries no dispatch binding, so it has no destination repository" as NonEmptyStr,
       }
-    Sized { repo, intricacy: _, volume: _, acceptance: _ } =>
+    Dispatchable { repo, acceptance: _ } =>
       repository_from_repo_slug(repo: repo)
   }
 }
 
 fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
-  destination_from_sizing(sizing: node.sizing)
+  destination_from_sizing(dispatch: node.dispatch)
 }
 
 // Destination identity and spawn actuation are different facts. repository_from_repo_slug

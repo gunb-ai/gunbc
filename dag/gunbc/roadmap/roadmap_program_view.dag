@@ -2,6 +2,7 @@ module gunbc.roadmap_program_view
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapAcceptanceReceipt,
+  NotDispatchable, Dispatchable,
   receipt_matches_node,
 }
 import gunbc.roadmap_execution_contract { contract_has_closing_validation }
@@ -142,7 +143,7 @@ type NodeStanding {
   node: RoadmapNodeId
   state: ObligationState
   in_flight: Bool
-  unsized: Bool
+  undispatchable: Bool
 }
 
 fn program_member_map(ids: List<String>) -> Map<String, Bool> {
@@ -298,9 +299,9 @@ fn program_node_standing(
     node: n.node,
     state: state,
     in_flight: program_map_member(map: in_flight_map, id: id),
-    unsized: match n.sizing {
-      Unsized => true
-      Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => false
+    undispatchable: match n.dispatch {
+      NotDispatchable => true
+      Dispatchable { repo: _, acceptance: _ } => false
     },
   }
 }
@@ -312,7 +313,7 @@ type RemainingShape {
   in_flight: Int
   dependency_held: Int
   contract_held: Int
-  unsized: Int
+  undispatchable: Int
 }
 
 // HOW MUCH REMAINS, WITHOUT A PERCENTAGE. The program contains incomparable work — a sequential
@@ -323,7 +324,7 @@ type RemainingShape {
 // subject (a topological measure, never a calendar claim — duration lives in
 // gunbc.roadmap_forecast, which owns calibrated time and refuses without samples); open_fronts
 // counts contributing fronts not yet closed; the remaining counts partition the closure's
-// unaccepted population by ObligationState with in-flight and unsized as overlay counts. Deferred
+// unaccepted population by ObligationState with in-flight and undispatchable as overlay counts. Deferred
 // fields, named so the gap is countable: decision_held waits on a typed operator-decision marker,
 // and evidence_held (verification refused or stale) waits on the verification-receipt join reaching
 // production. Both land as new fields on this record, never as reinterpretations of existing ones.
@@ -360,7 +361,7 @@ fn program_shape_counts(
       ObligationStartable => false
       ObligationDependencyHeld { unmet: _ } => false
     })),
-    unsized: count(standings |> filter(s => s.unsized && match s.state {
+    undispatchable: count(standings |> filter(s => s.undispatchable && match s.state {
       ObligationAccepted => false
       ObligationStartable => true
       ObligationDependencyHeld { unmet: _ } => true
