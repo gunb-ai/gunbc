@@ -1,8 +1,27 @@
 module gunbc.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.types { String, List }
-import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import std.types { String, List, Bool }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign,
+  bash_build_assign_lit,
+  bash_build_command_with_words,
+  bash_build_if_from_stmts,
+  bash_build_pipe,
+  bash_build_subshell_from_stmts,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat_parts,
+  bash_build_word_lit,
+  bash_build_word_var,
+  bash_build_with_redir_to_file,
+  bash_build_with_redir_stdout_and_stderr_to_file
+}
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
@@ -238,19 +257,7 @@ fn floor_outcome_wire(o: FloorOutcome) -> String {
 }
 
 fn posix_exit_status_decimal(code: Int) -> String {
-  if code == 0 {
-    "0"
-  } else {
-    if code == exit_code_command_invoked_cannot_execute {
-      "126"
-    } else {
-      if code == exit_code_command_not_found {
-        "127"
-      } else {
-        "unknown"
-      }
-    }
-  }
+  integer_int_to_decimal_string(value: code)
 }
 
 fn infra_signature_wire(sig: InfraSignature) -> String {
@@ -313,88 +320,380 @@ fn receipt_reason_infra_signatures() -> List<InfraSignature> {
   })
 }
 
-fn receipt_log_infra_elif_lines() -> List<String> {
+fn floor_attempt_var_eq_lit_test(var_name: String, text: String) -> Node {
+  bash_build_test_bracket(
+    words: [
+      bash_build_word_var(name: var_name),
+      bash_build_word_lit(text: "="),
+      bash_build_word_lit(text: text)
+    ]
+  )
+}
+
+fn floor_attempt_exit_eq_test(decimal: String) -> Node {
+  bash_build_test_bracket(
+    words: [
+      bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
+      bash_build_word_lit(text: "-eq"),
+      bash_build_word_lit(text: decimal)
+    ]
+  )
+}
+
+fn floor_attempt_class_still_structural_test() -> Node {
+  floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_structural)
+}
+
+fn floor_attempt_assign_class_and_signature(class: String, signature: String) -> List<Node> {
+  [
+    bash_build_assign_lit(name: "GUNBC_FLOOR_CLASS", text: class),
+    bash_build_assign_lit(name: "GUNBC_FLOOR_SIGNATURE", text: signature)
+  ]
+}
+
+fn floor_attempt_if_still_structural(cond: Node, then_stmts: List<Node>) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_and_then(left: floor_attempt_class_still_structural_test(), right: cond),
+    then_stmts: then_stmts
+  )
+}
+
+fn receipt_log_infra_class_stmts() -> List<Node> {
   fold(receipt_reason_infra_signatures(), init: [], f: fn(acc, sig) {
     concat(
       [
-        concat("elif [ -f \"$GUNBC_FLOOR_LOG\" ] && grep -q \"", concat(infra_signature_match_substring(sig: sig), "\" \"$GUNBC_FLOOR_LOG\"; then")),
-        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
-        concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: sig), "\""))
+        floor_attempt_if_still_structural(
+          cond: bash_build_and_then(
+            left: bash_build_test_bracket(
+              words: [
+                bash_build_word_lit(text: "-f"),
+                bash_build_word_var(name: "GUNBC_FLOOR_LOG")
+              ]
+            ),
+            right: bash_build_command_with_words(
+              words: [
+                bash_build_word_lit(text: "grep"),
+                bash_build_word_lit(text: "-q"),
+                bash_build_word_lit(text: infra_signature_match_substring(sig: sig)),
+                bash_build_word_var(name: "GUNBC_FLOOR_LOG")
+              ]
+            )
+          ),
+          then_stmts: floor_attempt_assign_class_and_signature(
+            class: floor_outcome_wire_infra,
+            signature: infra_signature_wire(sig: sig)
+          )
+        )
       ],
       acc
     )
   })
 }
 
-data floor_attempt_receipt_shell_emit_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: wrap_command_with_floor_attempt_receipt -- hand-shell join/concat carrier for the attempt-receipt wrap. Typed env-vs-code classification does not dissolve here. DISSOLVES WHEN this wrap is Nodes through v2.extdeps.languages.bash_build serialized by v2.workflow.bash_command_fold_serialize bash_fold_serialize_program, the same capability gunbc.required_lanes_gate already uses, at which point this row and the join below delete together.")
-
-fn floor_attempt_receipt_write_script() -> String {
-  join(
+fn floor_attempt_receipt_write_stmts() -> List<Node> {
+  concat(
+    [
+      bash_build_assign_lit(name: "GUNBC_FLOOR_RECEIPT", text: floor_attempt_receipt_filename),
+      bash_build_assign_lit(name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_structural),
+      bash_build_assign_lit(name: "GUNBC_FLOOR_SIGNATURE", text: ""),
+      bash_build_if_from_stmts(
+        cond: floor_attempt_exit_eq_test(
+          decimal: posix_exit_status_decimal(code: exit_code_command_invoked_cannot_execute)
+        ),
+        then_stmts: floor_attempt_assign_class_and_signature(
+          class: floor_outcome_wire_infra,
+          signature: infra_signature_wire(sig: CommandInvokedCannotExecute)
+        )
+      ),
+      floor_attempt_if_still_structural(
+        cond: floor_attempt_exit_eq_test(
+          decimal: posix_exit_status_decimal(code: exit_code_command_not_found)
+        ),
+        then_stmts: floor_attempt_assign_class_and_signature(
+          class: floor_outcome_wire_infra,
+          signature: infra_signature_wire(sig: CommandNotFound)
+        )
+      ),
+      floor_attempt_if_still_structural(
+        cond: floor_attempt_exit_eq_test(decimal: "0"),
+        then_stmts: floor_attempt_assign_class_and_signature(
+          class: floor_outcome_wire_none,
+          signature: ""
+        )
+      )
+    ],
     concat(
+      receipt_log_infra_class_stmts(),
       [
-        concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"")),
-        concat("GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_structural, "\"")),
-        "GUNBC_FLOOR_SIGNATURE=\"\"",
-        concat("if [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_invoked_cannot_execute), " ]; then")),
-        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
-        concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandInvokedCannotExecute), "\"")),
-        concat("elif [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_not_found), " ]; then")),
-        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
-        concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandNotFound), "\"")),
-        "elif [ \"$GUNBC_FLOOR_EXIT\" -eq 0 ]; then",
-        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_none, "\""))
-      ],
-      concat(
-        receipt_log_infra_elif_lines(),
-        [
-          "fi",
-          "printf 'class=%s\\nsignature=%s\\nexit=%s\\n' \"$GUNBC_FLOOR_CLASS\" \"$GUNBC_FLOOR_SIGNATURE\" \"$GUNBC_FLOOR_EXIT\" > \"$GUNBC_FLOOR_RECEIPT\"",
-          concat("if [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_infra, "\" ]; then")),
-          "  echo \"::error title=environment::floor_class=$\{GUNBC_FLOOR_CLASS} signature=$\{GUNBC_FLOOR_SIGNATURE} exit=$\{GUNBC_FLOOR_EXIT}; this is not a verdict about the diff. Attempt receipt: $\{GUNBC_FLOOR_RECEIPT}\"",
-          concat("elif [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_structural, "\" ]; then")),
-          "  echo \"::error title=subject::floor_class=$\{GUNBC_FLOOR_CLASS} exit=$\{GUNBC_FLOOR_EXIT}; read the step log for the subject defect\"",
-          "fi"
+        bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "printf"),
+              bash_build_word_lit(text: "class=%s\\nsignature=%s\\nexit=%s\\n"),
+              bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
+              bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE"),
+              bash_build_word_var(name: "GUNBC_FLOOR_EXIT")
+            ]
+          ),
+          path: bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+        ),
+        bash_build_if_from_stmts(
+          cond: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_infra),
+          then_stmts: [
+            bash_build_command_with_words(
+              words: [
+                bash_build_word_lit(text: "echo"),
+                bash_build_word_concat_parts(
+                  parts: [
+                    bash_build_word_lit(text: "::error title=environment::floor_class="),
+                    bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
+                    bash_build_word_lit(text: " signature="),
+                    bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE"),
+                    bash_build_word_lit(text: " exit="),
+                    bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
+                    bash_build_word_lit(text: "; this is not a verdict about the diff. Attempt receipt: "),
+                    bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+                  ]
+                )
+              ]
+            )
+          ]
+        ),
+        bash_build_if_from_stmts(
+          cond: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_structural),
+          then_stmts: [
+            bash_build_command_with_words(
+              words: [
+                bash_build_word_lit(text: "echo"),
+                bash_build_word_concat_parts(
+                  parts: [
+                    bash_build_word_lit(text: "::error title=subject::floor_class="),
+                    bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
+                    bash_build_word_lit(text: " exit="),
+                    bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
+                    bash_build_word_lit(text: "; read the step log for the subject defect")
+                  ]
+                )
+              ]
+            )
+          ]
+        )
+      ]
+    )
+  )
+}
+
+fn wrap_command_with_floor_attempt_receipt_stmts(command: String) -> List<Node> {
+  concat(
+    [
+      bash_build_assign_lit(name: "GUNBC_FLOOR_LOG", text: floor_attempt_command_log_filename),
+      bash_build_with_redir_stdout_and_stderr_to_file(
+        inner: bash_build_subshell_from_stmts(
+          stmts: [
+            bash_build_command_with_words(
+              words: [
+                bash_build_word_lit(text: "sh"),
+                bash_build_word_lit(text: "-e"),
+                bash_build_word_lit(text: "-c"),
+                bash_build_word_lit(text: command)
+              ]
+            )
+          ]
+        ),
+        path: bash_build_word_var(name: "GUNBC_FLOOR_LOG")
+      ),
+      bash_build_assign(name: "GUNBC_FLOOR_EXIT", value: bash_build_word_var(name: "?")),
+      bash_build_command_with_words(
+        words: [
+          bash_build_word_lit(text: "cat"),
+          bash_build_word_var(name: "GUNBC_FLOOR_LOG")
         ]
       )
-    ),
-    "\n"
+    ],
+    concat(
+      floor_attempt_receipt_write_stmts(),
+      [
+        bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "exit"),
+            bash_build_word_var(name: "GUNBC_FLOOR_EXIT")
+          ]
+        )
+      ]
+    )
   )
+}
+
+fn floor_attempt_receipt_finalize_stmts() -> List<Node> {
+  [
+    bash_build_assign_lit(name: "GUNBC_FLOOR_RECEIPT", text: floor_attempt_receipt_filename),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_lit(text: "!"),
+          bash_build_word_lit(text: "-f"),
+          bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+        ]
+      ),
+      then_stmts: [
+        bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "printf"),
+              bash_build_word_lit(text: "class=%s\\nsignature=\\nexit=\\n"),
+              bash_build_word_lit(text: floor_outcome_wire_unobserved)
+            ]
+          ),
+          path: bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+        )
+      ]
+    ),
+    bash_build_assign(
+      name: "GUNBC_FLOOR_CLASS",
+      value: bash_build_word_cmdsubst(
+        body: bash_build_pipe(
+          left: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "sed"),
+              bash_build_word_lit(text: "-n"),
+              bash_build_word_lit(text: "s/^class=//p"),
+              bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+            ]
+          ),
+          right: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "head"),
+              bash_build_word_lit(text: "-n"),
+              bash_build_word_lit(text: "1")
+            ]
+          )
+        )
+      )
+    ),
+    bash_build_assign(
+      name: "GUNBC_FLOOR_SIGNATURE",
+      value: bash_build_word_cmdsubst(
+        body: bash_build_pipe(
+          left: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "sed"),
+              bash_build_word_lit(text: "-n"),
+              bash_build_word_lit(text: "s/^signature=//p"),
+              bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+            ]
+          ),
+          right: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "head"),
+              bash_build_word_lit(text: "-n"),
+              bash_build_word_lit(text: "1")
+            ]
+          )
+        )
+      )
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_lit(text: "-n"),
+          bash_build_word_var(name: "GITHUB_OUTPUT")
+        ]
+      ),
+      then_stmts: [
+        bash_build_pipe(
+          left: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "printf"),
+              bash_build_word_lit(text: "%s=%s\\n"),
+              bash_build_word_lit(text: floor_attempt_receipt_output_name),
+              bash_build_word_var(name: "GUNBC_FLOOR_CLASS")
+            ]
+          ),
+          right: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "tee"),
+              bash_build_word_lit(text: "-a"),
+              bash_build_word_var(name: "GITHUB_OUTPUT")
+            ]
+          )
+        ),
+        bash_build_pipe(
+          left: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "printf"),
+              bash_build_word_lit(text: "floor_signature=%s\\n"),
+              bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE")
+            ]
+          ),
+          right: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "tee"),
+              bash_build_word_lit(text: "-a"),
+              bash_build_word_var(name: "GITHUB_OUTPUT")
+            ]
+          )
+        )
+      ]
+    ),
+    bash_build_command_with_words(
+      words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_concat_parts(
+          parts: [
+            bash_build_word_lit(text: "GUNBC_FLOOR_ATTEMPT_RECEIPT class="),
+            bash_build_word_var(name: "GUNBC_FLOOR_CLASS"),
+            bash_build_word_lit(text: " signature="),
+            bash_build_word_var(name: "GUNBC_FLOOR_SIGNATURE"),
+            bash_build_word_lit(text: " path="),
+            bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+          ]
+        )
+      ]
+    )
+  ]
+}
+
+fn floor_attempt_shell_program(stmts: List<Node>) -> String? {
+  match bash_fold_serialize_program(stmts: stmts, set_e: false) {
+    Accepted { value: script, diagnostics: _ } => Present { value: script }
+    Rejected { diagnostics: _ } => none
+  }
+}
+
+fn wrap_command_with_floor_attempt_receipt_outcome(command: String) -> String? {
+  floor_attempt_shell_program(stmts: wrap_command_with_floor_attempt_receipt_stmts(command: command))
+}
+
+fn wrap_command_is_renderable() -> Bool {
+  match wrap_command_with_floor_attempt_receipt_outcome(command: "true") {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn wrap_command_with_floor_attempt_receipt(command: String) -> String {
-  join(
-    [
-      concat("# ", dissolution_description(condition: floor_attempt_receipt_shell_emit_dissolution_condition)),
-      concat("GUNBC_FLOOR_LOG=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_command_log_filename, "\"")),
-      "set +e",
-      "(",
-      "set -e",
-      command,
-      ") > \"$GUNBC_FLOOR_LOG\" 2>&1",
-      "GUNBC_FLOOR_EXIT=$?",
-      "cat \"$GUNBC_FLOOR_LOG\"",
-      floor_attempt_receipt_write_script(),
-      "exit \"$GUNBC_FLOOR_EXIT\""
-    ],
-    "\n"
-  )
+  match wrap_command_with_floor_attempt_receipt_outcome(command: command) {
+    Present { value: script } => script
+    Absent => ""
+  }
+}
+
+fn floor_attempt_receipt_finalize_script_outcome() -> String? {
+  floor_attempt_shell_program(stmts: floor_attempt_receipt_finalize_stmts())
+}
+
+fn floor_attempt_receipt_finalize_is_renderable() -> Bool {
+  match floor_attempt_receipt_finalize_script_outcome() {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn floor_attempt_receipt_finalize_script() -> String {
-  join(
-    [
-      concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"")),
-      concat("if [ ! -f \"$GUNBC_FLOOR_RECEIPT\" ]; then printf 'class=%s\\nsignature=\\nexit=\\n' \"", concat(floor_outcome_wire_unobserved, "\" > \"$GUNBC_FLOOR_RECEIPT\"; fi")),
-      "GUNBC_FLOOR_CLASS=$(sed -n 's/^class=//p' \"$GUNBC_FLOOR_RECEIPT\" | head -n 1)",
-      "GUNBC_FLOOR_SIGNATURE=$(sed -n 's/^signature=//p' \"$GUNBC_FLOOR_RECEIPT\" | head -n 1)",
-      "if [ -n \"$\{GITHUB_OUTPUT:-}\" ]; then",
-      concat("  echo \"", concat(floor_attempt_receipt_output_name, "=$GUNBC_FLOOR_CLASS\" >> \"$GITHUB_OUTPUT\"")),
-      "  echo \"floor_signature=$GUNBC_FLOOR_SIGNATURE\" >> \"$GITHUB_OUTPUT\"",
-      "fi",
-      "echo \"GUNBC_FLOOR_ATTEMPT_RECEIPT class=$GUNBC_FLOOR_CLASS signature=$GUNBC_FLOOR_SIGNATURE path=$GUNBC_FLOOR_RECEIPT\""
-    ],
-    "\n"
-  )
+  match floor_attempt_receipt_finalize_script_outcome() {
+    Present { value: script } => script
+    Absent => ""
+  }
 }
 
 fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {

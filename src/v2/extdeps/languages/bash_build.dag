@@ -331,6 +331,25 @@ fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
   }
 }
 
+fn bash_build_with_redir_stdout_and_stderr_to_file(inner: Node, path: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
+      },
+      Edge { label: Positional, target: inner },
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_redir_stdout_and_stderr_to_file)
+      },
+      Edge { label: Positional, target: path }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn bash_build_negation(inner: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },

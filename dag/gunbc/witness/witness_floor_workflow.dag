@@ -78,7 +78,9 @@ import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
 import gunbc.ci_failure_class {
   wrap_command_with_floor_attempt_receipt,
+  wrap_command_is_renderable,
   floor_attempt_receipt_finalize_script,
+  floor_attempt_receipt_finalize_is_renderable,
   floor_attempt_receipt_filename,
   floor_attempt_receipt_output_name,
   floor_attempt_receipt_step_id,
@@ -3029,7 +3031,7 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() {
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && wrap_command_is_renderable() && floor_attempt_receipt_finalize_is_renderable() {
         WitnessFloorGenerated {
           content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
         }
