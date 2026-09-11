@@ -89,7 +89,8 @@ import extdeps.github.expressions {
   StringLiteral,
   LogicalOr,
   LogicalAnd,
-  Equals
+  Equals,
+  NotEquals
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.workflow.required_ci_measurement_shell {
@@ -280,43 +281,49 @@ type WitnessFloorGroupBranch
   | RefAfterEvent { event: String }
   | RunIdFallback { prefix: String }
 
-// Expression has no NotEquals. GitHub Actions admits `!=`; this is the only string remainder
-// in group emission. Dissolves when the grammar carries NotEquals.
-data gha_not_equals_empty_gap: String = " != ''"
+fn gha_not_equals(left: Expression, right: Expression) -> Expression {
+  NotEquals { left: left, right: right }
+}
 
-fn serialize_gha_or_join(acc: String, next: String) -> String {
-  if acc == "" {
-    next
-  } else {
-    concat(concat(acc, default_expression_spellings.or_op), next)
+fn nonempty_input_after_event_expr(event: String, input: String, prefix: String) -> Expression {
+  gha_and(
+    left: github_event_name_equals(event: event),
+    right: gha_and(
+      left: gha_not_equals(left: github_dispatch_input_expr(name: input), right: StringLiteral { value: "" }),
+      right: gha_format_prefix(prefix: prefix, arg: github_dispatch_input_expr(name: input))
+    )
+  )
+}
+
+fn group_branch_expr(branch: WitnessFloorGroupBranch) -> Expression {
+  match branch {
+    ShaAfterEvent { event: e, prefix: p } =>
+      gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr()))
+    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
+      nonempty_input_after_event_expr(event: e, input: i, prefix: p)
+    PrNumberAfterEvent { event: e, prefix: p } =>
+      gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr()))
+    RefAfterEvent { event: e } =>
+      gha_and(left: github_event_name_equals(event: e), right: github_ref_expr())
+    RunIdFallback { prefix: p } =>
+      gha_format_prefix(prefix: p, arg: github_run_id_expr())
   }
 }
 
-fn serialize_group_branch(branch: WitnessFloorGroupBranch) -> String {
-  match branch {
-    ShaAfterEvent { event: e, prefix: p } =>
-      serialize_expression(expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr())))
-    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
-      concat(
-        serialize_expression(expression: github_event_name_equals(event: e)),
-        concat(
-          default_expression_spellings.and_op,
-          concat(
-            serialize_expression(expression: github_dispatch_input_expr(name: i)),
-            concat(
-              gha_not_equals_empty_gap,
-              concat(default_expression_spellings.and_op, serialize_expression(expression: gha_format_prefix(prefix: p, arg: github_dispatch_input_expr(name: i))))
-            )
-          )
-        )
+fn witness_floor_group_expression() -> Expression {
+  match list_head(xs: witness_floor_group_branches()) {
+    HeadAbsent => gha_format_prefix(prefix: "run-", arg: github_run_id_expr())
+    HeadFound { value: first } =>
+      fold_list(
+        xs: skip(xs: witness_floor_group_branches(), n: 1),
+        empty: group_branch_expr(branch: first),
+        cons: fn(acc, b) { gha_or(left: acc, right: group_branch_expr(branch: b)) }
       )
-    PrNumberAfterEvent { event: e, prefix: p } =>
-      serialize_expression(expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr())))
-    RefAfterEvent { event: e } =>
-      serialize_expression(expression: gha_and(left: github_event_name_equals(event: e), right: github_ref_expr()))
-    RunIdFallback { prefix: p } =>
-      serialize_expression(expression: gha_format_prefix(prefix: p, arg: github_run_id_expr()))
   }
+}
+
+fn witness_floor_concurrency_group() -> String {
+  concat("witness-floor-", interpolate(expression: witness_floor_group_expression()))
 }
 
 fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
@@ -331,23 +338,6 @@ fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
     RefAfterEvent { event: github_event_name_push },
     RunIdFallback { prefix: "run-" }
   ]
-}
-
-fn witness_floor_concurrency_group() -> String {
-  concat(
-    "witness-floor-",
-    concat(
-      default_expression_spellings.interp_open,
-      concat(
-        fold_list(
-          xs: witness_floor_group_branches(),
-          empty: "",
-          cons: fn(acc, b) { serialize_gha_or_join(acc: acc, next: serialize_group_branch(branch: b)) }
-        ),
-        default_expression_spellings.interp_close
-      )
-    )
-  )
 }
 
 type DispatchInputBinding {
@@ -472,6 +462,7 @@ fn eval_format_args(args: List<Expression>, fx: WitnessFloorGroupFixture) -> Str
         LogicalOr { left: _, right: _ } => ""
         LogicalAnd { left: _, right: _ } => ""
         Equals { left: _, right: _ } => ""
+        NotEquals { left: _, right: _ } => ""
       }
     HeadAbsent => ""
   }
@@ -502,47 +493,17 @@ fn eval_gha_expression(expression: Expression, fx: WitnessFloorGroupFixture) -> 
       } else {
         ""
       }
-  }
-}
-
-fn eval_group_branch(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> String {
-  match branch {
-    ShaAfterEvent { event: e, prefix: p } =>
-      eval_gha_expression(
-        expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr())),
-        fx: fx
-      )
-    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
-      if gha_value_is_truthy(s: eval_gha_expression(expression: github_event_name_equals(event: e), fx: fx))
-        && dispatch_input_value(bindings: fx.dispatch_inputs, name: i) != "" {
-        eval_gha_expression(expression: gha_format_prefix(prefix: p, arg: github_dispatch_input_expr(name: i)), fx: fx)
-      } else {
+    NotEquals { left: l, right: r } =>
+      if eval_gha_expression(expression: l, fx: fx) == eval_gha_expression(expression: r, fx: fx) {
         ""
+      } else {
+        "true"
       }
-    PrNumberAfterEvent { event: e, prefix: p } =>
-      eval_gha_expression(
-        expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr())),
-        fx: fx
-      )
-    RefAfterEvent { event: e } =>
-      eval_gha_expression(expression: gha_and(left: github_event_name_equals(event: e), right: github_ref_expr()), fx: fx)
-    RunIdFallback { prefix: p } =>
-      eval_gha_expression(expression: gha_format_prefix(prefix: p, arg: github_run_id_expr()), fx: fx)
   }
 }
 
 fn resolve_witness_floor_group_suffix(fx: WitnessFloorGroupFixture) -> String {
-  fold_list(
-    xs: witness_floor_group_branches(),
-    empty: "",
-    cons: fn(acc, b) {
-      if gha_value_is_truthy(s: acc) {
-        acc
-      } else {
-        eval_group_branch(branch: b, fx: fx)
-      }
-    }
-  )
+  eval_gha_expression(expression: witness_floor_group_expression(), fx: fx)
 }
 
 fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> String {

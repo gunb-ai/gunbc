@@ -92,6 +92,7 @@ fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
     or_op: or_op,
     and_op: default_expression_spellings.and_op,
     eq_op: default_expression_spellings.eq_op,
+    neq_op: default_expression_spellings.neq_op,
     interp_open: default_expression_spellings.interp_open,
     interp_close: default_expression_spellings.interp_close,
     index_open: default_expression_spellings.index_open,
@@ -219,5 +220,16 @@ test fn witness_emit_non_regression() -> Bool {
     && (serialize_template(template: t) == serialize_template_with(template: t, sp: default_expression_spellings))
     && (serialize_expression(expression: e) == "hashFiles('Cargo.lock', 'Cargo.toml') || github.event.number || runner.os")
     && (serialize_template(template: t) == "cargo-ci-${{ runner.os }}-${{ runner.arch }}")
+}
+
+fn not_equals_empty_input_expr() -> Expression {
+  NotEquals {
+    left: ContextAccess { context: Github, path: ["event", "inputs", "expected_healed_sha"] },
+    right: StringLiteral { value: "" }
+  }
+}
+
+test fn witness_not_equals_renders_ne_operator() -> Bool {
+  serialize_expression(expression: not_equals_empty_input_expr()) == "github.event.inputs.expected_healed_sha != ''"
 }
 

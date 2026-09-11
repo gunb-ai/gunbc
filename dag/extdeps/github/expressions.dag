@@ -46,6 +46,7 @@ type Expression
   | LogicalOr { left: Expression, right: Expression }
   | LogicalAnd { left: Expression, right: Expression }
   | Equals { left: Expression, right: Expression }
+  | NotEquals { left: Expression, right: Expression }
 
 type TemplateSegment
   = LiteralText { text: String }
@@ -98,6 +99,7 @@ type ExpressionSpellings {
   or_op: String
   and_op: String
   eq_op: String
+  neq_op: String
   interp_open: String
   interp_close: String
   index_open: String
@@ -113,6 +115,7 @@ data default_expression_spellings: ExpressionSpellings = {
   or_op: " || ",
   and_op: " && ",
   eq_op: " == ",
+  neq_op: " != ",
   interp_open: "${{ ",
   interp_close: " }}",
   index_open: "['",
@@ -207,6 +210,8 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
       join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.and_op)
     Equals { left: l, right: r } =>
       join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.eq_op)
+    NotEquals { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.neq_op)
   }
 }
 
@@ -451,6 +456,9 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
     Equals { left: l, right: r } =>
       expression_accesses_runner_var_via_env(expression: l) ||
         expression_accesses_runner_var_via_env(expression: r)
+    NotEquals { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
     StringLiteral { value: _ } => false
   }
 }
@@ -467,6 +475,9 @@ fn expression_uses_context(expression: Expression, target: ExpressionContext) ->
       expression_uses_context(expression: l, target: target) ||
         expression_uses_context(expression: r, target: target)
     Equals { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    NotEquals { left: l, right: r } =>
       expression_uses_context(expression: l, target: target) ||
         expression_uses_context(expression: r, target: target)
     StringLiteral { value: _ } => false
@@ -513,16 +524,17 @@ fn template_uses_context(template: ExpressionTemplate, target: ExpressionContext
 // to BOTH directions plus the goldens that pin them, not a serializer edit.
 //
 // DECLARED ASYMMETRY, NAMED RATHER THAN LEFT IMPLIED (review 49460): parse_expression_with reads
-// Or, calls, context accesses and string literals; it does NOT read && or ==. So these two
+// Or, calls, context accesses and string literals; it does NOT read &&, ==, or !=. So these
 // operators are EMISSION-ONLY today, and this module is bidirectional for the constructs that
 // predate them and one-way for these. That is a real §4 asymmetry, admissible here only because no
-// consumer reads these forms BACK — the sole use is lowering a job condition that GitHub evaluates
-// and nothing in this tree re-ingests. It stops being admissible the moment any consumer parses a
-// condition containing && or ==, which is the trigger: ingest arms for both operators plus
-// round-trip witnesses covering them land before that consumer, not after it. Stated explicitly
-// because the previous revision of this row broke bidirectionality by accident and shipped it; an
-// asymmetry that is declared and triggered is a frontier, one that is merely true is a defect
-// waiting to be discovered.
+// consumer reads these forms BACK — the uses are lowering a job condition and a concurrency group
+// that GitHub evaluates and nothing in this tree re-ingests. It stops being admissible the moment
+// any consumer parses a condition containing &&, ==, or !=, which is the trigger: ingest arms for
+// those operators plus round-trip witnesses covering them land before that consumer, not after
+// it. Stated explicitly because the previous revision of this row broke bidirectionality by
+// accident and shipped it; an asymmetry that is declared and triggered is a frontier, one that is
+// merely true is a defect waiting to be discovered. NotEquals joins that emission-only set; ingest
+// is not extended here.
 
 fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>) -> Bool {
   fold(templates, init: false, f: (acc, template) =>

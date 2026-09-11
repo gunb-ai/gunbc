@@ -493,6 +493,16 @@ test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_canc
     github_ref: "refs/heads/main",
     dispatch_inputs: []
   }
+  let heal_empty = WitnessFloorGroupFixture {
+    event: github_event_name_workflow_dispatch,
+    sha: "mgsha",
+    run_id: "rid",
+    pull_request_number: "7",
+    github_ref: "refs/heads/main",
+    dispatch_inputs: [
+      DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "" }
+    ]
+  }
   let pr = WitnessFloorGroupFixture {
     event: github_event_name_pull_request,
     sha: "mgsha",
@@ -511,6 +521,7 @@ test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_canc
   }
   resolve_witness_floor_concurrency_group(fx: mg) == "witness-floor-mg-mgsha"
     && resolve_witness_floor_concurrency_group(fx: heal) == "witness-floor-heal-healsha"
+    && resolve_witness_floor_concurrency_group(fx: heal_empty) == "witness-floor-run-rid"
     && resolve_witness_floor_concurrency_group(fx: bare_dispatch) == "witness-floor-run-rid"
     && resolve_witness_floor_concurrency_group(fx: pr) == "witness-floor-pr-7"
     && resolve_witness_floor_concurrency_group(fx: push) == "witness-floor-refs/heads/main"
