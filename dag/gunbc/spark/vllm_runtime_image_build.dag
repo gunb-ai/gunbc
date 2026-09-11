@@ -24,6 +24,7 @@ import extdeps.git {
   git_checkout_revision_command, git_rev_parse_head_command,
 }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
+import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
   VllmContainerBuildRecipe,
@@ -512,5 +513,95 @@ func vllm_runtime_image_build_wet(host: String) -> ProcessExit
         }
       }
   }
+  }
+}
+
+// ── CAN THIS LANE REACH THE HOST IT WAS GIVEN ─────────────────────────────────────────────────
+//
+// A PRECONDITION OF BOTH ENTRIES, ASKED ON ITS OWN. Admissibility says a host is one this lane MAY
+// use; it says nothing about whether the fleet key is installed on it or whether anything answers at
+// its endpoint. Those are different failures with different remedies -- a policy answer, a
+// provisioning answer -- and discovering the second in the middle of a build is how an hour gets
+// spent before the first leg refuses.
+//
+// IT ASKS ONE QUESTION AND NOTHING ELSE: the remote host's own short hostname, over the same sealed
+// transport every other leg uses. What comes back is the host's answer about its own identity, which
+// is exactly the join a caller needs -- an endpoint resolved from a fleet identity should answer with
+// that identity's machine, and a reachable box that answers with a different name is a fleet-data
+// defect rather than a reachable host.
+type SparkHostReachability
+  = SparkHostAnswered { host: HostIdentity, endpoint: NonEmptyStr, reported_hostname: NonEmptyStr }
+  | SparkHostUnreachable { host: HostIdentity, endpoint: NonEmptyStr, cause: String }
+  | SparkHostUnresolved { host: HostIdentity }
+
+func probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
+  uses net: Network
+{
+  match spark_reach_endpoint(host: host, path: ReachManagementLan) {
+    Absent => SparkHostUnresolved { host: host }
+    Present { value: endpoint } => {
+      let target = SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_operator_bootstrap_login as NonEmptyStr }
+      match vllm_image_leg(target: target, context: context, step: "reachability" as NonEmptyStr, command: hostname_short_read_command()) {
+        ImageLegFailed { step: _, cause: why } => SparkHostUnreachable { host: host, endpoint: endpoint as NonEmptyStr, cause: why }
+        ImageLegRan { stdout: name } =>
+          if name == "" {
+            SparkHostUnreachable { host: host, endpoint: endpoint as NonEmptyStr, cause: "the leg succeeded and the host reported no name" }
+          } else {
+            SparkHostAnswered { host: host, endpoint: endpoint as NonEmptyStr, reported_hostname: name as NonEmptyStr }
+          }
+      }
+    }
+  }
+}
+
+fn spark_reachability_line(r: SparkHostReachability) -> String {
+  match r {
+    SparkHostAnswered { host: h, endpoint: e, reported_hostname: name } =>
+      join(["reachable host=", h as String, " endpoint=", e as String, " reported=", name as String, " fleet_key=admitted\n"], "")
+    SparkHostUnreachable { host: h, endpoint: e, cause: why } =>
+      join(["unreachable host=", h as String, " endpoint=", e as String, " cause=", why, "\n"], "")
+    SparkHostUnresolved { host: h } =>
+      join(["unresolved host=", h as String, " -- no management-LAN endpoint\n"], "")
+  }
+}
+
+data spark_reachability_attempt_raw: String = "spark-build-host-reachability"
+data spark_reachability_receipt_path: String = "target/spark-build-host-reachability-receipt.txt"
+
+// THE WHOLE ADMISSIBLE ROSTER IN ONE RUN, because the question a caller actually has is "which of
+// these may I be given", not "is this one alive".
+func spark_build_host_reachability_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match fleet_ssh_attempt_identity(raw: spark_reachability_attempt_raw) {
+    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+    Present { value: attempt } =>
+      match probe_agent_credential_verification(attempt: attempt) {
+        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+        FleetSshCredentialDerivationRefused { cause: cause } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+        FleetSshCredentialVerified { binding: binding } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+            Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+            Present { value: context } => {
+              let readings = map(admissible_spark_build_hosts(), h => probe_spark_host_reachability(context: context, host: h))
+              let body = join([
+                join(["spark build-host reachability probed_at=", probed_at_word(reading: now) as String, " question=short hostname only\n"], ""),
+                join(["credential ", fleet_ssh_credential_locus_label(binding: binding), " public_material_identity=", serialize_content_hash(hash: fleet_ssh_credential_identity(binding: binding)) as String, "\n"], ""),
+                join(map(readings, r => spark_reachability_line(r: r)), ""),
+              ], "")
+              let w = Filesystem.Write(path: spark_reachability_receipt_path, content: body)
+              if !w.success {
+                exit_failure(reason: join(["spark reachability receipt write failed: ", w.error], ""))
+              } else {
+                ExitSuccess
+              }
+            }
+          }
+        }
+      }
   }
 }
