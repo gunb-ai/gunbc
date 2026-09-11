@@ -35,7 +35,7 @@ import extdeps.memory.types {
   dram_chips_per_rank,
   dram_data_word_width,
 }
-import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
+import extdeps.ocp.mt_jade.subject { mt_jade_subject_authority_anchor }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
 import gunbc.memory_provisioning {
   FullChannel,
@@ -88,8 +88,9 @@ type MemoryElectricalContext {
 // DDR4-3200 at 2DPC (section 7.1). THE TRANSCRIBED 2933/2400 FIGURES ARE THEREFORE NOT IN THE
 // PUBLIC AMPERE SOURCES THIS REPOSITORY MAY CARRY. That difference is the finding: a 32-slot fill
 // is not authorised to assume a downclock those documents do not state. The empty table below
-// is that reading — 2DPC keeps the platform rated rate — cited to the datasheet, corroborated by
-// Mt. Jade's 3200-at-2DPC line. Gated AVL / PCB Layout Guidelines remain unread (HTTP 403), so they
+// is that reading — 2DPC keeps the platform rated rate. The table's warrant is Mt. Jade
+// section 7.1's published DIMM speed "DDR4-3200 (2DPC)", not the datasheet's silence on a
+// rank-derate table. Gated AVL / PCB Layout Guidelines remain unread (HTTP 403), so they
 // cannot silently restore the old numbers.
 type TwoDpcRateCeiling {
   min_rank_count: Nat
@@ -104,7 +105,7 @@ type TwoDpcRateCeilingTable {
 data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
   rows: [],
   evidence: CitedToAuthority {
-    authority: ampere_altra_classic_rev_a1_datasheet_authority,
+    authority: mt_jade_subject_authority_anchor,
   },
 }
 

@@ -202,10 +202,10 @@ test fn two_dpc_keeps_the_cited_rated_rate_across_ranks() -> Bool {
     && admitted_rate_equals(dimms_per_channel: 1, rank_count: 2, expected_mts: 3200)
 }
 
-// THE HELD AMPERE SOURCES DO NOT PUBLISH THE OLD 2933/2400 TRANSCRIPTION. The empty table is
-// the cited reading of datasheet 2.10 (no rank-dependent 2DPC ceiling), corroborated by Mt. Jade
-// section 7.1 stating DDR4-3200 at 2DPC. The purchase-relevant delta: filling 32 slots does not
-// inherit a documented downclock from those documents.
+// THE HELD PUBLIC SOURCES DO NOT PUBLISH THE OLD 2933/2400 TRANSCRIPTION. The empty table is
+// the absence of rank-dependent ceiling rows. Its warrant is Mt. Jade section 7.1 stating
+// DDR4-3200 at 2DPC, not the Altra datasheet's silence on a derate table. The purchase-relevant
+// delta: filling 32 slots does not inherit a documented downclock from those documents.
 test fn the_two_dpc_ceilings_are_cited_empty_because_ampere_publishes_no_rank_derate() -> Bool {
   count(altra_two_dpc_ceilings.rows) == 0
     && match altra_two_dpc_ceilings.evidence {
