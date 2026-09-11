@@ -60,6 +60,7 @@ import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_deb
 import gunbc.rung_drop.determinism_transitive_reachability { determinism_transitive_reachability }
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
+import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.roadmap_sizing_authored_to_derived { roadmap_sizing_authored_to_derived }
 
 data rung_drop_roster: List<RungDrop> = [
@@ -104,6 +105,7 @@ data rung_drop_roster: List<RungDrop> = [
   determinism_transitive_reachability,
   transitional_admission_exception(),
   v2_native_route_off_the_merge_path,
+  main_per_commit_floor_verdict,
   roadmap_sizing_authored_to_derived,
 ]
 
