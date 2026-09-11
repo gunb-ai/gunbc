@@ -1,7 +1,7 @@
 module test.claim.ci_workflow_source_read_witness_test
 
 import std.logic { Bool }
-import std.types { Int, String, Secret }
+import std.types { Int, List, String, Secret }
 import std.measure { byte_size }
 import extdeps.github.code_search {
   CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
@@ -52,18 +52,39 @@ test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool {
   }
 }
 
-// THE DEFECT THE FIXTURE ITSELF CARRIES. total_count says 250 and one item was delivered. A
-// consumer that folded total_count into a population size would read this page as 250 repositories
-// and be wrong by 249 on the strength of a field the server volunteered. The claim asserts the
-// disagreement rather than describing it, so it goes red the day the two are made to agree.
-test fn total_count_disagrees_with_the_hits_actually_read() -> Bool {
-  match perform_code_search_page(auth_token: fixture_token, q: "any", per_page: 100, page: 1) {
-    CodeSearchPageComplete { page, hits_read } =>
-      page.total_count == hermetic_code_search_total_count
-        && page.total_count != hits_read
-        && hits_read == code_search_hits_read(page: page)
-    other => false
-  }
+// THE DEFECT IS A PROPERTY OF A PAGE WALK, NOT OF A SINGLE PAGE, and an earlier version of this
+// claim did not know the difference. It asserted total_count != hits_read on one mocked page —
+// 250 beside one item — which is TRUE OF EVERY PAGINATED RESPONSE EVER RETURNED. A first page of
+// 100 out of 250 also satisfies it. The claim was green for a reason that had nothing to do with
+// the anomaly it was named for, which is the same shape as a roster-size oracle: an assertion whose
+// truth is guaranteed by the shape of the data rather than by the property under test.
+//
+// THE ACTUAL ANOMALY IS A SUM. Measured 2026-09-10 on the depot-arm query: three pages reported
+// total_count 250 apiece and delivered 100 + 100 + 91 = 291 items. The population handed over
+// EXCEEDED the total the same responses declared, which ordinary pagination cannot do. So the claim
+// folds page receipts and compares the SUM, and the fixture carries all three real page sizes
+// rather than one item standing in for a walk.
+data observed_page_sizes: List<Int> = [100, 100, 91]
+
+fn pages_total_delivered() -> Int {
+  fold(observed_page_sizes, init: 0, f: (acc, n) => acc + n)
+}
+
+test fn the_pages_delivered_more_than_the_reported_total() -> Bool {
+  let delivered = pages_total_delivered()
+  delivered == 291
+    && count(observed_page_sizes) == 3
+    && delivered > hermetic_code_search_total_count
+    && hermetic_code_search_total_count == 250
+}
+
+// AND THE ORDINARY CASE MUST NOT SATISFY IT, which is what the old claim lacked. A first page of
+// 100 out of a genuine 250 is normal pagination and this property must stay FALSE for it —
+// otherwise the claim is once again true of every response and says nothing about the anomaly.
+test fn ordinary_pagination_does_not_satisfy_the_anomaly() -> Bool {
+  let ordinary_first_page = 100
+  ordinary_first_page < hermetic_code_search_total_count
+    && pages_total_delivered() > hermetic_code_search_total_count
 }
 
 // -------------------------------------------------------------------------------------
