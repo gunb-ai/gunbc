@@ -86,16 +86,10 @@ type NativeDriverCostAccounting
 
 // Fifty milliseconds on the host monotonic wall Instant the driver uses. A remainder larger
 // than this is unattributed driver work, not a rounding crumb.
-data native_driver_cost_remainder_tolerance_nanos: Nanosecond =
-  millisecond_to_nanosecond(m: millisecond(count: 50))
+data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count:
-    nanosecond_count(n: rows.load)
-      + nanosecond_count(n: rows.context)
-      + nanosecond_count(n: rows.prepare)
-      + nanosecond_count(n: rows.eval)
-  )
+  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval))
 }
 
 fn native_driver_cost_account(
