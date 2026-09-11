@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.check_subject_narrower_than_its_declared_claim
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data check_subject_narrower_than_its_declared_claim: RecurringFailureMode = RecurringFailureMode {
@@ -142,7 +143,18 @@ data check_subject_narrower_than_its_declared_claim: RecurringFailureMode = Recu
     "A MERGE-SAFETY SPECIMEN, gunbc#10688, where the narrowing was a DIRECTION rather than a population. After a clean auto-merge deleted a roster row unseen, the repair was a set-difference check run on every subsequent merge, reported as `no roster losses against either side`. That sentence was true and useless: the check computed only `identities present in the base or in theirs and missing now`, so it ranged over LOSSES and the claim it was cited for was that the roster survived the merge. A DUPLICATE is not a loss. The next merge produced one -- the same row at both the position this branch had restored it to and the position main landed it at -- and it passed the check cleanly, then failed two floor witnesses whose whole subject is duplicate detection. ",
 
     "WHAT MAKES THE DIRECTION CASE WORSE THAN THE POPULATION CASE: a narrow population is at least visibly narrow, while a set difference LOOKS total because it names both sides. `comm -23 base current` reads as a comparison of two rosters and is in fact a one-way question asked twice. The rule for this shape: a check over two sets owes BOTH differences and the multiplicity, and a claim phrased as `survived` or `reconciles` is a claim about all three. ",
+
+    "**THE DIRECTION CASE AT ANALYTIC GRAIN, WHERE THE CHECK IS A HUMAN READING AND THE CLAIM IS A RULING (royal-wolf-747, gunbc#10997, 2026-09-11).** The declared claim was SYMMETRIC -- `serving and compute share one lease algebra, one pool, one seat race` -- and the evidence was one relatum: the serving CONSUMER, `gunbc.harness.harness_seat`, whose nine imports really do reach `product.capacity.lease` and `fabric_seat_acquire`. The compute-allocation PRODUCER was never read. It does not import `product.capacity.lease` at all, contains zero `fabric_seat_acquire` occurrences, linearizes with three `file_compare_and_set` calls, and holds cells with `product.fabric.execution::LeaseIdentity`, whose own carrier note says it has no timestamp and no expiry -- a different algebra from the termed `LeaseGrant`. The narrower true claim, that both reach `select_supply`, was correct and was silently widened into one about occupancy. ",
+
+    "WHY THIS ONE SURVIVED REVIEW, which is the part worth keeping: the ruling was reviewed twice and APPROVED twice, and both reviewers verified the citations -- every `decl_ref` resolved, and `harness_seat` really did import what the ruling said it imported. Checking that the offered evidence is REAL does not check that it COVERS the claim, so a one-sided claim with impeccable citations passes citation review by construction. ",
+
+    "THE RECOGNITION RULE FOR THIS FORM: when a claim is about a RELATION -- shares, agrees with, is equivalent to, both inhabit -- name each relatum and say which one the evidence was read from. If the answer is one of them, the claim is about the other by assumption. For a producer/consumer pair specifically, a consumer's imports establish what the CONSUMER inhabits and nothing whatever about the producer.",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fabric_control_plane", decl_name: "reserve_selected_cell", field: WholeDeclaration },
+    DeclarationRef { module_path: "product.fabric.execution", decl_name: "LeaseIdentity", field: WholeDeclaration },
+    DeclarationRef { module_path: "product.capacity.lease", decl_name: "LeaseGrant", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.harness.harness_seat", decl_name: "harness_bind_seat", field: WholeDeclaration },
+  ],
 }

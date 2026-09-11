@@ -5,10 +5,10 @@ serving capacity is modeled in `gunbc.spark.*` + `gunbc.harness.*`, compute capa
 `gunbc.fabric.*` + `gunbc.compute.*`. Both admit work to a scarce resource under a lease. Is that a
 §3 fork?
 
-**Verdict: not a fork, and not two unrelated subjects either. It is one shared authority already
-consumed by two distinct subjects.** The premise that motivated the question — "neither references
-the other for that purpose" — is false at symbol grain. The residual defect is a citation one, not
-an architectural one: DESIGN §3b's `fabric / compute` conformance row names two *consumers* as the
+**Verdict: not a fork, and not two unrelated subjects either. Two distinct subjects that share the
+priced SELECTION fold and do NOT share an occupancy producer.** The premise that motivated the
+question — "neither references the other for that purpose" — is false at symbol grain for selection.
+The residual defect is a citation one, not an architectural one: DESIGN §3b's `fabric / compute` conformance row names two *consumers* as the
 domain's home authorities and omits the authorities both subjects actually inhabit.
 
 ## 1. The census
@@ -18,7 +18,8 @@ domain's home authorities and omits the authorities both subjects actually inhab
 `gunbc.product.capacity.*` and `gunbc.product.fabric.*` hold the admission concept once, generically:
 
 - `product.capacity.lease` — `LeasePolicy`, `LeaseGrant`, `LeaseFence`, `fence_verdict`,
-  `ReleaseLaw`, `capacity_after_expiry`. One lease algebra, no second one anywhere.
+  `ReleaseLaw`, `capacity_after_expiry`. This is the **serving** side's lease algebra. It is *not*
+  the corpus's only one — see §1b.
 - `product.capacity.pool` / `pool_events` / `event_chain` — `Pool<Count, One>`, `SeatRequest`,
   `PoolAcquired`/`PoolReleased`, `PartitionId`, `HeadExpectation`, `ChainEvent`.
 - `product.fabric.selection` — `select_supply<P>`, `CandidateOffer<P>`, the priced axes
@@ -28,7 +29,8 @@ domain's home authorities and omits the authorities both subjects actually inhab
   provider subject, which is precisely the shape a shared authority takes.
 - `product.fabric.work` — `ExecutionRequirements`, `ControlPlaneCapacity`, `TrustDomainRef`.
 - `gunbc.fabric_event_log` — `fabric_seat_acquire`, `fabric_seat_observe`, `event_log_append`,
-  `event_log_observe_head`. The compare-and-set seat race lives here, in a **fabric** module.
+  `event_log_observe_head`. The seat race lives here, in a **fabric** module — but it is the
+  **serving** occupancy producer, not the compute one (§1b).
 
 ### Subject A — compute cells (`gunbc.fabric_*`, `gunbc.compute.*`)
 
@@ -56,9 +58,40 @@ EqualCostTieUnresolved }`, `product.fabric.work { ExecutionRequirements, Control
 `product.capacity.pool_events`, and `gunbc.fabric_event_log { fabric_seat_acquire }`. Its own comment
 says it: *"product.fabric.selection ranks the survivors, and fabric_seat_acquire settles the race."*
 
-So the vocabulary coincidence (lease / grant / release / admission / capacity class / reservation)
-is not an alias. It is one set of declarations with two consumers. §2's decompose→map→reduce has
-already run on this concept; there is nothing left to unify.
+So for **selection**, the vocabulary coincidence is not an alias: it is one fold with two consumers,
+and §2's decompose→map→reduce has already run there. For **occupancy** it has not — see §1b.
+
+## 1b. Where they do NOT coincide: occupancy and linearization
+
+An earlier revision of this document claimed "one lease algebra, one pool, one seat race". That was
+wrong, and it was wrong in an instructive way: the evidence was the *serving consumer's* imports,
+and the claim was about *both producers*. The compute-allocation producer was never read. Measured
+in `gunbc.fabric_control_plane`:
+
+- it does **not** import `product.capacity.lease` at all;
+- `fabric_seat_acquire` / `SeatRequest` occurrences: **zero**;
+- `file_compare_and_set` occurrences: **three**;
+- it imports `product.fabric.execution` for `LeaseIdentity` / `ExecutionGrant`.
+
+The two lease carriers are genuinely different algebras, and `LeaseIdentity`'s own carrier note says
+so: it "has no timestamp and no expiry, and its stale arm is a supplied observation rather than a
+verdict derived from a deadline." `LeaseGrant` carries `granted_at`, `expires_at`,
+`maximum_duration_seconds` and a `ReleaseLaw`.
+
+| | serving | compute cell |
+|---|---|---|
+| allocation carrier | `product.capacity.lease::LeaseGrant` (termed) | `product.fabric.execution::LeaseIdentity` (timeless) |
+| occupancy state | `SeatRequest` / pool events | `CellReservation` / `CellSlotState` |
+| linearization | `fabric_seat_acquire` over an append-only event chain | `file_compare_and_set` over a file-backed CAS |
+| selection | `select_supply` | `select_supply` via `floor_supply_selection` |
+
+`gunbc.fabric_quota` does consume `LeaseGrant` and `fabric_seat_acquire` — but its subject is
+upstream **API rate-limit** quota, so it proves the capacity algebra has a second consumer, not that
+`broker_reserve_for_demand` inhabits it.
+
+**So the accurate statement is: selection is shared, occupancy is not.** That is a sharper result
+than the one it replaces, because it names exactly where a future unification would have to
+happen — one occupancy producer under two subjects — rather than asserting it already had.
 
 ### Where they genuinely differ
 
@@ -75,7 +108,7 @@ already run on this concept; there is nothing left to unify.
    distinguishing fact and it sits on the serving side of the shared pool, not beside it.
 3. **Subject grain and refusal shape.** Compute admission refuses with
    `WorkInfrastructureRefusal`; serving admission refuses with `AdmissibilityUnread` /
-   `SeatAcquireRefused`. Different observation boundaries, same lease algebra underneath.
+   `SeatAcquireRefused`. Different observation boundaries over different lease algebras (§1b).
 
 ### The "third home for the address fact" — dissolved
 
@@ -85,9 +118,10 @@ for one fact (where a host answers), not a second home for capacity. An address 
 
 ## 2. The three-valued answer (DESIGN §3b)
 
-**Two genuinely distinct subjects sharing one already-single authority.** Not a fork (no second
-lease algebra, no second selection fold, no second seat race). Not a bare-alias coincidence (the
-sharing is by import and call, not by name).
+**Two genuinely distinct subjects sharing one selection authority and carrying separate occupancy
+producers.** Not a fork: there is no second *selection* fold, and the subjects are not two names for
+one thing. But there *are* two lease algebras and two linearizations, so this is not "one authority,
+two subjects" either — it is shared where it is shared, and separate where it is separate.
 
 **Serving belongs INSIDE the `fabric / compute` conformance domain, not beside it.** The domain's
 own question already reads "a machine, **a serving head**, a build slot, a budget" — serving is
@@ -121,7 +155,12 @@ is the *authority*.
 
 ## 4. What this ruling does NOT do
 
-No migration is named because none is warranted — there is no X to uproot. Explicitly: the
+No migration is named. For **selection** there is no X to uproot: the fold is already shared. For
+**occupancy** there are two producers and therefore an X-and-Y shape does exist — but unifying them
+is not this ruling's question, was not asked for, and would need its own evidence about whether a
+timeless `LeaseIdentity` and a termed `LeaseGrant` *should* be one carrier. Naming that as a cut
+here would be asserting the same kind of unexamined claim this revision exists to remove. What this
+ruling does say is where such a cut would have to land. Explicitly: the
 replacement-migration doctrine does **not** apply here, and a proposal to "move serving into the
 fabric control plane" would be a regression, because it would fuse a settling subject with a
 non-settling one under one root and force serving to carry money reservation it has no payer for.
