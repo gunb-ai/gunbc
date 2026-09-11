@@ -316,7 +316,10 @@ test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
 // and does not run. Every witness the census names is under v2.test., which the roster admits.
 //
 // AND THIS WITNESS IS NOT. test.claim.v2_compile_obligation_census_witness_test matches no prefix in
-// the roster, so the arm below asserts its own dormancy on ordinary required floors. That is an
+// the roster, so the arm below asserts its own dormancy on ordinary required floors. What selects it
+// otherwise is narrower than a closure walk: changed-witness selection folds the EDITED TEST
+// FUNCTIONS in the run's diff, so editing what these arms CALL without editing the arms themselves
+// selects nothing. That is an
 // uncomfortable thing for a witness to prove about itself and it is the honest pair: a predicate
 // that answered "inside" to everything would pass the first conjunct and fail the second, and using
 // any other module as the control would have let this file avoid stating its own standing.

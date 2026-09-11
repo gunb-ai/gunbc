@@ -1023,12 +1023,21 @@ fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
 // 3c). Today the six counts have exactly one executing consumer and it is a human running
 // census_counts; the WITNESS consumes the derivation beneath them — witness_subject_survives_every_subtraction,
 // interpreted_standing and obligation_executes_natively are all exercised by
-// test.claim.v2_compile_obligation_census_witness_test, WHICH RUNS ON CHANGES THAT TOUCH ITS OWN
-// CLOSURE AND IS DORMANT ON ORDINARY REQUIRED FLOORS: its module matches no row in
-// v2.workflow.required_floor required_gate_prefixes, so the floor discovers it and dispositions it
-// DeclinedOutsideGateClosure. That is admissible and it is stated at that grain deliberately — an
-// earlier cut of this sentence said the witness simply executes, which is the present-tense coverage
-// claim this same change files in the ledger. No required run reads a count. That is
+// test.claim.v2_compile_obligation_census_witness_test, AND THE GRAIN AT WHICH THAT WITNESS RUNS IS
+// NARROWER THAN TWO EARLIER CUTS OF THIS SENTENCE CLAIMED. It is DeclinedOutsideGateClosure on every
+// required run, because its module matches no row in v2.workflow.required_floor
+// required_gate_prefixes. What selects it otherwise is changed-witness selection, and that is
+// derived from the EDITED TEST FUNCTIONS IN THE RUN'S DIFF — v1_compiler.cli_run
+// changed_witness_identities_from_edited_test_fns folds the (file, function) pairs the diff touched
+// — not from a closure walk over what those functions call.
+//
+// SO THE CONSEQUENCE IS SHARPER THAN "dormant on ordinary floors": a later change that edits
+// interpreted_standing, native_standing or witness_subject_in_native_lane WITHOUT touching the
+// witness file selects nothing, and the derivation those folds implement is unchecked on that run.
+// The first cut of this sentence said the witness simply executes; the second said it runs on
+// changes touching its closure. Both were present-tense coverage claims in the authority a reader
+// consults first, each overstating by one grain, and both are the class this same change files in
+// the ledger. No required run reads a count either. That is
 // the admissible middle state of section 3c and not the red one only because the later consumer and
 // its trigger are named here: the counts become a receipt line when the required floor publishes an
 // obligation-coverage receipt alongside its claim results, at which point census_counts is that
