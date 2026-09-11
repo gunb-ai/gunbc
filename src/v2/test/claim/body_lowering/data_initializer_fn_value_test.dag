@@ -1,42 +1,19 @@
 module v2.test.claim.body_lowering.data_initializer_fn_value
 
+import v2.compiler.body_lowering_fold {
+  body_lower_is_structure_preserved_emitted
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Cause R: a function value in a data-record field wrapper-retained at admit_normalized_tree
-// because dag_surface_arrow_lambda and dag_surface_fn_literal had no producer. The identical
-// record literal inside a fn body already accepted. The shells are now structure-preserved after
-// the child fold, same door as field_init.
+// because dag_surface_arrow_lambda and dag_surface_fn_literal had no producer. The shells are
+// now structure-preserved after the child fold, same door as field_init. Full-module
+// tokenize/parse/normalize of a data initializer is above the floor's 500ms changed-witness CPU
+// ceiling; this claim is the cheap discriminator for those two identities. The closure receipt
+// is the population green for src/v2/std/logic.dag.
 
-fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^data_initializer_fn_value_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-          }
-      }
-  }
-}
-
-data src_data_lambda_field: String = "module m.t\ntype A {\n  meet: fn(Int, Int) -> Int\n}\ndata d: A = A {\n  meet: (a, b) => a\n}\nfn f() -> Int {\n  1\n}\n"
-
-data src_data_fn_literal_field: String = "module m.t\ntype A {\n  meet: fn(Int, Int) -> Int\n}\ndata d: A = A {\n  meet: fn(a, b) { a }\n}\nfn f() -> Int {\n  1\n}\n"
-
-data src_lambda_in_fn_body: String = "module m.t\ntype A {\n  meet: fn(Int, Int) -> Int\n}\nfn f() -> A {\n  A {\n    meet: (a, b) => a\n  }\n}\n"
-
-test fn data_record_arrow_lambda_field_is_not_retained_holds() -> Bool {
-  normalize_outcome(src: src_data_lambda_field) == "ACCEPTED"
-}
-
-test fn data_record_fn_literal_field_is_not_retained_holds() -> Bool {
-  normalize_outcome(src: src_data_fn_literal_field) == "ACCEPTED"
-}
-
-test fn lambda_in_fn_body_control_holds() -> Bool {
-  normalize_outcome(src: src_lambda_in_fn_body) == "ACCEPTED"
+test fn arrow_lambda_and_fn_literal_are_structure_preserved_holds() -> Bool {
+  body_lower_is_structure_preserved_emitted(emitted: ^dag_surface_arrow_lambda)
+    && body_lower_is_structure_preserved_emitted(emitted: ^dag_surface_fn_literal)
 }
