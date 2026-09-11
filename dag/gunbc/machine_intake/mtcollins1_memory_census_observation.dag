@@ -1,0 +1,602 @@
+module gunbc.machine_intake_mtcollins1_memory_census_observation
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { BitWidth, bit_width }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE HOST-SIDE MEMORY CENSUS OF MT. COLLINS UNIT 1, taken 2026-09-10T20:02:36Z from a Linux that
+// ran ON THE MACHINE. Every field below is read from artifacts/bmc/mtcollins1-hw-census.txt or
+// artifacts/bmc/mtcollins1-hw-census-sol.log, whose digests are declared here; nothing is stated
+// that those two files do not contain.
+//
+// WHY THIS IS A SEPARATE MODULE FROM mtcollins1_access_observation. That module answers what the
+// CONTROLLER is and what it admits out of band. This one answers what the HOST reports about its
+// own installed memory, which is a different subject read over a different path — the controller
+// only delivered the boot image. Merging them would let a BMC observation and a host observation
+// share one raw_response, and a reader resolving that digest would fetch bytes that do not mention
+// half the fields.
+//
+// THE TWO CAPTURES ARE ONE BOOT, AND THAT IS ESTABLISHED RATHER THAN ASSERTED. The SOL transcript
+// carries the census file's own sha256, printed to the console by the script that produced it
+// ("census complete: 247849 bytes sha256=9ec33e27…"), and that digest equals the digest of the
+// committed census file. So the firmware-side channel map in the transcript and the Linux-side
+// per-slot table in the census file are bound to the same power-on by evidence internal to the
+// artifacts, not by the author's say-so about when each was taken.
+
+data mtcollins1_census_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-hw-census.txt"
+
+data mtcollins1_census_byte_count: Int = 247849
+
+// THE HOST COMPUTED THIS DIGEST ITSELF, BEFORE THE BYTES CROSSED THE NETWORK, and reported it to
+// the serial console; the receiving side recomputed it after writing the file. The two agree, so
+// the committed bytes are the bytes the machine produced and the transfer is not a trusted step.
+// A digest taken only after arrival would have proved the file intact against nothing.
+data mtcollins1_census_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "9ec33e27b225848e2edc7454e0ff21b9081a19396f1a7205fe99529cf842bc8f",
+})
+
+data mtcollins1_census_sol_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-hw-census-sol.log"
+
+data mtcollins1_census_sol_byte_count: Int = 240475
+
+data mtcollins1_census_sol_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8",
+})
+
+// THE MANIFEST DIGEST IS OVER THE ORDERED BYTE CONCATENATION of the census file followed by the
+// SOL transcript, which is stated because a digest whose derivation is not stated cannot be
+// re-derived by a reader. `cat mtcollins1-hw-census.txt mtcollins1-hw-census-sol.log | sha256sum`.
+data mtcollins1_census_evidence_manifest_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "7b2970e319f0679297577c5de2289fa4edfda8975cd7af336d9c1c983e81f755",
+})
+
+data mtcollins1_census_observed_at: EpochMs = 1789070556000
+
+// THE OPERATING SYSTEM THAT PRODUCED THE READINGS, named because dmidecode and EDAC are its
+// interpretations of firmware tables rather than direct hardware reads, so which kernel asked
+// matters to what a re-run would reproduce.
+data mtcollins1_census_kernel: NonEmptyStr = "Linux 6.8.0-71-generic #71-Ubuntu SMP PREEMPT_DYNAMIC aarch64 (stock Ubuntu 24.04.3 live-server)"
+
+// ── the two scalar readings the year-end plan's exit clause names ──────────────────────────────
+
+// nproc, read on the machine. 160 is the expected figure for a dual-socket Altra Max at 80 cores
+// per socket, and numactl reports 2 nodes of 80 CPUs each in the same capture, so the count is
+// corroborated by a second reading rather than resting on one number.
+data mtcollins1_nproc: Int = 160
+
+// MemTotal in kB as the kernel reports it. This is the OS-USABLE figure and is NOT the nominal
+// population: 16 x 16 GiB is 256 GiB nominal, and the kernel reports about 249.9 GiB after
+// firmware and kernel reservations. gunbc.fleet.fleet_intent already rules that conflating these
+// two is a live error class, so the nominal figure is carried by the slot rows below and this row
+// answers only for what the kernel could use.
+data mtcollins1_memtotal_kb: Int = 262088084
+
+// ── what EDAC actually exposes, which is the load-bearing negative result ──────────────────────
+
+// THE BRIEF THAT COMMISSIONED THIS CENSUS EXPECTED EDAC TO CARRY THE CHANNEL MAP, and it does not.
+// That expectation is reasonable and is how EDAC behaves on platforms with a native
+// memory-controller driver (skx_edac, amd64_edac), which enumerate csrow/channel nodes because the
+// OS owns the controller's topology. This platform does not use such a driver.
+//
+// WHY, MECHANICALLY, AND THIS IS THE PART THAT MAKES IT STRUCTURAL RATHER THAN A GAP TO CHASE. The
+// capture carries "GHES: APEI firmware first mode is enabled by APEI bit". Under ACPI APEI
+// firmware-first, the firmware handles memory errors and hands the OS finished error records; the
+// OS never enumerates the memory controller itself. ghes_edac therefore registers ONE synthetic
+// controller and mirrors the SMBIOS Type 17 device list into it purely so a GHES error record has
+// a DIMM to be attributed to. It is an error-reporting shim, not a topology driver.
+//
+// SO THE READINGS BELOW ARE A MEASURED PROPERTY OF THIS PLATFORM AND NOT A FAILED PROBE. An
+// unprobed controller and a controller probed and found to expose no channel topology are
+// different states, and only the second is authorable here. csrow_node_count is 0 because
+// `find /sys/devices/system/edac` returned no path containing "csrow" — the absence is a counted
+// reading over an enumerated tree, not an inference from a driver name.
+type MtCollins1EdacTopologyObservation {
+  driver_name: NonEmptyStr
+  apei_firmware_first: Bool
+  memory_controller_count: Nat
+  csrow_node_count: Nat
+  dimm_node_count: Nat
+  corrected_error_count: Int
+  uncorrected_error_count: Int
+}
+
+data mtcollins1_edac_topology: MtCollins1EdacTopologyObservation = MtCollins1EdacTopologyObservation {
+  driver_name: "ghes_edac",
+  apei_firmware_first: true,
+  memory_controller_count: 1,
+  csrow_node_count: 0,
+  dimm_node_count: 16,
+  corrected_error_count: 0,
+  uncorrected_error_count: 0,
+}
+
+// THE EDAC-CLEAN VERDICT, AND IT IS NOW LOAD-BACKED RATHER THAN A SNAPSHOT. The first capture read
+// zero counters on a host up about 20 seconds, which bounds nothing: an idle machine that has
+// touched almost no memory cannot demonstrate that its memory is sound. That reading was recorded
+// here as EdacSnapshotClean precisely so it could not be quoted as a qualification.
+//
+// THE SECOND CAPTURE RUNS A NAMED WORKLOAD AND READS THE COUNTERS ON BOTH SIDES OF IT. Four 16 GiB
+// tmpfs chunks (64 GiB total) are written from /dev/urandom, then hashed twice and the two passes
+// compared. All 34 EDAC counters read 0 BEFORE and 0 AFTER; mc0's ce_count, ue_count,
+// ce_noinfo_count and ue_noinfo_count are 0 on both sides.
+//
+// THE DIGEST COMPARISON IS AN INDEPENDENT CHECK AND THAT IS WHY IT IS THERE. EDAC counters are the
+// memory controller's own account of itself; if the controller fails to notice a fault, its
+// counters stay zero and a receipt reading only those counters would report clean. Hashing 64 GiB
+// twice and requiring the digests to match tests the DATA rather than the controller's opinion of
+// the data, so a silent corruption the ECC path missed would still surface as a mismatch. Both
+// passes agreed.
+//
+// WHAT THIS STILL IS NOT. 64 GiB is a quarter of the installed 256 GiB, the passes take minutes
+// rather than hours, and nothing here exercises thermal or long-duration failure modes. This
+// discharges "Linux EDAC pass clean" for the hw-first-host clause; it does NOT discharge a soak,
+// and the memtest86 pass recorded earlier in the intake remains the endurance evidence.
+data mtcollins1_edac_clean_at_capture: Bool = true
+
+data mtcollins1_edac_uptime_at_capture_seconds: Int = 20
+
+type MtCollins1MemoryWorkload {
+  description: NonEmptyStr
+  bytes_exercised: Int
+  write_exit_status: Int
+  digest_stable_across_passes: Bool
+  edac_corrected_before: Int
+  edac_corrected_after: Int
+  edac_uncorrected_before: Int
+  edac_uncorrected_after: Int
+}
+
+data mtcollins1_memory_workload: MtCollins1MemoryWorkload = MtCollins1MemoryWorkload {
+  description: "4 x 16 GiB tmpfs chunks seeded from /dev/urandom, sha256 hashed twice and the passes compared; EDAC tree read immediately before and immediately after.",
+  bytes_exercised: 68719476736,
+  write_exit_status: 0,
+  digest_stable_across_passes: true,
+  edac_corrected_before: 0,
+  edac_corrected_after: 0,
+  edac_uncorrected_before: 0,
+  edac_uncorrected_after: 0,
+}
+
+// ── the per-connector population, joined to the memory channel ─────────────────────────────────
+
+// SMBIOS DOES NOT PRINT THE J-NUMBERS. Its DeviceLocator strings are "DIMM 1".."DIMM 16" for
+// socket 0 and "Socket 1 DIMM 1".."Socket 1 DIMM 16" for socket 1 — recorded verbatim in
+// smbios_locator — while the board silkscreen and Ampere's Getting Started Guide name the
+// connectors J1..J32. The connector field carries the J-number under the identification stated at
+// mtcollins1_connector_identification_basis, and the raw locator is carried beside it so a reader
+// can see exactly what was read and what was inferred.
+type MtCollins1SlotOccupancy
+  = SlotPopulated {
+      part_number: NonEmptyStr
+      rank_count: Nat
+      serial_number: NonEmptyStr
+      configured_mts: Int
+    }
+  | SlotEmpty
+
+// OCCUPANCY IS A COPRODUCT BECAUSE AN EMPTY SLOT HAS NO PART, NO RANK AND NO SERIAL. A record with
+// nullable module fields would make "populated with an unknown part" and "empty" the same shape,
+// and every consumer would have to re-derive which it was holding. Here the distinction has no
+// constructor to get wrong.
+type MtCollins1SlotObservation {
+  connector: Nat
+  smbios_locator: NonEmptyStr
+  processor_socket: Nat
+  occupancy: MtCollins1SlotOccupancy
+}
+
+data mtcollins1_socket0_slots: List<MtCollins1SlotObservation> = [
+  MtCollins1SlotObservation { connector: 1, smbios_locator: "DIMM 1", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "716CAAE8", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 2, smbios_locator: "DIMM 2", processor_socket: 0, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 3, smbios_locator: "DIMM 3", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "32F42EB5", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 4, smbios_locator: "DIMM 4", processor_socket: 0, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 5, smbios_locator: "DIMM 5", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA79", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 6, smbios_locator: "DIMM 6", processor_socket: 0, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 7, smbios_locator: "DIMM 7", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA7D", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 8, smbios_locator: "DIMM 8", processor_socket: 0, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 9, smbios_locator: "DIMM 9", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "32F42F1A", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 10, smbios_locator: "DIMM 10", processor_socket: 0, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 11, smbios_locator: "DIMM 11", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7CJR8N-VK", rank_count: 2, serial_number: "53BC6E37", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 12, smbios_locator: "DIMM 12", processor_socket: 0, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 13, smbios_locator: "DIMM 13", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "324D6C80", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 14, smbios_locator: "DIMM 14", processor_socket: 0, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 15, smbios_locator: "DIMM 15", processor_socket: 0,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "82531556", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 16, smbios_locator: "DIMM 16", processor_socket: 0, occupancy: SlotEmpty },
+]
+
+data mtcollins1_socket1_slots: List<MtCollins1SlotObservation> = [
+  MtCollins1SlotObservation { connector: 17, smbios_locator: "Socket 1 DIMM 1", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA7F", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 18, smbios_locator: "Socket 1 DIMM 2", processor_socket: 1, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 19, smbios_locator: "Socket 1 DIMM 3", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA8D", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 20, smbios_locator: "Socket 1 DIMM 4", processor_socket: 1, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 21, smbios_locator: "Socket 1 DIMM 5", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "92EB346F", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 22, smbios_locator: "Socket 1 DIMM 6", processor_socket: 1, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 23, smbios_locator: "Socket 1 DIMM 7", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "716CAB6E", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 24, smbios_locator: "Socket 1 DIMM 8", processor_socket: 1, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 25, smbios_locator: "Socket 1 DIMM 9", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "8184CA6A", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 26, smbios_locator: "Socket 1 DIMM 10", processor_socket: 1, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 27, smbios_locator: "Socket 1 DIMM 11", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "51E93E99", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 28, smbios_locator: "Socket 1 DIMM 12", processor_socket: 1, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 29, smbios_locator: "Socket 1 DIMM 13", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR4N-VK", rank_count: 1, serial_number: "420EDC31", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 30, smbios_locator: "Socket 1 DIMM 14", processor_socket: 1, occupancy: SlotEmpty },
+  MtCollins1SlotObservation { connector: 31, smbios_locator: "Socket 1 DIMM 15", processor_socket: 1,
+    occupancy: SlotPopulated { part_number: "HMA82GR7AFR8N-VK", rank_count: 2, serial_number: "52A0A7B5", configured_mts: 2666 } },
+  MtCollins1SlotObservation { connector: 32, smbios_locator: "Socket 1 DIMM 16", processor_socket: 1, occupancy: SlotEmpty },
+]
+
+data mtcollins1_slots: List<MtCollins1SlotObservation> = concat(mtcollins1_socket0_slots, mtcollins1_socket1_slots)
+
+// ── the firmware's own channel map, which is where the channel fact actually lives ─────────────
+
+// THE ALTRA BOOT FIRMWARE PRINTS ITS DRAM TRAINING RESULT to the serial console before any OS
+// exists, one line per populated module, naming socket, memory controller and slot-within-channel
+// directly: "SK0 MC5 S0: RDIMM[ad:80] 16GB 2666 ECC 2R x8 RCD[32:86] HMA82GR7CJR8N-VK". This is
+// the only channel-resolved reading available on this platform, and it is strictly better than
+// what EDAC would have given: it names the controller AND the slot position within the channel,
+// which a csrow tree does not.
+//
+// EVERY POPULATED MODULE SITS AT S0 — slot 0 of its channel — on all sixteen channels, so the unit
+// is uniformly 1DPC and the sixteen empty connectors are the S1 position of each channel.
+type MtCollins1FirmwareChannelBinding {
+  processor_socket: Nat
+  memory_controller: Nat
+  slot_in_channel: Nat
+  connector: Nat
+  rank_count: Nat
+  chip_width: BitWidth
+  part_number: NonEmptyStr
+}
+
+data mtcollins1_firmware_channel_bindings: List<MtCollins1FirmwareChannelBinding> = [
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 0, slot_in_channel: 0, connector: 1,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 1, slot_in_channel: 0, connector: 3,  rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 2, slot_in_channel: 0, connector: 5,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 3, slot_in_channel: 0, connector: 7,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 4, slot_in_channel: 0, connector: 9,  rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 5, slot_in_channel: 0, connector: 11, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7CJR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 6, slot_in_channel: 0, connector: 13, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 7, slot_in_channel: 0, connector: 15, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 0, slot_in_channel: 0, connector: 17, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 1, slot_in_channel: 0, connector: 19, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 2, slot_in_channel: 0, connector: 21, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 3, slot_in_channel: 0, connector: 23, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 4, slot_in_channel: 0, connector: 25, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 5, slot_in_channel: 0, connector: 27, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 6, slot_in_channel: 0, connector: 29, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 7, slot_in_channel: 0, connector: 31, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+]
+
+// ── how connector numbers were attached to the two readings, and what discriminates the join ───
+
+// NEITHER READING PRINTS A J-NUMBER. The firmware names (socket, controller, slot-in-channel);
+// SMBIOS names "DIMM n". The connector field on both lists above is therefore a JOIN, and it is
+// declared as one rather than presented as a direct reading.
+//
+// THE UPSTREAM SIDE IS ALREADY MODELLED AND IS NOT RE-TRANSCRIBED HERE.
+// extdeps.ampere.mt_collins_product_brief.memory_population carries, from Tables 12-13 of Ampere's
+// Getting Started Guide, that connectors pair as {J1,J2}, {J3,J4} … {J31,J32} with pair k on MCU k,
+// that J1..J16 serve socket 0 and J17..J32 serve socket 1, and that the 16-DIMM 1DPC population
+// occupies the odd member of every pair. This module consumes that and adds no second copy of it.
+//
+// THE JOIN IS: SMBIOS "DIMM n" is connector Jn on socket 0 and J(16+n) on socket 1, taken in the
+// order the SMBIOS Type 17 structures appear.
+//
+// WHAT DISCRIMINATES IT, which matters because an ordering hypothesis that merely "looks right"
+// establishes nothing. Three independent checks, and the first is the sharp one:
+//
+//   1. A UNIQUE PART LANDS ON A UNIQUE POSITION. HMA82GR7CJR8N-VK occurs exactly ONCE in the
+//      machine. The firmware puts it at SK0 MC5; the SMBIOS table puts it at "DIMM 11". Under this
+//      join those are the same connector, J11, and MCU5's odd member is J11. A wrong ordering
+//      would have to place a one-of-sixteen part on the one position that agrees with the pair
+//      table, which no shift or reversal of the sequence does.
+//
+//   2. THE RANK SEQUENCE REPRODUCES INDEPENDENTLY OF PART NUMBER. SMBIOS's own Rank field reads
+//      1,2,1,1,2,2,1,2 across socket 0's populated slots and 1,1,2,1,1,1,1,2 across socket 1's;
+//      the firmware's 1R/2R column reads the same two sequences in MCU order. That is a second
+//      field, read by a different agent from a different table, agreeing position for position.
+//
+//   3. THE POPULATED SET IS EXACTLY THE ODD CONNECTORS, which is what the Getting Started Guide's
+//      16-DIMM row independently specifies, and the firmware independently reports every module at
+//      S0 — slot 0 of its channel — on all sixteen channels.
+//
+// WHAT IS NOT CLAIMED. This does not establish that the board silkscreen reads "J11" beside the
+// eleventh socket-0 connector; no one has looked at the board. It establishes that the connector
+// this repository calls J11, as Ampere's tables define it, is the one carrying the CJR8N module.
+// A physical-label check is a photograph, not a software reading, and is out of scope here.
+type MtCollins1ConnectorIdentificationBasis {
+  smbios_to_connector_rule: NonEmptyStr
+  discriminating_witness: NonEmptyStr
+  corroborating_checks: NonEmptyStr
+  not_established: NonEmptyStr
+  upstream_pair_authority: DeclarationRef
+}
+
+data mtcollins1_connector_identification_basis: MtCollins1ConnectorIdentificationBasis = MtCollins1ConnectorIdentificationBasis {
+  smbios_to_connector_rule: "SMBIOS Type 17 DeviceLocator \"DIMM n\" is connector Jn for socket 0 and J(16+n) for socket 1, in Type 17 structure order. SMBIOS prints no J-number; this is a join, not a reading.",
+  discriminating_witness: "HMA82GR7CJR8N-VK occurs exactly once in the unit. Firmware places it at SK0 MC5; SMBIOS places it at \"DIMM 11\"; the Getting Started Guide's pair table places MCU5's 1DPC member at J11. A one-of-sixteen part agreeing with the pair table at the single position that carries it is not reproduced by any shift or reversal of the sequence.",
+  corroborating_checks: "SMBIOS Rank reads 1,2,1,1,2,2,1,2 (socket 0) and 1,1,2,1,1,1,1,2 (socket 1) across populated slots in order, matching the firmware's 1R/2R column in MCU order field-for-field; and the populated set is exactly the odd connectors, which the guide's 16-DIMM row specifies and the firmware corroborates by reporting every module at slot S0 of its channel.",
+  not_established: "That the physical board silkscreen reads J11 at that connector. No one has inspected the board; that is a photograph, not a software reading.",
+  upstream_pair_authority: DeclarationRef {
+    module_path: "extdeps.ampere.mt_collins_product_brief.memory_population",
+    decl_name: "mt_collins_channel_connector_pairs",
+    field: WholeDeclaration,
+  },
+}
+
+// ── what the census does NOT answer, recorded so nobody re-runs the boot to look for it ────────
+
+// THE CHANNEL MAP IS NOT OBTAINABLE FROM EDAC ON THIS PLATFORM and re-booting will not change
+// that, because the cause is APEI firmware-first mode rather than a missing module or a boot
+// option. Recording the negative WITH its mechanism is the difference between a fact and an
+// unfinished errand: without it the next reader sees "no csrow tree" and schedules another boot.
+data mtcollins1_edac_channel_map_unavailable_reason: NonEmptyStr = "ghes_edac is an error-reporting shim under ACPI APEI firmware-first mode (dmesg: \"GHES: APEI firmware first mode is enabled by APEI bit\"), not a memory-controller topology driver. It registers one synthetic controller and mirrors the SMBIOS Type 17 device list so a GHES error record has a DIMM to name. No csrow or channel node exists to read, on any boot, without a native Altra memory-controller EDAC driver that does not exist in mainline. The channel-resolved reading comes from the boot firmware's DRAM training output instead, which is carried by mtcollins1_firmware_channel_bindings and is strictly richer, naming slot-within-channel as well as controller."
+
+// ── modelling obligations this census surfaces ─────────────────────────────────────────────────
+
+// A PART THIS UNIT ACTUALLY CARRIES HAS NO CATALOG ROW. extdeps.memory.sk_hynix carries
+// hma82gr7afr4n_vk_catalog and hma82gr7afr8n_vk_catalog; HMA82GR7CJR8N-VK appears nowhere in the
+// corpus. Until it has a row, no HostMemoryPopulation can be authored for this unit, because
+// MemoryPopulationRow takes a DramModuleCatalogRow and one of the three installed parts has none.
+//
+// THE ROW IS NOT AUTHORED HERE, and that restraint is the point. Its properties are known to this
+// module only because the firmware and SMBIOS reported them on one machine; a catalog row is an
+// upstream fact about a part SK Hynix sells, and minting it from our own boot log would be the
+// provenance inversion DESIGN section 3 forbids — a report rendered as an upstream fact. The row
+// belongs in extdeps.memory.sk_hynix, cited to SK Hynix's own module documentation, and this
+// module's job is to say the obligation exists and what was observed.
+type MtCollins1CensusModellingObligation {
+  subject: NonEmptyStr
+  why_it_blocks: NonEmptyStr
+  observed_properties: NonEmptyStr
+  correct_home: NonEmptyStr
+}
+
+data mtcollins1_uncatalogued_part_obligation: MtCollins1CensusModellingObligation = MtCollins1CensusModellingObligation {
+  subject: "HMA82GR7CJR8N-VK, installed at connector J11 (socket 0, MCU5), serial 53BC6E37.",
+  why_it_blocks: "extdeps.memory.sk_hynix has no catalog row for it, so no MemoryPopulationRow and therefore no HostMemoryPopulation can be authored for mtcollins1 the way gunbc.fleet.fleet_intent authors srv1..srv4.",
+  observed_properties: "Reported by this unit as 16 GB, DDR4, registered, ECC, 2 ranks, x8 chip width, configured at 2666 MT/s (firmware DRAM training and SMBIOS Type 17 agree on rank, width and data rate).",
+  correct_home: "extdeps.memory.sk_hynix, cited to SK Hynix module documentation. NOT authored from this census: a catalog row minted from our own boot log would render a local report as an upstream fact.",
+}
+
+// THE SAME-CHANNEL RANK RULE IS NOT IN THE CORPUS EITHER. The purchasing decision this census was
+// commissioned to inform turns on OCP Mt. Jade's constraint that a single channel may not mix 1R
+// and 2R modules, and nothing under extdeps.ocp.mt_jade carries it. Until it does, the per-connector
+// rank requirement that follows from the bindings above is a conclusion a human is drawing from a
+// document the corpus has not modelled, and it must not be authored here as though it were derived.
+data mtcollins1_rank_mixing_rule_obligation: MtCollins1CensusModellingObligation = MtCollins1CensusModellingObligation {
+  subject: "Same-channel rank mixing constraint for Mt. Jade / Mt. Collins (no 1R and 2R on one channel).",
+  why_it_blocks: "The fill decision for the sixteen empty connectors is exactly this rule applied to mtcollins1_firmware_channel_bindings. Without the rule modelled, the required rank per empty connector cannot be DERIVED in the substrate and would have to be asserted.",
+  observed_properties: "Not an observation of this unit at all; it is an upstream platform constraint. This unit merely makes it decision-relevant by carrying a mixed 1R/2R population across its sixteen channels.",
+  correct_home: "extdeps.ocp.mt_jade, cited to the OCP Mt. Jade specification's memory population table.",
+}
+
+data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObligation> = [
+  mtcollins1_uncatalogued_part_obligation,
+  mtcollins1_rank_mixing_rule_obligation,
+]
+
+// ── the controller's media state machine, recovered from the controller itself ─────────────────
+
+// THIS IS RECORDED BECAUSE MISREADING IT COST AN ENTIRE INVESTIGATION. redirection_status was read
+// here as a health value where nonzero meant trouble, so the 100 -> 1 transition was reported as a
+// media drop and a "decay clock" was measured off it. Both were wrong, and the correction did not
+// come from reasoning — it came from the controller's OWN served frontend (source.min.js), which
+// renders these values for the operator:
+//
+//   0    status_0 "~"                          idle / nothing attached
+//   100  status_100                            connecting / pending
+//   1    "Started" + " - Connection Accepted"  SERVING. The healthy steady state.
+//   2    " - Connection Denied"                refusal
+//   3    " - Login Failed"                     refusal
+//   4    " - MAX Session Reached"              refusal
+//   5    " - Permission Denied"                refusal
+//   any value outside {0,1,100} renders "Stopped"; session_index 255 renders "N/A".
+//
+// MEASURED AGAINST THE LIVE CONTROLLER: attach at 22:38:16 -> 100 with session_index 255 ->
+// session_index 0 at +12s, still 100 -> status 1 at +15s -> HELD at 1 for 4m27s idle and then
+// through an entire boot. So 1 is not a decay, it is the destination.
+//
+// THE CONSEQUENCE FOR ANY READINESS PREDICATE, and this is the part that matters beyond this unit:
+// "nonzero means attached" admits 100, which is merely CONNECTING, and admits 2 through 5, which
+// are REFUSALS. Only 1 may satisfy media-ready; 100 must be polled with a bound; 2-5 must be
+// distinct typed refusals. A predicate that resets a host on 100 can expose a partly-ready medium
+// to firmware reads, which is the plausible reading of the attempt-3 initrd failure below.
+type MtCollins1MediaStateMachine {
+  idle: Int
+  connecting: Int
+  serving: Int
+  first_refusal: Int
+  last_refusal: Int
+  authority: NonEmptyStr
+  readiness_rule: NonEmptyStr
+}
+
+data mtcollins1_media_state_machine: MtCollins1MediaStateMachine = MtCollins1MediaStateMachine {
+  idle: 0,
+  connecting: 100,
+  serving: 1,
+  first_refusal: 2,
+  last_refusal: 5,
+  authority: "The controller's own served frontend, source.min.js, which renders 1 as \"Started - Connection Accepted\", 2 \" - Connection Denied\", 3 \" - Login Failed\", 4 \" - MAX Session Reached\", 5 \" - Permission Denied\", and anything outside {0,1,100} as \"Stopped\". Not inferred from behaviour.",
+  readiness_rule: "Only 1 is media-ready. 100 is connecting and must be polled with a bound, never treated as attached. 2 through 5 are distinct refusals and must not be admitted by a nonzero test.",
+}
+
+// ── why the second capture took five attempts, and the defect that caused it ───────────────────
+
+// THE HOST WOULD NOT BOOT THE PRESENTED MEDIUM, AND THE REASON IS A FIELD THE BOOT-HANDOFF MODEL
+// DOES NOT CARRY. IPMI boot parameter 5 encodes TWO decisions: the device selector, and the BIOS
+// boot type (byte 1 bit 5 — 0 = PC-compatible/legacy, 1 = EFI). gunbc.machine_intake_oob_boot_handoff
+// and gunbc.machine_intake_mtcollins1_actuate model the SELECTOR and have no concept of the boot
+// type at all: `efiboot`, `boot_type` and `legacy` appear nowhere in that path. So every handoff
+// this repository performs requests the device under the DEFAULT boot type, which reads back as
+// "BIOS PC Compatible (legacy) boot".
+//
+// ON aarch64 THERE IS NO LEGACY BIOS BOOT PATH. A legacy-boot request for the virtual CD is
+// therefore unsatisfiable, the firmware cannot honour it, and it falls through to its own boot
+// order — PXE, which nothing on this segment answers, and then the UEFI shell. That is the
+// observed behaviour on every failed attempt.
+//
+// SETTING THE BIT FIXES IT, MEASURED: `chassis bootdev cdrom options=efiboot,persistent` reads back
+// "BIOS EFI boot" / "Force Boot from CD/DVD", and the very next reset booted the census image and
+// produced the capture this module now carries. One argv word is the whole difference.
+//
+// THE MODEL SAID THE HANDOFF SUCCEEDED EVERY TIME, WHICH IS THE DEEPER DEFECT AND THE REASON THIS
+// SURVIVED. oob_boot_handoff mints BootHandoffCompleted once the override reads back with the
+// expected rendering and the power action is accepted. Both were true on every failed attempt: the
+// selector really did say "Force Boot from CD/DVD", and the power cycle really was accepted. The
+// arm confirms a PRECONDITION and reports it as an EFFECT, so a handoff that provably never booted
+// anything is indistinguishable, in the model, from one that did. That is DESIGN section 5's
+// specification-without-execution, and it is why a legacy/EFI mismatch could persist undetected
+// across an entire intake lane.
+//
+// Fixing the argv without fixing the postcondition would remove this instance and leave the class:
+// the next unsatisfiable boot request would again be reported as completed.
+type MtCollins1BootDeliveryDefect {
+  missing_field: NonEmptyStr
+  why_it_fails_here: NonEmptyStr
+  measured_fix: NonEmptyStr
+  postcondition_defect: NonEmptyStr
+}
+
+data mtcollins1_boot_delivery_defect: MtCollins1BootDeliveryDefect = MtCollins1BootDeliveryDefect {
+  missing_field: "IPMI boot parameter 5 BIOS boot type (byte 1 bit 5: 0 = PC-compatible/legacy, 1 = EFI). Absent from gunbc.machine_intake_oob_boot_handoff and gunbc.machine_intake_mtcollins1_actuate, which model the device selector alone.",
+  why_it_fails_here: "The default reads back as \"BIOS PC Compatible (legacy) boot\". aarch64 has no legacy BIOS boot path, so a legacy-boot request for the virtual CD is unsatisfiable; the firmware falls through to PXE (unanswered on this segment) and then the UEFI shell.",
+  measured_fix: "chassis bootdev cdrom options=efiboot,persistent reads back \"BIOS EFI boot\" and the next reset booted the census image, producing mtcollins1-host-capture.txt.",
+  postcondition_defect: "oob_boot_handoff mints BootHandoffCompleted from override-readback plus power-action-accepted, never from host-side evidence that the intended device booted. Both preconditions held on every failed attempt, so the model reported success throughout. The argv fix without a real postcondition would close this instance and leave the class.",
+}
+
+// ── the unit binding, CLOSED by a later capture ────────────────────────────────────────────────
+
+// THIS RECEIPT'S FIRST CAPTURE BOUND ONLY TO THE BOARD MODEL and said so. It carried the kernel's
+// `DMI: FOXCONN Mt. Collins/Mt. Collins` line, which names a MODEL, and no SMBIOS Type 1/2/3, so
+// the board serial appeared nowhere in its bytes; what tied it to unit 1 was the delivery path,
+// which is provenance held by the author rather than a fact a reader can check inside the artifact.
+//
+// A SECOND CAPTURE CLOSES IT, and the closure is an EQUALITY BETWEEN TWO INDEPENDENT READS rather
+// than a stronger assertion of the same one. The host, reading its own SMBIOS Type 2 under Linux,
+// reports board serial 02030A800TEXFT02L. gunbc.machine_intake_mtcollins1_access_observation
+// reports the same serial from the CONTROLLER's IPMI FRU, over a different transport, from a
+// different agent, recorded days earlier. Host-side DMI and controller-side FRU agreeing on one
+// serial is what makes this an observation OF A UNIT; either alone is an observation of a reading.
+// THE ATTEMPT LABEL INSIDE THIS ARTIFACT IS NOT AN ATTEMPT IDENTITY, AND THAT IS A PRODUCER DEFECT
+// rather than a transcription slip. The capture's own header reads "attempt=3" — but so does the
+// FAILED run recorded at mtcollins1_attempt3_failure, whose artifact is committed as
+// mtcollins1-attempt3-sol.log. Two materially different attempts, minutes apart, one with no host
+// capture at all and one that produced these bytes, both answer to "attempt=3".
+//
+// THE CAUSE IS THAT THE PRODUCER CARRIED A LITERAL. The capture script hard-codes its own attempt
+// number, so re-running it re-uses the identity instead of minting a new one; the artifact FILE was
+// correctly never overwritten, but the identity inside it was. An attempt identity that a rerun can
+// silently duplicate is not an identity, and joining receipts on it would merge two attempts with
+// different outcomes.
+//
+// THE BYTES ARE NOT EDITED TO FIX THIS. They are what the machine produced, and rewriting a capture
+// to correct its own label would destroy the only property that makes it evidence. So the label is
+// recorded as unreliable, the model carries the distinguishing facts instead — different artifact,
+// different digest, different wall-clock window, different outcome — and the producer's literal is
+// named as the thing to remove.
+data mtcollins1_host_capture_attempt_label_defect: NonEmptyStr = "The capture's header reads attempt=3, the same label the FAILED run at mtcollins1_attempt3_failure carries. The producer hard-codes its attempt number, so a rerun reuses the identity rather than minting one. The artifacts are distinguished by digest and by wall-clock window (failed run 2026-09-10T22:19Z, this capture 2026-09-11T01:26:50Z to 01:30:29Z), never by that label. Removing the literal from the producer is the fix; the bytes are left exactly as captured."
+
+data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
+
+data mtcollins1_host_capture_byte_count: Int = 270880
+
+data mtcollins1_host_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a",
+})
+
+// CORRECTED. This previously read 1789428410000, which is 2026-09-14T23:26:50Z — nearly four days
+// after the capture actually ran. The artifact's own first line says
+// "GUNBC-HOST-CAPTURE mtcollins1 attempt=3 begin 2026-09-11T01:26:50Z", and this module's whole
+// claim is that it states nothing the artifact does not contain, so a timestamp the artifact
+// contradicts is the one kind of error it cannot be allowed to carry. 1789090010000 is that line.
+data mtcollins1_host_capture_observed_at: EpochMs = 1789090010000
+
+// EVERY SECTION OF THAT CAPTURE CARRIES ITS ARGV AND ITS EXIT STATUS, which is what makes a
+// missing reading distinguishable from a zero one. All nineteen sections exited 0, so no field
+// below is standing on a command that failed quietly.
+type MtCollins1SubjectBinding {
+  smbios_board_serial: NonEmptyStr
+  smbios_system_serial: NonEmptyStr
+  smbios_system_uuid: NonEmptyStr
+  baseboard_product: NonEmptyStr
+  corroborating_controller_read: NonEmptyStr
+}
+
+data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBinding {
+  smbios_board_serial: "02030A800TEXFT02L",
+  smbios_system_serial: "MXX2080619",
+  smbios_system_uuid: "d5b80e46-903a-1000-01e6-4cd68a3cc128",
+  baseboard_product: "FOXCONN Mt. Collins, board version 02030A800-600-G",
+  corroborating_controller_read: "gunbc.machine_intake_mtcollins1_access_observation reads board serial 02030A800TEXFT02L from the controller's IPMI FRU. The host reads the same serial from its own SMBIOS Type 2 under Linux. Two transports, two agents, one serial.",
+}
+
+// THE FAILED ATTEMPT IS PRESERVED, WHICH IS THE POINT OF PRESERVING IT. Attempt 3 was built to
+// close the binding gap above and to add a named memory workload with before/after EDAC counters.
+// It never produced a host capture: the kernel loaded from the virtual CD and then panicked with
+// "VFS: Unable to mount root fs on unknown-block(0,0)". THE ORIGINAL TEXT HERE CALLED THAT A
+// MEDIA DROP AND IT WAS WRONG TWICE OVER, so it is corrected rather than quietly edited.
+//
+// It read the 100 -> 1 transition as the session dying. It is not: the controller's own frontend
+// renders 1 as "Started - Connection Accepted" and 100 as connecting, so 100 -> 1 is the
+// redirection SUCCEEDING. That misreading is what mtcollins1_media_state_machine now records.
+//
+// And the console refutes the drop directly. The captured sequence is GNU GRUB, then
+// "EFI stub: Booting Linux Kernel", then "EFI stub: ERROR: Failed to load initrd:
+// 0x8000000000000001", then the VFS panic. So the firmware DID select the medium, GRUB DID run
+// off it, and the kernel DID start; what failed is the INITRD load, with EFI_LOAD_ERROR. A
+// medium that had vanished could not have served GRUB and a kernel first.
+//
+// WHAT THIS ATTEMPT THEREFORE DOES AND DOES NOT ESTABLISH. It establishes an initrd-load failure
+// on a boot that reached the CD. It does NOT establish why. The attempt reset the host while the
+// redirection was still at 100 (connecting), so a plausible reading is that GRUB's small reads
+// succeeded against a partly-ready medium and the larger initrd read did not — consistent with
+// the successful boots, which reset when the session had already reached 1. That is plausible and
+// unproven, and it is recorded at that strength deliberately.
+//
+// ITS BYTES ARE COMMITTED ANYWAY. The recurring failure mode this whole census exists to answer is
+// that a decisive observation gets produced by ad-hoc probing and then lost because the probe's
+// output was never a receipt; a FAILED probe is exactly as easy to lose and is evidence about the
+// delivery route's reliability, which is a fact the boot-delivery model needs. Attempt 3 also
+// produced a srv2-side observation before the boot — an ARP reachability reading with a typed
+// verdict against the expected MAC, and the boot artifact's digest — and that file stands on its
+// own regardless of the host never booting.
+//
+// WHY THERE IS NO ATTEMPT 5. Re-establishing the media after attempt 3 degraded further: stop-media
+// and start-media both answered HTTP 500 and the session never returned to 100. This controller is
+// the ONLY out-of-band path to the M1 canary, and hammering a degraded remote-media subsystem to
+// buy a subject binding and a workload is not a trade worth making against the risk of losing that
+// path. The run was stopped, the boot override cleared to "No override", and the controller left
+// verified healthy over IPMI (ARP REACHABLE at the expected MAC, mc info firmware 0.32).
+type MtCollins1CaptureAttemptFailure {
+  attempt: Nat
+  intent: NonEmptyStr
+  observed_failure: NonEmptyStr
+  preserved_artifacts: NonEmptyStr
+  why_not_retried: NonEmptyStr
+}
+
+data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1CaptureAttemptFailure {
+  attempt: 3,
+  intent: "Close the subject-binding gap (dmidecode type 1/2/3), record per-section argv and exit status, and add a named memory workload with EDAC counters read before and after, so the health reading would be a load-based one rather than a snapshot.",
+  observed_failure: "The host reached the CD's GRUB, started the EFI kernel, and then failed at the INITRD load: \"EFI stub: ERROR: Failed to load initrd: 0x8000000000000001\", followed by \"VFS: Unable to mount root fs on unknown-block(0,0)\". NOT a media drop — a medium that had vanished could not have served GRUB and a kernel first. The host was reset while the redirection was still at 100 (connecting) rather than 1 (started), which is a plausible but unproven cause. No host capture was produced.",
+  preserved_artifacts: "artifacts/bmc/mtcollins1-attempt3-sol.log (the console, carrying the panic) and artifacts/bmc/mtcollins1-attempt3-srv2-side.txt (the pre-boot ARP observation with a typed verdict against the expected MAC, plus the boot artifact digest). A failed attempt whose bytes are discarded reproduces the exact failure mode this census exists to end.",
+  why_not_retried: "A further attempt refused before booting: stop-media and start-media both answered HTTP 500 and the session never returned to redirection_status 100. This controller is the only out-of-band path to the M1 canary, so driving a degraded remote-media subsystem harder was declined in favour of leaving the path intact. Boot override was cleared and the controller verified healthy over IPMI.",
+}
