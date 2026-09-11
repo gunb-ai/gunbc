@@ -1,0 +1,197 @@
+module gunbc.ci_run_attempt_census
+
+import std.types { String, NonEmptyStr, Bool, Int, Timestamp }
+import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, page_fold_refusal_key }
+
+// WHETHER A WORKFLOW RUN EXECUTED, AND WHETHER THE CENSUS THAT SAYS SO IS CLOSED.
+//
+// These are two questions and this module keeps them apart, because a session on 2026-09-09/10
+// got the first one right and the second one wrong, and only the second was load-bearing. The
+// job-count reads were correct per run; the POPULATION they were reported over was not closed,
+// and the report named it as though it were.
+//
+// EVERY ARM BELOW HAS A SPECIMEN. None is defensive modelling against an imagined failure:
+//   latest-attempt masking      every job count taken through ListJobs answered for the wrong
+//                               attempt, because that operation pins filter=latest
+//   filter disagreement         an actor-filtered query returned a row whose actor was a
+//                               DIFFERENT actor, so the provider disagreed with its own filter
+//   unstable totals             two identical filtered queries reported total_count 535, then 523
+//   partial pages read as whole six pages were scanned, DUPLICATE run ids appeared in the output,
+//                               and the result was reported as the actor's population
+//
+// THE FOURTH IS WHY DUPLICATES ARE REPORTED RATHER THAN SILENTLY REMOVED. Deduplicating quietly
+// would have produced the same wrong claim with the evidence deleted: the duplicate ids WERE the
+// signal that pagination moved under the read. A census that dedupes without counting has
+// destroyed its own falsifier.
+
+type AttemptExecution
+  = AttemptExecuted { job_count: Int }
+  | AttemptDidNotExecute
+  | AttemptUnobserved { detail: String }
+
+// A run's conclusion cannot stand in for this. Measured the same session: nine runs concluded
+// `failure` and five `action_required` while ALL FOURTEEN had zero jobs on attempt 1, and one run
+// concluded `success` on attempt 2 whose attempt 1 ran nothing. So neither success, failure nor
+// action_required distinguishes executed from withheld -- only the attempt's own job count does.
+fn attempt_execution_from_job_count(observed: Bool, job_count: Int, detail: String) -> AttemptExecution {
+  if !observed {
+    AttemptUnobserved { detail: detail }
+  } else if job_count > 0 {
+    AttemptExecuted { job_count: job_count }
+  } else {
+    AttemptDidNotExecute
+  }
+}
+
+fn attempt_executed(a: AttemptExecution) -> Bool {
+  match a {
+    AttemptExecuted { job_count: _ } => true
+    AttemptDidNotExecute => false
+    AttemptUnobserved { detail: _ } => false
+  }
+}
+
+// ── Whether a zero-everywhere result can mean anything ──────────────────────────────────────
+
+type ZeroClaimStanding
+  = ZeroClaimDiscriminating { control_run_id: Int, control_job_count: Int }
+  | ZeroClaimIndistinguishable
+
+// THE SHARPEST RULE IN THIS MODULE. A census reporting "no attempt executed" is worthless without
+// at least one observed NON-ZERO from the same read path, because "every attempt had 0 jobs" and
+// "this read always returns 0" produce identical output. The session that measured 12-of-12 zero
+// had no such control; the reviewer's boundary probe supplied one -- a run with FIVE attempt-1
+// jobs -- and that single non-zero is what made the zeros evidence rather than a tautology.
+fn zero_claim_standing(observations: List<AttemptExecution>, control_run_ids: List<Int>) -> ZeroClaimStanding {
+  fold(observations, init: ZeroClaimIndistinguishable, f: fn(acc, o) {
+    match acc {
+      ZeroClaimDiscriminating { control_run_id: r, control_job_count: c } =>
+        ZeroClaimDiscriminating { control_run_id: r, control_job_count: c }
+      ZeroClaimIndistinguishable => match o {
+        AttemptExecuted { job_count } =>
+          ZeroClaimDiscriminating { control_run_id: first_or_zero(xs: control_run_ids), control_job_count: job_count }
+        AttemptDidNotExecute => ZeroClaimIndistinguishable
+        AttemptUnobserved { detail: _ } => ZeroClaimIndistinguishable
+      }
+    }
+  })
+}
+
+fn first_or_zero(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: fn(acc, x) { if acc == 0 { x } else { acc } })
+}
+
+// ── Whether the population is closed ────────────────────────────────────────────────────────
+
+// PAGINATION CLOSURE IS NOT MODELLED HERE. std.page_fold already owns it -- page budget, cursor
+// advance, continuation shape and the PagesClosed / PagesRefused outcome -- and the first draft of
+// this module re-derived a PagesDidNotClose arm beside it. That was the DESIGN section 3 violation
+// this very program's standing rule forbids: identify the canonical authority BEFORE authoring.
+// It is consumed instead, and PagesUnclosed simply carries its refusal key through.
+//
+// WHAT REMAINS HERE IS WHAT page_fold HAS NO REASON TO MODEL, confirmed by measurement rather than
+// assumption -- it contains zero occurrences of duplicate, total_count, filter, actor or attempt.
+// Every arm below is a provider DISAGREEING WITH ITSELF, which is a different failure from a fold
+// that could not finish: the pages arrived, and they do not describe one population.
+type CensusRefusal
+  = PagesUnclosed { fold_refusal_key: NonEmptyStr }
+  | DuplicateRunIdsObserved { duplicate_count: Int, unique_observed: Int }
+  | FilterDisagreed { requested: NonEmptyStr, observed: NonEmptyStr, run_id: Int }
+  | ProviderTotalUnstable { first_total: Int, second_total: Int }
+  | ProviderTotalUnreconciled { provider_total: Int, unique_observed: Int }
+  | CensusReadRefused { detail: String }
+
+type CensusOutcome
+  = CensusClosed {
+      unique_observed: Int
+      provider_total: Int
+      frozen_upper: Timestamp
+    }
+  | CensusRefused { cause: CensusRefusal }
+
+type CensusObservation {
+  pages_read: Int
+  unique_observed: Int
+  duplicate_count: Int
+  provider_total: Int
+  provider_total_recheck: Int
+  filter_requested: NonEmptyStr
+  filter_violation: NonEmptyStr?
+  filter_violation_run_id: Int
+  read_succeeded: Bool
+  read_detail: String
+  frozen_upper: Timestamp
+}
+
+// ORDERED SO THAT THE CHEAPEST DISQUALIFIER FIRES FIRST AND NO ARM IS UNREACHABLE. A failed read
+// cannot be reconciled, an unstable total cannot be matched, a disagreeing filter makes the
+// population the wrong population, duplicates prove pagination moved, and only then does a count
+// comparison mean anything. Reversing any pair would let a later arm answer for an earlier one.
+fn admit_census_over_fold(fold: PageFoldOutcome<Int>, o: CensusObservation) -> CensusOutcome {
+  match fold {
+    PagesRefused { refusal } => CensusRefused { cause: PagesUnclosed { fold_refusal_key: page_fold_refusal_key(r: refusal) } }
+    PagesClosed { subject: _, pages_read: _, items: _ } => admit_census(o: o)
+  }
+}
+
+fn admit_census(o: CensusObservation) -> CensusOutcome {
+  if !o.read_succeeded {
+    CensusRefused { cause: CensusReadRefused { detail: o.read_detail } }
+  } else if o.provider_total != o.provider_total_recheck {
+    CensusRefused { cause: ProviderTotalUnstable { first_total: o.provider_total, second_total: o.provider_total_recheck } }
+  } else {
+    admit_census_filtered(o: o)
+  }
+}
+
+fn admit_census_filtered(o: CensusObservation) -> CensusOutcome {
+  match o.filter_violation {
+    Present { value: observed } =>
+      CensusRefused {
+        cause: FilterDisagreed {
+          requested: o.filter_requested,
+          observed: observed,
+          run_id: o.filter_violation_run_id
+        }
+      }
+    Absent =>
+      if o.duplicate_count > 0 {
+        CensusRefused { cause: DuplicateRunIdsObserved { duplicate_count: o.duplicate_count, unique_observed: o.unique_observed } }
+      } else if o.unique_observed != o.provider_total {
+        CensusRefused { cause: ProviderTotalUnreconciled { provider_total: o.provider_total, unique_observed: o.unique_observed } }
+      } else {
+        CensusClosed {
+          unique_observed: o.unique_observed,
+          provider_total: o.provider_total,
+          frozen_upper: o.frozen_upper
+        }
+      }
+  }
+}
+
+fn census_is_closed(c: CensusOutcome) -> Bool {
+  match c {
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => true
+    CensusRefused { cause: _ } => false
+  }
+}
+
+fn census_refusal_text(c: CensusOutcome) -> String {
+  match c {
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => ""
+    CensusRefused { cause } => match cause {
+      PagesUnclosed { fold_refusal_key } =>
+        concat("CensusPagesUnclosed: the page fold refused before closing -- ", fold_refusal_key as String)
+      DuplicateRunIdsObserved { duplicate_count, unique_observed } =>
+        join(["CensusDuplicateRunIds: ", to_string(duplicate_count), " duplicate id(s) across ", to_string(unique_observed), " unique; duplicates prove pagination moved under the read, so the page set is not one observation"], "")
+      FilterDisagreed { requested, observed, run_id } =>
+        join(["CensusFilterDisagreed: requested ", requested as String, " but run ", to_string(run_id), " reports ", observed as String, "; the provider disagreed with its own filter, so this is the wrong population rather than an incomplete one"], "")
+      ProviderTotalUnstable { first_total, second_total } =>
+        join(["CensusProviderTotalUnstable: identical queries reported ", to_string(first_total), " then ", to_string(second_total), "; no census can close against a moving denominator"], "")
+      ProviderTotalUnreconciled { provider_total, unique_observed } =>
+        join(["CensusProviderTotalUnreconciled: observed ", to_string(unique_observed), " unique against a reported total of ", to_string(provider_total)], "")
+      CensusReadRefused { detail } =>
+        concat("CensusReadRefused: ", detail)
+    }
+  }
+}
