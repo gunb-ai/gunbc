@@ -1,0 +1,24 @@
+module test.claim.data_reference_kind_from_resolved_node
+
+import std.logic { Bool }
+import std.types { String }
+import std.measure { Gigabyte }
+import extdeps.vendor.gigabyte { gigabyte }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DATA REFERENCE IS CLASSIFIED BY THE DECLARATION IT RESOLVES TO, NOT BY A SAME-SPELLED ITEM
+// ELSEWHERE. `gigabyte` here is extdeps.vendor.gigabyte's `data`, imported by name; std.measure,
+// also in scope, declares `fn gigabyte`. The evaluator used to take the item kind from a bare-name
+// registry projection that keeps one homonym in hash-seed order, so on some processes this reference
+// evaluated as a function and the field read refused ("cannot access field 'legal_name' on Fn").
+// The kind now comes from the resolved node. This is the production homonym, not a synthetic one;
+// the isolated four-module geometry is stern-bear-703's fixture on gunbc#11062.
+//
+// It is a PROBABILISTIC regression control, stated as such: a regression reds this only on the
+// processes whose hash seed puts the `fn` last, so one green run is weak evidence. The discriminating
+// evidence is the N-run comparison recorded on the PR that carries it.
+test fn a_data_reference_is_classified_by_the_declaration_it_resolves_to() -> Bool {
+  (gigabyte.legal_name as String) == "GIGA-BYTE Technology Co., Ltd."
+}
