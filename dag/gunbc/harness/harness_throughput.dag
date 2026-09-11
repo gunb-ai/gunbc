@@ -5,7 +5,7 @@ import std.algebra { trim }
 import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
-  JsonMemberFound,
+  JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   parse_json_document, json_object_unique_member,
 }
 import gunbc.harness.harness_wire {

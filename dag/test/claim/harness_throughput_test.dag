@@ -5,7 +5,7 @@ import gunbc.harness.harness_throughput {
   HarnessThroughput, ThroughputObserved, ThroughputUnobserved,
   harness_throughput_from_events, throughput_centi_tokens_per_second,
   throughput_rate_text, throughput_band, throughput_band_word, throughput_cell_text,
-  harness_round_ledger_from_events, HarnessRoundLedger, RoundsObserved, RoundsUnobserved, round_segments, round_segment_kind_word, RoundSegment,
+  harness_round_ledger_from_events, HarnessRoundLedger, RoundsObserved, RoundsUnobserved, RoundObservation, round_segments, round_segment_kind_word, RoundSegment,
   round_playback, round_playback_floor_ms, RoundPlayback, round_remaining_flex, harness_round_budget_steps, WriteRound, ReadRound, ReasonRound,
   ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
