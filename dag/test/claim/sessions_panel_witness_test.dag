@@ -1,7 +1,7 @@
 module test.claim.sessions_panel_witness
 
 import gunbc.roadmap_belt_actuate {
-  BeltObserve, Observed, ObserveRefused,
+  BeltObserve, BeltSessionsObserved, ObserveRefused,
   belt_sessions_json_value, belt_sessions_observed_json, belt_sessions_http_status,
 }
 import gunbc.roadmap_dispatch_actuator {
@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // — the wire must not fabricate a partial session row.
 
 test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
-  let o = Observed {
+  let o = BeltSessionsObserved {
     live: dispatch_live_sessions_from_entries(
       entries: [fixture_projection_standing_refusal_tmux_entry()],
       selection: dispatch_actuator_vendor_selection(node_sizing: Unsized),
@@ -62,7 +62,7 @@ fn fixture_live() -> DispatchLiveSession {
 }
 
 test fn sessions_observed_projects_to_wire() -> Bool {
-  let j = belt_sessions_observed_json(o: Observed { live: [fixture_live()] })
+  let j = belt_sessions_observed_json(o: BeltSessionsObserved { live: [fixture_live()] })
   return string_contains(s: j, pattern: "\"schema\": \"roadmap-sessions/v1\"")
     && string_contains(s: j, pattern: "\"observe_refused\": false")
     && string_contains(s: j, pattern: "\"node_id\": \"5-regen-cutover\"")
@@ -80,7 +80,7 @@ test fn sessions_observed_projects_to_wire() -> Bool {
     && string_contains(s: j, pattern: "\"line\": \"session · present — process unobserved\"")
     && string_contains(s: j, pattern: "\"detail\": \"provider unobserved (configured Codex, readiness readiness unobserved) — gunbc-dispatch-5-regen-cutover · ")
     && string_contains(s: j, pattern: "\"availability\": \"unavailable\"")
-    && belt_sessions_http_status(o: Observed { live: [fixture_live()] }) == 200
+    && belt_sessions_http_status(o: BeltSessionsObserved { live: [fixture_live()] }) == 200
 }
 
 test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
@@ -94,7 +94,7 @@ test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
       process: WorkerProcessExited { exit_code: 0, last_command: "env" },
     ),
   }
-  let j = belt_sessions_observed_json(o: Observed { live: [retained] })
+  let j = belt_sessions_observed_json(o: BeltSessionsObserved { live: [retained] })
   string_contains(s: j, pattern: "\"session_presence\": \"present\"")
     && string_contains(s: j, pattern: "\"process_state\": \"process exited\"")
     && string_contains(s: j, pattern: "\"process_detail\": \"exit=0 last-command=env\"")

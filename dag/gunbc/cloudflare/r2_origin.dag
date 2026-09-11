@@ -1,0 +1,260 @@
+module gunbc.cloudflare.r2_origin
+
+import std.types { String, NonEmptyStr, List }
+import std.allocation_roster { allocated_value }
+import extdeps.securities { Securities }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.cloudflare { cloudflare }
+import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  NoDischargeSiteModeled,
+}
+
+// WHOSE ACCOUNT, WHICH BUCKET, AND UNDER WHOSE CREDENTIAL -- DECLARED, BECAUSE A CALL SITE THAT
+// SUPPLIES THEM IS A SECOND AUTHORITY FOR THE SAME FACTS. extdeps.cloudflare.r2 owns the SHAPE of an
+// R2 bucket resource name and gunbc.cloudflare.r2_token_mint owns the mint POLICY; neither may know
+// which account this fleet has or which bucket is its durable origin, because those are workflow
+// facts (DESIGN section 3: interface, realization and policy are three facts). Until this module
+// existed they were parameters supplied by nobody, which is why every mint declaration sat on the
+// frontier.
+//
+// NO SECRET BYTES LIVE HERE. Custody is gunbc.secret_provision's, and this module carries only the
+// SecretRef naming where a credential lives -- a locus, not a value. A held Secret here would be the
+// second custody path r2_token_mint's own annotation forbids.
+
+// THE ACCOUNT ID IS UPSTREAM'S TO ISSUE, SO IT IS A STANDING RATHER THAN A LITERAL. Cloudflare
+// assigns the 32-hex account id when the account is created; this repository cannot derive it, guess
+// it, or default it, and a placeholder literal would be a fabricated upstream fact flowing straight
+// into a token policy's resource name. The unallocated arm is therefore not scaffolding to be
+// deleted once the id arrives: it is the state every future fleet account starts in, and it is what
+// makes an unallocated account refuse rather than address a guessed one.
+//
+// THIS IS THE SHAPE gunbc.spark.bootstrap_provision ALREADY USES for an unallocated cloud principal
+// (fleet_cloud_principal_standing / CloudPrincipalUnallocated), and reusing it is the point: one
+// model of "a principal this fleet will have and does not yet" rather than a second one per vendor.
+type CloudflareAccountId = NonEmptyStr where brand("CloudflareAccountId")
+
+type FleetCloudflareAccountStanding
+  = CloudflareAccountAllocated {
+      company: Vendor<Securities>
+      account_id: CloudflareAccountId
+    }
+  | CloudflareAccountUnallocated {
+      company: Vendor<Securities>
+      intervention: HumanIntervention
+    }
+
+data cloudflare_account_allocation_intervention_identity: String = "cloudflare-account-allocation"
+
+fn cloudflare_account_allocation_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: cloudflare_account_allocation_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "the fleet's Cloudflare account" as NonEmptyStr,
+    instruction: "Create the Cloudflare account that will own this fleet's R2 storage, billed to the LLC, then record its 32-hex account id as the CloudflareAccountAllocated arm of fleet_cloudflare_account_standing. The id is issued by Cloudflare and cannot be derived here; until it is recorded every mint refuses rather than addressing a guessed account." as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+// ALLOCATED, ON THE OPERATOR'S SUPPLIED VALUE. This is CONFIG and not a secret -- an account id
+// appears in every R2 endpoint host and in every IAM resource name the token policies carry -- so it
+// belongs in a declaration rather than in custody or in an environment variable. The token VALUE for
+// that account is a different fact and lives only in gunbc.secret_provision, per
+// cloudflare_account_token_bootstrap_intervention's own instruction.
+data fleet_cloudflare_account_id: NonEmptyStr = "5f71db675ad3e94c16a3d5c159d16298"
+
+fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
+  CloudflareAccountAllocated {
+    company: cloudflare,
+    account_id: fleet_cloudflare_account_id as CloudflareAccountId
+  }
+}
+
+// WHAT IS ADMITTED TO THE ORIGIN IS A DECLARED POPULATION, NOT "whatever a caller uploads". The
+// durable origin is the byte-owning half of gunbc.fabric_m0_commit's readback distinction: a commit
+// manifest read back from a disposable cache establishes nothing, so the origin has to be a named
+// place with a stated admission. Widening it later is a change to this row, which is exactly the
+// visibility a bucket that quietly became a general dumping ground would not have.
+type DurableOriginAdmission
+  = FabricCommitManifestsAndContentAddressedOutputs {}
+
+type DurableOriginBucket {
+  bucket_name: NonEmptyStr
+  jurisdiction: R2Jurisdiction
+  admits: DurableOriginAdmission
+  read_credential: SecretRef
+}
+
+// THE BUCKET NAME IS OURS TO CHOOSE AND THE ACCOUNT ID IS NOT, which is why one is allocated here
+// and the other is answered upstream. A bucket name is a request this fleet makes of R2; an account
+// id is an answer R2 gives.
+//
+// AND AN ALLOCATION IS A ROSTER, NEVER A DERIVATION. The tempting shape is a template -- take the
+// purpose, lowercase it, prefix the fleet -- and gunbc.hostname_allocation already rules that move
+// out for exactly the reason it would be wrong here: deriving the name by PARSING the purpose makes
+// the bucket a coincidence of how the purpose happens to be spelled, so a purpose that is not a
+// legal bucket name silently has no bucket and one that is silently claims a bucket nobody
+// allocated. The mapping is explicit and the lookup fails closed: an unallocated purpose yields
+// Absent, never a name reconstructed from the purpose.
+//
+// INJECTIVE IN BOTH DIRECTIONS, for the reason the hostname roster states. A bucket name is a JOIN
+// KEY -- it appears in the IAM resource name a token policy scopes to, in the S3 endpoint path, and
+// in every manifest locator -- so two purposes claiming one bucket is two workloads sharing a
+// credential scope, and one purpose allocated twice is an ambiguous desired state. Both refuse.
+//
+// RUNG: structurally guaranteed at the carrier, because std.allocation_roster's roster has no
+// constructor that admits a repeated key on either axis. The authored list below remains a fallible
+// ingress that refuses loudly; that residual, and its own next-rung trigger, are stated once in
+// std.allocation_roster rather than restated here.
+type BucketPurpose
+  = FabricDurableOrigin {}
+
+type R2BucketAllocation {
+  purpose: BucketPurpose
+  bucket_name: NonEmptyStr
+}
+
+fn bucket_purpose_key(purpose: BucketPurpose) -> String {
+  match purpose {
+    FabricDurableOrigin {} => "fabric-durable-origin"
+  }
+}
+
+// THE ALGEBRA IS CONSUMED, NOT RESTATED. std.allocation_roster owns the two-axis injective roster:
+// a carrier in which a duplicate on either axis has no constructor, one fallible ingress that
+// refuses a colliding authored list, and a lookup that needs no consistency guard because an
+// inconsistent roster is not a value. An earlier revision of this module reproduced that algebra
+// line for line beside gunbc.hostname_allocation's copy, which is the section 2 re-invention the
+// design forbids; both now consume the one authority.
+//
+// WHAT REMAINS HERE IS WHAT IS ACTUALLY PER-DOMAIN: which rows exist, what the two axes MEAN, and
+// what a collision would cost. A bucket name is a JOIN KEY -- it appears in the IAM resource name a
+// token policy scopes to, in the S3 endpoint path, and in every manifest locator -- so two purposes
+// claiming one bucket is two workloads sharing a credential scope, and one purpose allocated twice
+// is an ambiguous desired state.
+data gunbc_fleet_r2_bucket_allocations: List<R2BucketAllocation> = [
+  R2BucketAllocation {
+    purpose: FabricDurableOrigin {},
+    bucket_name: "gunbai-fabric-origin",
+  },
+]
+
+fn allocated_bucket_name(purpose: BucketPurpose) -> NonEmptyStr? {
+  allocated_value(
+    rows: gunbc_fleet_r2_bucket_allocations,
+    wanted: bucket_purpose_key(purpose: purpose),
+    primary: row => bucket_purpose_key(purpose: row.purpose),
+    secondary: row => row.bucket_name as String,
+    value: row => row.bucket_name,
+  )
+}
+
+data fabric_durable_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-origin-read-token"
+
+data fabric_durable_origin_read_secret_version: NonEmptyStr = "1"
+
+// AN UNALLOCATED PURPOSE HAS NO BUCKET, AND THAT IS AN ARM RATHER THAN A DEFAULT. Reconstructing a
+// name at this seam is the derivation the roster exists to forbid, and returning an empty one would
+// address the account's root instead of a bucket.
+type DurableOriginStanding
+  = DurableOriginAllocated { bucket: DurableOriginBucket }
+  | DurableOriginUnallocated { purpose: BucketPurpose }
+
+// DEFAULT JURISDICTION, STATED RATHER THAN DEFAULTED. R2JurisdictionEu and R2JurisdictionFedramp are
+// data-residency commitments this fleet has not made and cannot honour, and picking one would assert
+// a compliance boundary nothing enforces.
+fn fabric_durable_origin_standing() -> DurableOriginStanding {
+  match allocated_bucket_name(purpose: FabricDurableOrigin {}) {
+    Absent => DurableOriginUnallocated { purpose: FabricDurableOrigin {} }
+    Present { value: name } =>
+      DurableOriginAllocated {
+        bucket: DurableOriginBucket {
+          bucket_name: name,
+          jurisdiction: R2JurisdictionDefault,
+          admits: FabricCommitManifestsAndContentAddressedOutputs {},
+          read_credential: secret_ref_pin_version(
+            ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+            version: fabric_durable_origin_read_secret_version,
+          )
+        }
+      }
+  }
+}
+
+// ONLY READ IS MODELED, AND THE ORIGIN MUST PUT. r2_object_read_grant and the Workers R2 Storage
+// Bucket Item Read permission group are the whole of extdeps.cloudflare.r2's grant vocabulary, so the
+// credential this module names is a READ credential and is named as one. The write half is a
+// separate, cited follow-up: the Workers R2 Storage Bucket Item Write permission group id must come
+// from Cloudflare's permission-group listing with a retrieval date, and an uncited id would be worse
+// than the absent one, because it would be indistinguishable from a checked fact.
+//
+// THE FIELD IS read_credential RATHER THAN credential FOR THAT REASON. A name that did not say READ
+// would let the write gap hide behind a field that reads as though it covered both.
+
+// THE BOOTSTRAP CUSTODY LOCUS IS ALSO A STANDING, AND THIS IS WHERE THE FAIL-CLOSED ORDERING COMES
+// FROM. gunbc.auth.secret_ref_credential fetches an EXACT version and refuses when the resolved
+// identity disagrees with the request, so a locus is only usable once its version is pinned -- and
+// nothing can pin a version for a secret that has never been provisioned. Modeling the locus as a
+// bare SecretRef with a placeholder version would hand the fetch a request it must refuse, and the
+// refusal would arrive wearing the wrong words: "the response named a different version" for a
+// credential that simply does not exist. So absence is its own arm, decided BEFORE any network call.
+type BootstrapCustodyStanding
+  = BootstrapCustodyPinned { locus: SecretRef }
+  | BootstrapCustodyUnrecorded { intervention: HumanIntervention }
+
+data cloudflare_bootstrap_custody_secret_id: NonEmptyStr = "cloudflare-account-api-token-bootstrap"
+
+data cloudflare_bootstrap_custody_intervention_identity: String = "cloudflare-bootstrap-token-custody"
+
+fn cloudflare_bootstrap_custody_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: cloudflare_bootstrap_custody_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: join(
+      ["custody of the Cloudflare bootstrap token at ", cloudflare_bootstrap_custody_secret_id as String],
+      ""
+    ) as NonEmptyStr,
+    instruction: join(
+      [
+        "Provision the dashboard-acquired bootstrap token into the fleet secrets project as ",
+        cloudflare_bootstrap_custody_secret_id as String,
+        ", then record the exact version it landed at as the BootstrapCustodyPinned arm of fleet_cloudflare_bootstrap_custody. The version is pinned rather than read as latest because Secret Manager is strongly consistent for exactly one sequence -- add a version, then access THAT version -- and latest is a moving target the fetch cannot verify it was answered about."
+      ],
+      ""
+    ) as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+// PINNED, ON THE OPERATOR'S PROVISIONED VERSION. The bootstrap token was placed at version 1 of this
+// secret in the fleet secrets project, so the standing records THAT version rather than "latest".
+//
+// THE PIN IS THE POINT AND NOT A FORMALITY. gunbc.auth.secret_ref_credential requests an exact
+// version and REFUSES when the resolved identity disagrees with the request, and Secret Manager is
+// strongly consistent for exactly one sequence -- add a version, then access that version. "latest"
+// satisfies neither: it is a moving target between two calls, and a fetch addressed to it cannot
+// verify it was answered about the version it meant. A floating reference also makes the receipt
+// meaningless, because the whole content of "which bytes were used" is the version number.
+//
+// THE UNRECORDED ARM DID NOT BECOME DEAD CODE WHEN THIS WAS PINNED. Every future fleet credential
+// starts there, and it is what makes an unprovisioned secret refuse before any network call rather
+// than send a request whose refusal would arrive wearing the wrong words -- "the response named a
+// different version" for a credential that simply does not exist.
+data cloudflare_bootstrap_custody_version: NonEmptyStr = "1"
+
+fn fleet_cloudflare_bootstrap_custody() -> BootstrapCustodyStanding {
+  BootstrapCustodyPinned {
+    locus: SecretRef {
+      project: fleet_secrets_gcp_project,
+      secret: cloudflare_bootstrap_custody_secret_id,
+      version: cloudflare_bootstrap_custody_version,
+      hash_state: HashPending,
+    }
+  }
+}

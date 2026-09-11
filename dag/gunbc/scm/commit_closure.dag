@@ -78,6 +78,7 @@ module gunbc.scm.commit_closure
 // that stronger claim. dissolve-on: a computing cryptographic digest reachable from .dag.
 
 import std.types { Bool, Int, List, list_length }
+import std.algebra { Cons, Empty, FreeSemigroup }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
@@ -159,15 +160,14 @@ import gunbc.scm.object_store {
 // field down. The mint refuses a COMPLETE closure, because admitting a partial write for something
 // with nothing missing is a category error and would make the carrier's own name a lie.
 //
-// REMAINING RUNG, stated so it is not read as more than it is: `unresolved` is a List, so an EMPTY
-// admitted population is representable in the type even though this mint cannot produce one. The
-// corpus has no NonEmptyList, and minting one solely for this field would grow net concepts to buy a
-// guarantee the mint's refusal already provides -- so the emptiness exclusion sits at mitigatable
-// while the SUBJECT BINDING, which is what the defect was about, is structural. Next-rung trigger: a
-// NonEmptyList authority earning its place from more than one consumer.
+// REMAINING EMPTINESS WALL, CLIMBED: `unresolved` is FreeSemigroup<ObjectId>, so an empty
+// admitted population has no constructor. The mint still refuses a complete closure as a category
+// error (ClosureCompleteSoNothingToAdmit); the type now agrees with that refusal. The trigger that
+// named "a NonEmptyList authority earning its place from more than one consumer" has fired
+// (std.algebra FreeSemigroup). Subject binding remains structural via sole_constructor.
 type AdmittedPartialCommitClosure sole_constructor {
   closure: CommitClosure
-  unresolved: List<ObjectId>
+  unresolved: FreeSemigroup<ObjectId>
   reason: PartialClosureReason
   image: WellKindedClosure
 }
@@ -206,17 +206,17 @@ fn admit_partial_commit_closure(
         manifest_occupied: manifests,
       }
     WellKinded { admitted: image, unresolved: unresolved } =>
-      if list_length(items: unresolved) == 0 {
-        ClosureCompleteSoNothingToAdmit
-      } else {
-        PartialClosureAdmitted {
-          admitted: AdmittedPartialCommitClosure {
-            closure: closure,
-            unresolved: unresolved,
-            reason: reason,
-            image: image,
+      match unresolved {
+        Empty => ClosureCompleteSoNothingToAdmit
+        Cons { head: h, tail: t } =>
+          PartialClosureAdmitted {
+            admitted: AdmittedPartialCommitClosure {
+              closure: closure,
+              unresolved: FreeSemigroup { head: h, tail: t },
+              reason: reason,
+              image: image,
+            }
           }
-        }
       }
   }
 }
@@ -229,7 +229,7 @@ fn admitted_closure(admitted: AdmittedPartialCommitClosure) -> CommitClosure {
   admitted.closure
 }
 
-fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId> {
+fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> FreeSemigroup<ObjectId> {
   admitted.unresolved
 }
 

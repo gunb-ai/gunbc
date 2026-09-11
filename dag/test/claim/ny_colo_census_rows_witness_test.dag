@@ -1,0 +1,318 @@
+module test.claim.ny_colo_census_rows_witness
+
+import std.types { Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import test.claim.colo_cabinet_density_witness {
+  grain_offers_single_cabinet,
+  rate_is_published,
+  covered_by_floor,
+  claim_unread,
+  bounds_above,
+  has_figure_for,
+}
+import extdeps.colo.types {
+  ColoFacilityRow, AddressStanding, address_street,
+  AirCooling, density_claim_figures,
+}
+import extdeps.colo.interserver { interserver_retail_rates }
+import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain, databank_lga3_orangeburg }
+import extdeps.colo.critical_systems_realty {
+  csr_orny1_density, csr_orny1_retail_grain, csr_orny1_orangeburg,
+  csr_orny1_retail_rates,
+}
+import extdeps.colo.hivelocity {
+  hivelocity_ogb1_density, hivelocity_ogb1_retail_grain, hivelocity_ogb1_orangeburg,
+}
+import extdeps.colo.long_island_interconnect {
+  long_island_interconnect_density, long_island_interconnect_retail_grain,
+  long_island_interconnect_westbury,
+  long_island_interconnect_retail_rates,
+}
+import extdeps.colo.nyi {
+  nyi_long_island_density, nyi_long_island_retail_grain, nyi_long_island, nyi_retail_rates,
+}
+import extdeps.colo.stafford_associates {
+  stafford_density, stafford_retail_grain, stafford_setauket,
+  stafford_retail_rates,
+}
+import extdeps.colo.vastnet { vastnet_density, vastnet_retail_grain, vastnet_melville, vastnet_retail_rates }
+import extdeps.colo.continuity_centers {
+  continuity_centers_density, continuity_centers_retail_grain, continuity_centers_woodbury,
+  continuity_centers_retail_rates,
+}
+import extdeps.colo.tierpoint {
+  tierpoint_hawthorne_density, tierpoint_hawthorne_retail_grain,
+  tierpoint_hawthorne_hwt, tierpoint_hawthorne_hw2,
+}
+import extdeps.colo.equinix { equinix_ny13_density, equinix_ny13_retail_grain, equinix_ny13 }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_commack_density, three_sixty_five_commack_retail_grain,
+  three_sixty_five_commack,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE NEW YORK ROWS' CONSUMER, AND IT EXISTS BECAUSE THE ROWS OTHERWISE HAD NONE. The carrier's
+// own witness reads the DataBank and Iron Mountain rows; the Westchester, Rockland and Long Island
+// facilities this lane added were read by nothing at all. DESIGN section 3c is
+// explicit that a data row no fold reads is red regardless of how well it is modelled, and that
+// consumption described in a PR body rather than present in the diff is the tell of exactly that.
+// The selection fold that will eventually rank these candidates is a workflow fact being reworked
+// in another lane, so this file is not that fold: it is the execution that proves every row this
+// lane authored flows through the carrier's accessors and lands on the arm its citation claims.
+//
+// THAT SENTENCE WAS FALSE WHEN FIRST WRITTEN AND IS THE RECURRENCE THIS HEADER ALREADY NAMED.
+// Review 63146 found the rate axis dangling: six RetailRateStanding rows added here, and the type
+// read by NOTHING in the entire corpus - thirty modules author one and no fold touched it. The
+// claim above covered the density, grain, address and facility axes and quietly not the fourth,
+// which is exactly "enrolling the rows I was thinking about and leaving the ones I was not",
+// written two paragraphs below by the author who then did it again. A header asserting completeness
+// is worth less than the fold that makes it true, and it is worse than nothing when it is cited as
+// coverage - so the sentence now stands because w_no_new_york_operator_publishes_a_cabinet_price
+// exists, not because it was claimed. FOUR AXES ARE CONSUMED HERE: density, grain, address, rate.
+//
+// FOLDS ARE CONSUMED RATHER THAN RE-DECLARED - review 62870 found the first cut of this file
+// carrying a byte-identical copy of the watt accessor and a second name for the single-cabinet
+// predicate, which is DESIGN section 3's nicknaming failure and would have let a later change to a
+// RetailGrainStanding arm update one witness and silently miss the other. The grain predicate is
+// now an accessor on the carrier, where its absence was what produced the fork, and the density
+// predicates below are imported from the carrier's own witness rather than lifted beside it.
+//
+// WHAT MAKES THESE ASSERTIONS SOMETHING OTHER THAN THE ROWS RESTATED: the discrimination is on the
+// ARM AND THE DIRECTION, not on the numeral. Re-typing one of these floors into a marketed-maximum
+// arm without its page changing turns this file red, and that is the edit that would silently
+// invert a bound - a cabinet advertised at "20 kW+" made to refuse 20,001 W. Editing a numeral
+// alone is caught by the citation and the verbatim wording, which is where an external fact belongs.
+//
+// THIS FILE WAS REWRITTEN WHEN THE CARRIER GAINED DIRECTION, and the previous version is worth one
+// sentence because its shape was a symptom. It asserted that all five readings established NOTHING,
+// and partitioned read from unread with two hand-typed row lists, because the carrier could express
+// neither a floor nor an average and DensityUnread meant two different things. #10888 landed
+// CapabilityAtLeast, PublishedAverage and QuantityUnreadable, so both facts are now carried by the
+// rows and asserted by folds over them. The count that moved is the census's headline: five read
+// and none holdable became five read and five held, without a single page being re-fetched.
+
+// FIVE FIGURES WERE READ AND NONE OF THEM ESTABLISHES A WATT, WHICH IS NOT A CONTRADICTION.
+// Every New York page that publishes a per-cabinet number publishes a FLOOR or an AVERAGE:
+// "35kW+", "100kW+", "20 kW+", "10KW +", and twice "Cooling level average is 3kW per cabinet".
+// THE FIVE READ FIGURES ARE NOW PUBLISHED, AND THIS TEST CHANGED SHAPE BECAUSE THE CARRIER DID.
+// It previously asserted that all five established nothing, which was true against a carrier with
+// only marketed-maximum arms: every New York figure is a FLOOR ("35kW+", "20 kW+", "10KW +") or a
+// stated AVERAGE (both Westbury rows), and typing a floor as a maximum asserts that a cabinet
+// advertised at twenty kilowatts OR MORE refuses 20,001 W - the reading inverted, which is worse
+// than no reading. #10888 landed CapabilityAtLeast and PublishedAverage, so the direction is now
+// expressible and the honest count moved from five-read-none-holdable to five-read-five-held.
+//
+// WHAT IS ASSERTED HERE IS THE DIRECTION, because that is the fact that was being lost. A floor
+// SUPPORTS FROM BELOW and BOUNDS NOTHING ABOVE; an average does neither. If any of these ever
+// starts bounding from above without its page having changed, someone has re-typed a floor as a
+// maximum and the census is asserting an inverted bound again - which is exactly what this file
+// existed to prevent before the arms could say it.
+// ONLY LGA3 IS ASSERTED HERE, AND THE OMISSION IS THE POINT. The first draft of this test also
+// asserted !bounds_above for the four medium-unspecified rows, and that was VACUOUS: those rows
+// answer RequestedMediumAbsent to any medium-keyed screen, so !bounds_above holds for them no
+// matter which quantity arm they carry - the test would have stayed green if all four were typed
+// as marketed MAXIMA, which is the one error it exists to catch. A check whose passing value is
+// also its broken value establishes nothing. Direction is therefore asserted where direction is
+// reachable, on the one New York row that publishes a labelled medium, and the other four are
+// asserted on what they can actually answer in the test below.
+test fn w_a_published_floor_supports_from_below_and_bounds_nothing_above() -> Bool {
+  covered_by_floor(d: databank_lga3_density, requested: AirCooling, required: 35000)
+    && !bounds_above(d: databank_lga3_density, requested: AirCooling)
+}
+
+// A FIGURE WITH NO PUBLISHED MEDIUM IS INVENTORIED AND STILL CANNOT ANSWER A MEDIUM QUESTION, and
+// keeping those two facts apart is the whole reason the medium is a standing rather than a default.
+// Four of the five New York readings name no coolant: "cooling", "raised floor" and "high density"
+// are true of air and liquid alike, so they discriminate nothing and the rows carry
+// CoolingMediumUnspecified BY EVIDENCE. medium_matches answers false for them, so a request for
+// AirCooling correctly finds no figure - while density_claim_figures still returns the reading, so
+// a coverage roster counts it and only the medium-specific screen declines.
+//
+// DataBank LGA3 is the control: it publishes two LABELLED cells, so it answers the same question
+// the other four cannot. A test that only looked at the four would pass if medium_matches returned
+// false unconditionally.
+test fn w_medium_unspecified_figures_are_inventoried_but_answer_no_medium() -> Bool {
+  !has_figure_for(d: csr_orny1_density, requested: AirCooling)
+    && !has_figure_for(d: hivelocity_ogb1_density, requested: AirCooling)
+    && !has_figure_for(d: long_island_interconnect_density, requested: AirCooling)
+    && !has_figure_for(d: nyi_long_island_density, requested: AirCooling)
+    && has_figure_for(d: databank_lga3_density, requested: AirCooling)
+    && density_claim_figures(d: csr_orny1_density).length() == 1
+    && density_claim_figures(d: nyi_long_island_density).length() == 1
+    && density_claim_figures(d: databank_lga3_density).length() == 2
+}
+
+// THE UNREAD ONES ESTABLISH NOTHING, AND THAT IS THE HALF THAT MATTERS MOST. An unread density is
+// the census's fail-closed arm: no operator page states a per-cabinet figure, so no reading exists
+// and a consumer that needs one must refuse rather than receive a plausible number. These six are
+// unread in the ONE sense the arm now carries - nobody published a surface - because the rows that
+// had been read but not holdable are published above rather than sharing this arm with them.
+//
+// DENSITY CLAIMS AND FACILITY ROWS ARE NOT IN BIJECTION, which is the fact a reader needs here and
+// is stated as a relation rather than as two numerals. TierPoint HWT and HW2 are two buildings on
+// one Hawthorne campus sharing a single density row, because a density is a claim about a CABINET
+// and the operator publishes one claim across both halls. A reader who expects the facility fold
+// below and the density folds above to have equal arity is expecting the wrong thing.
+test fn w_ny_unread_densities_establish_nothing() -> Bool {
+  claim_unread(d: tierpoint_hawthorne_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: equinix_ny13_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: three_sixty_five_commack_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: stafford_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: vastnet_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: continuity_centers_density, requested: AirCooling, required: 5000)
+
+}
+
+
+// NOT ONE OPERATOR IN THIS REGION PUBLISHES A CABINET PRICE, and until this test the rate axis was
+// read by NOTHING - thirty modules author a RetailRateStanding row and no fold, witness or workflow
+// touched the type. Review 63146 is right that this PR added six more instances of that, and right
+// that the header above claimed every row this lane authored flows through the carrier's accessors
+// while the rate rows did not. The header even named the recurrence - enrolling the rows I was
+// thinking about and leaving the ones I was not - and this was the next instance of it.
+//
+// WHAT THE ASSERTION IS FOR, because "all six are quote-only" restated as a test would be the rows
+// read back. Every New York operator answers a cabinet price with a contact route, so the census
+// cannot rank this region on price at all: a selection fold that needs a number must refuse and go
+// get a quote rather than find a plausible one. That is a regional finding of the same shape as the
+// density one and it is now enforced rather than described.
+//
+// INTERSERVER IS THE POSITIVE CONTROL AND IS NOT A CLAIM ABOUT NEW YORK. Only two rows in the whole
+// census publish plans, so without one of them here the predicate would answer Absent for every row
+// it was ever handed and this test would pass with a constant - a check whose passing value is also
+// its broken value. The control is what makes the six negatives mean something.
+test fn w_no_new_york_operator_publishes_a_cabinet_price() -> Bool {
+  !rate_is_published(r: nyi_retail_rates)
+    && !rate_is_published(r: vastnet_retail_rates)
+    && !rate_is_published(r: continuity_centers_retail_rates)
+    && !rate_is_published(r: long_island_interconnect_retail_rates)
+    && !rate_is_published(r: csr_orny1_retail_rates)
+    && !rate_is_published(r: stafford_retail_rates)
+    && rate_is_published(r: interserver_retail_rates)
+}
+
+// DENSITY AND GRAIN ARE INDEPENDENT, and this region is where that independence is load-bearing
+// rather than theoretical. Stafford and Vastnet publish the finest retail grain in the census -
+// single rack units and thirds of a cabinet - while publishing no density at all; TierPoint and
+// DataBank sell cabinets with a density read for one and absent for the other. A carrier that
+// fused the two facts would have to invent one of them for every row below.
+test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
+  grain_offers_single_cabinet(g: stafford_retail_grain)
+    && grain_offers_single_cabinet(g: vastnet_retail_grain)
+    && grain_offers_single_cabinet(g: long_island_interconnect_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_hawthorne_retail_grain)
+    && grain_offers_single_cabinet(g: databank_lga3_retail_grain)
+    && claim_unread(d: stafford_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: vastnet_density, requested: AirCooling, required: 5000)
+}
+
+// THE GRAIN UNREADS, for the same reason as the density unreads: operators in this region whose
+// facility page never says whether one cabinet is a sellable unit, and Continuity
+// Centers is the sharpest case - its own sitemap enumerates forty pages and none of them is a
+// colocation page, against directory listings that describe cabinet-grain colocation. Reading a
+// directory's product list onto an operator row is the failure this arm refuses.
+//
+// NYI IS THE DISCRIMINATING PAIR IN THIS FILE, and it was the row review 62890 found unenrolled.
+// NYI and Long Island Interconnect publish the same Westbury street address and the same 3kW
+// average; LII's page says cabinets and NYI's says nothing about product grain. So the two
+// assertions that matter sit in DIFFERENT tests over the SAME building: LII's grain is an offer in
+// w_ny_grain_is_published_where_density_is_not, NYI's is not one here. A reading transferred from
+// the co-located operator - the single most tempting inference in the whole census - reds this
+// witness rather than passing silently, which is the only reason the row is worth carrying.
+test fn w_ny_unstated_grain_is_not_an_offer() -> Bool {
+  grain_offers_single_cabinet(g: equinix_ny13_retail_grain) == false
+    && grain_offers_single_cabinet(g: three_sixty_five_commack_retail_grain) == false
+    && grain_offers_single_cabinet(g: continuity_centers_retail_grain) == false
+    && grain_offers_single_cabinet(g: hivelocity_ogb1_retail_grain) == false
+    && grain_offers_single_cabinet(g: csr_orny1_retail_grain) == false
+    && grain_offers_single_cabinet(g: nyi_long_island_retail_grain) == false
+}
+
+// THE FACILITY ROWS THEMSELVES, WHICH NOTHING READ UNTIL NOW. Review 62921: the density and
+// grain rows were enrolled and the ColoFacilityRow declarations they hang off were not, so
+// `ColoFacilityRow` was a type no fold outside its own carrier modules touched. That is DESIGN
+// section 3c red - and it is the THIRD set this file has had to enrol, after its own duplicate
+// folds and two grain rows. The pattern is worth naming rather than fixing quietly: each time I
+// enrolled the rows I was thinking about and left the ones I was not, which is why the header's
+// claim to prove "every row this lane authored" kept being false in a new place. It is now stated
+// against what the conjunctions below contain rather than against what the file was written to do.
+//
+// REGION IS THE DISCRIMINATION, NOT A TAUTOLOGY. Every row here is asserted NY because this lane's
+// subject is New York, and the census carries facilities in other regions in these same operator
+// modules - TierPoint's Pennsylvania rows and DataBank's New Jersey obligation sit feet away. A row
+// filed under the wrong region, or a New Jersey row copied here as a template and left unedited,
+// reds this test. That has already happened once in this census: a Summit Secaucus figure was
+// withdrawn after its wording proved to sit under a Chicago-area promotional block.
+test fn w_ny_facility_rows_are_all_in_new_york() -> Bool {
+  databank_lga3_orangeburg.region_code == "NY"
+    && csr_orny1_orangeburg.region_code == "NY"
+    && hivelocity_ogb1_orangeburg.region_code == "NY"
+    && tierpoint_hawthorne_hwt.region_code == "NY"
+    && tierpoint_hawthorne_hw2.region_code == "NY"
+    && equinix_ny13.region_code == "NY"
+    && long_island_interconnect_westbury.region_code == "NY"
+    && nyi_long_island.region_code == "NY"
+    && stafford_setauket.region_code == "NY"
+    && vastnet_melville.region_code == "NY"
+    && three_sixty_five_commack.region_code == "NY"
+    && continuity_centers_woodbury.region_code == "NY"
+}
+
+// THE CO-LOCATION IS A FACT ABOUT THE BUILDING AND IS ASSERTED AS ONE. NYI and Long Island
+// Interconnect are two operators selling in one Westbury building, which is why their density
+// figures agree and their grain readings do not. Elsewhere in this file that pair is what makes a
+// transferred grain reading go red; here it is the premise that makes the pair meaningful at all.
+// If either row's municipality is ever edited apart from the other, the co-location claim the grain
+// tests rest on has silently stopped being true, and this is where that surfaces.
+test fn w_the_westbury_pair_is_one_municipality() -> Bool {
+  long_island_interconnect_westbury.municipality == "Westbury"
+    && nyi_long_island.municipality == "Westbury"
+}
+
+// A STREET IS READ OR IT IS AN OBLIGATION, AND VASTNET IS WHY THE ARM EXISTS. That operator
+// publishes a PO box and no street, so its row is AddressUnread carrying what to ask for. The rule
+// this defends is the census's oldest: an address is never reconstructed from a directory, a PO box,
+// or a co-located operator's page. Filling Vastnet's street in from any of those - a five-minute
+// temptation for whoever wants a complete-looking table - reds this test.
+//
+// Before this test the AddressStanding arms had NO consumer anywhere in the corpus, so that rule was
+// enforced by authorial discipline alone. It is now enforced by execution.
+//
+// THE STREET EQUALITY IS THE ASSERTION THIS FILE COULD NOT WRITE BEFORE, and it is why the accessor
+// returns the street rather than a Bool (review 62953). NYI and Long Island Interconnect carry
+// BYTE-IDENTICAL streets because they are two operators selling in one building - that co-location
+// is the premise the grain tests above rest on, and until now it was asserted only through
+// municipality, which two different Westbury buildings would also satisfy. Comparing the two streets
+// TO EACH OTHER tests a relation between two rows rather than a row against a transcribed literal,
+// so it is not the self-comparison DESIGN section 5 warns about: nothing in this file supplies the
+// expected value, and if either operator's page is re-read to a different street the pair stops
+// agreeing and this reds.
+//
+// THE TWO not-equal-SENTINEL LINES ARE LOAD-BEARING AND WERE MISSING (review 62968). Without them,
+// if BOTH Westbury rows were re-read to AddressUnread the two sides of the equality would both be
+// "STREET-UNREAD" and the co-location assertion would PASS - vacuously, on the value the helper
+// returns when it has nothing. That is the sentinel doubling as the failure value and as a value
+// that satisfies the check, which is the worst shape an in-band marker can take: the assertion is
+// strongest exactly when the data is present and silently strongest-looking when it is gone.
+// Asserting each side is not the sentinel BEFORE comparing them is what makes the equality an
+// assertion about two streets rather than about two absences.
+fn street_or_unread(a: AddressStanding) -> NonEmptyStr {
+  match address_street(a: a) {
+    Present { value } => value,
+    Absent => "STREET-UNREAD",
+  }
+}
+
+test fn w_addresses_are_read_or_owed_never_reconstructed() -> Bool {
+  street_or_unread(a: vastnet_melville.address) == "STREET-UNREAD"
+    && street_or_unread(a: long_island_interconnect_westbury.address) != "STREET-UNREAD"
+    && street_or_unread(a: nyi_long_island.address) != "STREET-UNREAD"
+    && street_or_unread(a: long_island_interconnect_westbury.address)
+       == street_or_unread(a: nyi_long_island.address)
+    && street_or_unread(a: databank_lga3_orangeburg.address) != "STREET-UNREAD"
+    && street_or_unread(a: tierpoint_hawthorne_hwt.address) != "STREET-UNREAD"
+    && street_or_unread(a: tierpoint_hawthorne_hw2.address) != "STREET-UNREAD"
+    && street_or_unread(a: continuity_centers_woodbury.address) != "STREET-UNREAD"
+}

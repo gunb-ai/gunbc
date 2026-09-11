@@ -1675,6 +1675,18 @@ fn witness_floor_job() -> Job {
   }
 }
 
+// THE NATIVE LANE JOB IS DELETED (operator ruling, 2026-09-11). It was authorized 2026-09-09 as
+// one additional required job and ran on every push and pull request from #10882 (0006e0aabd)
+// until this change. Its measured wall was 4h06m on srv2 against a declared 180-minute envelope
+// that cited ~70 minutes; the workflow's concurrency group is keyed per PR number or run id with
+// cancel-in-progress false, so no push superseded a running native job and every main push
+// added another ~4h claimant on the shared arm64 runners, starving the build and floor lanes
+// that gate. The route model (gunbc.witness_v2_native_route) and its harness
+// (`claim_executor --v2-native-route`) stay as an operator-invoked instrument; the loss of the
+// merge-path lane is the declared drop gunbc.rung_drop v2_native_route_off_the_merge_path,
+// and a replacement job is designed from the ground up against that row's trigger, never
+// re-added into the same envelope.
+
 // THE LANE'S EXECUTION ENVELOPE, NAMED BECAUSE A SECOND CONSUMER NOW READS IT. The value did not
 // change; it stopped being a literal. gunbc.repo_ruleset derives the merge queue's
 // check_response_timeout from this row, because a queue whose response timeout is BELOW the

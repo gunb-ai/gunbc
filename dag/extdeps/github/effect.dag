@@ -16,6 +16,7 @@ import extdeps.github.app {
   AppAccessWrite
 }
 import extdeps.github.github { Repository }
+import v2.std.algebra { fold_list }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -159,6 +160,11 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
       [organization_self_hosted_runners_write]
   }
 }
+
+// EVERY VARIANT OF GitHubEffect IS A MUTATION. There is no is-mutation fold: a Bool true for
+// every inhabitant restates the type. A GitHubEffect perform classifies as RestMutationExchange.
+// GET /user is github.Users and classifies as RestReadExchange — a different operation, not a
+// fifth arm of this algebra.
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

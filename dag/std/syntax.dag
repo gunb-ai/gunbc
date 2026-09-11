@@ -76,3 +76,51 @@ type SyntaxSpec {
   keyword_literals: Map<String, LiteralValue>
   keyword_set: Map<String, Bool>
 }
+
+// THE COMPLETE DECLARATIVE PARSE ENVIRONMENT OF ONE LANGUAGE REALIZATION AT ONE REVISION, carried
+// as a value so that reading a revision's source does not mean reading it under whatever grammar
+// the RUNNING binary was built with. The type is language-agnostic, like every sibling in this
+// module: it is a `SyntaxSpec` plus a non-name-keyword roster, which is the shape any language
+// realization needs. The dag-specific INSTANCE is `extdeps.languages.dag.syntax`
+// `dag_parse_environment`, and a second language contributes another instance here rather than
+// another type -- naming this carrier after one language would be the fork section 2 prices as
+// growing net concepts by re-invention.
+//
+// A `SyntaxSpec` ALONE IS NOT THAT ENVIRONMENT: the tokenizer classifies words against
+// `keyword_set` before any spec is consulted, and the parser refuses a keyword in name position
+// against a SEPARATE non-name roster that lives beside the spec rather than inside it. A carrier
+// holding only the spec would therefore be revision-relative for item forms and head-relative for
+// tokenization, which is the half-fix that reads as green.
+//
+// WHY THIS EXISTS AT ALL, since the running binary already has one. A cross-revision comparison --
+// what a merge base declared versus what a head declares -- parses BOTH sides, and only one of them
+// was authored under the head's grammar. Handing base text to the head's compiled-in environment
+// assumes the two revisions share a grammar, and that assumption is silently false for exactly the
+// changes that alter the grammar. The class is
+// gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change.
+//
+// WHAT IT DOES NOT CARRY, stated because the boundary is the whole value of the type. This is the
+// DECLARATIVE environment: which words are keywords, which item forms exist and what fields they
+// admit, which operators bind how, which keywords are literals. It is NOT the parser's realization.
+// `parse_item_by_form` dispatches on `body_kind` to hand-written body parsers, so a revision whose
+// body parser behaved differently is not reproduced by supplying its environment -- and must not be
+// claimed to be. That population stays outside the covered set and refuses rather than answering.
+//
+// DECLARED FRONTIER (DESIGN section 3c), stated here rather than only in a pull request body,
+// because a consumption claim that lives outside the diff is one of that section's own tells. AS OF
+// THIS DECLARATION EVERY PRODUCER IS THE HEAD'S OWN `dag_parse_environment`, so no caller yet reads
+// a revision under a grammar other than the running binary's, and the type's stated purpose is not
+// yet exercised by execution. That is the honest status, not a claim of consumption.
+//
+// THE CONSUMER IS THE BASE ENVIRONMENT LOADER, which decodes this value out of the four-blob base
+// closure at the revision being compared and hands it to the same tokenizer and parser this change
+// already threads it through. THE TRIGGER IS THAT LOADER LANDING WITH A CROSS-REVISION READ
+// GREEN BY EXECUTION -- a base whose grammar differs from the head's, parsed under its own environment, with
+// a discriminating red that fires when the head's environment is substituted. Until that trigger is
+// met this type is a declared frontier and nothing here may be cited as evidence that
+// gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change has climbed: the
+// climb is the loader's, and section 4b(1) counts a rung only from executed evidence.
+type ParseEnvironment {
+  syntax_spec: SyntaxSpec
+  non_name_keywords: Map<String, Bool>
+}

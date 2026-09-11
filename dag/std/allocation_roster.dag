@@ -1,0 +1,138 @@
+module std.allocation_roster
+
+import std.types { List, Map, Bool, String }
+
+// A ROSTER IN WHICH A DUPLICATE HAS NO CONSTRUCTOR, WHICH IS A DIFFERENT THING FROM ONE THAT CHECKS.
+//
+// TWO MODULES ARRIVED AT THE SAME ALGEBRA INDEPENDENTLY. gunbc.hostname_allocation established the
+// shape -- a roster mapping a slot to an allocated name, injective on BOTH axes, whose production
+// lookup consults a duplicate verdict and answers Absent rather than serving an arbitrary winner --
+// and gunbc.cloudflare.r2_origin reproduced it line for line for buckets. DESIGN section 2 states
+// the test that failed: net concepts must not grow by re-invention, and two copies drift on the
+// first fix to either.
+//
+// BUT DEDUPLICATION IS THE SMALLER HALF, AND BUILDING ONLY THAT WOULD HAVE MISSED THE POINT.
+// hostname_allocation's own injectivity disposition reports its rung as MECHANICALLY PREVENTABLE and
+// names its next-rung trigger in these words: a duplicate-refusing keyed roster carrier whose
+// CONSTRUCTION cannot admit a repeated key -- not adopted there because std.occurrence_binding_candidates
+// keys on one axis and that roster must stay injective on two. This module is that carrier. A shared
+// VALIDATOR both modules called would have deduplicated the code and climbed nothing, leaving the
+// declared stall exactly where it was.
+//
+// SO THE CARRIER IS sole_constructor AND THE ONLY WAY IN REFUSES. There is no expression in any
+// other module that produces an AllocationRoster holding two rows with one primary key or one
+// secondary key: the empty roster and `allocate` are the only producers, and `allocate` returns a
+// refusal rather than a roster when either axis is already claimed. The lookup therefore consults
+// nothing before answering -- there is no inconsistent roster for it to guard against, so the
+// "serve an arbitrary winner" failure has no state in which to occur.
+//
+// THE HONEST RUNG, AND IT IS NOT THE TOP ONE. Duplicates are unrepresentable IN THE CARRIER, which
+// is structural guarantee: no accepted program holds an inconsistent roster. The authored SOURCE is
+// still an ordinary List literal that a person can write two colliding rows into, and the fold below
+// refuses it -- so the invalid state moved from "checked at every lookup" to "unconstructible, with
+// one fallible ingress that refuses loudly". What would make it structurally IMPOSSIBLE is authoring
+// rows directly into the roster with no intermediate list, and that is this module's own next-rung
+// trigger, stated as the capability: a declaration form that builds a keyed carrier at authoring
+// time rather than folding a list into it.
+//
+// THE AXES ARE PROJECTED TO STRINGS, WHICH IS A REAL TRADE STATED RATHER THAN HIDDEN. Both original
+// copies compared their axes by spelling anyway, via `as String` on a brand, so nothing is lost at
+// the comparison; what is lost is the domain-typed refusal arm -- a collision reports the offending
+// KEY SPELLING rather than a HostIdentity or a BucketPurpose. The spelling identifies the row
+// uniquely, because it is the same value the injectivity is defined over.
+type AllocationRoster<V> sole_constructor {
+  by_primary: Map<String, V>
+  secondary_claimed: Map<String, Bool>
+}
+
+type AllocationAdmission<V>
+  = AllocationAdmitted { roster: AllocationRoster<V> }
+  | AllocationPrimaryKeyRepeated { key: String }
+  | AllocationSecondaryKeyRepeated { key: String }
+
+fn empty_allocation_roster<V>() -> AllocationRoster<V> {
+  AllocationRoster { by_primary: empty_map(), secondary_claimed: empty_map() }
+}
+
+// BOTH AXES ARE CHECKED BEFORE EITHER IS WRITTEN, so a row that collides on the SECOND axis does not
+// leave the first axis claimed on its way to being refused. The refusal is total: an admission
+// either yields a roster containing the row or names which axis rejected it.
+fn allocate<V>(
+  roster: AllocationRoster<V>,
+  primary: String,
+  secondary: String,
+  value: V
+) -> AllocationAdmission<V> {
+  match map_get(roster.by_primary, primary) {
+    Present { value: _ } => AllocationPrimaryKeyRepeated { key: primary }
+    Absent =>
+      match map_get(roster.secondary_claimed, secondary) {
+        Present { value: _ } => AllocationSecondaryKeyRepeated { key: secondary }
+        Absent =>
+          AllocationAdmitted {
+            roster: AllocationRoster {
+              by_primary: map_insert(roster.by_primary, primary, value),
+              secondary_claimed: map_insert(roster.secondary_claimed, secondary, true),
+            },
+          }
+      }
+  }
+}
+
+// A REFUSAL ONCE REACHED IS CARRIED, NEVER RECOMPUTED OR OVERWRITTEN. The first collision is the one
+// reported: a later row must not replace it with its own, because the roster is being rejected as a
+// whole and the reader needs the first thing that made it invalid, not the last.
+fn allocation_build_step<R, V>(
+  acc: AllocationAdmission<V>,
+  row: R,
+  primary: fn(R) -> String,
+  secondary: fn(R) -> String,
+  value: fn(R) -> V
+) -> AllocationAdmission<V> {
+  match acc {
+    AllocationPrimaryKeyRepeated { key: dup } => AllocationPrimaryKeyRepeated { key: dup }
+    AllocationSecondaryKeyRepeated { key: dup } => AllocationSecondaryKeyRepeated { key: dup }
+    AllocationAdmitted { roster: roster } =>
+      allocate(roster: roster, primary: primary(row), secondary: secondary(row), value: value(row))
+  }
+}
+
+// THE ONE FALLIBLE INGRESS, and it is the only place a duplicate can be expressed at all. Everything
+// downstream of an AllocationAdmitted holds a carrier in which the collision is unrepresentable.
+fn build_allocation_roster<R, V>(
+  rows: List<R>,
+  primary: fn(R) -> String,
+  secondary: fn(R) -> String,
+  value: fn(R) -> V
+) -> AllocationAdmission<V> {
+  fold(
+    rows,
+    init: AllocationAdmitted { roster: empty_allocation_roster() },
+    f: (acc, row) => allocation_build_step(acc: acc, row: row, primary: primary, secondary: secondary, value: value),
+  )
+}
+
+// NO VERDICT IS CONSULTED HERE, AND THAT ABSENCE IS THE CLIMB. Both predecessors had to ask "is this
+// roster consistent?" before every answer, because an inconsistent one was representable and serving
+// from it would have picked a winner by authoring order. A roster value cannot be inconsistent, so
+// the question has no subject and the guard has nothing to guard.
+fn allocation_lookup<V>(roster: AllocationRoster<V>, wanted: String) -> V? {
+  map_get(roster.by_primary, wanted)
+}
+
+// THE FUSED FORM CONSUMERS ACTUALLY WANT: build, then look up, with a refused build answering Absent
+// rather than an arbitrary row. It exists so that each consumer does not re-spell that match, which
+// is how the duplication started.
+fn allocated_value<R, V>(
+  rows: List<R>,
+  wanted: String,
+  primary: fn(R) -> String,
+  secondary: fn(R) -> String,
+  value: fn(R) -> V
+) -> V? {
+  match build_allocation_roster(rows: rows, primary: primary, secondary: secondary, value: value) {
+    AllocationAdmitted { roster: roster } => allocation_lookup(roster: roster, wanted: wanted)
+    AllocationPrimaryKeyRepeated { key: _ } => none
+    AllocationSecondaryKeyRepeated { key: _ } => none
+  }
+}

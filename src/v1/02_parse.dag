@@ -103,7 +103,8 @@ import std.syntax {
   OperatorSpec, SyntaxSpec
 }
 
-import extdeps.languages.dag.syntax { dag_syntax_spec, dag_non_name_keywords }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.syntax { ParseEnvironment }
 
 type TokenStream {
   all: List<Token>
@@ -149,6 +150,7 @@ type ParseContext {
   declaration_occurrences: List<DeclarationOccurrence>?
   reference_occurrences: List<ReferenceOccurrence>?
   heads_only: Bool
+  env: ParseEnvironment
 }
 
 type ParseResult {
@@ -256,6 +258,7 @@ fn parse_context_with_occurrence_state(
     declaration_occurrences: declaration_occurrences,
     reference_occurrences: reference_occurrences,
     heads_only: ctx.heads_only,
+    env: ctx.env,
   }
 }
 
@@ -271,6 +274,7 @@ fn parse_context_with_intern_table(
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences,
     heads_only: ctx.heads_only,
+    env: ctx.env,
   }
 }
 
@@ -743,14 +747,14 @@ fn tok_is_question(tok: Token?) -> Bool {
 fn tok_span(tok: Token?) -> SourceSpan {
   match tok { Present { value: t } => t.span  Absent => no_span() }
 }
-fn tok_keyword_to_name(tok: Token?) -> String? {
+fn tok_keyword_to_name(tok: Token?, env: ParseEnvironment) -> String? {
   match tok {
-    Present { value: t } => if is_name_keyword(token: t) { Present { value: t.text } } else { none }
+    Present { value: t } => if is_name_keyword(token: t, env: env) { Present { value: t.text } } else { none }
     Absent => none
   }
 }
-fn tok_is_keyword_name(tok: Token?) -> Bool {
-  match tok_keyword_to_name(tok: tok) { Present { value: _ } => true  Absent => false }
+fn tok_is_keyword_name(tok: Token?, env: ParseEnvironment) -> Bool {
+  match tok_keyword_to_name(tok: tok, env: env) { Present { value: _ } => true  Absent => false }
 }
 
 fn shape_display_name(shape: TokenShape) -> String {
@@ -890,7 +894,7 @@ fn expect_ident(tokens: TokenStream) -> NameResult {
   }
 }
 
-fn expect_name(tokens: TokenStream) -> NameResult {
+fn expect_name(tokens: TokenStream, env: ParseEnvironment) -> NameResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   match sh {
@@ -900,7 +904,7 @@ fn expect_name(tokens: TokenStream) -> NameResult {
       NameResult { name: n, span: span, tokens: token_stream_advance(stream: tokens, n: 1), err: none }
     }
     _ => {
-      let kw_name = tok_keyword_to_name(tok: tok)
+      let kw_name = tok_keyword_to_name(tok: tok, env: env)
       match kw_name {
         Present { value: n } => {
           let span = tok.value.span
@@ -918,9 +922,9 @@ fn expect_name(tokens: TokenStream) -> NameResult {
   }
 }
 
-fn is_name_keyword(token: Token) -> Bool {
+fn is_name_keyword(token: Token, env: ParseEnvironment) -> Bool {
   if is_keyword_shape(shape: token.shape) {
-    match lookup(dag_non_name_keywords, key: token.text) {
+    match lookup(env.non_name_keywords, key: token.text) {
       Present { value: _ } => false
       Absent => true
     }
@@ -957,7 +961,7 @@ fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
   }
 }
 
-// Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not
+// Continuation-leading tokens are derived from the parse environment's operators via find_operator_bp, not
 // a shape allowlist. PREFIX/INFIX INTERSECTION IS PROVABLY COMPLETE — not a remembered one-element
 // hand-list. parse_prefix admits exactly two unary prefix shapes: ShBang → ExprUnaryOp { op: Not }
 // and ShMinus → ExprUnaryOp { op: Neg } (UnaryOpKind is closed: Not | Neg only). The infix table
@@ -988,13 +992,13 @@ fn is_ambiguous_prefix_infix_newline_boundary(tokens: TokenStream) -> Bool {
   }
 }
 
-fn is_operator_continuation_token(tok: Token?) -> Bool {
+fn is_operator_continuation_token(tok: Token?, env: ParseEnvironment) -> Bool {
   match tok {
     Present { value: t } =>
       if is_prefix_infix_dual_role_operator(symbol: t.text) {
         false
       } else {
-        match find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text) {
+        match find_operator_bp(ops: env.syntax_spec.operators, symbol: t.text) {
           Present { value: _ } => true
           Absent => false
         }
@@ -1003,11 +1007,11 @@ fn is_operator_continuation_token(tok: Token?) -> Bool {
   }
 }
 
-fn skip_continuation_newlines(tokens: TokenStream) -> TokenStream {
+fn skip_continuation_newlines(tokens: TokenStream, env: ParseEnvironment) -> TokenStream {
   let tok = token_stream_first(stream: tokens)
   let is_continuation = if tok_is_newline(tok: tok) {
     let after = skip_newlines(tokens: tokens)
-    is_operator_continuation_token(tok: token_stream_first(stream: after))
+    is_operator_continuation_token(tok: token_stream_first(stream: after), env: env)
   } else {
     false
   }
@@ -1178,19 +1182,19 @@ fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>)
   }
 }
 
-fn parse_dotted_ident(tokens: TokenStream) -> NameResult {
-  let r = expect_name(tokens: tokens)
+fn parse_dotted_ident(tokens: TokenStream, env: ParseEnvironment) -> NameResult {
+  let r = expect_name(tokens: tokens, env: env)
   if has_err(err: r.err) { return r }
-  parse_dotted_ident_rest(tokens: r.tokens, acc: r.name, span: r.span)
+  parse_dotted_ident_rest(tokens: r.tokens, acc: r.name, span: r.span, env: env)
 }
 
-fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan) -> NameResult {
+fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan, env: ParseEnvironment) -> NameResult {
   match eat(tokens: tokens, expected: ExpectDot) {
   EatConsumed { token: _, tokens: __ec } =>
-    let r = expect_name(tokens: __ec)
+    let r = expect_name(tokens: __ec, env: env)
     if has_err(err: r.err) { return r }
     let extended = SourceSpan { file: span.file, start: span.start, end: r.span.end }
-    parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended)
+    parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended, env: env)
   EatUnchanged { tokens: __eu } =>
     NameResult { name: acc, span: span, tokens: __eu, err: none }
   }
@@ -1920,7 +1924,8 @@ fn parse_context_for_tokens(
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   occurrence_base: AuthoredTokenOrdinalSpace,
-  heads_only: Bool
+  heads_only: Bool,
+  env: ParseEnvironment
 ) -> ParseContext {
   ParseContext {
     source_indices: source_indices,
@@ -1935,15 +1940,22 @@ fn parse_context_for_tokens(
     declaration_occurrences: Present { value: [] },
     reference_occurrences: Present { value: [] },
     heads_only: heads_only,
+    env: env,
   }
 }
 
+// THE ENVIRONMENT IS A REQUIRED ARGUMENT HERE AND HAS NO DEFAULT, which is the whole point of the
+// parameter. A default would be the head's compiled-in grammar, and a base-side caller that forgot
+// to pass one would silently read base source under head rules -- the exact defect
+// gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change names. Making it
+// required means that mistake does not compile rather than being caught by review.
 fn parse_with_table_at(
   tokens: List<Token>,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   occurrence_base: AuthoredTokenOrdinalSpace,
-  heads_only: Bool
+  heads_only: Bool,
+  env: ParseEnvironment
 ) -> ParseWithTableResult {
   let occurrence_allocator = occurrence_id_allocator_advance_to(
     alloc: occurrence_base.allocator,
@@ -1954,7 +1966,8 @@ fn parse_with_table_at(
     source_indices: source_indices,
     intern_table: intern_table,
     occurrence_base: occurrence_base,
-    heads_only: heads_only
+    heads_only: heads_only,
+    env: env
   )
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
   if has_err(err: r.err) {
@@ -2016,7 +2029,8 @@ fn parse_with_table_in_occurrence_scope(
     occurrence_base: authored_token_ordinal_space_from_allocator(
       alloc: occurrence_allocator
     ),
-    heads_only: false
+    heads_only: false,
+    env: dag_parse_environment
   )
 }
 
@@ -2026,7 +2040,8 @@ fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineInde
     source_indices: source_indices,
     intern_table: intern_table,
     occurrence_base: intern_table.authored_token_ordinals,
-    heads_only: false
+    heads_only: false,
+    env: dag_parse_environment
   )
 }
 
@@ -2051,7 +2066,8 @@ fn parse_heads_with_table(tokens: List<Token>, source_indices: Map<String, Newli
     source_indices: source_indices,
     intern_table: intern_table,
     occurrence_base: intern_table.authored_token_ordinals,
-    heads_only: true
+    heads_only: true,
+    env: dag_parse_environment
   )
 }
 
@@ -2083,7 +2099,7 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
   if has_err(err: r.err) { return ModuleResult { module: module_node(occurrence_identity: OccurrenceSynthetic, name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
 
-  let r = parse_dotted_ident(tokens: tokens)
+  let r = parse_dotted_ident(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ModuleResult { module: module_node(occurrence_identity: OccurrenceSynthetic, name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_name = r.name
   let mod_name_span = r.span
@@ -2212,14 +2228,15 @@ fn parse_import_statement_extents(
     source_indices: source_indices,
     intern_table: intern_table,
     occurrence_base: intern_table.authored_token_ordinals,
-    heads_only: false
+    heads_only: false,
+    env: dag_parse_environment
   )
   let stream = skip_newlines(tokens: token_stream_new(all: tokens))
   let r = expect(tokens: stream, expected: ExpectKeyword { text: "module" })
   if has_err(err: r.err) {
     return ImportStatementParseRefused { cause: SourceHasNoModuleDeclaration }
   }
-  let r = parse_dotted_ident(tokens: r.tokens)
+  let r = parse_dotted_ident(env: dag_parse_environment, tokens: r.tokens)
   if has_err(err: r.err) {
     return ImportStatementParseRefused { cause: ModuleDeclarationPathMalformed }
   }
@@ -2248,7 +2265,7 @@ fn parse_import(tokens: TokenStream, ctx: ParseContext) -> ImportResult {
   if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
 
-  let r = parse_dotted_ident(tokens: tokens)
+  let r = parse_dotted_ident(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_path = r.name
   let mod_path_span = r.span
@@ -2311,7 +2328,7 @@ fn parse_import_names_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) {
     NamesResult { names: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_dotted_ident(tokens: tokens)
+    let r = parse_dotted_ident(tokens: tokens, env: ctx.env)
     if has_err(err: r.err) { return NamesResult { names: [], tokens: r.tokens, ctx: ctx, err: r.err } }
     let minted = mint_parsed_node_identity(ctx: ctx)
     let name_node = parsed_name_leaf(occurrence_identity: minted.identity, name: r.name, span: r.span)
@@ -2336,7 +2353,7 @@ fn parse_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let tok = token_stream_first(stream: tokens)
   let kw = tok_keyword_text(tok: tok)
   let span = token_span(tok: tok)
-  let form = find_item_form(forms: dag_syntax_spec.item_forms, keyword: kw)
+  let form = find_item_form(forms: ctx.env.syntax_spec.item_forms, keyword: kw)
   match form {
     Present { value: f } => parse_item_by_form(tokens: tokens, ctx: ctx, form: f)
     Absent => ItemResult { item: Node { occurrence_identity: OccurrenceSynthetic, name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
@@ -2650,7 +2667,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
   EatUnchanged { tokens: _ } =>
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
-    let r = parse_dotted_ident(tokens: tokens)
+    let r = parse_dotted_ident(tokens: tokens, env: ctx.env)
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
     let first_name = r.name
     let first_name_span = r.span
@@ -2728,7 +2745,7 @@ fn parse_predicates_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult {
   let zero_span = no_span()
   let dummy_pred = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "", value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return PredResult { predicate: dummy_pred, tokens: r.tokens, ctx: ctx, err: r.err } }
   let pred_name = r.name
   let tokens = r.tokens
@@ -2926,7 +2943,7 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
       }
     }
     Present { value: ShIdent } => {
-      let r = parse_dotted_ident(tokens: tokens)
+      let r = parse_dotted_ident(tokens: tokens, env: ctx.env)
       if has_err(err: r.err) {
         return TypeResult {
           type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: span),
@@ -3087,7 +3104,7 @@ fn parse_field_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
   if tok_is_rbrace(tok: tok) || tok_is_rparen(tok: tok) || tok_is_eof(tok: tok) {
     FieldsResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    if tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok) {
+    if tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok, env: ctx.env) {
       let r = parse_field(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return FieldsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let tokens = r.tokens
@@ -3103,7 +3120,7 @@ fn parse_field_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 fn parse_field(tokens: TokenStream, ctx: ParseContext) -> FieldResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_field = make_field_node(occurrence_identity: OccurrenceSynthetic, name: "", type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: start_span), cardinality: Required, default_value: none, from_key_properties: [], span: start_span, name_span: start_span)
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return FieldResult { field: dummy_field, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
@@ -3462,7 +3479,7 @@ fn parse_resource_config_acc(tokens: TokenStream, ctx: ParseContext, acc: List<N
     return ResConfigResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
   }
   let zero_span = no_span()
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ResConfigResult { fields: [], tokens: r.tokens, ctx: ctx, err: r.err } }
   let field_name = r.name
   let r2 = expect(tokens: r.tokens, expected: ExpectColon)
@@ -3502,10 +3519,10 @@ fn parse_service_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
 fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
   let dummy = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
 
-  let r_ns = expect_name(tokens: tokens)
+  let r_ns = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r_ns.err) { return ItemResult { item: dummy, tokens: r_ns.tokens, ctx: ctx, err: r_ns.err } }
   let namespace_root = r_ns.name
-  let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: r_ns.span)
+  let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: r_ns.span, env: ctx.env)
   let name = r.name
   let svc_name_span = r.span
   let named_dummy = Node { occurrence_identity: OccurrenceSynthetic, name: name, span: start_span, ident_span: Present { value: svc_name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
@@ -4455,7 +4472,7 @@ fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sour
   let r = expect(tokens: r.tokens, expected: ExpectEq)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_dotted_ident(tokens: r.tokens)
+  let r = parse_dotted_ident(tokens: r.tokens, env: ctx.env)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let target_path = r.name
 
@@ -4567,7 +4584,7 @@ fn parse_param_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 fn parse_param(tokens: TokenStream, ctx: ParseContext) -> ParamResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_param = make_param_node(occurrence_identity: OccurrenceSynthetic, name: "", type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: start_span), default_value: none, span: start_span, name_span: start_span)
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ParamResult { param: dummy_param, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
@@ -4780,7 +4797,7 @@ fn parse_stmt(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       }
     }
     Present { value: ShIdent } => {
-      if peek_text_is(tokens: tokens, expected: "node") && peek_is_node_decl(tokens: tokens) {
+      if peek_text_is(tokens: tokens, expected: "node") && peek_is_node_decl(tokens: tokens, env: ctx.env) {
         parse_node_decl(tokens: tokens, ctx: ctx)
       } else if peek_is_eq_after_ident(tokens: tokens) {
         parse_bare_assignment(tokens: tokens, ctx: ctx)
@@ -4801,11 +4818,11 @@ fn peek_is_eq_after_ident(tokens: TokenStream) -> Bool {
   }
 }
 
-fn peek_is_node_decl(tokens: TokenStream) -> Bool {
+fn peek_is_node_decl(tokens: TokenStream, env: ParseEnvironment) -> Bool {
   let t1 = token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))
   let t2 = token_stream_first(stream: token_stream_advance(stream: tokens, n: 2))
   let name_ok = match t1 {
-    Present { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword(token: t)
+    Present { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword(token: t, env: env)
     Absent => false
   }
   let decl_ok = match t2 {
@@ -4825,7 +4842,7 @@ fn is_constraint_bracket_after_ident(tokens: TokenStream) -> Bool {
 fn parse_constrained_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
@@ -4858,7 +4875,7 @@ fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let tokens = token_stream_advance(stream: tokens, n: 1)
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
@@ -4889,7 +4906,7 @@ fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 fn parse_bare_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
@@ -4941,7 +4958,7 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
         )
       }
     }
-    let tokens = skip_continuation_newlines(tokens: tokens)
+    let tokens = skip_continuation_newlines(tokens: tokens, env: ctx.env)
     let post = try_postfix(tokens: tokens, ctx: ctx, lhs: lhs, min_bp: min_bp)
     if has_err(err: post.err) {
       ExprResult { expr: lhs, tokens: post.tokens, ctx: post.ctx, err: post.err }
@@ -4949,7 +4966,7 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
     if post.changed {
       parse_expr_loop(tokens: post.tokens, ctx: post.ctx, lhs: post.expr, min_bp: min_bp)
     } else {
-      let bp = infix_bp(tokens: tokens)
+      let bp = infix_bp(tokens: tokens, env: ctx.env)
       match bp {
         Present { value: bps } => {
           if bps.left < min_bp {
@@ -4959,7 +4976,7 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
               AdvanceOk { token: op_tok, tokens: rest } =>
                 let op_shape = op_tok.shape
                 if is_dot_shape(shape: op_shape) {
-                  let r = expect_name(tokens: rest)
+                  let r = expect_name(tokens: rest, env: ctx.env)
                   if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
                   let minted = mint_parsed_node_identity(ctx: ctx)
                   let new_lhs = make_named_expr_node(occurrence_identity: minted.identity, name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
@@ -4972,7 +4989,7 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
                   let tokens = skip_newlines(tokens: rest)
                   let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
                   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
+                  let binop_opt = find_operator_binop(ops: ctx.env.syntax_spec.operators, symbol: op_tok.text)
                   match binop_opt {
                     Present { value: binop } => {
                       let minted = mint_parsed_node_identity(ctx: r.ctx)
@@ -4993,9 +5010,9 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
   }
 }
 
-fn infix_bp(tokens: TokenStream) -> BindingPower? {
+fn infix_bp(tokens: TokenStream, env: ParseEnvironment) -> BindingPower? {
   match token_stream_first(stream: tokens) {
-    Present { value: t } => find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text)
+    Present { value: t } => find_operator_bp(ops: env.syntax_spec.operators, symbol: t.text)
     Absent => none
   }
 }
@@ -5031,7 +5048,7 @@ fn pipe_callee_path_is_applied(candidate: PipeCalleeResult) -> Bool {
 
 fn parse_pipe_callee_rest(tokens: TokenStream, ctx: ParseContext, spine: Node?, name: String, name_span: SourceSpan) -> PipeCalleeResult {
   if tok_is_dot(tok: token_stream_first(stream: tokens)) {
-    let r = expect_name(tokens: token_stream_advance(stream: tokens, n: 1))
+    let r = expect_name(tokens: token_stream_advance(stream: tokens, n: 1), env: ctx.env)
     if has_err(err: r.err) { return PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: r.tokens, ctx: ctx, err: r.err } }
     let minted = mint_parsed_node_identity(ctx: ctx)
     let next_spine = match spine {
@@ -5046,7 +5063,7 @@ fn parse_pipe_callee_rest(tokens: TokenStream, ctx: ParseContext, spine: Node?, 
 
 fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect_name(tokens: tokens)
+  let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let dotted = parse_pipe_callee_rest(tokens: r.tokens, ctx: ctx, spine: none, name: r.name, name_span: r.span)
   if has_err(err: dotted.err) { return ExprResult { expr: dummy_expr, tokens: dotted.tokens, ctx: ctx, err: dotted.err } }
@@ -5145,7 +5162,7 @@ fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   match sh {
     Present { value: ShKeyword } => {
       let kw_text = tok.value.text
-      let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
+      let lit_val = lookup(ctx.env.syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Present { value: lv } => {
           parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span))
@@ -5158,7 +5175,7 @@ fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       else if kw_text == "return" { parse_return(tokens: tokens, ctx: ctx) }
       else if kw_text == "fn" { parse_fn_lambda(tokens: tokens, ctx: ctx) }
       else {
-        let kw_name = tok_keyword_to_name(tok: tok)
+        let kw_name = tok_keyword_to_name(tok: tok, env: ctx.env)
         match kw_name {
           Present { value: n } => parse_ident_expr(tokens: tokens, ctx: ctx, name: n)
           Absent => {
@@ -5496,9 +5513,9 @@ fn parse_single_arg(tokens: TokenStream, ctx: ParseContext) -> ArgResult {
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_arg = make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: parse_recovery_placeholder(), span: span, name_span: span)
   let tok = token_stream_first(stream: tokens)
-  let is_name_token = tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok)
+  let is_name_token = tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok, env: ctx.env)
   if is_name_token {
-    let name_r = expect_name(tokens: tokens)
+    let name_r = expect_name(tokens: tokens, env: ctx.env)
     if has_err(err: name_r.err) {
       let r = parse_expr(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -5567,7 +5584,7 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
   if has_err(err: r.err) { return r }
   let parsed = parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
   let leading_ident_brace = match tok { Present { value: t } => is_ident_shape(shape: t.shape)  Absent => false } && tok_is_lbrace(tok: next)
-  let stopped_at_infix = match infix_bp(tokens: parsed.tokens) { Present { value: _ } => true  Absent => false }
+  let stopped_at_infix = match infix_bp(tokens: parsed.tokens, env: ctx.env) { Present { value: _ } => true  Absent => false }
   if leading_ident_brace && !has_err(err: parsed.err) && !tok_is_lbrace(tok: token_stream_first(stream: parsed.tokens)) && !stopped_at_infix {
     let span = token_span(tok: tok)
     let minted = mint_parsed_node_identity(ctx: ctx)
@@ -5603,7 +5620,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
         )
       }
     }
-    let tokens = skip_continuation_newlines(tokens: tokens)
+    let tokens = skip_continuation_newlines(tokens: tokens, env: ctx.env)
 
     if tok_is_lparen(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
       let r = parse_call_args(tokens: tokens, ctx: ctx)
@@ -5618,7 +5635,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
     } else {
-      let bp = infix_bp(tokens: tokens)
+      let bp = infix_bp(tokens: tokens, env: ctx.env)
       match bp {
         Present { value: bps } => {
           if bps.left < min_bp {
@@ -5628,7 +5645,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
               AdvanceOk { token: op_tok, tokens: rest } =>
                 let op_shape = op_tok.shape
                 if is_dot_shape(shape: op_shape) {
-                  let r = expect_name(tokens: rest)
+                  let r = expect_name(tokens: rest, env: ctx.env)
                   if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
                   let minted = mint_parsed_node_identity(ctx: ctx)
                   let new_lhs = make_named_expr_node(occurrence_identity: minted.identity, name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
@@ -5641,7 +5658,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
                   let tokens = skip_newlines(tokens: rest)
                   let r = parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: bps.right)
                   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
+                  let binop_opt = find_operator_binop(ops: ctx.env.syntax_spec.operators, symbol: op_tok.text)
                   match binop_opt {
                     Present { value: binop } => {
                       let minted = mint_parsed_node_identity(ctx: r.ctx)
@@ -5858,7 +5875,7 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
   let span = token_span(tok: tok)
   match sh {
     Present { value: ShIdent } => {
-      let r = parse_dotted_ident(tokens: tokens)
+      let r = parse_dotted_ident(tokens: tokens, env: ctx.env)
       if has_err(err: r.err) {
         return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: ctx, err: r.err }
       }
@@ -5881,7 +5898,7 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
     }
     Present { value: ShKeyword } => {
       let kw_text = tok.value.text
-      let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
+      let lit_val = lookup(ctx.env.syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Present { value: lv } => {
           PatternResult { pattern: LitPattern { value: lv }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
@@ -5933,7 +5950,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
     BindingsResult { field_bindings: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
     let bind_span = token_span(tok: token_stream_first(stream: tokens))
-    let r = expect_name(tokens: tokens)
+    let r = expect_name(tokens: tokens, env: ctx.env)
     if has_err(err: r.err) { return BindingsResult { field_bindings: [], tokens: r.tokens, ctx: ctx, err: r.err } }
     let field_name = r.name
     let field_name_span = r.span
@@ -6022,7 +6039,7 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "let" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = expect_name(tokens: r.tokens)
+  let r = expect_name(tokens: r.tokens, env: ctx.env)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
@@ -6070,7 +6087,7 @@ fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "for" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = expect_name(tokens: r.tokens)
+  let r = expect_name(tokens: r.tokens, env: ctx.env)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let var_name = r.name
   let var_name_span = r.span
@@ -6143,8 +6160,8 @@ fn parse_field_init(tokens: TokenStream, ctx: ParseContext) -> FieldInitResult {
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_fi = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "", value: parse_recovery_placeholder(), span: zero_span, name_span: zero_span)
   let tok = token_stream_first(stream: tokens)
-  if tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok) {
-    let name_r = expect_name(tokens: tokens)
+  if tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok, env: ctx.env) {
+    let name_r = expect_name(tokens: tokens, env: ctx.env)
     if has_err(err: name_r.err) { return FieldInitResult { field: dummy_fi, tokens: name_r.tokens, ctx: ctx, err: name_r.err } }
     let n = name_r.name
     if tok_is_colon(tok: token_stream_first(stream: name_r.tokens)) {
@@ -6408,7 +6425,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
             parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
           }
         } else {
-          if tok_is_keyword_name(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
+          if tok_is_keyword_name(tok: tok, env: ctx.env) && peek_is_colon_after_ident(tokens: tokens) {
             let r = parse_field_init_list(tokens: tokens, ctx: ctx)
             if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
             let tokens = skip_newlines(tokens: r.tokens)
@@ -6426,7 +6443,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
         }
       }
       _ => {
-        let ident_or_keyword = tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok)
+        let ident_or_keyword = tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok, env: ctx.env)
         if ident_or_keyword && peek_is_colon_after_ident(tokens: tokens) {
           let r = parse_field_init_list(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }

@@ -970,28 +970,13 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
 // release BEFORE any mutation and refuses when it cannot name the release it would install, so a
 // deploy that cannot identify itself stops the line with nothing touched. Only a caller was missing
 // — gunbc#8676 deleted the invocation, never the operation.
-// The bootstrap launcher's whole body: one modeled entry point. Everything the shell form spelled
-// -- resolve the ref, count open pull requests, POST, read the response back, check four axes,
-// close on mismatch -- is typed in gunbc.ci_bootstrap_pr_open against operations that already
-// existed in extdeps.github. The workflow step no longer carries the semantics; it carries the
-// invocation.
-fn gunbc_ci_bootstrap_pr_open_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: "dag/gunbc/ci/bootstrap_pr_open.dag",
-    function: "bootstrap_pr_open_wet",
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
     function: gunbc_ci_live_deploy_apply_srv1_target.function,
     claim_run: false,
-    receipt_rel: "target/live-deploy-srv1-receipt.txt"
+    receipt_rel: none
   )
 }
 

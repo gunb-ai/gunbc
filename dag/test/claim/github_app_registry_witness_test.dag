@@ -13,8 +13,11 @@ import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   microvm_attempt, bind_owned_attempt, runner_microvm_attempt_unit_name,
+  runner_microvm_attempt_jit_drive_path,
 }
-import extdeps.github.actions_jit_runner { JitRunnerGroupId, JitRunnerLabel }
+import extdeps.github.actions_jit_runner {
+  JitRunnerGroupId, JitRunnerLabel, JitConfigMintOutcome, jit_config_mint_outcome,
+}
 import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, AttemptBindingAxis, AxisDeferred,
 }
@@ -23,6 +26,15 @@ import gunbc.runner_jit_mint {
   JitMintRefusedAttemptUnbound,
   plan_jit_mint,
 }
+import gunbc.runner.runner_jit_perform {
+  JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
+  JitDispatchRefusal, DispatchRefusedCellNotOwned, DispatchRefusedCredential,
+  DispatchRefusedAttemptUnbound,
+  JitCredentialDelivery, JitCredentialBoundToDrive, JitCredentialNotDispatched,
+  JitCredentialMintNotCreated,
+  dispatch_jit_mint, receive_jit_mint, jit_credential_delivered,
+}
+
 import extdeps.uri { Uri, uri_https }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1016,4 +1028,164 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
     JitMintRefusedAttemptUnbound { cause: _ } => true
     _ => false
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// JIT MINT DISPATCH AND DELIVERY. gunbc.runner.runner_jit_perform is the consumer that closed
+// plan_jit_mint's frontier, and these witnesses are FIXTURE-ONLY BY CONSTRUCTION: nothing in gunbc
+// performs a GitHubEffect, so no input here was produced by GitHub. What they establish is that the
+// fold discriminates -- and, in the delivery arms, that a credential cannot be obtained apart from
+// the drive destination the ownership proof named. They establish nothing about a live mint, and
+// runner_jit_perform's own transport frontier is what records that.
+
+fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch {
+  dispatch_jit_mint(
+    binding: jit_binding(owned: owned),
+    authority: app_credential,
+    control_plane: observed_grant(perms: perms),
+    organization: gunbai_org_ref,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  )
+}
+
+// A MINTED 201 IS THE ONLY OUTCOME THAT MAY DELIVER, and it is built through upstream's own
+// outcome fold rather than by constructing JitConfigMinted here -- a fixture that assembled the
+// success arm directly would keep passing if that fold stopped recognising a 201.
+data minted_outcome: JitConfigMintOutcome = jit_config_mint_outcome(
+  status: 201,
+  encoded: "ZmFrZS1qaXQtY29uZmln",
+  runner_id: 4242,
+  error_body: "",
+)
+
+data conflicting_outcome: JitConfigMintOutcome = jit_config_mint_outcome(
+  status: 409,
+  encoded: "",
+  runner_id: 0,
+  error_body: "a runner with this name already exists",
+)
+
+// RED 1 -- AN UNOWNED CELL REFUSES BEFORE ANY CREDENTIAL IS NAMED. The credential here is fully
+// sufficient, so a dispatcher that consulted it first would name an installation token URL for a
+// cell this host does not own, which is a live runner identity minted against someone else's
+// resources. The refusal must come from the cell, and it must carry the cell's own cause.
+test fn witness_jit_dispatch_refuses_an_unowned_cell_before_naming_a_token_url() -> Bool {
+  match dispatched(owned: false, perms: runner_grant) {
+    JitMintDispatchRefused { refusal: DispatchRefusedCellNotOwned { cause: c } } =>
+      string_contains(s: c, pattern: "not owned")
+    _ => false
+  }
+}
+
+// RED 2 -- A CREDENTIAL WITHOUT organization self-hosted-runners write REFUSES, cell owned, so the
+// permission join is the only thing that can produce it. The unsatisfied list must survive the
+// projection: collapsing it to a bare cause would erase which capability was missing, and that is
+// the whole content of the refusal.
+test fn witness_jit_dispatch_refuses_a_credential_missing_the_runner_permission() -> Bool {
+  match dispatched(owned: true, perms: full_workflow_grant) {
+    JitMintDispatchRefused {
+      refusal: DispatchRefusedCredential { organization: org, unsatisfied: u },
+    } => (org as String) == "gunb-ai" && count(u) > 0
+    _ => false
+  }
+}
+
+// RED 3 -- AN UNBOUND ATTEMPT REFUSES. A deferred attempt-binding standing means the mint name
+// would not be the attempt's identity, so the credential could not be reconciled to a host. Cell
+// and credential are both good here, so nothing else can produce this arm.
+test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> Bool {
+  match dispatch_jit_mint(
+    binding: jit_binding(owned: true),
+    authority: app_credential,
+    control_plane: observed_grant(perms: runner_grant),
+    organization: gunbai_org_ref,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+    attempt_binding: AxisDeferred {
+      trigger: "fixture: deferred standing must refuse a dispatch that would not carry the attempt identity" as NonEmptyStr,
+    },
+  ) {
+    JitMintDispatchRefused { refusal: DispatchRefusedAttemptUnbound { cause: _ } } => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL. Without it the three reds above are satisfied by a dispatcher that refuses
+// unconditionally. It also pins the two-step shape: the installation token URL is derived from the
+// credential's own installation id rather than spelled, and the second step is the org-derived
+// generate-jitconfig path, so a dispatch cannot address another organization's runners.
+test fn witness_jit_dispatch_authorizes_and_names_both_steps_of_the_app_path() -> Bool {
+  match dispatched(owned: true, perms: runner_grant) {
+    JitMintDispatchAuthorized {
+      attempt: a,
+      installation_token_url: token_url,
+      endpoint_path: path,
+      request: req,
+      drive_destination: dest,
+    } =>
+      token_url == "https://api.github.com/app/installations/999/access_tokens"
+        && path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+        && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
+        && string_contains(s: dest, pattern: "/jit.img")
+    _ => false
+  }
+}
+
+// RED 4 -- A REFUSED DISPATCH CANNOT DELIVER A CREDENTIAL EVEN WHEN GITHUB MINTED ONE.
+//
+// This is the arm the inversion exists for. The mint outcome here is a real 201 carrying a
+// credential, and the cell is not owned: a delivery that consulted the outcome alone would write a
+// live credential to a destination no ownership proof produced, which is the segment race moved
+// inside the process. The refusal must survive, and it must still say WHICH refusal it was.
+test fn witness_a_refused_dispatch_delivers_nothing_even_from_a_minted_credential() -> Bool {
+  let delivery = receive_jit_mint(
+    dispatch: dispatched(owned: false, perms: runner_grant),
+    outcome: minted_outcome,
+  )
+  !jit_credential_delivered(delivery: delivery)
+    && match delivery {
+      JitCredentialNotDispatched { refusal: DispatchRefusedCellNotOwned { cause: _ } } => true
+      _ => false
+    }
+}
+
+// RED 5 -- A NON-201 IS A REFUSAL AND NOT AN EMPTY CREDENTIAL. An authorized dispatch whose mint
+// conflicted must not deliver: a guest handed an empty drive boots healthy and sits waiting for
+// work it can never be assigned, burning its whole deadline.
+test fn witness_an_authorized_dispatch_delivers_nothing_when_the_mint_was_not_created() -> Bool {
+  let delivery = receive_jit_mint(
+    dispatch: dispatched(owned: true, perms: runner_grant),
+    outcome: conflicting_outcome,
+  )
+  !jit_credential_delivered(delivery: delivery)
+    && match delivery {
+      JitCredentialMintNotCreated { outcome: _ } => true
+      _ => false
+    }
+}
+
+// DELIVERY POSITIVE CONTROL, and it pins the property the push direction rests on: the credential
+// is reachable ONLY beside the attempt's own drive destination. There is no value in this module's
+// vocabulary that hands a caller a credential it may address anywhere else, which is the structural
+// form of "there is no endpoint a host may ask".
+test fn witness_a_minted_credential_is_bound_to_the_attempts_own_drive_destination() -> Bool {
+  let delivery = receive_jit_mint(
+    dispatch: dispatched(owned: true, perms: runner_grant),
+    outcome: minted_outcome,
+  )
+  jit_credential_delivered(delivery: delivery)
+    && match delivery {
+      JitCredentialBoundToDrive {
+        attempt: a,
+        drive_destination: dest,
+        credential: c,
+        runner_id: id,
+      } =>
+        dest == runner_microvm_attempt_jit_drive_path(attempt: a)
+          && (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln"
+          && id == 4242
+      _ => false
+    }
 }

@@ -1,11 +1,12 @@
 module extdeps.cloudflare.account_api_tokens
 
-import std.types { NonEmptyStr, String, Secret, Timestamp, List, Map }
+import std.types { NonEmptyStr, String, Secret, Timestamp, List, Map, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.dissolution { unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.transports.rest { RestOutcome }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
   CloudflareApiError
@@ -234,12 +235,50 @@ fn created_account_token_from_create_response(
   }
 }
 
+// THE LISTING ROW, TYPED, BECAUSE THE RAW OPERATION BESIDE IT CANNOT ANSWER. ListPermissionGroupsRaw
+// projects `body` from a response whose envelope has no such field -- Cloudflare answers
+// { result, success, errors, messages } -- so it yields NULL rather than the listing, and null for a
+// missing projection is a fabricated value standing exactly where a typed refusal belongs. That was
+// measured, not inferred: a live GET against this account returned 200 and the operation produced
+// null. The raw operation is left standing with its frontier row rather than silently repaired,
+// because the projection defect is a class worth naming rather than a typo worth patching.
+//
+// SCOPES ARE CARRIED BECAUSE THE QUESTION BEING ASKED IS WHAT A GROUP CAN DO. An id and a name alone
+// let a reader guess from the name, and "Workers R2 Storage Read" versus "Workers R2 Storage Edit"
+// is exactly the guess that must not be made about a grant.
+type AccountPermissionGroupRow {
+  id: NonEmptyStr
+  name: String
+  scopes: List<String>
+}
+
+type AccountPermissionGroupsListResponse {
+  result: List<AccountPermissionGroupRow>
+}
+
 type AccountTokenMetadata {
   id: NonEmptyStr
   name: String
   status: AccountTokenStatus
   expires_on: Timestamp?
   not_before: Timestamp?
+}
+
+// LIST WIRE, STATUS LEFT AS THE UPSTREAM STRING. Create folds status through
+// parse_account_token_status; listing must still name what exists so an unread Create
+// can be reconciled without minting a second token.
+type AccountTokenListRow {
+  id: NonEmptyStr
+  name: String
+  status: String
+}
+
+type AccountTokensListResponse {
+  result: List<AccountTokenListRow>
+}
+
+type AccountTokenDeleteResponse {
+  success: Bool
 }
 
 data cloudflare_account_api_tokens_frontier_rows: List<FrontierRow> = [
@@ -262,13 +301,6 @@ data cloudflare_account_api_tokens_frontier_rows: List<FrontierRow> = [
     reason: "format classifier has no executing custody/scan caller in this change",
     dissolution: unbound_dissolution(
       description: "dissolves when a gunbc declaration classifies a held Cloudflare credential via classify_cloudflare_credential_format on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "created_account_token_from_create_response"),
-    reason: "Create-response fold has no executing Create caller in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration maps cloudflare.AccountTokens.Create output through created_account_token_from_create_response on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
     )
   ),
   frontier_row_decl(
@@ -380,6 +412,14 @@ fn admit_account_token_api_mint(
   }
 }
 
+// Create DECLARES outcome: RestOutcome BECAUSE ITS FAILURE ARMS ARE THE CALLER'S PROBLEM.
+// The response set already names 401, 403, 422 and 5xx, but without an outcome channel a caller
+// has nowhere to READ which of them happened: a refused status, a transport that never answered,
+// and an undecodable body would all have to be inferred from a value that was never produced.
+// The mutation is non-idempotent -- every accepted Create mints a new token, shown once -- so the
+// distinction between "the service refused" and "the outcome is unknown" decides whether a retry
+// is authorized at all. This mirrors gcp.SecretManager.CreateSecret, which declares it for the
+// same reason and whose callers are the model this repository already follows.
 service cloudflare.AccountTokens {
   config {
     endpoint: cloudflare_client_v4_base
@@ -408,6 +448,28 @@ service cloudflare.AccountTokens {
     }
   }
 
+  operation ListPermissionGroups {
+    input {
+      auth_token: Secret
+      account_id: String
+    }
+    output {
+      groups: List<AccountPermissionGroupRow> from "result"
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/accounts/\{account_id\}/tokens/permission_groups"
+    }
+    response {
+      200 => AccountPermissionGroupsListResponse
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
   operation Create {
     input {
       auth_token: Secret
@@ -418,12 +480,13 @@ service cloudflare.AccountTokens {
       expires_on: Timestamp?
     }
     output {
-      id: NonEmptyStr from "result.id"
-      value: Secret from "result.value"
-      name: String from "result.name"
-      status: String from "result.status"
-      expires_on: Timestamp? from "result.expires_on"
-      not_before: Timestamp? from "result.not_before"
+      id: NonEmptyStr from "result/id"
+      value: Secret from "result/value"
+      name: String from "result/name"
+      status: String from "result/status"
+      expires_on: Timestamp? from "result/expires_on"
+      not_before: Timestamp? from "result/not_before"
+      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -440,6 +503,51 @@ service cloudflare.AccountTokens {
       401 => CloudflareApiError
       403 => CloudflareApiError
       422 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
+  operation List {
+    input {
+      auth_token: Secret
+      account_id: String
+    }
+    output {
+      tokens: List<AccountTokenListRow> from "result"
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/accounts/\{account_id\}/tokens"
+    }
+    response {
+      200 => AccountTokensListResponse
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
+  operation Delete {
+    input {
+      auth_token: Secret
+      account_id: String
+      token_id: String
+    }
+    output {
+      success: Bool from "success"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: DELETE,
+      path: "/accounts/\{account_id\}/tokens/\{token_id\}"
+    }
+    response {
+      200 => AccountTokenDeleteResponse
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      404 => CloudflareApiError
       5xx => CloudflareApiError
     }
   }

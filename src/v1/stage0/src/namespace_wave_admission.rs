@@ -1674,124 +1674,63 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// ASSESSMENT-RENAME TRANSITION (2026-09-09, gunbc#10883). No ordinal is claimed, for the reason
-/// the entries above give. `product.cable_plant_converge` is renamed to
-/// `product.cable_plant_assessment`, and `gunbc.spark.fabric_switch_converge` to
-/// `gunbc.spark.fabric_switch_assessment`. The modules never had an actuation stage; the
-/// `converge` name advertised one, which is how the shape they replaced came to be bound to a
-/// handler that DEMANDED an apply. Renaming an inspect-only home is the last step of that cut.
 ///
-/// ONLY NINE ROWS, AND THE ARITHMETIC IS THE POINT. The wave measured eighteen deltas. Nine
-/// auto-admit: the membership half of the same motion reports `SameDeclarationIdentityRebind`
-/// (the old edge, whose every supplied name still denotes the same declaration) or
-/// `ExplicitlyEvaluatedZeroDelta` (the new edge, reached by a name the module authors). The nine
-/// below are the binding half — a spelling authored on BOTH sides that now resolves to a
-/// different module. Consumers whose OWN module was renamed produce no binding delta at all,
-/// because a delta needs the module on both sides; that is why the two witness files this cut
-/// renamed are absent here and `fabric_switch_observed` is not.
+/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
+/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
+/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
+/// mutation_status_is_commit_ambiguous stranded caller (2026-09-10, gunbc#10945). main was RED on
+/// the declarations check: `gunbc.cloudflare.r2_token_mint_run` imported that spelling from
+/// `gunbc.secret_provision_actuator`, which declares no such name, so the base bound it to NOTHING.
+/// NEITHER CONTRIBUTING CHANGE IS WRONG IN ISOLATION and the row says so because a wrong attribution
+/// here would outlive the defect: #10925 wrote that import line at 23598caecca when the fn WAS
+/// declared in `secret_provision_actuator`, and #10923 then deleted the fn at 4024a3a5bdb, rehoming
+/// it to `extdeps.transports.rest` (rest.dag:111) and leaving one edge pointing at the old address.
+/// The defect exists only in their composition — a stranded caller. #10923's floor concluded
+/// 09:50:11Z, four hours before #10925 landed at 13:48:36Z, so the verdict that would have caught the
+/// stranding was computed against a base that did not yet contain the importer it was about to
+/// strand. Not a race: a concluded verdict, correct about the world it measured, and that world no
+/// longer existed at merge time.
 ///
-/// NONE OF THESE CHANGES WHICH DECLARATION THE SPELLING DENOTES. `CablePlant`, `cable_plant`,
-/// `CableLegReading`, `LegReadingTaken` and `LegNeverRead` are the same declarations at a new
-/// module path. A binding whose MEANING had moved would refuse on its own row rather than be
-/// covered by these, which is why they are enumerated by exact identity rather than by a pattern
-/// over the renamed module pair -- a pattern would admit a genuine rebind that happened to land
-/// in the same pair.
+/// The repair points the import at the one module that declares the name, which this module already
+/// imported. Required floor run 34497494076 measured parse 0 and declarations 0 — the break is gone —
+/// and refused adjudication on exactly this one binding delta, `base {} -> head
+/// {extdeps.transports.rest}`, classified `NewPoolCoincidenceResolution`.
 ///
-/// TRIGGER: these rows are removed when this PR merges. At that point the base itself binds each
-/// spelling to `product.cable_plant_assessment`, every row reports consumed-at-base, and leaving
-/// them would refuse every unrelated PR -- the exact cost the first 53 rows recorded above.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_cable_plant",
-            spelling: "CablePlant",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_cable_plant",
-            spelling: "cable_plant",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "CableLegReading",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_never",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_never",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_taken",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_taken",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// THE CLASSIFICATION IS WRONG AND THIS ROW ADMITS IT ANYWAY. By the 2026-08-27 operator ruling in
+/// `gunbc.compiler_frontend_program_interlock`, an author writing the import that resolves a name the
+/// module was ALREADY SPELLING is `AuthoredReferenceResolution`, which auto-admits; that ruling was
+/// made after the wall refused gunbc#9485, a one-line import repair. This is that case exactly. It
+/// lands in the coincidence arm because `locally_authored_claim_added` decides authorship with
+/// `names_leaf`, which reads `c.members` and never `c.target`: base names the leaf (wrong module),
+/// head names it (right module), so `names_leaf(head) && !names_leaf(base)` is false. The predicate
+/// sees a name appearing where it was ABSENT, never a name whose SOURCE changed. The incentive
+/// inversion is what makes this a defect rather than a rough edge: a REDUNDANT blanket import would
+/// have tripped the `blanket_targets` branch and auto-admitted, so the wall is easier to satisfy by
+/// writing worse code. Escalated rather than worked around; admit was ruled, with the predicate fix
+/// to land separately against a green main — repairing a wall in the same motion that asks it for an
+/// exception would make the exception look bought by the fix.
+///
+/// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
+/// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
+/// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
+/// by this sentence.
+///
+/// TWENTIETH DISSOLUTION (2026-09-10). That trigger fired and the wall said so rather than this
+/// paragraph: #10945 merged, and the required floor on gunbc#10951 (run 34517633122) reported the
+/// row as `CONSUMED ADMISSION ... already satisfied at the base — consumed by its own merge` and
+/// then refused adjudication with `1 consumed admission(s) due for deletion on this roster-touching
+/// change`. This change edits `evaluate_wave_admission`, so it is the toucher the rule charges, and
+/// the deletion is paid here rather than deferred to a follow-up nobody owes.
+///
+/// THE RECEIPT IS THE DISPOSITION, NOT THE SIDE — which is the correction the eighteenth and
+/// nineteenth dissolutions above were both written to record. This row arrived from main through a
+/// merge and was never authored on this branch; that is not evidence of anything, and the reason it
+/// goes is that the wall computed its transition as merged and printed it.
+///
+/// The resting state is empty again as of this change. Empty is not permissive: a run with a real
+/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
+/// admission.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2688,6 +2627,12 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
+///
+/// Annotation-grain refusals are the exception named by
+/// `fail_closed_gate_refuses_its_own_repair`: the parser still produced the module (annotation
+/// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
+/// unreadable base sealed the transition that only moves `//` onto the declaration the grain
+/// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -2696,7 +2641,15 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         })]
         .into(),
     ));
-    if !fill.diagnostics.is_empty() {
+    let annotation_erased_readable = !fill.modules.is_empty()
+        && !fill.diagnostics.is_empty()
+        && fill.diagnostics.iter().all(|d| {
+            matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        });
+    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
@@ -2812,6 +2765,15 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
+            // A BASE THIS PARSER CANNOT READ IS UNEVALUATED, FULL STOP. The annotation case that
+            // used to be repaired here is now answered truthfully upstream: `base_records` reads
+            // the real base declarations out of an annotation-refused parse via
+            // `annotation_erased_readable`, so the only reason left to reach this arm is a base
+            // carrying NON-annotation diagnostics. Substituting head records there is exactly the
+            // fabricated parse the readable path exists to avoid -- the remainders would still
+            // compare equal whenever the head touched only comments, so the old discriminator
+            // would happily certify a baseline for a file that failed to parse for an unrelated
+            // reason. The residual case argues for deletion, not for retention.
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         }
     }
