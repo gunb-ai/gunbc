@@ -16,7 +16,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list, list_head, skip, HeadFound, HeadAbsent }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -76,7 +76,21 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
-import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
+import extdeps.github.expressions {
+  ContextAccess,
+  Github,
+  Needs,
+  interpolate,
+  serialize_expression,
+  default_expression_spellings,
+  Expression,
+  FunctionCall,
+  Format,
+  StringLiteral,
+  LogicalOr,
+  LogicalAnd,
+  Equals
+}
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_finalize_stmts,
@@ -227,8 +241,36 @@ data witness_floor_workflow_name: String = "witnesses"
 // producer-absent standing yields NeverSupersedeRunning, so cancel-in-progress is literal false.
 // merge_group and heal revalidation stay immutable and separately keyed (mg-{sha},
 // heal-{expected_healed_sha}); other dispatch uses run_id.
+fn github_event_name_equals(event: String) -> Expression {
+  Equals {
+    left: ContextAccess { context: Github, path: ["event_name"] },
+    right: StringLiteral { value: event }
+  }
+}
+
 fn github_event_name_equals_expr(event: String) -> String {
-  concat(concat("github.event_name == '", event), "'")
+  serialize_expression(expression: github_event_name_equals(event: event))
+}
+
+fn gha_format_prefix(prefix: String, arg: Expression) -> Expression {
+  FunctionCall {
+    function: Format,
+    args: [StringLiteral { value: concat(prefix, "{0}") }, arg]
+  }
+}
+
+fn github_sha_expr() -> Expression { ContextAccess { context: Github, path: ["sha"] } }
+fn github_ref_expr() -> Expression { ContextAccess { context: Github, path: ["ref"] } }
+fn github_run_id_expr() -> Expression { ContextAccess { context: Github, path: ["run_id"] } }
+fn github_pr_number_expr() -> Expression { ContextAccess { context: Github, path: ["event", "pull_request", "number"] } }
+fn github_dispatch_input_expr(name: String) -> Expression { ContextAccess { context: Github, path: ["event", "inputs", name] } }
+
+fn gha_and(left: Expression, right: Expression) -> Expression {
+  LogicalAnd { left: left, right: right }
+}
+
+fn gha_or(left: Expression, right: Expression) -> Expression {
+  LogicalOr { left: left, right: right }
 }
 
 type WitnessFloorGroupBranch
@@ -238,33 +280,42 @@ type WitnessFloorGroupBranch
   | RefAfterEvent { event: String }
   | RunIdFallback { prefix: String }
 
-fn gha_format_arg0(prefix: String, arg: String) -> String {
-  concat(concat("format('", prefix), concat("{0}', ", concat(arg, ")")))
-}
+// Expression has no NotEquals. GitHub Actions admits `!=`; this is the only string remainder
+// in group emission. Dissolves when the grammar carries NotEquals.
+data gha_not_equals_empty_gap: String = " != ''"
 
-fn gha_branch_predicate(branch: WitnessFloorGroupBranch) -> String {
-  match branch {
-    ShaAfterEvent { event: e, prefix: p } =>
-      concat(concat(github_event_name_equals_expr(event: e), " && "), gha_format_arg0(prefix: p, arg: "github.sha"))
-    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
-      concat(
-        concat(github_event_name_equals_expr(event: e), concat(" && github.event.inputs.", concat(i, " != '' && "))),
-        gha_format_arg0(prefix: p, arg: concat("github.event.inputs.", i))
-      )
-    PrNumberAfterEvent { event: e, prefix: p } =>
-      concat(concat(github_event_name_equals_expr(event: e), " && "), gha_format_arg0(prefix: p, arg: "github.event.pull_request.number"))
-    RefAfterEvent { event: e } =>
-      concat(github_event_name_equals_expr(event: e), " && github.ref")
-    RunIdFallback { prefix: p } =>
-      gha_format_arg0(prefix: p, arg: "github.run_id")
-  }
-}
-
-fn gha_or_join(acc: String, next: String) -> String {
+fn serialize_gha_or_join(acc: String, next: String) -> String {
   if acc == "" {
     next
   } else {
-    concat(concat(acc, " || "), next)
+    concat(concat(acc, default_expression_spellings.or_op), next)
+  }
+}
+
+fn serialize_group_branch(branch: WitnessFloorGroupBranch) -> String {
+  match branch {
+    ShaAfterEvent { event: e, prefix: p } =>
+      serialize_expression(expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr())))
+    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
+      concat(
+        serialize_expression(expression: github_event_name_equals(event: e)),
+        concat(
+          default_expression_spellings.and_op,
+          concat(
+            serialize_expression(expression: github_dispatch_input_expr(name: i)),
+            concat(
+              gha_not_equals_empty_gap,
+              concat(default_expression_spellings.and_op, serialize_expression(expression: gha_format_prefix(prefix: p, arg: github_dispatch_input_expr(name: i))))
+            )
+          )
+        )
+      )
+    PrNumberAfterEvent { event: e, prefix: p } =>
+      serialize_expression(expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr())))
+    RefAfterEvent { event: e } =>
+      serialize_expression(expression: gha_and(left: github_event_name_equals(event: e), right: github_ref_expr()))
+    RunIdFallback { prefix: p } =>
+      serialize_expression(expression: gha_format_prefix(prefix: p, arg: github_run_id_expr()))
   }
 }
 
@@ -284,14 +335,17 @@ fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
 
 fn witness_floor_concurrency_group() -> String {
   concat(
-    "witness-floor-${{ ",
+    "witness-floor-",
     concat(
-      fold_list(
-        xs: witness_floor_group_branches(),
-        empty: "",
-        cons: fn(acc, b) { gha_or_join(acc: acc, next: gha_branch_predicate(branch: b)) }
-      ),
-      " }}"
+      default_expression_spellings.interp_open,
+      concat(
+        fold_list(
+          xs: witness_floor_group_branches(),
+          empty: "",
+          cons: fn(acc, b) { serialize_gha_or_join(acc: acc, next: serialize_group_branch(branch: b)) }
+        ),
+        default_expression_spellings.interp_close
+      )
     )
   )
 }
@@ -310,9 +364,9 @@ type WitnessFloorGroupFixture {
   dispatch_inputs: List<DispatchInputBinding>
 }
 
-type ChosenGroupSuffix
-  = UnchosenGroupSuffix
-  | ChosenGroupSuffix { value: String }
+fn gha_value_is_truthy(s: String) -> Bool {
+  s != "" && s != "false" && s != "0"
+}
 
 fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> String {
   fold_list(
@@ -332,49 +386,163 @@ fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> S
   )
 }
 
-fn group_branch_matches(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> Bool {
-  match branch {
-    ShaAfterEvent { event: e, prefix: _ } => fx.event == e
-    NonemptyInputAfterEvent { event: e, input: i, prefix: _ } =>
-      fx.event == e && dispatch_input_value(bindings: fx.dispatch_inputs, name: i) != ""
-    PrNumberAfterEvent { event: e, prefix: _ } => fx.event == e
-    RefAfterEvent { event: e } => fx.event == e
-    RunIdFallback { prefix: _ } => true
-  }
-}
-
-fn group_branch_suffix(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> String {
-  match branch {
-    ShaAfterEvent { event: _, prefix: p } => concat(p, fx.sha)
-    NonemptyInputAfterEvent { event: _, input: i, prefix: p } =>
-      concat(p, dispatch_input_value(bindings: fx.dispatch_inputs, name: i))
-    PrNumberAfterEvent { event: _, prefix: p } => concat(p, fx.pull_request_number)
-    RefAfterEvent { event: _ } => fx.github_ref
-    RunIdFallback { prefix: p } => concat(p, fx.run_id)
-  }
-}
-
-fn choose_group_suffix(acc: ChosenGroupSuffix, branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> ChosenGroupSuffix {
-  match acc {
-    ChosenGroupSuffix { value: v } => ChosenGroupSuffix { value: v }
-    UnchosenGroupSuffix =>
-      if group_branch_matches(branch: branch, fx: fx) {
-        ChosenGroupSuffix { value: group_branch_suffix(branch: branch, fx: fx) }
+fn github_path_key(path: List<String>) -> String {
+  fold_list(
+    xs: path,
+    empty: "",
+    cons: fn(acc, s) {
+      if acc == "" {
+        s
       } else {
-        UnchosenGroupSuffix
+        concat(concat(acc, "."), s)
+      }
+    }
+  )
+}
+
+fn eval_github_inputs_path(path: List<String>, fx: WitnessFloorGroupFixture) -> String {
+  match list_head(xs: path) {
+    HeadFound { value: event_seg } =>
+      if event_seg == "event" {
+        match list_head(xs: skip(xs: path, n: 1)) {
+          HeadFound { value: inputs_seg } =>
+            if inputs_seg == "inputs" {
+              match list_head(xs: skip(xs: path, n: 2)) {
+                HeadFound { value: name } => dispatch_input_value(bindings: fx.dispatch_inputs, name: name)
+                HeadAbsent => ""
+              }
+            } else {
+              ""
+            }
+          HeadAbsent => ""
+        }
+      } else {
+        ""
+      }
+    HeadAbsent => ""
+  }
+}
+
+fn eval_github_path(path: List<String>, fx: WitnessFloorGroupFixture) -> String {
+  let key = github_path_key(path: path)
+  if key == "event_name" {
+    fx.event
+  } else {
+    if key == "sha" {
+      fx.sha
+    } else {
+      if key == "ref" {
+        fx.github_ref
+      } else {
+        if key == "run_id" {
+          fx.run_id
+        } else {
+          if key == "event.pull_request.number" {
+            fx.pull_request_number
+          } else {
+            eval_github_inputs_path(path: path, fx: fx)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn apply_format_arg0(template: String, arg0: String) -> String {
+  let n = string_length(s: template)
+  let m = string_length(s: "{0}")
+  if n >= m && substring(s: template, start: n - m, end: n) == "{0}" {
+    concat(substring(s: template, start: 0, end: n - m), arg0)
+  } else {
+    ""
+  }
+}
+
+fn eval_format_args(args: List<Expression>, fx: WitnessFloorGroupFixture) -> String {
+  match list_head(xs: args) {
+    HeadFound { value: tmpl } =>
+      match tmpl {
+        StringLiteral { value: t } =>
+          match list_head(xs: skip(xs: args, n: 1)) {
+            HeadFound { value: arg } => apply_format_arg0(template: t, arg0: eval_gha_expression(expression: arg, fx: fx))
+            HeadAbsent => ""
+          }
+        ContextAccess { context: _, path: _ } => ""
+        FunctionCall { function: _, args: _ } => ""
+        LogicalOr { left: _, right: _ } => ""
+        LogicalAnd { left: _, right: _ } => ""
+        Equals { left: _, right: _ } => ""
+      }
+    HeadAbsent => ""
+  }
+}
+
+fn eval_gha_expression(expression: Expression, fx: WitnessFloorGroupFixture) -> String {
+  match expression {
+    ContextAccess { context: Github, path: p } => eval_github_path(path: p, fx: fx)
+    ContextAccess { context: _, path: _ } => ""
+    FunctionCall { function: Format, args: a } => eval_format_args(args: a, fx: fx)
+    FunctionCall { function: _, args: _ } => ""
+    StringLiteral { value: v } => v
+    LogicalOr { left: l, right: r } =>
+      if gha_value_is_truthy(s: eval_gha_expression(expression: l, fx: fx)) {
+        eval_gha_expression(expression: l, fx: fx)
+      } else {
+        eval_gha_expression(expression: r, fx: fx)
+      }
+    LogicalAnd { left: l, right: r } =>
+      if gha_value_is_truthy(s: eval_gha_expression(expression: l, fx: fx)) {
+        eval_gha_expression(expression: r, fx: fx)
+      } else {
+        eval_gha_expression(expression: l, fx: fx)
+      }
+    Equals { left: l, right: r } =>
+      if eval_gha_expression(expression: l, fx: fx) == eval_gha_expression(expression: r, fx: fx) {
+        "true"
+      } else {
+        ""
       }
   }
 }
 
-fn resolve_witness_floor_group_suffix(fx: WitnessFloorGroupFixture) -> String {
-  match fold_list(
-    xs: witness_floor_group_branches(),
-    empty: UnchosenGroupSuffix,
-    cons: fn(acc, b) { choose_group_suffix(acc: acc, branch: b, fx: fx) }
-  ) {
-    ChosenGroupSuffix { value: v } => v
-    UnchosenGroupSuffix => ""
+fn eval_group_branch(branch: WitnessFloorGroupBranch, fx: WitnessFloorGroupFixture) -> String {
+  match branch {
+    ShaAfterEvent { event: e, prefix: p } =>
+      eval_gha_expression(
+        expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr())),
+        fx: fx
+      )
+    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
+      if gha_value_is_truthy(s: eval_gha_expression(expression: github_event_name_equals(event: e), fx: fx))
+        && dispatch_input_value(bindings: fx.dispatch_inputs, name: i) != "" {
+        eval_gha_expression(expression: gha_format_prefix(prefix: p, arg: github_dispatch_input_expr(name: i)), fx: fx)
+      } else {
+        ""
+      }
+    PrNumberAfterEvent { event: e, prefix: p } =>
+      eval_gha_expression(
+        expression: gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr())),
+        fx: fx
+      )
+    RefAfterEvent { event: e } =>
+      eval_gha_expression(expression: gha_and(left: github_event_name_equals(event: e), right: github_ref_expr()), fx: fx)
+    RunIdFallback { prefix: p } =>
+      eval_gha_expression(expression: gha_format_prefix(prefix: p, arg: github_run_id_expr()), fx: fx)
   }
+}
+
+fn resolve_witness_floor_group_suffix(fx: WitnessFloorGroupFixture) -> String {
+  fold_list(
+    xs: witness_floor_group_branches(),
+    empty: "",
+    cons: fn(acc, b) {
+      if gha_value_is_truthy(s: acc) {
+        acc
+      } else {
+        eval_group_branch(branch: b, fx: fx)
+      }
+    }
+  )
 }
 
 fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> String {
@@ -491,9 +659,11 @@ fn is_mutable_ci_head_event(event: String) -> Bool {
 }
 
 fn mutable_head_runs_cancel_expression() -> String {
-  concat(
-    concat("${{ github.event_name == '", github_event_name_pull_request),
-    concat("' || github.event_name == '", concat(github_event_name_push, "' }}"))
+  interpolate(
+    expression: gha_or(
+      left: github_event_name_equals(event: github_event_name_pull_request),
+      right: github_event_name_equals(event: github_event_name_push)
+    )
   )
 }
 
