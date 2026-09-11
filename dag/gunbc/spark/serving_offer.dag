@@ -132,10 +132,14 @@ type SparkServingRoute
 // THE SINGLE PLACE THE STANDING IS RECORDED, which is why the 2026-09-11 restoration replaced one
 // declaration rather than every call site -- the same property that made the withdrawal cheap.
 //
-// THE OBLIGATION ROW SURVIVES THE RESTORATION AND IS NOT DEAD. It is the refusal a caller reaches
-// when it has no allocation and no observation to offer, it is what the binder reports for that
-// arm, and test.claim.spark.spark_serving_offer_route_witness_test still drives the binder with it.
-// Deleting it would delete the only spelling of "this route's region rests on nothing".
+// THE OBLIGATION ROW SURVIVES THE RESTORATION, AND WHAT IT IS FOR NOW IS NARROWER THAN IT WAS. No
+// production producer returns it any more -- the standing below refuses with the uncovered-host or
+// unreadable-membership obligation instead, which say WHICH group is not covered rather than that
+// nobody observes regions at all. Its one consumer is the binder fixture in
+// test.claim.spark.spark_serving_offer_route_witness_test, where it is the spelling of "this route's
+// region rests on nothing" that drives the binder's refusing arm. That is a real consumer and the
+// row stays; calling it "the refusal a caller reaches" would claim a live role it no longer has
+// (review 64014).
 data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no producer observes which region a serving host sits in, so the offer's ProviderRoute cannot be constructed and the offer does not bind"
 
 // WITHDRAWN 2026-09-09, RESTORED 2026-09-11 ON AN ASSERTION RATHER THAN AN OBSERVATION. The
