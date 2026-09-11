@@ -367,7 +367,34 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "--enable-auto-tool-choice",
     "--host", "0.0.0.0",
     "--port", to_string(glm_native_serve_port),
-  ], arm_quantization_argv(row: crow))
+  ], concat(arm_quantization_argv(row: crow), arm_headless_argv(node: node)))
+}
+
+// ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────
+//
+// FOUR IDENTICAL `vllm serve` PROCESSES IS THE WRONG SHAPE FOR THIS IMAGE, and attempt 6 is what
+// established it. Every parameter was right -- the memory envelope was admitted on all four ranks, all four
+// containers started, the weights loaded -- and a follower rank then died with
+// `AssertionError: collective_rpc should not be called on follower node`, cleanly, exit 0.
+//
+// READ FROM THE PINNED DIGEST, THE MECHANISM IS EXACT. In v1/executor/multiproc_executor.py the DP group
+// leader -- `node_rank_within_dp == 0` -- constructs `rpc_broadcast_mq`; a follower does not, so the handle
+// is None and the assertion at line 389 fires the moment anything calls collective_rpc on that node. Nothing
+// was wrong with the follower: the fault is that it was ALSO running an API server, and an API server drives
+// collective RPCs.
+//
+// SO THE LEADER SERVES AND THE FOLLOWERS RUN HEADLESS. `--headless` sets api_server_count to 0, and
+// entrypoints/cli/serve.py dispatches `api_server_count < 1` to `run_headless`, which brings the engine up as
+// a participant with no server in front of it. Its own guard requires data_parallel_size_local > 0, which
+// holds here because this arm is tensor-parallel with a data-parallel size of 1, so the local count defaults
+// to 1.
+//
+// THE FLAG'S HELP NAMES DATA PARALLELISM AND THAT IS NOT A CONTRADICTION, though it is why this was worth
+// reading rather than guessing: follower-ness is decided by `node_rank_within_dp`, which with a
+// data-parallel size of one is just the node rank. The leader/follower split is about which node owns the
+// broadcast queue, not about which parallelism the model is sharded by.
+fn arm_headless_argv(node: ArmNode) -> List<String> {
+  if node.node_rank == 0 { [] } else { ["--headless"] }
 }
 
 // THE QUANTISATION FLAG IS PASSED ONLY WHERE IT IS THE REQUEST, AND FOR THE NATIVE CHECKPOINT IT IS NOT.
