@@ -2,7 +2,9 @@ module gunbc.ci_workflow_source_read
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
 import std.resources { Network }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
 import extdeps.transports.rest {
   classify_rest_outcome,
   RestExchangeSucceeded, RestExchangePerformance,
@@ -29,12 +31,25 @@ import std.measure { byte_size_count }
 // rate-limit refusal from a repository with no matching workflow will fold both into "no
 // candidate here", and the deficit that shrank the population never ranks for fixing.
 
-// DECLARED FRONTIER (DESIGN section 3c). The reason the scan producer is absent rather than
-// forgotten: the reads and their refusal arms are one change and the page walk that consumes them
-// is another, and landing the walk here would mean landing a bounded-scan policy - how many pages,
-// under what budget, retained how - inside the change that models the endpoints it calls. The row
-// below carries the consumer and the trigger; this note carries only why they are not here yet.
-data ci_workflow_scan_producer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a scan producer that pages perform_code_search_page under a declared bound, reads each survivor through perform_workflow_source_read at an exact ref, and canonicalizes them against a run receipt. TRIGGER: a production func outside test.claim calls perform_code_search_page in a page walk and canonicalize_hit on its results. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing these functions, nor by a caller that reads a single page." as NonEmptyStr)
+// DECLARED FRONTIER (DESIGN section 3c), AS A FrontierRow AND NOT A BARE CONDITION. The reason the
+// scan producer is absent rather than forgotten: the reads and their refusal arms are one change
+// and the page walk that consumes them is another, and landing the walk here would mean landing a
+// bounded-scan policy - how many pages, under what budget, retained how - inside the change that
+// models the endpoints it calls.
+//
+// AN EARLIER REVISION AUTHORED THIS AS A STANDALONE DissolutionCondition, which put the module's
+// whole declared-frontier state in a shape no fold can read: gunbc.census_closure_frontier folds
+// List<FrontierRow>, there is no List<DissolutionCondition> anywhere in the corpus, and the row
+// was therefore invisible to gunbc.dissolution_census. A trigger stated only in prose is not
+// stated to the machine, which is the same defect as a data row no fold reads - and it was written
+// in the same change that used FrontierRow correctly one file over.
+data ci_workflow_scan_producer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.ci_workflow_source_read", decl_name: "perform_code_search_page"),
+    reason: "the reads and their refusal arms land here; the scan producer that consumes them does not. Nothing outside test.claim walks the search pages or canonicalizes their survivors, so perform_code_search_page, perform_workflow_source_read and canonicalize_hit have no production caller in this change. The classifiers ARE consumed by execution - the claims drive the same functions the effectful reads call - so what is declared here is the walk, not the decisions",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a scan producer that pages perform_code_search_page under a declared bound, reads each survivor through perform_workflow_source_read at an exact ref, and canonicalizes them against a run receipt. TRIGGER: a production func outside test.claim calls perform_code_search_page in a page walk and canonicalize_hit on its results. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing these functions, nor by a caller that reads a single page - the obligation is the page walk and its receipt, which is where a bounded scan becomes a declared population rather than a sample nobody sized"),
+  )
+]
 
 // -------------------------------------------------------------------------------------
 // A PAGE OF CODE SEARCH IS THREE OUTCOMES, NOT TWO, BECAUSE UPSTREAM SAYS SO. GitHub returns
