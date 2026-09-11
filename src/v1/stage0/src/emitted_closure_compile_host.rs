@@ -72,7 +72,9 @@ use super::{
     ci_layer_roots_authority_content, compile_entry_emission, process_workspace_root,
     string_list_data_from_ci_layer_roots_source, CompileDisposition, CompileRun,
 };
-use crate::extdeps_cargo::{CargoDepSource, CargoDependency};
+use crate::extdeps_cargo::{
+    cargo_environment_variable_name, CargoDepSource, CargoDependency, CargoEnvironmentVariable,
+};
 use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind;
 use crate::v1_compiler_stage0_crates::{
@@ -802,8 +804,10 @@ pub(crate) struct ProbeCargoInvocation {
 pub(crate) const WARNING_DENIAL_RUSTFLAGS: &str = "-D warnings";
 
 /// The `Command` and its receipt description, from one construction. The environment variable
-/// name is cargo's own (`extdeps.rust.cargo` `RustflagsEnv`), and it is SET, never extended:
-/// an ambient RUSTFLAGS would make the verdict a fact about the runner rather than the crate.
+/// name is READ from cargo's own authority through its stage0 mirror
+/// (`extdeps.rust.cargo` `RustflagsEnv` via `cargo_environment_variable_name`), not spelled
+/// here, and it is SET, never extended: an ambient RUSTFLAGS would make the verdict a fact
+/// about the runner rather than the crate.
 fn probe_cargo_command(
     crate_dir: &Path,
     workspace: &Path,
@@ -820,8 +824,14 @@ fn probe_cargo_command(
     let mut command = std::process::Command::new(&cargo);
     command
         .args(&argv[1..])
-        .env("CARGO_TARGET_DIR", workspace.join("target"))
-        .env("RUSTFLAGS", WARNING_DENIAL_RUSTFLAGS)
+        .env(
+            cargo_environment_variable_name(CargoEnvironmentVariable::CargoTargetDirEnv),
+            workspace.join("target"),
+        )
+        .env(
+            cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
+            WARNING_DENIAL_RUSTFLAGS,
+        )
         .current_dir(crate_dir);
     (
         command,
@@ -838,11 +848,16 @@ pub(crate) fn probe_cargo_invocation(crate_dir: &Path, workspace: &Path) -> Prob
     probe_cargo_command(crate_dir, workspace).1
 }
 
-/// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: the
-/// lane's first step is `cargo build --release -p v1-compiler --bins`, so the seed crate is
-/// already compiled there under that profile; a `check` or a private target dir would share no
-/// fingerprint and rebuild the whole dependency graph inside a required phase. The baseline arm
-/// thus compiles only the emitted crate, and the two further arms are incremental.
+/// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: a
+/// `check` or a private target dir would share no fingerprint with anything and rebuild the
+/// whole dependency graph inside a required phase. RUSTFLAGS is part of cargo's fingerprint,
+/// so what the seed build already compiled is reusable here exactly when it was built under
+/// the same denial: on CI it was (the toolchain step exports the same `-D warnings`), so the
+/// baseline arm compiles only the emitted crate; on a workstation whose seed build inherited
+/// no RUSTFLAGS the FIRST probe build recompiles the dependency graph under the denial once,
+/// and the further arms — and every later probe in that target dir — are incremental against
+/// that. The one-time local cost is the price of the verdict being about the crate rather than
+/// about which machine built it.
 ///
 /// Phases within one required run are sequential in one process, so nothing else holds cargo's
 /// lock on that directory.
@@ -2086,6 +2101,11 @@ mod tests {
             set_rustflags.as_deref(),
             Some(WARNING_DENIAL_RUSTFLAGS),
             "RUSTFLAGS is SET on the spawn, not inherited"
+        );
+        assert_eq!(
+            cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
+            "RUSTFLAGS",
+            "the spawn's env name is the authority's row, and that row spells cargo's name"
         );
         assert_eq!(invocation.rustflags, WARNING_DENIAL_RUSTFLAGS);
         let spawned: Vec<String> =
