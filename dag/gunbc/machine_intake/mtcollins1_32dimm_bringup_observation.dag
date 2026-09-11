@@ -1,0 +1,588 @@
+module gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.measure { ByteSize, Second, byte_size, second }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
+import std.scoped_authorization { AttemptIdentity }
+import std.temporal_effect { LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, held_lease }
+import extdeps.boards.types { AmpereMtCollins }
+import extdeps.bmc.ipmi_sel {
+  FirmwareProgress,
+  InitiatedByPowerUp,
+  OemSelPayload,
+  SystemRestart,
+}
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_firmware }
+import gunbc.machine_intake_pre_os_observation_capabilities {
+  AggregateMemoryPowerExposed,
+  HostCallbackIntendedNotDemonstrated,
+  LocalizationUnavailableFromExposedTelemetry,
+  NoManagedAcActuator,
+  OemDecodeControllerDeclaredUnknown,
+  PreOsObservationCapabilities,
+  SelStandardDecoded,
+  SolPresentSilent,
+  WebEventLogAvailable,
+}
+import gunbc.machine_intake_pre_os_bringup_attempt {
+  AcPowerCycle,
+  ActuatorRequest,
+  ChassisPowerCycle,
+  CollectorArmedUnproven,
+  CollectorProvenRunning,
+  CollectorStanding,
+  CollectorsReadiness,
+  ConsoleCapture,
+  ConsoleLeaseNotHeld,
+  ConsoleSessionBannerSeen,
+  ControllerLivenessWatch,
+  ControllerObservedReachable,
+  EvidenceSinkPresent,
+  HostWarmReset,
+  HumanAttendedRequest,
+  NotReady,
+  PowerActuationKind,
+  Ready,
+  SelCursorRecorded,
+  SelCursorTail,
+  collectors_ready,
+  power_actuation_request,
+  power_actuation_request_readiness,
+}
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  BringupUndetermined,
+  ConsoleSilentAndWindowEmpty,
+  ControllerDeclaredUnknown,
+  FirmwareProgressObserved,
+  OemSelEmpiricalAssociation,
+  PhysicalRemediationRequired,
+  PreOsBringupVerdict,
+  SelWindowEvent,
+  BootRestart,
+  FirmwareProgressRecord,
+  OemTimestamped,
+  OtherStandardEvent,
+  SolBannerOnly,
+  SolCaptureReading,
+  SolHostBytesObserved,
+  SolCaptureUnreadable,
+  UnavailableFromExposedTelemetry,
+  association_is_decoded,
+  oem_sel_empirical_association,
+  pre_os_bringup_verdict,
+  sel_window_after_cursor,
+  sol_capture_reading,
+  verdict_permits_further_actuation,
+}
+
+// MT. COLLINS UNIT 1 AFTER THE 16-TO-32 DIMM CHANGE, 2026-09-11: THE REGRESSION CORPUS FOR THE
+// PRE-OS BRING-UP MODEL. The unit went from 16 to 32 DIMMs and entered a ~5-minute restart loop
+// that never reached boot-device selection. Everything below was captured by hand from srv1
+// (`~/mtc1-32dimm`), committed under artifacts/bmc/mtcollins1-32dimm/, and is bound to those bytes
+// by digest. The machine was not touched by this change; it is under operator hands.
+//
+// EVIDENCE BINDS PER SECTION, NOT PER MODULE, the rule gunbc.machine_intake_mtcollins1_memory_census_observation
+// already states: each observation names the artifact it came from.
+//
+// THIS MODULE IS THE FIRST CONSUMER OF THE THREE MODEL MODULES, and its probe at the bottom runs
+// the folds over these bytes so the three laws have executed receipts rather than sentences.
+
+data mtcollins1_32dimm_artifact_dir: NonEmptyStr = "artifacts/bmc/mtcollins1-32dimm"
+
+// ── the four byte-identical console captures ───────────────────────────────────────────────────
+
+// THE CONTROLLER'S SESSION BANNER AS ipmitool CAPTURES IT WITH NO TTY AND STDERR MERGED: one
+// tcgetattr complaint and the "[SOL Session operational.  Use ~? for help]" line, 86 bytes. This is
+// what a capture contains when the session is live and the host has sent nothing.
+data mtcollins1_sol_session_banner_bytes: ByteSize = byte_size(count: 86)
+
+data mtcollins1_sol_session_banner_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "3aea4368b8745ae7bdca3c7ec052a324032974f7b849bca460e7d0e14f5e0871",
+})
+
+// ONE CAPTURE UNDER ONE POWER CONDITION. `condition` is Absent for the idle capture and names the
+// actuation the capture was armed against otherwise.
+type SolCaptureUnderCondition {
+  label: NonEmptyStr
+  condition: PowerActuationKind?
+  artifact_path: NonEmptyStr
+  bytes: ByteSize
+  digest: ContentHash
+}
+
+// FOUR CAPTURES, FOUR CONDITIONS, ONE DIGEST. Only the idle capture is committed as bytes; the
+// other three digests are transcribed from the operator's manifest 99-digests.txt, which IS
+// committed, so the equality is checkable against a committed artifact rather than this row.
+data mtcollins1_sol_idle_capture: SolCaptureUnderCondition = SolCaptureUnderCondition {
+  label: "idle",
+  condition: none,
+  artifact_path: "artifacts/bmc/mtcollins1-32dimm/03-sol-idle.log",
+  bytes: byte_size(count: 86),
+  digest: mtcollins1_sol_session_banner_digest,
+}
+
+data mtcollins1_sol_captures: List<SolCaptureUnderCondition> = [
+  mtcollins1_sol_idle_capture,
+  SolCaptureUnderCondition { label: "after chassis power cycle (04-sol-post.log, 99-digests.txt)", condition: Present { value: ChassisPowerCycle }, artifact_path: "04-sol-post.log", bytes: byte_size(count: 86), digest: mtcollins1_sol_session_banner_digest },
+  SolCaptureUnderCondition { label: "after AC cycle (11-ac-sol.log, 99-digests.txt)", condition: Present { value: AcPowerCycle }, artifact_path: "11-ac-sol.log", bytes: byte_size(count: 86), digest: mtcollins1_sol_session_banner_digest },
+  SolCaptureUnderCondition { label: "after chassis reset (31-boot-sol.log, 99-digests.txt)", condition: Present { value: HostWarmReset }, artifact_path: "31-boot-sol.log", bytes: byte_size(count: 86), digest: mtcollins1_sol_session_banner_digest },
+]
+
+// THE KEYSTROKE PROBE: two carriage returns fed into the session, 96 bytes back -- the banner plus
+// the probe's own "done rc=0". The session accepted input and returned no host bytes, which is
+// what separates SolPresentSilent from SolAbsent in the capability profile.
+data mtcollins1_sol_probe_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "e24f9ed8d9cedff87e6d11327c602c31fd7c3d9e2ba16e7e1ab0f8a91cdfe41e",
+})
+
+data mtcollins1_sol_probe_bytes: ByteSize = byte_size(count: 96)
+
+fn mtcollins1_sol_reading(capture: SolCaptureUnderCondition) -> SolCaptureReading {
+  sol_capture_reading(
+    capture_path: capture.artifact_path,
+    bytes: capture.bytes,
+    digest: capture.digest,
+    banner_digest: mtcollins1_sol_session_banner_digest,
+  )
+}
+
+// ── the SEL window ─────────────────────────────────────────────────────────────────────────────
+
+data mtcollins1_sel_final_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-32dimm/50-sel-final.txt"
+
+data mtcollins1_sel_final_byte_count: ByteSize = byte_size(count: 99651)
+
+data mtcollins1_sel_final_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "14e84cd9cbd2d89d6be46caff42c3d5ab0a19079fa4546d6e6ec449f759c7ba5",
+})
+
+// RECORDS 0x3ea THROUGH 0x44f OF 50-sel-final.txt, transcribed one row each, record ids in decimal.
+// The window opens at the LAST BOOT THAT COMPLETED before the DIMM change (0x3ea restart, 0x3eb
+// firmware progress, 0x3ec/0x3ed the OEM pair) so the corpus contains a positive control, and runs
+// to the last record in the capture. The BMC clock rendering is the controller's and is about four
+// hours behind the observer's UTC (mtcollins1_bmc_clock_skew).
+data mtcollins1_sel_window: List<SelWindowEvent> = [
+  SelWindowEvent { record_id: 1002, bmc_clock_rendering: "09/10/2026 09:24:13 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1003, bmc_clock_rendering: "09/10/2026 09:25:27 PM UTC", kind: FirmwareProgressRecord { offset: FirmwareProgress { progress_rendering: "System boot initiated" } } },
+  SelWindowEvent { record_id: 1004, bmc_clock_rendering: "09/10/2026 09:25:55 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "12c805000000" } } },
+  SelWindowEvent { record_id: 1005, bmc_clock_rendering: "09/10/2026 09:25:55 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "12c805004000" } } },
+  SelWindowEvent { record_id: 1006, bmc_clock_rendering: "09/10/2026 09:30:57 PM UTC", kind: OtherStandardEvent { rendering: "Power Unit ChassisPwrStatus | Power off/down | Asserted" } },
+  SelWindowEvent { record_id: 1007, bmc_clock_rendering: "09/11/2026 05:06:41 PM UTC", kind: OtherStandardEvent { rendering: "Power Unit ChassisPwrStatus | AC lost | Asserted" } },
+  SelWindowEvent { record_id: 1008, bmc_clock_rendering: "09/11/2026 05:06:42 PM UTC", kind: BootRestart { offset: InitiatedByPowerUp } },
+  SelWindowEvent { record_id: 1009, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN0_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1010, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN1_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1011, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN2_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1012, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN3_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1013, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN4_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1014, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN5_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1015, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN6_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1016, bmc_clock_rendering: "09/11/2026 05:06:52 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN7_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1017, bmc_clock_rendering: "09/11/2026 05:07:10 PM UTC", kind: OtherStandardEvent { rendering: "System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted" } },
+  SelWindowEvent { record_id: 1018, bmc_clock_rendering: "09/11/2026 05:07:15 PM UTC", kind: OtherStandardEvent { rendering: "System ACPI Power State CPU1_ACPI_State | S0/G0: working | Asserted" } },
+  SelWindowEvent { record_id: 1019, bmc_clock_rendering: "09/11/2026 05:07:20 PM UTC", kind: OtherStandardEvent { rendering: "Power Supply PSU1_Status | Presence detected | Asserted" } },
+  SelWindowEvent { record_id: 1020, bmc_clock_rendering: "09/11/2026 05:07:20 PM UTC", kind: OtherStandardEvent { rendering: "Power Supply PSU2_Status | Presence detected | Asserted" } },
+  SelWindowEvent { record_id: 1021, bmc_clock_rendering: "09/11/2026 05:07:20 PM UTC", kind: OtherStandardEvent { rendering: "Power Supply PSU2_Status | Power Supply AC lost | Asserted" } },
+  SelWindowEvent { record_id: 1022, bmc_clock_rendering: "09/11/2026 05:12:11 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1023, bmc_clock_rendering: "09/11/2026 05:12:15 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1024, bmc_clock_rendering: "09/11/2026 05:17:22 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1025, bmc_clock_rendering: "09/11/2026 05:17:26 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1026, bmc_clock_rendering: "09/11/2026 05:22:33 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1027, bmc_clock_rendering: "09/11/2026 05:22:37 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1028, bmc_clock_rendering: "09/11/2026 05:25:57 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1029, bmc_clock_rendering: "09/11/2026 05:25:59 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1030, bmc_clock_rendering: "09/11/2026 05:31:07 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1031, bmc_clock_rendering: "09/11/2026 05:31:10 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1032, bmc_clock_rendering: "09/11/2026 05:36:17 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1033, bmc_clock_rendering: "09/11/2026 05:36:21 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1034, bmc_clock_rendering: "09/11/2026 05:41:28 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1035, bmc_clock_rendering: "09/11/2026 05:41:32 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1036, bmc_clock_rendering: "09/11/2026 05:43:36 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1037, bmc_clock_rendering: "09/11/2026 05:43:40 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1038, bmc_clock_rendering: "09/11/2026 05:48:47 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1039, bmc_clock_rendering: "09/11/2026 05:48:51 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1040, bmc_clock_rendering: "09/11/2026 05:53:58 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1041, bmc_clock_rendering: "09/11/2026 05:54:02 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1042, bmc_clock_rendering: "09/11/2026 05:57:46 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "caee7107ffff" } } },
+  SelWindowEvent { record_id: 1043, bmc_clock_rendering: "09/11/2026 05:57:47 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "caeef107ffff" } } },
+  SelWindowEvent { record_id: 1044, bmc_clock_rendering: "09/11/2026 05:58:22 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1045, bmc_clock_rendering: "09/11/2026 05:58:47 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1046, bmc_clock_rendering: "09/11/2026 05:59:09 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1047, bmc_clock_rendering: "09/11/2026 05:59:13 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1048, bmc_clock_rendering: "09/11/2026 06:04:20 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1049, bmc_clock_rendering: "09/11/2026 06:04:23 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1050, bmc_clock_rendering: "09/11/2026 06:05:52 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1051, bmc_clock_rendering: "09/11/2026 06:05:52 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1052, bmc_clock_rendering: "09/11/2026 06:06:14 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1053, bmc_clock_rendering: "09/11/2026 06:06:14 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1054, bmc_clock_rendering: "09/11/2026 06:06:49 PM UTC", kind: OtherStandardEvent { rendering: "Power Unit ChassisPwrStatus | Soft-power control failure | Asserted" } },
+  SelWindowEvent { record_id: 1055, bmc_clock_rendering: "09/11/2026 06:06:57 PM UTC", kind: OtherStandardEvent { rendering: "Power Unit ChassisPwrStatus | Power off/down | Asserted" } },
+  SelWindowEvent { record_id: 1056, bmc_clock_rendering: "09/11/2026 06:06:58 PM UTC", kind: BootRestart { offset: InitiatedByPowerUp } },
+  SelWindowEvent { record_id: 1057, bmc_clock_rendering: "09/11/2026 06:06:58 PM UTC", kind: OtherStandardEvent { rendering: "Power Unit ChassisPwrStatus | Power cycle | Asserted" } },
+  SelWindowEvent { record_id: 1058, bmc_clock_rendering: "09/11/2026 06:12:26 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1059, bmc_clock_rendering: "09/11/2026 06:12:29 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1060, bmc_clock_rendering: "09/11/2026 06:13:51 PM UTC", kind: OtherStandardEvent { rendering: "Power Unit ChassisPwrStatus | AC lost | Asserted" } },
+  SelWindowEvent { record_id: 1061, bmc_clock_rendering: "09/11/2026 06:13:52 PM UTC", kind: BootRestart { offset: InitiatedByPowerUp } },
+  SelWindowEvent { record_id: 1062, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN0_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1063, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN1_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1064, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN2_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1065, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN3_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1066, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN4_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1067, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN5_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1068, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN6_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1069, bmc_clock_rendering: "09/11/2026 06:14:03 PM UTC", kind: OtherStandardEvent { rendering: "Fan FAN7_Presence | Device Present | Asserted" } },
+  SelWindowEvent { record_id: 1070, bmc_clock_rendering: "09/11/2026 06:14:15 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1071, bmc_clock_rendering: "09/11/2026 06:14:15 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1072, bmc_clock_rendering: "09/11/2026 06:14:20 PM UTC", kind: OtherStandardEvent { rendering: "System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted" } },
+  SelWindowEvent { record_id: 1073, bmc_clock_rendering: "09/11/2026 06:14:25 PM UTC", kind: OtherStandardEvent { rendering: "System ACPI Power State CPU1_ACPI_State | S0/G0: working | Asserted" } },
+  SelWindowEvent { record_id: 1074, bmc_clock_rendering: "09/11/2026 06:14:31 PM UTC", kind: OtherStandardEvent { rendering: "Power Supply PSU1_Status | Presence detected | Asserted" } },
+  SelWindowEvent { record_id: 1075, bmc_clock_rendering: "09/11/2026 06:14:31 PM UTC", kind: OtherStandardEvent { rendering: "Power Supply PSU2_Status | Presence detected | Asserted" } },
+  SelWindowEvent { record_id: 1076, bmc_clock_rendering: "09/11/2026 06:14:31 PM UTC", kind: OtherStandardEvent { rendering: "Power Supply PSU2_Status | Power Supply AC lost | Asserted" } },
+  SelWindowEvent { record_id: 1077, bmc_clock_rendering: "09/11/2026 06:19:21 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1078, bmc_clock_rendering: "09/11/2026 06:19:25 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1079, bmc_clock_rendering: "09/11/2026 06:19:52 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1080, bmc_clock_rendering: "09/11/2026 06:20:23 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1081, bmc_clock_rendering: "09/11/2026 06:24:25 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1082, bmc_clock_rendering: "09/11/2026 06:24:25 PM UTC", kind: OtherStandardEvent { rendering: "Session Audit SOL_Status | Asserted" } },
+  SelWindowEvent { record_id: 1083, bmc_clock_rendering: "09/11/2026 06:24:32 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1084, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_0V75_PCP | Lower Non-critical going low | Asserted | Reading 0 < Threshold 0.68 Volts" } },
+  SelWindowEvent { record_id: 1085, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_0V75_PCP | Lower Critical going low | Asserted | Reading 0 < Threshold 0.63 Volts" } },
+  SelWindowEvent { record_id: 1086, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_1V8_PCP | Lower Non-critical going low | Asserted | Reading 0.20 < Threshold 1.62 Volts" } },
+  SelWindowEvent { record_id: 1087, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_1V8_PCP | Lower Critical going low | Asserted | Reading 0.20 < Threshold 1.53 Volts" } },
+  SelWindowEvent { record_id: 1088, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_0V75_PCP | Lower Non-critical going low | Asserted | Reading 0 < Threshold 0.68 Volts" } },
+  SelWindowEvent { record_id: 1089, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_0V75_PCP | Lower Critical going low | Asserted | Reading 0 < Threshold 0.63 Volts" } },
+  SelWindowEvent { record_id: 1090, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_1V8_PCP | Lower Non-critical going low | Asserted | Reading 0.20 < Threshold 1.62 Volts" } },
+  SelWindowEvent { record_id: 1091, bmc_clock_rendering: "09/11/2026 06:24:35 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_1V8_PCP | Lower Critical going low | Asserted | Reading 0.20 < Threshold 1.53 Volts" } },
+  SelWindowEvent { record_id: 1092, bmc_clock_rendering: "09/11/2026 06:24:46 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_0V75_PCP | Lower Critical going low | Deasserted | Reading 1.02 > Threshold 0.63 Volts" } },
+  SelWindowEvent { record_id: 1093, bmc_clock_rendering: "09/11/2026 06:24:46 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_0V75_PCP | Lower Non-critical going low | Deasserted | Reading 1.02 > Threshold 0.68 Volts" } },
+  SelWindowEvent { record_id: 1094, bmc_clock_rendering: "09/11/2026 06:24:46 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_1V8_PCP | Lower Critical going low | Deasserted | Reading 1.78 > Threshold 1.53 Volts" } },
+  SelWindowEvent { record_id: 1095, bmc_clock_rendering: "09/11/2026 06:24:46 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU0_1V8_PCP | Lower Non-critical going low | Deasserted | Reading 1.78 > Threshold 1.62 Volts" } },
+  SelWindowEvent { record_id: 1096, bmc_clock_rendering: "09/11/2026 06:24:52 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_0V75_PCP | Lower Critical going low | Deasserted | Reading 1.00 > Threshold 0.63 Volts" } },
+  SelWindowEvent { record_id: 1097, bmc_clock_rendering: "09/11/2026 06:24:52 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_0V75_PCP | Lower Non-critical going low | Deasserted | Reading 1.00 > Threshold 0.68 Volts" } },
+  SelWindowEvent { record_id: 1098, bmc_clock_rendering: "09/11/2026 06:24:52 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_1V8_PCP | Lower Critical going low | Deasserted | Reading 1.80 > Threshold 1.53 Volts" } },
+  SelWindowEvent { record_id: 1099, bmc_clock_rendering: "09/11/2026 06:24:52 PM UTC", kind: OtherStandardEvent { rendering: "Voltage CPU1_1V8_PCP | Lower Non-critical going low | Deasserted | Reading 1.80 > Threshold 1.62 Volts" } },
+  SelWindowEvent { record_id: 1100, bmc_clock_rendering: "09/11/2026 06:24:57 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1101, bmc_clock_rendering: "09/11/2026 06:25:00 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+  SelWindowEvent { record_id: 1102, bmc_clock_rendering: "09/11/2026 06:30:08 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 1103, bmc_clock_rendering: "09/11/2026 06:30:11 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
+]
+
+// THE CURSOR A COLLECTOR WOULD HAVE RECORDED BEFORE THE FIRST POST-CHANGE BOOT: 0x3ee, the
+// "Power off/down" that ended the last 16-DIMM boot. Everything after it is the 32-DIMM
+// population.
+data mtcollins1_sel_cursor_before_32dimm: Int = 1006
+
+// THE CURSOR BEFORE THE LAST 16-DIMM BOOT, for the positive control: record 0x3e9.
+data mtcollins1_sel_cursor_before_last_16dimm_boot: Int = 1001
+
+// ── the OEM record, three facts kept apart ─────────────────────────────────────────────────────
+
+data mtcollins1_oem_payload_since_change: OemSelPayload = OemSelPayload {
+  manufacturer_id_rendering: "00cd3a",
+  oem_bytes_rendering: "0fde70330102",
+}
+
+// THE PAIR THAT SITS BESIDE EVERY BOOT THAT COMPLETED in the full SEL -- twenty-two boots between
+// 09/07 and 09/10 carry it, always immediately after a firmware-progress record -- and that has
+// not appeared once since the DIMM change. Also OEM, also undecoded; recorded as the co-occurrence
+// candidates the association fold checks, not as a decode of either.
+data mtcollins1_oem_pair_beside_completed_boots: List<OemSelPayload> = [
+  OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "12c805000000" },
+  OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "12c805004000" },
+]
+
+// WHAT THE CONTROLLER'S WEB EVENT LOG SAID, read from 40-weblog.json. Every one of the 500 records
+// it serves renders advanced_event_description as "unknown" -- the standard ones too -- and every
+// OEM record's sel_data is EMPTY, so the web surface neither decodes the payload nor even carries
+// its bytes. That is a weaker fact than "the controller looked at 0fde70330102 and declined": the
+// surface offers no OEM decode at all. It is recorded at that weaker strength, and the capability
+// profile's OemDecodeControllerDeclaredUnknown is the arm it supports.
+type WebEventLogDecodeObservation {
+  artifact_path: NonEmptyStr
+  digest: ContentHash
+  records_served: Int
+  oem_records_served: Int
+  advanced_event_description_uniformly: NonEmptyStr
+  oem_sel_data_empty: Bool
+}
+
+data mtcollins1_web_event_log_decode: WebEventLogDecodeObservation = WebEventLogDecodeObservation {
+  artifact_path: "artifacts/bmc/mtcollins1-32dimm/40-weblog.json",
+  digest: Sha256Hash(Sha256Digest { hex: "f0b466275a9edd5d6736e940ed776a446a415893ce2278c26a045cdc584516a8" }),
+  records_served: 500,
+  oem_records_served: 67,
+  advanced_event_description_uniformly: "unknown",
+  oem_sel_data_empty: true,
+}
+
+// ── the capability profile, as measured today ──────────────────────────────────────────────────
+
+// SOL present but silent (four identical captures plus the keystroke probe); raw SEL and standard
+// decode yes (50-sel-final.txt renders every standard sensor event); OEM decode no
+// (mtcollins1_web_event_log_decode); web event log yes (it answered 500 records); per-DIMM
+// localization no (the SEL carries no slot-addressed record and the census module already
+// established that EDAC under firmware-first exposes no channel topology); aggregate memory power
+// yes (CPU0/CPU1 DIMM VRD temperatures and VDDQ rails in 06-sdr.txt); managed AC no (the AC cycle
+// was performed by hand, 10-ac-meta.txt); host callback intended, not demonstrated.
+data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObservationCapabilities {
+  baseboard: AmpereMtCollins,
+  controller_firmware: mtcollins1_firmware,
+  console: SolPresentSilent,
+  sel: SelStandardDecoded,
+  oem_sel_decode: OemDecodeControllerDeclaredUnknown,
+  web_event_log: WebEventLogAvailable,
+  dimm_localization: LocalizationUnavailableFromExposedTelemetry,
+  memory_power: AggregateMemoryPowerExposed,
+  managed_ac: NoManagedAcActuator,
+  host_callback: HostCallbackIntendedNotDemonstrated,
+}
+
+// ── the controller clock ───────────────────────────────────────────────────────────────────────
+
+// JOINED, NOT ASSUMED. SEL record 0x424 "Power Unit ChassisPwrStatus | AC lost" is stamped
+// 09/11/2026 06:13:51 PM by the controller; the observer's watcher (10-ac-meta.txt) logged the
+// controller unreachable at 2026-09-11T22:13:43.167Z. The two describe one AC removal, so the
+// controller's clock reads about 3h59m52s behind UTC. Any join of SEL time to observer time goes
+// through this row.
+type BmcClockSkewObservation {
+  sel_record_id: Int
+  sel_clock_rendering: NonEmptyStr
+  observer_instant: EpochMs
+  observer_artifact_path: NonEmptyStr
+  controller_behind_observer_by: Second
+}
+
+data mtcollins1_bmc_clock_skew: BmcClockSkewObservation = BmcClockSkewObservation {
+  sel_record_id: 1060,
+  sel_clock_rendering: "09/11/2026 06:13:51 PM UTC",
+  observer_instant: 1789164823167,
+  observer_artifact_path: "artifacts/bmc/mtcollins1-32dimm/10-ac-meta.txt",
+  controller_behind_observer_by: second(count: 14392),
+}
+
+// ── the collectors-before-actuation receipt, as a readiness fixture ────────────────────────────
+
+// WHAT THE OBSERVER'S OWN INSTRUMENTS LOOKED LIKE WHEN THE AC CYCLE WAS PERFORMED, reconstructed
+// from 10-ac-meta.txt and operator-scripts.txt. The liveness watcher was armed at 22:13:23.054Z
+// and its FIRST probe found the controller unreachable ("BMC down (ipmi no answer) after 1s",
+// logged twenty seconds later because that first `mc info` hung until timeout): it never observed
+// the controller reachable, so the down it reported was a state it was born into, not a
+// transition it witnessed. The console session had two stale capture processes competing for it,
+// which is why every later script begins by killing every `sol activate` before attaching.
+//
+// Fed to collectors_ready, this fixture must REFUSE; the readiness a correct run would have
+// presented is beside it and must be admitted. Both are exercised by the probe below.
+data mtcollins1_ac_cycle_attempt: AttemptIdentity = "mtcollins1-32dimm-ac-cycle-2026-09-11T22:13Z" as AttemptIdentity
+
+data mtcollins1_console_lease_epoch: LeaseEpoch = LeaseEpoch {
+  lease_key: "ipmi-sol:192.168.1.228",
+  resource_fingerprint: Sha256Hash(Sha256Digest { hex: "3aea4368b8745ae7bdca3c7ec052a324032974f7b849bca460e7d0e14f5e0871" }),
+  owner_fingerprint: Sha256Hash(Sha256Digest { hex: "e3c4d19c11446f35179b90e61f9396652caf155216ef87915bfcf22452e2efe0" }),
+  generation: 1,
+}
+
+data mtcollins1_ac_cycle_collectors_as_run: List<CollectorStanding> = [
+  CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
+  CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
+  CollectorArmedUnproven { kind: ControllerLivenessWatch },
+]
+
+data mtcollins1_ac_cycle_collectors_as_required: List<CollectorStanding> = [
+  CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
+  CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
+  CollectorProvenRunning { kind: ControllerLivenessWatch, proof: ControllerObservedReachable { at: 1789164310688 } },
+]
+
+fn mtcollins1_ac_cycle_readiness_as_run() -> CollectorsReadiness {
+  collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkPresent { directory: mtcollins1_32dimm_artifact_dir },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningStale),
+    collectors: mtcollins1_ac_cycle_collectors_as_run,
+  )
+}
+
+fn mtcollins1_ac_cycle_readiness_as_required() -> CollectorsReadiness {
+  collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkPresent { directory: mtcollins1_32dimm_artifact_dir },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: mtcollins1_ac_cycle_collectors_as_required,
+  )
+}
+
+// ── the folds over the corpus ──────────────────────────────────────────────────────────────────
+
+fn mtcollins1_32dimm_verdict() -> PreOsBringupVerdict {
+  pre_os_bringup_verdict(
+    window: sel_window_after_cursor(window: mtcollins1_sel_window, cursor_record_id: mtcollins1_sel_cursor_before_32dimm),
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  )
+}
+
+fn mtcollins1_last_16dimm_verdict() -> PreOsBringupVerdict {
+  pre_os_bringup_verdict(
+    window: filter(
+      xs: sel_window_after_cursor(window: mtcollins1_sel_window, cursor_record_id: mtcollins1_sel_cursor_before_last_16dimm_boot),
+      f: e => e.record_id <= mtcollins1_sel_cursor_before_32dimm,
+    ),
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  )
+}
+
+fn mtcollins1_oem_association() -> OemSelEmpiricalAssociation {
+  oem_sel_empirical_association(
+    window: mtcollins1_sel_window,
+    payload: mtcollins1_oem_payload_since_change,
+    never_beside_candidates: mtcollins1_oem_pair_beside_completed_boots,
+    profile: mtcollins1_pre_os_capabilities,
+  )
+}
+
+// ── the probe: the three laws, executed over these bytes ───────────────────────────────────────
+
+// EACH LAW IS ONE PURE CHECK RETURNING ITS OWN LOCATED FAILURE, and the probe is the fold that
+// reports the first. The checks are separate declarations so a witness can run one law without
+// the others and a red names the law rather than the probe.
+
+fn sol_readings_all_banner_only(captures: List<SolCaptureUnderCondition>) -> Bool {
+  all(captures, c => match mtcollins1_sol_reading(capture: c) {
+    SolBannerOnly { capture_path: _, bytes: _ } => true
+    SolHostBytesObserved { capture_path: _, bytes: _ } => false
+    SolCaptureUnreadable { capture_path: _ } => false
+  })
+}
+
+// LAW 1: the readiness as run refuses on the stale console lease; the readiness a correct run
+// would present admits, and an AC cycle minted from it is a human-attended barrier that keeps the
+// attempt identity.
+fn check_collectors_before_actuation() -> ProcessExit {
+  let as_run = match mtcollins1_ac_cycle_readiness_as_run() {
+    Ready { ready: _ } =>
+      exit_failure(reason: "collectors-before-actuation: the readiness reconstructed from 10-ac-meta.txt was ADMITTED, but its console lease was stale and its liveness watcher never saw the controller up")
+    NotReady { gap: g } =>
+      match g {
+        ConsoleLeaseNotHeld { observed: _ } => ExitSuccess
+        _ => exit_failure(reason: "collectors-before-actuation: refused, but not on the stale console lease, which is the first gap the fixture presents")
+      }
+  }
+  let as_required = match mtcollins1_ac_cycle_readiness_as_required() {
+    NotReady { gap: _ } =>
+      exit_failure(reason: "collectors-before-actuation: the readiness a correct run would present was REFUSED, so the fold cannot distinguish the failed run from a correct one")
+    Ready { ready: r } =>
+      match power_actuation_request(ready: r, kind: AcPowerCycle) {
+        ActuatorRequest { ready: _, kind: _, realization: _ } =>
+          exit_failure(reason: "collectors-before-actuation: an AC cycle was rendered as an actuator request, but this fleet has no managed AC actuator")
+        HumanAttendedRequest { ready: rr, kind: _, barrier: _ } =>
+          if power_actuation_request_readiness(request: power_actuation_request(ready: rr, kind: HostWarmReset)).attempt == mtcollins1_ac_cycle_attempt {
+            ExitSuccess
+          } else {
+            exit_failure(reason: "collectors-before-actuation: the request lost the attempt identity of the readiness it was minted from")
+          }
+      }
+  }
+  first_failure(checks: [as_run, as_required])
+}
+
+// LAW 2: four byte-identical captures across four conditions all read as banner-only, and the
+// verdict over an empty post-cursor window beside them is UNDETERMINED, never a failure.
+fn check_console_silence_is_not_a_terminal() -> ProcessExit {
+  let readings = if sol_readings_all_banner_only(captures: mtcollins1_sol_captures) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "console-silence: a capture whose digest equals the session banner was read as host bytes")
+  }
+  let verdict = match pre_os_bringup_verdict(
+    window: sel_window_after_cursor(window: mtcollins1_sel_window, cursor_record_id: 1103),
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: c } =>
+      match c {
+        ConsoleSilentAndWindowEmpty => ExitSuccess
+        _ => exit_failure(reason: "console-silence: a silent console beside an empty window was not named as such")
+      }
+    _ => exit_failure(reason: "console-silence: a banner-only capture beside an empty SEL window produced a verdict about the host")
+  }
+  first_failure(checks: [readings, verdict])
+}
+
+// THE BOUNDED TERMINAL: the 32-DIMM window is a stable restart-before-progress terminal, refused
+// with no localization and permitting no further actuation; the last 16-DIMM boot is the positive
+// control that shows the terminal arm discriminates.
+fn check_bounded_terminal() -> ProcessExit {
+  let terminal = match mtcollins1_32dimm_verdict() {
+    PhysicalRemediationRequired { restarts_without_progress: n, localization: l } =>
+      match l {
+        UnavailableFromExposedTelemetry =>
+          if n < 3 {
+            exit_failure(reason: "bounded-terminal: fewer restarts than the threshold were reported for a window of twenty")
+          } else {
+            ExitSuccess
+          }
+        _ => exit_failure(reason: "bounded-terminal: a localization was minted on a platform that exposes no per-slot telemetry")
+      }
+    _ => exit_failure(reason: "bounded-terminal: the 32-DIMM window -- twenty restarts, zero firmware-progress records -- did not resolve to PhysicalRemediationRequired")
+  }
+  let bounded = if verdict_permits_further_actuation(verdict: mtcollins1_32dimm_verdict()) {
+    exit_failure(reason: "bounded-terminal: a stable terminal still permitted further actuation")
+  } else {
+    ExitSuccess
+  }
+  let control = match mtcollins1_last_16dimm_verdict() {
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => ExitSuccess
+    _ => exit_failure(reason: "positive control: the last completing 16-DIMM boot (0x3ea..0x3ee) was not read as firmware progress, so the terminal arm is not discriminating")
+  }
+  first_failure(checks: [terminal, bounded, control])
+}
+
+// LAW 3: the OEM association counts, dates and co-occurs -- and does not decode.
+fn check_opaque_oem_stays_opaque() -> ProcessExit {
+  let assoc = mtcollins1_oem_association()
+  let count = if assoc.observed.occurrences == 16 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("opaque-oem: expected 16 occurrences of 0fde70330102 in records 0x3ea..0x44f, counted ", to_string(assoc.observed.occurrences)))
+  }
+  let first_seen = if assoc.appears_only_at_or_after_record == 1023 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "opaque-oem: first occurrence was not record 0x3ff, the first post-change restart")
+  }
+  let never_beside = if list_length(items: assoc.never_within_same_cycle_as) == 2 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "opaque-oem: the completed-boot OEM pair was found in a cycle beside 0fde70330102, or the fold dropped a candidate it should have kept")
+  }
+  let undecoded = if association_is_decoded(association: assoc) {
+    exit_failure(reason: "opaque-oem: an association over a payload the controller does not decode was read as decoded")
+  } else {
+    match assoc.decode_standing {
+      ControllerDeclaredUnknown => ExitSuccess
+      _ => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
+    }
+  }
+  first_failure(checks: [count, first_seen, never_beside, undecoded])
+}
+
+fn first_failure(checks: List<ProcessExit>) -> ProcessExit {
+  fold(
+    checks,
+    init: ExitSuccess,
+    f: (acc, c) => match acc {
+      ExitFailure { code: _, reason: _ } => acc
+      ExitSuccess => c
+    },
+  )
+}
+
+func mtcollins1_32dimm_bringup_probe() -> ProcessExit {
+  return first_failure(checks: [
+    check_collectors_before_actuation(),
+    check_console_silence_is_not_a_terminal(),
+    check_bounded_terminal(),
+    check_opaque_oem_stays_opaque(),
+  ])
+}

@@ -1,0 +1,306 @@
+module test.claim.machine_intake.pre_os_bringup_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { byte_size }
+import std.content_hash { Sha256Digest, Sha256Hash }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import std.scoped_authorization { AttemptIdentity }
+import std.temporal_effect { LeaseAbsent, LeaseEpoch, LeaseRunningExpected, held_lease }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.bmc.ipmi_sel {
+  FirmwareHang,
+  FirmwareProgress,
+  OemSelPayload,
+  OemTimestampedRecord,
+  SelRecordTypeReserved,
+  SystemEventRecord,
+  SystemRestart,
+  sel_record_type_of_code,
+}
+import gunbc.machine_intake_pre_os_observation_capabilities {
+  PerSlotLocalizationExposed,
+  PreOsObservationCapabilities,
+  SolPresentEmitting,
+}
+import gunbc.machine_intake_pre_os_bringup_attempt {
+  BmcControllerReset,
+  ChassisPowerCycle,
+  CollectorNotProven,
+  CollectorProofMismatched,
+  CollectorStanding,
+  CollectorProvenRunning,
+  ConsoleCapture,
+  ConsoleLeaseNotHeld,
+  ConsoleSessionBannerSeen,
+  ControllerColdReset,
+  ControllerLivenessWatch,
+  ControllerObservedReachable,
+  ActuationAccepted,
+  ActuatorRequest,
+  EvidenceSinkAbsent,
+  EvidenceSinkMissing,
+  EvidenceSinkPresent,
+  HostWarmReset,
+  Issued,
+  NotReady,
+  Ready,
+  SelCursorRecorded,
+  SelCursorTail,
+  collectors_ready,
+  power_actuation_outcome,
+  power_actuation_request,
+}
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  BootRestart,
+  BringupUndetermined,
+  FirmwareProgressObserved,
+  FirmwareProgressRecord,
+  LocalizableFrom,
+  NoRestartInWindow,
+  OemTimestamped,
+  PhysicalRemediationRequired,
+  RestartsBelowTerminalThreshold,
+  SelWindowEvent,
+  SolBannerOnly,
+  boot_cycles,
+  pre_os_bringup_verdict,
+}
+import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
+  check_bounded_terminal,
+  check_collectors_before_actuation,
+  check_console_silence_is_not_a_terminal,
+  check_opaque_oem_stays_opaque,
+  mtcollins1_ac_cycle_attempt,
+  mtcollins1_console_lease_epoch,
+  mtcollins1_pre_os_capabilities,
+  mtcollins1_sel_window,
+  mtcollins1_sol_idle_capture,
+  mtcollins1_sol_reading,
+}
+
+// THE REGRESSION CORPUS, RUN AS WITNESSES. Each of the observation module's four checks is a test
+// here so a red names the law; the fixtures below then add the discriminating inputs the corpus
+// cannot supply -- an emitting console, an exposed localization source, a window one restart
+// short of the threshold -- so that each arm is shown to move.
+
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn law_one_collectors_before_actuation_over_the_corpus() -> Bool {
+  exit_ok(e: check_collectors_before_actuation())
+}
+
+test fn law_two_console_silence_is_not_a_terminal_over_the_corpus() -> Bool {
+  exit_ok(e: check_console_silence_is_not_a_terminal())
+}
+
+test fn bounded_terminal_over_the_corpus() -> Bool {
+  exit_ok(e: check_bounded_terminal())
+}
+
+test fn law_three_opaque_oem_stays_opaque_over_the_corpus() -> Bool {
+  exit_ok(e: check_opaque_oem_stays_opaque())
+}
+
+// ── law 1, the arms the corpus does not reach ──────────────────────────────────────────────────
+
+fn proven_collectors() -> List<CollectorStanding> {
+  [
+    CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
+    CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+    CollectorProvenRunning { kind: ControllerLivenessWatch, proof: ControllerObservedReachable { at: 1 } },
+  ]
+}
+
+test fn an_absent_evidence_sink_refuses_before_the_lease_is_consulted() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkAbsent,
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseAbsent),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: EvidenceSinkMissing } => true
+    _ => false
+  }
+}
+
+test fn a_missing_liveness_watch_is_named_as_the_gap() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: [
+      CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
+      CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+    ],
+  ) {
+    NotReady { gap: CollectorNotProven { kind: ControllerLivenessWatch } } => true
+    _ => false
+  }
+}
+
+test fn a_sel_cursor_offered_as_a_console_proof_refuses_as_mismatched() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: [
+      CollectorProvenRunning { kind: ConsoleCapture, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+      CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+      CollectorProvenRunning { kind: ControllerLivenessWatch, proof: ControllerObservedReachable { at: 1 } },
+    ],
+  ) {
+    NotReady { gap: CollectorProofMismatched { kind: ConsoleCapture } } => true
+    _ => false
+  }
+}
+
+test fn an_accepted_actuator_request_mints_an_issued_receipt_and_nothing_stronger() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: _ } => false
+    Ready { ready: r } =>
+      match power_actuation_outcome(request: power_actuation_request(ready: r, kind: BmcControllerReset), ack: ActuationAccepted { at: 7 }) {
+        Issued { issued: i } =>
+          i.acknowledged_at == 7
+            && match i.request {
+              ActuatorRequest { ready: _, kind: _, realization: ControllerColdReset } => true
+              _ => false
+            }
+        _ => false
+      }
+  }
+}
+
+// ── law 2 and the bounded terminal, the arms the corpus does not reach ─────────────────────────
+
+fn restart(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: BootRestart { offset: SystemRestart } }
+}
+
+fn progress(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: FirmwareProgressRecord { offset: FirmwareProgress { progress_rendering: "System boot initiated" } } }
+}
+
+fn hang(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: FirmwareProgressRecord { offset: FirmwareHang } }
+}
+
+fn oem(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } }
+}
+
+test fn two_restarts_without_progress_is_below_the_threshold_and_undetermined() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: RestartsBelowTerminalThreshold { restarts_without_progress: 2 } } => true
+    _ => false
+  }
+}
+
+test fn a_firmware_hang_record_is_not_progress() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), hang(id: 2), restart(id: 3), hang(id: 4), restart(id: 5), hang(id: 6)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: _ } => true
+    _ => false
+  }
+}
+
+test fn oem_records_carry_no_weight_in_the_verdict() -> Bool {
+  let with_oem = pre_os_bringup_verdict(
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4), restart(id: 5), oem(id: 6)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  let without_oem = pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 3), restart(id: 5)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  match with_oem {
+    PhysicalRemediationRequired { restarts_without_progress: a, localization: _ } =>
+      match without_oem {
+        PhysicalRemediationRequired { restarts_without_progress: b, localization: _ } => a == b
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn progress_after_one_restart_reads_as_progress_even_beside_oem_records() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), progress(id: 2), oem(id: 3)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 0 } => true
+    _ => false
+  }
+}
+
+fn emitting_console_profile() -> PreOsObservationCapabilities {
+  PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: SolPresentEmitting,
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    web_event_log: mtcollins1_pre_os_capabilities.web_event_log,
+    dimm_localization: PerSlotLocalizationExposed {
+      source: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "emitting_console_profile", field: WholeDeclaration },
+    },
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+}
+
+test fn on_an_emitting_console_a_banner_only_capture_beside_an_empty_window_is_no_restart_not_silence() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: emitting_console_profile(),
+  ) {
+    BringupUndetermined { cause: NoRestartInWindow } => true
+    _ => false
+  }
+}
+
+test fn a_platform_that_exposes_per_slot_evidence_localizes_by_pointer_never_by_slot() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: emitting_console_profile(),
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: LocalizableFrom { source: s } } => s.decl_name == "emitting_console_profile"
+    _ => false
+  }
+}
+
+test fn the_corpus_window_holds_twenty_one_restarts_of_which_one_saw_progress() -> Bool {
+  let cycles = boot_cycles(window: mtcollins1_sel_window)
+  list_length(items: cycles) == 21 && list_length(items: filter(xs: cycles, f: c => c.progress_seen)) == 1
+}
+
+// ── the upstream record-type fold ──────────────────────────────────────────────────────────────
+
+test fn record_type_codes_partition_per_section_32() -> Bool {
+  let std_ok = match sel_record_type_of_code(code: 2) { SystemEventRecord => true  _ => false }
+  let oem_ok = match sel_record_type_of_code(code: 192) { OemTimestampedRecord { record_type_code: 192 } => true  _ => false }
+  let reserved_ok = match sel_record_type_of_code(code: 3) { SelRecordTypeReserved { record_type_code: 3 } => true  _ => false }
+  std_ok && oem_ok && reserved_ok
+}

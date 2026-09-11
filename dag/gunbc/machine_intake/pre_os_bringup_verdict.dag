@@ -1,0 +1,359 @@
+module gunbc.machine_intake_pre_os_bringup_verdict
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { ByteSize }
+import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
+import std.decl_ref { DeclarationRef }
+import extdeps.bmc.ipmi_sel {
+  OemSelPayload,
+  SystemBootInitiatedOffset,
+  SystemFirmwareProgressOffset,
+  firmware_offset_is_progress,
+  oem_sel_payload_eq,
+}
+import gunbc.machine_intake_pre_os_observation_capabilities {
+  DimmLocalizationCapability,
+  LocalizationUnavailableFromExposedTelemetry,
+  OemDecodeAvailable,
+  OemDecodeControllerDeclaredUnknown,
+  OemDecodeNotProbed,
+  PerSlotLocalizationExposed,
+  PreOsObservationCapabilities,
+  console_silence_is_informative,
+}
+
+// WHAT A PRE-OS BRING-UP ATTEMPT ESTABLISHED ABOUT THE HOST, from independent observations only.
+// Two laws are structural here rather than checked:
+//
+//   CONSOLE SILENCE IS NOT A TERMINAL. The verdict's failure arm is constructed from the SEL
+//   window alone. The console reading is consulted only to decide whether an inconclusive window
+//   is UNDETERMINED or merely WAITING, and a banner-only capture on a silent-console platform
+//   contributes nothing in either direction -- the same 86 bytes arrived at idle, after a power
+//   cycle, after an AC cycle and after a reset on 2026-09-11, so those bytes discriminate nothing
+//   (gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked).
+//
+//   AN OPAQUE OEM CODE STAYS OPAQUE. OemSelPayloadObserved, OemSelDecodeStanding and
+//   OemSelEmpiricalAssociation are three carriers with no fold between them and the verdict. The
+//   verdict fold's signature does not take an OEM payload; a memory-training terminal has no
+//   constructor in this module; the association is a reportable fact that names what would decode
+//   it and nothing more (DESIGN section 4d: typed as a bet, never promoted).
+
+// ── the console reading ────────────────────────────────────────────────────────────────────────
+
+// BANNER-ONLY IS DECIDED BY DIGEST, NOT BY SIZE. The controller's session banner has a fixed
+// digest on a given firmware; a capture whose digest equals it contains the banner and nothing
+// else. Comparing sizes would call any 86-byte host emission a banner.
+type SolCaptureReading
+  = SolBannerOnly { capture_path: NonEmptyStr, bytes: ByteSize }
+  | SolHostBytesObserved { capture_path: NonEmptyStr, bytes: ByteSize }
+  | SolCaptureUnreadable { capture_path: NonEmptyStr }
+
+fn sol_capture_reading(capture_path: NonEmptyStr, bytes: ByteSize, digest: ContentHash, banner_digest: ContentHash) -> SolCaptureReading {
+  match compare_content_hash(left: digest, right: banner_digest) {
+    ContentHashEqual => SolBannerOnly { capture_path: capture_path, bytes: bytes }
+    ContentHashDifferent => SolHostBytesObserved { capture_path: capture_path, bytes: bytes }
+    ContentHashCrossFamilyIncomparable => SolCaptureUnreadable { capture_path: capture_path }
+  }
+}
+
+// ── the SEL window ─────────────────────────────────────────────────────────────────────────────
+
+// ONE RECORD AS THE BRING-UP READER SEES IT. Record ids are the controller's, as integers, so a
+// window can be cut at a cursor. The BMC clock rendering is carried verbatim because joining it to
+// an observer's clock needs the measured offset, which is a receipt in the observation module.
+type SelWindowEventKind
+  = BootRestart { offset: SystemBootInitiatedOffset }
+  | FirmwareProgressRecord { offset: SystemFirmwareProgressOffset }
+  | OemTimestamped { payload: OemSelPayload }
+  | OtherStandardEvent { rendering: NonEmptyStr }
+
+type SelWindowEvent {
+  record_id: Int
+  bmc_clock_rendering: NonEmptyStr
+  kind: SelWindowEventKind
+}
+
+// THE WINDOW AN ATTEMPT READS BEGINS AT THE CURSOR ITS SEL COLLECTOR RECORDED, which is why the
+// cursor is a collector proof and not a convenience: a verdict over records that predate the
+// attempt would count another configuration's boots. The cut is strict -- the cursor record itself
+// was already present before the action.
+fn sel_window_after_cursor(window: List<SelWindowEvent>, cursor_record_id: Int) -> List<SelWindowEvent> {
+  filter(xs: window, f: e => e.record_id > cursor_record_id)
+}
+
+// A BOOT CYCLE IS THE SPAN FROM ONE RESTART RECORD TO THE NEXT. `progress_seen` is true when a
+// FirmwareProgress record fell inside it -- the standard, decoded, specification-assigned event --
+// and is the ONLY thing that can make a cycle read as having got past reset.
+type BootCycleReading {
+  restart_record_id: Int
+  restart_offset: SystemBootInitiatedOffset
+  progress_seen: Bool
+}
+
+type BootCycleFold {
+  closed: List<BootCycleReading>
+  open: BootCycleReading?
+}
+
+fn close_open_cycle(acc: BootCycleFold) -> List<BootCycleReading> {
+  match acc.open {
+    Absent => acc.closed
+    Present { value: c } => append(acc.closed, [c])
+  }
+}
+
+fn boot_cycle_step(acc: BootCycleFold, event: SelWindowEvent) -> BootCycleFold {
+  match event.kind {
+    BootRestart { offset: o } =>
+      BootCycleFold {
+        closed: close_open_cycle(acc: acc),
+        open: Present { value: BootCycleReading { restart_record_id: event.record_id, restart_offset: o, progress_seen: false } },
+      }
+    FirmwareProgressRecord { offset: fo } =>
+      match acc.open {
+        Absent => acc
+        Present { value: c } =>
+          if firmware_offset_is_progress(offset: fo) {
+            BootCycleFold {
+              closed: acc.closed,
+              open: Present { value: BootCycleReading { restart_record_id: c.restart_record_id, restart_offset: c.restart_offset, progress_seen: true } },
+            }
+          } else {
+            acc
+          }
+      }
+    OemTimestamped { payload: _ } => acc
+    OtherStandardEvent { rendering: _ } => acc
+  }
+}
+
+// THE OEM ARM ABOVE IS `acc`, UNCONDITIONALLY, and that line is the wall: an OEM record can neither
+// open a cycle nor mark progress. Whatever 0fde70330102 means, it means it OUTSIDE this fold.
+fn boot_cycles(window: List<SelWindowEvent>) -> List<BootCycleReading> {
+  close_open_cycle(acc: fold(window, init: BootCycleFold { closed: [], open: none }, f: (acc, e) => boot_cycle_step(acc: acc, event: e)))
+}
+
+fn cycles_with_progress(cycles: List<BootCycleReading>) -> Int {
+  list_length(items: filter(xs: cycles, f: c => c.progress_seen))
+}
+
+fn cycles_without_progress(cycles: List<BootCycleReading>) -> Int {
+  list_length(items: filter(xs: cycles, f: c => c.progress_seen == false))
+}
+
+// ── the verdict ────────────────────────────────────────────────────────────────────────────────
+
+// HOW MANY RESTARTS WITHOUT PROGRESS MAKE A STABLE TERMINAL. A policy row, named, so the number a
+// verdict turned on is citable and so the fold is not "retry until green": the bound is the point
+// at which the model REFUSES to issue another action and hands the subject to a human.
+data restart_without_progress_terminal_threshold: Int = 3
+
+// WHERE A REMEDIATION MAY POINT. UnavailableFromExposedTelemetry is the honest arm when the
+// platform exposes no per-slot evidence; the other arm carries the declaration that WOULD expose
+// it, never a slot, because naming a slot is a fold over that source that this module does not
+// perform. There is no arm carrying a slot number at all, so no timing heuristic or opaque payload
+// can be turned into one here.
+type RemediationLocalization
+  = UnavailableFromExposedTelemetry
+  | LocalizableFrom { source: DeclarationRef }
+
+fn remediation_localization(profile: PreOsObservationCapabilities) -> RemediationLocalization {
+  match profile.dimm_localization {
+    LocalizationUnavailableFromExposedTelemetry => UnavailableFromExposedTelemetry
+    PerSlotLocalizationExposed { source: s } => LocalizableFrom { source: s }
+  }
+}
+
+type BringupUndeterminedCause
+  = NoRestartInWindow
+  | RestartsBelowTerminalThreshold { restarts_without_progress: Int }
+  | ConsoleSilentAndWindowEmpty
+
+type PreOsBringupVerdict
+  = FirmwareProgressObserved { cycles_with_progress: Int, cycles_without_progress: Int }
+  | BringupUndetermined { cause: BringupUndeterminedCause }
+  | PhysicalRemediationRequired { restarts_without_progress: Int, localization: RemediationLocalization }
+
+// THE FOLD. Its inputs are the window, the profile and the console reading; NOT an OEM payload,
+// NOT an actuation receipt. Progress anywhere in the window is progress. No progress and at least
+// the threshold of restarts is the stable terminal, and the answer to a stable terminal is a
+// refusal to keep actuating: PhysicalRemediationRequired, localized only as far as the platform
+// can see. Fewer restarts is undetermined -- the window may simply be short.
+//
+// THE CONSOLE ENTERS EXACTLY ONCE, on the empty-window arm, and only to name the cause more
+// precisely: a silent console beside an empty window is "nothing observed", while an emitting
+// console beside an empty window would be a reading the SEL did not corroborate. On a silent
+// platform the reading is discarded before it can be read as evidence, which is the
+// console_silence_is_informative gate.
+fn pre_os_bringup_verdict(
+  window: List<SelWindowEvent>,
+  console: SolCaptureReading,
+  profile: PreOsObservationCapabilities,
+) -> PreOsBringupVerdict {
+  let cycles = boot_cycles(window: window)
+  let with_progress = cycles_with_progress(cycles: cycles)
+  let without_progress = cycles_without_progress(cycles: cycles)
+  if with_progress > 0 {
+    FirmwareProgressObserved { cycles_with_progress: with_progress, cycles_without_progress: without_progress }
+  } else if without_progress >= restart_without_progress_terminal_threshold {
+    PhysicalRemediationRequired { restarts_without_progress: without_progress, localization: remediation_localization(profile: profile) }
+  } else if without_progress > 0 {
+    BringupUndetermined { cause: RestartsBelowTerminalThreshold { restarts_without_progress: without_progress } }
+  } else {
+    match console {
+      SolBannerOnly { capture_path: _, bytes: _ } =>
+        if console_silence_is_informative(profile: profile) {
+          BringupUndetermined { cause: NoRestartInWindow }
+        } else {
+          BringupUndetermined { cause: ConsoleSilentAndWindowEmpty }
+        }
+      SolHostBytesObserved { capture_path: _, bytes: _ } => BringupUndetermined { cause: NoRestartInWindow }
+      SolCaptureUnreadable { capture_path: _ } => BringupUndetermined { cause: NoRestartInWindow }
+    }
+  }
+}
+
+// WHETHER A VERDICT PERMITS ANOTHER POWER ACTION. Bounded, not retry-until-green: the remediation
+// arm answers false, and a caller that wants to actuate again must obtain a NEW readiness for a
+// NEW attempt after a human has changed the physical population.
+fn verdict_permits_further_actuation(verdict: PreOsBringupVerdict) -> Bool {
+  match verdict {
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => true
+    BringupUndetermined { cause: _ } => true
+    PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => false
+  }
+}
+
+// ── the OEM record, as three facts ─────────────────────────────────────────────────────────────
+
+// FACT ONE: THE PAYLOAD WAS OBSERVED, this many times, between these record ids. A count over a
+// window, nothing about meaning.
+type OemSelPayloadObserved {
+  payload: OemSelPayload
+  occurrences: Int
+  first_record_id: Int
+  last_record_id: Int
+}
+
+// FACT TWO: WHAT THE MANUFACTURER'S REALIZATION SAID WHEN ASKED TO DECODE IT. Derived from the
+// capability profile so it cannot be authored more generously than the profile measured.
+type OemSelDecodeStanding
+  = ControllerDecodes { decode_authority: DeclarationRef }
+  | ControllerDeclaredUnknown
+  | DecodeNotProbed
+
+fn oem_sel_decode_standing(profile: PreOsObservationCapabilities) -> OemSelDecodeStanding {
+  match profile.oem_sel_decode {
+    OemDecodeAvailable { decode_authority: a } => ControllerDecodes { decode_authority: a }
+    OemDecodeControllerDeclaredUnknown => ControllerDeclaredUnknown
+    OemDecodeNotProbed => DecodeNotProbed
+  }
+}
+
+// FACT THREE: WHAT THE PAYLOAD CO-OCCURS WITH. Computed over the window, carrying the marker it
+// appears only after and the payloads it never sits beside. This is an association and its type
+// says so; it names no cause, decodes no bytes, and no fold in this module consumes it.
+type OemSelEmpiricalAssociation {
+  observed: OemSelPayloadObserved
+  appears_only_at_or_after_record: Int
+  never_within_same_cycle_as: List<OemSelPayload>
+  decode_standing: OemSelDecodeStanding
+}
+
+type OemPayloadCountFold {
+  occurrences: Int
+  first_record_id: Int
+  last_record_id: Int
+}
+
+fn oem_payload_observed(window: List<SelWindowEvent>, payload: OemSelPayload) -> OemSelPayloadObserved {
+  let counted = fold(
+    window,
+    init: OemPayloadCountFold { occurrences: 0, first_record_id: 0, last_record_id: 0 },
+    f: (acc, e) => match e.kind {
+      OemTimestamped { payload: p } =>
+        if oem_sel_payload_eq(a: p, b: payload) {
+          OemPayloadCountFold {
+            occurrences: acc.occurrences + 1,
+            first_record_id: if acc.occurrences == 0 { e.record_id } else { acc.first_record_id },
+            last_record_id: e.record_id,
+          }
+        } else {
+          acc
+        }
+      BootRestart { offset: _ } => acc
+      FirmwareProgressRecord { offset: _ } => acc
+      OtherStandardEvent { rendering: _ } => acc
+    },
+  )
+  OemSelPayloadObserved {
+    payload: payload,
+    occurrences: counted.occurrences,
+    first_record_id: counted.first_record_id,
+    last_record_id: counted.last_record_id,
+  }
+}
+
+// WHETHER TWO PAYLOADS EVER FALL IN ONE BOOT CYCLE. The cycle is the same span boot_cycles uses,
+// so "never beside" means never between the same pair of restart records.
+type CoOccurrenceFold {
+  saw_a_this_cycle: Bool
+  saw_b_this_cycle: Bool
+  co_occurred: Bool
+}
+
+fn co_occurrence_step(acc: CoOccurrenceFold, event: SelWindowEvent, a: OemSelPayload, b: OemSelPayload) -> CoOccurrenceFold {
+  match event.kind {
+    BootRestart { offset: _ } =>
+      CoOccurrenceFold { saw_a_this_cycle: false, saw_b_this_cycle: false, co_occurred: acc.co_occurred || (acc.saw_a_this_cycle && acc.saw_b_this_cycle) }
+    OemTimestamped { payload: p } =>
+      CoOccurrenceFold {
+        saw_a_this_cycle: acc.saw_a_this_cycle || oem_sel_payload_eq(a: p, b: a),
+        saw_b_this_cycle: acc.saw_b_this_cycle || oem_sel_payload_eq(a: p, b: b),
+        co_occurred: acc.co_occurred,
+      }
+    FirmwareProgressRecord { offset: _ } => acc
+    OtherStandardEvent { rendering: _ } => acc
+  }
+}
+
+fn payloads_co_occur_in_a_cycle(window: List<SelWindowEvent>, a: OemSelPayload, b: OemSelPayload) -> Bool {
+  let done = fold(
+    window,
+    init: CoOccurrenceFold { saw_a_this_cycle: false, saw_b_this_cycle: false, co_occurred: false },
+    f: (acc, e) => co_occurrence_step(acc: acc, event: e, a: a, b: b),
+  )
+  done.co_occurred || (done.saw_a_this_cycle && done.saw_b_this_cycle)
+}
+
+// THE ASSOCIATION IS COMPUTED, NOT AUTHORED, so a "never beside" claim that the window contradicts
+// cannot be written: the candidates that DO co-occur are dropped from the list rather than kept on
+// the author's say-so, and a payload absent from the window yields an observation with zero
+// occurrences rather than a fabricated first-seen.
+fn oem_sel_empirical_association(
+  window: List<SelWindowEvent>,
+  payload: OemSelPayload,
+  never_beside_candidates: List<OemSelPayload>,
+  profile: PreOsObservationCapabilities,
+) -> OemSelEmpiricalAssociation {
+  let observed = oem_payload_observed(window: window, payload: payload)
+  OemSelEmpiricalAssociation {
+    observed: observed,
+    appears_only_at_or_after_record: observed.first_record_id,
+    never_within_same_cycle_as: filter(xs: never_beside_candidates, f: c => payloads_co_occur_in_a_cycle(window: window, a: payload, b: c) == false),
+    decode_standing: oem_sel_decode_standing(profile: profile),
+  }
+}
+
+// WHETHER AN ASSOCIATION MAY BE READ AS A DECODE: only when the manufacturer's realization decodes
+// it, and then the decode is THEIRS, cited by the authority the standing carries -- never this
+// module's. On every other standing the answer is false, however many occurrences the association
+// counts, which is the arity repair
+// gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission prescribes.
+fn association_is_decoded(association: OemSelEmpiricalAssociation) -> Bool {
+  match association.decode_standing {
+    ControllerDecodes { decode_authority: _ } => true
+    ControllerDeclaredUnknown => false
+    DecodeNotProbed => false
+  }
+}

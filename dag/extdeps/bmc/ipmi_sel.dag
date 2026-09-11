@@ -1,0 +1,114 @@
+module extdeps.bmc.ipmi_sel
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE SYSTEM EVENT LOG RECORD FORMATS OF IPMI v2.0 rev 1.1, section 32, and the two sensor-type
+// offsets section 42.2 assigns that a pre-OS bring-up reader consumes. This module carries what the
+// SPECIFICATION says a record is; what a controller was OBSERVED to emit is a receipt in the
+// observing layer (gunbc.machine_intake_mtcollins1_32dimm_bringup_observation), never a row here.
+//
+// WHY THIS IS ITS OWN MODULE AND NOT MORE OPERATIONS ON extdeps.bmc.ipmi. That module is the
+// ipmitool TRANSPORT -- argv rows bound to a shell handler. This one is the WIRE FORMAT the
+// transport's `sel elist` output renders, which is a different fact with a different citation
+// (section 32 versus the tool's man page), and which a Redfish LogEntry reader would consume
+// without ever spelling an argv (DESIGN section 3: interface shape, transport, policy are three
+// facts).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmi_sel",
+      decl_name: "sel_record_type_of_code",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// SECTION 32.1 TABLE 32-1: record type 02h is the standard system event record. Section 32.2:
+// C0h-DFh are OEM timestamped records -- a 4-byte timestamp, a 3-byte manufacturer ID, and SIX
+// BYTES WHOSE MEANING THE SPECIFICATION ASSIGNS TO THE MANUFACTURER. Section 32.3: E0h-FFh are OEM
+// non-timestamped, thirteen manufacturer-defined bytes. Codes 03h-BFh are reserved.
+type SelRecordType
+  = SystemEventRecord
+  | OemTimestampedRecord { record_type_code: Int }
+  | OemNonTimestampedRecord { record_type_code: Int }
+  | SelRecordTypeReserved { record_type_code: Int }
+  | SelRecordTypeOutOfRange { record_type_code: Int }
+
+fn sel_record_type_of_code(code: Int) -> SelRecordType {
+  if code < 0 {
+    SelRecordTypeOutOfRange { record_type_code: code }
+  } else if code == 2 {
+    SystemEventRecord
+  } else if code < 192 {
+    SelRecordTypeReserved { record_type_code: code }
+  } else if code < 224 {
+    OemTimestampedRecord { record_type_code: code }
+  } else if code < 256 {
+    OemNonTimestampedRecord { record_type_code: code }
+  } else {
+    SelRecordTypeOutOfRange { record_type_code: code }
+  }
+}
+
+// THE OEM PAYLOAD IS CARRIED AS THE BYTES THE CONTROLLER RENDERED, AND NOTHING ELSE. Section 32.2
+// says the six data bytes are "OEM defined" -- the specification neither decodes them nor names a
+// registry a reader could consult. A field here called `meaning` would be a decode the cited
+// authority does not provide (DESIGN section 4d: do not assert as deduced what is only inferred).
+// The manufacturer-ID bytes are rendered in the byte order ipmitool prints them, which is a
+// transport rendering and not an IANA enterprise number; resolving one to the other is a separate
+// upstream read this module has not performed.
+type OemSelPayload {
+  manufacturer_id_rendering: NonEmptyStr
+  oem_bytes_rendering: NonEmptyStr
+}
+
+fn oem_sel_payload_eq(a: OemSelPayload, b: OemSelPayload) -> Bool {
+  a.manufacturer_id_rendering == b.manufacturer_id_rendering && a.oem_bytes_rendering == b.oem_bytes_rendering
+}
+
+// SECTION 42.2 TABLE 42-3, SENSOR TYPE 1Dh "SYSTEM BOOT / RESTART INITIATED", the eight offsets in
+// table order. ipmitool renders 07h as `System Restart` and 00h as `Initiated by power up`, the
+// two spellings a captured log shows.
+type SystemBootInitiatedOffset
+  = InitiatedByPowerUp
+  | InitiatedByHardReset
+  | InitiatedByWarmReset
+  | UserRequestedPxeBoot
+  | AutomaticBootToDiagnostic
+  | OsInitiatedHardReset
+  | OsInitiatedWarmReset
+  | SystemRestart
+
+// SECTION 42.2 TABLE 42-3, SENSOR TYPE 0Fh "SYSTEM FIRMWARE PROGRESS", three offsets: 00h firmware
+// error (POST error), 01h firmware hang, 02h firmware progress. Event data 2 then names WHICH
+// progress point; this module carries the offset and the rendering the controller printed for
+// data 2, because the data-2 code table is long and a bring-up reader consumes only "did firmware
+// report ANY progress after this restart".
+type SystemFirmwareProgressOffset
+  = FirmwareError
+  | FirmwareHang
+  | FirmwareProgress { progress_rendering: NonEmptyStr }
+
+// A FIRMWARE PROGRESS RECORD IS THE STANDARD, DECODED EVIDENCE THAT THE HOST GOT PAST RESET. The
+// specification assigns it; no OEM registry is needed to read it. This predicate is the whole
+// basis on which a downstream reader may say "restart, then progress" versus "restart, no
+// progress" -- and it is deliberately the ONLY basis: an OEM payload contributes nothing to it.
+fn firmware_offset_is_progress(offset: SystemFirmwareProgressOffset) -> Bool {
+  match offset {
+    FirmwareError => false
+    FirmwareHang => false
+    FirmwareProgress { progress_rendering: _ } => true
+  }
+}
