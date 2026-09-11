@@ -202,7 +202,8 @@ fn posix_shell_invocation_infra(code: Int) -> InfraSignature? {
   }
 }
 
-// 127 IS CLASSIFIED INFRA BECAUSE THE EXIT CODE CANNOT DISTINGUISH EVICTION FROM MISNAMING.
+// 127 IS CLASSIFIED INFRA BECAUSE THE EXIT CODE CANNOT DISTINGUISH EVICTION FROM MISNAMING
+// FROM WRAPPER MANGLE.
 //
 // CommandNotFound is also what a typo in a command name produces, and a typo is a subject
 // defect. Treating every 127 as stands-environment would absorb an authoring defect into the
@@ -212,11 +213,20 @@ fn posix_shell_invocation_infra(code: Int) -> InfraSignature? {
 // per-run hand-typed argv. That bound is not a distinguisher: the workflow is a projection, so
 // a wrong emitted name still reaches the runner as 127 and would still say environment.
 //
+// SPECIMEN, review 63442: this change's wrap ran POSIX quoting and then the lit emit transform
+// quoted again, so sh -c received `'cargo build'` as the command name, would have exited 127,
+// and this module's classifier would have rendered stands-environment. The modelled command
+// identity at wrap start was fine; the wrapper mangled it in transit. Caught by review, not
+// by the classifier. That is a third state beside eviction and misnaming.
+//
 // NEXT-RUNG TRIGGER: join a 127 to an independent observation that the modelled command identity was
 // present before the fail (start toolchain filesystem probe, or emit-time inhabitance of the argv
-// against a closed command roster). Until that join exists, 127 stays Infra as an honest-wide
-// arm, not because it is unambiguous. 126 (found, not executable) is outside this row.
-data command_not_found_exit_cannot_distinguish_eviction_from_misnaming: String = "POSIX 127 (CommandNotFound) is classified Infra because the exit code cannot distinguish shared-FS eviction of a modelled binary from a misspelled emitted command. A typo-induced 127 therefore currently renders as stands-environment. Narrow when a 127 can be joined to an independent observation that the modelled command identity was present at wrap start (toolchain_filesystem_probe) or that the emitted argv inhabits a closed command roster; until then do not treat 127 as an unambiguous environmental signal. 126 is not this limitation."
+// against a closed command roster). That join does not cover the specimen: identity-at-wrap-start
+// would have been green while the serialized -c argument was not the modelled command bytes.
+// Narrowing 127 also needs a join that the serialized wrap argument equals those bytes. Until those
+// joins exist, 127 stays Infra as an honest-wide arm, not because it is unambiguous. 126 (found, not
+// executable) is outside this row.
+data command_not_found_exit_cannot_distinguish_eviction_from_misnaming: String = "POSIX 127 (CommandNotFound) is classified Infra because the exit code cannot distinguish shared-FS eviction of a modelled binary, a misspelled emitted command, or a well-formed command mangled in transit by the wrapper. A typo-induced 127 therefore currently renders as stands-environment. Specimen, review 63442: this wrap quoted twice so sh -c received a quoted command name, would have exited 127, and this classifier would have called it infra; the modelled command identity was present, the quoting was wrong. Narrow when a 127 can be joined to an independent observation that the modelled command identity was present at wrap start (toolchain_filesystem_probe) or that the emitted argv inhabits a closed command roster, AND that the serialized wrap argument equals the modelled command bytes; the wrap-start identity join alone would not have caught review 63442. Until then do not treat 127 as an unambiguous environmental signal. 126 is not this limitation."
 
 
 fn classify_failure_exit(code: Int, reason: String) -> FloorFailureClass {

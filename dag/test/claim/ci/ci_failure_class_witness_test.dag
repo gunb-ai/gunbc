@@ -93,7 +93,10 @@ test fn witness_posix_shell_reserved_exits_are_infra_not_subject() -> ProcessExi
     && class_is_infra(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages"))
     && (floor_failure_blocks_merge(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted")) == false)
     && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "cannot distinguish")
-    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "toolchain_filesystem_probe") {
+    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "toolchain_filesystem_probe")
+    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "review 63442")
+    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "mangled in transit")
+    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "serialized wrap argument") {
     ExitSuccess
   } else {
     ExitFailure {
