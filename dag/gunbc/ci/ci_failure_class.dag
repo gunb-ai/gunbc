@@ -403,14 +403,32 @@ fn floor_attempt_receipt_class_may_replace(next: String, prior: String) -> Bool 
   floor_attempt_receipt_class_rank(class: next) >= floor_attempt_receipt_class_rank(class: prior)
 }
 
+fn floor_attempt_receipt_class_wire_roster() -> List<String> {
+  [floor_outcome_wire_structural, floor_outcome_wire_infra, floor_outcome_wire_none]
+}
+
+fn floor_attempt_receipt_strictly_higher_class_wires(next: String) -> List<String> {
+  fold(floor_attempt_receipt_class_wire_roster(), init: [], f: fn(acc, c) {
+    if floor_attempt_receipt_class_rank(class: c) > floor_attempt_receipt_class_rank(class: next) {
+      concat(acc, [c])
+    } else {
+      acc
+    }
+  })
+}
+
+fn floor_attempt_receipt_file_exists_test() -> Node {
+  bash_build_test_bracket(
+    words: [
+      bash_build_word_lit(text: "-f"),
+      bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
+    ]
+  )
+}
+
 fn floor_attempt_receipt_file_class_eq_test(class: String) -> Node {
   bash_build_and_then(
-    left: bash_build_test_bracket(
-      words: [
-        bash_build_word_lit(text: "-f"),
-        bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
-      ]
-    ),
+    left: floor_attempt_receipt_file_exists_test(),
     right: bash_build_command_with_words(
       words: [
         bash_build_word_lit(text: "grep"),
@@ -422,32 +440,26 @@ fn floor_attempt_receipt_file_class_eq_test(class: String) -> Node {
   )
 }
 
+fn floor_attempt_receipt_next_may_replace_test(next: String) -> Node {
+  fold(
+    floor_attempt_receipt_strictly_higher_class_wires(next: next),
+    init: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: next),
+    f: fn(acc, higher) {
+      bash_build_and_then(
+        left: acc,
+        right: bash_build_negation(inner: floor_attempt_receipt_file_class_eq_test(class: higher))
+      )
+    }
+  )
+}
+
 fn floor_attempt_receipt_may_replace_test() -> Node {
-  bash_build_or_else(
-    left: bash_build_negation(
-      inner: bash_build_test_bracket(
-        words: [
-          bash_build_word_lit(text: "-f"),
-          bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
-        ]
-      )
-    ),
-    right: bash_build_or_else(
-      left: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_structural),
-      right: bash_build_or_else(
-        left: bash_build_and_then(
-          left: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_infra),
-          right: bash_build_negation(inner: floor_attempt_receipt_file_class_eq_test(class: floor_outcome_wire_structural))
-        ),
-        right: bash_build_and_then(
-          left: floor_attempt_var_eq_lit_test(var_name: "GUNBC_FLOOR_CLASS", text: floor_outcome_wire_none),
-          right: bash_build_and_then(
-            left: bash_build_negation(inner: floor_attempt_receipt_file_class_eq_test(class: floor_outcome_wire_infra)),
-            right: bash_build_negation(inner: floor_attempt_receipt_file_class_eq_test(class: floor_outcome_wire_structural))
-          )
-        )
-      )
-    )
+  fold(
+    floor_attempt_receipt_class_wire_roster(),
+    init: bash_build_negation(inner: floor_attempt_receipt_file_exists_test()),
+    f: fn(acc, next) {
+      bash_build_or_else(left: acc, right: floor_attempt_receipt_next_may_replace_test(next: next))
+    }
   )
 }
 

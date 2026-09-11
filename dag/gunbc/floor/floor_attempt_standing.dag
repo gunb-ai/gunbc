@@ -402,15 +402,7 @@ fn lane_subject_receipt_from_wire(raw: String) -> LaneSubjectReceipt {
       if raw == floor_outcome_wire_structural {
         SubjectReceiptObserved { outcome: FloorFailed { class: Structural { reason: "subject" } } }
       } else {
-        if raw == floor_outcome_wire_unobserved {
-          SubjectReceiptUnobserved
-        } else {
-          if raw == "" {
-            SubjectReceiptUnobserved
-          } else {
-            SubjectReceiptUnobserved
-          }
-        }
+        SubjectReceiptUnobserved
       }
     }
   }
