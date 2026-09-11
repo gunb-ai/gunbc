@@ -810,13 +810,16 @@ fn belt_persist_spawn_origin_for_instance(
 // closes. The staged spawn already orders it: worktree-add and attempt-state-prepare first, this
 // capture inside state initialization, session-container create after.
 //
-// A PIN REFUSAL ON THAT WORKTREE FAILS THE SPAWN before seat acquisition. That is the wall this
-// route actually holds. An earlier ask against instance.repo_root is NOT the same observation:
-// the controller tree and the admitted-base worktree can disagree, which is the #11021 class
-// (the guard protects a different object than the harm travels through). belt_spawn_oracle_pin_standing
-// is the fold over a caller-supplied observation set; it is not a controller-tree gate. The
-// next slice observes the oracle from the exact admitted Git object before enqueue (POST /dispatch
-// must not wait through worktree-add). Verify-side validation_oracle_gate is unchanged.
+// A PIN REFUSAL ON THAT WORKTREE FAILS THE SPAWN. That is not "the oracle pin refusal
+// precedes effects." What has already run: worktree-add, the attempt branch, and the
+// attempt-state writes before this capture. What is still saved: the seat, the model
+// turn, the provider process. An earlier ask against instance.repo_root is NOT the same
+// observation: the controller tree and the admitted-base worktree can disagree, which is
+// the #11021 class (the guard protects a different object than the harm travels through).
+// belt_spawn_oracle_pin_standing is the fold over a caller-supplied observation set; it is
+// not a controller-tree gate. Observing the exact admitted Git object before enqueue, and
+// POST /dispatch ending at a durable intent the belt then consumes, are the same boundary.
+// Verify-side validation_oracle_gate is unchanged.
 type AttemptOraclePinCapture
   = OraclePinRecorded {
       identity: ContentHash,
@@ -1020,8 +1023,9 @@ fn belt_oracle_pin_not_observable_reason(tree: String) -> String {
 }
 
 // Standing over a caller-supplied observation set for a named tree. Spawn's wall is the
-// attempt-worktree capture after worktree-add, not a read of the controller repo. The next
-// enqueue gate should pass observations of the exact admitted-base Git objects into this fold.
+// attempt-worktree capture after worktree-add (worktree and branch already exist; seat and
+// provider have not). The admitted-base-before-enqueue gate should pass observations of
+// those Git objects into this fold.
 
 type BeltSpawnOraclePinStanding
   = SpawnOraclePinAdmitted
