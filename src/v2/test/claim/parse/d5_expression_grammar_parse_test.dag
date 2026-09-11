@@ -2,6 +2,7 @@ module v2.test.parse.d5_expression_grammar_parse
 
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
@@ -58,13 +59,6 @@ fn d5_tree_has_lexeme(root: Node, text: String) -> Bool {
       fold(root.children, init: false, f: fn(found, e) {
         found || d5_tree_has_lexeme(root: e.target, text: text)
       })
-  }
-}
-
-fn d5_find_emitted(root: Node, emitted: Symbol) -> Optional<Node> {
-  match parse_subtree_find_production_captured(root: root, emitted: emitted) {
-    ParseSubtreeFound { captured: n } => Present { value: n }
-    ParseSubtreeAbsent => Absent
   }
 }
 
