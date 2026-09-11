@@ -1,7 +1,7 @@
 module extdeps.deepseek.deepseek_v4
 
 import std.types { NonEmptyStr, String, Bool }
-import std.measure { TokenCount, token_count, token_count_value, token_count_remaining_in_window }
+import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -83,12 +83,9 @@ fn deepseek_v4_think_max_is_recommended_at(window: TokenCount) -> Bool {
 // A caller wanting an output budget therefore derives it from the window MINUS the input it has, and
 // attributing that bound to the MODEL would be authority substitution: it is a property of the
 // serving engine's admission, which is why it is recorded here as an absence plus a measurement
-// rather than as a deepseek_v4_max_output_tokens row.
+// rather than as a deepseek_v4_max_output_tokens row. The saturating subtract is
+// `std.measure` `token_count_remaining_in_window`, not a product wrapper.
 data deepseek_v4_declares_no_output_ceiling: Bool = true
-
-fn deepseek_v4_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
-  token_count_remaining_in_window(window: window, used: input_tokens)
-}
 
 // WHETHER THINKING IS ON WHEN A REQUEST SAYS NOTHING IS A PROPERTY OF THE SERVING REALIZATION, NOT
 // OF THE MODEL, and the two realizations this fleet can reach disagree. The official API enables

@@ -3,7 +3,7 @@ module extdeps.deepseek.deepseek_v4_1_flash
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
 import std.measure {
-  TokenCount, token_count, token_count_value, token_count_remaining_in_window,
+  TokenCount, token_count, token_count_value,
   ParameterCount, parameter_count,
   ByteSize, byte_size, byte_size_count,
 }
@@ -104,34 +104,13 @@ data deepseek_v4_1_flash_dspark_num_experts_per_tok: Nat = 3
 data deepseek_v4_1_flash_dspark_markov_rank: Nat = 256
 data deepseek_v4_1_flash_dspark_noise_token_id: Nat = 128799
 
-type DeepseekV41DsparkTargetLayers {
-  layer_a: Nat
-  layer_b: Nat
-  layer_c: Nat
-}
+// config.json `dspark_target_layer_ids` is an integer array. Carried as List so a later pin can
+// change length without a type edit.
+data deepseek_v4_1_flash_dspark_target_layer_ids: List<Nat> = [37, 38, 39]
 
-data deepseek_v4_1_flash_dspark_target_layers: DeepseekV41DsparkTargetLayers = DeepseekV41DsparkTargetLayers {
-  layer_a: 37,
-  layer_b: 38,
-  layer_c: 39,
-}
-
-// THE FOUR LAYERS THAT COMPRESS THEIR OWN KV. config.json `kv_source_layer_ids` is exactly these
-// four; the rest of the stack reads that cache. Carried as a record rather than a comment so a
-// consumer can ask which layers they are.
-type DeepseekV41KvSourceLayers {
-  layer_a: Nat
-  layer_b: Nat
-  layer_c: Nat
-  layer_d: Nat
-}
-
-data deepseek_v4_1_flash_kv_source_layers: DeepseekV41KvSourceLayers = DeepseekV41KvSourceLayers {
-  layer_a: 2,
-  layer_b: 8,
-  layer_c: 14,
-  layer_d: 20,
-}
+// THE LAYERS THAT COMPRESS THEIR OWN KV. config.json `kv_source_layer_ids` is an integer array;
+// the rest of the stack reads that cache.
+data deepseek_v4_1_flash_kv_source_layer_ids: List<Nat> = [2, 8, 14, 20]
 
 // THE CONFIG DOES NOT SPLIT THE 40 LAYERS INTO ENCODER AND DECODER. The card's CED 20+20 is
 // prose; `text_config.num_hidden_layers` is 40 and there is no encoder_layers / decoder_layers key.
@@ -145,10 +124,8 @@ data deepseek_v4_1_flash_image_token_id: Nat = 129264
 data deepseek_v4_1_flash_accepts_image_input: Bool = true
 
 type DeepseekV41EngramTables {
-  layer_a: Nat
-  layer_b: Nat
-  unpadded_embeddings_a: Nat
-  unpadded_embeddings_b: Nat
+  layer_ids: List<Nat>
+  unpadded_embeddings: List<Nat>
   max_ngram_size: Nat
   vocab_size: Nat
   n_heads: Nat
@@ -157,10 +134,8 @@ type DeepseekV41EngramTables {
 }
 
 data deepseek_v4_1_flash_engram: DeepseekV41EngramTables = DeepseekV41EngramTables {
-  layer_a: 1,
-  layer_b: 14,
-  unpadded_embeddings_a: 384006168,
-  unpadded_embeddings_b: 384016682,
+  layer_ids: [1, 14],
+  unpadded_embeddings: [384006168, 384016682],
   max_ngram_size: 4,
   vocab_size: 16000000,
   n_heads: 8,
@@ -189,11 +164,9 @@ fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
 }
 
 // NO OUTPUT CEILING IN CONFIG.JSON. The card's sampling table is not this module's authority.
+// Remaining room in a window after input is `std.measure` `token_count_remaining_in_window`, not a
+// product fact.
 data deepseek_v4_1_flash_declares_no_output_ceiling: Bool = true
-
-fn deepseek_v4_1_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
-  token_count_remaining_in_window(window: window, used: input_tokens)
-}
 
 // ===========================================================================================
 // FOOTPRINT FROM THE SAFETENSORS INDEX, not from the card. The card self-contradicts (552B
