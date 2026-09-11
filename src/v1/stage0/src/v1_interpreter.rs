@@ -5144,11 +5144,20 @@ fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     Ok(Env::extend(&Env::empty(), bindings))
 }
 
+// Both helpers classify the node they evaluate, not the bare-name registry entry, so the kind can
+// no longer describe a different declaration from the node (see `eval_var`'s slow path). THAT IS
+// ALL THIS REPAIRS HERE, stated because the rung is the minimum across paths: unlike `eval_var`,
+// these helpers are asked by bare name with no referring file, so they still SELECT the node
+// through `lookup_fn`'s shared bare slot, whose owner for a colliding spelling is chosen by walk
+// order, not by declaration. For a data name that collides with a same-spelled item elsewhere they
+// can therefore still evaluate -- or, now consistently, decline -- the wrong declaration. That
+// residue is the shared-slot ambiguity the next layer refuses
+// (gunbc.recurring_failure_mode surface_shorthand_preempts_resolved_identity).
 pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Value>> {
     let mut out = Vec::new();
-    for (name, info) in ctx.item_registry.iter() {
-        if info.kind == ItemKind::DataItem {
-            if let Some(node) = ctx.lookup_fn(name) {
+    for name in ctx.item_registry.keys() {
+        if let Some(node) = ctx.lookup_fn(name) {
+            if item_kind(node.clone()) == ItemKind::DataItem {
                 if let Some(ref body) = node.body {
                     out.push(eval_expr(body, &Env::empty(), ctx)?);
                 }
@@ -5159,15 +5168,12 @@ pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Val
 }
 
 pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResult<Option<Value>> {
-    let Some(info) = ctx.item_registry.get(item_name) else {
-        return Ok(None);
-    };
-    if info.kind != ItemKind::DataItem {
-        return Ok(None);
-    }
     let Some(node) = ctx.lookup_fn(item_name) else {
         return Ok(None);
     };
+    if item_kind(node.clone()) != ItemKind::DataItem {
+        return Ok(None);
+    }
     let Some(body) = node.body.as_ref() else {
         return Ok(None);
     };
@@ -6023,11 +6029,16 @@ fn eval_var(
         return Ok(val.clone());
     }
 
-    // Slow path (not a bound variable): materialize the name string for the registry lookup.
+    // Slow path (not a bound variable). WHAT THIS NAME DENOTES IS ONE FACT, READ FROM ONE
+    // LOOKUP: the file-aware resolver picks the node, and the node's own shape gives its kind
+    // (`item_kind`, the same function that computed the registry's `ItemInfo.kind`). The kind used
+    // to come from `item_registry`, a bare-name projection that collapses homonyms last-write-wins
+    // in hash-seed order, so a `data` reference could be classified by a same-spelled `fn` in
+    // another module and evaluate as `Value::Fn` on some runs and not others.
     let name = ctx.resolve(sym);
-    if let Some(info) = v1_rt::map_get(&ctx.item_registry, name.clone()) {
-        if info.kind == ItemKind::DataItem {
-            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
+    if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
+        match item_kind(fn_node.clone()) {
+            ItemKind::DataItem => {
                 if let Some(ref body) = fn_node.body {
                     if let ExprData::ExprVar { .. } = &*body.expr_data {
                         if expr_var_name_at(body.clone(), ctx.si()) == name {
@@ -6050,13 +6061,12 @@ fn eval_var(
                     return Ok(v);
                 }
             }
-        }
-        if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
-            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
+            ItemKind::FuncItem | ItemKind::FnItem => {
                 return Ok(Value::Fn {
                     node: fn_node.clone(),
                 });
             }
+            _ => {}
         }
     }
 
@@ -15848,13 +15858,15 @@ pub(crate) fn resolve_published_mock_keys(
     ctx: &InterpContext,
 ) -> InterpResult<std::collections::HashSet<String>> {
     let mut keys = std::collections::HashSet::new();
-    for (name, info) in ctx.item_registry.iter() {
-        if info.kind != ItemKind::DataItem {
-            continue;
-        }
+    // Classify the node evaluated, not the bare-name registry entry (see `eval_var`'s slow path);
+    // selection is still the shared bare slot, as in `eval_data_item_value`.
+    for name in ctx.item_registry.keys() {
         let Some(node) = ctx.lookup_fn(name) else {
             continue;
         };
+        if item_kind(node.clone()) != ItemKind::DataItem {
+            continue;
+        }
         let Some(ty) = node.type_annotation.as_ref() else {
             continue;
         };
