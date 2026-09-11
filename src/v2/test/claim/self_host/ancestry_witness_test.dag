@@ -436,6 +436,26 @@ test fn genesis_whose_closure_omits_the_seed_is_refused() -> Bool {
   )
 }
 
+// The remaining mint clause that had no executed evidence: a read-back that REPORTS an
+// identity while the artifact axis is ArtifactNotMaterialized. The two are different states —
+// "nothing was built" is not "what was built disagrees" — and the mint refuses them under
+// different causes, so each needs its own red. The fixture reaches ArtifactNotMaterialized the
+// only way production can: an artifact hex that the validating mint rejects.
+test fn read_back_reported_against_an_unbuilt_artifact_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: "not-a-sha512-digest",
+      read_back: anc_read_back(hex: anc_built_hex),
+      closure: anc_native_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_artifact_not_materialized
+  )
+}
+
 // GENESIS EXECUTES ONCE. Positive: against a standing that has not executed, an admissible
 // genesis is admitted. Discriminating red: the SAME genesis, offered against a standing that
 // already carries one, is refused — so re-running the migration is not a no-op, it is an
