@@ -512,8 +512,7 @@ fn running_supersession_for_fleet_standing(
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
-    FleetCancellationSafe { hosts: _ } =>
-      SupersedeRunningForEvent { event: github_event_name_pull_request }
+    FleetCancellationSafe { hosts: _ } => SupersedeMutableHeadRuns
   }
 }
 
