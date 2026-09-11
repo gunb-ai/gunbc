@@ -447,9 +447,11 @@ fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> Witn
 // reseeded, still medians 22.8 minutes against srv4's 11.8.
 //
 // THE COST OF THIS ROW IS N CONCURRENT RUNS PER PULL REQUEST where one used to survive. That is
-// the same trade the concurrency group above already accepts for main, for the same reason: stale
-// work completing is expensive, and capacity silently disappearing is not recoverable. Cancelling
-// is only cheaper than not cancelling while the permits come back.
+// not the grouping trade: witness_floor_group_branches keys push by github.ref
+// (RefAfterEvent), so GitHub may replace PENDING members of witness-floor-refs/heads/main —
+// declared as gunbc.rung_drop.main_per_commit_floor_verdict — while this running-cancel row stays
+// false for every event, including those main runs. Cancelling a RUNNING job is only cheaper than
+// letting it finish while the permits come back; replacing a pending one never held a permit.
 //
 // DISSOLVE-ON, and it is the CAPABILITY rather than any artifact: no client of the required floor
 // holds a host-persistent cooperative permit -- either the ctrl host FIFO is deleted and compile
