@@ -1,0 +1,137 @@
+module test.claim.fabric_event_log_append_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, FilePath, Int, List }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
+import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadAbsent, HeadAt, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, pool_event_wire_text }
+import gunbc.fabric_event_log {
+  RemoteLocalPath, EventLogLayout, event_log_layout, PartitionReadOk, PartitionReadRefused,
+  event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SEAT LEDGER'S APPEND PUBLISHES EXACTLY THE BYTES IT SERIALIZED, by real execution against a
+// real bare remote in a temporary directory. Every writer on a host shares one scratch root, and
+// the append once wrote its event to <root>/event-<partition>.json and hashed THAT PATH, so git
+// hashed whatever the path held when it read it: a concurrent writer's O_TRUNC published git's
+// empty blob as a partition head, and a completed foreign write published another writer's event
+// under this writer's admitted append. The lease on the head was present and correct and guarded
+// the wrong thing. The clobber is fixed deterministically here by planting the scratch path as a
+// link to /dev/null, which is the O_TRUNC interleaving held open.
+
+data empty_blob_oid: String = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
+fn witness_partition() -> PartitionId { "witness-seats" as PartitionId }
+
+fn with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn witness_layout(dir: FilePath) -> EventLogLayout {
+  event_log_layout(root: dir, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
+}
+
+fn witness_remote_ready(dir: FilePath) -> Bool {
+  git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
+}
+
+fn scratch_path(dir: FilePath) -> FilePath {
+  join([dir as String, "/event-", witness_partition() as String, ".json"], "") as FilePath
+}
+
+fn plant_scratch_as_dev_null(dir: FilePath) -> Bool {
+  shell.Symlink.AtomicReplace(target: "/dev/null" as FilePath, link: scratch_path(dir: dir)).success
+}
+
+fn witness_event(parent: String?, at: Int, payload: PoolEvent) -> ChainEvent<PoolEvent> {
+  ChainEvent {
+    partition: witness_partition(),
+    parent: match parent { Absent => none  Present { value: h } => Present { value: h as EventId } },
+    recorded_at: at,
+    actor: "witness" as NonEmptyStr,
+    payload: payload,
+  }
+}
+
+fn acquired(reference: String) -> PoolEvent {
+  PoolAcquired { reference: reference as NonEmptyStr, amount: 1, term_seconds: 300 }
+}
+
+// Reads the partition and answers the ids it walked, oldest first, or none when the read refused.
+fn walked_ids(dir: FilePath) -> List<String>? {
+  match event_log_read_partition(layout: witness_layout(dir: dir), partition: witness_partition(), budget: 8) {
+    PartitionReadRefused { step: _, reason: _ } => none
+    PartitionReadOk { head: _, walk: walk } =>
+      match walk {
+        ChainWalked { oldest_first: xs } => Present { value: xs |> map(x => x.id as String) }
+        ChainIncomplete { missing: _, newest_first_so_far: _ } => none
+        ChainBudgetExhausted { at: _ } => none
+      }
+  }
+}
+
+// THE CLAIM. With the scratch path clobbered, the append is admitted, its id is not the empty blob,
+// and the partition reads back exactly that one event. The pre-repair writer fails here: its head
+// is the empty blob and the read refuses it as undecodable.
+test fn an_append_publishes_its_own_bytes_when_the_scratch_path_is_clobbered_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    if !(witness_remote_ready(dir: dir) && plant_scratch_as_dev_null(dir: dir)) { false } else {
+      match event_log_append(layout: witness_layout(dir: dir), partition: witness_partition(), event: witness_event(parent: none, at: 1000, payload: acquired(reference: "clobbered")), expected: HeadAbsent) {
+        EventAppendRefused { step: _, reason: _ } => false
+        EventAppendStale { expected: _, observed: _ } => false
+        EventAppended { id: h } =>
+          (h as String) != empty_blob_oid
+            && (match walked_ids(dir: dir) { Present { value: ids } => ids == [h as String]  Absent => false })
+      }
+    }
+  })
+}
+
+// THE DISCRIMINATING RED CONTROL: the SAME clobber under the path-routed form the append used to
+// take -- write the wire text to the scratch path, then hash the path -- yields exactly git's empty
+// blob, not the event. It asserts the defect, so it holds for as long as the planted link really
+// corrupts a path-routed writer; without it, the claim above could pass on a setup that clobbers
+// nothing.
+test fn a_path_routed_hash_under_the_same_clobber_publishes_the_empty_blob_red_control_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let mirror = join([dir as String, "/mirror.git"], "") as FilePath
+    let ready = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: mirror).exit_code == 0
+    if !(ready && plant_scratch_as_dev_null(dir: dir)) { false } else {
+      let text = pool_event_wire_text(event: witness_event(parent: none, at: 1000, payload: acquired(reference: "clobbered")))
+      let written = Filesystem.Write(path: scratch_path(dir: dir) as String, content: text)
+      let hashed = git.Plumbing.HashObjectWrite(address: GitDirectoryAt { path: mirror, run_in: dir }, path: scratch_path(dir: dir))
+      text != "" && written.success && hashed.exit_code == 0 && trim(s: hashed.oid) == empty_blob_oid
+    }
+  })
+}
+
+// THE NON-WIDEN CONTROL: with nothing planted, two appends chain -- the second names the first as
+// its parent and the partition reads both, oldest first.
+test fn two_appends_chain_oldest_first_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    if !witness_remote_ready(dir: dir) { false } else {
+      let layout = witness_layout(dir: dir)
+      match event_log_append(layout: layout, partition: witness_partition(), event: witness_event(parent: none, at: 1000, payload: acquired(reference: "first")), expected: HeadAbsent) {
+        EventAppendRefused { step: _, reason: _ } => false
+        EventAppendStale { expected: _, observed: _ } => false
+        EventAppended { id: first } =>
+          match event_log_append(layout: layout, partition: witness_partition(), event: witness_event(parent: Present { value: first as String }, at: 1001, payload: PoolReleased { reference: "first" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: first }) {
+            EventAppendRefused { step: _, reason: _ } => false
+            EventAppendStale { expected: _, observed: _ } => false
+            EventAppended { id: second } =>
+              match walked_ids(dir: dir) { Present { value: ids } => ids == [first as String, second as String]  Absent => false }
+          }
+      }
+    }
+  })
+}

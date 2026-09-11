@@ -1,0 +1,229 @@
+module gunbc.serving.serving_enrollment
+
+import std.types { String, NonEmptyStr, List, Port }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { host_lan_address }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
+import gunbc.spark.glm_canary_converge { glm_canary_arm, SeqBound, ExperimentalOperatorBound, MeasuredFromLaunchLine }
+
+// ── WHO WE MAY ASK IS NOT WHOSE HOSTS WE CLAIM ────────────────────────────────────────────────
+//
+// THE ROW THIS MODULE SPLITS, AND WHY SPLITTING IT IS THE WHOLE CHANGE. One list --
+// gunbc.spark.pair_serving_desired spark_pair_serving_groups -- answered two questions that move for
+// different reasons. It is the subject of spark_pair_serving_desired, so a group listed there is a
+// group whose HOSTS THIS REPOSITORY CLAIMS AND CONVERGES; and it was also the roster the harness
+// walked to decide WHICH ENDPOINTS A TURN MAY BE OFFERED. Those coincided only while one route
+// existed.
+//
+// THEY STOPPED COINCIDING ON 2026-09-08, and the withdrawal that followed is the reason group B
+// cannot simply be added back to that row. Group B's head is srv9, which is the host
+// gunbc.spark.glm_canary_converge names: leaving B in the convergence roster left two authorities
+// claiming one machine, and the first pair-serving convergence to run would have acted on a host it
+// believed idle. The operator authorised removing the CLAIM ("you can stop group b or both, it's up
+// to you"), and what was withdrawn was a claim on hosts -- explicitly not a front door. Re-adding B
+// to that row would re-create the double claim this lane has no authority to restore.
+//
+// SO ENROLMENT IS ITS OWN AUTHORITY AND CARRIES BOTH GROUPS. A route here is a thing we may ASK; it
+// is not a thing we deploy, converge, restart or size. Group B is enrolled while its hosts stay
+// unclaimed, which is exactly the state the fleet is in: the canary is serving on srv9 and nothing
+// in this repository launched it through the pair route.
+//
+// AND THE SAME SPLIT ANSWERS THE SECOND DEFECT. Membership in the convergence roster was being read
+// as an answer to "who can serve now", which it never was: a declared head that is down stayed a
+// candidate, and the probe that would have said so ran AFTER the roster had already chosen the
+// population. Enrolment answers only "who we may ask"; every route below still has to answer a
+// probe before any turn is offered to it, and gunbc.harness.harness_backend is where that happens.
+//
+// WHAT THIS DOES TO THE OPEN QUESTION OF WHERE SERVING CAPACITY LIVES. A separate lane is asking
+// whether serving capacity belongs in gunbc.spark plus the harness at all, or in the fabric control
+// plane. This makes that question EASIER: the route facts a control plane would own -- endpoint,
+// front door, declared turn ceiling -- are now one small module with one shape per route, rather than
+// being implicit in a convergence roster that also decides deployment. Moving them is a re-homing of
+// this file, not an extraction from three.
+
+// THE FRONT DOOR IS ASKED OF THE ROUTE THAT OWNS IT, AND NEITHER ROUTE'S PORT IS SPELLED HERE.
+// A row named harness_engine_port stood in gunbc.harness.harness_wire, which is not a fact about the
+// harness: it is the port a route's vLLM front door answers on, and the harness is one client of it.
+// Deleting it was right; re-minting the literal here was not, and this module did that for one turn
+// of review. Group A's port is the one the repository LAUNCHES that route on -- gunbc.spark.pair_serving_realization
+// spark_pair_serve_port, itself derived from the observed launch -- so a hand-written 30000 beside it
+// meant the port we launch on and the port we ask on were two rows free to drift. Group B was already
+// right, consuming the canary arm's own port rather than spelling 30001; group A now matches it.
+//
+// AND THE FIELD IS A Port RATHER THAN A Nat, because std.types already carries
+// `type Port = Int where range(min: 1, max: 65535)` and a module whose stated purpose is to own route
+// front doors is the wrong place to decline the construction that makes an out-of-range port
+// unwritable (DESIGN section 4b: construction over validation).
+type ServingRouteEndpoint {
+  group: FabricGroup
+  address: NonEmptyStr
+  port: Port
+}
+
+// ── HOW MANY TURNS A ROUTE WILL TAKE, AND WHY THAT IS A DECISION RATHER THAN A READING ───────
+//
+// THE NUMBER IS NOT OBSERVABLE FROM THE ROUTE, and that was established by probing rather than
+// assumed: group A's live front door serves ~61KB of Prometheus text and carries no max_num_seqs and
+// no scheduler-configuration series at all (manager probe, 2026-09-11). What the route DOES carry is
+// its present occupancy and whether it is holding requests back for capacity, which is a different
+// question and is answered elsewhere -- in the admission law, from the served gauges.
+//
+// SO THE CEILING IS DECLARED, TYPED AS A DECISION, AND CANNOT BE SPELLED AS A MEASUREMENT. Both arms
+// below say where the number came from, and neither of them is "somebody measured this route's
+// capacity", because nobody has. The attributable-allocation shape is the one
+// gunbc.fleet.fleet_intent_network already uses: DESIGN section 5 forbids fabricating an
+// OBSERVATION, and an allocation carrying a decider, a date and a basis is not one.
+//
+// WHAT THE CEILING IS FOR, WHICH IS THE HALF THAT MAKES A WRONG NUMBER CHEAP. It bounds optimism and
+// nothing else. Admission takes the MINIMUM of this ceiling and what the route says about itself
+// right now, so the live reading may always refuse and may never admit beyond the ceiling. A ceiling
+// alone would be a static claim about a box the operator has told us to assume is unreliable and
+// stateless; a live reading alone would over-admit, because an observation is stale the instant it
+// is taken and a route reporting nothing running would admit every arrival at once. Under the
+// minimum, a ceiling that is too high costs throughput the moment the route pushes back, and a
+// ceiling that is too low costs only throughput -- neither costs correctness.
+//
+// AND THE STALE LAUNCH-LINE READING IS DELIBERATELY NOT CONSUMED HERE.
+// gunbc.spark.pair_serving_desired spark_pair_serving_seq_capacity reads SeqCapacityMeasured with a
+// count, and its own basis records that the route serves nothing and that the DeepSeek answering on
+// the head's front door was launched OUT OF BAND from a container that has since exited. That row
+// governs what a pair-serving LAUNCH would request; it is not a reading of the process that would
+// take these turns, and inheriting its number here would have made a disowned measurement the
+// authority for admission.
+type ServingRouteTurnCeiling
+  = CeilingByDeclaredPolicy { count: Nat, decider: NonEmptyStr, decided_on: NonEmptyStr, basis: NonEmptyStr }
+  | CeilingFromRouteLaunch { count: Nat, basis: NonEmptyStr }
+
+type ServingRoute
+  = ServingRouteResolved { endpoint: ServingRouteEndpoint, ceiling: ServingRouteTurnCeiling }
+  | ServingRouteUnresolved { group: FabricGroup, obligation: NonEmptyStr }
+
+fn serving_route_turn_ceiling_count(c: ServingRouteTurnCeiling) -> Nat {
+  match c {
+    CeilingByDeclaredPolicy { count: n, decider: _, decided_on: _, basis: _ } => n
+    CeilingFromRouteLaunch { count: n, basis: _ } => n
+  }
+}
+
+// GROUP A'S CEILING IS A DECLARED ALLOCATION AND ITS DECIDER IS NAMED. Four, because it is small
+// enough to be safe on a route whose real capacity nobody has measured, large enough to prove the
+// admission law delivers concurrency at all, and cheap to change: superseding it is one row and no
+// law. It is reported to the operator as the manager's decision rather than theirs, so an operator
+// ruling replaces this row rather than arguing with it.
+data serving_pair_route_turn_ceiling: ServingRouteTurnCeiling = CeilingByDeclaredPolicy {
+  count: 4,
+  decider: "bright-boar-435 (roadmap manager)" as NonEmptyStr,
+  decided_on: "2026-09-11" as NonEmptyStr,
+  basis: "nothing derives it and nothing on the route reports it: the live front door carries no max_num_seqs and no scheduler-configuration series, probed 2026-09-11. It is an attributable allocation bounding how optimistic admission may be, always taken as the MINIMUM with the route's own present-tense capacity signal, so a wrong value costs throughput and never correctness. It is NOT a capacity measurement and must never be re-spelled as one" as NonEmptyStr,
+}
+
+// EACH ROUTE'S CEILING COMES FROM ITS OWN AUTHORITY, which is why this is a match and not a table.
+// Group B's is the canary arm's own declared bound, because the canary arm IS the engine answering
+// on that route -- gunbc.spark.glm_canary_converge is its convergence root -- so its bound is a
+// statement about the process that would take the turns rather than about a launch nobody performed.
+// The dispatch that selects between two route authorities is realization and belongs at this
+// periphery (DESIGN section 3), never inside either of them.
+fn serving_route_ceiling(group: FabricGroup) -> ServingRouteTurnCeiling {
+  match group {
+    FabricGroupA => serving_pair_route_turn_ceiling
+    FabricGroupB => serving_canary_route_ceiling(bound: glm_canary_arm.max_num_seqs)
+  }
+}
+
+// THE CANARY'S TWO ARMS STAY TWO ARMS. An operator's experimental bound and a reading off the launch
+// line that is running are different claims about where a number came from, and flattening them here
+// would lose exactly the provenance this type exists to carry. Each basis travels forward unedited.
+fn serving_canary_route_ceiling(bound: SeqBound) -> ServingRouteTurnCeiling {
+  match bound {
+    ExperimentalOperatorBound { count: n, basis: b } =>
+      CeilingByDeclaredPolicy { count: n, decider: "operator" as NonEmptyStr, decided_on: "2026-09-08" as NonEmptyStr, basis: b }
+    MeasuredFromLaunchLine { count: n, basis: b } => CeilingFromRouteLaunch { count: n, basis: b }
+  }
+}
+
+fn serving_route_head(group: FabricGroup) -> HostIdentity {
+  match group {
+    FabricGroupA => spark_pair_serving_head(group: FabricGroupA)
+    FabricGroupB => glm_canary_arm.host
+  }
+}
+
+// BOTH ROUTES HAND BACK A Port AND NEITHER CROSSES A WIDTH BOUNDARY TO DO IT. A first spelling of
+// this cast the canary arm's Nat-declared port to Port, and the compiler refused: `cannot cast Int to
+// Port`, five witnesses red. The refusal is correct -- a refinement type is not reachable by casting
+// a value of a different width into it -- and the honest repair was at the declaration rather than at
+// this seam. gunbc.spark.glm_canary_converge now declares that field as the Port it always was, which
+// is the type std.types carries for exactly this fact; its literal 30001 satisfies the range by
+// construction and its two existing consumers only render it.
+fn serving_route_port(group: FabricGroup) -> Port {
+  match group {
+    FabricGroupA => spark_pair_serve_port
+    FabricGroupB => glm_canary_arm.port
+  }
+}
+
+// A HEAD WITH NO LAN ENDPOINT ROW IS UNRESOLVED, NEVER A SHORTER LIST. The address is the fleet
+// topology's, not this module's: a route whose head has no endpoint row is a route we cannot ask,
+// and the refusal names the group so the count of what is unreachable is observable rather than
+// absorbed into a roster that quietly got smaller.
+fn serving_route(group: FabricGroup) -> ServingRoute {
+  match host_lan_address(host: serving_route_head(group: group)) {
+    Absent =>
+      ServingRouteUnresolved {
+        group: group,
+        obligation: join([fabric_group_wire(g: group) as String, ": the route's head has no LAN endpoint row in gunbc.fleet_intent_network, so there is no address to ask"], "") as NonEmptyStr,
+      }
+    Present { value: address } =>
+      ServingRouteResolved {
+        endpoint: ServingRouteEndpoint { group: group, address: address, port: serving_route_port(group: group) },
+        ceiling: serving_route_ceiling(group: group),
+      }
+  }
+}
+
+// ── ON KEYING A ROUTE BY A FABRIC GROUP, WHICH IS A CAGE ─────────────────────────────────────
+//
+// THIS MODULE DOES NOT WIDEN FabricGroup AND DELIBERATELY DOES NOT FIX IT EITHER, so here is which
+// of the two it did. FabricGroup is a closed two-variant enum keyed by PHYSICAL CAGE -- the legs of
+// one 400G switch cage -- and the corpus already uses that one discriminant for three concepts: a
+// network group, a serving identity, and a seat-pool partition key. A cage is not a serving
+// identity: one cage could serve two models, and one model could be served by two cages.
+//
+// WHAT THIS CHANGE DOES TO THAT. It moves the route's real facts OFF the cage and onto the route --
+// the endpoint, the front door, the declared ceiling, and (through the probe) the model actually
+// being served are properties of a ServingRoute, not of a FabricGroup -- so the cage survives here
+// as the route's NAME and nothing more. The offer identity downstream was already route-shaped
+// rather than cage-shaped: gunbc.spark.vllm_endpoint_process_launch keys an offer on the endpoint
+// and the answering process, so a restart is already a different subject.
+//
+// WHAT IT DOES NOT DO. The seat partition is still keyed by cage plus class, so two models served
+// from one cage would share one tolerant pool -- which is the first thing that breaks if this fleet
+// grows the second-model-per-cage case the operator's model-agnostic ruling makes plausible. That is
+// named here as the growth surface rather than pre-solved: the trigger is a route identity of its
+// own, at which point the partition keys on the route and the cage becomes an attribute of it. A
+// route identity minted now, with two routes that happen to sit one per cage, would be a second name
+// for a distinction nothing yet exercises.
+//
+// A NOTE ON THE WORD FABRIC, because this module sits between both senses: FabricGroup here is the
+// NETWORK interconnect sense (gunbc.spark.fabric_switch_observed), while the selection and capacity
+// machinery this feeds is the COMPUTE fabric sense (product.fabric.selection). They are two concepts
+// under one word and that fork is not this module's to resolve; every use above is the network one.
+
+// BOTH GROUPS ARE ENROLLED. This row is the whole of what "enrolled" means: these are the routes a
+// turn may be offered to, subject to every one of them answering a probe first. It says nothing
+// about whose hosts are claimed, which engine is desired, or what is converged -- those stay with
+// gunbc.spark.pair_serving_desired and gunbc.spark.glm_canary_converge respectively, and neither is
+// widened by this row.
+data serving_enrolled_groups: List<FabricGroup> = [FabricGroupA, FabricGroupB]
+
+fn serving_enrolled_routes() -> List<ServingRoute> {
+  map(serving_enrolled_groups, g => serving_route(group: g))
+}
+
+fn serving_route_endpoint_wire(e: ServingRouteEndpoint) -> NonEmptyStr {
+  join([e.address as String, ":", to_string(e.port)], "") as NonEmptyStr
+}

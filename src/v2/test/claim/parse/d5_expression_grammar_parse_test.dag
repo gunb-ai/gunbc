@@ -1,0 +1,176 @@
+module v2.test.parse.d5_expression_grammar_parse
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn d5_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn d5_accepted(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn d5_rejected(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn d5_tree_has_lexeme(root: Node, text: String) -> Bool {
+  match node_atom_identity_optional(node: root) {
+    Present { value: id } =>
+      symbol_lexeme(sym: id) == text || fold(root.children, init: false, f: fn(found, e) {
+        found || d5_tree_has_lexeme(root: e.target, text: text)
+      })
+    Absent =>
+      fold(root.children, init: false, f: fn(found, e) {
+        found || d5_tree_has_lexeme(root: e.target, text: text)
+      })
+  }
+}
+
+fn d5_keyword_field_name_is_lexeme(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      d5_tree_has_lexeme(root: tree, text: "module")
+  }
+}
+
+data d5_p_keyword_field_source: String = "module probe.d5p\nfn f() -> Int { Rec { module: 1 } }\n"
+data d5_p_keyword_field_red_source: String = "module probe.d5p_red\nfn f() -> Int { Rec { module 1 } }\n"
+
+data d5_h_as_cast_source: String = "module probe.d5h\nfn f() -> Int { 1 as Int }\n"
+data d5_h_as_cast_red_source: String = "module probe.d5h_red\nfn f() -> Int { 1 as }\n"
+
+data d5_i_match_infix_source: String = "module probe.d5i\nfn f() -> Int { true || match 1 { 1 => false } }\n"
+data d5_i_match_infix_red_source: String = "module probe.d5i_red\nfn f() -> Int { true || match }\n"
+
+data d5_o_negative_literal_source: String = "module probe.d5o\nfn f() -> Int { -1 }\n"
+data d5_o_negative_literal_red_source: String = "module probe.d5o_red\nfn f() -> Int { - }\n"
+
+data d5_n_brace_map_source: String = "module probe.d5n\nfn f() -> Int { { \"k\": 1 } }\n"
+data d5_n_brace_map_red_source: String = "module probe.d5n_red\nfn f() -> Int { { \"k\": } }\n"
+
+data d5_q_return_source: String = "module probe.d5q\nfn f() -> Int { return 1 }\n"
+data d5_q_return_red_source: String = "module probe.d5q_red\nfn f() -> Int { return }\n"
+
+fn d5_p_keyword_field_parsed() -> Outcome<Node> {
+  d5_tokenize_parse(text: d5_p_keyword_field_source, file: ^d5_p_keyword_field)
+}
+
+fn d5_h_as_cast_parsed() -> Outcome<Node> {
+  d5_tokenize_parse(text: d5_h_as_cast_source, file: ^d5_h_as_cast)
+}
+
+fn d5_i_match_infix_parsed() -> Outcome<Node> {
+  d5_tokenize_parse(text: d5_i_match_infix_source, file: ^d5_i_match_infix)
+}
+
+fn d5_o_negative_literal_parsed() -> Outcome<Node> {
+  d5_tokenize_parse(text: d5_o_negative_literal_source, file: ^d5_o_negative_literal)
+}
+
+fn d5_n_brace_map_parsed() -> Outcome<Node> {
+  d5_tokenize_parse(text: d5_n_brace_map_source, file: ^d5_n_brace_map)
+}
+
+fn d5_q_return_parsed() -> Outcome<Node> {
+  d5_tokenize_parse(text: d5_q_return_source, file: ^d5_q_return)
+}
+
+test fn cause_p_keyword_field_init_parses_holds() -> Bool {
+  d5_accepted(parsed: d5_p_keyword_field_parsed())
+}
+
+test fn cause_p_keyword_field_init_name_is_lexeme_holds() -> Bool {
+  d5_keyword_field_name_is_lexeme(parsed: d5_p_keyword_field_parsed())
+}
+
+test fn cause_p_keyword_field_init_red_tokens_remain_holds() -> Bool {
+  d5_rejected(
+    parsed: d5_tokenize_parse(text: d5_p_keyword_field_red_source, file: ^d5_p_keyword_field_red)
+  )
+}
+
+test fn cause_h_as_cast_parses_holds() -> Bool {
+  d5_accepted(parsed: d5_h_as_cast_parsed())
+}
+
+test fn cause_h_as_cast_red_tokens_remain_holds() -> Bool {
+  d5_rejected(
+    parsed: d5_tokenize_parse(text: d5_h_as_cast_red_source, file: ^d5_h_as_cast_red)
+  )
+}
+
+test fn cause_i_match_infix_parses_holds() -> Bool {
+  d5_accepted(parsed: d5_i_match_infix_parsed())
+}
+
+test fn cause_i_match_infix_red_tokens_remain_holds() -> Bool {
+  d5_rejected(
+    parsed: d5_tokenize_parse(text: d5_i_match_infix_red_source, file: ^d5_i_match_infix_red)
+  )
+}
+
+test fn cause_o_negative_literal_parses_holds() -> Bool {
+  d5_accepted(parsed: d5_o_negative_literal_parsed())
+}
+
+test fn cause_o_negative_literal_red_tokens_remain_holds() -> Bool {
+  d5_rejected(
+    parsed: d5_tokenize_parse(text: d5_o_negative_literal_red_source, file: ^d5_o_negative_literal_red)
+  )
+}
+
+test fn cause_n_brace_map_parses_holds() -> Bool {
+  d5_accepted(parsed: d5_n_brace_map_parsed())
+}
+
+test fn cause_n_brace_map_red_tokens_remain_holds() -> Bool {
+  d5_rejected(
+    parsed: d5_tokenize_parse(text: d5_n_brace_map_red_source, file: ^d5_n_brace_map_red)
+  )
+}
+
+test fn cause_q_return_parses_holds() -> Bool {
+  d5_accepted(parsed: d5_q_return_parsed())
+}
+
+test fn cause_q_return_red_tokens_remain_holds() -> Bool {
+  d5_rejected(
+    parsed: d5_tokenize_parse(text: d5_q_return_red_source, file: ^d5_q_return_red)
+  )
+}

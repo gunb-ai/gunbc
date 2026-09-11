@@ -114,6 +114,7 @@ type CargoEnvironmentVariable
   | CargoTargetDirEnv
   | CargoBuildJobsEnv
   | RustcWrapperEnv
+  | RustflagsEnv
 
 // THE NAMES LIVE HERE, THE OPERAND FORM DOES NOT, and an earlier revision of this module got that
 // wrong. It carried a cargo_environment_assignment rendering "NAME=value" beside these names,
@@ -129,6 +130,7 @@ fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> NonEmp
     CargoTargetDirEnv => "CARGO_TARGET_DIR"
     CargoBuildJobsEnv => "CARGO_BUILD_JOBS"
     RustcWrapperEnv => "RUSTC_WRAPPER"
+    RustflagsEnv => "RUSTFLAGS"
   }
 }
 

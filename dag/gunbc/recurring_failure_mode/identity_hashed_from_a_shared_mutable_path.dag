@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.identity_hashed_from_a_shared_mutable_path
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data identity_hashed_from_a_shared_mutable_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "identity_hashed_from_a_shared_mutable_path" as NonEmptyStr,
+
+  receipts: [
+    "**an identity is computed from a SHARED MUTABLE PATH rather than from the bytes in hand, and the guard that is present guards the wrong object** (INVALID STATE: a writer serializes a value it holds in memory, writes it to a path that other writers also write, then asks a content-addressed store for the id of WHATEVER THAT PATH HOLDS WHEN THE STORE READS IT, and publishes that id as its own. ",
+
+    "HARM, two arms of one mechanism and the quiet one is the common one: a concurrent writer's O_TRUNC between the write and the read publishes the store's EMPTY object as the id, which is loud at the next decode; a completed foreign write publishes ANOTHER WRITER'S VALUE under this writer's admitted operation, which is silent -- the id is well formed, decodes, and names someone else's record. On a lease ledger the silent arm mints a grant from another writer's event. ",
+
+    "SPECIMEN (2026-09-11, gunbc.fabric_event_log event_log_append). The seat-ledger append wrote each event to <root>/event-<partition>.json under a root shared by every writer on the host, ran git hash-object -w on the path, and pushed the id with --force-with-lease. The harness then refused the healthy serving group at read: event e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 undecodable -- git's empty blob as a partition head. A git-level replay of the same argv with concurrent writers on one scratch path produced both arms, the foreign-bytes arm far more often than the empty one; it was an uncommitted scratch reproduction, so its counts are not carried here, and the enrolled instrument that re-derives the mechanism is test.claim.fabric_event_log_append_real_execution. The empty case is what paged anyone. ",
+
+    "**DISTINGUISHING FACT, the one that makes it hard to see: THE GUARD WAS PRESENT AND CORRECT.** The compare-and-set on the head refused every stale append exactly as designed. It guards WHICH HEAD is replaced, and nothing guards WHAT the new object contains, so a reviewer who checks for the lease finds it and stops. Recognition rule: for any content-addressed publish, ask what binds the id to the value the writer holds. If the answer runs through a path, a fd or any other name another writer can reach between the write and the hash, the binding is absent and the guard is on the wrong object. ",
+
+    "DISTINCT FROM ITS NEIGHBOURS. ambient_process_state_read_by_a_concurrent_reader reads a PARAMETER from a shared cell; here the shared cell sits between a value and its IDENTITY, and the identity is then trusted as proof of the value. publish_over_a_path_a_reader_is_serving is the mirror image: a writer overwrites a path a reader has cached, so the digest certifies the file and not the served view; here the digest certifies the file and not the writer's value. ",
+
+    "RUNG FOUND AT: silent wrongness for the foreign-bytes arm, which nothing contained; mitigatable for the empty arm, contained by the reader's typed decode refusal (which is correct and must not be relaxed to skip -- an empty event carries no parent, so skipping it drops the chain behind it). ",
+
+    "RUNG AFTER REPAIR, for the specimen's path only: structurally impossible. The append hands the serialized bytes to git on stdin (git.Plumbing HashObjectWriteStdin), so no name exists between the value and its id. Enrolled evidence: test.claim.fabric_event_log_append_real_execution on the local-repo wet lane, whose red control asserts that the path-routed form under the same clobber yields exactly the empty blob. ",
+
+    "ATTAINABLE CEILING FOR THE CLASS: MECHANICALLY PREVENTABLE, AND NOT STRUCTURALLY IMPOSSIBLE -- decided, not left open, because an unstated ceiling reads as nothing more to do. The text-bearing form CAN be made path-free (HashObjectWriteStdin takes the bytes and has no path constructor), but that does not remove the invalid state, because the path-taking form must survive: build artifacts ARE files, and hashing a file is the legitimate operation for them. At the type, a legitimate caller (a file another process produced) and an illegitimate one (a file this caller just wrote from a value it holds) both hand over a FilePath, and nothing about a path records who wrote its bytes or whether another writer can reach it -- a file's bytes are shared mutable state by nature, and whether a given path is actually shared among concurrent writers is a deployment fact the source does not carry. The strongest available construction is to seal the path input of HashObjectWrite behind a sole_constructor artifact-path type minted only by named artifact producers (the admit_callers pattern extdeps.shell TransportScript uses), so that every new path-hashing caller is a conspicuous, counted edit to one list. That is still writable -- a caller can project the sealed path to a String and write text into it -- so it reaches mechanically preventable and stops there. ",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the path input of git.Plumbing HashObjectWrite accepts only a sealed artifact-path type whose admit_callers roster names the artifact producers, so that NO caller outside that roster can hash a path at all, and a caller that writes a value to a path it then hashes cannot be written without editing the roster. A census alone does not satisfy this trigger: it measures the population and refuses nothing. Population measured 2026-09-11: five HashObjectWrite(path) call sites; two hash real build artifacts (legitimate), and the rest route in-memory text through a path -- gunbc.devboot.produce devboot_produce_build's lease claim (per-producer bytes, the same lease-ledger harm) and its record and digest blobs, and gunbc.devboot.build stage_text_blob with six callers. ",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fabric_event_log", decl_name: "event_log_append", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fabric_event_log_append_real_execution", decl_name: "an_append_publishes_its_own_bytes_when_the_scratch_path_is_clobbered_by_real_execution", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fabric_event_log_append_real_execution", decl_name: "a_path_routed_hash_under_the_same_clobber_publishes_the_empty_blob_red_control_by_real_execution", field: WholeDeclaration },
+  ],
+}
