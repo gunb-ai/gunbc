@@ -617,9 +617,22 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
 // THE PLAN TRAVELS WITH THE REQUEST, exactly as the instance already does. Which plan a process
 // serves is fixed by its serve entry function -- `gunbc serve` binds --entry/--function and carries
 // no per-request argument -- so an entry declared elsewhere supplies its own projected plan by
-// CALLING this fold, and nothing here enumerates or registers callers. The handlers that do not
-// consult a roadmap (assets, echo, the disk-read observation surfaces, the approval routes) ignore
-// it; those that do read it instead of the public carrier, so one response cannot mix two plans.
+// CALLING this fold, and nothing here enumerates or registers callers. The handlers that consult a
+// roadmap read the parameter instead of the public carrier, so one response cannot mix two plans.
+//
+// WHICH HANDLERS IGNORE IT, AND THE ONE THAT ONLY LOOKS LIKE IT DOES. Assets, the sandbox echo and
+// the approval routes consult no roadmap at all. The sessions, attempts, workflow and observation
+// surfaces read bodies the belt tick already wrote, and none of them is a roadmap render.
+//
+// RoadmapDailyPageHandler IS a roadmap render and must not be filed with them (review 63341, which
+// caught this note grouping it there). Its plan is bound EARLIER, at the tick that rendered the
+// body, by gunbc.roadmap_served_observation served_observation_observe_and_write_over -- so the
+// daily page is parameterized, on the other entry. The consequence a caller has to know: supplying
+// a plan HERE does not reach `/`. A process serving its own plan must supply it at BOTH entries,
+// the serve entry and the tick entry; supply it at only this one and `/` answers from whatever plan
+// the tick that wrote the body was given, with no refusal, because a pre-rendered body carries no
+// record of the plan it came from. That is a real seam between two processes, not a gap inside this
+// fold, and it is stated rather than papered over: nothing here can detect the mismatch.
 fn roadmap_serve_invoke_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,

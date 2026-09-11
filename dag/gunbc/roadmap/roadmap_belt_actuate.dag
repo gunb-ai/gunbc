@@ -6054,10 +6054,6 @@ fn belt_page_sessions_need(standing: LaunchHostStanding, graph: LaunchGraphStand
   })
 }
 
-fn belt_launch_host_standing_for_page(instance: HostDashboardInstance) -> LaunchHostStanding {
-  belt_launch_host_standing_for_page_over(instance: instance, plan: roadmap_authority_projection())
-}
-
 // The page's standing is decided against the plan the page is about to RENDER. Passing the plan in
 // rather than reading the public carrier here is what keeps the two halves of one response honest:
 // a caller rendering a different plan would otherwise get session-need decided from a roadmap its

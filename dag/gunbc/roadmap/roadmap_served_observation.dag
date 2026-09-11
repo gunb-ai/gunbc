@@ -198,10 +198,6 @@ fn served_observation_sessions_surface_for_instance(instance: HostDashboardInsta
 
 // The workflow attempts are observed ONCE per tick and shared by the two surfaces that project them
 // (one observing authority, two projections), so the walk over dispatch worktrees happens once.
-fn served_observation_snapshot_observe_for_instance(instance: HostDashboardInstance, observed_at: String) -> ServedObservationSnapshot {
-  served_observation_snapshot_observe_over(instance: instance, plan: roadmap_authority_projection(), observed_at: observed_at)
-}
-
 fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String) -> ServedObservationSnapshot {
   let observed = belt_workflow_attempts_observe_for_instance(instance: instance)
   ServedObservationSnapshot {
