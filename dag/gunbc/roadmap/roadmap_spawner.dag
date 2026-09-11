@@ -2,15 +2,18 @@ module gunbc.roadmap_spawner
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
-  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
-  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
   Acceptance, PrsMerged, ManualAcceptance,
-  NodeSizing, Unsized, Sized,
+  WorkItemDispatch, NotDispatchable, Dispatchable,
+  node_sizing_derivation,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
   section_group,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts }
+import gunbc.roadmap_sizing {
+  NodeSizingDerivation, SizingDerived, SizingNotDerivable,
+  intricacy_label, volume_label,
+}
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts, node_title }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
@@ -22,12 +25,12 @@ import gunbc.roadmap_authority {
   closing_contract_task_pairs_projection,
   ClosingContractTaskPairsProjected,
   ClosingContractTaskPairsProjectionRefused,
-  active_sized,
+  active,
   fields,
 }
 import gunbc.roadmap_focus { NoFocus }
 import extdeps.languages.json.emit {
-  JsonValue, JsonNull,
+  JsonValue, JsonNull, JsonKeyValue,
   serialize_json,
   quote_json_string,
   json_null,
@@ -115,12 +118,10 @@ fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
 }
 
 fn roadmap_ghost_node_red_probe_count() -> Int {
-  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: active_sized(
+  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: active(
     identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
     owner: "compiler-guarantee",
     path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
     t: fields(
       headline: "SYNTHETIC: a rendered node that no declared authority carries",
       boundary: "Negative control for the containment witness — never declared, never rendered outside the probe.",
@@ -140,7 +141,7 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
       node: n.node,
       line: n.line,
       carriers: n.carriers,
-      sizing: n.sizing,
+      dispatch: n.dispatch,
       execution: n.execution,
       owner: "SYNTHETIC-altered-copy-probe",
       signoff: n.signoff,
@@ -177,9 +178,9 @@ fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: Roadmap
 }
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
-  match n.sizing {
-    Unsized => false
-    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
+  match n.dispatch {
+    NotDispatchable => false
+    Dispatchable { repo: _, acceptance: _ } =>
       !node_is_complete(n: n)
         && !frontier_node_is_superseded(n: n)
         && node_dep_done(nodes: nodes, edges: edges, id: n.node)
@@ -192,22 +193,25 @@ fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> 
   nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges))
 }
 
-fn node_is_sized(n: RoadmapNode) -> Bool {
-  match n.sizing {
-    Unsized => false
-    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+// Renamed from node_is_sized with the fact it actually reads. It never consulted a size: it asked
+// whether the row carries a dispatch binding at all, which is what the coproduct's discriminant
+// always meant. Keeping the old name after the unbundling would be a section 3 meaning fork.
+fn node_is_dispatchable(n: RoadmapNode) -> Bool {
+  match n.dispatch {
+    NotDispatchable => false
+    Dispatchable { repo: _, acceptance: _ } => true
   }
 }
 
 fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
-  node_is_sized(n: n)
+  node_is_dispatchable(n: n)
     && !node_is_complete(n: n)
     && !frontier_node_is_superseded(n: n)
     && !node_dep_done(nodes: nodes, edges: edges, id: n.node)
 }
 
 fn node_is_frontier_done(n: RoadmapNode) -> Bool {
-  node_is_sized(n: n)
+  node_is_dispatchable(n: n)
     && node_is_complete(n: n)
     && !frontier_node_is_superseded(n: n)
 }
@@ -232,22 +236,6 @@ fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
 
 fn json_str(s: String) -> String {
   quote_json_string(s: s)
-}
-
-fn intricacy_str(i: Intricacy) -> String {
-  match i {
-    IntricacyLow => "low"
-    IntricacyMedium => "medium"
-    IntricacyHigh => "high"
-  }
-}
-
-fn volume_str(v: Volume) -> String {
-  match v {
-    VolumeSmall => "small"
-    VolumeMedium => "medium"
-    VolumeLarge => "large"
-  }
 }
 
 fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
@@ -286,16 +274,6 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
   }
 }
 
-fn node_title(item: RoadmapItem) -> String {
-  match item {
-    DerivableLine { prs: _, title, description: _ } => title
-    AuthoredLine { done: _, content } => content
-    PlainLine { content } => content
-    SupersededLine { by: _, content } => content
-    TicketLine { done: _, ticket } => ticket.headline
-  }
-}
-
 fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
   let plans = carriers |> filter(p => p.label == "plan")
   if count(plans) > 0 {
@@ -308,29 +286,41 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
   }
 }
 
-fn node_json_value(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> JsonValue {
+// THE SIZE KEYS ARE OMITTED WHEN NO SIZE WAS DERIVED, never defaulted. The dashboard's spawn
+// argument pair is both-or-neither, so an absent pair is a valid request that dispatches without a
+// declared size; a substituted cell would instead publish the stub's silence as a measurement.
+fn sizing_json_members(derivation: NodeSizingDerivation) -> List<JsonKeyValue> {
+  match derivation {
+    SizingDerived { subject: _, sizing } => [
+      json_kv(key: "intricacy", value: json_string(s: intricacy_label(i: sizing.intricacy))),
+      json_kv(key: "volume", value: json_string(s: volume_label(v: sizing.volume))),
+    ]
+    SizingNotDerivable { subject: _, detail: _ } => []
+  }
+}
+
+fn node_json_value(n: RoadmapNode, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> JsonValue {
   let parent_id_value = match roadmap_primary_parent(edges: edges, node: n.node) {
     TopLevel => json_null()
     UnderParent { parent: pid } => json_string(s: pid)
   }
   let owner_value = if n.owner == "" { json_null() } else { json_string(s: n.owner) }
   let title = node_title(item: n.line)
-  json_object(members: [
+  json_object(members: concat([
     json_kv(key: "node_id", value: json_string(s: n.node)),
     json_kv(key: "title", value: json_string(s: title)),
     json_kv(key: "repo", value: json_string(s: repo)),
-    json_kv(key: "intricacy", value: json_string(s: intricacy_str(i: intricacy))),
-    json_kv(key: "volume", value: json_string(s: volume_str(v: volume))),
+  ], concat(sizing_json_members(derivation: node_sizing_derivation(rn: n)), [
     json_kv(key: "parent_node_id", value: parent_id_value),
     json_kv(key: "parent_node_ids", value: json_array(elements: roadmap_parent_ids(edges: edges, node: n.node) |> map(id => json_string(s: id)))),
     json_kv(key: "owner", value: owner_value),
     json_kv(key: "plan_doc", value: node_plan_doc_json(carriers: n.carriers)),
     json_kv(key: "acceptance", value: acceptance_json_value(a: acceptance, line: n.line)),
-  ])
+  ])))
 }
 
-fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
-  serialize_json(v: node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges))
+fn node_json(n: RoadmapNode, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
+  serialize_json(v: node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges))
 }
 
 fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
@@ -339,10 +329,10 @@ fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id:
 }
 
 fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
-  serialize_json(v: json_array(elements: nodes |> map(n => match n.sizing {
-    Unsized => json_object(members: [])
-    Sized { intricacy, volume, repo, acceptance } =>
-      node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+  serialize_json(v: json_array(elements: nodes |> map(n => match n.dispatch {
+    NotDispatchable => json_object(members: [])
+    Dispatchable { repo, acceptance } =>
+      node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges)
   })))
 }
 
@@ -352,10 +342,10 @@ fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_co
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-spawn-request/v1")),
     json_kv(key: "anchor_commit", value: json_string(s: anchor_commit)),
-    json_kv(key: "ready", value: json_array(elements: nodes |> map(n => match n.sizing {
-      Unsized => json_object(members: [])
-      Sized { intricacy, volume, repo, acceptance } =>
-        node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+    json_kv(key: "ready", value: json_array(elements: nodes |> map(n => match n.dispatch {
+      NotDispatchable => json_object(members: [])
+      Dispatchable { repo, acceptance } =>
+        node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges)
     }))),
   ]))
 }
@@ -391,10 +381,10 @@ fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonV
   let frontier = spawn_frontier(doc: doc, merged: merged)
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-dispatch/v1")),
-    json_kv(key: "ready", value: json_array(elements: frontier.ready |> map(n => match n.sizing {
-      Unsized => json_object(members: [])
-      Sized { intricacy, volume, repo, acceptance } =>
-        node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+    json_kv(key: "ready", value: json_array(elements: frontier.ready |> map(n => match n.dispatch {
+      NotDispatchable => json_object(members: [])
+      Dispatchable { repo, acceptance } =>
+        node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges)
     }))),
     json_kv(key: "upcoming", value: json_array(elements: frontier.upcoming |> map(n =>
       json_object(members: [

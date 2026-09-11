@@ -4,9 +4,12 @@ import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
   roadmap_parent_ids,
-  NodeSizing, Unsized, Sized,
-  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
-  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
+  WorkItemDispatch, NotDispatchable, Dispatchable,
+  node_sizing_derivation,
+}
+import gunbc.roadmap_sizing {
+  NodeSizingDerivation, SizingDerived, SizingNotDerivable,
+  intricacy_label, volume_label,
 }
 import gunbc.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
@@ -404,29 +407,26 @@ type WorkRowView {
   standing: RoadmapNodeStanding?
 }
 
-fn intricacy_code(i: Intricacy) -> String {
-  match i {
-    IntricacyLow => "i:low"
-    IntricacyMedium => "i:med"
-    IntricacyHigh => "i:high"
+// TWO FACTS WHERE THERE WAS ONE BADGE. The row used to render "i:med v:small gunbc" from a single
+// authored NodeSizing, fusing the repository with an authored size guess. The repository is a fact
+// the row still holds, so it keeps its badge; the size is derived now, and a row whose derivation
+// refuses shows no size badge at all rather than a placeholder cell an operator would read as
+// measured.
+fn dispatch_fact(d: WorkItemDispatch) -> List<SupportingFact> {
+  match d {
+    NotDispatchable => []
+    Dispatchable { repo, acceptance: _ } =>
+      [ SupportingFact { label: "repo", value: repo, href: "" } ]
   }
 }
 
-fn volume_code(v: Volume) -> String {
-  match v {
-    VolumeSmall => "v:small"
-    VolumeMedium => "v:med"
-    VolumeLarge => "v:large"
-  }
-}
-
-fn sizing_fact(s: NodeSizing) -> List<SupportingFact> {
-  match s {
-    Unsized => []
-    Sized { intricacy, volume, repo, acceptance } =>
+fn sizing_fact(d: NodeSizingDerivation) -> List<SupportingFact> {
+  match d {
+    SizingNotDerivable { subject: _, detail: _ } => []
+    SizingDerived { subject: _, sizing } =>
       [ SupportingFact {
           label: "sizing",
-          value: join([intricacy_code(i: intricacy), " ", volume_code(v: volume), " ", repo], ""),
+          value: join(["i:", intricacy_label(i: sizing.intricacy), " v:", volume_label(v: sizing.volume)], ""),
           href: "",
         } ]
   }
@@ -441,7 +441,16 @@ fn carrier_facts(carriers: List<Pointer>) -> List<SupportingFact> {
 }
 
 fn row_supporting_facts(rn: RoadmapNode) -> List<SupportingFact> {
-  concat(owner_fact(owner: rn.owner), concat(sizing_fact(s: rn.sizing), carrier_facts(carriers: rn.carriers)))
+  concat(
+    owner_fact(owner: rn.owner),
+    concat(
+      dispatch_fact(d: rn.dispatch),
+      concat(
+        sizing_fact(d: node_sizing_derivation(rn: rn)),
+        carrier_facts(carriers: rn.carriers),
+      ),
+    ),
+  )
 }
 
 // The typed headline path: a TicketLine's headline IS ticket.headline — one field read, no markdown

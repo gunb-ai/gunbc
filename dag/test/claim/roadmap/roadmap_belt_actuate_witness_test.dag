@@ -7,9 +7,8 @@ import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
   RoadmapNodeIdentity,
-  IntricacyHigh, VolumeMedium,
   PrsMerged,
-  Sized,
+  Dispatchable,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_publish {
@@ -146,7 +145,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchSessionsObserved,
@@ -195,7 +194,7 @@ fn ready_node(id: String) -> RoadmapNode {
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -516,7 +515,7 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
@@ -710,7 +709,7 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
-    && band_key_for_label(label: "size_missing") == "fail"
+    && band_key_for_label(label: "dispatch_binding_missing") == "fail"
     && band_key_for_label(label: "review_required") == "fail"
     && band_key_for_label(label: "node_superseded") == "fail"
     && band_key_for_label(label: "no_capacity") == "fail"
@@ -769,7 +768,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "node_superseded",
     "already_done_signed_off",
     "review_required",
-    "size_missing",
+    "dispatch_binding_missing",
     "execution_contract_missing",
     "dependencies_blocked",
     "observe_refused",

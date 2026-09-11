@@ -29,16 +29,8 @@ import gunbc.roadmap_model {
   AcceptanceHistoryIntegrityRefusedPriorPrefix,
   AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
   acceptance_history_integrity_verdict_detail,
-  Intricacy,
-  IntricacyLow,
-  IntricacyMedium,
-  IntricacyHigh,
-  Volume,
-  VolumeSmall,
-  VolumeMedium,
-  VolumeLarge,
-  Sized,
-  Unsized,
+  NotDispatchable,
+  Dispatchable,
   PrsMerged,
   ManualAcceptance,
   section_group,
@@ -216,7 +208,7 @@ fn authored(identity: String,
     node: nid(s: id),
     line: AuthoredLine { done: done, content: content },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -230,7 +222,7 @@ fn derivable(identity: String,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -243,8 +235,6 @@ fn derivable_wi(
   prs: List<Int>,
   title: String,
   description: String,
-  intricacy: Intricacy,
-  volume: Volume,
   repo: String
 ) -> RoadmapNode {
   RoadmapNode {
@@ -252,9 +242,7 @@ fn derivable_wi(
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
-    sizing: Sized {
-      intricacy: intricacy,
-      volume: volume,
+    dispatch: Dispatchable {
       repo: repo,
       acceptance: PrsMerged,
     },
@@ -269,8 +257,6 @@ fn authored_wi(
   id: String,
   done: Bool,
   content: String,
-  intricacy: Intricacy,
-  volume: Volume,
   repo: String
 ) -> RoadmapNode {
   RoadmapNode {
@@ -278,9 +264,7 @@ fn authored_wi(
     node: nid(s: id),
     line: AuthoredLine { done: done, content: content },
     carriers: [],
-    sizing: Sized {
-      intricacy: intricacy,
-      volume: volume,
+    dispatch: Dispatchable {
       repo: repo,
       acceptance: ManualAcceptance,
     },
@@ -297,7 +281,7 @@ fn ticket_row(identity: String,
     node: nid(s: id),
     line: TicketLine { done: done, ticket: t },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -309,8 +293,6 @@ fn ticket_wi(
   id: String,
   done: Bool,
   t: TicketFields,
-  intricacy: Intricacy,
-  volume: Volume,
   repo: String
 ) -> RoadmapNode {
   RoadmapNode {
@@ -318,9 +300,7 @@ fn ticket_wi(
     node: nid(s: id),
     line: TicketLine { done: done, ticket: t },
     carriers: [],
-    sizing: Sized {
-      intricacy: intricacy,
-      volume: volume,
+    dispatch: Dispatchable {
       repo: repo,
       acceptance: ManualAcceptance,
     },
@@ -337,7 +317,7 @@ fn superseded(identity: String,
     node: nid(s: id),
     line: SupersededLine { by: by, content: content },
     carriers: [],
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -505,7 +485,7 @@ fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
 // The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every
 // constructor (the `sign` twin below is the precedent, and it already carries `execution:
 // rn.execution` through untouched). Threading an execution argument through
-// active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and
+// active/authored/derivable/ticket_row would edit five constructors and
 // every one of their ~46 call sites to express a fact that today holds for exactly one node — the
 // churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper
 // keeps ExecutionContractUnspecified, which is the fail-closed refusal
@@ -695,7 +675,7 @@ fn with_execution(rn: RoadmapNode, e: WorkItemExecutionContract) -> RoadmapNode 
     node: rn.node,
     line: rn.line,
     carriers: rn.carriers,
-    sizing: rn.sizing,
+    dispatch: rn.dispatch,
     execution: e,
     owner: rn.owner,
     signoff: rn.signoff,
@@ -708,7 +688,7 @@ fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
     node: rn.node,
     line: rn.line,
     carriers: rn.carriers,
-    sizing: rn.sizing,
+    dispatch: rn.dispatch,
     execution: rn.execution,
     owner: rn.owner,
     signoff: s,
@@ -743,13 +723,11 @@ fn fields(
   }
 }
 
-fn active_sized(
+fn active(
   identity: String,
   id: String,
   owner: String,
   path: String,
-  intricacy: Intricacy,
-  volume: Volume,
   t: TicketFields
 ) -> RoadmapNode {
   RoadmapNode {
@@ -757,9 +735,7 @@ fn active_sized(
     node: nid(s: id),
     line: TicketLine { done: false, ticket: t },
     carriers: carrier(path: path),
-    sizing: Sized {
-      intricacy: intricacy,
-      volume: volume,
+    dispatch: Dispatchable {
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
@@ -769,44 +745,8 @@ fn active_sized(
   }
 }
 
-fn active(identity: String,
-  id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
-  active_sized(
-    identity: identity,
-    id: id,
-    owner: owner,
-    path: path,
-    intricacy: IntricacyMedium,
-    volume: VolumeMedium,
-    t: t,
-  )
-}
 
-fn active_small(identity: String,
-  id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
-  active_sized(
-    identity: identity,
-    id: id,
-    owner: owner,
-    path: path,
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
-    t: t,
-  )
-}
 
-fn active_large(identity: String,
-  id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
-  active_sized(
-    identity: identity,
-    id: id,
-    owner: owner,
-    path: path,
-    intricacy: IntricacyHigh,
-    volume: VolumeLarge,
-    t: t,
-  )
-}
 
 fn edge(child: String, parent: String) -> RoadmapEdge {
   RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
@@ -864,13 +804,11 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
-    active_sized(
+    active(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Write down how Git really stores things",
         boundary: "Describe Git on its own terms: files, folders, commits, tags, file permissions, symlinks, links to other repositories, and how it names and finds them. Prove it by reading a small repository and writing it back unchanged.",
@@ -881,13 +819,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
       )
     ),
-    active_sized(
+    active(
       identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
       id: "2-scm-mercurial-upstream-model",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Write down how Mercurial really works, in its own words",
         boundary: "Describe Mercurial from its own documentation: its permanent change IDs versus the numbers local to one copy, its branches, bookmarks, tags, and its draft/published states. Use no Git vocabulary.",
@@ -898,13 +834,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
       )
     ),
-    active_sized(
+    active(
       identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
       id: "2-scm-pijul-upstream-model",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Write down how Pijul really works, in its own words",
         boundary: "Describe Pijul from its own documentation: individual changes that carry their own identity, what each change depends on, and how a channel is a set of changes rather than a pointer to the newest one.",
@@ -915,13 +849,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
       )
     ),
-    active_sized(
+    active(
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
       id: "2-claim-indexed-evidence",
       owner: "deduction",
       path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Say once what counts as evidence for a claim",
         boundary: "One shared way to record a fact, state a claim, and link evidence that supports or contradicts it — including how much a piece of evidence can prove on its own. Three existing features adopt it.",
@@ -932,11 +864,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )
     ),
-    active_sized(identity: "rnfx_DQV1HD42VR40BA8WBP1Y", id: "2-scm-compatibility-shape",
+    active(identity: "rnfx_DQV1HD42VR40BA8WBP1Y", id: "2-scm-compatibility-shape",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Extract the compatibility realization shape from three upstream receipts",
         boundary: "Consume the independently executing Git, Mercurial, and Pijul R0 boundaries and extract only their demonstrated roles: opaque target/generation handles, an independently required fidelity disposition for each retained or lost capture axis, projection/read-back identity, and modeled-or-unavailable conditional-advance capability. Native receipts retain every upstream-specific fact; dispatch is a generic handler value, never ScmKind or a vendor switch.",
@@ -947,13 +877,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
       )
     ),
-    active_sized(
+    active(
       identity: "rn_026DCFC306A7B44B061483AA71",
       id: "2-scm-p0-landing-spine",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Make submit → landed the default source-control journey",
         boundary: "Model one submitted change through result finding, permission checks, committing, independent read-back, and compatibility projection. The normal user sees only landed, one concrete choice, or a plain reason the change could not land; synchronization and unfinished investigation stay inside the system.",
@@ -964,13 +892,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )
     ),
-    with_execution(active_sized(
+    with_execution(active(
       identity: "rn_D33CBEADA91C3E8C10D8515CC4",
       id: "2-scm-p1-proof-kernel",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeLarge,
       t: fields(
         headline: "Prove one bounded reconciliation rule works for directly authored changes",
         boundary: "Model one public bounded fold that composes directly authored transformations over a declared decidable program fragment. Domains contribute facts, claims, procedures, invariants, and checkable certificates as data; the kernel never grows feature-pair branches and every refusal stays typed, located, and counted.",
@@ -1012,13 +938,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
-    with_execution(active_sized(
+    with_execution(active(
       identity: "rn_7QF3M2KDX8VNAT6JWZR0PC5HY",
       id: "namespace-structural-observations",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Work out what a name can see from where it is written, inside one file",
         boundary: "Make an ordinary compiled path produce, for each name written in a file, the declarations actually in view from that position, and record which one answered. Four cases, each shown on its own: an ordinary neighbour written earlier in the same file is in view; a declaration inside a different branch of a decision is not; a declaration written further down is not; and two declarations spelled the same at genuinely different positions stay distinct rather than merging.",
@@ -1029,13 +953,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "One ordinary compiled file producing all four observations, each case shown failing on its own, and the closing check written and bound."
       )
     ), namespace_structural_observations_execution_contract()),
-    active_sized(
+    active(
       identity: "rn_4LT9SBW1EGKM3XQPZ7DVNC02J",
       id: "namespace-cross-file-provenance",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeLarge,
       t: fields(
         headline: "Answer names that live in another file, and derive what each file depends on",
         boundary: "Work out, for a name whose answer lives in another file, which declaration answers it, then derive from those answers what the file depends on. Keep two separate results: for every mention, which declaration answered it; and for the file, the set of distinct files it depends on. Repeated mentions of one target collapse only in the second.",
@@ -1046,13 +968,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The bound closing witness greens on ordinary loaded compilation production, not on fixture-only carriers alone. One file's dependencies derived from its answers alone, matching what was written by hand, with both results kept separate."
       )
     ),
-    active_sized(
+    active(
       identity: "rn_9WK5DZP6TAY2QN8XFVB13JMHR",
       id: "namespace-pool-independence",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Loading an unrelated file must not change any answer",
         boundary: "Run the same source twice — once with an unrelated file loaded alongside it, once without — and compare the whole result: which declaration each name answered to, which mention produced which dependency, what the file depends on, and which names refused. Nothing may differ.",
@@ -1063,7 +983,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "One source run under both pools with the full result identical, and a planted difference shown being caught."
       )
     ),
-    with_execution(active_large(
+    with_execution(active(
       identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
       id: "namespace-reference-derived-closure",
       owner: "namespace",
@@ -1093,7 +1013,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The real list, the settled groups, and proof that no tie-breaking rule was introduced."
       )
     ),
-    active_large(
+    active(
       identity: "rn_KH24WPK0FFKWHK5J0QM40AYMZZ",
       id: "namespace-canonical-binding",
       owner: "namespace",
@@ -1123,7 +1043,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The migrated consumer plus proof the old path did not run."
       )
     ),
-    active_small(
+    active(
       identity: "rn_154WYEVN9KBKQ6FVGPSQR4Y2H2",
       id: "namespace-v2-import-completion",
       owner: "namespace",
@@ -1138,7 +1058,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The complete inventory of import consumers plus a run showing an ambiguous import refuses."
       )
     ),
-    active_small(
+    active(
       identity: "rn_HPYW6X0NEMYVNAKZJFA6TQPK0Q",
       id: "namespace-legacy-choice-retirement",
       owner: "namespace",
@@ -1153,7 +1073,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       )
     ),
-    active_large(
+    active(
       identity: "rn_SG8EVJAQXVGP7V5G8BG8G8YVJQ",
       id: "namespace-import-deletion",
       owner: "namespace",
@@ -1169,7 +1089,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_small(
+    active(
       identity: "rn_E414RDCS728VRFA9QZ0NX76SYN",
       id: "pderive-typesafe-nullary-reflection",
       owner: "self-host",
@@ -1199,7 +1119,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Proof the record survives a write/read round trip unchanged, plus the refusals."
       )
     ),
-    active_large(
+    active(
       identity: "rn_0CPDNZRQA7JMPR0SDG5XSG5987",
       id: "pderive-source-slot-binding",
       owner: "self-host",
@@ -1214,7 +1134,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The exact declaration-to-slot mapping plus a swap test that catches a mismatch."
       )
     ),
-    active_large(
+    active(
       identity: "rn_W3JP9BYW55W695XXAGS4KRVS8K",
       id: "pderive-v2-emitter-consumer",
       owner: "self-host",
@@ -1229,7 +1149,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The generated source, which generator made it, and a real compile of the discriminating example."
       )
     ),
-    active_small(
+    active(
       identity: "rn_DR9YT28ZT3CW3QBQJE4FDVAGFB",
       id: "pderive-error-movement-receipt",
       owner: "self-host",
@@ -1245,7 +1165,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_small(
+    active(
       identity: "rn_R5GXMKEWDKNV87EQQ3BJRBS998",
       id: "observation-scoped-run-seed-growth-justification",
       owner: "ci-observation",
@@ -1281,7 +1201,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     with_execution(
       e: observation_raw_print_retirement_execution_contract(),
-      rn: active_small(
+      rn: active(
       identity: "rn_81MBTXHVQFB0HJ6XPA0WXEGVVW",
       id: "observation-raw-print-retirement",
       owner: "ci-observation",
@@ -1298,7 +1218,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     )
     ),
 
-    active_large(
+    active(
       identity: "rn_RSPTW7T9VRES9F7FHCP08QFGX5",
       id: "ci-required-run-cost",
       owner: "ci-cost",
@@ -1398,7 +1318,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
 
-    active_small(
+    active(
       identity: "rn_2K8HXQ4MZV7NC3B6WD9YFT5J1E",
       id: "frontend-escape-scan-construction",
       owner: "ci-cost",
@@ -1450,7 +1370,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       content: "The 48-job ci.yml and its two-host runner placement no longer exist; the required run is one process on one runner. There is no placement decision left to inventory, qualify, shadow or flip, and a compile-pool envelope per machine is the live-deploy remodel's fact (gunbc.live_deploy), not a CI one."
     ),
 
-    active_large(
+    active(
       identity: "rn_7KWZQ2VBNM4XCT0RDPLHGJ86Y1",
       id: "compute-exact-work-contract",
       owner: "compute",
@@ -1465,7 +1385,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The request and outcome carriers, one provider behind them, and one real operation with all five endings demonstrated."
       )
     ),
-    active_large(
+    active(
       identity: "rn_1MDQX8ZTVK5NBW3RCPHJLG024Y",
       id: "compute-artifact-return-and-materialization",
       owner: "compute",
@@ -1481,7 +1401,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_large(
+    active(
       identity: "rn_5PZBW1KVNT7XCQ3RDMHJLG0946",
       id: "compute-deduplication-and-admission",
       owner: "compute",
@@ -1497,7 +1417,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_large(
+    active(
       identity: "rn_0LNVJ4CQ8ZRHT2XBWD6PGK9YFS",
       id: "ci-owned-execution",
       owner: "ci-control",
@@ -1527,7 +1447,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "One required check carrying its executed population, with the empty-population refusal and the distinct upstream-failure outcome both demonstrated."
       )
     ),
-    active_small(
+    active(
       identity: "rn_W86W65EBR3HW41MK0X3RBMJ8BT",
       id: "ci-gate-contention-independent-verdict",
       owner: "ci-control",
@@ -1572,7 +1492,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Agreement across a real run of subjects, then one change that removes the old path."
       )
     ),
-    active_small(
+    active(
       identity: "rn_4QGZD9NWX3TVB7LMKR0PHY62CS",
       id: "ci-remote-build-containment",
       owner: "ci-control",
@@ -1588,7 +1508,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    sign(    with_execution(active_small(
+    sign(    with_execution(active(
             identity: "rn_7K3QH2M9XWP4NVB8RD6TSCA5EJ",
             id: "harness-thinking-and-write-briefs",
             owner: "harness",
@@ -1612,7 +1532,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       as_expected: true,
     )),
 
-    sign(    with_execution(active_small(
+    sign(    with_execution(active(
             identity: "rn_2XG8VDT4MJQ7BWN5HRC3PYE6KA",
             id: "roadmap-verify-to-publish-phase",
             owner: "roadmap",
@@ -1636,7 +1556,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       as_expected: true,
     )),
 
-    sign(    with_execution(active_small(
+    sign(    with_execution(active(
             identity: "rn_5MRT8VKC2XNQ4WHJ7PBD3ZGE9A",
             id: "roadmap-round-strip-pulse-follows-the-worker",
             owner: "dashboard",
@@ -1669,7 +1589,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       as_expected: true,
     )),
 
-    sign(    with_execution(active_small(
+    sign(    with_execution(active(
             identity: "rn_2CTLBL7QKX4MWN8VRZ5HYD3JPE",
             id: "roadmap-continuation-turn-label",
             owner: "dashboard",
@@ -1693,7 +1613,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       as_expected: true,
     )),
 
-    sign(    with_execution(active_small(
+    sign(    with_execution(active(
             identity: "rn_9PZ4WQ6CTNH2LMK7VXB3SRD8FG",
             id: "roadmap-round-strip-percolator",
             owner: "dashboard",
@@ -1762,7 +1682,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_small(
+    active(
       identity: "rn_SZKN5YRA7FH46J1Z6THGN080G1",
       id: "v1-test-hygiene-producer-retirement",
       owner: "self-host",
@@ -1795,7 +1715,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     )
     ),
-    with_execution(active_large(
+    with_execution(active(
       identity: "rn_B7PXF6JQRHY19AEQPXGBP12DCT",
       id: "v2-emitter-direct-rust-door",
       owner: "self-host",
@@ -1840,7 +1760,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The test results, which generator made it, and the updated list entry."
       )
     ),
-    active_large(
+    active(
       identity: "rn_1J8QK4XTB6PM09VZDR3HNW5CEY",
       id: "v2-emitter-native-crate-partition",
       owner: "self-host",
@@ -1855,7 +1775,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The derived module graph, the split and what selected it, the generated workspace, a build and behavioral run of the same corpus through it, a deliberately broken cross-piece export that fails, and a receipt showing a leaf edit rebuilding only its own dependents."
       )
     ),
-    active_large(
+    active(
       identity: "rn_5E7W23B34MW5Z7XMATBBJ11QFS",
       id: "v2-emitter-native-bootstrap",
       owner: "self-host",
@@ -1870,7 +1790,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Both builds, the tests that tell them apart, a named list of any differences found, and the run with the old compiler taken away — or the receipt proving it was never called — for the second build."
       )
     ),
-    active_large(
+    active(
       identity: "rn_C90239W2TBQX58KQHHPXE9S9VP",
       id: "v1-emitter-fixed-point",
       owner: "self-host",
@@ -1915,7 +1835,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The complete list, the reasons, and one family migrated."
       )
     ),
-    active_large(
+    active(
       identity: "rn_53JPH6BB7G588K7DMZNWM0E3AS",
       id: "v1-materialization-kernel",
       owner: "self-host",
@@ -1930,7 +1850,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Cold-start, exact-tree warm reuse across restart without compilation, corruption, and eviction all demonstrated."
       )
     ),
-    active_large(
+    active(
       identity: "rn_X9RY6N9HJX29GHHGDRGP86T6NV",
       id: "v1-verification-ledger",
       owner: "self-host",
@@ -1945,7 +1865,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The full list of runs, green, with every difference accounted for."
       )
     ),
-    active_large(
+    active(
       identity: "rn_FWSQ19QP41ARPXBM0HFW4MFXGG",
       id: "v1-ci-floor-cutover",
       owner: "self-host",
@@ -1960,7 +1880,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The parallel comparison, the switch, and proof nothing fell back."
       )
     ),
-    active_large(
+    active(
       identity: "rn_HM8EEVB6DDD417CJ8RM79T4F3M",
       id: "v1-hand-queue-drain",
       owner: "self-host",
@@ -1994,7 +1914,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     )),
     with_execution(
       e: v1_seed_honesty_decision_execution_contract(),
-      rn: active_small(
+      rn: active(
       identity: "rn_HZJEM68DT207HQH449FPR3VZPA",
       id: "v1-seed-honesty-decision",
       owner: "operator",
@@ -2085,7 +2005,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The build contents, the product runs, the build results, and proof nothing depends on it."
       )
     ),
-    active_large(
+    active(
       identity: "rn_SSW55NRPT0931Q12PB8YQ3Q2BH",
       id: "v1-interpreter-delete",
       owner: "self-host",
@@ -2115,7 +2035,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The builds, the product runs, and the list of anything deliberately kept."
       )
     ),
-    active_large(
+    active(
       identity: "rn_RSBHA36N72JKQ0NAVKJ5AV153R",
       id: "v1-zero-hand-maintained-rust",
       owner: "self-host",
@@ -2133,7 +2053,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 
     with_execution(
       e: shell_typed_invocation_execution_contract(),
-      rn: active_small(
+      rn: active(
       identity: "rn_7T6WSS1JYCV6GQNW1PZG73B0G3",
       id: "shell-typed-invocation",
       owner: "shell",
@@ -2149,7 +2069,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     )
     ),
-    active_large(
+    active(
       identity: "rn_MRCH9RMA0WPEEM73AKTS5HX9TT",
       id: "shell-effectplan-to-bash",
       owner: "shell",
@@ -2179,7 +2099,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The check running, and the generated file matching what the plan says."
       )
     ),
-    active_small(
+    active(
       identity: "rn_Y27H49GJ9JCXHQRG5HD3N3FDMJ",
       id: "shell-residue-zero",
       owner: "shell",
@@ -2226,13 +2146,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       content: "Codex is no longer the provider. The harness posts to the Spark vLLM engines directly and reports its own standing from the engines' /v1/models, so bundling Codex 0.146, reading back a PRESS vertical, and gating dispatch on verified Codex connections have no subject."
     ),
 
-    with_execution(active_sized(
+    with_execution(active(
       identity: "rn_2NDX8VQ4KJ7ZTBM5WGPRAF06L",
       id: "roadmap-receipt-continuity",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "An accepted thing cannot quietly become unaccepted again",
         boundary: "Compare the acceptance records held before a change against those held after. A record that was valid and is now gone refuses, unless a revocation names the exact item, the exact record being withdrawn, a reason, and what follows from it. Rewriting an item's pass/fail test while keeping its record is the existing digest path and is not a withdrawal.",
@@ -2244,7 +2162,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ), roadmap_receipt_continuity_execution_contract()),
 
-    active_small(
+    active(
       identity: "rn_WWVQ07RC0HF55DPM2CXNKWY8RR",
       id: "fleet-state-frontier",
       owner: "fleet",
@@ -2259,7 +2177,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The classification plus one refusal on something unclassified."
       )
     ),
-    active_large(
+    active(
       identity: "rn_PEH90XVR97GYYA5FXGDJXZ70PF",
       id: "fleet-bmc-policy-convergence",
       owner: "fleet",
@@ -2274,7 +2192,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Applying, doing nothing, rolling back, surviving a reboot, and refusing an unsupported machine — all demonstrated."
       )
     ),
-    active_large(
+    active(
       identity: "rn_TAPSSCRTTBBV274TFK1PAGAP49",
       id: "fleet-closed-loop-converge",
       owner: "fleet",
@@ -2349,7 +2267,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The full set of receipts and a machine state someone can go and verify."
       )
     ),
-    active_large(
+    active(
       identity: "rn_5ZKQW8BXTN2VRD0MHJ7GPL34CY",
       id: "fleet-main-revision-authority",
       owner: "fleet",
@@ -2379,7 +2297,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The fleet answer with all four machine outcomes demonstrated."
       )
     ),
-    active_large(
+    active(
       identity: "rn_9DVRB3XQKM0ZWT7NPGHC65LJY2",
       id: "fleet-runner-host-convergence",
       owner: "fleet",
@@ -2394,7 +2312,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The desired rows, the read-back values from every machine, and one drift repaired without a person."
       )
     ),
-    active_small(
+    active(
       identity: "rn_6MKXC1TZGB8QWN4RDVPJ0HY735",
       id: "fleet-runner-broker-recovery",
       owner: "fleet",
@@ -2415,7 +2333,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       by: "gunbc.fleet_intent_network srv5..srv12 identity and endpoint rows (#10512, #10517) and gunbc.spark.pair_serving_desired (#10540)",
       content: "The Sparks are enrolled: identity slots, LAN endpoint rows and router bindings in the fleet topology, and the serving desired state is the pair model with attributable heads. What remains is bringing the pairs to the desired serving state, which is fleet-spark-inference-serving."
     ),
-    active_large(
+    active(
       identity: "rn_3JQZN7WVPD1KXCB0RTMG84LHY6",
       id: "fleet-spark-inference-serving",
       owner: "fleet",
@@ -2488,7 +2406,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the generic pin carrier, one subject instantiation, the refresh-policy arms, the refusing controls, and the second-subject composition proof."
       )
     ),
-    active_large(
+    active(
       identity: "rn_VTF6P0GG5N1A2SQ9X70TPH6K49",
       id: "toolchain-single-resolver",
       owner: "toolchain",
@@ -2518,13 +2436,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the provisioned root, the migrated gates, and the version-mismatch control."
       )
     ),
-    active_sized(
+    active(
       identity: "rn_MVG7ADQA5NTV1Z3PJRTQZ73BF0",
       id: "toolchain-residue-zero",
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeLarge,
       t: fields(
         headline: "Drive bare tool names and host path literals to zero",
         boundary: "Every mechanical invocation names a resolved tool; bare executable names and absolute host path literals are migrated or classified as declared floor members.",
@@ -2535,7 +2451,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the migrated sites, the remaining classified residue, and the guarding lens."
       )
     ),
-    active_small(
+    active(
       identity: "rn_EK3HGNHSK769BWC9Z34MAN6X8J",
       id: "toolchain-system-floor",
       owner: "toolchain",
@@ -2550,13 +2466,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the declared floor, the startup assertion, and the undeclared-dependency control."
       )
     ),
-    active_sized(
+    active(
       identity: "rn_2NQW3MVYJYQ453E95V3V1T76AV",
       id: "instrument-motion-physical-qualification",
       owner: "instrument-motion",
       path: "dag/gunbc/capability_binding.dag",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Make a real tap on a real machine reach the bob",
         boundary: "A physical impulse observed on a named host and browser, qualified against the requirement, reaching PhysicalImpulse and moving the plate. Chrome and Safari each get their own executed receipt with the host named exactly. A negative control runs first: the machine sitting idle and the machine being typed on must NOT qualify. Native macOS access is reached for only if the web routes produce no usable values.",
@@ -2567,7 +2481,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the two executed browser receipts with their hosts named, the negative-control receipts, the calibration that turns bob_impulse_requirement_candidate from AuditionProvisional into RequirementSigned or the finding that it cannot be, and a headless-rendering-engine playback receipt replacing the jsdom substitute noted below."
       )
     ),
-    active_small(
+    active(
       identity: "rn_ANX7D5C8EBN0A41V05PHETTG9K",
       id: "instrument-rendered-control-coverage",
       owner: "instrument-motion",
@@ -2582,7 +2496,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the derived denominator, the newly visible gaps, and the control that reds on an uncovered rendered control."
       )
     ),
-    active_small(
+    active(
       identity: "rn_ZXQH9CD43E8XH64CHYBT99WD9W",
       id: "discarded-bool-result-wall",
       owner: "language-integrity",
@@ -3339,21 +3253,22 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // worth enforcing would be enforced at MINT time by construction, not by editing identities already
 // in the graph.
 
-fn node_sizing_is_declared(n: RoadmapNode) -> Bool {
-  match n.sizing {
-    Unsized => false
-    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+fn node_dispatch_is_declared(n: RoadmapNode) -> Bool {
+  match n.dispatch {
+    NotDispatchable => false
+    Dispatchable { repo: _, acceptance: _ } => true
   }
 }
 
-// AN UNSIZED NODE IS UNPLANNED, AND NOTHING ABOUT IT IS SCHEDULED -- including the task to write its
-// closing check. Before this filter a ticket_row (Unsized) still minted a Sized closing-contract task
-// that sat in Ready, so parking a node by unsizing it moved the node out of Ready and put a task
-// for it straight back in (operator observation, 2026-09-04).
+// A NODE WITH NO DISPATCH BINDING IS UNPLANNED, AND NOTHING ABOUT IT IS SCHEDULED -- including the
+// task to write its closing check. Before this filter a ticket_row (NotDispatchable) still minted a
+// Dispatchable closing-contract task that sat in Ready, so parking a node by clearing its binding
+// moved the node out of Ready and put a task for it straight back in (operator observation,
+// 2026-09-04).
 fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
   declared_roadmap_nodes()
     |> filter(n => !(accepted |> any(a => a == n.node)))
-    |> filter(n => node_sizing_is_declared(n: n))
+    |> filter(n => node_dispatch_is_declared(n: n))
     |> filter(n => node_lacks_closing_validation(n: n))
     |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
 }
@@ -3418,9 +3333,7 @@ fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
       ],
       map(n.carriers, c => Pointer { label: "subject", path: c.path }),
     ),
-    sizing: Sized {
-      intricacy: IntricacyLow,
-      volume: VolumeSmall,
+    dispatch: Dispatchable {
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
@@ -3736,11 +3649,9 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
 
 fn guarantee_ladder_nodes() -> List<RoadmapNode> {
   [
-    active_sized(identity: "rn_RAVINFXPMNUT5RP5TAN2PXHATI", id: "ladder-measurement-schema",
+    active(identity: "rn_RAVINFXPMNUT5RP5TAN2PXHATI", id: "ladder-measurement-schema",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "The guarantee measurement schema: evidence learns to identify its subject before anyone measures",
         boundary: "The stable vocabulary only: GuaranteeClassId, GuaranteePathId, GuaranteeProbeId; GuaranteePath (subject_grain, acceptance_boundary, realization_target — compile_mode deleted as derivable dual representation and InterpreterRun re-read as realization-agnostic RuntimeRun, review 46308 on gunbc#7572); GuaranteeMeasurementReceipt carrying class, path, probe, subject_revision, harness_revision, probe_set_digest, observed (a raw ProbeObservation, never a disposition). No stored rung, no claims about the compiler — only how a receipt names what it measured. This stage breaks the probes-need-carrier-identities / carrier-needs-probe-receipts protocol cycle (operator spine verdict, 2026-08-01): probes and claims meet through this contract instead of minting temporary string keys.",
@@ -3751,11 +3662,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The schema module path and the identity-registry witness receipt."
       )
     ),
-    active_sized(identity: "rn_T6JTXDKQBI6FDZ742FSGRZRQNA", id: "ladder-probe-corpus",
+    active(identity: "rn_T6JTXDKQBI6FDZ742FSGRZRQNA", id: "ladder-probe-corpus",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
       t: fields(
         headline: "The expecting-red probe corpus: the floor gap becomes a counted, continuously-measured number",
         boundary: "One probe pair per floor class (deliberately-bad input expected to refuse; legitimate control expected to accept), enrolled as expecting-red rows via the known-red quarantine mechanism so today's fail-open state is measured, not asserted. Every currently-legitimate map/fold/filter/flat_map/service invocation form appears as a positive control so a future wall cannot green by refusing the language.",
@@ -3766,11 +3675,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Probe roster with per-class expected/actual disposition and the enrollment receipt."
       )
     ),
-    active_sized(identity: "rn_SJMVG3RD7JEGUGEKJPOWH567UY", id: "ladder-claims-carrier",
+    active(identity: "rn_SJMVG3RD7JEGUGEKJPOWH567UY", id: "ladder-claims-carrier",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "The guarantee claims carrier: rung state becomes DERIVED from execution receipts, never stored",
         boundary: "Four carriers, measurement separated from claim: GuaranteeRequirement (class identity, domain, harm, ceiling with typed reason, next_rung_trigger); GuaranteePath (subject_grain, acceptance_boundary, realization_target per gunbc.guarantee_measurement; one row per in-scope path, population derived from the census or completeness-witnessed); GuaranteeMeasurement (executed receipts naming their consumer); and GuaranteeDisposition DERIVED per path — Unmeasured | BelowFloor | FrontierAccepted | OnLadder | OutsideModeledGuarantee — folded by below-floor dominance, then frontier, then unmeasured, then MINIMUM rung across paths. No stored current_rung field exists, so a transcribed rung is unrepresentable; the five recovered vocabularies stay orthogonal, joined by class identity. Full shape: gap analysis sec 12 Stage 1b.",
@@ -3781,11 +3688,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Carrier module path, the disposition-derivation fn, and the per-domain path-row count."
       )
     ),
-    active_sized(identity: "rn_6NCVX2QTBZ0KWR9DPMHJLG5837", id: "compiler-declaration-floor",
+    active(identity: "rn_6NCVX2QTBZ0KWR9DPMHJLG5837", id: "compiler-declaration-floor",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
       t: fields(
         headline: "Behaviour witnesses passing does not mean the declarations are right",
         boundary: "A wrong parameter type, a wrong field type, a duplicated import, a duplicated declaration, and a bare reference that resolves only by accident are each refused with a located diagnostic. This is the declaration half of the ordinary floor, distinct from what a program does when it runs.",
@@ -3796,11 +3701,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The five located refusals, the unchanged-behaviour control, and the class filed against the claims carrier."
       )
     ),
-    active_sized(identity: "rn_7ENRV3ZX3AGAOLITDWLUPROO2U", id: "guarantee-baseline-prevalence",
+    active(identity: "rn_7ENRV3ZX3AGAOLITDWLUPROO2U", id: "guarantee-baseline-prevalence",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeMedium,
       t: fields(
         headline: "Baseline prevalence: the whole-corpus floor rerun bucketed by ladder position, before any wall lands",
         boundary: "A TWO-REVISION execution, never 'run the baseline at commit X' (three-way ambiguous): the anchor's compiler artifacts (subject_revision: anchor_commit 6c6e2dcb8587d73350ac252f5b07a6b50d684485, the gunbc#7489 merge — pre-P0 main) run under today's content-addressed probe set and classifier (harness_revision + probe_set_digest per the measurement schema), outcomes translated into measurement receipts keyed to carrier class ids. Bucket every failure — statically-decidable-should-have-refused, runtime-value-dependent, external-boundary, resource-budget, capability-not-grounded, interpreter-defect. Replaces the carried-but-unverified historical figures (1454/149; the 66/40/6 histogram). Runs parallel with the census emitters, not ahead of them.",
@@ -3811,11 +3714,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The bucketed histogram keyed to carrier class ids, and the delta rows for the census."
       )
     ),
-    active_sized(identity: "rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK", id: "method-established-surface-wall",
+    active(identity: "rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK", id: "method-established-surface-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Method existence on established receiver surfaces — LANDED (gunbc#7484, merged 2026-08-01)",
         boundary: "ACCEPTED fragment, recut from floor-method-existence-wall at its actual grain (operator spine verdict). An unresolved method on a kernel-profiled receiver refuses (MethodNotFound, blocking — the gunbc#7479 class, 0 files emitted); undecided receivers carry the rostered, occurrence-budgeted MethodExistenceUndecided/FrontierAdmitted frontier; map_keys/map_values bypasses routed through the one decision; one where-refinement receiver class peeled. What did NOT land stays on the sibling nodes: receiver-resolution residue, the general zero-resolution wall, resolve_builtin_call_type's unit_type fabrication.",
@@ -3826,11 +3727,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Receipt recorded; residue on method-receiver-normalization and method-zero-resolution-general-wall."
       )
     ),
-    active_sized(identity: "rn_TMC5UFTYNMSBMS7FLXYIVQCSRE", id: "method-receiver-normalization",
+    active(identity: "rn_TMC5UFTYNMSBMS7FLXYIVQCSRE", id: "method-receiver-normalization",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Receiver normalization: the measured resolution residue becomes decidable receivers",
         boundary: "The frontier's measured causes, repaired upstream so the wall can decide them: a lambda-parameter receiver whose type never propagates from the declared fn type it is bound under; a coproduct payload bound by destructuring typed as its variant name; the optional receiver whose cardinality drops before lookup; the brand-alias LEAF form the peel cannot reach (qualified-name leaf, measured and declared on the gunbc#7484 frontier roster). Each repair shrinks the roster in both directions — correct calls resolve, bogus methods refuse.",
@@ -3841,11 +3740,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Roster rows discharged, the receiver families now decidable, probe receipts."
       )
     ),
-    active_sized(identity: "rn_M25FZG43IT6MSBIWBQBONOUSZM", id: "method-zero-resolution-general-wall",
+    active(identity: "rn_M25FZG43IT6MSBIWBQBONOUSZM", id: "method-zero-resolution-general-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Zero-resolution refuses generally: enumeration over the union of admissible sources",
         boundary: "Absence is decided by enumerating the union of current admissible sources — no identity join required (the join gates only the more-than-one wall). Delete the resolve_builtin_call_type Absent-to-unit_type fabrication; every call whose callee resolves nowhere refuses with name and locus on every compile/emit path.",
@@ -3856,11 +3753,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The deleted arm, census delta, probe flip receipt."
       )
     ),
-    active_sized(identity: "rn_42Z3Z646SNDZBMVXYDU7RSL4JA", id: "method-call-shape-seam",
+    active(identity: "rn_42Z3Z646SNDZBMVXYDU7RSL4JA", id: "method-call-shape-seam",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeSmall,
       t: fields(
         headline: "Argument labels at the method/pipe seam: the call-shape judgment reaches method dispatch",
         boundary: "The direct-call label/surplus wall (landed, gunbc#7519) covers the sig-resolved ExprCall branch only; method-pipe argument binding routes through its own inference arms. Mirror the same two runtime-refused classes there, reusing the landed judgment rather than minting a second relation.",
@@ -3871,11 +3766,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The seam's judgment site and probe receipts."
       )
     ),
-    active_sized(identity: "rn_EDXPW53NQMZVLEPYNYH6X4VNKM", id: "call-label-and-surplus-wall",
+    active(identity: "rn_EDXPW53NQMZVLEPYNYH6X4VNKM", id: "call-label-and-surplus-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Unknown labels and surplus positionals refuse at the direct-call seam — LANDED (gunbc#7519, merged 2026-07-31)",
         boundary: "ACCEPTED fragment, recut from floor-call-shape-wall at its actual grain (operator spine verdict). CallArgumentNameUnknown + CallPositionalSurplus blocking, exemption-free, mirroring call_function_inner's two refused classes (underscore idiom included); census refused 28 live parameter-rename fossils, all fixed; the silent emit-path reorder retired for Accepted programs. What did NOT land stays on the sibling nodes: missing/duplicate, signature-resolution coverage, the method seam.",
@@ -3886,11 +3779,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Receipt recorded; residue on call-missing-and-duplicate-wall and call-signature-resolution-coverage."
       )
     ),
-    active_sized(identity: "rn_EXUHLON5V24YU7Z4XLJFWEZO33", id: "call-missing-and-duplicate-wall",
+    active(identity: "rn_EXUHLON5V24YU7Z4XLJFWEZO33", id: "call-missing-and-duplicate-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Duplicate-argument half LANDED (gunbc#7847); missing-argument half remains",
         boundary: "CORRECTED FRAMING (parent review, 2026-08-05): the defect is two ACTUALS resolving to the SAME PARAMETER, not 'duplicate labels' — positional-then-named onto one slot, or two labels both satisfying an underscore-shorthand parameter. Keyed by resolved binding target: a NAMED actual keys on its own label; a POSITIONAL actual keys on the parameter its index fills, matching call_function_inner. call_function_inner refuses (CallArgumentDuplicate) before the compile-seam mirror, keeping both authorities in agreement. Fixed a prior compile-seam bug where declared-parameter matching let underscore-shorthand steal a later exact-named match (false positive in cardinality.dag). Missing required arguments remain unrefused; param_node_default_value legitimately fills omissions and must stay green.",
@@ -3901,11 +3792,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Duplicate half: both authorities' refusal sites, census delta, probe receipts — delivered in gunbc#7847. Missing half: still owed."
       )
     ),
-    active_sized(identity: "rn_GVLXWYYRQV47WTJLSSIFX7FLFM", id: "call-signature-resolution-coverage",
+    active(identity: "rn_GVLXWYYRQV47WTJLSSIFX7FLFM", id: "call-signature-resolution-coverage",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Signature-resolution coverage: the sig-unresolved fallthrough stops being a blind spot",
         boundary: "A call whose callee resolves NO signature bypasses every call-shape judgment (measured: 3 label fossils invisible to the landed wall in dag_collect, found only by grep). Either the callee resolves and is judged, or the failure to resolve is itself a typed, counted fact — never a silent fallthrough to the method bridge. Rides the namespace lane's resolution coverage; this node owns the call-shape consequence.",
@@ -3916,11 +3805,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Fallthrough census, then the coverage receipt."
       )
     ),
-    active_sized(identity: "rn_4ELCVV2EIHCBGHMOG6T4IZEMT3", id: "declared-conformance-ground-fragment",
+    active(identity: "rn_4ELCVV2EIHCBGHMOG6T4IZEMT3", id: "declared-conformance-ground-fragment",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Declared conformance for the ground fragment — LANDED (gunbc#7484, merged 2026-08-01)",
         boundary: "ACCEPTED fragment, recut from floor-inhabitance-wall at its actual grain (operator spine verdict). fn returns (both arms, plus early returns stopping at lambda boundaries) and data annotations refuse non-conforming producers where BOTH sides are ground: kernel scalars, or Required non-keyed element collections of them — positive establishment, the four measured representation classes never guessed at. The counted unjudged advisory was EXCLUDED in final review scope: everything wider is byte-for-byte main behavior (silent), stated here so the fragment is never read as the class.",
@@ -3931,11 +3818,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Receipt recorded; residue on declared-conformance-grounding and declared-conformance-general-wall."
       )
     ),
-    active_sized(identity: "rn_WGRZFAYJ5EDVPNEQ42UAK7TD6D", id: "declared-conformance-grounding",
+    active(identity: "rn_WGRZFAYJ5EDVPNEQ42UAK7TD6D", id: "declared-conformance-grounding",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Conformance grounding: the four representation classes stop being unjudgeable",
         boundary: "The measured false-positive classes that cap the ground fragment, each a §3 grounding defect not a checker defect: brand aliases unpeeled to their base; optionality living in two representations (return_cardinality vs the nominal Optional coproduct); anonymous record literals never grounded against their expected nominal; declaration-vs-body expansion depth. Ground each so the conformance relation widens class by class — the ground-fragment gate exists only because these are unjudgeable today.",
@@ -3946,11 +3831,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Classes grounded, frontier delta per class, probe receipts."
       )
     ),
-    active_sized(identity: "rn_E6PQ6WQR2J7SLMGBR62P3ECKGY", id: "declared-conformance-general-wall",
+    active(identity: "rn_E6PQ6WQR2J7SLMGBR62P3ECKGY", id: "declared-conformance-general-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
       t: fields(
         headline: "The general conformance wall: every grounded declared type constrains its producer",
         boundary: "As grounding lands per class, the conformance judgment widens to full return/data coverage — the gate dissolving into the relation until every grounded declared type refuses non-inhabiting producers, with whatever residue remains typed and counted, never silent.",
@@ -3961,11 +3844,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The widened relation, residue census, probe receipts."
       )
     ),
-    active_sized(identity: "rn_EAOINVVBM732ZXS42ELVZAUPQV", id: "argument-type-compatibility-grounding",
+    active(identity: "rn_EAOINVVBM732ZXS42ELVZAUPQV", id: "argument-type-compatibility-grounding",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
       t: fields(
         headline: "Argument-type compatibility grounding: adjudicate what the exemption papers over",
         boundary: "module_skips_direct_call_arg_check exempts v2.* from the argument TYPE judgment because of representation-gap false positives — the same four classes the conformance lane grounds, at the argument seam, plus the unlocated historical '104 TypeMismatch false positives' (no receipt found by two audits; adjudicate or refute it by measurement). Ground the argument-position relation so the exemption's reason dissolves.",
@@ -3976,11 +3857,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The bucketed census, classes grounded, the 104-claim disposition."
       )
     ),
-    active_sized(identity: "rn_VEY66GYMNYZ24LWJQJGZGCFLRI", id: "floor-exhaustiveness-refusal",
+    active(identity: "rn_VEY66GYMNYZ24LWJQJGZGCFLRI", id: "floor-exhaustiveness-refusal",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeSmall,
       t: fields(
         headline: "ExhaustivenessUnknown refuses: the PatternLookupBlocked silent arm closes",
         boundary: "lookup_variant_in_type and lookup_field_in_variant answer PatternLookupBlocked with diagnostics: [] — exhaustiveness-not-established passing as success-adjacent. Split the verdict three ways (Exhaustive | NonExhaustive | ExhaustivenessUnknown) and refuse Unknown into any accepted executable artifact.",
@@ -3991,11 +3870,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The verdict type, the two closed arms, probe flip receipt."
       )
     ),
-    active_sized(identity: "rn_P64CH3KXIZGL43SFS5DNJX52EQ", id: "floor-generic-field-constraint-wall",
+    active(identity: "rn_P64CH3KXIZGL43SFS5DNJX52EQ", id: "floor-generic-field-constraint-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Field access through an unconstrained generic refuses: delete the field_of_type_var fabrication",
         boundary: "field_of_type_var answers a field projection on a bare type variable by fabricating the field type — compile-time plausible output where no fact exists (the census's field-through-generic class). The wall: field projection on a type parameter with no field-carrying bound refuses with the parameter, field name, and locus; concrete receivers and parameters whose bound carries the field stay green.",
@@ -4006,11 +3883,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The deleted fabrication arm, the refusal variant, the probe flip receipt."
       )
     ),
-    active_sized(identity: "rn_KPPUUSOXKTMKVJWBCW4G74ZP6A", id: "floor-method-ambiguity-wall",
+    active(identity: "rn_KPPUUSOXKTMKVJWBCW4G74ZP6A", id: "floor-method-ambiguity-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Method ambiguity refuses: more than one resolution is a located error once primitive identity defines sameness",
         boundary: "The method-existence wall closes cardinality zero; this closes more-than-one — two distinct primitive identities (or a primitive and a user fn) resolving for one receiver/method pair refuse with both candidates named. Gated on primitive-identity-join because ambiguity is decidable only when sameness is: the length/count/size dispatch aliases make one method look like three today (the gunbc#7484 measured fork), so an ambiguity check before the join would refuse legitimate corpus or silently pick.",
@@ -4021,11 +3896,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The refusal variant, the duplicate-probe receipt, the exactly-one derivation site."
       )
     ),
-    active_sized(identity: "rn_LOVW74OSEOKAJHINOV2BVHPNCE", id: "cardinality-vertical-slice",
+    active(identity: "rn_LOVW74OSEOKAJHINOV2BVHPNCE", id: "cardinality-vertical-slice",
       owner: "compiler-guarantee",
       path: "docs/plans/cardinality-refinement.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "The operator's seam, end to end: a 0..n producer cannot feed a 1..n consumer",
         boundary: "One path, not a census: bare List = 0..inf, literal [] = 0..0, nonempty literal = n..n; map preserves, filter floors to 0, concat adds; the interval is an interface fact in InterfaceSummary's contract slot, actual-within-required enforced at function boundaries with a located seam refusal. The seam direction (2026-07-04) and candidate lattice exist; the in-tree fold-propagation rows are manual value-level specimens — binding-level propagation starts here. Construction-wall first candidate: type Refined<B> sole_constructor, which is why the sole-constructor completeness audit is a declared prerequisite edge (v2.std.refinement refined_vacuous_stub_pack, the forged Rejected-arm mint this candidate used to reference, is deleted outright — not merely fixed — as of the delete-first replacement in gunbc.std.refinement; the wall question below is unaffected and still open).",
@@ -4036,11 +3909,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The lattice fragment landed, the seam judgment site, both probe receipts."
       )
     ),
-    active_sized(identity: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ", id: "v2-self-grounding-frontier",
+    active(identity: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ", id: "v2-self-grounding-frontier",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
       t: fields(
         headline: "v2 self-grounding slice — LANDED (gunbc#7485, merged; acceptance receipt recorded 2026-08-01)",
         boundary: "ACCEPTED against its handback (operator spine verdict): exact self-evidence left solve_constraints' generic arm; underived facts are typed, located, counted GroundingNotDerived diagnostics inside an accepted InferredTree — the FrontierAccepted disposition's live specimen. Identity admission reads the authored declared-inhabitant roster, never caller-supplied candidates. The documented residue is the NEXT node's whole scope: Translate can still swallow the refusal and proceed.",
@@ -4051,11 +3922,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The merged receipts and the frontier diagnostic counts by class."
       )
     ),
-    active_sized(identity: "rn_R34TEJZQSFSFZPHUPA3QLNDXYY", id: "v2-translate-underived-refusal",
+    active(identity: "rn_R34TEJZQSFSFZPHUPA3QLNDXYY", id: "v2-translate-underived-refusal",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Translate propagates the refusal: an underived fact cannot be swallowed downstream",
         boundary: "ACTIVE — the containment workstream, authorized to run parallel with the spine (operator spine verdict 2026-08-01: not another optional wall; it closes the one documented fail-open the merged frontier split created). gunbc#7485 records that Translate can swallow the new GroundingNotDerived rejection and continue — the frontier diagnostic exists but the emission path proceeds. Make Translate refuse or thread the typed frontier so Eval and Translate agree: compile-time refusal on both is the class minimum. The per-path grain is exactly why the carrier models paths separately.",
@@ -4066,11 +3935,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The refusal arm, probe flip, per-path disposition receipts."
       )
     ),
-    active_sized(identity: "rn_33MD6AG25ANERCNTXHLLCWSRAA", id: "v2-inferred-tree-completeness",
+    active(identity: "rn_33MD6AG25ANERCNTXHLLCWSRAA", id: "v2-inferred-tree-completeness",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "InferredTree carries only derived facts: the all-derived carrier lands",
         boundary: "Separate source and inferred carriers so candidate-equals-source is not even well-typed as a grounding proof: every fact on the inferred carrier traces to a derivation or the node refuses. Branch/Match/Loop (the three real inference paths) migrate first; the validate_then_compile door and its lens roster stay. A well-formed node with no derived facts cannot inhabit the carrier.",
@@ -4081,11 +3948,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The carrier types, the migrated arm list, the disposition climb receipt."
       )
     ),
-    active_sized(identity: "rn_XYRCAJC6YWM4CU774LOSFYDJ4U", id: "v2-node-kind-derivation-coverage",
+    active(identity: "rn_XYRCAJC6YWM4CU774LOSFYDJ4U", id: "v2-node-kind-derivation-coverage",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Every node kind derives or refuses: the generic acceptance arm deletes",
         boundary: "The remaining derivation rules beyond Branch/Match/Loop: each v2 node kind either derives into the inferred carrier or its acceptance is a typed compile refusal — the generic accept-anything arm deletes. Coverage is counted per kind, so the frontier shrinks to zero or to named FrontierAccepted rows each carrying a trigger.",
@@ -4096,11 +3961,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The per-kind coverage table and the deleted-arm commit."
       )
     ),
-    active_sized(identity: "rn_223FAUHF5IVK24UVR6PPYSXQCI", id: "v2-target-realization-gate",
+    active(identity: "rn_223FAUHF5IVK24UVR6PPYSXQCI", id: "v2-target-realization-gate",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Realization per target: an operation cannot compile for T without exactly one realization",
         boundary: "The realized carrier adds target realization: every executable operation in a program accepted for target T has exactly one compatible realization row for T, refused target-relatively otherwise. gunbc#7485 explicitly leaves this open; it consumes the primitive-identity join (realization rows are its per-target facts) and the derivation-coverage node (a realized tree is derived-then-realized, never source-then-realized).",
@@ -4111,11 +3974,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The gate site, the per-target refusal variant, probe flip receipt."
       )
     ),
-    active_sized(identity: "rn_VNYPK344GM56QEWP34G7VCG4OA", id: "floor-parse-formation-wall",
+    active(identity: "rn_VNYPK344GM56QEWP34G7VCG4OA", id: "floor-parse-formation-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Parse formation refuses: a dropped separator cannot silently change the program",
         boundary: "Two slices, one wall. Safety: a missing list separator refuses at parse instead of parsing as element juxtaposition (the measured below-floor census row — a dropped comma silently changes list arity). Completeness: a block after a bare identifier in if-condition position parses as the block it is, closing the measured false refusal (expected-RParen on legitimate input). Probe-paired via the corpus's parser pair; grammar-owned, no host parser (census queue items 6-7).",
@@ -4126,11 +3987,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The two closed defects, probe flips, corpus parse receipt."
       )
     ),
-    active_sized(identity: "rn_ILWLG34LVL5SAS6QPN5GZDPMFY", id: "floor-record-construction-wall",
+    active(identity: "rn_ILWLG34LVL5SAS6QPN5GZDPMFY", id: "floor-record-construction-wall",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Record construction refuses: missing required fields, bad defaults, ungrounded nominal literals",
         boundary: "A record literal missing a required field refuses at compile with the field named; defaults apply only where declared; a literal claiming a nominal type it does not ground refuses. Owns the census's record-completeness class — the declared-conformance chain owns return, data, and generic instantiation, not this. Probe-paired via the corpus's record-completeness pair. Motivating specimen: HandAuthoredDocBind's primary_work construction wall currently rests on record-completeness enforcement that is itself unmeasured.",
@@ -4141,11 +4000,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The judgment site, probe flip, corpus receipt."
       )
     ),
-    active_sized(identity: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH", id: "accepted-obligation-door-mechanism",
+    active(identity: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH", id: "accepted-obligation-door-mechanism",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeSmall,
       t: fields(
         headline: "The acceptance door as mechanism: audit first, blocking later",
         boundary: "Split from the monolithic closure node (operator spine verdict: a door gated on the whole program delays the most important new mechanism until nearly done). This node lands the MECHANISM only, depending on the carrier alone: read every Required guarantee path, derive the missing/unmeasured/frontier/no-live-consumer census, run audit-mode and expecting-red — it reports, it does not yet block, and it never claims the open classes closed. The recovered P0.0 meta-guarantee gets its executable form here.",
@@ -4156,11 +4013,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The door site, the audit census, the RED receipts."
       )
     ),
-    active_sized(identity: "rn_5FUBPPKWUGPBAYADIIIR3LDZKQ", id: "accepted-floor-obligation-closure",
+    active(identity: "rn_5FUBPPKWUGPBAYADIIIR3LDZKQ", id: "accepted-floor-obligation-closure",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Floor activation: the ordinary compiler floor flips to blocking",
         boundary: "The door mechanism flips from audit to refusal over the FLOOR domain only — names, call shape, conformance, fields, exhaustiveness, parse formation, record construction, the exemption gone: acceptance refuses when a floor class or path is Unmeasured, BelowFloor, FrontierAccepted, or lacks its live consumer.",
@@ -4171,11 +4026,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The flip receipt and the zero-census reading.",
       )
     ),
-    active_sized(identity: "rn_FAF4MACL7ZXJMZ3GX6DJIR4E5S", id: "extended-admission-cardinality",
+    active(identity: "rn_FAF4MACL7ZXJMZ3GX6DJIR4E5S", id: "extended-admission-cardinality",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeSmall,
       t: fields(
         headline: "Cardinality joins the contract: the seam class flips to Required-blocking",
         boundary: "Admit the cardinality-seam class into the door's blocking Required set — one class, one flip (per-class admission nodes replace the monolithic extended activation, review 45918: an admission becomes ready the day its OWN climb lands instead of every extended class waiting on the slowest). After the flip, acceptance refuses a program whose cardinality judgment is Unmeasured, BelowFloor, FrontierAccepted, or consumer-less.",
@@ -4186,11 +4039,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The admission receipt and the flip's green whole-tree run.",
       )
     ),
-    active_sized(identity: "rn_7OIWVA5MTJIGEEJOBPJOKJTEQ2", id: "extended-admission-ambiguity",
+    active(identity: "rn_7OIWVA5MTJIGEEJOBPJOKJTEQ2", id: "extended-admission-ambiguity",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeSmall,
       t: fields(
         headline: "Method ambiguity joins the contract",
         boundary: "Admit the method-ambiguity class into the door's blocking Required set once its wall lands (per-class admission, review 45918). After the flip, a program with a more-than-one-resolution judgment left Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
@@ -4201,11 +4052,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The admission receipt and the flip's green whole-tree run.",
       )
     ),
-    active_sized(identity: "rn_QXI4FCLYEUMTP66BKPEGYLNPLV", id: "extended-admission-v2-realization",
+    active(identity: "rn_QXI4FCLYEUMTP66BKPEGYLNPLV", id: "extended-admission-v2-realization",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeSmall,
       t: fields(
         headline: "Target realization joins the contract",
         boundary: "Admit the target-relative realization class into the door's blocking Required set once its gate lands (per-class admission, review 45918). After the flip, a program accepted for target T with a realization judgment left Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
@@ -4216,11 +4065,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The admission receipt and the flip's green whole-tree run.",
       )
     ),
-    active_sized(identity: "rn_VAKMHRHJ64DJLMKHHSEKTXYLNP", id: "extended-admission-v2-translate",
+    active(identity: "rn_VAKMHRHJ64DJLMKHHSEKTXYLNP", id: "extended-admission-v2-translate",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeSmall,
       t: fields(
         headline: "Translate containment joins the contract",
         boundary: "Admit the Translate-containment class into the door's blocking Required set once the refusal lands (per-class admission, review 45918). After the flip, a program whose underived-fact judgment is Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
@@ -4231,11 +4078,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The admission receipt and the flip's green whole-tree run.",
       )
     ),
-    active_sized(identity: "rn_DOFYQJV7FMMCLMNWGE4EUDJSOY", id: "accepted-extended-obligation-closure",
+    active(identity: "rn_DOFYQJV7FMMCLMNWGE4EUDJSOY", id: "accepted-extended-obligation-closure",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Extended closure: the full contract roster certified complete",
         boundary: "The terminal certification over the per-class admissions (recut per review 45918 — requires-all belongs HERE, on the completion receipt, never on the admission work, which is per-class and ready as each climb lands): every extended admission receipt present, the door's Required roster equal to the declared extended set — nothing climbed-but-unadmitted, nothing admitted-but-unclimbed — the full recovered P0.0 contract in force.",
@@ -4246,11 +4091,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The contract roster receipt handed to residual prevalence.",
       )
     ),
-    active_sized(identity: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A", id: "primitive-identity-join",
+    active(identity: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A", id: "primitive-identity-join",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "One primitive identity: definition, per-target realization, and cost as three facts on one key",
         boundary: "PrimitiveDefinition (identity + PrimitiveSemanticContract), PrimitiveInvocationSurface, PrimitiveRealization per RealizationTarget, PrimitiveCostFact, and PrimitiveTraversalOrderFact — five separate carriers joined by PrimitiveIdentity, never one mega-row. TERMINAL acceptance: every primitive-bearing surface across all five authorities (registry, PrimitiveContract rows, algebra templates, interpreter dispatch, emit handlers) joins exactly one identity; population-wide join and realization refusals are the closing contract. D0 is a first slice only — not the closing contract. Namespace supplies declaration identity; this node supplies semantic primitive identity across invocation and realization.",
@@ -4261,11 +4104,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "D0: std.primitive_identity carriers, primitive_surface_census_derived, measurement specimen rows, refusal predicates, slice witness receipt. TERMINAL (after interpreter-primitive-roster): population-wide join closure across all five surfaces."
       )
     ),
-    active_sized(identity: "rn_DETERMINISM_DENOMINATOR_CLOSURE", id: "determinism-denominator-closure",
+    active(identity: "rn_DETERMINISM_DENOMINATOR_CLOSURE", id: "determinism-denominator-closure",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Determinism denominator closure: every primitive carries one traversal-order classification",
         boundary: "v2.std.determinism and v2.lens.determinism consume std.primitive_identity: every PrimitiveDefinition carries exactly one PrimitiveTraversalOrderFact, unclassified refuses, HostUnspecifiedOrder derives a determinism root, aliases resolve through PrimitiveIdentity not raw symbol. Adding a new invokable primitive realization without a traversal-order fact reds before any caller uses it.",
@@ -4276,11 +4117,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Identity-keyed determinism classification, closed denominator receipt, deleted interim symbol registry."
       )
     ),
-    active_sized(identity: "rn_INTERPRETER_PRIMITIVE_ROSTER", id: "interpreter-primitive-roster",
+    active(identity: "rn_INTERPRETER_PRIMITIVE_ROSTER", id: "interpreter-primitive-roster",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
       t: fields(
         headline: "Interpreter primitive roster: the fifth surface becomes readable from .dag",
         boundary: "Land interpreter-primitive-roster across all six v1_interpreter dispatch sites (eval_builtin_inner, eval_algebra_method_inner, eval_call, try_v2_std_collection_map_primitive_grounding, try_parse_table_memo_dispatch, eval_method_call lookup short-circuit — 158 arms / 169 spellings). clever-crab-111 macro authority: eval_builtin_inner arms expand from interpreter_free_call_arm_spellings with construction wall (arm without roster entry unwritable). primitive_surface_census_derived absorbs InterpreterDispatch instead of primitive_interpreter_dispatch_measurement_rows. Prerequisite for primitive-identity-join terminal acceptance.",
@@ -4291,11 +4130,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "Modeled interpreter roster authority, derived fifth surface on primitive_surface_census_derived, deleted measurement scaffold."
       )
     ),
-    active_sized(identity: "rn_JPU4RUV5DNELDCZI4JUQGWHICM", id: "compiler-source-exemption-removal",
+    active(identity: "rn_JPU4RUV5DNELDCZI4JUQGWHICM", id: "compiler-source-exemption-removal",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
       t: fields(
         headline: "Delete module_skips_direct_call_arg_check: the compiler stops authoring itself under weaker checks",
         boundary: "Gated on the two GROUNDING nodes, not the label wall (dependency corrected per the operator spine verdict: the exemption skips the argument TYPE judgment, whose false positives are representation gaps — labels never gated it, and gunbc#7519's wall already runs exemption-free). Once argument-type-compatibility grounding and declared-conformance grounding land, re-run exemption-free, repair relation or source per the bucketed census, then delete. Its deletion is the terminal Tier-1 acceptance named by the doc-graph bind on this lane's analysis.",
@@ -4306,11 +4143,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The classification table, relation fixes landed, the deletion commit."
       )
     ),
-    active_sized(identity: "rn_JLPYDWJUCGBUPQ734NGPEQLMWI", id: "unforgeable-construction-capability",
+    active(identity: "rn_JLPYDWJUCGBUPQ734NGPEQLMWI", id: "unforgeable-construction-capability",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeLarge,
       t: fields(
         headline: "The capability audit: sole_constructor completeness, then seal the proof-carriers",
         boundary: "The language ALREADY has a construction wall: sole_constructor rejects cross-module construction with SoleConstructorViolation (post-merge review of gunbc#7486 refuted this node's earlier premise). What is UNVERIFIED is completeness. The CAST form is audited and CLOSED: it red on falsification, and 04_infer sole_constructor_construction_diags is now the one authority both the record literal and the cast consult. Caller admission is enrolled beside it. STILL UNVERIFIED: generic carriers, coproduct variants, default values, and module_skips_direct_call_arg_check. Continue auditing by falsification; extend sole_constructor or ground the reference-grant algebra only where the audit reds.",
@@ -4321,11 +4156,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The completeness matrix (form x module-context x verdict), the sealed-Refined receipt or the named counterexamples, and the roster of classes whose ceiling reason flips."
       )
     ),
-    active_sized(identity: "rn_ITD5F26B5RMK7FMDMO6Q7ZQDFA", id: "ladder-census-emitters",
+    active(identity: "rn_ITD5F26B5RMK7FMDMO6Q7ZQDFA", id: "ladder-census-emitters",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyMedium,
-      volume: VolumeSmall,
       t: fields(
         headline: "Emit the ladder: per-class rung state renders to ROADMAP.md and the served roadmap page from the carrier",
         boundary: "A projection from the guarantee carrier's derived dispositions to (a) a generated ROADMAP.md state table and (b) a roadmap-page panel via the existing ServedRoute machinery — one authority, two projections, drift-gated like DESIGN.md and ROADMAP.md today. The gunb.ai site inherits it through the site-subsumption lane's rule that every shown intricacy derives from a real repo fact.",
@@ -4336,11 +4169,9 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The projection function, both render receipts, the drift-gate enrollment."
       )
     ),
-    active_sized(identity: "rn_JR4ID3YDMYNBN7Q74WNCOHYIUQ", id: "guarantee-residual-prevalence",
+    active(identity: "rn_JR4ID3YDMYNBN7Q74WNCOHYIUQ", id: "guarantee-residual-prevalence",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-      intricacy: IntricacyLow,
-      volume: VolumeMedium,
       t: fields(
         headline: "Residual prevalence: the post-climb rerun that prices what remains",
         boundary: "The baseline's bucketing classifier re-run after the declared climbs land, diffed against the anchored baseline: per-class delta receipts showing which buckets each wall emptied, and the residual histogram pricing the next round (DESIGN 6 displaced-cost denomination). Depends on the acceptance-closure door alone — every required climb, ambiguity and the cardinality seam included, now flows through that door (review 45545) — so a partial rerun cannot masquerade as the residual.",

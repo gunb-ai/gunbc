@@ -5,6 +5,7 @@ import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap_status {
   RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
+  node_title, item_description, item_exit_criterion,
   TicketFields, line_ticket,
   RedControlEvidence, HandbackEvidence,
   RedControlNotRun, RedControlExecuted,
@@ -12,6 +13,9 @@ import gunbc.roadmap_status {
   red_control_evidence_satisfied, handback_evidence_satisfied,
 }
 import gunbc.roadmap_execution_contract { WorkItemExecutionContract }
+import gunbc.roadmap_sizing {
+  SizingSubject, SizingSubjectId, NodeSizingDerivation, derive_task_sizing,
+}
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 
@@ -21,39 +25,57 @@ type RoadmapNodeIdentity = NonEmptyStr where brand("RoadmapNodeIdentity")
 
 type Pointer { label: String, path: String }
 
-type Intricacy
-  = IntricacyLow
-  | IntricacyMedium
-  | IntricacyHigh
-
-type Volume
-  = VolumeSmall
-  | VolumeMedium
-  | VolumeLarge
-
 type Acceptance
   = PrsMerged
   | ManualAcceptance
 
-// NodeSizing.acceptance names the evidence a worker must return for review; it is not the work
-// item's lifecycle verdict. PrsMerged means a merged PR is the expected implementation artifact,
-// while ManualAcceptance means the evidence is operator-inspected directly. In both cases
+// WorkItemDispatch.acceptance names the evidence a worker must return for review; it is not the
+// work item's lifecycle verdict. PrsMerged means a merged PR is the expected implementation
+// artifact, while ManualAcceptance means the evidence is operator-inspected directly. In both cases
 // RoadmapNode.signoff is the separate acceptance step and the only route to completed work. A PR
 // can be merged while its roadmap node remains open for residue or rework.
 
-type NodeSizing
-  = Unsized
-  | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
+// WorkItemDispatch is the UNBUNDLED remainder of the former NodeSizing coproduct, which fused four
+// independent facts under one discriminant: whether the row is a dispatchable work item at all, the
+// repository the work happens in, the evidence its acceptance expects, and an authored
+// intricacy/volume guess at how big it is. The first three are facts an author genuinely holds when
+// declaring a row; the fourth is a measurement, and an author's ordinal guess is not one. Size is
+// therefore no longer a field here at all: it is derived from the row's own facts by
+// gunbc.roadmap_sizing, which owns Intricacy, Volume and NodeSizing and hands consumers a typed
+// derivation rather than a stored answer. Keeping the four bundled meant a row could not declare
+// where it runs without also declaring how big it is, and every consumer that wanted only the repo
+// had to destructure a size it never read.
+
+type WorkItemDispatch
+  = NotDispatchable
+  | Dispatchable { repo: String, acceptance: Acceptance }
 
 type RoadmapNode {
   identity: RoadmapNodeIdentity
   node: RoadmapNodeId
   line: RoadmapItem
   carriers: List<Pointer>
-  sizing: NodeSizing
+  dispatch: WorkItemDispatch
   execution: WorkItemExecutionContract
   owner: String
   signoff: Signoff
+}
+
+// THE ROADMAP'S ADAPTER ONTO THE TASK SIZER, and the only place a RoadmapNode meets it. The
+// deriver's subject is a task (gunbc.roadmap_sizing SizingSubject) precisely so that a plan item in
+// another repository can be sized by the same authority; a roadmap node is one kind of task, so it
+// projects into the subject here rather than the sizer reaching back into the roadmap.
+fn node_sizing_subject(rn: RoadmapNode) -> SizingSubject {
+  SizingSubject {
+    subject: rn.node as String as SizingSubjectId,
+    title: node_title(item: rn.line),
+    description: item_description(item: rn.line),
+    exit_criterion: item_exit_criterion(item: rn.line),
+  }
+}
+
+fn node_sizing_derivation(rn: RoadmapNode) -> NodeSizingDerivation {
+  derive_task_sizing(subject: node_sizing_subject(rn: rn))
 }
 
 type RoadmapEdge {

@@ -75,14 +75,8 @@ import gunbc.roadmap_model {
   roadmap_parent_ids,
   is_top_level,
   Pointer,
-  IntricacyLow,
-  IntricacyMedium,
-  IntricacyHigh,
-  VolumeSmall,
-  VolumeMedium,
-  VolumeLarge,
-  Sized,
-  Unsized,
+  Dispatchable,
+  NotDispatchable,
   ManualAcceptance,
 }
 import gunbc.roadmap_status {
@@ -245,10 +239,10 @@ fn active_node_admissible(n: RoadmapNode) -> Bool {
     }
     && count(n.carriers) > 0
     && !(n.owner == "")
-    && match n.sizing {
-      Sized { intricacy: _, volume: _, repo, acceptance } =>
+    && match n.dispatch {
+      Dispatchable { repo, acceptance } =>
         repo == "gunbc" && acceptance == ManualAcceptance
-      Unsized => false
+      NotDispatchable => false
   }
 }
 
@@ -258,9 +252,7 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
     node: "red-fixture",
     line: line,
     carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
-    sizing: Sized {
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
+    dispatch: Dispatchable {
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
@@ -493,16 +485,16 @@ test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
 }
 
 test fn witness_active_sizes_are_intentional_and_nonuniform() -> Bool {
-  all(nodes(), n => match n.sizing {
-    Sized { intricacy: _, volume: _, repo: _, acceptance: ManualAcceptance } => true
+  all(nodes(), n => match n.dispatch {
+    Dispatchable { repo: _, acceptance: ManualAcceptance } => true
     _ => false
   })
-    && any(nodes(), n => match n.sizing {
-      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: _, acceptance: _ } => true
+    && any(nodes(), n => match n.dispatch {
+      Dispatchable { repo: _, acceptance: _ } => true
       _ => false
     })
-    && any(nodes(), n => match n.sizing {
-      Sized { intricacy: IntricacyHigh, volume: VolumeLarge, repo: _, acceptance: _ } => true
+    && any(nodes(), n => match n.dispatch {
+      Dispatchable { repo: _, acceptance: _ } => true
       _ => false
     })
 }

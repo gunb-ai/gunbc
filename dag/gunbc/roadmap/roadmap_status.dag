@@ -158,6 +158,43 @@ fn item_superseded_by(item: RoadmapItem) -> String {
   }
 }
 
+// node_title, item_description and item_exit_criterion fold RoadmapItem, so they live with
+// RoadmapItem. node_title used to live in gunbc.roadmap_spawner, which is a consumer; it moved here
+// when gunbc.roadmap_sizing needed the same fold to build a SizingSubject, because two folds of one
+// coproduct answering the same question is the section 3 fork. item_exit_criterion is Optional
+// rather than an empty String: a line kind that declares no statement of done genuinely declares
+// none, and "" would be a subject the deriver could not distinguish from an authored blank.
+fn node_title(item: RoadmapItem) -> String {
+  match item {
+    DerivableLine { prs: _, title, description: _ } => title
+    AuthoredLine { done: _, content } => content
+    PlainLine { content } => content
+    SupersededLine { by: _, content } => content
+    TicketLine { done: _, ticket } => ticket.headline
+  }
+}
+
+fn item_description(item: RoadmapItem) -> String {
+  match item {
+    DerivableLine { prs: _, title: _, description } => description
+    AuthoredLine { done: _, content } => content
+    PlainLine { content } => content
+    SupersededLine { by: _, content } => content
+    TicketLine { done: _, ticket } => ticket.brief
+  }
+}
+
+fn item_exit_criterion(item: RoadmapItem) -> String? {
+  match item {
+    DerivableLine { prs: _, title: _, description: _ } => none
+    AuthoredLine { done: _, content: _ } => none
+    PlainLine { content: _ } => none
+    SupersededLine { by: _, content: _ } => none
+    TicketLine { done: _, ticket } =>
+      if ticket.handback == "" { none } else { Present { value: ticket.handback } }
+  }
+}
+
 fn line_ticket(item: RoadmapItem) -> TicketFields? {
   match item {
     DerivableLine { prs: _, title: _, description: _ } => Absent

@@ -59,6 +59,7 @@ import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_referenc
 import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_debt_straddling_produced_decl }
 import gunbc.rung_drop.determinism_transitive_reachability { determinism_transitive_reachability }
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
+import gunbc.rung_drop.roadmap_sizing_authored_to_derived { roadmap_sizing_authored_to_derived }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -101,6 +102,7 @@ data rung_drop_roster: List<RungDrop> = [
   floor_cost_debt_straddling_produced_decl,
   determinism_transitive_reachability,
   transitional_admission_exception(),
+  roadmap_sizing_authored_to_derived,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
