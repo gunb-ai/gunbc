@@ -52,7 +52,8 @@ import gunbc.spark.serving_runtime_capability_probe {
   MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator,
   runtime_kernel_capability_label,
 }
-import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe, spark_build_host_admissible, admissible_spark_build_hosts }
+import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
+import gunbc.spark.host_commitment { spark_uncommitted_hosts, spark_host_is_uncommitted }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
 //
@@ -687,8 +688,8 @@ func v41_published_image_probe_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode pulls an image and starts a container on ONE host, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
-      if !spark_build_host_admissible(host: target_host) {
-        exit_failure(reason: join([target_host as String, " is a rostered Spark but not an admissible target for this lane: ", join(map(admissible_spark_build_hosts(), h => h as String), ", "), " are the non-serving, non-reserved members. Pulling a 9.6 GB image and starting a container on a serving host is exactly what the roster excludes"], ""))
+      if !spark_host_is_uncommitted(host: target_host) {
+        exit_failure(reason: join([target_host as String, " is a rostered Spark but not an admissible target for this lane: ", join(map(spark_uncommitted_hosts, h => h as String), ", "), " are the units nothing else has claimed. Pulling a 9.6 GB image and starting a container on a serving host is exactly what the roster excludes"], ""))
       } else {
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_published_image_probe_ci: ", c], ""))

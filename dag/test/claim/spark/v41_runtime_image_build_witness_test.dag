@@ -39,12 +39,13 @@ import gunbc.spark.vllm_runtime_image_build {
   vllm_source_dir,
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
   v41_gb10_recipe, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
-  admissible_spark_build_hosts, spark_build_host_admissible, admit_spark_build_host,
+  admit_spark_build_host,
   SparkBuildHostAdmitted, SparkBuildHostRefused,
   SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable,
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
 }
+import gunbc.spark.host_commitment { spark_uncommitted_hosts, spark_host_is_uncommitted }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import gunbc.spark.serving_runtime_capability_probe {
   v41_sm121_capability_probe_rows, v41_gb10_source_build_probe, gb10_observed_compute_capability,
@@ -362,16 +363,18 @@ test fn every_published_image_observation_carries_its_instrument_and_date() -> B
       acc && string_contains(s: o.instrument as String, pattern: "registry-1.docker.io"))
 }
 
-// NO HOST IS NAMED IN THE BUILD MODULE, AND THE ROSTER IS A SUBTRACTION. The serving pair members and
-// the RPC-reserved members are excluded by derivation, so this goes red the moment someone writes a
+// NO HOST IS NAMED IN THE BUILD MODULE, AND THE ROSTER IS A SUBTRACTION. The four hosts of the
+// claimed serving group are excluded by derivation, so this goes red the moment someone writes a
 // literal back in or the fleet model changes under it -- which is the whole point of taking the host
-// as an argument.
-test fn the_admissible_build_hosts_exclude_the_serving_pair_and_the_rpc_reservation() -> Bool {
-  !spark_build_host_admissible(host: "srv5" as HostIdentity)
-    && !spark_build_host_admissible(host: "srv6" as HostIdentity)
-    && !spark_build_host_admissible(host: "srv7" as HostIdentity)
-    && !spark_build_host_admissible(host: "srv8" as HostIdentity)
-    && length(admissible_spark_build_hosts()) != 0
+// as an argument. The derivation itself moved to gunbc.spark.host_commitment when serving selection
+// became its second consumer; this claim is about what THIS LANE refuses, which is unchanged, and the
+// set's own reds are in test.claim.spark.spark_host_commitment_witness.
+test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
+  !spark_host_is_uncommitted(host: "srv5" as HostIdentity)
+    && !spark_host_is_uncommitted(host: "srv6" as HostIdentity)
+    && !spark_host_is_uncommitted(host: "srv7" as HostIdentity)
+    && !spark_host_is_uncommitted(host: "srv8" as HostIdentity)
+    && length(spark_uncommitted_hosts) != 0
     && (match admit_spark_build_host(raw: "srv5") {
       SparkBuildHostRefused { cause: why } => string_contains(s: why, pattern: "not an admissible build host")
       SparkBuildHostAdmitted { host: _ } => false

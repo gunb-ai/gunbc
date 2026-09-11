@@ -1,0 +1,245 @@
+module test.claim.spark.spark_host_commitment_witness
+
+import std.types { Bool, List, String }
+import std.algebra { FreeSemigroup, FreeMonoid, Empty, Cons }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fleet_intent_network {
+  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+  operator_host_srv2,
+}
+import gunbc.spark.cell_role {
+  SparkCellRoleAssignment, SparkServingCell, SparkTrainingCell, spark_cell_role_assignments,
+}
+import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
+import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
+import gunbc.spark.host_commitment {
+  SparkHostCommitment,
+  CommittedToCellRole,
+  MemberOfClaimedServingGroup,
+  HoldsUndischargedRpcReservation,
+  CellRoleUndecidable,
+  SparkHostStanding,
+  SparkHostUncommitted,
+  SparkHostCommitted,
+  spark_host_standing_in,
+  spark_uncommitted_hosts_in,
+  spark_committed_host_standings_in,
+  spark_claimed_serving_group_hosts,
+  spark_uncommitted_hosts,
+  spark_host_is_uncommitted,
+  spark_host_commitment_wire,
+}
+
+// ── FIXTURE ROSTERS ───────────────────────────────────────────────────────────────────────────
+//
+// The rosters are fixtures rather than the production ones for the reason gunbc.spark.cell_role gives
+// for its own roster-parameterised lookup: a capability's evidence must not depend on which machines
+// currently hold what. The reservation arm in particular commits nobody in production today -- the
+// one minted reservation was cleared by a release receipt on 2026-09-05 -- so asserting it against
+// production data would be a wall reporting that nothing collides because nothing is reserved.
+data fixture_units: List<HostIdentity> = [operator_host_srv7, operator_host_srv8, operator_host_srv9]
+
+data fixture_assignments: List<SparkCellRoleAssignment> = [
+  SparkCellRoleAssignment { host: operator_host_srv9, role: SparkTrainingCell },
+]
+
+data fixture_duplicate_assignments: List<SparkCellRoleAssignment> = [
+  SparkCellRoleAssignment { host: operator_host_srv9, role: SparkServingCell },
+  SparkCellRoleAssignment { host: operator_host_srv9, role: SparkTrainingCell },
+]
+
+fn fixture_uncommitted(held: List<HostIdentity>) -> List<HostIdentity> {
+  spark_uncommitted_hosts_in(
+    units: fixture_units,
+    assignments: fixture_assignments,
+    claimed_serving_hosts: [],
+    held_reservation_hosts: held,
+  )
+}
+
+fn contains_host(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
+  any(hosts, h => host_identity_eq(a: h, b: host))
+}
+
+// ── RED 1: A HOST HOLDING AN UNDISCHARGED RESERVATION IS NEVER IN THE SET ─────────────────────
+//
+// This is the arm the scalar could not express at all. Under a roster of three units where srv7 holds
+// an undischarged internal-participant reservation, the set is srv8 alone -- srv7 because it is held,
+// srv9 because it is committed to a role -- and membership is asserted BY IDENTITY in both directions
+// rather than by a length, because a count of one would be satisfied by any one host.
+test fn a_host_holding_an_undischarged_reservation_is_never_uncommitted() -> Bool {
+  let uncommitted = fixture_uncommitted(held: [operator_host_srv7])
+  !contains_host(hosts: uncommitted, host: operator_host_srv7)
+    && contains_host(hosts: uncommitted, host: operator_host_srv8)
+    && !contains_host(hosts: uncommitted, host: operator_host_srv9)
+    && length(uncommitted) == 1
+}
+
+// A COMMITTED HOST CARRIES EVERY CAUSE THAT COMMITS IT. srv9 is committed to a role, claimed by a
+// serving group and held by a reservation at once; dropping any of them would make a later release
+// receipt look like it freed a host it did not free.
+test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
+  match spark_host_standing_in(
+    assignments: fixture_assignments,
+    claimed_serving_hosts: [operator_host_srv9],
+    held_reservation_hosts: [operator_host_srv9],
+    host: operator_host_srv9,
+  ) {
+    SparkHostUncommitted { host: _ } => false
+    SparkHostCommitted { host: h, commitments: c } =>
+      host_identity_eq(a: h, b: operator_host_srv9)
+        && (match c.head {
+             CommittedToCellRole { role: _ } => true
+             MemberOfClaimedServingGroup => false
+             HoldsUndischargedRpcReservation => false
+             CellRoleUndecidable { assignments: _ } => false
+           })
+        && (match c.tail {
+             Empty => false
+             Cons { head: second, tail: rest } =>
+               (match second {
+                  MemberOfClaimedServingGroup => true
+                  CommittedToCellRole { role: _ } => false
+                  HoldsUndischargedRpcReservation => false
+                  CellRoleUndecidable { assignments: _ } => false
+                })
+                 && (match rest {
+                      Empty => false
+                      Cons { head: third, tail: _ } =>
+                        match third {
+                          HoldsUndischargedRpcReservation => true
+                          CommittedToCellRole { role: _ } => false
+                          MemberOfClaimedServingGroup => false
+                          CellRoleUndecidable { assignments: _ } => false
+                        }
+                    })
+           })
+  }
+}
+
+// ── RED 2: A RELEASE RECEIPT WIDENS THE SET, WITH NO EDIT TO ANY CONSUMER ─────────────────────
+//
+// A release receipt's whole effect on this join is that its host leaves
+// `llama_cpp_rpc_undischarged_peer_reservation_hosts()`; the receipt-to-undischarged fold is
+// gunbc.spark.llama_cpp_rpc_observed's own, and its evidence is in
+// test.claim.spark.spark_llama_cpp_rpc_witness. What is asserted here is the PROPAGATION: the same
+// units and the same assignments, with the hold discharged, admit srv7 and admit strictly more.
+test fn discharging_a_reservation_widens_the_uncommitted_set() -> Bool {
+  let held = fixture_uncommitted(held: [operator_host_srv7])
+  let released = fixture_uncommitted(held: [])
+  !contains_host(hosts: held, host: operator_host_srv7)
+    && contains_host(hosts: released, host: operator_host_srv7)
+    && contains_host(hosts: released, host: operator_host_srv8)
+    && length(released) == length(held) + 1
+}
+
+// ── RED 3: AN UNDECIDABLE ROLE IS NOT FREEDOM ─────────────────────────────────────────────────
+//
+// Two roster rows naming one host make the commitment unreadable. A lookup that cannot say what a
+// host is committed to has not said the host is uncommitted, and the committed arm names that cause
+// rather than folding it into either role.
+test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
+  match spark_host_standing_in(
+    assignments: fixture_duplicate_assignments,
+    claimed_serving_hosts: [],
+    held_reservation_hosts: [],
+    host: operator_host_srv9,
+  ) {
+    SparkHostUncommitted { host: _ } => false
+    SparkHostCommitted { host: _, commitments: c } =>
+      match c.head {
+        CellRoleUndecidable { assignments: rows } => length(rows) == 2
+        CommittedToCellRole { role: _ } => false
+        MemberOfClaimedServingGroup => false
+        HoldsUndischargedRpcReservation => false
+      }
+  }
+}
+
+// ── THE POSITIVE CONTROL: THE WALLS ADMIT SOMETHING ───────────────────────────────────────────
+//
+// Without this every refusal above would be satisfied by a fold that refuses everything.
+test fn an_unclaimed_unheld_unassigned_host_is_uncommitted() -> Bool {
+  match spark_host_standing_in(
+    assignments: fixture_assignments,
+    claimed_serving_hosts: [],
+    held_reservation_hosts: [],
+    host: operator_host_srv8,
+  ) {
+    SparkHostUncommitted { host: h } => host_identity_eq(a: h, b: operator_host_srv8)
+    SparkHostCommitted { host: _, commitments: _ } => false
+  }
+}
+
+// EVERY CAUSE RENDERS TO ITS OWN SENTENCE, so a refusal quoting one cannot be read as another.
+test fn each_commitment_cause_renders_distinctly() -> Bool {
+  let role = spark_host_commitment_wire(c: CommittedToCellRole { role: SparkServingCell }) as String
+  let group = spark_host_commitment_wire(c: MemberOfClaimedServingGroup) as String
+  let held = spark_host_commitment_wire(c: HoldsUndischargedRpcReservation) as String
+  let ambiguous = spark_host_commitment_wire(c: CellRoleUndecidable { assignments: fixture_duplicate_assignments }) as String
+  role != group && group != held && held != ambiguous && role != ambiguous
+}
+
+// ── THE PRODUCTION SET, ASSERTED BY IDENTITY ──────────────────────────────────────────────────
+//
+// srv5 and srv6 are committed cells and all four of srv5-srv8 are the hosts of the one serving group
+// this repository claims (cage 1 of gunbc.spark.fabric_switch_observed), so the uncommitted set is
+// srv9-srv12. The assertion is membership in both directions, never a count: a set of the right SIZE
+// holding the wrong hosts is exactly the failure the scalar this replaces could not detect. A host
+// outside the Spark unit population is not in the set either -- absence from the universe is not
+// membership.
+test fn the_production_uncommitted_set_is_the_four_unclaimed_units_by_identity() -> Bool {
+  contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv9)
+    && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv10)
+    && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv11)
+    && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv12)
+    && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv5)
+    && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv6)
+    && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv7)
+    && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv8)
+    && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv2)
+    && !spark_host_is_uncommitted(host: operator_host_srv5)
+    && spark_host_is_uncommitted(host: operator_host_srv9)
+    && length(spark_uncommitted_hosts) == 4
+}
+
+// THE SERVING GROUP IS WHERE THE COMMITMENT OF srv7 AND srv8 ACTUALLY COMES FROM, and that is worth
+// asserting on its own: they carry no cell role and no undischarged reservation, so a derivation that
+// consulted only those two authorities would call them free while the deployed four-rank-by-two shape
+// is running on them.
+test fn srv7_and_srv8_are_committed_by_the_claimed_serving_group_and_by_nothing_else() -> Bool {
+  contains_host(hosts: spark_claimed_serving_group_hosts(), host: operator_host_srv7)
+    && contains_host(hosts: spark_claimed_serving_group_hosts(), host: operator_host_srv8)
+    && length(llama_cpp_rpc_undischarged_peer_reservation_hosts()) == 0
+    && (match spark_host_standing_in(
+          assignments: spark_cell_role_assignments,
+          claimed_serving_hosts: spark_claimed_serving_group_hosts(),
+          held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
+          host: operator_host_srv7,
+        ) {
+          SparkHostUncommitted { host: _ } => false
+          SparkHostCommitted { host: _, commitments: c } =>
+            (match c.head {
+               MemberOfClaimedServingGroup => true
+               CommittedToCellRole { role: _ } => false
+               HoldsUndischargedRpcReservation => false
+               CellRoleUndecidable { assignments: _ } => false
+             })
+              && (match c.tail { Empty => true  Cons { head: _, tail: _ } => false })
+        })
+}
+
+// THE DERIVATION IS TOTAL OVER ITS UNIVERSE: uncommitted plus committed partitions the units, and
+// nothing here authors a host list.
+test fn the_derivation_partitions_the_unit_population() -> Bool {
+  let units = dgx_spark_reserved_identities()
+  let committed = spark_committed_host_standings_in(
+    units: units,
+    assignments: spark_cell_role_assignments,
+    claimed_serving_hosts: spark_claimed_serving_group_hosts(),
+    held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
+  )
+  length(spark_uncommitted_hosts) + length(committed) == length(units)
+    && all(spark_uncommitted_hosts, h => contains_host(hosts: units, host: h))
+}
