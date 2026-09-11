@@ -78,12 +78,20 @@ data bmc_rotation_route_disposition: Disposition = Terminal {
 // rung inflation -- the executed evidence is this module's witness fold and nothing else, and a
 // sentence about arrival phases cited that evidence for a claim it does not support.
 
-// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE (DESIGN §3c). Today: nobody in production. The only
-// executing consumer of rotation_application_for_route is
-// test.claim.machine_intake_bmc_rotation_route_witness_test, which exercises both arms
-// rather than asserting they exist. That is the honest state and it is stated rather than left to
-// be discovered, because a declaration whose consumption is described in a PR body and absent from
-// the diff is exactly §3c's red.
+// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE (DESIGN §3c). The only executing consumer of
+// rotation_application_for_route is test.claim.machine_intake_bmc_rotation_route_witness_test,
+// which exercises both arms rather than asserting they exist. That is the honest state and it is
+// stated rather than left to be discovered, because a declaration whose consumption is described
+// in a PR body and absent from the diff is exactly §3c's red.
+//
+// THE CLAIM IS A NAMED JOIN AND NOT AN ABSENCE, WHICH IS THE FORM THAT SURVIVES. An earlier draft
+// opened this block with "Today: nobody in production" -- a live open-world negative with no
+// producer that can re-derive it and no consumer whose addition contradicts it, so it would have
+// gone silently false the moment an actuator landed. The sentence that replaced it names the
+// consumer, and a named join is falsified MECHANICALLY when a caller appears, because its identity
+// is reachable through the namespace tree. That is DESIGN §3's cite-the-symbol-rather-than-the-
+// position rule applied to a claim about a population, and §3c asks for exactly this: name the
+// consumer and the route, never assert the absence of consumers.
 //
 // THIS IS THE ADMISSIBLE MIDDLE STATE -- consumed by a NAMED consumer landing in a NAMED later
 // change -- and the trigger is stated here rather than borrowed from
