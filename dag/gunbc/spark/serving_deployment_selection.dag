@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
-  v41_sm12_kv_cache_dtype_admitted,
+  v41_sm12_admitted_kv_cache_dtypes,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.dissolution { unbound_dissolution }
@@ -227,14 +227,22 @@ fn kv_layout_policies() -> List<KvLayoutPolicy> {
   [KvAutoLayout, KvFp8Layout, KvFp8DsMlaLayout, KvFp4Layout]
 }
 
-// THE SM12 MODULE OWNS THE WIRE SPELLING AND THE ADMIT SET. This fold is the join, not a second
-// list: it selects the KvLayoutPolicy whose wire equals the given spelling, and only if that
-// spelling is admitted on major 12. Miss is Absent — not Auto, not a fabricated inhabitant.
-fn kv_layout_from_sm12_wire(wire: NonEmptyStr) -> KvLayoutPolicy? {
-  if !v41_sm12_kv_cache_dtype_admitted(dtype: wire) {
+// WIRE MATCH IS NOT ADMISSION. The serving KvLayoutPolicy is the constructor whose wire equals
+// v41_sm12_kv_layout. Whether that spelling is in v41_sm12_admitted_kv_cache_dtypes is a separate
+// standing: a miss is an AxisGap / NeedsEvidence, never a dropped profile and never Auto.
+fn kv_layout_policy_matching_wire(wire: NonEmptyStr) -> KvLayoutPolicy? {
+  (filter(kv_layout_policies(), k => (kv_layout_wire(k: k) as String) == (wire as String))).first()
+}
+
+fn kv_wire_in_roster(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
+  any(admitted, d => (d as String) == (wire as String))
+}
+
+fn kv_layout_from_sm12_admit(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> KvLayoutPolicy? {
+  if !kv_wire_in_roster(wire: wire, admitted: admitted) {
     none
   } else {
-    (filter(kv_layout_policies(), k => (kv_layout_wire(k: k) as String) == (wire as String))).first()
+    kv_layout_policy_matching_wire(wire: wire)
   }
 }
 
@@ -357,37 +365,27 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
-data v4_1_gb10_kv_layout: KvLayoutPolicy? = kv_layout_from_sm12_wire(wire: v41_sm12_kv_layout)
-
-// V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
-// extdeps.deepseek.deepseek_v4_1_flash. KV layout is v4_1_gb10_kv_layout, the KvLayoutPolicy
-// whose wire is extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_kv_layout and which
-// v41_sm12_kv_cache_dtype_admitted accepts. A failed join yields no profile, not Auto.
-// Higher-precision KV does not violate native quality. Speculation is DSpark. Per-token KV
-// bytes stay an obligation; the card's 890 does not apply.
-fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters? {
-  match v4_1_gb10_kv_layout {
-    Present { value: k } => Present {
-      value: serving_decision_parameters(
-        max_model_len: deepseek_v4_1_flash_context_length,
-        memory_request: spark_host_memory_request,
-        max_num_batched_tokens: spark_host_max_num_batched_tokens,
-        max_num_seqs: spark_host_max_num_seqs,
-        executor: ExecutorRayProfile,
-        kv_layout: k,
-        speculative: SpeculationDraft { algorithm: DSpark },
-        runtime: runtime,
-      )
-    }
-    Absent => none
-  }
+data v4_1_gb10_kv_layout: KvLayoutPolicy = match kv_layout_policy_matching_wire(wire: v41_sm12_kv_layout) {
+  Present { value: k } => k
+  Absent => KvFp8DsMlaLayout
 }
 
-fn v4_1_profile_list(p: ServingDecisionParameters?) -> List<ServingDecisionParameters> {
-  match p {
-    Present { value: v } => [v]
-    Absent => []
-  }
+// V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
+// extdeps.deepseek.deepseek_v4_1_flash. KV layout is the wire match of v41_sm12_kv_layout.
+// Admission is not a reason to omit a profile: an empty or non-matching admit roster is
+// sm12_kv_admit_gaps / NeedsEvidence. Higher-precision KV does not violate native quality.
+// Speculation is DSpark. Per-token KV bytes stay an obligation; the card's 890 does not apply.
+fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
+  serving_decision_parameters(
+    max_model_len: deepseek_v4_1_flash_context_length,
+    memory_request: spark_host_memory_request,
+    max_num_batched_tokens: spark_host_max_num_batched_tokens,
+    max_num_seqs: spark_host_max_num_seqs,
+    executor: ExecutorRayProfile,
+    kv_layout: v4_1_gb10_kv_layout,
+    speculative: SpeculationDraft { algorithm: DSpark },
+    runtime: runtime,
+  )
 }
 
 data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
@@ -402,13 +400,11 @@ data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
   },
 }
 
-data v4_1_declared_profiles: List<ServingDecisionParameters> = concat(
-  concat(
-    v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead)),
-    v4_1_profile_list(p: v4_1_profile_at(runtime: v4_1_runtime_published_arm64)),
-  ),
-  v4_1_profile_list(p: v4_1_profile_at(runtime: spark_runtime)),
-)
+data v4_1_declared_profiles: List<ServingDecisionParameters> = [
+  v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
+  v4_1_profile_at(runtime: v4_1_runtime_published_arm64),
+  v4_1_profile_at(runtime: spark_runtime),
+]
 
 // ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
 type TopologyShape sole_constructor {
@@ -945,6 +941,7 @@ data ax_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serv
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
 data ax_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_no_redundancy")
 data ax_kv_bytes_per_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_kv_bytes_per_token")
+data ax_sm12_kv_admitted: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_sm12_kv_admitted")
 data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
 data ax_workload_established: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_workload_established")
@@ -1006,6 +1003,7 @@ data v4_1_selection_constraints: List<HardConstraint> = concat(serving_selection
 data v4_1_selection_axes: List<SelectionAxis> = concat(serving_selection_axes, [
   SelectionAxis { identity: ax_no_redundancy, goal: HigherIsBetter },
   SelectionAxis { identity: ax_kv_bytes_per_token, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_sm12_kv_admitted, goal: HigherIsBetter },
 ])
 
 // THE MEASUREMENTS THAT DO NOT EXIST YET, each named so its absence is a located obligation rather
@@ -1312,6 +1310,30 @@ fn kv_bytes_gap(c: DeploymentCandidate) -> List<AxisGap> {
   }
 }
 
+data sm12_kv_admit_obligation: NonEmptyStr = "Cite extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_admitted_kv_cache_dtypes; this candidate's kv_layout wire is not in that admit roster" as NonEmptyStr
+
+fn sm12_kv_admit_gaps(c: DeploymentCandidate, admitted: List<NonEmptyStr>) -> List<AxisGap> {
+  if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
+    if kv_wire_in_roster(wire: kv_layout_wire(k: c.profile.kv_layout), admitted: admitted) {
+      []
+    } else {
+      [AxisGap { axis: ax_sm12_kv_admitted, cause: sm12_kv_admit_obligation }]
+    }
+  } else {
+    []
+  }
+}
+
+fn sm12_kv_admit_reading(c: DeploymentCandidate, admitted: List<NonEmptyStr>) -> AxisReading? {
+  if !declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
+    none
+  } else if kv_wire_in_roster(wire: kv_layout_wire(k: c.profile.kv_layout), admitted: admitted) {
+    Present { value: reading(axis: ax_sm12_kv_admitted, v: 1) }
+  } else {
+    none
+  }
+}
+
 fn optional_reading(r: AxisReading?) -> List<AxisReading> {
   match r {
     Present { value: v } => [v]
@@ -1326,6 +1348,8 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
              optional_reading(r: runtime_reading(profile: execution_profile_of(c: c, p: p), e: e))),
       concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
              optional_reading(r: workload_reading(e: e)))),
+    concat(
+      optional_reading(r: sm12_kv_admit_reading(c: c, admitted: v41_sm12_admitted_kv_cache_dtypes)),
     [
       reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
       reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c))),
@@ -1333,7 +1357,7 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
       reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
       reading(axis: ax_independent_replicas, v: c.topology.replica_count),
       reading(axis: ax_replica_capacity_share_lost, v: replica_capacity_share_lost_percent(c: c)),
-    ])
+    ]))
 }
 
 fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisGap> {
@@ -1342,7 +1366,9 @@ fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, 
       concat(quality_gap(profile: execution_profile_of(c: c, p: p), e: e),
              runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
       concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
-    concat(kv_bytes_gap(c: c), map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
+    concat(
+      concat(kv_bytes_gap(c: c), sm12_kv_admit_gaps(c: c, admitted: v41_sm12_admitted_kv_cache_dtypes)),
+      map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
 }
 
 fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
