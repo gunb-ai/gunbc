@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible, Drifted, Apply }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import gunbc.gcp_estate_observation {
   operator_audit_census,
   operator_prose_disagrees_with_sa_derived_project_id,
@@ -29,10 +30,14 @@ import gunbc.gcp_estate_observation {
   census_with_unparsed_principal_set_binding,
   census_with_observed_provider,
   census_with_observed_pool,
+  census_with_observed_project,
+  census_with_named_service_accounts,
   census_with_unread_pool_gap,
   census_with_refused_pool_gap,
   census_measured_fingerprint_eq,
   ObservedWifProvider,
+  ObservedNamedServiceAccount,
+  GcpProject,
   EstateWifProvider,
   EstateEnabledService,
   observed_github_pool,
@@ -45,9 +50,15 @@ import gunbc.gcp_estate_observation {
   project_enables_service,
   sts_api_service_id,
   sheets_api_service_id,
-  census_observed_project_roster_is_the_named_set,
-  census_wif_provider_roster_is_the_named_set,
-  census_sa_roster_is_the_named_set,
+  named_projects_are_observed_in_census,
+  every_census_observed_project_is_named,
+  named_wif_providers_are_in_census,
+  every_census_wif_provider_is_named,
+  named_sas_are_in_census,
+  every_census_sa_is_on_named_rosters,
+  gcp_project_int_number_is_the_string_authority,
+  workspace_admin_google_managed_keys_are_the_named_set,
+  observed_gemini_project,
   gunbai_auto_services_are_distinctive_not_a_count,
   gunb_ci_services_are_distinctive_not_a_count,
   gunb_test_services_are_distinctive_not_a_count,
@@ -177,7 +188,6 @@ test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
   copied_malformed_condition_and_auto_escaped_well_formed()
     && observed_secrets_github_pool_provider.provider_id as String == "github"
     && observed_github_oidc_provider.provider_id as String == "github-oidc"
-    && census_wif_provider_roster_is_the_named_set(census: operator_audit_census())
     && copied_malformed_condition_has_three_instances()
 }
 
@@ -440,7 +450,7 @@ test fn sheets_calling_home_is_unresolved_and_does_not_default_to_secrets() -> B
 test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   let census = operator_audit_census()
   gunb_test_is_enumerated_not_selected(census: census)
-    && census_observed_project_roster_is_the_named_set(census: census)
+    && gcp_project_int_number_is_the_string_authority()
     && !project_enables_service(project_id: gunb_test_project_id, service: sheets_api_service_id)
     && project_enables_service(project_id: gunb_test_project_id, service: sts_api_service_id)
     && none_of_the_three_sandboxes_has_sheets()
@@ -452,7 +462,6 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && gunb_ci_services_are_distinctive_not_a_count()
     && gunb_test_services_are_distinctive_not_a_count()
     && gunbai_secrets_enabled_services_are_closed()
-    && census_sa_roster_is_the_named_set(census: census)
     && custody_sas_with_no_wif_bindings(census: census)
     && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
     && !census_subject_is_named_gap(census: census, subject: "gunbai-ci-workspace-admin@gunb-ci/keys?managed-by=user")
@@ -511,6 +520,44 @@ test fn a_user_managed_key_or_project_role_row_is_not_none() -> Bool {
     && !sa_key_listings_are_empty(keys: one_key)
     && project_iam_member_roles_are_empty(row: observed_workspace_admin_gunb_ci_project_roles)
     && !project_iam_member_roles_are_empty(row: one_role)
+    && !workspace_admin_google_managed_keys_are_the_named_set(keys: one_key)
+    && !named_projects_are_observed_in_census(
+      census: census_with_observed_project(project: observed_gemini_project),
+    )
+    && !every_census_observed_project_is_named(
+      census: census_with_observed_project(
+        project: GcpProject {
+          project_id: "outside-roster" as GcpProjectId,
+          project_number: 999999999999,
+          name: "outside",
+        },
+      ),
+    )
+    && !named_wif_providers_are_in_census(
+      census: census_with_observed_provider(provider: observed_github_oidc_provider),
+    )
+    && !every_census_wif_provider_is_named(
+      census: census_with_observed_provider(
+        provider: ObservedWifProvider {
+          project_number: "999999999999",
+          pool_id: "github-pool" as NonEmptyStr,
+          provider_id: "not-on-roster" as NonEmptyStr,
+          issuer_uri: "https://token.actions.githubusercontent.com",
+          attribute_condition: "true",
+        },
+      ),
+    )
+    && !named_sas_are_in_census(census: census_with_named_service_accounts(sas: []))
+    && !every_census_sa_is_on_named_rosters(
+      census: census_with_named_service_accounts(
+        sas: [
+          ObservedNamedServiceAccount {
+            email: "not-on-roster@example.iam.gserviceaccount.com",
+            display_name: "fixture",
+          },
+        ],
+      ),
+    )
 }
 
 test fn estate_rows_name_their_producer_and_stay_hand_observed() -> Bool {

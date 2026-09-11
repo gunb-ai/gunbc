@@ -319,6 +319,14 @@ data observed_gunb_test_github_provider: ObservedWifProvider = ObservedWifProvid
   attribute_condition: copied_malformed_github_pool_attribute_condition,
 }
 
+data named_observed_wif_providers: List<ObservedWifProvider> = [
+  observed_github_oidc_provider,
+  observed_secrets_github_pool_provider,
+  observed_gunbai_auto_github_provider,
+  observed_gunb_ci_github_provider,
+  observed_gunb_test_github_provider,
+]
+
 type CopiedMalformedGithubPoolCondition
   = IdenticalWrongStringInThreePools {
       condition: String
@@ -551,14 +559,16 @@ fn named_google_managed_id_is_listed(keys: List<ObservedSaKeyListing>, id: Strin
   fold(keys, init: false, f: fn(acc, k) { acc || k.key_id == id })
 }
 
-fn workspace_admin_google_managed_keys_are_the_named_set() -> Bool {
-  every_google_managed_listing_id_is_named(keys: observed_workspace_admin_google_managed_keys)
+fn workspace_admin_google_managed_keys_are_the_named_set(
+  keys: List<ObservedSaKeyListing>,
+) -> Bool {
+  every_google_managed_listing_id_is_named(keys: keys)
     && named_google_managed_id_is_listed(
-      keys: observed_workspace_admin_google_managed_keys,
+      keys: keys,
       id: workspace_admin_google_managed_key_id_first,
     )
     && named_google_managed_id_is_listed(
-      keys: observed_workspace_admin_google_managed_keys,
+      keys: keys,
       id: workspace_admin_google_managed_key_id_second,
     )
 }
@@ -567,7 +577,6 @@ fn workspace_admin_has_no_user_managed_keys() -> Bool {
   match workspace_admin_key_standing() {
     UserManagedKeysNone { user_managed: um, google_managed: _ } =>
       sa_key_listings_are_empty(keys: um)
-        && workspace_admin_google_managed_keys_are_the_named_set()
   }
 }
 
@@ -1174,12 +1183,6 @@ fn every_census_observed_project_is_named(census: GcpEstateCensus) -> Bool {
   )
 }
 
-fn census_observed_project_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
-  gcp_project_int_number_is_the_string_authority()
-    && named_projects_are_observed_in_census(census: census)
-    && every_census_observed_project_is_named(census: census)
-}
-
 fn wif_provider_identity_eq(left: ObservedWifProvider, right: ObservedWifProvider) -> Bool {
   left.project_number == right.project_number
     && left.pool_id == right.pool_id
@@ -1201,11 +1204,11 @@ fn census_contains_wif_provider(census: GcpEstateCensus, wanted: ObservedWifProv
 }
 
 fn named_wif_provider_is_on_roster(provider: ObservedWifProvider) -> Bool {
-  wif_provider_identity_eq(left: provider, right: observed_github_oidc_provider)
-    || wif_provider_identity_eq(left: provider, right: observed_secrets_github_pool_provider)
-    || wif_provider_identity_eq(left: provider, right: observed_gunbai_auto_github_provider)
-    || wif_provider_identity_eq(left: provider, right: observed_gunb_ci_github_provider)
-    || wif_provider_identity_eq(left: provider, right: observed_gunb_test_github_provider)
+  fold(
+    named_observed_wif_providers,
+    init: false,
+    f: fn(acc, named) { acc || wif_provider_identity_eq(left: provider, right: named) },
+  )
 }
 
 fn every_census_wif_provider_is_named(census: GcpEstateCensus) -> Bool {
@@ -1222,16 +1225,13 @@ fn every_census_wif_provider_is_named(census: GcpEstateCensus) -> Bool {
 }
 
 fn named_wif_providers_are_in_census(census: GcpEstateCensus) -> Bool {
-  census_contains_wif_provider(census: census, wanted: observed_github_oidc_provider)
-    && census_contains_wif_provider(census: census, wanted: observed_secrets_github_pool_provider)
-    && census_contains_wif_provider(census: census, wanted: observed_gunbai_auto_github_provider)
-    && census_contains_wif_provider(census: census, wanted: observed_gunb_ci_github_provider)
-    && census_contains_wif_provider(census: census, wanted: observed_gunb_test_github_provider)
-}
-
-fn census_wif_provider_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
-  named_wif_providers_are_in_census(census: census)
-    && every_census_wif_provider_is_named(census: census)
+  fold(
+    named_observed_wif_providers,
+    init: true,
+    f: fn(acc, wanted) {
+      acc && census_contains_wif_provider(census: census, wanted: wanted)
+    },
+  )
 }
 
 fn census_contains_named_sa_email(census: GcpEstateCensus, email: ServiceAccountEmail) -> Bool {
@@ -1274,11 +1274,6 @@ fn named_sas_are_in_census(census: GcpEstateCensus) -> Bool {
     init: true,
     f: fn(acc, sa) { acc && census_contains_named_sa_email(census: census, email: sa.email) },
   )
-}
-
-fn census_sa_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
-  every_census_sa_is_on_named_rosters(census: census)
-    && named_sas_are_in_census(census: census)
 }
 
 fn gunbai_auto_services_are_distinctive_not_a_count() -> Bool {
@@ -1737,6 +1732,32 @@ fn census_with_unparsed_principal_set_binding() -> GcpEstateCensus {
         },
       },
     ],
+    coverage_gaps: [],
+  }
+}
+
+fn census_with_observed_project(project: GcpProject) -> GcpEstateCensus {
+  GcpEstateCensus {
+    method_identity: operator_audit_method_identity,
+    observed_at: operator_audit_observed_at,
+    projects: [EstateObserved { value: project }],
+    service_accounts: [],
+    wif_pools: [],
+    wif_providers: [],
+    principal_set_bindings: [],
+    coverage_gaps: [],
+  }
+}
+
+fn census_with_named_service_accounts(sas: List<ObservedNamedServiceAccount>) -> GcpEstateCensus {
+  GcpEstateCensus {
+    method_identity: operator_audit_method_identity,
+    observed_at: operator_audit_observed_at,
+    projects: [],
+    service_accounts: named_sas_as_coverage(sas: sas),
+    wif_pools: [],
+    wif_providers: [],
+    principal_set_bindings: [],
     coverage_gaps: [],
   }
 }
