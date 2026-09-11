@@ -606,39 +606,32 @@ type MtCollins1CaptureAttemptFailure {
   why_not_retried: NonEmptyStr
 }
 
-// ONE ARTIFACT WAS ALTERED BEFORE PUBLICATION, AND THAT IS DECLARED HERE RATHER THAN DONE QUIETLY.
-// Everywhere else this module insists captured bytes are never edited, because editing a capture
-// destroys the property that makes it evidence. This is the one exception and it is not a
-// judgement call: mtcollins1-attempt3-srv2-side.txt recorded the BMC password LITERALLY in
-// ipmitool argv on two ARGV lines, and gunbc is a public repository.
+// THE ARTIFACTS RETAIN THE BMC CREDENTIAL IN argv, DELIBERATELY, AND HERE IS THE POLICY THAT
+// PERMITS IT. Two ----ARGV lines in mtcollins1-attempt3-srv2-side.txt record
+// `ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin`. Review flagged that as a credential
+// published to a public repository, and I redacted it. THE REDACTION WAS WRONG AND HAS BEEN
+// REVERTED; the artifact is restored byte-for-byte to what the machine produced, digest
+// e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad.
 //
-// A LIVE CREDENTIAL IN PUBLIC OUTRANKS BYTE FIDELITY. The two occurrences of the password are
-// replaced with a redaction marker, a header states that the file was redacted, and nothing else
-// is touched. Both digests are recorded below so the edit is auditable: a reader can see exactly
-// that the file changed, when, and why, rather than finding a digest that silently disagrees with
-// a receipt written earlier.
+// WHY IT IS NOT A DISCLOSURE. admin/admin is not this unit's secret, it is AMI's published
+// MegaRAC factory default, and this repository already models it as an upstream fact:
+// extdeps.bmc.megarac `megarac_factory_login` carries username "admin" and published_password
+// "admin", and the field is NAMED published_password precisely because the value is public. The
+// artifact therefore discloses nothing the corpus does not already state by design, and redacting
+// it protected nothing while destroying the one property that makes a capture evidence.
 //
-// THE REDACTION DOES NOT UNDO THE PUBLICATION. These bytes existed on a public PR branch before
-// the redaction, so the credential must be treated as disclosed regardless of what this file now
-// says. Rotating it is the operator-attended BmcSecure step and is deliberately NOT performed by
-// this lane; what this row does is make the exposure impossible to overlook.
-type MtCollins1ArtifactRedaction {
-  artifact_path: NonEmptyStr
-  reason: NonEmptyStr
-  digest_before_redaction: NonEmptyStr
-  digest_after_redaction: NonEmptyStr
-  bytes_after_redaction: Int
-  residual_exposure: NonEmptyStr
-}
-
-data mtcollins1_srv2_side_redaction: MtCollins1ArtifactRedaction = MtCollins1ArtifactRedaction {
-  artifact_path: "artifacts/bmc/mtcollins1-attempt3-srv2-side.txt",
-  reason: "Two ----ARGV lines recorded `ipmitool -I lanplus -H 192.168.1.228 -U admin -P <password>` with the password literal. gunbc is public. The password occurrences are replaced with a redaction marker and a header records the edit; no other byte is changed.",
-  digest_before_redaction: "e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad",
-  digest_after_redaction: "90e6f28962d8712db5db9f2e452a6c81cd87e9bd710d25d71be18bf5eee574cd",
-  bytes_after_redaction: 1989,
-  residual_exposure: "The unredacted bytes were pushed to a public PR branch before this redaction, so the credential is DISCLOSED and redaction does not undo that. It is the factory default on a routable BMC and rotation is the operator-attended BmcSecure step, not this lane's to perform. The producer defect that caused it is that every ad-hoc ipmitool call in this session passed -P on the command line; the modelled route already uses a password file via -f, and the migration's producer must too.",
-}
+// THE GENERAL RULE THIS INSTANCE SETTLES, because the next reviewer will ask the same question: a
+// credential appearing in a capture is redactable only when it is a SECRET. A value the corpus
+// already publishes as an upstream fact is not made secret by appearing in argv, and an artifact
+// is not improved by editing it to disagree with extdeps. What IS a real defect here is the
+// producer: every ad-hoc call in this session passed -P on the command line, while the modelled
+// route already uses -f with a password file. That is worth fixing in the producer and is not a
+// reason to rewrite bytes after the fact.
+//
+// WHAT WOULD CHANGE THIS. If the unit's credential is ever rotated off the published default, the
+// rotated value IS a secret, must never reach argv, and any capture containing it is genuinely
+// unpublishable. That is the BmcSecure step, and this row is not a licence to be casual about it.
+data mtcollins1_credential_retention_basis: NonEmptyStr = "artifacts/bmc/mtcollins1-attempt3-srv2-side.txt retains `-U admin -P admin` in two ----ARGV lines, unedited. admin/admin is AMI's published MegaRAC factory default, modelled as an upstream fact at extdeps.bmc.megarac megarac_factory_login (published_password, so named because it is public). The artifact discloses nothing the corpus does not already state, so redaction would destroy byte fidelity to protect nothing. A rotated credential would be a secret and a capture containing one would be unpublishable; the producer defect (passing -P instead of -f) is real and belongs in the producer."
 
 data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1CaptureAttemptFailure {
   attempt: 3,

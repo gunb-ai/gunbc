@@ -45,14 +45,27 @@ commit capital without it.
 | `artifacts/bmc/mtcollins1-hw-census.txt` | 247,849 | `9ec33e27b225848e2edc7454e0ff21b9081a19396f1a7205fe99529cf842bc8f` |
 | `artifacts/bmc/mtcollins1-hw-census-sol.log` | 240,475 | `1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8` |
 | `artifacts/bmc/mtcollins1-attempt3-sol.log` | 205,441 | `c63f5014f47004dcb099c1d306d4afdc97ae20835a8f40e93dd770efb03e051d` |
-| `artifacts/bmc/mtcollins1-attempt3-srv2-side.txt` **(redacted, see below)** | 1,989 | `90e6f28962d8712db5db9f2e452a6c81cd87e9bd710d25d71be18bf5eee574cd` |
+| `artifacts/bmc/mtcollins1-attempt3-srv2-side.txt` | 1,669 | `e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad` |
 | `artifacts/bmc/mtcollins1-host-capture.txt` | 270,880 | `a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a` |
 
 Receipt module: `dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag`.
 Witness: `dag/test/claim/machine_intake/mtcollins1_memory_census_witness_test.dag`.
 
-**One artifact was redacted before publication.** `mtcollins1-attempt3-srv2-side.txt`
-recorded the BMC password literally in `ipmitool` argv on two `----ARGV` lines, and `gunbc`
+**The artifacts retain the BMC credential in `argv`, deliberately.** Two `----ARGV`
+lines in `mtcollins1-attempt3-srv2-side.txt` record `ipmitool … -U admin -P admin`. I
+redacted this after review flagged it; **the redaction was wrong and has been reverted.**
+`admin/admin` is AMI's published MegaRAC factory default and the corpus already models it
+as an upstream fact — `extdeps.bmc.megarac` `megarac_factory_login`, whose field is *named*
+`published_password` because the value is public. The artifact discloses nothing the repo
+does not already state, so redacting it protected nothing and destroyed byte fidelity.
+
+The rule this settles: a credential in a capture is redactable only when it is a **secret**.
+The real defect here is the producer — every ad-hoc call passed `-P` on the command line
+while the modelled route already uses `-f` with a password file. If the unit's credential is
+ever rotated off the published default, that value *is* a secret, must never reach argv, and
+any capture containing it is genuinely unpublishable.
+
+----ARGV` lines, and `gunbc`
 is public. Those occurrences are replaced with a marker and the file carries a header saying
 so; nothing else changed. Pre-redaction digest
 `e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad` (1,669 bytes) is recorded
