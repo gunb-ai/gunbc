@@ -41,6 +41,7 @@ import gunbc.review_sheet_sheets {
   ReadbackObserved,
   ReadbackUnreadable,
   review_sheet_batch_value_input_option,
+  review_sheet_get_value_render_option,
   review_sheet_live_access,
   review_sheet_live_access_from,
   ReviewSheetLiveOpen,
@@ -56,6 +57,11 @@ import extdeps.google.sheets {
   sheets_serviceusage_api_id,
   sheets_value_input_option_wire,
   sheets_value_input_option_from_wire,
+  sheets_value_render_option_wire,
+  sheets_value_render_option_from_wire,
+  RenderFormattedValue,
+  RenderUnformattedValue,
+  RenderFormula,
   InputRaw,
   InputUserEntered,
 }
@@ -694,43 +700,51 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
             match sheets_value_input_option_from_wire(
               raw: sheets_value_input_option_wire(o: review_sheet_batch_value_input_option()),
             ) {
-              Present { value: InputUserEntered } =>
-                match sheets_value_input_option_from_wire(raw: sheets_value_input_option_wire(o: InputRaw)) {
-                  Present { value: InputRaw } =>
-                    match value_ranges_from_write_plan(
-                      plan: ReviewSheetWritePlan {
-                        patches: [
-                          DerivedCellWrite {
-                            listing_id: "L1" as NonEmptyStr,
-                            column: "title" as NonEmptyStr,
-                            a1: "B2" as NonEmptyStr,
-                            value: "Widget",
-                          }
-                        ],
-                        appends: [],
-                      },
-                      tab: "Review" as NonEmptyStr,
-                    ) |> first {
-                      Present { value: vr } =>
-                        vr.range == "Review!B2"
-                          && match vr.values {
-                            Present { value: rows } =>
-                              match rows |> first {
-                                Present { value: cells } =>
-                                  match cells |> first {
-                                    Present { value: v } => v == "Widget"
+              Present { value: InputRaw } =>
+                match sheets_value_input_option_from_wire(raw: sheets_value_input_option_wire(o: InputUserEntered)) {
+                  Present { value: InputUserEntered } =>
+                    match sheets_value_render_option_from_wire(
+                      raw: sheets_value_render_option_wire(o: review_sheet_get_value_render_option()),
+                    ) {
+                      Present { value: RenderFormattedValue } =>
+                        match value_ranges_from_write_plan(
+                          plan: ReviewSheetWritePlan {
+                            patches: [
+                              DerivedCellWrite {
+                                listing_id: "L1" as NonEmptyStr,
+                                column: "title" as NonEmptyStr,
+                                a1: "B2" as NonEmptyStr,
+                                value: "Widget",
+                              }
+                            ],
+                            appends: [],
+                          },
+                          tab: "Review" as NonEmptyStr,
+                        ) |> first {
+                          Present { value: vr } =>
+                            vr.range == "Review!B2"
+                              && match vr.values {
+                                Present { value: rows } =>
+                                  match rows |> first {
+                                    Present { value: cells } =>
+                                      match cells |> first {
+                                        Present { value: v } => v == "Widget"
+                                        Absent => false
+                                      }
                                     Absent => false
                                   }
                                 Absent => false
                               }
-                            Absent => false
-                          }
+                          Absent => false
+                        }
+                      Present { value: RenderUnformattedValue } => false
+                      Present { value: RenderFormula } => false
                       Absent => false
                     }
-                  Present { value: InputUserEntered } => false
+                  Present { value: InputRaw } => false
                   Absent => false
                 }
-              Present { value: InputRaw } => false
+              Present { value: InputUserEntered } => false
               Absent => false
             }
           Present { value: DimensionRows } => false

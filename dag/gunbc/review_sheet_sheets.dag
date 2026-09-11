@@ -29,7 +29,9 @@ import gunbc.review_sheet_projection {
 import extdeps.google.sheets {
   ValueRange,
   SheetsValueInputOption,
-  InputUserEntered,
+  InputRaw,
+  SheetsValueRenderOption,
+  RenderFormattedValue,
   sheets_major_dimension_wire,
   sheets_major_dimension_from_wire,
   DimensionRows,
@@ -96,8 +98,18 @@ fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
   )
 }
 
+// USER_ENTERED parses derived strings ("1/2", leading =/+/-) into dates, numbers, or formulas,
+// so GetValues FORMATTED_VALUE readback is not the string this lane wrote and the next converge
+// CellConflicts on its own output. RAW stores the projection string as a string.
 fn review_sheet_batch_value_input_option() -> SheetsValueInputOption {
-  InputUserEntered
+  InputRaw
+}
+
+// Pair with RAW writes: ValueRange.values is List<List<String>>, and UNFORMATTED_VALUE can
+// return JSON numbers (structural_coverage_gap_value_range_cell_types). FORMATTED_VALUE
+// is the cited default and keeps cells as strings, inverse of RAW for this model.
+fn review_sheet_get_value_render_option() -> SheetsValueRenderOption {
+  RenderFormattedValue
 }
 
 fn sheet_qualified_a1(tab: NonEmptyStr, a1: NonEmptyStr) -> NonEmptyStr {
