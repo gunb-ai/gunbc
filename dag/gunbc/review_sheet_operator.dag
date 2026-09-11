@@ -153,6 +153,8 @@ fn admit_review_sheet_operator(
   spreadsheet: BuyerReviewSpreadsheet,
   serviceusage_enable_iam: HumanIntervention,
   share: HumanIntervention,
+  sharing_policy: WorkspaceDomainSharingPolicy,
+  tenancy: ReviewSheetAccountTenancy,
 ) -> ReviewSheetOperatorAdmission {
   match project {
     ReviewSheetGcpProjectAwaitingIdentification =>
@@ -180,10 +182,34 @@ fn admit_review_sheet_operator(
                   SpreadsheetAwaitingCreation =>
                     ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
                   SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
-                    if intervention_is_discharged(intervention: share) {
-                      ReviewSheetOperatorAdmitted { spreadsheet_id: id }
-                    } else {
-                      ReviewSheetAwaitingHuman { intervention: share }
+                    match tenancy {
+                      AccountTenancyUnobserved =>
+                        ReviewSheetOperatorRefused {
+                          reason: "Google account tenancy unread" as NonEmptyStr
+                        }
+                      ReviewSheetPlainGoogleAccount =>
+                        if intervention_is_discharged(intervention: share) {
+                          ReviewSheetOperatorAdmitted { spreadsheet_id: id }
+                        } else {
+                          ReviewSheetAwaitingHuman { intervention: share }
+                        }
+                      ReviewSheetWorkspaceDomain =>
+                        match sharing_policy {
+                          DomainSharingPolicyUnobserved =>
+                            ReviewSheetOperatorRefused {
+                              reason: "Workspace domain sharing policy unread; the operator is admin and the policy is readable" as NonEmptyStr
+                            }
+                          DomainSharingForbidsExternalPrincipals =>
+                            ReviewSheetOperatorRefused {
+                              reason: "Workspace domain sharing policy forbids sharing with a service-account principal" as NonEmptyStr
+                            }
+                          DomainSharingAllowsServiceAccountShare =>
+                            if intervention_is_discharged(intervention: share) {
+                              ReviewSheetOperatorAdmitted { spreadsheet_id: id }
+                            } else {
+                              ReviewSheetAwaitingHuman { intervention: share }
+                            }
+                        }
                     }
                 }
             }
@@ -219,6 +245,8 @@ fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
             spreadsheet: buyer_review_spreadsheet,
             serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: sa),
             share: spreadsheet_share_intervention(spreadsheet_id: "unidentified" as NonEmptyStr, writer: sa),
+            sharing_policy: buyer_review_workspace_domain_sharing,
+            tenancy: buyer_review_account_tenancy,
           )
       }
   }
