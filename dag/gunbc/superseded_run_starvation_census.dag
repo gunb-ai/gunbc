@@ -92,8 +92,21 @@ fn dead_head_start_standing(
   }
 }
 
+// dead_run_attempt RECORDS WHICH ATTEMPT THE JOB COUNTS DESCRIBE, and it exists because they did
+// not say. github.WorkflowRuns.ListJobs pins filter=latest into its query, so every count below is
+// about the LATEST attempt of the superseded run -- not necessarily the attempt that was executing
+// when it was superseded, which is the one a starvation measurement is about. A run withheld on
+// attempt 1 and released on attempt 2 reports the release's jobs here.
+//
+// THIS CHANGE DOES NOT ALTER WHICH ATTEMPT IS READ. Changing that would change what this census
+// measures, and the module does not state its intent precisely enough for that to be a safe
+// unilateral edit. It makes the existing behaviour SAYABLE instead: a consumer can now see that a
+// row describes attempt N, where before the row described an unnamed attempt and read as though it
+// described the run. An exact-attempt read is available as
+// github.WorkflowRuns.ListAttemptJobs when this census's owner decides which attempt it wants.
 type RefreshedPair {
   pair: SupersededRunPair
+  dead_run_attempt: Int
   dead_status: WorkflowRunStatus
   dead_conclusion: WorkflowRunConclusion?
   dead_updated_at: Timestamp
@@ -457,6 +470,7 @@ fn refresh_pair(
       RefreshComplete {
         pair: RefreshedPair {
           pair: pair,
+          dead_run_attempt: dead_run.run_attempt,
           dead_status: dead_run.status,
           dead_conclusion: dead_run.conclusion,
           dead_updated_at: dead_run.updated_at,

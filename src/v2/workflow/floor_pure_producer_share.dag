@@ -360,7 +360,29 @@ import v2.std.collection { List }
 // 341-1545ms under claim_batch after the producers were introduced. The instrument that decides
 // it is the required floor's own [floor-shared-fill] ledger, which must show these fills landing
 // at preparation with disposition=Stored and the seven former INTERRUPTED arms serving hits.
+// THE native_decl_selection ROW IS THE SAME GROUND AGAIN, ON THE NATIVE-ROUTE DRIVER. The four
+// witnesses of v2.test.native_decl_selection drive v2.compiler.compile's source-root Eval
+// driver over one two-module synthetic ingest, and every one of them was refused
+// INTERRUPTED-BEFORE-VERDICT at cpu_at_least=503-508ms against limit_ms=500 on three
+// consecutive main heads (runs 34536354438, 34537144168, 34542819448) -- the file was enrolled
+// with members whose cost exceeds the budget they were enrolled under, and no run had ever
+// reached their verdict. The run's own cross-claim demand census
+// (required_floor_cross_claim_demand.tsv, run 34542819448) names the producer: collision_prepared
+// / native_test_context_from_ingest, 4 claims, the file's whole censored cost, of which
+// `tokenize` alone was ~330ms per claim and `parse_module_prepared` ~160ms -- the seed
+// tokenizing and parsing ~230 characters of source, four times. The uncensored stage split
+// (claim_batch --entry src/v2/test/native_decl_selection_test.dag [witness] lines, plus one
+// probe entry per stage, arm64 session host) measured ~1.1-1.4s per claim: tokenize ~490ms,
+// parse ~375ms, normalize + context fold ~210ms, resolve + infer ~220ms, eval ~0. The share
+// point is the RESOLVED tree -- the deepest closure-free stage, the same seam
+// direct_rust_door_specimen_resolved above uses -- so each claim keeps infer + eval and hands
+// over tokenize/parse/normalize/resolve. WARM, NEVER CLAIM-FORCED: a fill that costs more than
+// one claim's whole budget on the lane dies mid-flight in the fold, exactly as prepare_grammar's
+// did. The instrument that decides it is the required floor's [floor-shared-fill] ledger
+// (disposition=Stored at preparation, four hits) joined against required_floor_claim_cost.tsv
+// showing the four rows reaching verdict_reached=true with an observed cost.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
