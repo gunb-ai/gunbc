@@ -87,8 +87,9 @@ data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
 data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
   label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
-  footprint: FootprintUnread {
-    obligation: "nobody has read this checkpoint's bytes on this fleet. DSV41-0 owns the pinned revision and the safetensors/config.json byte census; the HuggingFace card contradicts itself on total parameters (552B+196B Engram vs 763B) and must not be the oracle" as NonEmptyStr,
+  footprint: FootprintReportedExternally {
+    bytes: 510296708312,
+    source: "Hugging Face tree API at revision dba1be0a40aa45a94ad051997016db3960a90277: 48 safetensors shards totalling 510296708312 bytes. FILE SIZE on the publisher object store, not serving memory and not a Spark reading. DSV41-0 owns the census; weight-fit cannot treat this as GB10 resident bytes" as NonEmptyStr,
   },
   weight_treatment: PublishedNativeWeights,
 }
@@ -256,6 +257,52 @@ fn parameters_defect(p: ServingDecisionParameters) -> NonEmptyStr? {
   vllm_memory_request_defect(request: p.memory_request)
 }
 
+data spark_runtime: RuntimeRevision = runtime_revision(
+  image: "the serving container image currently deployed on the Sparks" as NonEmptyStr,
+  vllm_revision: "the vLLM revision pinned in that image" as NonEmptyStr,
+)
+
+data serving_parameters_current: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 300000),
+  memory_request: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 8200) },
+    kv_cache_bytes: none,
+  },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  runtime: spark_runtime,
+)
+
+// V4.1 RUNTIME DOMAIN. The existing fleet image is unvalidated for V4.1. vLLM
+// 07b75534651a0dd584c6f3be75d8c62fb8426397 has a V4.1 NVIDIA implementation and an SM12 path; a
+// pinned GB10 build is the lead, not a silent reuse of spark_runtime. SGLang preview images are
+// for larger accelerators only. llama.cpp #28696 is conversion-only -- not a candidate.
+data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
+  image: "GB10 serving image to be built at vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 (lead; not a fleet image today)" as NonEmptyStr,
+  vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+)
+
+fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
+  serving_decision_parameters(
+    max_model_len: serving_parameters_current.max_model_len,
+    memory_request: serving_parameters_current.memory_request,
+    max_num_batched_tokens: serving_parameters_current.max_num_batched_tokens,
+    max_num_seqs: serving_parameters_current.max_num_seqs,
+    executor: serving_parameters_current.executor,
+    kv_layout: serving_parameters_current.kv_layout,
+    speculative: serving_parameters_current.speculative,
+    runtime: runtime,
+  )
+}
+
+data v4_1_declared_profiles: List<ServingDecisionParameters> = [
+  v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
+  v4_1_profile_at(runtime: spark_runtime),
+]
+
 // ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
 type TopologyShape sole_constructor {
   tensor_parallel_degree: Nat
@@ -275,10 +322,15 @@ type DeploymentCandidate sole_constructor {
   label: NonEmptyStr
   artifact: ModelArtifact
   topology: TopologyShape
+  profile: ServingDecisionParameters
+}
+
+fn deployment_candidate_at(identity: DeclarationRef, label: NonEmptyStr, artifact: ModelArtifact, topology: TopologyShape, profile: ServingDecisionParameters) -> DeploymentCandidate {
+  DeploymentCandidate { identity: identity, label: label, artifact: artifact, topology: topology, profile: profile }
 }
 
 fn deployment_candidate(identity: DeclarationRef, label: NonEmptyStr, artifact: ModelArtifact, topology: TopologyShape) -> DeploymentCandidate {
-  DeploymentCandidate { identity: identity, label: label, artifact: artifact, topology: topology }
+  deployment_candidate_at(identity: identity, label: label, artifact: artifact, topology: topology, profile: serving_parameters_current)
 }
 
 // ── THE EXACT EXECUTION PROFILE: THE SUBJECT OF EVERY PIECE OF EVIDENCE ───────────────────────
@@ -640,19 +692,15 @@ fn no_redundancy_holds(c: DeploymentCandidate) -> Bool {
   c.topology.replica_count == 1
 }
 
-// ENGRAM IS A PLACEMENT QUESTION, NOT A FIT FUDGE. The V4.1 card names a ~196B token-lookup
-// component and also contradicts itself on the total. Until DSV41-0 settles bytes from the pinned
-// index and DSV41-1 shows whether the runtime can place Engram off the accelerator pool, every
-// observed byte counts toward the on-accelerator fit. An off-accelerator placement, if it lands,
-// is a candidate axis because it changes the fit fact -- it is not a discount inside this screen.
+// ENGRAM OFFLOAD DOES NOT GROW THE SPARK POOL. vLLM Engram offload uses pinned host memory via
+// UVA. On GB10, host and GPU memory are one unified pool, so placing Engram in "host" memory does
+// not add capacity. Do not model a placement axis that increases the fit fact on this fleet.
 type EngramAcceleratorStanding
   = EngramNotAComponentOfThisArtifact
-  | EngramPlacementUnestablished { obligation: NonEmptyStr }
-  | EngramOnAccelerator { reason: NonEmptyStr }
-  | EngramOffAccelerator { off_accelerator_bytes: Nat, how: NonEmptyStr }
+  | EngramOffloadZeroPoolGainOnUnifiedMemory { how: NonEmptyStr }
 
-data deepseek_v4_1_engram_standing: EngramAcceleratorStanding = EngramPlacementUnestablished {
-  obligation: "Engram (~196B token-lookup) is named by the model card, which also disagrees with itself on total parameters; DSV41-0 must census bytes from config.json and the safetensors index at a pinned revision, and DSV41-1 must show whether the runtime can place Engram off the Spark accelerator pool. Until both exist, fit counts all bytes on-accelerator. Off-accelerator placement would be a placement axis on the candidate, not a subtracted fudge in the fit check. Host binding of leftover Sparks (srv7/srv8 llama.cpp RPC) is fabric work downstream of a selected shape and is not done here" as NonEmptyStr,
+data deepseek_v4_1_engram_standing: EngramAcceleratorStanding = EngramOffloadZeroPoolGainOnUnifiedMemory {
+  how: "vLLM Engram offload uses pinned host memory via UVA; GB10 host and GPU memory are one unified pool, so offload does not add capacity on a Spark. File-size Engram bytes from the Hub census are not a serving-memory discount" as NonEmptyStr,
 }
 
 fn engram_standing(art: ModelArtifact) -> EngramAcceleratorStanding {
@@ -663,7 +711,7 @@ fn engram_standing(art: ModelArtifact) -> EngramAcceleratorStanding {
   }
 }
 
-fn derived_candidate_identity(stem: String, art: ModelArtifact, t: TopologyShape) -> DeclarationRef {
+fn derived_candidate_identity(stem: String, art: ModelArtifact, t: TopologyShape, profile: ServingDecisionParameters) -> DeclarationRef {
   decl_ref(
     module_path: "gunbc.spark.serving_deployment_selection",
     decl_name: join([
@@ -674,24 +722,40 @@ fn derived_candidate_identity(stem: String, art: ModelArtifact, t: TopologyShape
       to_string(t.tensor_parallel_degree),
       "_x",
       to_string(t.replica_count),
+      "_rt",
+      runtime_revision_key(r: profile.runtime),
     ], ""),
   )
 }
 
-fn derived_candidates(stem: String, artifacts: List<ModelArtifact>, topologies: List<TopologyShape>) -> List<DeploymentCandidate> {
-  flat_map(artifacts, art => map(topologies, t =>
-    deployment_candidate(
-      identity: derived_candidate_identity(stem: stem, art: art, t: t),
-      label: join([
-        art.label as String,
-        ", tp",
-        to_string(t.tensor_parallel_degree),
-        " x",
-        to_string(t.replica_count),
-      ], "") as NonEmptyStr,
-      artifact: art,
-      topology: t,
-    )))
+fn candidate_for_profile(stem: String, art: ModelArtifact, t: TopologyShape, p: ServingDecisionParameters) -> DeploymentCandidate {
+  deployment_candidate_at(
+    identity: derived_candidate_identity(stem: stem, art: art, t: t, profile: p),
+    label: join([
+      art.label as String,
+      ", tp",
+      to_string(t.tensor_parallel_degree),
+      " x",
+      to_string(t.replica_count),
+      " ",
+      runtime_revision_key(r: p.runtime),
+    ], "") as NonEmptyStr,
+    artifact: art,
+    topology: t,
+    profile: p,
+  )
+}
+
+fn candidates_for_topology(stem: String, art: ModelArtifact, t: TopologyShape, profiles: List<ServingDecisionParameters>) -> List<DeploymentCandidate> {
+  map(profiles, p => candidate_for_profile(stem: stem, art: art, t: t, p: p))
+}
+
+fn candidates_for_artifact(stem: String, art: ModelArtifact, topologies: List<TopologyShape>, profiles: List<ServingDecisionParameters>) -> List<DeploymentCandidate> {
+  flat_map(topologies, t => candidates_for_topology(stem: stem, art: art, t: t, profiles: profiles))
+}
+
+fn derived_candidates(stem: String, artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, profiles: List<ServingDecisionParameters>) -> List<DeploymentCandidate> {
+  flat_map(artifacts, art => candidates_for_artifact(stem: stem, art: art, topologies: topologies, profiles: profiles))
 }
 
 // THE SHARE OF EQUAL-CAPACITY REPLICAS LOST WHEN ONE REPLICA IS LOST -- not a physical blast radius,
@@ -884,43 +948,66 @@ fn evidence_snapshot_key(e: ServingDeploymentEvidenceSnapshot) -> String {
 type CombinationKey sole_constructor {
   artifact: DeclarationRef
   topology: TopologyShape
+  profile_digest: String
 }
 
 fn combination_key_eq(a: CombinationKey, b: CombinationKey) -> Bool {
-  declaration_ref_eq(a: a.artifact, b: b.artifact) && topology_shape_eq(a: a.topology, b: b.topology)
+  declaration_ref_eq(a: a.artifact, b: b.artifact)
+    && topology_shape_eq(a: a.topology, b: b.topology)
+    && a.profile_digest == b.profile_digest
 }
 
 fn combination_key_render(k: CombinationKey) -> String {
-  join([declaration_ref_display_key(ref: k.artifact), "|tp", to_string(k.topology.tensor_parallel_degree), "|x", to_string(k.topology.replica_count)], "")
+  join([declaration_ref_display_key(ref: k.artifact), "|tp", to_string(k.topology.tensor_parallel_degree), "|x", to_string(k.topology.replica_count), "|", k.profile_digest], "")
 }
 
 type ServingDeploymentChoiceDomain sole_constructor {
   artifacts: List<ModelArtifact>
   topologies: List<TopologyShape>
-  parameters: ServingDecisionParameters
+  profiles: List<ServingDecisionParameters>
 }
 
 fn serving_deployment_domain(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, parameters: ServingDecisionParameters) -> ServingDeploymentChoiceDomain {
-  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, parameters: parameters }
+  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: [parameters] }
+}
+
+fn serving_deployment_domain_over(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, profiles: List<ServingDecisionParameters>) -> ServingDeploymentChoiceDomain {
+  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: profiles }
+}
+
+fn combination_for_profile(a: ModelArtifact, t: TopologyShape, p: ServingDecisionParameters) -> CombinationKey {
+  CombinationKey { artifact: a.identity, topology: t, profile_digest: parameters_key(p: p) }
+}
+
+fn combinations_for_topology(a: ModelArtifact, t: TopologyShape, profiles: List<ServingDecisionParameters>) -> List<CombinationKey> {
+  map(profiles, p => combination_for_profile(a: a, t: t, p: p))
+}
+
+fn combinations_for_artifact(a: ModelArtifact, topologies: List<TopologyShape>, profiles: List<ServingDecisionParameters>) -> List<CombinationKey> {
+  flat_map(topologies, t => combinations_for_topology(a: a, t: t, profiles: profiles))
 }
 
 fn expected_combinations(d: ServingDeploymentChoiceDomain) -> List<CombinationKey> {
-  flat_map(d.artifacts, a => map(d.topologies, t => CombinationKey { artifact: a.identity, topology: t }))
+  flat_map(d.artifacts, a => combinations_for_artifact(a: a, topologies: d.topologies, profiles: d.profiles))
 }
 
 fn candidate_combination(c: DeploymentCandidate) -> CombinationKey {
-  CombinationKey { artifact: c.artifact.identity, topology: c.topology }
+  CombinationKey { artifact: c.artifact.identity, topology: c.topology, profile_digest: parameters_key(p: c.profile) }
 }
 
 fn key_occurrences(keys: List<CombinationKey>, k: CombinationKey) -> Nat {
   fold(keys, init: 0, f: (acc, other) => if combination_key_eq(a: other, b: k) { acc + 1 } else { acc })
 }
 
+fn domain_profiles_defect(d: ServingDeploymentChoiceDomain) -> List<NonEmptyStr> {
+  flat_map(d.profiles, p => match parameters_defect(p: p) {
+    Present { value: d } => [d]
+    Absent => []
+  })
+}
+
 fn domain_key_render(d: ServingDeploymentChoiceDomain) -> String {
-  join([
-    join(map(expected_combinations(d: d), k => combination_key_render(k: k)), ","),
-    "|", parameters_key(p: d.parameters),
-  ], "")
+  join(map(expected_combinations(d: d), k => combination_key_render(k: k)), ",")
 }
 
 type ServingDeploymentCandidateField sole_constructor {
@@ -954,10 +1041,7 @@ fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> 
   let extra = filter(actual, k => key_occurrences(keys: expected, k: k) == 0)
   let duplicated_actual = filter(expected, k => key_occurrences(keys: actual, k: k) > 1)
   let duplicated_declared = filter(expected, k => key_occurrences(keys: expected, k: k) > 1)
-  let param_defect = match parameters_defect(p: field.domain.parameters) {
-    Present { value: d } => [d]
-    Absent => []
-  }
+  let param_defect = domain_profiles_defect(d: field.domain)
   if count(missing) == 0 && count(extra) == 0 && count(duplicated_actual) == 0
     && count(duplicated_declared) == 0 && count(param_defect) == 0 {
     ServingFieldEstablished
@@ -1063,18 +1147,14 @@ fn workload_gap(e: ServingDeploymentEvidenceSnapshot) -> List<AxisGap> {
 fn engram_reading(c: DeploymentCandidate) -> AxisReading? {
   match engram_standing(art: c.artifact) {
     EngramNotAComponentOfThisArtifact => Present { value: reading(axis: ax_engram_placement, v: 1) }
-    EngramOnAccelerator { reason: _ } => Present { value: reading(axis: ax_engram_placement, v: 1) }
-    EngramOffAccelerator { off_accelerator_bytes: _, how: _ } => Present { value: reading(axis: ax_engram_placement, v: 1) }
-    EngramPlacementUnestablished { obligation: _ } => none
+    EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => Present { value: reading(axis: ax_engram_placement, v: 1) }
   }
 }
 
 fn engram_gap(c: DeploymentCandidate) -> List<AxisGap> {
   match engram_standing(art: c.artifact) {
-    EngramPlacementUnestablished { obligation: o } => [AxisGap { axis: ax_engram_placement, cause: o }]
     EngramNotAComponentOfThisArtifact => []
-    EngramOnAccelerator { reason: _ } => []
-    EngramOffAccelerator { off_accelerator_bytes: _, how: _ } => []
+    EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => []
   }
 }
 
@@ -1240,7 +1320,7 @@ fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
     parameters: [
       ParameterBound {
         parameter: id_param_execution,
-        evidence: join(["every candidate is built at exactly one declared execution profile, and carries no field in which to disagree with it: ", parameters_key(p: input.field.domain.parameters)], "") as NonEmptyStr,
+        evidence: join(["every candidate is built at a declared execution profile from the domain: ", join(map(input.field.domain.profiles, p => parameters_key(p: p)), ";")], "") as NonEmptyStr,
       },
     ],
     selected_candidate: Absent,
@@ -1289,7 +1369,7 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
       match select_realization(
         assessment: assessment_for(input: input),
         candidate_field_identity: input.field.identity,
-        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: input.field.domain.parameters)),
+        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile)),
         axes: serving_selection_axes,
         constraints: input.constraints,
         constraint_authority: input.constraint_authority,
@@ -1362,7 +1442,7 @@ fn shape_of(selected: SelectedServingDeployment) -> ServingDeploymentShape {
   ServingDeploymentShape {
     artifact: selected.candidate.artifact.identity,
     candidate: selected.candidate.identity,
-    parameters: selected.input.field.domain.parameters,
+    parameters: selected.candidate.profile,
     replicas: replica_shapes_loop(degree: selected.candidate.topology.tensor_parallel_degree, remaining: selected.candidate.topology.replica_count, acc: []),
     hosts_required: hosts_consumed(c: selected.candidate),
     hosts_unassigned: selected.input.evidence.fleet.host_count - hosts_consumed(c: selected.candidate),
@@ -1416,25 +1496,6 @@ fn admit_shape(s: ServingDeploymentSelection) -> ShapeAdmission {
 // axes and would have answered the moment two of them filled; this one names every dimension that
 // could change the decision, so the answer stays an obligation until they are measured. No weights
 // are guessed and no axis is dropped to obtain a winner.
-data spark_runtime: RuntimeRevision = runtime_revision(
-  image: "the serving container image currently deployed on the Sparks" as NonEmptyStr,
-  vllm_revision: "the vLLM revision pinned in that image" as NonEmptyStr,
-)
-
-data serving_parameters_current: ServingDecisionParameters = serving_decision_parameters(
-  max_model_len: token_count(count: 300000),
-  memory_request: VllmMemoryRequest {
-    utilization: Present { value: basis_point(count: 8200) },
-    kv_cache_bytes: none,
-  },
-  max_num_batched_tokens: token_count(count: 2048),
-  max_num_seqs: 32,
-  executor: ExecutorRayProfile,
-  kv_layout: KvFp8DsMlaLayout,
-  speculative: SpeculationOff,
-  runtime: spark_runtime,
-)
-
 data eight_host_topologies: List<TopologyShape> = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
 
 // THE WORKLOAD IS A SCENARIO AND SAYS SO. 300,000 tokens was authored as a working window with no
@@ -1597,12 +1658,10 @@ data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_
 // deepseek-v4-flash:iq3s-split; cutover is a later operator decision. Host binding (srv7/srv8
 // llama.cpp RPC reservation) is fabric work downstream of a selected shape -- named, not done here.
 //
-// THE FIELD IS EVERY SHAPE THE FLEET SNAPSHOT ADMITS. Completeness is an identity join: omitting
-// replica_count > 1 from the roster would make absence look like irrelevance. No-redundancy
-// (replica_count == 1) and native-quality (published checkpoint) exclude BEFORE Pareto. Tensor-
-// parallel width is not written; it is the weight-fit axis against spark_fleet_snapshot once
-// DSV41-0 supplies a fleet-read footprint. Until then -- and until DSV41-1 runtime feasibility
-// and a quality evaluation exist -- select_serving_deployment returns NeedsEvidence naming those.
+// THE FIELD IS EVERY SHAPE THE FLEET SNAPSHOT ADMITS, CROSSED WITH THE DECLARED RUNTIME DOMAIN.
+// Completeness is an identity join over artifact × topology × profile. Narrowing to the existing
+// fleet image would drop the GB10 vLLM lead; llama.cpp is conversion-only and is not a candidate;
+// SGLang preview images target larger accelerators only. Engram offload is zero pool gain on GB10.
 data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_quality_requirement"),
   required_artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
@@ -1611,10 +1670,10 @@ data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement
   rationale: "operator policy 2026-09-11: native quality always. Only the published V4.1 Flash checkpoint is admissible; a requantised or quality-degrading substitute is other weights and is excluded by constraint_native_quality before dominance, not ranked" as NonEmptyStr,
 )
 
-data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
+data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = serving_deployment_domain_over(
   artifacts: [artifact_deepseek_v4_1_flash_native],
   topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
-  parameters: serving_parameters_current,
+  profiles: v4_1_declared_profiles,
 )
 
 data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
@@ -1624,6 +1683,7 @@ data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = serving_ca
     stem: "deepseek_v4_1",
     artifacts: [artifact_deepseek_v4_1_flash_native],
     topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+    profiles: v4_1_declared_profiles,
   ),
 )
 
