@@ -22,6 +22,7 @@ import extdeps.vendor.amd { amd }
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
 import gunbc.spark.serving_runtime_capability_probe {
   RuntimeCapabilityProbeRow, sparkrun_vllm_ds4_gb10_probe,
+  v41_published_arm64_probe,
   RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, MlaKvCacheLayoutAdmitted,
   Csa2CompressorKernels, DSparkSpeculator,
   KernelProbeOutcome, KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused,
@@ -81,11 +82,12 @@ test fn an_architecture_the_runtime_registers_still_fails_the_footprint_wall() -
   }
 }
 
-// NO IMAGE PROBED ON A GB10 ADMITS DEEPSEEK V4.1, and this is the sweep's standing rather than a
-// statement about images in general -- the candidate roster it folds over is what makes that
-// denominator readable. The day an image does admit it, this witness goes red and that is the signal.
-test fn no_probed_image_admits_deepseek_v41_on_this_compute_capability() -> Bool {
-  length(v41_images_with_prerequisites(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)) == 0
+// THE PUBLISHED ROUTE-A IMAGE ADMITS DEEPSEEK V4.1 ON THIS DEVICE. The previous standing was that
+// no probed candidate did; fleet-converge 34643985099 on srv9 is the discriminating run.
+test fn the_published_v41_image_admits_deepseek_v41_on_this_compute_capability() -> Bool {
+  let hits = v41_images_with_prerequisites(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)
+  length(hits) == 1
+    && any(hits, h => h as String == v41_published_arm64_probe.image_reference as String)
 }
 
 // THE VERDICT FOR THE PRODUCTION IMAGE NAMES ONLY THE CAPABILITIES THAT WERE MEASURED MISSING, which

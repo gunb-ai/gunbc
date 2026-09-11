@@ -1,6 +1,7 @@
 module gunbc.spark.runtime_architecture_registry_reading
 
 import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 
 // WHICH ARCHITECTURES AN IMAGE ANSWERS FOR IS SOMETHING WE READ, NOT SOMETHING ITS PUBLISHER SAYS.
 //
@@ -1887,6 +1888,21 @@ data gunbc_vllm_dsv41_gb10_registry_reading: ArchitectureRegistryReading = Archi
   ],
 }
 
+// THE PUBLISHED ROUTE-A IMAGE, probed on srv9 by fleet-converge 34643985099
+// (gunbc.spark.v41_runtime_image_probe v41_published_image_probe_ci_wet). The subject is the local
+// config id inspect reported, not the pull pin sha256:d84a1232... -- those are different hashes.
+// This reading records the architecture the probe asked about, which was present; it is not a
+// full registry dump.
+data v41_published_arm64_observed_digest: NonEmptyStr = "sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040" as NonEmptyStr
+
+data v41_published_arm64_registry_reading: ArchitectureRegistryReading = ArchitectureRegistryReading {
+  image_reference: v41_published_arm64_observed_digest,
+  host: "srv9" as NonEmptyStr,
+  observed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+  instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM" as NonEmptyStr,
+  architectures: [deepseek_v4_1_flash_architecture_class],
+}
+
 // THE ROSTER EVERY CONSUMER READS, so a reading that exists cannot be missed by a consumer that
 // happened to import only some of them.
 data spark_architecture_registry_readings: List<ArchitectureRegistryReading> = [
@@ -1895,4 +1911,5 @@ data spark_architecture_registry_readings: List<ArchitectureRegistryReading> = [
   timothystewart6_vllm_gb10_registry_reading,
   xomoxcc_dgx_spark_sglang_registry_reading,
   gunbc_vllm_dsv41_gb10_registry_reading,
+  v41_published_arm64_registry_reading,
 ]
