@@ -15,6 +15,8 @@ import gunbc.roadmap_execution_contract {
   ContractClosesNothing,
   ContractDeclaresNoValidation,
   ContractNotAgentWork,
+  NonAgentWorkMode,
+  non_agent_work_mode_label,
   contract_closure,
 }
 import gunbc.roadmap_validation_oracle {
@@ -37,9 +39,9 @@ import gunbc.roadmap_validation_oracle {
 // the fix for the gap where a derived closing-contract task carried ExecutionContractUnspecified
 // and dispatch therefore refused the row whose only job is to supply a contract.\n\nWHAT IT
 // DECIDES, each arm with its own remedy: the target is a declared node (else the task names
-// nothing); the target's contract is not unspecified and not empty (the two states
-// gunbc.roadmap_execution_contract contract_closure already separates, kept separate here because
-// one asks for a contract and the other asks for a validation inside the one you wrote); the
+// nothing); the target's contract is not unspecified, not non-agent work, and not empty
+// (contract_closure already separates those; unspecified asks for a contract, non-agent work
+// refuses by mode and does not, and empty asks for a validation inside the one you wrote); the
 // contract does not close itself with another ClosingContractAuthoringValidation (a
 // closing-contract task whose target is closed by another closing-contract task closes nothing, and
 // the recursion is reachable because the derivation mints one for every unbound startable node);
@@ -62,6 +64,10 @@ type ClosingContractAuthoringVerdict
   = ClosingContractAuthored { target: RoadmapNodeId }
   | ClosingContractTargetNotDeclared { target: String }
   | ClosingContractTargetUnspecified { target: RoadmapNodeId }
+  | ClosingContractTargetNotAgentWork {
+      target: RoadmapNodeId,
+      mode: NonAgentWorkMode,
+    }
   | ClosingContractTargetClosesNothing { target: RoadmapNodeId }
   | ClosingContractTargetClosesItself { target: RoadmapNodeId }
   | ClosingContractTargetOracleIncomplete {
@@ -112,8 +118,8 @@ fn closing_contract_verdict_for_observed(
   match contract_closure(contract: contract) {
     ContractDeclaresNoValidation =>
       ClosingContractTargetUnspecified { target: node }
-    ContractNotAgentWork { mode: _ } =>
-      ClosingContractTargetUnspecified { target: node }
+    ContractNotAgentWork { mode } =>
+      ClosingContractTargetNotAgentWork { target: node, mode: mode }
     ContractClosesNothing =>
       ClosingContractTargetClosesNothing { target: node }
     ContractCloses { validations } =>
@@ -165,6 +171,16 @@ fn closing_contract_authoring_verdict_detail(
       join([target, ": names no declared roadmap node, so there is nothing to close"], "")
     ClosingContractTargetUnspecified { target } =>
       join([target as String, ": still carries ExecutionContractUnspecified — no closing contract has been authored"], "")
+    ClosingContractTargetNotAgentWork { target, mode } =>
+      join(
+        [
+          target as String,
+          ": ",
+          non_agent_work_mode_label(mode: mode),
+          " — this is not agent work and does not need a closing contract authored",
+        ],
+        "",
+      )
     ClosingContractTargetClosesNothing { target } =>
       join([target as String, ": carries a contract declaring no validation, so nothing checks its completion"], "")
     ClosingContractTargetClosesItself { target } =>
@@ -199,6 +215,7 @@ fn closing_contract_authored(target: String) -> Bool {
     ClosingContractAuthored { target: _ } => true
     ClosingContractTargetNotDeclared { target: _ } => false
     ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
     ClosingContractTargetClosesNothing { target: _ } => false
     ClosingContractTargetClosesItself { target: _ } => false
     ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
