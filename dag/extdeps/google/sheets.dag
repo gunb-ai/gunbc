@@ -80,7 +80,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data sheets_api_version: NonEmptyStr = "v4"
 
-data sheets_api_base: NonEmptyStr = "https://sheets.googleapis.com/v4"
+data sheets_api_base: NonEmptyStr = concat("https://sheets.googleapis.com/", sheets_api_version as String) as NonEmptyStr
 
 data sheets_serviceusage_api_id: NonEmptyStr = "sheets.googleapis.com"
 
