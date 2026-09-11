@@ -174,6 +174,14 @@ data v41_probe_registry_symbol: NonEmptyStr = "the image's own model registry, a
 
 // ── THE EXECUTED ROWS ──────────────────────────────────────────────────────────────────────────
 //
+// THE SUBJECT OF A CAPABILITY ROW IS THE DIGEST IT WAS EXECUTED IN, and it is taken from that
+// image's frozen registry reading rather than from the image module's current pin -- the same
+// correction the readings themselves already carry, applied to the receipts that cite them. Left on
+// `*_pinned_reference()`, a repin would have moved every capability row in this module onto a digest
+// nobody probed, which is worse than the reading case: a kernel absence is what rules an image out,
+// so an inherited absence rules out an image nobody looked inside. The observed digest has exactly
+// one home, the reading, and these rows read it from there.
+//
 // Every row below was produced by one script executed inside the named digest on spark-a3ee with
 // `docker run --gpus all` on 2026-09-11. The script imports the framework, loads the compiled
 // operator libraries, reads the architecture registry, and then asks each capability question by
@@ -181,19 +189,19 @@ data v41_probe_registry_symbol: NonEmptyStr = "the image's own model registry, a
 // architecture but shipped no FP4 path would be recorded exactly that way.
 
 data sparkrun_vllm_ds4_gb10_probe: ProbedRuntimeImage = ProbedRuntimeImage {
-  image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+  image_reference: sparkrun_vllm_ds4_gb10_registry_reading.image_reference,
   framework: "vllm" as NonEmptyStr,
   framework_version: sparkrun_vllm_ds4_gb10_vllm_version,
 }
 
 data gitcommit90_glm_53_one_spark_probe: ProbedRuntimeImage = ProbedRuntimeImage {
-  image_reference: gitcommit90_glm_53_one_spark_pinned_reference(),
+  image_reference: gitcommit90_glm_53_one_spark_registry_reading.image_reference,
   framework: "vllm" as NonEmptyStr,
   framework_version: gitcommit90_glm_53_one_spark_vllm_version,
 }
 
 data timothystewart6_vllm_gb10_probe: ProbedRuntimeImage = ProbedRuntimeImage {
-  image_reference: timothystewart6_vllm_gb10_pinned_reference(),
+  image_reference: timothystewart6_vllm_gb10_registry_reading.image_reference,
   framework: "vllm" as NonEmptyStr,
   framework_version: timothystewart6_vllm_gb10_framework_version,
 }
@@ -418,8 +426,14 @@ fn kernel_probe_outcome_label(o: KernelProbeOutcome) -> String {
   }
 }
 
+// THE DEVICE KEY INCLUDES THE VENDOR, because a compute-capability number is meaningless without the
+// vendor whose numbering scheme it belongs to. GpuComputeCapability carries the vendor precisely so
+// that (12, 1) cannot be asked as though it were a universal coordinate: extdeps.gpu.types renders
+// NVIDIA's as sm_121 and AMD's as gfx121, two unrelated devices that a major/minor comparison alone
+// would have treated as one. Nothing in this module has an AMD row today, which is exactly why the
+// omission was invisible and why the control below asks the question anyway.
 fn same_device(a: GpuComputeCapability, b: GpuComputeCapability) -> Bool {
-  a.major == b.major && a.minor == b.minor
+  a.vendor == b.vendor && a.major == b.major && a.minor == b.minor
 }
 
 fn probe_row_matches(r: RuntimeCapabilityProbeRow, image_reference: NonEmptyStr, capability: RuntimeKernelCapability, device: GpuComputeCapability) -> Bool {
@@ -562,7 +576,7 @@ fn v41_images_with_prerequisites(rows: List<RuntimeCapabilityProbeRow>, candidat
 // them, DeepseekV41ForCausalLM not. The remaining four probes are asked in vLLM's vocabulary and
 // that vocabulary does not exist in this image, so they refuse rather than answer.
 data dgx_spark_sglang_probe: ProbedRuntimeImage = ProbedRuntimeImage {
-  image_reference: xomoxcc_dgx_spark_sglang_pinned_reference(),
+  image_reference: xomoxcc_dgx_spark_sglang_registry_reading.image_reference,
   framework: "sglang" as NonEmptyStr,
   framework_version: xomoxcc_dgx_spark_sglang_framework_version,
 }

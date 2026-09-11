@@ -16,6 +16,7 @@ import gunbc.spark.runtime_architecture_registry_reading {
 
 import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
 import gunbc.spark.serving_runtime_capability_probe {
   RuntimeCapabilityProbeRow, sparkrun_vllm_ds4_gb10_probe,
@@ -298,4 +299,58 @@ test fn the_speculator_is_required_by_the_speculative_profile_alone() -> Bool {
   any(v41_required_capabilities(profile: V41SpeculativeDecode), c => runtime_kernel_capability_label(c: c) == "dspark-speculator")
     && !any(v41_required_capabilities(profile: V41BaselineDecode), c => runtime_kernel_capability_label(c: c) == "dspark-speculator")
     && length(v41_required_capabilities(profile: V41BaselineDecode)) + 1 == length(v41_required_capabilities(profile: V41SpeculativeDecode))
+}
+
+// A REPINNED IMAGE MUST FIND NO CAPABILITY ROWS. The capability receipts name the digest they were
+// executed in, frozen; the candidate roster names what the fleet intends to run. A repin separates
+// the two, and the lookup must then find NOTHING rather than serve the old image's kernel answers
+// under the new digest's name -- an inherited absence would rule out an image nobody looked inside.
+// The repinned reference here is a fixture: no such digest exists, which is precisely the point.
+test fn a_repinned_digest_finds_no_capability_rows_and_reads_as_unprobed() -> Bool {
+  let repinned = "aidendle94/sparkrun-vllm-ds4-gb10@sha256:2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr
+  all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
+    match capability_outcome(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, capability: c, device: gb10_observed_compute_capability) {
+      OutcomeUnrecorded => true
+      OutcomeFound { outcome: _ } => false
+      OutcomeConflicted { distinct_answers: _ } => false
+    })
+    && length(v41_missing_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)) == 0
+    && length(v41_unprobed_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode))
+         == length(v41_required_capabilities(profile: V41SpeculativeDecode))
+    && match v41_runtime_verdict(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode) {
+         V41RuntimeIncompletelyProbed { image_reference: _, unprobed: _ } => true
+         V41RuntimePrerequisitesPresent { image_reference: _, profile: _, remaining: _ } => false
+         V41RuntimeMissing { image_reference: _, missing: _ } => false
+       }
+}
+
+// AND THE PROBE SUBJECTS THEMSELVES ARE THE OBSERVED DIGESTS, not whatever the image modules point at
+// today. Asserted by the join that must hold while nothing has been repinned: every capability row's
+// subject is a digest some reading was taken in. If a probe row's subject were derived from a live
+// pin, a repin would break this -- which is the alarm, not a nuisance.
+test fn every_capability_row_names_a_digest_some_reading_was_taken_in() -> Bool {
+  all(v41_sm121_capability_probe_rows(), r =>
+    match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: r.image.image_reference) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+// A DEVICE KEY WITHOUT THE VENDOR IS NOT A DEVICE. AMD's (12, 1) is gfx121 and NVIDIA's is sm_121 --
+// unrelated hardware that a major/minor comparison alone would have matched. No AMD row exists here,
+// which is exactly why the omission was invisible; the question is asked anyway.
+test fn a_same_numbered_device_from_another_vendor_finds_nothing() -> Bool {
+  let amd_1201 = GpuComputeCapability { vendor: amd, major: 12, minor: 1 }
+  all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
+    match capability_outcome(
+      rows: v41_sm121_capability_probe_rows(),
+      image_reference: sparkrun_vllm_ds4_gb10_probe.image_reference,
+      capability: c,
+      device: amd_1201,
+    ) {
+      OutcomeUnrecorded => true
+      OutcomeFound { outcome: _ } => false
+      OutcomeConflicted { distinct_answers: _ } => false
+    })
+    && length(v41_missing_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: sparkrun_vllm_ds4_gb10_probe.image_reference, device: amd_1201, profile: V41SpeculativeDecode)) == 0
 }
