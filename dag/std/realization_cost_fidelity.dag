@@ -3,7 +3,6 @@ module std.realization_cost_fidelity
 import std.algebra { CostShape, Equal, Greater, Less, Ordering }
 import std.induction {
   CostBound,
-  cost_bound_is_orderable,
   GrowthRank,
   GrowthNotOrderable,
   OrderableGrowth,
@@ -185,20 +184,56 @@ fn param_union(modeled: CostBound, realized: CostBound) -> List<String> {
 // because a dominance computed over the axes that happened to be placeable is a claim about a subset
 // nobody declared. It is deliberately NOT rendered as UndecidedOnEvidence, which means the costs are
 // known and their order turns on an unmodeled body — a different ignorance with a different repair.
+// A BOUND WITH NO PARAMETERS STILL HAS TO ANSWER FOR ITSELF, and this is where that happens rather
+// than in a parallel recursion. Every unorderable bound the axis fold CAN see arrives as an
+// unplaceable growth on some parameter; the one it cannot see has no parameters at all, which is
+// exactly ForeverBound and ErrorBound (and a sum containing them). With no axes, the dominance fold
+// would answer Equivalent over an empty comparison list and report an unbounded cost as PRESERVED
+// against a constant.
+//
+// THE QUESTION IS PUT TO THE CANONICAL FOLD, not to a second walk of the storage shape. Asking
+// cost_bound_growth_in_param about a parameter the bound does not carry is precisely the right
+// question: a structured bound answers zero growth in a parameter it never mentions, while
+// ForeverBound and ErrorBound answer NOT ORDERABLE whatever they are asked, and a SumBound recurses
+// to its terms through the same fold. That deleted cost_bound_is_orderable,
+// atomic_cost_is_orderable and atomic_factors_are_orderable -- three predicates that re-walked
+// CostBound's arms in parallel with the fold that already owns them (DESIGN section 5: prefer the
+// single authority the realization derives from over a check that re-states it).
+fn no_parameter_probe() -> String {
+  ""
+}
+
+fn bound_answers_for_itself_without_parameters(b: CostBound) -> Bool {
+  match cost_bound_growth_in_param(b: b, param: no_parameter_probe()) {
+    OrderableGrowth { rank: _ } => true
+    GrowthNotOrderable => false
+  }
+}
+
 fn param_axis_comparisons(
   modeled: CostBound,
   realized: CostBound,
 ) -> List<AxisComparison>? {
-  param_union(modeled: modeled, realized: realized) |> fold(init: Present { value: [] }, f: fn(acc, o) {
-    match acc {
-      Absent => none
-      Present { value: so_far } =>
-        match param_axis_comparison(modeled: modeled, realized: realized, param: o) {
-          Absent => none
-          Present { value: c } => Present { value: concat([c], so_far) }
-        }
+  let params = param_union(modeled: modeled, realized: realized)
+  if params.length() == 0 {
+    if bound_answers_for_itself_without_parameters(b: modeled)
+      && bound_answers_for_itself_without_parameters(b: realized) {
+      Present { value: [] }
+    } else {
+      none
     }
-  })
+  } else {
+    params |> fold(init: Present { value: [] }, f: fn(acc, o) {
+      match acc {
+        Absent => none
+        Present { value: so_far } =>
+          match param_axis_comparison(modeled: modeled, realized: realized, param: o) {
+            Absent => none
+            Present { value: c } => Present { value: concat([c], so_far) }
+          }
+      }
+    })
+  }
 }
 
 // AN AXIS WHOSE GROWTHS AGREE AND WHOSE BODIES DO NOT IS UNDECIDED ON EVIDENCE, not Same. The
@@ -278,11 +313,7 @@ fn rank_axis_comparison(realized: GrowthRank, modeled: GrowthRank) -> AxisCompar
 // ignorance with a different repair (model the body, versus extend this reading to the exponent
 // forms std.induction already carries).
 fn cost_fidelity_of(modeled: CostBound, realized: CostBound) -> CostFidelity {
-  if !cost_bound_is_orderable(b: modeled) || !cost_bound_is_orderable(b: realized) {
-    CostGrowthNotOrderable
-  } else {
-    cost_fidelity_of_orderable(modeled: modeled, realized: realized)
-  }
+  cost_fidelity_of_orderable(modeled: modeled, realized: realized)
 }
 
 fn cost_fidelity_of_orderable(modeled: CostBound, realized: CostBound) -> CostFidelity {

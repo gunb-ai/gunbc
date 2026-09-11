@@ -648,48 +648,21 @@ fn cost_bound_params(b: CostBound) -> List<String> {
   reverse(cost_bound_params_into(b: b, seen: []))
 }
 
-// ORDERABILITY IS A PROPERTY OF THE WHOLE BOUND, AND IT HAS TO BE ASKED BEFORE ANY COMPARISON.
-// ParamGrowth answers it per parameter by its constructor, and every consumer of a growth destructures
-// it — but a bound with NO parameters yields no per-parameter growth at all, and ForeverBound is
-// exactly that shape, so no axis exists to carry the refusal. That residue is what this predicate
-// covers, and it is why the construction above did not delete it. So
-// a consumer that only read the per-parameter flag would order an unbounded cost as if it were
-// constant, which is not a weaker answer than refusing: it is the opposite answer.
+// THE ORDERABILITY PREDICATES ARE GONE, AND THE FOLD THEY SHADOWED ANSWERS THE QUESTION.
+// cost_bound_is_orderable, atomic_factors_are_orderable and atomic_cost_is_orderable re-walked
+// CostBound's arms in parallel with cost_bound_growth_in_param, which already decides orderability
+// per parameter and already recurses SumBound. Two walks over one storage shape is one authority
+// too many (DESIGN section 5), and the second one drifts silently because nothing forces them to
+// agree.
 //
-// MEASURED, not argued: before this predicate existed, cost_fidelity_of(linear, sqrt) answered
-// "the realization is FASTER" (a fractional exponent read as (0,0), i.e. constant) and
-// cost_fidelity_of(ForeverBound, ConstantBound) answered "preserved" (no parameters, so no axes, so
-// equivalent). Both are the fabricated plausible output DESIGN section 5 forbids, produced by the
-// module whose annotations forbid it.
-// THE PREDICATE IS DERIVED FROM THE GROWTH, NOT RE-SPELLED BESIDE IT. Which exponent forms this
-// reading can place is decided once, in exponent_growth; a second match over the same arms here
-// would be the fork DESIGN section 3 forbids, and it is the fork that lets the two answers drift.
-fn atomic_cost_is_orderable(c: AtomicCost) -> Bool {
-  match atomic_cost_growth(c: c) {
-    OrderableGrowth { rank: _ } => true
-    GrowthNotOrderable => false
-  }
-}
-
-fn atomic_factors_are_orderable(factors: List<AtomicCost>) -> Bool {
-  factors |> fold(init: true, f: fn(acc, c) { acc && atomic_cost_is_orderable(c: c) })
-}
-
-fn cost_bound_is_orderable(b: CostBound) -> Bool {
-  match b {
-    ConstantBound => true
-    AtomicBound { cost: c } => atomic_cost_is_orderable(c: c)
-    ProductBound { factors: fs } => atomic_factors_are_orderable(factors: fs)
-    SumOfProductsBound { terms: ts } =>
-      ts |> fold(init: true, f: fn(acc, factors) {
-        acc && atomic_factors_are_orderable(factors: factors)
-      })
-    SumBound { terms: ts } =>
-      ts |> fold(init: true, f: fn(acc, inner) { acc && cost_bound_is_orderable(b: inner) })
-    ForeverBound => false
-    ErrorBound => false
-  }
-}
+// WHAT THE PREDICATES ACTUALLY COVERED that the fold did not: only the bound with NO PARAMETERS,
+// where there is no axis to carry a refusal. That case now asks this fold about a parameter the
+// bound does not carry -- ForeverBound and ErrorBound answer not-orderable whatever they are asked,
+// a structured bound answers zero growth, and a sum recurses -- so the residue is one question to
+// the canonical authority rather than a parallel recursion. The consumer is
+// std.realization_cost_fidelity param_axis_comparisons, and its two controls
+// (an_unbounded_cost_is_not_preserved_against_a_constant, a_malformed_bound_is_not_orderable) are
+// the executed evidence that the case is still refused.
 
 // THE PROJECTION TO CostShape, AND IT IS PARTIAL ON PURPOSE. CostShape can say exactly four things,
 // and each has exactly one preimage here: constant (0,0,0), iterate-body (1,0,1), linear-scan
