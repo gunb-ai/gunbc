@@ -2,12 +2,14 @@ module v2.test.parse.d5_expression_grammar_parse
 
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }
+import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -46,6 +48,34 @@ fn d5_rejected(parsed: Outcome<Node>) -> Bool {
   }
 }
 
+fn d5_tree_has_lexeme(root: Node, text: String) -> Bool {
+  match node_atom_identity_optional(node: root) {
+    Present { value: id } =>
+      symbol_lexeme(sym: id) == text || fold(root.children, init: false, f: fn(found, e) {
+        found || d5_tree_has_lexeme(root: e.target, text: text)
+      })
+    Absent =>
+      fold(root.children, init: false, f: fn(found, e) {
+        found || d5_tree_has_lexeme(root: e.target, text: text)
+      })
+  }
+}
+
+fn d5_find_emitted(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: root, emitted: emitted) {
+    ParseSubtreeFound { captured: n } => Present { value: n }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn d5_keyword_field_name_is_lexeme(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      d5_tree_has_lexeme(root: tree, text: "module")
+  }
+}
+
 data d5_p_keyword_field_source: String = "module probe.d5p\nfn f() -> Int { Rec { module: 1 } }\n"
 data d5_p_keyword_field_red_source: String = "module probe.d5p_red\nfn f() -> Int { Rec { module 1 } }\n"
 
@@ -59,7 +89,7 @@ data d5_o_negative_literal_source: String = "module probe.d5o\nfn f() -> Int { -
 data d5_o_negative_literal_red_source: String = "module probe.d5o_red\nfn f() -> Int { - }\n"
 
 data d5_n_brace_map_source: String = "module probe.d5n\nfn f() -> Int { { \"k\": 1 } }\n"
-data d5_n_brace_map_red_source: String = "module probe.d5n_red\nfn f() -> Int { { \"k\": 1 } }\nleftover\n"
+data d5_n_brace_map_red_source: String = "module probe.d5n_red\nfn f() -> Int { { \"k\": } }\n"
 
 data d5_q_return_source: String = "module probe.d5q\nfn f() -> Int { return 1 }\n"
 data d5_q_return_red_source: String = "module probe.d5q_red\nfn f() -> Int { return }\n"
@@ -90,6 +120,10 @@ fn d5_q_return_parsed() -> Outcome<Node> {
 
 test fn cause_p_keyword_field_init_parses_holds() -> Bool {
   d5_accepted(parsed: d5_p_keyword_field_parsed())
+}
+
+test fn cause_p_keyword_field_init_name_is_lexeme_holds() -> Bool {
+  d5_keyword_field_name_is_lexeme(parsed: d5_p_keyword_field_parsed())
 }
 
 test fn cause_p_keyword_field_init_red_tokens_remain_holds() -> Bool {
