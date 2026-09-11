@@ -37,6 +37,10 @@ import gunbc.roadmap_model {
   node_sizing_subject_id,
   node_accepted,
 }
+import std.keyed_row { KeyedRow, keyed_row_find }
+import std.keyed_roster {
+  keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey,
+}
 import gunbc.roadmap_sizing {
   NodeSizing,
   SizingSubjectId,
@@ -509,33 +513,43 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
 // cells it wants to exercise, and production supplies whatever the deriver actually answered. A
 // node with no assignment is unsized to this fold, which is the same refusal the authored Unsized
 // arm used to produce.
-// THE ASSIGNMENT IS KEYED BY THE KEY THE DERIVER ANSWERED UNDER, and this is the whole reason the
-// type exists rather than the sizing riding on the node record. A derivation is SUBJECTED to a
-// SizingSubjectId -- gunbc.roadmap_model node_sizing_subject_id, the node's minted identity,
-// because roadmap_node_identity_law forbids the slug as an identity input. An assignment keyed by
-// RoadmapNodeId would have derived evidence under a durable key and then matched it to nodes by a
-// mutable one, so a rename would silently break the join: the strength of a join is its weakest
-// key, and the durable one would never have participated in the lookup.
+// THE ASSIGNMENT IS KEYED BY THE KEY THE DERIVER ANSWERED UNDER, THROUGH THE CARRIER std ALREADY
+// OWNS. A derivation is SUBJECTED to a SizingSubjectId -- gunbc.roadmap_model node_sizing_subject_id,
+// the node's minted identity, because roadmap_node_identity_law forbids the slug as an identity
+// input. Keying by RoadmapNodeId would have derived evidence under a durable key and then matched
+// it to nodes by a mutable one, so a rename would silently break the join: the strength of a join
+// is its weakest key, and the durable one would never have participated in the lookup.
+//
+// AN ASSIGNMENT IS A std.keyed_row KeyedRow AND NOTHING NEW. The first version of this carrier was
+// a hand-rolled keyed roster -- a record of {subject, sizing}, a first-match lookup, and a local
+// duplicate-key detector. std.keyed_roster already owns that concept generically, with the typed
+// verdict this fold needs, and its carrier note states the exact property the local version was
+// reaching for: one value per key by construction, duplicate-key input REFUSES rather than
+// silently unioning. Minting a second authority for it was the failed decomposition DESIGN section
+// 2 names -- net concepts growing by re-invention -- so the roster is built through
+// keyed_roster_build and its KeyedRosterBuildDuplicateKey verdict is what refuses, rather than a
+// local checker standing where the construction carrier was available (section 5).
 //
 // THE SLUG IS NOT BANISHED, IT IS SCOPED. RoadmapNodeId remains the key of the dependency edges,
 // of the refusal payloads, and of every population this module reports, because those are the
 // graph's and the wire's vocabulary and this change does not migrate them. What it must not be is
 // the key of THIS join. So a fold filters by identity and reports by slug.
-type NodeSizingAssignment {
-  subject: SizingSubjectId
-  sizing: NodeSizing
+type NodeSizingAssignment = KeyedRow<SizingSubjectId, NodeSizing>
+
+fn sizing_subject_eq(a: SizingSubjectId, b: SizingSubjectId) -> Bool {
+  a == b
 }
 
 fn assigned_sizing(sizings: List<NodeSizingAssignment>, subject: SizingSubjectId) -> NodeSizing? {
-  match sizings |> filter(a => a.subject == subject) |> first {
-    Absent => Absent
-    Present { value: a } => Present { value: a.sizing }
+  match keyed_row_find(rows: sizings, wanted_key: subject, key_eq: sizing_subject_eq) {
+    Absent => none
+    Present { value: row } => Present { value: row.value }
   }
 }
 
 // A DERIVED CELL IS ADMITTED FOR THE SUBJECT IT NAMES OR FOR NO SUBJECT AT ALL. The adapter below
-// is the seam where an answer from gunbc.roadmap_sizing becomes a fact about a roadmap node, and
-// it is the one place a wrong answer could be rebound to the wrong node. It does not rebind: it
+// is the seam where an answer from gunbc.roadmap_sizing becomes a fact about a roadmap node, and it
+// is the one place a wrong answer could be rebound to the wrong node. It does not rebind: it
 // compares the subject the deriver ANSWERED UNDER against the subject the node was ASKED UNDER --
 // the same gunbc.roadmap_model node_sizing_subject_id projection on both sides -- and a mismatch
 // produces SizingForAnotherSubject rather than an assignment.
@@ -548,11 +562,21 @@ fn assigned_sizing(sizings: List<NodeSizingAssignment>, subject: SizingSubjectId
 // derivation is a PARAMETER here:
 // test.claim.roadmap_forecast_witness.witness_a_cell_answered_for_another_subject_refuses hands
 // this function a cell carrying another node's subject and reads the refusal, and
-// witness_a_cell_answered_for_its_own_subject_is_admitted is its positive twin, so the arm is
-// shown to discriminate rather than merely to fire.
+// witness_a_cell_answered_for_its_own_subject_is_admitted is its positive twin, so the arm is shown
+// to discriminate rather than merely to fire.
+//
+// SUBJECT FIDELITY IS THIS MODULE'S FACT; KEY UNIQUENESS IS NOT. The two refusal arms below have
+// different homes on purpose: whether a cell was answered for the node it was asked about is a
+// question only this seam can ask, while whether one key carries two values is the concept
+// std.keyed_roster owns. So the second arm carries that authority's own verdict evidence rather
+// than a locally recomputed one.
 type SizingAssignmentRefusal
   = SizingForAnotherSubject { asked: SizingSubjectId, answered: SizingSubjectId }
-  | SizingAssignedTwice { subject: SizingSubjectId }
+  | SizingAssignedTwice {
+      subject: SizingSubjectId,
+      first: NodeSizingAssignment,
+      duplicate: NodeSizingAssignment,
+    }
 
 // BOTH HALVES OF ONE ANSWER, reported together rather than one silently dropping the other: a fold
 // that returned only the assignments would make a wrong-subject answer indistinguishable from an
@@ -570,7 +594,7 @@ fn node_sizing_adaptation(rn: RoadmapNode, d: NodeSizingDerivation) -> NodeSizin
     SizingDerived { subject, sizing } =>
       if subject == asked {
         NodeSizingAdaptation {
-          assignments: [NodeSizingAssignment { subject: subject, sizing: sizing }],
+          assignments: [KeyedRow { row_key: subject, value: sizing }],
           refusals: [],
         }
       } else {
@@ -598,19 +622,17 @@ fn derived_node_sizings(nodes: List<RoadmapNode>) -> NodeSizingAdaptation {
   })
 }
 
-// LIST ORDER IS NOT AN ARBITER. assigned_sizing takes the first match, which is correct only if a
-// subject can appear at most once; nothing in a List enforces that, so the population is checked
-// before any fold reads it and a repeated subject refuses instead of letting position decide which
-// of two conflicting cells wins.
+// LIST ORDER IS NOT AN ARBITER, AND std.keyed_roster IS WHAT SAYS SO. assigned_sizing takes the
+// first match, which is correct only if a subject appears at most once; a List does not enforce
+// that, so the population is CONSTRUCTED through keyed_roster_build before any fold reads it and a
+// repeated subject surfaces that carrier's own KeyedRosterBuildDuplicateKey verdict instead of a
+// locally invented duplicate check.
 fn duplicate_sizing_subjects(sizings: List<NodeSizingAssignment>) -> List<SizingAssignmentRefusal> {
-  sizings
-    |> filter(a => count(sizings |> filter(b => b.subject == a.subject)) > 1)
-    |> fold(init: [], f: (acc, a) =>
-      if any(acc, existing => match existing {
-        SizingAssignedTwice { subject } => subject == a.subject
-        SizingForAnotherSubject { asked: _, answered: _ } => false
-      }) { acc } else { concat(acc, [SizingAssignedTwice { subject: a.subject }]) }
-    )
+  match keyed_roster_build(incomings: sizings, key_eq: sizing_subject_eq) {
+    KeyedRosterBuilt { rows: _ } => []
+    KeyedRosterBuildDuplicateKey { key, first, duplicate } =>
+      [SizingAssignedTwice { subject: key, first: first, duplicate: duplicate }]
+  }
 }
 
 fn unique_cells(cells: List<NodeSizing>) -> List<NodeSizing> {

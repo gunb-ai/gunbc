@@ -24,6 +24,7 @@ import gunbc.roadmap_authority {
   RoadmapAuthorityProjectionRefused,
   active_roadmap_nodes_for_accepted,
 }
+import std.keyed_row { KeyedRow }
 import gunbc.roadmap_sizing {
   SizingDerived,
   NodeSizing,
@@ -118,7 +119,7 @@ fn fixture_node(id: String) -> RoadmapNode {
 }
 
 fn sized_at(n: RoadmapNode, cell: NodeSizing) -> NodeSizingAssignment {
-  NodeSizingAssignment { subject: node_sizing_subject_id(rn: n), sizing: cell }
+  KeyedRow { row_key: node_sizing_subject_id(rn: n), value: cell }
 }
 
 fn fixture_sizings(ns: List<RoadmapNode>) -> List<NodeSizingAssignment> {
@@ -564,7 +565,7 @@ test fn witness_a_cell_answered_for_another_subject_refuses() -> Bool {
     && all(adapted.refusals, r => match r {
       SizingForAnotherSubject { asked, answered } =>
         asked == node_sizing_subject_id(rn: a) && answered == node_sizing_subject_id(rn: b)
-      SizingAssignedTwice { subject: _ } => false
+      SizingAssignedTwice { subject: _, first: _, duplicate: _ } => false
     })
 }
 
@@ -578,8 +579,8 @@ test fn witness_a_cell_answered_for_its_own_subject_is_admitted() -> Bool {
   count(adapted.refusals) == 0
     && count(adapted.assignments) == 1
     && all(adapted.assignments, assignment =>
-      assignment.subject == node_sizing_subject_id(rn: a)
-        && assignment.sizing.volume == VolumeSmall)
+      assignment.row_key == node_sizing_subject_id(rn: a)
+        && assignment.value.volume == VolumeSmall)
 }
 
 // TWO CELLS FOR ONE SUBJECT REFUSE RATHER THAN LETTING LIST ORDER PICK A WINNER. assigned_sizing
@@ -605,7 +606,8 @@ test fn witness_two_cells_for_one_subject_refuse_rather_than_being_ordered() -> 
       SizingAssignmentRefused { refusals: conflicts } =>
         count(conflicts) == 1
           && all(conflicts, c => match c {
-            SizingAssignedTwice { subject } => subject == node_sizing_subject_id(rn: n)
+            SizingAssignedTwice { subject, first: _, duplicate: _ } =>
+              subject == node_sizing_subject_id(rn: n)
             SizingForAnotherSubject { asked: _, answered: _ } => false
           })
       NodeUnsized { nodes: _ } => false
