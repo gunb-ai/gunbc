@@ -33,7 +33,7 @@ import gunbc.fleet_known_hosts_anchor {
   PortableRemoteWord,
   portable_remote_words,
 }
-import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet_multi_principal_probe {
   spark_converge_target_selection,
@@ -417,7 +417,7 @@ fn spark_managed_access_apply_with_resolved_credentials(
           Present { value: managed_word } => match portable_remote_word(raw: spark_inference_login) {
             Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
             Present { value: inference_word } => {
-          let admin_principal = spark_operator_bootstrap_login
+          let admin_principal = fleet_bootstrap_principal_login() as String
           match with_materialized_ssh_key_file(
             identity_file_name: spark_admin_credential_file_name(attempt: attempt),
             secret_bytes: admin_credential,

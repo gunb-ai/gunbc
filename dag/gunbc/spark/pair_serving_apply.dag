@@ -22,7 +22,7 @@ import gunbc.fleet_known_hosts_anchor {
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
   SshTarget, portable_remote_words,
 }
-import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
@@ -230,7 +230,7 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
             trust: trust,
             target: SshTarget {
               endpoint: endpoint as NonEmptyStr,
-              principal: spark_operator_bootstrap_login as NonEmptyStr,
+              principal: fleet_bootstrap_principal_login(),
             },
             words: words,
             stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),

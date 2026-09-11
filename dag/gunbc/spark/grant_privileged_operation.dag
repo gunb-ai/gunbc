@@ -40,7 +40,6 @@ import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   spark_managed_grant_wire,
   spark_managed_grant_sudoers_command,
-  spark_operator_bootstrap_login,
 }
 
 // THE JOIN BETWEEN AUTHORIZATION AND EXECUTION, which is the one thing this vertical was missing.
@@ -123,7 +122,7 @@ fn spark_bootstrap_credential_lease(
     ],
     subject: SparkBootstrapSubject {
       host: host,
-      bootstrap_principal: spark_operator_bootstrap_login as NonEmptyStr,
+      bootstrap_principal: fleet_bootstrap_principal_login(),
       administrator: administrator,
     },
     attempt: attempt_identity as AttemptIdentity,

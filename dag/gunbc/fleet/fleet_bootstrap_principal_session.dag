@@ -19,7 +19,7 @@ import gunbc.fleet_known_hosts_anchor {
   shape_fleet_ssh_password_exec,
   shape_fleet_ssh_password_exec_trusting,
 }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // WHICH SESSION REACHES A PRINCIPAL IS ONE FACT, AND IT WAS TWO.
 //
@@ -54,14 +54,6 @@ type FleetSshPrincipalSession
   = FleetSshKeySession
   | FleetSshPasswordSession
 
-// THE BOOTSTRAP PRINCIPAL'S LOGIN, DERIVED FROM THE ACCOUNT MODEL rather than spelled again. The
-// operator account is gunbc.fleet_posix_accounts fleet_posix_operator_user, and its `name` is the
-// single authority for that login; a second `data ...: String = "briansrls"` beside it is the
-// nickname §3 forbids.
-fn fleet_bootstrap_principal_login() -> NonEmptyStr {
-  fleet_posix_operator_user.name
-}
-
 // THE DERIVATION, and the asymmetry in it is the point. The bootstrap principal is the account a unit
 // arrives with -- created by the vendor first-boot wizard, holding a password and no fleet key -- so
 // the only credential that reaches it is the administrator password. Every OTHER principal on a fleet
@@ -74,13 +66,6 @@ fn fleet_ssh_session_for_principal(principal: NonEmptyStr) -> FleetSshPrincipalS
     FleetSshPasswordSession
   } else {
     FleetSshKeySession
-  }
-}
-
-fn fleet_ssh_principal_session_label(session: FleetSshPrincipalSession) -> String {
-  match session {
-    FleetSshKeySession => "key-session"
-    FleetSshPasswordSession => "password-session"
   }
 }
 
@@ -170,13 +155,6 @@ fn read_fleet_bootstrap_credential_path() -> FleetBootstrapCredentialPath {
 type FleetPrincipalLegOutcome
   = FleetPrincipalLegRan { session: FleetSshPrincipalSession, result: SshSessionExecResult }
   | FleetPrincipalLegRefused { cause: NonEmptyStr }
-
-fn fleet_principal_leg_outcome_cause(outcome: FleetPrincipalLegOutcome) -> String? {
-  match outcome {
-    FleetPrincipalLegRan { session: _, result: _ } => none
-    FleetPrincipalLegRefused { cause: c } => Present { value: c as String }
-  }
-}
 
 fn password_exec_result_as_session_result(
   exit_code: Int,

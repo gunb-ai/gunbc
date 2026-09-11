@@ -36,7 +36,6 @@ import gunbc.spark.managed_access_bootstrap {
   GrantEnumerated,
   GrantAbsent,
   GrantProbeRefused,
-  spark_operator_bootstrap_login,
 }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
@@ -799,7 +798,7 @@ func spark_grant_install_ci_wet() -> ProcessExit
 // already names as the transport for privileged effects. If that account cannot do it either, the
 // run refuses with sudo's own diagnostic rather than leaving a human to guess who could.
 fn spark_grant_install_principal() -> NonEmptyStr {
-  spark_operator_bootstrap_login as NonEmptyStr
+  fleet_bootstrap_principal_login()
 }
 
 // THE STANDING NAMES THE ENROLLED REFERENCE, and that is ALL it names. Secret names are CARRIED,

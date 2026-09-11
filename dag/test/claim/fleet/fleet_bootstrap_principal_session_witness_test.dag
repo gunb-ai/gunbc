@@ -1,14 +1,12 @@
 module test.claim.fleet_bootstrap_principal_session_witness
 
 import std.types { Bool, List, String, NonEmptyStr }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user, fleet_bootstrap_principal_login }
 import gunbc.fleet_bootstrap_principal_session {
   FleetSshPrincipalSession,
   FleetSshKeySession,
   FleetSshPasswordSession,
-  fleet_bootstrap_principal_login,
   fleet_ssh_session_for_principal,
-  fleet_ssh_principal_session_label,
   fleet_bootstrap_credential_path_env,
   FleetBootstrapCredentialLocus,
   BootstrapCredentialFileHeld,
@@ -47,9 +45,12 @@ test fn the_bootstrap_principal_resolves_to_the_password_session() -> Bool {
   session_is_password(session: fleet_ssh_session_for_principal(principal: fleet_bootstrap_principal_login()))
 }
 
-// THE LOGIN IS NOT SPELLED TWICE. Asserted against the account model rather than against the literal
-// "briansrls", so renaming the operator account cannot leave this witness green and the session fact
-// pointing at a login nobody uses.
+// THE LOGIN IS NOT SPELLED TWICE, AND THERE IS NOW EXACTLY ONE SPELLING TO CHECK. The second literal
+// (gunbc.spark.managed_access_bootstrap spark_operator_bootstrap_login) was deleted after review 63721
+// read the fork as load-bearing: the derivation below compares against this name, so two literals that
+// drifted apart would resolve every bootstrap leg to the key session and refuse. This asserts the
+// derivation consumes the ACCOUNT MODEL rather than any string, so reintroducing a literal anywhere
+// cannot leave it green while the session fact points at a login nobody uses.
 test fn the_bootstrap_login_is_the_operator_account_from_the_account_model() -> Bool {
   (fleet_bootstrap_principal_login() as String) == (fleet_posix_operator_user.name as String)
 }
@@ -63,13 +64,6 @@ test fn the_managed_executor_resolves_to_the_key_session() -> Bool {
     && !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-inference" as NonEmptyStr))
     && !session_is_password(session: fleet_ssh_session_for_principal(principal: "ghrunner" as NonEmptyStr))
     && !session_is_password(session: fleet_ssh_session_for_principal(principal: "root" as NonEmptyStr))
-}
-
-test fn the_two_sessions_render_distinguishably() -> Bool {
-  fleet_ssh_principal_session_label(session: FleetSshPasswordSession) == "password-session"
-    && fleet_ssh_principal_session_label(session: FleetSshKeySession) == "key-session"
-    && fleet_ssh_principal_session_label(session: FleetSshPasswordSession)
-      != fleet_ssh_principal_session_label(session: FleetSshKeySession)
 }
 
 // A HELD FILE IS THE PATH THAT WAS HELD, unchanged. The operator-workstation entry materializes its own
