@@ -16,6 +16,7 @@ import gunbc.spark.runtime_architecture_registry_reading {
 
 import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
@@ -87,12 +88,15 @@ test fn no_probed_image_admits_deepseek_v41_on_this_compute_capability() -> Bool
   length(v41_images_with_prerequisites(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)) == 0
 }
 
-// THE VERDICT FOR THE PRODUCTION IMAGE NAMES THE CAPABILITIES THAT WERE MEASURED MISSING, and it is
-// deliberately NOT all five. Four were asked with symbols that exist upstream and came back absent;
-// the FP4 KV-cache question was asked with names that are not registered ops, so it measured nothing
-// and is unprobed. An earlier revision of this witness asserted all five were missing and passed,
-// which is what a blind instrument buys you: a confident count over one reading that was never taken.
-test fn the_production_image_is_missing_the_four_capabilities_that_were_actually_asked() -> Bool {
+// THE VERDICT FOR THE PRODUCTION IMAGE NAMES ONLY THE CAPABILITIES THAT WERE MEASURED MISSING, which
+// is deliberately not everything this profile requires. Some were asked with symbols that exist
+// upstream and came back absent; the KV question was asked, at the time, with names that are not
+// registered ops, so it measured nothing and is unprobed -- and questions the vocabulary gained after
+// this run were never put to this image at all. An earlier revision asserted that every required
+// capability was missing and passed, which is what a blind instrument buys you: a confident count over
+// a reading that was never taken. The clause that carries the weight is the PARTITION -- missing plus
+// unprobed covers the requirement exactly -- which stays true however the requirement grows.
+test fn the_production_image_is_missing_only_the_capabilities_that_were_actually_asked() -> Bool {
   let rows = v41_sm121_capability_probe_rows()
   let image = sparkrun_vllm_ds4_gb10_pinned_reference()
   let missing = v41_missing_capabilities(rows: rows, image_reference: image, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)
@@ -129,19 +133,20 @@ test fn a_capability_asked_with_an_unauthored_symbol_is_unprobed_and_never_missi
     })
 }
 
-// AND THE OBLIGATION MUST NOT HAND THE BUILD LANE A SYMBOL WE INVENTED. The capability whose roster
-// has not landed carries a frontier naming that roster, not a corrected spelling of our own: one
-// upstream name, one home.
-test fn the_capability_without_a_landed_roster_carries_a_frontier_not_a_spelling() -> Bool {
+// THE FRONTIER FIRED, SO THE PROBE DOES NOT FLIP TO A SPELLING OF OUR OWN. This capability carried a
+// ProbeSymbolAwaitingRoster while extdeps.vllm.deepseek_v4_1_sm12 was unlanded; that roster is on the
+// tree, so the symbol is grounded -- and what it must be grounded IN is the roster's value, not a
+// string this module reinvented while the import was available. The join is against the roster's own
+// declaration, which is the one thing an author cannot satisfy by editing this file.
+test fn the_landed_roster_grounds_the_kv_symbol_in_the_rosters_own_value() -> Bool {
   match v41_capability_probe_symbol(c: MlaKvCacheLayoutAdmitted) {
-    ProbeSymbolGrounded { symbol: _ } => false
-    ProbeSymbolAwaitingRoster { roster: ro, trigger: t } =>
-      ro as String == "extdeps.vllm.deepseek_v4_1_sm12" && length(t as String) != 0
+    ProbeSymbolAwaitingRoster { roster: _, trigger: _ } => false
+    ProbeSymbolGrounded { symbol: sym } => string_contains(s: sym as String, pattern: v41_sm12_kv_layout as String)
   }
 }
 
 // A REFUSED PROBE IS NOT A MISSING CAPABILITY. The SGLang image answers the registry question and
-// refuses the other four, so its four vLLM-vocabulary questions must read as unprobed while its one
+// refuses the kernel ones, so a vLLM-vocabulary question must read as unprobed for it while its one
 // measured negative reads as missing -- the distinction the outcome type exists for.
 test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> Bool {
   match capability_outcome(
@@ -164,8 +169,8 @@ test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> B
 
 // THE BUILD OBLIGATION ASKS FOR EXACTLY WHAT THE PROBE ASKED, which is the property that makes it a
 // specification rather than a wish: if a capability were added to the probe and not to the
-// obligation, a build could be declared discharged while one of the five questions was never put to
-// it. Asserted as an identity join over the required list, not a count.
+// obligation, a build could be declared discharged while one of the probe's questions was never put
+// to it. Asserted as an identity join over the required list, not a count.
 test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool {
   length(v41_sm121_build_obligation.required) == length(v41_required_capabilities(profile: V41SpeculativeDecode))
     && all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
@@ -182,6 +187,23 @@ test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool 
 // that keeps "probed" from being a label: a candidate could be marked CandidateProbed while no
 // receipt of that digest existed anywhere, and the sweep's denominator would then count an image
 // nobody read. Asserted against the reading roster by image reference, not by counting either side.
+// AND THE OTHER DIRECTION, WHICH IS THE ONE A UNIFIED ROSTER CAN STILL FAIL. The wall below keeps a
+// candidate from CLAIMING a reading it does not have. This one keeps a reading from being INVISIBLE
+// to the sweep: v41_images_with_prerequisites walks CANDIDATES, so an image with a full set of
+// capability rows whose candidate row still says CandidateNotProbed is silently outside the
+// denominator -- the roster unified one layer down while the sweep stayed split. That is exactly
+// what happened when this fleet built its own image: the rows landed here and the candidate row
+// still described a build nobody had taken. Asserted as an identity join from the ROWS to the
+// candidates, so a new probed subject with no candidate row goes red rather than going unnoticed.
+test fn every_image_with_capability_rows_is_a_probed_candidate() -> Bool {
+  all(v41_sm121_capability_probe_rows(), r =>
+    any(v41_sm121_runtime_candidates, c =>
+      match c.disposition {
+        CandidateNotProbed { reason: _ } => false
+        CandidateProbed { image_reference: ref } => ref as String == r.image.image_reference as String
+      }))
+}
+
 test fn every_candidate_marked_probed_has_a_registry_reading() -> Bool {
   all(v41_sm121_runtime_candidates, c =>
     match c.disposition {
