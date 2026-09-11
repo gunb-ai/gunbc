@@ -1,5 +1,6 @@
 module extdeps.github.actions
 
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.github.log_annotations {
   LogAnnotation,
@@ -248,6 +249,17 @@ type ConcurrencySpec
 
       explicit_single: Unit?
     }
+
+// THE SELECTION SURFACE ITSELF, NAMED SO A LABEL CATALOG CAN SAY WHICH ONE IT ANSWERS FOR. A runner
+// label is a value written in ONE key of ONE CI system's configuration, and `runs-on` is this one.
+// Other systems have their own - CircleCI's resource_class is a different surface whose namespace
+// overlaps this one on ordinary words like small, medium and arm.medium - so a consumer resolving a
+// runs-on label must be able to exclude catalogs that answer for a different key. This row is what
+// they compare against; it lives here because RunnerSpec is what `runs-on` IS.
+data github_actions_runs_on_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.github.actions",
+  decl_name: "RunnerSpec",
+)
 
 type RunnerSpec
   = HostedRunner { label: RunnerLabel }

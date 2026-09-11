@@ -2,7 +2,7 @@ module extdeps.ci_runner.types
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import extdeps.toolchain.types { Architecture }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import std.measure {
@@ -206,21 +206,49 @@ type CatalogSnapshot {
   declared_scope: NonEmptyStr
 }
 
+// WHICH SELECTION SURFACE THESE LABELS ARE WRITTEN IN, AND WHY THE ABSENCE OF THIS FIELD WAS A
+// SOUNDNESS DEFECT RATHER THAN AN OMISSION.
+//
+// A runner label is not a free-floating name: it is a value written in one specific key of one
+// specific CI system's configuration. GitHub Actions labels are written in `runs-on`; CircleCI
+// resource classes are written in `resource_class` in .circleci/config.yml. Those are different
+// ecosystems, and their namespaces OVERLAP on ordinary words - CircleCI publishes small, medium,
+// large, xlarge and arm.medium, all of which are perfectly ordinary things to label a self-hosted
+// GitHub runner.
+//
+// Without this axis a resolver asked what a GitHub Actions `runs-on` label means searched every
+// enrolled catalog and answered from whichever one happened to carry the spelling. Measured before
+// the fix: resolve_runner_label("arm.medium") returned ArmConfirmed, sourced from CircleCI, for a
+// label a GitHub workflow could legitimately carry. That is a CONFIDENT WRONG ANSWER with full
+// provenance attached, and no unresolved arm can catch it, because every unresolved arm in that
+// resolver is a response to a MISS and this is a HIT from the wrong ecosystem.
+//
+// IT IS A DeclarationRef AND NOT A VARIANT, for exactly the reason RunnerShapeRow.provider is: a
+// central enum of surfaces would have to be widened by every CI system anyone ever enrolls, which
+// is the concrete-product enumeration DESIGN section 3 forbids a generic hub. A surface names the
+// declaration that defines it and a consumer compares refs.
 type RunnerLabelCatalog {
   provider: DeclarationRef
+  selection_surface: DeclarationRef
   snapshot: CatalogSnapshot
   rows: List<RunnerLabelRow>
+}
+
+fn catalog_is_on_surface(catalog: RunnerLabelCatalog, surface: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: catalog.selection_surface, b: surface)
 }
 
 // The projection every provider whose published sizes are visibility-free uses, so that
 // enrolling a provider's labels is one line in that provider's own module and no second list.
 fn label_catalog_of_shapes(
   provider: DeclarationRef,
+  selection_surface: DeclarationRef,
   snapshot: CatalogSnapshot,
   availability: RunnerCatalogAvailability,
 ) -> RunnerLabelCatalog {
   RunnerLabelCatalog {
     provider: provider,
+    selection_surface: selection_surface,
     snapshot: snapshot,
     rows: map(runner_shape_rows(availability: availability), r => label_row_of_shape(row: r)),
   }

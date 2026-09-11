@@ -89,8 +89,19 @@ data circleci_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
   declared_scope: "Docker executor resource classes only, from the configuration reference cited above. CircleCI's machine, macOS, GPU and Arm executor classes are absent from this catalog because this repository has not read them.",
 }
 
+// THESE LABELS ARE NOT GitHub Actions runs-on VALUES AND THE SURFACE SAYS SO. A CircleCI resource
+// class is written in `resource_class` in .circleci/config.yml. The spellings overlap ordinary
+// words - small, medium, large, arm.medium - which are exactly what a self-hosted GitHub runner
+// gets labelled, so a resolver that searched this catalog for a runs-on label would answer
+// confidently from the wrong ecosystem. Naming the surface is what keeps that unwritable.
+data circleci_resource_class_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.circleci",
+  decl_name: "circleci_catalog_authority",
+)
+
 data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   provider: circleci_provider_identity,
+  selection_surface: circleci_resource_class_surface,
   snapshot: circleci_catalog_snapshot,
   availability: circleci_runner_catalog,
 )

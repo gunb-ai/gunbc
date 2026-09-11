@@ -12,6 +12,7 @@ import std.measure {
   hardware_thread_count,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.ci_runner.types {
   CatalogSnapshot,
   label_catalog_of_shapes,
@@ -283,6 +284,7 @@ data ubicloud_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 
 data ubicloud_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   provider: ubicloud_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
   snapshot: ubicloud_catalog_snapshot,
   availability: ubicloud_runner_catalog_shapes,
 )

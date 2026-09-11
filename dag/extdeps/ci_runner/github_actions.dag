@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.ci_runner.types {
   CatalogSnapshot,
   EntitlementUnstated,
@@ -106,6 +107,7 @@ data github_actions_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 
 data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   provider: github_actions_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
   snapshot: github_actions_catalog_snapshot,
   availability: github_actions_runner_catalog,
 )

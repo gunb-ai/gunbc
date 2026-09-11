@@ -10,7 +10,7 @@ import extdeps.time.rfc3339 {
   Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
   rfc3339_compare,
 }
-import gunbc.runner_provider_survey { surveyed_label_catalogs }
+import gunbc.runner_provider_survey { runs_on_label_catalogs }
 
 // WHAT A `runs-on` LABEL IS, ANSWERED FROM THE VENDOR CATALOGS RATHER THAN FROM ITS SPELLING.
 //
@@ -99,7 +99,7 @@ fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatc
 }
 
 fn surveyed_matches(label: String) -> List<LabelMatch> {
-  fold(surveyed_label_catalogs(), init: [], f: (acc, c) => concat(acc, catalog_matches(catalog: c, label: label)))
+  fold(runs_on_label_catalogs(), init: [], f: (acc, c) => concat(acc, catalog_matches(catalog: c, label: label)))
 }
 
 // TWO CATALOGS ANSWERING FOR ONE LABEL IS A REFUSAL, NOT A RACE BETWEEN THEM.
@@ -161,7 +161,7 @@ fn snapshot_is_stale_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestam
 }
 
 fn surveyed_snapshots() -> List<CatalogSnapshot> {
-  fold(surveyed_label_catalogs(), init: [], f: (acc, c) => concat(acc, [c.snapshot]))
+  fold(runs_on_label_catalogs(), init: [], f: (acc, c) => concat(acc, [c.snapshot]))
 }
 
 fn stale_snapshots_for(observed_at: Rfc3339Timestamp) -> List<CatalogSnapshot> {

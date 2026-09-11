@@ -3,12 +3,15 @@ module gunbc.runner_provider_survey
 import std.types { List, String }
 import extdeps.ci_runner.types {
   CatalogSnapshot, RunnerCatalogAvailability, RunnerLabelCatalog, RunnerLabelRow,
+  catalog_is_on_surface,
 }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.github.hosted_runners {
   GithubHostedRunnerCatalogRow, RepoVisibility, PublicRepo, PrivateRepo,
   github_hosted_ubuntu_catalog,
 }
 import extdeps.languages.yaml.gha_workflow { runner_label_string }
+import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog, blacksmith_label_catalog }
 import extdeps.ci_runner.circleci { circleci_runner_catalog, circleci_label_catalog }
 import extdeps.ci_runner.depot { depot_runner_catalog, depot_label_catalog }
@@ -103,6 +106,30 @@ data github_hosted_standard_snapshot: CatalogSnapshot = CatalogSnapshot {
 
 data github_hosted_standard_label_catalog: RunnerLabelCatalog = RunnerLabelCatalog {
   provider: github_actions_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
   snapshot: github_hosted_standard_snapshot,
   rows: map(github_hosted_public_rows(), r => github_hosted_label_row(row: r)),
+}
+
+// -------------------------------------------------------------------------------------
+// THE SURFACE FILTER, AND WHY IT IS A FILTER RATHER THAN A SHORTER ROSTER.
+//
+// surveyed_label_catalogs is the roster of every provider label catalog this repository has read,
+// and CircleCI belongs in it - this repository HAS read CircleCI's resource classes and a census of
+// what we surveyed should say so. What CircleCI's rows are not is GitHub Actions `runs-on` values.
+//
+// MEASURED BEFORE THIS FILTER EXISTED, on the resolver as it stood with two approvals on it:
+//   resolve_runner_label("small")      -> NotArmConfirmed x86_64, sourced from CircleCI
+//   resolve_runner_label("large")      -> NotArmConfirmed x86_64, sourced from CircleCI
+//   resolve_runner_label("arm.medium") -> ArmConfirmed,           sourced from CircleCI
+// The third is promotion 1 - an x64 label may not become Arm evidence - running in reverse through
+// the resolver written to prevent it, and the first two are ordinary self-hosted runner names.
+//
+// REMOVING CircleCI FROM THE ROSTER WOULD HAVE FIXED THIS INSTANCE AND LEFT THE CLASS OPEN. The next
+// non-GitHub CI system enrolled here would reintroduce it silently, because nothing would have
+// recorded WHY CircleCI had to go. Filtering on a declared surface makes the category error
+// unwritable rather than remembered: a catalog that does not name the runs-on surface cannot answer
+// a runs-on question, whoever adds it and whenever.
+fn runs_on_label_catalogs() -> List<RunnerLabelCatalog> {
+  filter(surveyed_label_catalogs(), c => catalog_is_on_surface(catalog: c, surface: github_actions_runs_on_surface))
 }

@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.ci_runner.types {
   CatalogSnapshot,
   label_catalog_of_shapes,
@@ -96,6 +97,7 @@ data blacksmith_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 
 data blacksmith_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   provider: blacksmith_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
   snapshot: blacksmith_catalog_snapshot,
   availability: blacksmith_runner_catalog,
 )
