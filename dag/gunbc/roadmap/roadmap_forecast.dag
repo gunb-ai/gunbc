@@ -532,8 +532,11 @@ fn assigned_sizing(sizings: List<NodeSizingAssignment>, subject: SizingSubjectId
 // producing the moment the deriver answers, with no second edit. A positional rebind left at this
 // seam would therefore not be a dormant defect -- it would be a live defect scheduled to arrive
 // silently on the day the seam activates. The control that fires it is authorable because the
-// derivation is a PARAMETER here: test.claim.roadmap_sizing_witness hands this function a cell
-// carrying another node's subject and reads the refusal.
+// derivation is a PARAMETER here:
+// test.claim.roadmap_forecast_witness.witness_a_cell_answered_for_another_subject_refuses hands
+// this function a cell carrying another node's subject and reads the refusal, and
+// witness_a_cell_answered_for_its_own_subject_is_admitted is its positive twin, so the arm is
+// shown to discriminate rather than merely to fire.
 type SizingAssignmentRefusal
   = SizingForAnotherSubject { asked: SizingSubjectId, answered: SizingSubjectId }
   | SizingAssignedTwice { subject: SizingSubjectId }
