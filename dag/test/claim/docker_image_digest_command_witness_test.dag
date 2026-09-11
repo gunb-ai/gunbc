@@ -6,6 +6,7 @@ import extdeps.languages.json.emit {
 }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli {
+  docker_binary_path,
   docker_image_digest_command, docker_image_inspect_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
@@ -38,14 +39,11 @@ fn inspect_argv_is_portable(image: NonEmptyStr) -> Bool {
   }
 }
 
-// THE RED: a digest-pinned identity is inspect without a Go template, not docker images' REPOSITORY[:TAG] match.
+// THE RED: a digest-pinned identity is exactly `docker image inspect <ref>` — no Go template.
 test fn a_digest_pinned_identity_readback_inspects_the_digest_reference() -> Bool {
   let image = digest_pinned_fixture
   let words = inspect_words(image: image)
-  argv_has_exact_word(words: words, want: "inspect")
-    && argv_has_exact_word(words: words, want: image as String)
-    && !argv_has_exact_word(words: words, want: "images")
-    && !argv_has_exact_word(words: words, want: "--format")
+  words == [docker_binary_path as String, "image", "inspect", image as String]
     && inspect_argv_is_portable(image: image)
     && string_contains(s: image as String, pattern: "@sha256:")
 }
@@ -54,11 +52,7 @@ test fn a_digest_pinned_identity_readback_inspects_the_digest_reference() -> Boo
 test fn a_tagged_identity_readback_still_lists() -> Bool {
   let tag = tagged_fixture
   let words = digest_listing_words(image: tag)
-  argv_has_exact_word(words: words, want: "images")
-    && argv_has_exact_word(words: words, want: "--quiet")
-    && argv_has_exact_word(words: words, want: "--no-trunc")
-    && argv_has_exact_word(words: words, want: tag as String)
-    && !argv_has_exact_word(words: words, want: "inspect")
+  words == [docker_binary_path as String, "images", "--no-trunc", "--quiet", tag as String]
     && !string_contains(s: tag as String, pattern: "@sha256:")
     && match typed_argv_shell_safe_refusal_argv(argv: words) {
       Absent => true

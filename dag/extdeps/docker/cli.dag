@@ -222,7 +222,9 @@ fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
 // read by docker_image_inspect_id_from_stdout (extdeps.languages.json.parse). No --format: a Go
 // template's braces sit outside typed_argv_exec's portable-word allowlist, and
 // `--filter=reference=` was measured empty on srv9 after a successful pull (fleet-converge
-// 34642398773). inspect without a template stays inside that allowlist.
+// 34642398773). inspect without a template stays inside that allowlist. fleet-converge
+// 34646650317 on srv9 parsed Id sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040
+// from that JSON and the probe advanced past image-digest.
 //
 // ABSENCE IS A NON-ZERO EXIT. Docker prints `Error: No such image: <ref>` and exits 1. That is
 // docker_image_inspect_names_no_such_image, a typed refusal, not empty stdout. Callers that need
