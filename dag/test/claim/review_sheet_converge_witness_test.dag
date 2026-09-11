@@ -418,6 +418,7 @@ test fn derived_payload_erasure_refuses_while_listing_still_projected() -> Bool 
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "still in projection")
         && string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "cell=A2")
     ReviewSheetNeedsWrite { plan: _ } => false
     ReviewSheetConverged => false
     ReviewSheetConflict { conflict: _ } => false
@@ -438,6 +439,7 @@ test fn derived_payload_erasure_refuses_until_standing_is_listing_gone() -> Bool
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "requires ListingGone")
         && string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "cell=A2")
     ReviewSheetNeedsWrite { plan: _ } => false
     ReviewSheetConverged => false
     ReviewSheetConflict { conflict: _ } => false
@@ -458,6 +460,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_when_standing_is
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "requires ListingGone")
         && string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "cell=A2")
     ReviewSheetNeedsWrite { plan: _ } => false
     ReviewSheetConverged => false
     ReviewSheetConflict { conflict: _ } => false
@@ -481,6 +484,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_while_still_proj
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "still in projection")
         && string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "cell=A2")
     ReviewSheetNeedsWrite { plan: _ } => false
     ReviewSheetConverged => false
     ReviewSheetConflict { conflict: _ } => false
@@ -544,10 +548,52 @@ test fn derived_payload_erasure_duplicate_listing_is_unreadable() -> Bool {
   }
 }
 
+test fn ensure_with_erasure_applies_blank_derived() -> Bool {
+  let projection = w_projection(rows: [])
+  let range = w_value_range(rows: [["L1", "alpha", w_standing_gone(), "buy"]])
+  match review_sheet_ensure(
+    policy: EnsureMayApply,
+    requested: w_open_request(tab: "Review" as NonEmptyStr),
+    range: range,
+    projection: projection,
+    erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
+  ) {
+    Apply { plan: bound } =>
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: bound.plan)
+        && !write_plan_touches_column(plan: bound.plan, column: "judgement" as NonEmptyStr)
+        && fold(bound.plan.patches, init: false, f: fn(acc, w) {
+          acc || (w.listing_id == ("L1" as NonEmptyStr)
+            && w.column == ("title" as NonEmptyStr)
+            && w.value == "")
+        })
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn ensure_with_erasure_refuses_while_still_projected() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
+  match review_sheet_ensure(
+    policy: EnsureMayApply,
+    requested: w_open_request(tab: "Review" as NonEmptyStr),
+    range: range,
+    projection: projection,
+    erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "still in projection")
+        && string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "cell=A2")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
 test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
-  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Apply { plan: bound } =>
       (bound.tab as String) == "Review"
         && match bound.plan.patches |> first {
@@ -574,7 +620,7 @@ test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
     majorDimension: Present { value: "ROWS" },
     values: Present { value: concat([w_headers()], [["L1", "", w_standing_observed(), ""]]) },
   }
-  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "OtherTab" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "OtherTab" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Apply { plan: bound } =>
       (bound.tab as String) == "OtherTab"
         && match value_ranges_from_write_plan(bound: bound) |> first {
@@ -591,9 +637,9 @@ test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
 test fn ensure_over_unchanged_readback_is_noop() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
-  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Noop =>
-      match review_sheet_ensure(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+      match review_sheet_ensure(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
         Noop => true
         Apply { plan: _ } => false
         Refuse { reason: _ } => false
@@ -606,7 +652,7 @@ test fn ensure_over_unchanged_readback_is_noop() -> Bool {
 test fn observe_only_does_not_emit_a_write_plan() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
-  match review_sheet_ensure(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "derived region differs")
     Noop => false
     Apply { plan: _ } => false
@@ -620,7 +666,7 @@ test fn column_major_readback_refuses() -> Bool {
     majorDimension: Present { value: "COLUMNS" },
     values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
   }
-  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "column-major")
     Noop => false
     Apply { plan: _ } => false
@@ -634,7 +680,7 @@ test fn foreign_major_dimension_refuses() -> Bool {
     majorDimension: Present { value: "DIAGONAL" },
     values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
   }
-  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "foreign majorDimension")
     Noop => false
     Apply { plan: _ } => false
@@ -654,7 +700,7 @@ test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
   match observed_read {
     ReadbackUnreadable { reason: _ } => false
     ReadbackObserved { observed: observed, tab: _ } =>
-      match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+      match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
         Noop =>
           match judgement_for_listing(
             observed: observed,
@@ -679,7 +725,7 @@ test fn readback_not_a1_anchored_refuses() -> Bool {
     majorDimension: Present { value: "ROWS" },
     values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
   }
-  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "not A1-anchored")
     Noop => false
     Apply { plan: _ } => false
@@ -693,7 +739,7 @@ test fn unqualified_readback_range_refuses() -> Bool {
     majorDimension: Present { value: "ROWS" },
     values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
   }
-  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "unqualified A1 range")
     Noop => false
     Apply { plan: _ } => false
@@ -717,6 +763,7 @@ test fn bounded_get_values_request_refuses() -> Bool {
     },
     range: range,
     projection: projection,
+    erasures: [],
   ) {
     Refuse { reason: r } =>
       string_contains(s: r as String, pattern: "bounded GetValues request")
@@ -740,6 +787,7 @@ test fn column_bounded_get_values_request_refuses() -> Bool {
     },
     range: range,
     projection: projection,
+    erasures: [],
   ) {
     Refuse { reason: r } =>
       string_contains(s: r as String, pattern: "column-bounded GetValues request")
@@ -763,6 +811,7 @@ test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
     ),
     range: range,
     projection: projection,
+    erasures: [],
   ) {
     Apply { plan: bound } =>
       (bound.tab as String) == "Review"

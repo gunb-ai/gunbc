@@ -436,6 +436,26 @@ fn authorize_derived_payload_erasure(
   }
 }
 
+fn erasure_refuse_at_identity_cell(
+  identity_index: Int,
+  data_index: Int,
+  reason: NonEmptyStr,
+) -> ReviewSheetClassification {
+  match a1_cell(column_index: identity_index, sheet_row: sheet_row_number(data_index: data_index)) {
+    Absent =>
+      ReviewSheetUnreadable {
+        reason: concat(
+          reason as String,
+          concat(" at unrepresentable A1 column index ", to_string(identity_index)),
+        ) as NonEmptyStr
+      }
+    Present { value: a1 } =>
+      ReviewSheetUnreadable {
+        reason: concat(reason as String, concat(" cell=", a1_cell_wire(cell: a1))) as NonEmptyStr
+      }
+  }
+}
+
 fn derived_by_column(row: ProjectionRow) -> Map<String, String> {
   fold(row.derived, init: empty_map(), f: fn(acc, cell) {
     map_insert(acc, cell.column as String, cell.value)
@@ -636,6 +656,7 @@ fn classify_existing_row(
           header_by_name: header_by_name,
           row: row,
           listing_id: listing_id,
+          identity_index: identity_index,
           in_projection: true,
           derived: derived_by_column(row: prow),
           erasure_by_id: erasure_by_id,
@@ -647,6 +668,7 @@ fn classify_existing_row(
           header_by_name: header_by_name,
           row: row,
           listing_id: listing_id,
+          identity_index: identity_index,
           in_projection: false,
           derived: empty_map(),
           erasure_by_id: erasure_by_id,
@@ -661,6 +683,7 @@ fn classify_existing_row_after_erasure_auth(
   header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
   listing_id: NonEmptyStr,
+  identity_index: Int,
   in_projection: Bool,
   derived: Map<String, String>,
   erasure_by_id: Map<String, DerivedPayloadErasure>,
@@ -674,7 +697,12 @@ fn classify_existing_row_after_erasure_auth(
     row: row,
     erasure_by_id: erasure_by_id,
   ) {
-    ErasureRefused { reason: r } => ReviewSheetUnreadable { reason: r }
+    ErasureRefused { reason: r } =>
+      erasure_refuse_at_identity_cell(
+        identity_index: identity_index,
+        data_index: row.data_index,
+        reason: r,
+      )
     ErasureAuthorized =>
       fold_columns_for_row(
         schema: schema,
