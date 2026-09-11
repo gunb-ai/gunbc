@@ -1,0 +1,294 @@
+module v2.test.lens_application.compile_obligation_activation
+
+// THE CLAIM UNDER TEST IS THAT A STATE CANNOT BE REACHED WITHOUT ITS RECEIPT, so every control here
+// withholds exactly one receipt and asserts the state falls to the rung below. A witness that only
+// supplied every receipt and checked for SeedIndependent would prove the happy path and nothing
+// about the wall.
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.compiler.compile { required_compile_lens_roster }
+import v2.compiler.self_host.compile_obligation_activation {
+  ActivationCoverageClosed,
+  ActivationCoverageRefused,
+  ActivationRosterEmpty,
+  CandidateEnforced,
+  ClosureClosed,
+  Executed,
+  ObligationNode,
+  ObligationNodeWithoutRegistration,
+  ObligationReceipts,
+  Observed,
+  Qualified,
+  Reached,
+  Registered,
+  RegistrationWithoutObligationNode,
+  SeedIndependent,
+  SuccessorEnforced,
+  activation_coverage,
+  activation_is_on,
+  activation_state_of,
+  bundle_state,
+  count_nodes_on,
+  no_receipts,
+  node_state,
+  program_state,
+}
+import v2.std.algebra { fold_list, length, list_reverse, Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn every_receipt() -> ObligationReceipts {
+  ObligationReceipts {
+    reached_by_native_route: true,
+    executed_with_witness: true,
+    planted_red_refused: true,
+    nearby_green_accepted: true,
+    ledger_rows_observed: 3,
+    findings_open: 0,
+    unclassifiable_carried_by_name: false,
+    unclassifiable_present: false,
+    candidate_promotion_requires_receipt: true,
+    successor_enforces: true,
+    reproduces_without_seed: true,
+  }
+}
+
+// THE POSITIVE CONTROL, so every refusal below is a property of the withheld receipt rather than of
+// the derivation refusing everything.
+test fn every_receipt_present_reaches_seed_independent() -> Bool {
+  match activation_state_of(r: every_receipt()) {
+    SeedIndependent => true
+    _ => false
+  }
+}
+
+// NO RECEIPTS IS Registered, NOT AN ERROR AND NOT A BLANK. Registration is true today for all eight
+// obligations and is worth exactly this much.
+test fn no_receipts_is_registered() -> Bool {
+  match activation_state_of(r: no_receipts()) {
+    Registered => true
+    _ => false
+  }
+}
+
+fn without_native_route() -> ObligationReceipts {
+  ObligationReceipts {
+    reached_by_native_route: false,
+    executed_with_witness: true,
+    planted_red_refused: true,
+    nearby_green_accepted: true,
+    ledger_rows_observed: 3,
+    findings_open: 0,
+    unclassifiable_carried_by_name: false,
+    unclassifiable_present: false,
+    candidate_promotion_requires_receipt: true,
+    successor_enforces: true,
+    reproduces_without_seed: true,
+  }
+}
+
+// A LATE RECEIPT CANNOT LIFT A MISSING EARLY ONE. Everything above is supplied and the native route
+// is not, so the obligation is Registered — not SeedIndependent-with-a-caveat, which is how an
+// activation board comes to read higher than the system it describes.
+test fn later_receipts_cannot_substitute_for_the_native_route() -> Bool {
+  match activation_state_of(r: without_native_route()) {
+    Registered => true
+    _ => false
+  }
+}
+
+fn red_caught_but_no_green() -> ObligationReceipts {
+  ObligationReceipts {
+    reached_by_native_route: true,
+    executed_with_witness: true,
+    planted_red_refused: true,
+    nearby_green_accepted: false,
+    ledger_rows_observed: 3,
+    findings_open: 0,
+    unclassifiable_carried_by_name: false,
+    unclassifiable_present: false,
+    candidate_promotion_requires_receipt: true,
+    successor_enforces: true,
+    reproduces_without_seed: true,
+  }
+}
+
+// THE ARM MOST LIKELY TO BE FUDGED: a gate that refuses everything refuses the planted red too, so
+// a caught red alone is not qualification. Withholding only the accepted green must drop the state
+// to Executed.
+test fn a_caught_red_without_an_accepted_green_is_not_qualified() -> Bool {
+  match activation_state_of(r: red_caught_but_no_green()) {
+    Executed => true
+    _ => false
+  }
+}
+
+fn findings_open_receipts() -> ObligationReceipts {
+  ObligationReceipts {
+    reached_by_native_route: true,
+    executed_with_witness: true,
+    planted_red_refused: true,
+    nearby_green_accepted: true,
+    ledger_rows_observed: 3,
+    findings_open: 2,
+    unclassifiable_carried_by_name: false,
+    unclassifiable_present: false,
+    candidate_promotion_requires_receipt: true,
+    successor_enforces: true,
+    reproduces_without_seed: true,
+  }
+}
+
+test fn open_findings_hold_the_state_at_observed() -> Bool {
+  match activation_state_of(r: findings_open_receipts()) {
+    Observed => true
+    _ => false
+  }
+}
+
+fn unclassifiable_unnamed() -> ObligationReceipts {
+  ObligationReceipts {
+    reached_by_native_route: true,
+    executed_with_witness: true,
+    planted_red_refused: true,
+    nearby_green_accepted: true,
+    ledger_rows_observed: 3,
+    findings_open: 0,
+    unclassifiable_carried_by_name: false,
+    unclassifiable_present: true,
+    candidate_promotion_requires_receipt: true,
+    successor_enforces: true,
+    reproduces_without_seed: true,
+  }
+}
+
+fn unclassifiable_named() -> ObligationReceipts {
+  ObligationReceipts {
+    reached_by_native_route: true,
+    executed_with_witness: true,
+    planted_red_refused: true,
+    nearby_green_accepted: true,
+    ledger_rows_observed: 3,
+    findings_open: 0,
+    unclassifiable_carried_by_name: true,
+    unclassifiable_present: true,
+    candidate_promotion_requires_receipt: true,
+    successor_enforces: true,
+    reproduces_without_seed: true,
+  }
+}
+
+// UNCLASSIFIABLE RESIDUE IS ADMISSIBLE ONLY IF IT IS CARRIED BY NAME. Silent residue holds the
+// closure open; named residue is open coverage someone can go and close, and the difference between
+// them is the whole of "resolved or carried as open coverage by name".
+test fn unnamed_unclassifiable_residue_holds_the_closure_open() -> Bool {
+  match activation_state_of(r: unclassifiable_unnamed()) {
+    Observed => true
+    _ => false
+  }
+}
+
+test fn named_unclassifiable_residue_lets_the_closure_close() -> Bool {
+  match activation_state_of(r: unclassifiable_named()) {
+    SeedIndependent => true
+    _ => false
+  }
+}
+
+fn node_at(obligation: DeclarationRef, r: ObligationReceipts) -> ObligationNode {
+  ObligationNode { obligation: obligation, members: [], receipts: r }
+}
+
+data probe_alpha: DeclarationRef = decl_ref(module_path: "v2.test.probe", decl_name: "alpha")
+data probe_beta: DeclarationRef = decl_ref(module_path: "v2.test.probe", decl_name: "beta")
+
+// A BUNDLE IS ITS WEAKEST MEMBER. Reporting the strongest while another stays silent is the
+// inflation DESIGN §4b(1) names, and a bundle exists precisely where one member's silence would
+// otherwise be hidden behind another's green.
+test fn a_bundle_reports_its_weakest_member() -> Bool {
+  match bundle_state(nodes: [
+    node_at(obligation: probe_alpha, r: every_receipt()),
+    node_at(obligation: probe_beta, r: no_receipts()),
+  ]) {
+    Registered => true
+    _ => false
+  }
+}
+
+// AND THE PROGRAM IS ITS WEAKEST OBLIGATION: seven qualified and one registered is a program at
+// Registered, because the door admits a program only if EVERY required obligation admitted it.
+test fn the_program_state_is_the_weakest_obligation() -> Bool {
+  match program_state(nodes: [
+    node_at(obligation: probe_alpha, r: every_receipt()),
+    node_at(obligation: probe_beta, r: red_caught_but_no_green()),
+  ]) {
+    Executed => true
+    _ => false
+  }
+}
+
+// "ON" IS THE LAST THREE RUNGS AND NOTHING EARLIER: a qualified, observed, closed obligation is
+// still not enforcing anything until the candidate path refuses without its receipt.
+test fn qualified_and_closed_is_still_not_on() -> Bool {
+  let closed = ObligationReceipts {
+    reached_by_native_route: true,
+    executed_with_witness: true,
+    planted_red_refused: true,
+    nearby_green_accepted: true,
+    ledger_rows_observed: 3,
+    findings_open: 0,
+    unclassifiable_carried_by_name: false,
+    unclassifiable_present: false,
+    candidate_promotion_requires_receipt: false,
+    successor_enforces: false,
+    reproduces_without_seed: false,
+  }
+  match activation_state_of(r: closed) {
+    ClosureClosed => !activation_is_on(s: ClosureClosed) && activation_is_on(s: CandidateEnforced)
+    _ => false
+  }
+}
+
+// COVERAGE IS A JOIN IN BOTH DIRECTIONS: a node with no registration is a board row with no
+// subject, and a registration with no node is an obligation nobody is tracking.
+test fn a_node_without_a_registration_refuses() -> Bool {
+  match activation_coverage(nodes: [node_at(obligation: probe_alpha, r: no_receipts())]) {
+    ActivationCoverageRefused { cause: cause } =>
+      match cause {
+        ObligationNodeWithoutRegistration { obligation: _ } => true
+        RegistrationWithoutObligationNode { registration: _ } => false
+        ActivationRosterEmpty => false
+      }
+    ActivationCoverageClosed { roster_digest: _, nodes: _ } => false
+  }
+}
+
+test fn an_untracked_registration_refuses() -> Bool {
+  match activation_coverage(nodes: []) {
+    ActivationCoverageRefused { cause: cause } =>
+      match cause {
+        RegistrationWithoutObligationNode { registration: _ } => true
+        ObligationNodeWithoutRegistration { obligation: _ } => false
+        ActivationRosterEmpty => false
+      }
+    ActivationCoverageClosed { roster_digest: _, nodes: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE JOIN: one node per registration closes, over the real roster.
+test fn a_node_per_registration_closes_the_coverage() -> Bool {
+  let nodes = list_reverse(xs: fold_list(
+    xs: required_compile_lens_roster(),
+    empty: Empty,
+    cons: fn(acc, lens) {
+      Cons { head: node_at(obligation: lens.identity, r: no_receipts()), tail: acc }
+    }
+  ))
+  match activation_coverage(nodes: nodes) {
+    ActivationCoverageClosed { roster_digest: _, nodes: n } =>
+      n == length(xs: required_compile_lens_roster()) && count_nodes_on(nodes: nodes) == 0
+    ActivationCoverageRefused { cause: _ } => false
+  }
+}
