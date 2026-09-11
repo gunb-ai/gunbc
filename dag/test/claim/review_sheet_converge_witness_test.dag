@@ -28,7 +28,6 @@ import gunbc.review_sheet_projection {
   classify_review_sheet,
   classify_review_sheet_with_erasure,
   DerivedPayloadErasure,
-  derived_payload_erasure_frontier,
   conflict_reason,
   append_listing_row,
   columns_by_name,
@@ -156,6 +155,16 @@ fn w_schema() -> ReviewSheetSchema {
     identity_column: "listing_id" as NonEmptyStr,
     columns: [
       ReviewColumn { name: "title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } },
+      ReviewColumn { name: "standing" as NonEmptyStr, kind: ListingStanding },
+      ReviewColumn { name: "judgement" as NonEmptyStr, kind: OperatorEntered },
+    ]
+  }
+}
+
+fn w_schema_no_derived() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "listing_id" as NonEmptyStr,
+    columns: [
       ReviewColumn { name: "standing" as NonEmptyStr, kind: ListingStanding },
       ReviewColumn { name: "judgement" as NonEmptyStr, kind: OperatorEntered },
     ]
@@ -428,6 +437,49 @@ test fn derived_payload_erasure_refuses_until_standing_is_listing_gone() -> Bool
   ) {
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "requires ListingGone")
+        && string_contains(s: r as String, pattern: "listing=L1")
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
+test fn derived_payload_erasure_refuses_without_derived_columns_when_standing_is_not_gone() -> Bool {
+  let projection = ReviewSheetProjection { schema: w_schema_no_derived(), rows: [] }
+  let observed = w_observed(
+    headers: ["listing_id", "standing", "judgement"],
+    rows: [["L1", w_standing_observed(), "buy"]],
+  )
+  match classify_review_sheet_with_erasure(
+    observed: observed,
+    projection: projection,
+    erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
+  ) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "requires ListingGone")
+        && string_contains(s: r as String, pattern: "listing=L1")
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
+test fn derived_payload_erasure_refuses_without_derived_columns_while_still_projected() -> Bool {
+  let projection = ReviewSheetProjection {
+    schema: w_schema_no_derived(),
+    rows: [ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] }],
+  }
+  let observed = w_observed(
+    headers: ["listing_id", "standing", "judgement"],
+    rows: [["L1", w_standing_observed(), "buy"]],
+  )
+  match classify_review_sheet_with_erasure(
+    observed: observed,
+    projection: projection,
+    erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
+  ) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "still in projection")
         && string_contains(s: r as String, pattern: "listing=L1")
     ReviewSheetNeedsWrite { plan: _ } => false
     ReviewSheetConverged => false
@@ -1030,14 +1082,6 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
       Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
         (b.module_path as String) == "gunbc.review_sheet_projection"
           && (b.decl_name as String) == "judgement_for_listing"
-      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
-      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
-      Terminal { reason: _ } => false
-    }
-    && match derived_payload_erasure_frontier {
-      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
-        (b.module_path as String) == "gunbc.review_sheet_projection"
-          && (b.decl_name as String) == "classify_review_sheet_with_erasure"
       Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
       Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
       Terminal { reason: _ } => false

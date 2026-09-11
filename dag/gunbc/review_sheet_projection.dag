@@ -61,6 +61,11 @@ type DerivedPayloadErasure {
   listing_id: NonEmptyStr
 }
 
+type DerivedPayloadErasureDecision
+  = ErasureNotRequested
+  | ErasureAuthorized
+  | ErasureRefused { reason: NonEmptyStr }
+
 type ObservedSheetRow {
   data_index: Int
   cells: List<String>
@@ -397,6 +402,40 @@ fn first_erasure_not_on_sheet(
     |> first
 }
 
+fn authorize_derived_payload_erasure(
+  listing_id: NonEmptyStr,
+  in_projection: Bool,
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
+) -> DerivedPayloadErasureDecision {
+  if listing_has_erasure(erasure_by_id: erasure_by_id, listing_id: listing_id) {
+    if in_projection {
+      ErasureRefused { reason: erasure_still_projected_reason(listing_id: listing_id) }
+    } else {
+      match read_row_listing_standing(schema: schema, header_by_name: header_by_name, row: row) {
+        Absent => ErasureRefused { reason: erasure_missing_standing_column_reason(listing_id: listing_id) }
+        Present { value: standing_read } =>
+          match standing_read {
+            StandingKnown { state: standing_state } =>
+              if listing_standing_eq(a: standing_state, b: StandingGone) {
+                ErasureAuthorized
+              } else {
+                ErasureRefused { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+              }
+            StandingBlank =>
+              ErasureRefused { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+            StandingForeign { raw: _ } =>
+              ErasureRefused { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+          }
+      }
+    }
+  } else {
+    ErasureNotRequested
+  }
+}
+
 fn derived_by_column(row: ProjectionRow) -> Map<String, String> {
   fold(row.derived, init: empty_map(), f: fn(acc, cell) {
     map_insert(acc, cell.column as String, cell.value)
@@ -592,7 +631,7 @@ fn classify_existing_row(
     let listing_id = listing_raw as NonEmptyStr
     match rows_by_listing.lookup(listing_raw) {
       Present { value: prow } =>
-        fold_columns_for_row(
+        classify_existing_row_after_erasure_auth(
           schema: schema,
           header_by_name: header_by_name,
           row: row,
@@ -603,7 +642,7 @@ fn classify_existing_row(
           plan: plan,
         )
       Absent =>
-        fold_columns_for_row(
+        classify_existing_row_after_erasure_auth(
           schema: schema,
           header_by_name: header_by_name,
           row: row,
@@ -617,7 +656,7 @@ fn classify_existing_row(
   }
 }
 
-fn fold_columns_for_row(
+fn classify_existing_row_after_erasure_auth(
   schema: ReviewSheetSchema,
   header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
@@ -625,6 +664,50 @@ fn fold_columns_for_row(
   in_projection: Bool,
   derived: Map<String, String>,
   erasure_by_id: Map<String, DerivedPayloadErasure>,
+  plan: ReviewSheetWritePlan,
+) -> ReviewSheetClassification {
+  match authorize_derived_payload_erasure(
+    listing_id: listing_id,
+    in_projection: in_projection,
+    schema: schema,
+    header_by_name: header_by_name,
+    row: row,
+    erasure_by_id: erasure_by_id,
+  ) {
+    ErasureRefused { reason: r } => ReviewSheetUnreadable { reason: r }
+    ErasureAuthorized =>
+      fold_columns_for_row(
+        schema: schema,
+        header_by_name: header_by_name,
+        row: row,
+        listing_id: listing_id,
+        in_projection: in_projection,
+        derived: derived,
+        erase_derived: true,
+        plan: plan,
+      )
+    ErasureNotRequested =>
+      fold_columns_for_row(
+        schema: schema,
+        header_by_name: header_by_name,
+        row: row,
+        listing_id: listing_id,
+        in_projection: in_projection,
+        derived: derived,
+        erase_derived: false,
+        plan: plan,
+      )
+  }
+}
+
+fn fold_columns_for_row(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+  listing_id: NonEmptyStr,
+  in_projection: Bool,
+  derived: Map<String, String>,
+  erase_derived: Bool,
   plan: ReviewSheetWritePlan,
 ) -> ReviewSheetClassification {
   fold(schema.columns, init: ReviewSheetNeedsWrite { plan: plan }, f: fn(acc, col) {
@@ -652,37 +735,15 @@ fn fold_columns_for_row(
                 )
               OperatorEntered => ReviewSheetNeedsWrite { plan: p }
               DerivedField { source_field: _ } =>
-                if listing_has_erasure(erasure_by_id: erasure_by_id, listing_id: listing_id) {
-                  if in_projection {
-                    ReviewSheetUnreadable { reason: erasure_still_projected_reason(listing_id: listing_id) }
-                  } else {
-                    match read_row_listing_standing(schema: schema, header_by_name: header_by_name, row: row) {
-                      Absent =>
-                        ReviewSheetUnreadable {
-                          reason: erasure_missing_standing_column_reason(listing_id: listing_id)
-                        }
-                      Present { value: standing_read } =>
-                        match standing_read {
-                          StandingKnown { state: standing_state } =>
-                            if listing_standing_eq(a: standing_state, b: StandingGone) {
-                              classification_from_cell_decision(
-                                plan: p,
-                                listing_id: listing_id,
-                                column: col.name,
-                                column_index: idx,
-                                data_index: row.data_index,
-                                decision: decide_derived_erasure_cell(observed: observed),
-                              )
-                            } else {
-                              ReviewSheetUnreadable { reason: erasure_requires_gone_reason(listing_id: listing_id) }
-                            }
-                          StandingBlank =>
-                            ReviewSheetUnreadable { reason: erasure_requires_gone_reason(listing_id: listing_id) }
-                          StandingForeign { raw: _ } =>
-                            ReviewSheetUnreadable { reason: erasure_requires_gone_reason(listing_id: listing_id) }
-                        }
-                    }
-                  }
+                if erase_derived {
+                  classification_from_cell_decision(
+                    plan: p,
+                    listing_id: listing_id,
+                    column: col.name,
+                    column_index: idx,
+                    data_index: row.data_index,
+                    decision: decide_derived_erasure_cell(observed: observed),
+                  )
                 } else {
                   if in_projection {
                     match derived.lookup(col.name as String) {
@@ -1201,17 +1262,6 @@ data buyer_review_judgement_read_frontier: Disposition = Scaffold {
   bind: DeclarationRef {
     module_path: "gunbc.review_sheet_projection",
     decl_name: "judgement_for_listing",
-    field: WholeDeclaration
-  }
-}
-
-// Live ensure still calls classify_review_sheet (empty erasures). A named later change binds
-// classify_review_sheet_with_erasure when a caller supplies DerivedPayloadErasure rows.
-data derived_payload_erasure_frontier: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.review_sheet_projection",
-    decl_name: "classify_review_sheet_with_erasure",
     field: WholeDeclaration
   }
 }
