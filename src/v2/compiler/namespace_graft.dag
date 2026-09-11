@@ -152,14 +152,10 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
   }
 }
 
-fn namespace_graft_fold_collect_children(node: Node) -> List<Edge> {
+fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
   fold(node.children, init: [], f: fn(acc, edge) {
     namespace_graft_collect_body_edge(acc: acc, edge: edge)
   })
-}
-
-fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
-  namespace_graft_fold_collect_children(node: node)
 }
 
 fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> List<Symbol> {
@@ -306,8 +302,8 @@ fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
 // identical to a LOST forest. Conj body edges must be uniquely Named (well_formed). Flattening
 // already produces that shape for a nonempty forest, so a nonempty flatten is kept as-is.
 // An empty flatten with surviving top-level-item alternatives reconstructs one Named forest
-// (Cardinality of admitted units). Empty flatten, no units, and a leftover
-// dag_surface_top_level_item is a genuine loss and still refuses.
+// (Cardinality of those units as Positional children, interiors kept). Empty flatten, no units,
+// and a leftover dag_surface_top_level_item is a genuine loss and still refuses.
 fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
