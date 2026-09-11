@@ -679,16 +679,6 @@ fn belt_attempt_state_initialize_for_instance(
         content: "",
       )
       if events_write.success {
-        let pin_persisted = belt_persist_oracle_pin_for_instance(
-          instance: instance,
-          node: node,
-          attempt_key: attempt_key,
-          capture: belt_attempt_oracle_pin_capture_for_instance(
-            instance: instance,
-            node: node,
-            attempt_key: attempt_key,
-          ),
-        )
         let receipt_initialized = Filesystem.Write(
           path: dispatch_attempt_validation_receipt_path_for_instance(
             instance: instance,
@@ -712,20 +702,37 @@ fn belt_attempt_state_initialize_for_instance(
             step: "attempt-validation-receipt-initialize",
             detail: "the not-run validation receipt could not be written beside the attempt; without it a later unreadable receipt is indistinguishable from an absent one, which is the conflation this initialization exists to remove",
           }
-        } else if pin_persisted {
-          match belt_persist_spawn_origin_for_instance(
+        } else {
+          match belt_persist_oracle_pin_for_instance(
             instance: instance,
             node: node,
             attempt_key: attempt_key,
+            capture: belt_attempt_oracle_pin_capture_for_instance(
+              instance: instance,
+              node: node,
+              attempt_key: attempt_key,
+            ),
           ) {
-            SpawnOriginRecorded => AttemptStateInitialized
-            SpawnOriginRecordFailed { step, detail } =>
-              AttemptStateInitializationFailed { step: step, detail: detail }
-          }
-        } else {
-          AttemptStateInitializationFailed {
-            step: "attempt-oracle-pin-persist",
-            detail: "the validation oracle pin could not be written beside the attempt; an attempt whose oracle is unrecorded can never be verified, and the write itself failing is a state-directory fault rather than a verification-side deficit",
+            OraclePinPersisted =>
+              match belt_persist_spawn_origin_for_instance(
+                instance: instance,
+                node: node,
+                attempt_key: attempt_key,
+              ) {
+                SpawnOriginRecorded => AttemptStateInitialized
+                SpawnOriginRecordFailed { step, detail } =>
+                  AttemptStateInitializationFailed { step: step, detail: detail }
+              }
+            OraclePinSpawnRefused { reason } =>
+              AttemptStateInitializationFailed {
+                step: "validation-oracle-pin",
+                detail: reason,
+              }
+            OraclePinPersistWriteFailed { detail } =>
+              AttemptStateInitializationFailed {
+                step: "attempt-oracle-pin-persist",
+                detail: detail,
+              }
           }
         }
       } else {
@@ -801,10 +808,12 @@ fn belt_persist_spawn_origin_for_instance(
 // moment the oracle is known to be the base revision's, not the attempt's. The controller repo is a
 // tree nothing ties to this attempt; reading after the agent runs is the fail-open this lane
 // closes. The staged spawn already orders it: worktree-add and attempt-state-prepare first, this
-// capture inside state initialization, tmux-session-create after. A capture failure does NOT fail
-// the spawn (refusing on a verification-side deficit trades a whole attempt for a receipt) but is
-// never silent: the reason is persisted to its own file, so verification reports a located cause,
-// not an absent pin, and the deficit stays countable at the Verify lamp.
+// capture inside state initialization, tmux-session-create after.
+//
+// A PIN REFUSAL FAILS THE SPAWN. The verify gate already refuses an unpinnable attempt, so this is
+// not a second decider: it is the same observation, asked before worktree-add, so a worker is not
+// spent on work that cannot verify. belt_spawn_oracle_pin_standing is that earlier ask; the
+// verify-side gate is unchanged.
 type AttemptOraclePinCapture
   = OraclePinRecorded {
       identity: ContentHash,
@@ -1000,6 +1009,37 @@ fn belt_verify_detached_worktree_refusal(
   }
 }
 
+fn belt_oracle_pin_not_observable_reason(tree: String) -> String {
+  join([
+    "the declared validation oracle was not observable in the attempt worktree at ",
+    tree,
+    " when the attempt was created",
+  ], "")
+}
+
+type BeltSpawnOraclePinStanding
+  = SpawnOraclePinAdmitted
+  | SpawnOraclePinRefused { reason: String }
+
+fn belt_spawn_oracle_pin_standing(
+  contract: WorkItemExecutionContract,
+  observations: List<OracleObservation>,
+  tree: String,
+) -> BeltSpawnOraclePinStanding {
+  if count(belt_oracle_refs_for_contract(contract: contract)) == 0 {
+    SpawnOraclePinAdmitted
+  } else {
+    match validation_oracle_set_observe(observations: observations) {
+      OracleSetIncomplete { blocking: _, observations: _ } =>
+        SpawnOraclePinRefused {
+          reason: belt_oracle_pin_not_observable_reason(tree: tree),
+        }
+      OracleSetObserved { identity: _, observations: _ } =>
+        SpawnOraclePinAdmitted
+    }
+  }
+}
+
 fn belt_attempt_oracle_pin_capture_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -1024,11 +1064,7 @@ fn belt_attempt_oracle_pin_capture_for_instance(
     ) {
       OracleSetIncomplete { blocking: _, observations: _ } =>
         OraclePinNotRecorded {
-          reason: join([
-            "the declared validation oracle was not observable in the attempt worktree at ",
-            worktree,
-            " when the attempt was created",
-          ], ""),
+          reason: belt_oracle_pin_not_observable_reason(tree: worktree),
         }
       OracleSetObserved { identity, observations: _ } => {
         let revision = belt_worktree_head_revision(
@@ -1050,22 +1086,35 @@ fn belt_attempt_oracle_pin_capture_for_instance(
   }
 }
 
+type OraclePinPersist
+  = OraclePinPersisted
+  | OraclePinSpawnRefused { reason: String }
+  | OraclePinPersistWriteFailed { detail: String }
+
 fn belt_persist_oracle_pin_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   attempt_key: String,
   capture: AttemptOraclePinCapture,
-) -> Bool {
+) -> OraclePinPersist {
   match capture {
-    OraclePinNotRecorded { reason } =>
-      Filesystem.Write(
+    OraclePinNotRecorded { reason } => {
+      let wrote = Filesystem.Write(
         path: dispatch_attempt_oracle_pin_refusal_path_for_instance(
           instance: instance,
           node_id: node.node,
           attempt_key: attempt_key,
         ),
         content: reason,
-      ).success
+      )
+      if !wrote.success {
+        OraclePinPersistWriteFailed { detail: wrote.error }
+      } else if count(belt_oracle_refs_for_contract(contract: node.execution)) == 0 {
+        OraclePinPersisted
+      } else {
+        OraclePinSpawnRefused { reason: reason }
+      }
+    }
     OraclePinRecorded { identity, revision } => {
       let identity_write = Filesystem.Write(
         path: dispatch_attempt_oracle_identity_path_for_instance(
@@ -1083,7 +1132,13 @@ fn belt_persist_oracle_pin_for_instance(
         ),
         content: revision,
       )
-      identity_write.success && revision_write.success
+      if identity_write.success && revision_write.success {
+        OraclePinPersisted
+      } else {
+        OraclePinPersistWriteFailed {
+          detail: "the validation oracle pin could not be written beside the attempt; an attempt whose oracle is unrecorded can never be verified, and the write itself failing is a state-directory fault rather than a verification-side deficit",
+        }
+      }
     }
   }
 }
@@ -1882,6 +1937,23 @@ fn belt_actuate_spawn_with_origin(
         launch: launch,
       }
     DispatchSpawnReady { commands: cmds } =>
+  match belt_spawn_oracle_pin_standing(
+    contract: node.execution,
+    observations: belt_oracle_observations_in_worktree(
+      contract: node.execution,
+      worktree: instance.repo_root as String,
+    ),
+    tree: instance.repo_root as String,
+  ) {
+    SpawnOraclePinRefused { reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "validation-oracle-pin",
+        detail: reason,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    SpawnOraclePinAdmitted =>
   match belt_exec_steps(
     steps: [
       BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
@@ -1995,6 +2067,7 @@ fn belt_actuate_spawn_with_origin(
           }
       }
   }
+}
 }
 }
 

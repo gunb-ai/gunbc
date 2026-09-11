@@ -12,7 +12,9 @@ import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified, OperatorExclusive, ExternalLead, CalendarObservation,
   ExecutionContract, PathsAllowed, PathsUnrestricted, PublicWorktreeLayout,
   PinnedPublicPlusLocalRoot, PathOutOfScope, PathsAdmitted,
-  GunbcClaimValidation, ClaimSourceRootLayout,
+  GunbcClaimValidation, ClaimSourceRootLayout, WorkItemExecutionContract,
+  PinnedPublicPlusLocalRoot, PathOutOfScope, PathsAdmitted,
+  CargoFmtValidation, gunbc_claim_execution_contract, WorkItemExecutionContract,
   contract_closure, ContractNotAgentWork, OperatorExclusiveMode, ExternalLeadMode,
   CalendarObservationMode, ContractDeclaresNoValidation,
   attempt_paths_admitted, claim_source_root_args, validation_operation_command,
@@ -28,7 +30,15 @@ import gunbc.roadmap_belt_actuate {
   WorktreeHeadObservation,
   worktree_head_observation_of,
   BeltExecOutcome, ExecOk,
+  belt_spawn_oracle_pin_standing,
+  SpawnOraclePinAdmitted,
+  SpawnOraclePinRefused,
+  belt_oracle_pin_not_observable_reason,
 }
+import gunbc.roadmap_validation_oracle {
+  ValidationOracleRef, OracleFound, OracleMissing,
+}
+import std.content_hash { content_hash_atom }
 import gunbc.roadmap_publish { PublicationSubjectObserved, PublicationSubjectUnobserved }
 import std.types { CommitSha }
 
@@ -153,4 +163,68 @@ test fn private_layout_validation_composes_both_roots() -> Bool {
 test fn public_layout_validation_stays_two_roots() -> Bool {
   join(claim_source_root_args(layout: PublicWorktreeLayout), " ")
     == "--source-root dag --source-root src/v2"
+}
+
+fn pin_witness_oracle() -> ValidationOracleRef {
+  ValidationOracleRef {
+    entry: "dag/test/claim/roadmap/roadmap_dispatch_destination_witness_test.dag" as FilePath,
+    function: "a_non_public_destination_does_not_publish_to_gunbc" as NonEmptyStr,
+  }
+}
+
+fn pin_witness_claim_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: pin_witness_oracle().entry,
+    function: pin_witness_oracle().function,
+  )
+}
+
+test fn a_declared_oracle_absent_from_the_tree_refuses_spawn() -> Bool {
+  let tree = "/attempt-worktree"
+  match belt_spawn_oracle_pin_standing(
+    contract: pin_witness_claim_contract(),
+    observations: [
+      OracleMissing {
+        oracle: pin_witness_oracle(),
+        detail: "absent",
+      },
+    ],
+    tree: tree,
+  ) {
+    SpawnOraclePinAdmitted => false
+    SpawnOraclePinRefused { reason } =>
+      reason == belt_oracle_pin_not_observable_reason(tree: tree)
+  }
+}
+
+test fn a_found_oracle_still_admits_spawn() -> Bool {
+  match belt_spawn_oracle_pin_standing(
+    contract: pin_witness_claim_contract(),
+    observations: [
+      OracleFound {
+        oracle: pin_witness_oracle(),
+        identity: content_hash_atom(value: "pin-witness-oracle" as NonEmptyStr),
+      },
+    ],
+    tree: "/attempt-worktree",
+  ) {
+    SpawnOraclePinAdmitted => true
+    SpawnOraclePinRefused { reason: _ } => false
+  }
+}
+
+test fn a_contract_with_no_pinnable_oracle_still_admits_spawn() -> Bool {
+  match belt_spawn_oracle_pin_standing(
+    contract: ExecutionContract {
+      validations: [CargoFmtValidation],
+      extra_capabilities: [],
+      path_scope: PathsUnrestricted,
+      source_roots: PublicWorktreeLayout,
+    },
+    observations: [],
+    tree: "/attempt-worktree",
+  ) {
+    SpawnOraclePinAdmitted => true
+    SpawnOraclePinRefused { reason: _ } => false
+  }
 }
