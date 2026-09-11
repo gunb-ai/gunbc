@@ -2,6 +2,12 @@ module gunbc.review_sheet_projection
 
 import std.types { NonEmptyStr, String, Int, List, Bool, Map }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster {
+  keyed_roster_build,
+  KeyedRosterBuilt,
+  KeyedRosterBuildDuplicateKey,
+}
 
 // Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
 // keyed by listing identity, every column Derived, OperatorEntered, or ListingStanding. Sheets types
@@ -165,12 +171,6 @@ fn sheet_row_number(data_index: Int) -> Int {
   data_index + 2
 }
 
-fn indexes_by_header(headers: List<String>) -> Map<String, Int> {
-  fold(headers |> enumerate, init: empty_map(), f: fn(acc, pair) {
-    map_insert(acc, pair.second, pair.first)
-  })
-}
-
 fn cell_at(cells: List<String>, index: Int) -> String {
   match cells.skip(n: index).first() {
     Present { value: v } => v
@@ -178,75 +178,34 @@ fn cell_at(cells: List<String>, index: Int) -> String {
   }
 }
 
-type NameDupScan {
-  seen: Map<String, Bool>
-  first: String?
+fn review_sheet_key_eq(a: String, b: String) -> Bool {
+  a == b
 }
 
-fn first_duplicate_name(names: List<String>) -> String? {
-  match fold(names, init: NameDupScan { seen: empty_map(), first: none }, f: fn(acc, name) {
-    match acc.first {
-      Present { value: d } => NameDupScan { seen: acc.seen, first: Present { value: d } }
-      Absent =>
-        match acc.seen.lookup(name) {
-          Present { value: _ } => NameDupScan { seen: acc.seen, first: Present { value: name } }
-          Absent => NameDupScan {
-            seen: map_insert(acc.seen, name, true),
-            first: none,
-          }
-        }
-    }
-  }) {
-    NameDupScan { seen: _, first: f } => f
-  }
-}
-
-fn first_duplicate(ids: List<NonEmptyStr>) -> NonEmptyStr? {
-  match first_duplicate_name(names: map(ids, id => id as String)) {
-    Present { value: d } => Present { value: d as NonEmptyStr }
-    Absent => none
-  }
-}
-
-fn projection_ids(projection: ReviewSheetProjection) -> List<NonEmptyStr> {
-  map(projection.rows, r => r.listing_id)
-}
-
-fn projection_by_listing(projection: ReviewSheetProjection) -> Map<String, ProjectionRow> {
-  fold(projection.rows, init: empty_map(), f: fn(acc, row) {
-    map_insert(acc, row.listing_id as String, row)
+fn keyed_string_map<V>(rows: List<KeyedRow<String, V>>) -> Map<String, V> {
+  fold(rows, init: empty_map(), f: fn(acc, row) {
+    map_insert(acc, row.row_key, row.value)
   })
+}
+
+fn header_key_rows(headers: List<String>) -> List<KeyedRow<String, Int>> {
+  map(headers |> enumerate, pair => KeyedRow { row_key: pair.second, value: pair.first })
+}
+
+fn projection_key_rows(projection: ReviewSheetProjection) -> List<KeyedRow<String, ProjectionRow>> {
+  map(projection.rows, row => KeyedRow { row_key: row.listing_id as String, value: row })
+}
+
+fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List<KeyedRow<String, Bool>> {
+  sheet.rows
+    |> map(row => cell_at(cells: row.cells, index: identity_index))
+    |> filter(raw => raw != "")
+    |> map(raw => KeyedRow { row_key: raw, value: true })
 }
 
 fn derived_by_column(row: ProjectionRow) -> Map<String, String> {
   fold(row.derived, init: empty_map(), f: fn(acc, cell) {
     map_insert(acc, cell.column as String, cell.value)
-  })
-}
-
-type ObservedIdIndex {
-  by_id: Map<String, Bool>
-  first_dup: NonEmptyStr?
-}
-
-fn observed_id_index(sheet: ObservedSheet, identity_index: Int) -> ObservedIdIndex {
-  fold(sheet.rows, init: ObservedIdIndex { by_id: empty_map(), first_dup: none }, f: fn(acc, row) {
-    match acc.first_dup {
-      Present { value: d } => ObservedIdIndex { by_id: acc.by_id, first_dup: Present { value: d } }
-      Absent => {
-        let raw = cell_at(cells: row.cells, index: identity_index)
-        if raw == "" {
-          acc
-        } else {
-          match acc.by_id.lookup(raw) {
-            Present { value: _ } =>
-              ObservedIdIndex { by_id: acc.by_id, first_dup: Present { value: raw as NonEmptyStr } }
-            Absent =>
-              ObservedIdIndex { by_id: map_insert(acc.by_id, raw, true), first_dup: none }
-          }
-        }
-      }
-    }
   })
 }
 
@@ -569,11 +528,11 @@ fn append_row_for(
 }
 
 fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProjection) -> ReviewSheetClassification {
-  match first_duplicate_name(names: observed.headers) {
-    Present { value: d } =>
+  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
       ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
-    Absent => {
-      let header_by_name = indexes_by_header(headers: observed.headers)
+    KeyedRosterBuilt { rows: header_rows } => {
+      let header_by_name = keyed_string_map(rows: header_rows)
       match missing_schema_header(schema: projection.schema, header_by_name: header_by_name) {
     Present { value: missing } =>
       ReviewSheetUnreadable { reason: concat("missing header ", missing as String) as NonEmptyStr }
@@ -581,19 +540,26 @@ fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProject
       match header_by_name.lookup(projection.schema.identity_column as String) {
         Absent => ReviewSheetUnreadable { reason: "missing identity column" as NonEmptyStr }
         Present { value: identity_index } =>
-          match first_duplicate(ids: projection_ids(projection: projection)) {
-            Present { value: d } =>
-              ReviewSheetUnreadable { reason: concat("duplicate projection listing ", d as String) as NonEmptyStr }
-            Absent =>
-              match observed_id_index(sheet: observed, identity_index: identity_index) {
-                ObservedIdIndex { by_id: by_id, first_dup: Present { value: d } } =>
-                  ReviewSheetUnreadable { reason: concat("duplicate sheet listing ", d as String) as NonEmptyStr }
-                ObservedIdIndex { by_id: by_id, first_dup: Absent } => finish_classify(
+          match keyed_roster_build(
+            incomings: projection_key_rows(projection: projection),
+            key_eq: review_sheet_key_eq,
+          ) {
+            KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+              ReviewSheetUnreadable { reason: concat("duplicate projection listing ", d) as NonEmptyStr }
+            KeyedRosterBuilt { rows: proj_rows } =>
+              match keyed_roster_build(
+                incomings: observed_identity_key_rows(sheet: observed, identity_index: identity_index),
+                key_eq: review_sheet_key_eq,
+              ) {
+                KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+                  ReviewSheetUnreadable { reason: concat("duplicate sheet listing ", d) as NonEmptyStr }
+                KeyedRosterBuilt { rows: obs_rows } => finish_classify(
                   observed: observed,
                   projection: projection,
                   header_by_name: header_by_name,
                   identity_index: identity_index,
-                  observed_by_id: by_id,
+                  rows_by_listing: keyed_string_map(rows: proj_rows),
+                  observed_by_id: keyed_string_map(rows: obs_rows),
                 )
               }
           }
@@ -608,9 +574,9 @@ fn finish_classify(
   projection: ReviewSheetProjection,
   header_by_name: Map<String, Int>,
   identity_index: Int,
+  rows_by_listing: Map<String, ProjectionRow>,
   observed_by_id: Map<String, Bool>,
 ) -> ReviewSheetClassification {
-  let rows_by_listing = projection_by_listing(projection: projection)
   let after_existing = fold(observed.rows, init: ReviewSheetNeedsWrite { plan: empty_write_plan() }, f: fn(acc, row) {
     match acc {
       ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
@@ -723,11 +689,11 @@ fn judgement_for_listing(
   judgement_column: NonEmptyStr,
   listing_id: NonEmptyStr,
 ) -> JudgementRead {
-  match first_duplicate_name(names: observed.headers) {
-    Present { value: d } =>
+  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
       JudgementUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
-    Absent => {
-      let header_by_name = indexes_by_header(headers: observed.headers)
+    KeyedRosterBuilt { rows: header_rows } => {
+      let header_by_name = keyed_string_map(rows: header_rows)
       match header_by_name.lookup(identity_column as String) {
         Absent =>
           JudgementUnreadable {
