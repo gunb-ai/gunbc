@@ -474,7 +474,6 @@ fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> Witn
 type RunningSupersessionPolicy
   = NeverSupersedeRunning
   | SupersedeRunningForEvent { event: String }
-  | SupersedeMutableHeadRuns
 
 // THE QUEUE AXIS IS THE SECOND HALF OF THE SAME FACT, and omitting it left the classifier carrying
 // a hardcoded copy of today's regime. ConcurrencySpec already distinguishes QueueMax from
@@ -512,7 +511,8 @@ fn running_supersession_for_fleet_standing(
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
-    FleetCancellationSafe { hosts: _ } => SupersedeMutableHeadRuns
+    FleetCancellationSafe { hosts: _ } =>
+      SupersedeRunningForEvent { event: github_event_name_pull_request }
   }
 }
 
@@ -529,46 +529,11 @@ fn supersession_event_expression(event: String) -> String {
   concat(concat("${{ github.event_name == '", event), "' }}")
 }
 
-// RUNNING-CANCEL EVENTS ARE NOT THE GROUPING SET (review 63654). Occupancy grouping of push
-// lives in witness_floor_group_branches (pending replacement on github.ref). This roster is the
-// running-cancel event set for SupersedeMutableHeadRuns: classifier membership and the OR'd
-// cancel Expression both fold it. Push is not a member — an older refs/heads/main SHA is landed
-// work, and cancelling its RUNNING jobs is a rung drop that this PR does not declare.
-data mutable_ci_head_event_names: List<String> = [
-  github_event_name_pull_request,
-]
-
-fn is_mutable_ci_head_event(event: String) -> Bool {
-  fold_list(
-    xs: mutable_ci_head_event_names,
-    empty: false,
-    cons: fn(acc, e) { acc || e == event }
-  )
-}
-
-fn mutable_head_runs_cancel_ast() -> Expression {
-  match list_head(xs: mutable_ci_head_event_names) {
-    HeadAbsent => github_event_name_equals(event: "")
-    HeadFound { value: first } =>
-      fold_list(
-        xs: skip(xs: mutable_ci_head_event_names, n: 1),
-        empty: github_event_name_equals(event: first),
-        cons: fn(acc, e) { gha_or(left: acc, right: github_event_name_equals(event: e)) }
-      )
-  }
-}
-
-fn mutable_head_runs_cancel_expression() -> String {
-  interpolate(expression: mutable_head_runs_cancel_ast())
-}
-
 fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
   match policy {
     NeverSupersedeRunning => CancelInProgressBool { value: false }
     SupersedeRunningForEvent { event: e } =>
       CancelInProgressExpression { expression: supersession_event_expression(event: e) }
-    SupersedeMutableHeadRuns =>
-      CancelInProgressExpression { expression: mutable_head_runs_cancel_expression() }
   }
 }
 
@@ -589,8 +554,6 @@ fn queue_max_cancel_of_policy(policy: RunningSupersessionPolicy) -> CancelInProg
     NeverSupersedeRunning => QueueMaxCancelInProgressFalse
     SupersedeRunningForEvent { event: e } =>
       QueueMaxCancelInProgressExpression { expression: supersession_event_expression(event: e) }
-    SupersedeMutableHeadRuns =>
-      QueueMaxCancelInProgressExpression { expression: mutable_head_runs_cancel_expression() }
   }
 }
 
