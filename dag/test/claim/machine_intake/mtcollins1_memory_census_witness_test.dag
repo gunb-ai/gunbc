@@ -3,15 +3,24 @@ module test.claim.mtcollins1_memory_census_witness_test
 import std.types { Bool, Int, List, list_length }
 import std.nat { Nat }
 import gunbc.machine_intake_mtcollins1_memory_census_observation {
+  HistoricalAdHocCapture,
+  MtCollins1AcquisitionStanding,
   MtCollins1EdacTopologyObservation,
+  MtCollins1MemoryWorkload,
+  MtCollins1SubjectBinding,
+  ProducedByModelledOperation,
   MtCollins1FirmwareChannelBinding,
   MtCollins1SlotObservation,
   SlotEmpty,
   SlotPopulated,
+  mtcollins1_acquisition_standing,
   mtcollins1_edac_topology,
   mtcollins1_firmware_channel_bindings,
+  mtcollins1_host_capture_byte_count,
+  mtcollins1_memory_workload,
   mtcollins1_nproc,
   mtcollins1_slots,
+  mtcollins1_subject_binding,
 }
 
 // THIS TEST EXISTS BECAUSE THE CENSUS MODULE WOULD OTHERWISE DECLARE SIXTEEN CHANNEL BINDINGS AND
@@ -113,4 +122,61 @@ test fn edac_exposes_no_channel_topology_and_reports_no_errors() -> Bool {
 // merely carried.
 test fn the_unit_presents_one_hundred_and_sixty_processors() -> Bool {
   mtcollins1_nproc == 160
+}
+
+
+// ── the declarations the earlier witness left unread ───────────────────────────────────────────
+//
+// THE FIRST VERSION OF THIS WITNESS CHECKED THE SLOT ROWS AND NOTHING ELSE, which is how a
+// timestamp wrong by four days and an attempt label naming two attempts both landed green. A
+// witness that reads only the declarations it happens to find interesting is a witness that lets
+// every other declaration drift.
+//
+// WHAT IT STILL CANNOT DO, STATED SO NOBODY READS MORE INTO IT. These checks compare declarations
+// to declarations. They CANNOT recompute an artifact's SHA-256 and compare it to the declared one,
+// because a pure witness has no file access — so a hand-transcribed digest or byte count remains
+// unverifiable here. That gap is not closable in this test; it closes when a modelled producer
+// GENERATES the receipt from the artifact instead of an author transcribing it. Until then this
+// witness bounds drift between fields, not fidelity to the bytes.
+
+// The subject binding is the claim that makes every serial in this module a fact about UNIT 1
+// rather than about some Mt. Collins, so an empty or placeholder serial must not pass.
+test fn the_capture_is_bound_to_unit_one_by_board_serial() -> Bool {
+  mtcollins1_subject_binding.smbios_board_serial == "02030A800TEXFT02L"
+    && mtcollins1_subject_binding.smbios_system_serial != ""
+    && mtcollins1_subject_binding.smbios_system_uuid != ""
+}
+
+// EDAC-clean is only meaningful beside the load that was run. A workload whose write failed, or
+// whose two hash passes disagreed, must not sit next to a zero-counter reading and read as health.
+test fn the_health_reading_is_backed_by_a_workload_that_actually_ran() -> Bool {
+  mtcollins1_memory_workload.write_exit_status == 0
+    && mtcollins1_memory_workload.digest_stable_across_passes
+    && mtcollins1_memory_workload.bytes_exercised > 0
+    && mtcollins1_memory_workload.edac_corrected_before == 0
+    && mtcollins1_memory_workload.edac_corrected_after == 0
+    && mtcollins1_memory_workload.edac_uncorrected_before == 0
+    && mtcollins1_memory_workload.edac_uncorrected_after == 0
+}
+
+// The counters either side of the workload must agree with the topology row's summary; if they
+// ever diverge, one of the two was transcribed rather than read.
+test fn the_topology_summary_agrees_with_the_before_and_after_counters() -> Bool {
+  mtcollins1_edac_topology.corrected_error_count == mtcollins1_memory_workload.edac_corrected_after
+    && mtcollins1_edac_topology.uncorrected_error_count == mtcollins1_memory_workload.edac_uncorrected_after
+}
+
+fn acquisition_is_ad_hoc(a: MtCollins1AcquisitionStanding) -> Bool {
+  match a {
+    HistoricalAdHocCapture { reusable_producer_absent: absent } => absent
+    ProducedByModelledOperation { producer: _ } => false
+  }
+}
+
+// A CONTROL THAT IS SUPPOSED TO FLIP. While these captures have no modelled producer, the standing
+// must say so; the day a producer generates this receipt, this test goes red and is replaced by one
+// asserting the producer, rather than quietly continuing to claim the weaker thing.
+test fn the_acquisition_is_declared_ad_hoc_while_no_producer_exists() -> Bool {
+  acquisition_is_ad_hoc(a: mtcollins1_acquisition_standing)
+    && mtcollins1_host_capture_byte_count > 0
 }

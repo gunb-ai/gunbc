@@ -6,10 +6,16 @@ import std.measure { BitWidth, bit_width }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// THE HOST-SIDE MEMORY CENSUS OF MT. COLLINS UNIT 1, taken 2026-09-10T20:02:36Z from a Linux that
-// ran ON THE MACHINE. Every field below is read from artifacts/bmc/mtcollins1-hw-census.txt or
-// artifacts/bmc/mtcollins1-hw-census-sol.log, whose digests are declared here; nothing is stated
-// that those two files do not contain.
+// THE HOST-SIDE MEMORY CENSUS OF MT. COLLINS UNIT 1, read from Linux running ON THE MACHINE across
+// two captures, 2026-09-10T20:02:36Z and 2026-09-11T01:26:50Z.
+//
+// EVIDENCE BINDS PER SECTION, NOT PER MODULE, AND THAT IS A CORRECTION. This header used to say
+// every field came from the first capture and its SOL transcript. That stopped being true the
+// moment the module gained a second host capture, the attempt-3 artifacts and later live
+// observations, and a global claim that has quietly become false is worse than no claim: a reader
+// resolving the two declared digests would find them correct and still be reading fields those
+// files never contained. So each observation below names the artifact it came from, and NO section
+// inherits evidence by sitting in the same module as another.
 //
 // WHY THIS IS A SEPARATE MODULE FROM mtcollins1_access_observation. That module answers what the
 // CONTROLLER is and what it admits out of band. This one answers what the HOST reports about its
@@ -392,57 +398,30 @@ data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObli
   mtcollins1_rank_mixing_rule_obligation,
 ]
 
-// ── the controller's media state machine, recovered from the controller itself ─────────────────
-
-// THIS IS RECORDED BECAUSE MISREADING IT COST AN ENTIRE INVESTIGATION. redirection_status was read
-// here as a health value where nonzero meant trouble, so the 100 -> 1 transition was reported as a
-// media drop and a "decay clock" was measured off it. Both were wrong, and the correction did not
-// come from reasoning — it came from the controller's OWN served frontend (source.min.js), which
-// renders these values for the operator:
+// ── the media status observation, WITHOUT the decoder ─────────────────────────────────────────
 //
-//   0    status_0 "~"                          idle / nothing attached
-//   100  status_100                            connecting / pending
-//   1    "Started" + " - Connection Accepted"  SERVING. The healthy steady state.
-//   2    " - Connection Denied"                refusal
-//   3    " - Login Failed"                     refusal
-//   4    " - MAX Session Reached"              refusal
-//   5    " - Permission Denied"                refusal
-//   any value outside {0,1,100} renders "Stopped"; session_index 255 renders "N/A".
+// AN EARLIER REVISION OF THIS MODULE CARRIED A DECODED STATE MACHINE for the controller's
+// redirection_status, with a readiness rule and a refusal range. It has been REMOVED rather than
+// refined, for two independent reasons.
 //
-// THIS MAPPING IS KEYED TO ONE FIRMWARE BUILD AND MUST NOT BE INHERITED. It was read from the
-// frontend served by THIS controller at firmware revision 0.32. Nothing here establishes that any
-// other MegaRAC release uses the same numbers, and a controller whose firmware identity is not
-// catalogued must refuse rather than borrow the nearest profile — the whole reason this row exists
-// is that a plausible-looking status value was read as its opposite.
+// IT WAS A REUSABLE PROTOCOL DECODER LIVING IN A UNIT RECEIPT. A mapping from vendor status codes
+// to meanings, plus a rule about which of them permits a reset, is neither an observation of this
+// unit nor a fact this module may own: it is an extdeps.bmc.megarac catalog keyed to a firmware
+// identity, and a caller policy on top of it. Leaving it here would have made this receipt a
+// second authority for a question the migration is modelling properly.
 //
-// MEASURED AGAINST THE LIVE CONTROLLER: attach at 22:38:16 -> 100 with session_index 255 ->
-// session_index 0 at +12s, still 100 -> status 1 at +15s -> HELD at 1 for 4m27s idle and then
-// through an entire boot. So 1 is not a decay, it is the destination.
+// AND ITS PROVENANCE WAS PROSE. The mapping was read from source.min.js as served by this
+// controller, and NO SUCH ARTIFACT IS COMMITTED. A sentence naming the file it came from is not a
+// resolvable receipt; a reader cannot check it, which is the same defect as a hand-transcribed
+// number. The observation therefore does not belong in an evidence PR without its bytes.
 //
-// THE CONSEQUENCE FOR ANY READINESS PREDICATE, and this is the part that matters beyond this unit:
-// "nonzero means attached" admits 100, which is merely CONNECTING, and admits 2 through 5, which
-// are REFUSALS. Only 1 may satisfy media-ready; 100 must be polled with a bound; 2-5 must be
-// distinct typed refusals. A predicate that resets a host on 100 can expose a partly-ready medium
-// to firmware reads, which is the plausible reading of the attempt-3 initrd failure below.
-type MtCollins1MediaStateMachine {
-  idle: Int
-  connecting: Int
-  serving: Int
-  first_refusal: Int
-  last_refusal: Int
-  authority: NonEmptyStr
-  readiness_rule: NonEmptyStr
-}
-
-data mtcollins1_media_state_machine: MtCollins1MediaStateMachine = MtCollins1MediaStateMachine {
-  idle: 0,
-  connecting: 100,
-  serving: 1,
-  first_refusal: 2,
-  last_refusal: 5,
-  authority: "source.min.js as served by THIS controller at firmware revision 0.32 (AMI MegaRAC), which renders 1 as \"Started - Connection Accepted\", 2 \" - Connection Denied\", 3 \" - Login Failed\", 4 \" - MAX Session Reached\", 5 \" - Permission Denied\", and anything outside {0,1,100} as \"Stopped\". Read from the firmware, not inferred from behaviour.",
-  readiness_rule: "Only 1 is media-ready. 100 is connecting and must be polled with a bound, never treated as attached. 2 through 5 are distinct refusals and must not be admitted by a nonzero test. Any OTHER numeric code is vendor-rendered Stopped and is neither pending nor success; this row does not enumerate those and a consumer must carry them as an explicit other-code arm rather than defaulting them into any state above.",
-}
+// WHAT SURVIVES HERE IS THE MEASUREMENT ALONE, because the transition itself was observed against
+// the live controller and is evidence about this unit. Attach at 2026-09-10T22:38:16.528Z: status
+// 100 with session_index 255; session_index 0 at +12s with status still 100; status 1 at +15s;
+// still 1 at +4m27s, and still 1 through the whole boot that followed. That sequence is recorded
+// as what was seen. This module draws NO conclusion from it about which status means ready — that
+// conclusion is the migration's to make, against a catalog keyed to firmware identity.
+data mtcollins1_media_transition_observed: NonEmptyStr = "Attach 2026-09-10T22:38:16.528Z: redirection_status 100 / session_index 255; +12s session_index 0, status still 100; +15s status 1; still status 1 at +4m27s and throughout the subsequent boot. Recorded as observed. No readiness conclusion is drawn here; the status-code catalog and the policy over it belong to extdeps.bmc.megarac and the boot-path migration respectively."
 
 // ── why the second capture took five attempts, and the defect that caused it ───────────────────
 
@@ -459,9 +438,12 @@ data mtcollins1_media_state_machine: MtCollins1MediaStateMachine = MtCollins1Med
 // order — PXE, which nothing on this segment answers, and then the UEFI shell. That is the
 // observed behaviour on every failed attempt.
 //
-// SETTING THE BIT FIXES IT, MEASURED: `chassis bootdev cdrom options=efiboot,persistent` reads back
-// "BIOS EFI boot" / "Force Boot from CD/DVD", and the very next reset booted the census image and
-// produced the capture this module now carries. One argv word is the whole difference.
+// A CONTROL VARYING THE BOOT-TYPE BIT ALONE THEN BOOTED. Device selector and persistence were held
+// constant; only the boot type changed, and the next reset booted the census image and produced the
+// capture this module carries. That is the scope of what was shown: the boot-type axis. It does not
+// establish a persistence policy, and this module deliberately does NOT state which argv the intake
+// should use — the boot-intent product, its one-shot projection and the admissibility of a
+// boot-type/architecture pair are the migration's to model, not a unit receipt's to prescribe.
 //
 // THE MODEL SAID THE HANDOFF SUCCEEDED EVERY TIME, WHICH IS THE DEEPER DEFECT AND THE REASON THIS
 // SURVIVED. oob_boot_handoff mints BootHandoffCompleted once the override reads back with the
@@ -472,20 +454,26 @@ data mtcollins1_media_state_machine: MtCollins1MediaStateMachine = MtCollins1Med
 // specification-without-execution, and it is why a legacy/EFI mismatch could persist undetected
 // across an entire intake lane.
 //
-// Fixing the argv without fixing the postcondition would remove this instance and leave the class:
-// the next unsatisfiable boot request would again be reported as completed.
-type MtCollins1BootDeliveryDefect {
-  missing_field: NonEmptyStr
-  why_it_fails_here: NonEmptyStr
-  measured_fix: NonEmptyStr
-  postcondition_defect: NonEmptyStr
+// Recording the instance without the class would be the weaker half: whatever argv the migration
+// settles on, a terminal minted from preconditions would report the next unsatisfiable request as
+// completed too. Both are named here as observations; neither is fixed by this module.
+// PRESCRIPTION HAS BEEN STRIPPED FROM THIS ROW. It previously carried measured_fix, which told a
+// reader what argv to use, what the one-shot projection is, and what to do if the firmware demands
+// persistence. All of that is reusable boot-intent policy and belongs to the migration; a unit
+// receipt that also prescribes protocol becomes a second authority the moment the migration lands.
+// What remains is what this unit was OBSERVED to do.
+type MtCollins1BootDeliveryObservation {
+  boot_flags_on_failing_attempts: NonEmptyStr
+  boot_flags_on_succeeding_attempt: NonEmptyStr
+  what_the_control_varied: NonEmptyStr
+  model_reported_throughout: NonEmptyStr
 }
 
-data mtcollins1_boot_delivery_defect: MtCollins1BootDeliveryDefect = MtCollins1BootDeliveryDefect {
-  missing_field: "IPMI boot parameter 5 BIOS boot type (byte 1 bit 5: 0 = PC-compatible/legacy, 1 = EFI). Absent from gunbc.machine_intake_oob_boot_handoff and gunbc.machine_intake_mtcollins1_actuate, which model the device selector alone.",
-  why_it_fails_here: "The default reads back as \"BIOS PC Compatible (legacy) boot\". aarch64 has no legacy BIOS boot path, so a legacy-boot request for the virtual CD is unsatisfiable; the firmware falls through to PXE (unanswered on this segment) and then the UEFI shell.",
-  measured_fix: "chassis bootdev cdrom options=efiboot,persistent reads back \"BIOS EFI boot\" and the next reset booted the census image, producing mtcollins1-host-capture.txt. WHAT THAT CONTROL ESTABLISHES IS THE EFI AXIS ALONE: persistence was held constant between the failing and succeeding probes, so it is the varied term that is implicated and persistence is not. It does NOT establish persistence policy, and persistent is the WRONG intake policy because it changes all future boots. ipmitool sets the valid bit itself, so the one-shot projection is options=efiboot with no valid member. A one-shot EFI wet run is still owed; if this firmware turns out to require persistence, that has to be carried as an explicit persistent-until-restored fact with the clear and the readback in the same transaction, never as a persistent write quietly described as one-shot.",
-  postcondition_defect: "oob_boot_handoff mints BootHandoffCompleted from override-readback plus power-action-accepted, never from host-side evidence that the intended device booted. Both preconditions held on every failed attempt, so the model reported success throughout. The argv fix without a real postcondition would close this instance and leave the class.",
+data mtcollins1_boot_delivery_observation: MtCollins1BootDeliveryObservation = MtCollins1BootDeliveryObservation {
+  boot_flags_on_failing_attempts: "Boot parameter 5 read back \"Boot Flag Valid\", \"Boot Device Selector : Force Boot from CD/DVD\" and \"BIOS PC Compatible (legacy) boot\". Those hosts did not boot the presented CD; the console shows PXE attempted and then the UEFI shell.",
+  boot_flags_on_succeeding_attempt: "Boot parameter 5 read back \"Boot Flag Valid\", \"Boot Device Selector : Force Boot from CD/DVD\" and \"BIOS EFI boot\". The next reset booted the census image and produced artifacts/bmc/mtcollins1-host-capture.txt.",
+  what_the_control_varied: "The boot-type bit alone. Device selector and persistence were held constant across the failing and succeeding probes, so the varied term is the boot type and the others are not implicated. This module states that as the scope of the control and draws no policy conclusion from it.",
+  model_reported_throughout: "gunbc.machine_intake_oob_boot_handoff returned BootHandoffCompleted on every one of these attempts, including those that booted nothing, because it mints that terminal from an override readback plus an accepted power action rather than from evidence that the intended device booted.",
 }
 
 // ── the unit binding, CLOSED by a later capture ────────────────────────────────────────────────
@@ -519,6 +507,24 @@ data mtcollins1_boot_delivery_defect: MtCollins1BootDeliveryDefect = MtCollins1B
 // different digest, different wall-clock window, different outcome — and the producer's literal is
 // named as the thing to remove.
 data mtcollins1_host_capture_attempt_label_defect: NonEmptyStr = "The capture's header reads attempt=3, the same label the FAILED run at mtcollins1_attempt3_failure carries. The producer hard-codes its attempt number, so a rerun reuses the identity rather than minting one. The artifacts are distinguished by digest and by wall-clock window (failed run 2026-09-10T22:19Z, this capture 2026-09-11T01:26:50Z to 01:30:29Z), never by that label. Removing the literal from the producer is the fix; the bytes are left exactly as captured."
+
+// HOW THESE BYTES WERE ACQUIRED, STATED SO THE OBSERVATIONS CANNOT BE MISREAD AS A CAPABILITY.
+// Every capture in this module was produced by hand: ad-hoc scripts staged on a fleet host, driving
+// ipmitool and the controller's REST API directly. There is NO modelled producer that reproduces
+// any of it, and one successful manual capture is not evidence that the intake system can take
+// another. The observations below are exactly as strong as their artifacts; the ACQUISITION is
+// exactly as weak as this row says.
+//
+// This matters for what may consume the module. The hw-first-host clause asks whether THIS UNIT
+// passed named facts, and may read the observations. Nothing may read them as proof of a reusable
+// capture capability, because that capability does not exist yet.
+type MtCollins1AcquisitionStanding
+  = HistoricalAdHocCapture { reusable_producer_absent: Bool }
+  | ProducedByModelledOperation { producer: DeclarationRef }
+
+data mtcollins1_acquisition_standing: MtCollins1AcquisitionStanding = HistoricalAdHocCapture {
+  reusable_producer_absent: true,
+}
 
 data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
 
@@ -586,7 +592,8 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
 // own regardless of the host never booting.
 //
 // WHY THERE IS NO ATTEMPT 5. Re-establishing the media after attempt 3 degraded further: stop-media
-// and start-media both answered HTTP 500 and the session never returned to 100. This controller is
+// and start-media both answered HTTP 500 and the CONFIGURATIONS READBACK WAS UNCHANGED, so neither
+// requested transition was established as applied — the HTTP status decided nothing. This controller is
 // the ONLY out-of-band path to the M1 canary, and hammering a degraded remote-media subsystem to
 // buy a subject binding and a workload is not a trade worth making against the risk of losing that
 // path. The run was stopped, the boot override cleared to "No override", and the controller left
@@ -604,5 +611,5 @@ data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1Ca
   intent: "Close the subject-binding gap (dmidecode type 1/2/3), record per-section argv and exit status, and add a named memory workload with EDAC counters read before and after, so the health reading would be a load-based one rather than a snapshot.",
   observed_failure: "The host reached the CD's GRUB, started the EFI kernel, and then failed at the INITRD load: \"EFI stub: ERROR: Failed to load initrd: 0x8000000000000001\", followed by \"VFS: Unable to mount root fs on unknown-block(0,0)\". NOT a media drop — a medium that had vanished could not have served GRUB and a kernel first. The host was reset while the redirection was still at 100 (connecting) rather than 1 (started), which is a plausible but unproven cause. No host capture was produced.",
   preserved_artifacts: "artifacts/bmc/mtcollins1-attempt3-sol.log (the console, carrying the panic) and artifacts/bmc/mtcollins1-attempt3-srv2-side.txt (the pre-boot ARP observation with a typed verdict against the expected MAC, plus the boot artifact digest). A failed attempt whose bytes are discarded reproduces the exact failure mode this census exists to end.",
-  why_not_retried: "A further attempt refused before booting: stop-media and start-media both answered HTTP 500 and the session never returned to redirection_status 100. This controller is the only out-of-band path to the M1 canary, so driving a degraded remote-media subsystem harder was declined in favour of leaving the path intact. Boot override was cleared and the controller verified healthy over IPMI.",
+  why_not_retried: "A further attempt refused before booting: stop-media and start-media each answered HTTP 500 and the subsequent configurations readback was UNCHANGED, so neither requested transition was established as applied; the HTTP status decided nothing either way. This controller is the only out-of-band path to the M1 canary, so driving a degraded remote-media subsystem harder was declined in favour of leaving the path intact. Boot override was cleared and the controller verified healthy over IPMI.",
 }
