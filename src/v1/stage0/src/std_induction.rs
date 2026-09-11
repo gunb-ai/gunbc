@@ -3,9 +3,16 @@
 
 use self::AtomicCost::*;
 use self::CostBound::*;
+use self::ParamGrowth::*;
 use self::PolynomialExponent::*;
 use self::RecursionShape::*;
 use self::SubValueRelation::*;
+pub use crate::std_algebra::CostShape;
+use crate::std_algebra::CostShape::{
+    ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
+};
+pub use crate::std_algebra::Ordering;
+use crate::std_algebra::Ordering::*;
 pub use crate::std_checked_arithmetic::{
     checked_int_add, checked_int_multiply, checked_int_optional,
 };
@@ -547,12 +554,16 @@ pub enum AtomicCost {
     LogCost {
         param: String,
     },
+    CallerBodyCost {
+        param: String,
+    },
 }
 impl AtomicCost {
     pub fn param(&self) -> String {
         match self {
             AtomicCost::PolyCost { param: __val, .. } => __val.clone(),
             AtomicCost::LogCost { param: __val, .. } => __val.clone(),
+            AtomicCost::CallerBodyCost { param: __val, .. } => __val.clone(),
         }
     }
 }
@@ -688,6 +699,20 @@ pub fn cost_nlogn(param: String) -> Rc<CostBound> {
     })
 }
 
+pub fn cost_iterate_body(param: String) -> Rc<CostBound> {
+    Rc::new(CostBound::ProductBound {
+        factors: Rc::new(vec![
+            Rc::new(AtomicCost::PolyCost {
+                param: param.clone(),
+                exponent: poly_exp_degree_one(),
+            }),
+            Rc::new(AtomicCost::CallerBodyCost {
+                param: param.clone(),
+            }),
+        ]),
+    })
+}
+
 pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
     Rc::new(CostBound::SumOfProductsBound {
         terms: Rc::new(vec![
@@ -701,6 +726,362 @@ pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
             })]),
         ]),
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GrowthRank {
+    pub degree: i64,
+    pub logs: i64,
+    pub bodies: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ParamGrowth {
+    OrderableGrowth { rank: GrowthRank },
+    GrowthNotOrderable,
+}
+impl ParamGrowth {
+    pub fn rank(&self) -> GrowthRank {
+        match self {
+            ParamGrowth::OrderableGrowth { rank: __val, .. } => __val.clone(),
+            ParamGrowth::GrowthNotOrderable => panic!("no rank on unit variant"),
+        }
+    }
+}
+
+pub fn growth_rank_zero() -> GrowthRank {
+    GrowthRank {
+        degree: 0,
+        logs: 0,
+        bodies: 0,
+    }
+}
+
+pub fn param_growth_zero() -> Rc<ParamGrowth> {
+    Rc::new(ParamGrowth::OrderableGrowth {
+        rank: growth_rank_zero(),
+    })
+}
+
+pub fn param_growth_not_orderable() -> Rc<ParamGrowth> {
+    Rc::new(ParamGrowth::GrowthNotOrderable)
+}
+
+pub fn atomic_cost_param(c: Rc<AtomicCost>) -> String {
+    match (*c.clone()).clone() {
+        AtomicCost::PolyCost { param: p, .. } => p.clone(),
+        AtomicCost::LogCost { param: p, .. } => p.clone(),
+        AtomicCost::CallerBodyCost { param: p, .. } => p.clone(),
+    }
+}
+
+pub fn exponent_growth(e: Rc<PolynomialExponent>) -> Rc<ParamGrowth> {
+    match (*e.clone()).clone() {
+        PolynomialExponent::IntegerExpZero => param_growth_zero(),
+        PolynomialExponent::IntegerExpPos { degree: d, .. } => {
+            Rc::new(ParamGrowth::OrderableGrowth {
+                rank: GrowthRank {
+                    degree: crate::std_termination::positive_descent_count(d.clone()),
+                    logs: 0,
+                    bodies: 0,
+                },
+            })
+        }
+        PolynomialExponent::FractionExp { .. } => param_growth_not_orderable(),
+        PolynomialExponent::LogBasedExp { .. } => param_growth_not_orderable(),
+    }
+}
+
+pub fn atomic_cost_growth(c: Rc<AtomicCost>) -> Rc<ParamGrowth> {
+    match (*c.clone()).clone() {
+        AtomicCost::PolyCost { exponent: e, .. } => exponent_growth(e.clone()),
+        AtomicCost::LogCost { param: _, .. } => Rc::new(ParamGrowth::OrderableGrowth {
+            rank: GrowthRank {
+                degree: 0,
+                logs: 1,
+                bodies: 0,
+            },
+        }),
+        AtomicCost::CallerBodyCost { param: _, .. } => Rc::new(ParamGrowth::OrderableGrowth {
+            rank: GrowthRank {
+                degree: 0,
+                logs: 0,
+                bodies: 1,
+            },
+        }),
+    }
+}
+
+pub fn param_growth_multiply(a: Rc<ParamGrowth>, b: Rc<ParamGrowth>) -> Rc<ParamGrowth> {
+    match (*a.clone()).clone() {
+        ParamGrowth::GrowthNotOrderable => Rc::new(ParamGrowth::GrowthNotOrderable),
+        ParamGrowth::OrderableGrowth { rank: ra, .. } => match (*b.clone()).clone() {
+            ParamGrowth::GrowthNotOrderable => Rc::new(ParamGrowth::GrowthNotOrderable),
+            ParamGrowth::OrderableGrowth { rank: rb, .. } => {
+                Rc::new(ParamGrowth::OrderableGrowth {
+                    rank: GrowthRank {
+                        degree: (ra.degree.clone() + rb.degree.clone()),
+                        logs: (ra.logs.clone() + rb.logs.clone()),
+                        bodies: (ra.bodies.clone() + rb.bodies.clone()),
+                    },
+                })
+            }
+        },
+    }
+}
+
+pub fn param_growth_order(a: GrowthRank, b: GrowthRank) -> Ordering {
+    if (a.degree.clone() < b.degree.clone()) {
+        Ordering::Less
+    } else {
+        if (a.degree.clone() > b.degree.clone()) {
+            Ordering::Greater
+        } else {
+            if (a.logs.clone() < b.logs.clone()) {
+                Ordering::Less
+            } else {
+                if (a.logs.clone() > b.logs.clone()) {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            }
+        }
+    }
+}
+
+pub fn param_growth_max(a: Rc<ParamGrowth>, b: Rc<ParamGrowth>) -> Rc<ParamGrowth> {
+    match (*a.clone()).clone() {
+        ParamGrowth::GrowthNotOrderable => Rc::new(ParamGrowth::GrowthNotOrderable),
+        ParamGrowth::OrderableGrowth { rank: ra, .. } => match (*b.clone()).clone() {
+            ParamGrowth::GrowthNotOrderable => Rc::new(ParamGrowth::GrowthNotOrderable),
+            ParamGrowth::OrderableGrowth { rank: rb, .. } => {
+                let bodies = if (ra.bodies.clone() > rb.bodies.clone()) {
+                    ra.bodies.clone()
+                } else {
+                    rb.bodies.clone()
+                };
+                match param_growth_order(ra.clone(), rb.clone()) {
+                    Ordering::Less => Rc::new(ParamGrowth::OrderableGrowth {
+                        rank: GrowthRank {
+                            degree: rb.degree.clone(),
+                            logs: rb.logs.clone(),
+                            bodies: bodies.clone(),
+                        },
+                    }),
+                    Ordering::Equal => Rc::new(ParamGrowth::OrderableGrowth {
+                        rank: GrowthRank {
+                            degree: ra.degree.clone(),
+                            logs: ra.logs.clone(),
+                            bodies: bodies.clone(),
+                        },
+                    }),
+                    Ordering::Greater => Rc::new(ParamGrowth::OrderableGrowth {
+                        rank: GrowthRank {
+                            degree: ra.degree.clone(),
+                            logs: ra.logs.clone(),
+                            bodies: bodies.clone(),
+                        },
+                    }),
+                }
+            }
+        },
+    }
+}
+
+pub fn atomic_factors_growth_in_param(
+    factors: Rc<Vec<Rc<AtomicCost>>>,
+    param: String,
+) -> Rc<ParamGrowth> {
+    factors.iter().cloned().fold(
+        param_growth_zero(),
+        |acc: Rc<ParamGrowth>, c: Rc<AtomicCost>| {
+            if (atomic_cost_param(c.clone()) == param.clone()) {
+                param_growth_multiply(acc.clone(), atomic_cost_growth(c.clone()))
+            } else {
+                acc.clone()
+            }
+        },
+    )
+}
+
+pub fn cost_bound_growth_in_param(b: Rc<CostBound>, param: String) -> Rc<ParamGrowth> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*b.clone()).clone() {
+        CostBound::ConstantBound => param_growth_zero(),
+        CostBound::AtomicBound { cost: c, .. } => {
+            if (atomic_cost_param(c.clone()) == param.clone()) {
+                atomic_cost_growth(c.clone())
+            } else {
+                param_growth_zero()
+            }
+        }
+        CostBound::ProductBound { factors: fs, .. } => {
+            atomic_factors_growth_in_param(fs.clone(), param.clone())
+        }
+        CostBound::SumOfProductsBound { terms: ts, .. } => ts.iter().cloned().fold(
+            param_growth_zero(),
+            |acc: Rc<ParamGrowth>, factors: Rc<Vec<Rc<AtomicCost>>>| {
+                param_growth_max(
+                    acc,
+                    atomic_factors_growth_in_param(factors.clone(), param.clone()),
+                )
+            },
+        ),
+        CostBound::SumBound { terms: ts, .. } => ts.iter().cloned().fold(
+            param_growth_zero(),
+            |acc: Rc<ParamGrowth>, inner: Rc<CostBound>| {
+                param_growth_max(
+                    acc,
+                    cost_bound_growth_in_param(inner.clone(), param.clone()),
+                )
+            },
+        ),
+        CostBound::ForeverBound => param_growth_not_orderable(),
+        CostBound::ErrorBound => param_growth_not_orderable(),
+    })
+}
+
+pub fn cost_bound_params_of_factors(
+    factors: Rc<Vec<Rc<AtomicCost>>>,
+    seen: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    factors
+        .iter()
+        .cloned()
+        .fold(seen.clone(), |acc: Rc<Vec<String>>, c: Rc<AtomicCost>| {
+            if acc.iter().cloned().fold(false, |found: bool, p: String| {
+                (found || (p.clone() == atomic_cost_param(c.clone())))
+            }) {
+                acc.clone()
+            } else {
+                v1_rt::concat(Rc::new(vec![atomic_cost_param(c.clone())]), acc.clone())
+            }
+        })
+}
+
+pub fn cost_bound_params_into(b: Rc<CostBound>, seen: Rc<Vec<String>>) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*b.clone()).clone() {
+        CostBound::ConstantBound => seen,
+        CostBound::AtomicBound { cost: c, .. } => {
+            cost_bound_params_of_factors(Rc::new(vec![c.clone()]), seen)
+        }
+        CostBound::ProductBound { factors: fs, .. } => {
+            cost_bound_params_of_factors(fs.clone(), seen)
+        }
+        CostBound::SumOfProductsBound { terms: ts, .. } => ts.iter().cloned().fold(
+            seen,
+            |acc: Rc<Vec<String>>, factors: Rc<Vec<Rc<AtomicCost>>>| {
+                cost_bound_params_of_factors(factors.clone(), acc)
+            },
+        ),
+        CostBound::SumBound { terms: ts, .. } => ts
+            .iter()
+            .cloned()
+            .fold(seen, |acc: Rc<Vec<String>>, inner: Rc<CostBound>| {
+                cost_bound_params_into(inner.clone(), acc)
+            }),
+        CostBound::ForeverBound => seen,
+        CostBound::ErrorBound => seen,
+    })
+}
+
+pub fn cost_bound_params(b: Rc<CostBound>) -> Rc<Vec<String>> {
+    v1_rt::reverse(cost_bound_params_into(b.clone(), Rc::new(vec![])))
+}
+
+pub fn atomic_cost_is_orderable(c: Rc<AtomicCost>) -> bool {
+    match (*atomic_cost_growth(c.clone())).clone() {
+        ParamGrowth::OrderableGrowth { rank: _, .. } => true,
+        ParamGrowth::GrowthNotOrderable => false,
+    }
+}
+
+pub fn atomic_factors_are_orderable(factors: Rc<Vec<Rc<AtomicCost>>>) -> bool {
+    factors
+        .iter()
+        .cloned()
+        .fold(true, |acc: bool, c: Rc<AtomicCost>| {
+            (acc && atomic_cost_is_orderable(c.clone()))
+        })
+}
+
+pub fn cost_bound_is_orderable(b: Rc<CostBound>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*b.clone()).clone() {
+        CostBound::ConstantBound => true,
+        CostBound::AtomicBound { cost: c, .. } => atomic_cost_is_orderable(c.clone()),
+        CostBound::ProductBound { factors: fs, .. } => atomic_factors_are_orderable(fs.clone()),
+        CostBound::SumOfProductsBound { terms: ts, .. } => {
+            ts.iter()
+                .cloned()
+                .fold(true, |acc: bool, factors: Rc<Vec<Rc<AtomicCost>>>| {
+                    (acc && atomic_factors_are_orderable(factors.clone()))
+                })
+        }
+        CostBound::SumBound { terms: ts, .. } => ts
+            .iter()
+            .cloned()
+            .fold(true, |acc: bool, inner: Rc<CostBound>| {
+                (acc && cost_bound_is_orderable(inner.clone()))
+            }),
+        CostBound::ForeverBound => false,
+        CostBound::ErrorBound => false,
+    })
+}
+
+pub fn shape_for_growth_rank(r: GrowthRank) -> Option<CostShape> {
+    if (((r.degree.clone() == 0) && (r.logs.clone() == 0)) && (r.bodies.clone() == 0)) {
+        Some(CostShape::ShapeConstant)
+    } else {
+        if (((r.degree.clone() == 1) && (r.logs.clone() == 0)) && (r.bodies.clone() == 1)) {
+            Some(CostShape::ShapeIterateBody)
+        } else {
+            if (((r.degree.clone() == 1) && (r.logs.clone() == 0)) && (r.bodies.clone() == 0)) {
+                Some(CostShape::ShapeLinearScan)
+            } else {
+                if (((r.degree.clone() == 1) && (r.logs.clone() == 1)) && (r.bodies.clone() == 0)) {
+                    Some(CostShape::ShapeSortBody)
+                } else {
+                    std::option::Option::None
+                }
+            }
+        }
+    }
+}
+
+pub fn shape_for_param_growth(growth: Rc<ParamGrowth>) -> Option<CostShape> {
+    match (*growth.clone()).clone() {
+        ParamGrowth::GrowthNotOrderable => std::option::Option::None,
+        ParamGrowth::OrderableGrowth { rank: r, .. } => shape_for_growth_rank(r.clone()),
+    }
+}
+
+pub fn cost_bound_to_shape(b: Rc<CostBound>) -> Option<CostShape> {
+    {
+        let params = cost_bound_params(b.clone());
+        if ((params.clone().len() as i64) == 0) {
+            match (*b.clone()).clone() {
+                CostBound::ConstantBound => Some(CostShape::ShapeConstant),
+                CostBound::AtomicBound { cost: _, .. } => std::option::Option::None,
+                CostBound::ProductBound { factors: _, .. } => std::option::Option::None,
+                CostBound::SumOfProductsBound { terms: _, .. } => std::option::Option::None,
+                CostBound::SumBound { terms: _, .. } => std::option::Option::None,
+                CostBound::ForeverBound => std::option::Option::None,
+                CostBound::ErrorBound => std::option::Option::None,
+            }
+        } else {
+            if ((params.clone().len() as i64) == 1) {
+                match params.clone().first().cloned() {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(only) => {
+                        shape_for_param_growth(cost_bound_growth_in_param(b.clone(), only.clone()))
+                    }
+                }
+            } else {
+                std::option::Option::None
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
