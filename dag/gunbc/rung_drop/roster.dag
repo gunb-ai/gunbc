@@ -101,10 +101,10 @@ data rung_drop_roster: List<RungDrop> = [
   witness_deferral_freeze_forward_rule_rung_drop,
   deleted_cadence_reference_drop,
   floor_cost_debt_straddling_produced_decl,
-  floor_cost_debt_censored_d1_g_parse_family,
   determinism_transitive_reachability,
   transitional_admission_exception(),
   v2_native_route_off_the_merge_path,
+  floor_cost_debt_censored_d1_g_parse_family,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
