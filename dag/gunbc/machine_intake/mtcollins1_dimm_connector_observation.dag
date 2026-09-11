@@ -1,0 +1,105 @@
+module gunbc.machine_intake_mtcollins1_dimm_connector_observation
+
+import std.types { NonEmptyStr, List, list_length }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import std.measure { RackUnit, rack_unit }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsDimmPopulationRow, mt_collins_population_16_dimms,
+}
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  MtCollinsDimmDiagramLegend, additional_two_dpc_diagram_legend,
+}
+import gunbc.mt_collins_dimm_physical_identity {
+  MtCollinsDimmPopulationIdentity, population_diagram_identity,
+  PopulationDiagramResolved, PopulationDiagramRefused,
+  PopulationCountDisagrees, PopulationConnectorRepeated,
+}
+
+// A report relayed by eager-owl-205, not an inspection performed by this session.
+// The unit is named through its existing intake receipt, not a newly invented fleet
+// identity or an endpoint. This observation contains no claim about unit 2 or 2U.
+// Consumer frontier: Mt. Collins rack-facing DIMM population projection, declared
+// in gunbc.mt_collins_dimm_physical_identity.operator_projection_frontier. It must
+// call colour_evidence_for_unit with the selected unit; the unmatched arm supplies
+// no colour mapping. Trigger: the rack UI renders this scoped report and its
+// divergence alongside the documentary join, preserving the upstream gaps.
+data observed_unit: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.machine_intake_mtcollins1_access_observation",
+  decl_name: "mtcollins1_access_observation",
+  field: WholeDeclaration,
+}
+
+type MtCollinsDimmOperatorObservation {
+  unit: DeclarationRef
+  chassis_height: RackUnit
+  observed_on: SpecificationDocumentDate
+  observer: NonEmptyStr
+  relay_message: NonEmptyStr
+  method: NonEmptyStr
+  physical_colour: NonEmptyStr
+  colour_population: MtCollinsDimmPopulationRow
+  silkscreen_report: NonEmptyStr
+}
+
+// Referencing the canonical population resolves the reported odd-J set without
+// authoring a second connector list. Its membership is the report's assertion,
+// not a derivation of physical colour from the upstream population table.
+data mtcollins1_blue_connector_observation: MtCollinsDimmOperatorObservation = MtCollinsDimmOperatorObservation {
+  unit: observed_unit,
+  chassis_height: rack_unit(count: 1),
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 11 },
+  observer: "operator",
+  relay_message: "msg_ecd92656-ea35-4746-9e3f-f67d12706ec5 (eager-owl-205 to wise-heron-626)",
+  method: "Operator report of by-eye inspection of unit 1, relayed in the session dashboard. No photograph supplied to this session and no independent inspection performed here.",
+  physical_colour: "blue",
+  colour_population: mt_collins_population_16_dimms,
+  silkscreen_report: "Operator found zero useful slot-identification information in the silkscreen; colour was the distinguishable rack-facing identifier. This reports what the operator could identify, not a universal claim that the board has no printed markings.",
+}
+
+type MtCollinsColourMeaningDivergence
+  = PhysicalColourDiffersFromDiagramRole {
+      observation: MtCollinsDimmOperatorObservation,
+      observed_population_diagram: MtCollinsDimmPopulationIdentity,
+      same_colour_diagram_role: MtCollinsDimmDiagramLegend,
+    }
+  | ColourMeaningComparisonUnresolved { basis: NonEmptyStr }
+
+type MtCollinsUnitColourEvidence
+  = UnitColourEvidence { divergence: MtCollinsColourMeaningDivergence }
+  | NoColourObservationForUnit { requested_unit: DeclarationRef }
+
+// The third fact is a comparison: observed blue occupies the 1DPC set, whereas
+// the guide's blue describes additional 2DPC positions. Neither source is rewritten.
+// This does not diagnose training, qualify this assembly, or verify a live population.
+fn mtcollins1_colour_meaning_divergence() -> MtCollinsColourMeaningDivergence {
+  let observation = mtcollins1_blue_connector_observation
+  let diagram = population_diagram_identity(population: observation.colour_population)
+  match diagram {
+    PopulationDiagramResolved { population: _, slots: slots, orientation: _, physical_gaps: _, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => {
+      let same_colour_role = additional_two_dpc_diagram_legend
+      if list_length(items: slots) > 0
+        && observation.physical_colour == same_colour_role.drawing_colour
+        && fold(slots, init: true, f: (acc, slot) => acc && slot.legend.slot_number != same_colour_role.slot_number) {
+        PhysicalColourDiffersFromDiagramRole {
+          observation: observation,
+          observed_population_diagram: diagram,
+          same_colour_diagram_role: same_colour_role,
+        }
+      } else {
+        ColourMeaningComparisonUnresolved { basis: "The scoped report and source legend no longer establish the recorded difference; re-read before presenting a colour translation." }
+      }
+    }
+    PopulationDiagramRefused { unresolved: _ } => ColourMeaningComparisonUnresolved { basis: "Reported connectors did not resolve against the source layout and pair table." }
+    PopulationCountDisagrees { declared: _, listed: _ } => ColourMeaningComparisonUnresolved { basis: "Reported population count and connector membership disagree." }
+    PopulationConnectorRepeated { connectors: _ } => ColourMeaningComparisonUnresolved { basis: "Reported connector membership contains duplicates." }
+  }
+}
+
+fn colour_evidence_for_unit(unit: DeclarationRef) -> MtCollinsUnitColourEvidence {
+  if declaration_ref_eq(a: unit, b: observed_unit) {
+    UnitColourEvidence { divergence: mtcollins1_colour_meaning_divergence() }
+  } else {
+    NoColourObservationForUnit { requested_unit: unit }
+  }
+}

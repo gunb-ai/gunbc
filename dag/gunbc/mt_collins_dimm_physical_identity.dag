@@ -1,0 +1,197 @@
+module gunbc.mt_collins_dimm_physical_identity
+
+import std.types { NonEmptyStr, List, list_length }
+import std.logic { Bool }
+import std.measure { byte_size }
+import extdeps.publication { SpecificationDocumentDate }
+import gunbc.specification_citation_read_provenance { SpecificationCitationReadReceipt, DocumentLocatorFetchedAndTextIngested }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.ampere.mt_collins_2u_user_guide.subject {
+  MtCollins2uMemoryTopologyCitation, memory_topology_citation, doslab_mirror_authority,
+}
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { FrontierRow, DeclSubject }
+import std.dissolution { UnboundDissolution }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
+  PopulationRoleResolved, PopulationRoleRefused,
+  mt_collins_channel_connector_pairs, mt_collins_population_role_of_pair,
+  mt_collins_population_16_dimms,
+}
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  MtCollinsDimmFigureBank, MtCollinsDimmDiagramLegend, MtCollinsChassisFigureOrientation,
+  dimm_figure_banks, dimm_figure_connector_label_prefix, one_dpc_diagram_legend, additional_two_dpc_diagram_legend,
+  chassis_figure_orientation, motherboard_photo_colours,
+}
+
+// The locator here is explicitly the third-party mirror, never Ampere's publisher URL.
+// The same byte digest was independently obtained from the publisher locator.
+type MtCollins2uMirrorRead {
+  mirror: ExternalAuthority
+  read_on: SpecificationDocumentDate
+  receipt: SpecificationCitationReadReceipt
+  matches_publisher_bytes: Bool
+}
+
+data mt_collins_2u_mirror_read: MtCollins2uMirrorRead = MtCollins2uMirrorRead {
+  mirror: doslab_mirror_authority,
+  read_on: SpecificationDocumentDate { year: 2026, month: 9, day: 11 },
+  receipt: SpecificationCitationReadReceipt {
+    subject: DeclarationRef { module_path: "extdeps.ampere.mt_collins_2u_user_guide.subject", decl_name: "mt_collins_2u_user_guide", field: WholeDeclaration },
+    provenance: DocumentLocatorFetchedAndTextIngested {
+      http_status: 200,
+      byte_count: byte_size(count: 16148131),
+      content_digest: "sha256 a8102a2a661fca508c079ba460da2f701360216517ee090a036e533bbf078bbf",
+      detail: "Fetched from the separately carried Doslab third-party mirror using curl; byte-identical to the separately fetched Ampere publisher copy. Full text decoded and Figures 19-20 and 42-43 visually inspected. Mirror identity is not publisher identity.",
+    },
+  },
+  matches_publisher_bytes: true,
+}
+
+// These are results of a bounded documentation survey, not properties of the board.
+// Re-read basis and exact document/figure citations: docs/plans/mt-collins-dimm-physical-identity.md.
+// Neither arm can be consumed as a label or a connector colour.
+type MtCollinsPhysicalIdentificationGap
+  = ConnectorSilkscreenNotEstablished { basis: NonEmptyStr }
+  | PhysicalColourRoleNotEstablished { basis: NonEmptyStr }
+
+data physical_identification_gaps: List<MtCollinsPhysicalIdentificationGap> = [
+  ConnectorSilkscreenNotEstablished {
+    basis: "J1-J32 are Figure 9 annotations in Collins GSG Issue 1.05, not an all-connector silkscreen photograph. Its Figures 10 and 12 and the 1U/2U Issue 1.00 board-replacement drawings do not establish the text printed beside every connector. Not found in the inspected documents; a readable board photograph or explicit vendor drawing is required.",
+  },
+  PhysicalColourRoleNotEstablished {
+    basis: "Collins GSG Issue 1.05 Figure 8, 1U Issue 1.00 Figure 10 and 2U Issue 1.00 Figure 19 colour their topology drawings yellow for slot#0 and blue for slot#1. GSG Figure 12 visibly has blue and black connectors, but supplies no physical colour legend or complete colour-to-J-number identification. A statement that physical blue denotes 1DPC was not found. Do not apply the drawing legend to plastic colours.",
+  },
+]
+
+type MtCollinsDimmDiagramIdentity {
+  connector: Nat
+  diagram_label: NonEmptyStr
+  channel: MtCollinsChannelConnectorPair
+  bank: MtCollinsDimmFigureBank
+  legend: MtCollinsDimmDiagramLegend
+}
+
+type MtCollinsDimmIdentityRefusalCause
+  = ConnectorMissingFromLayout
+  | ConnectorRepeatedInLayout
+  | ConnectorMissingFromPairTable
+  | ConnectorRepeatedInPairTable
+  | ProcessorSocketDisagrees
+  | PopulationRoleUnresolved
+
+type MtCollinsDimmIdentityOutcome
+  = DimmDiagramIdentityResolved { identity: MtCollinsDimmDiagramIdentity }
+  | DimmDiagramIdentityRefused { connector: Nat, cause: MtCollinsDimmIdentityRefusalCause }
+
+fn connector_occurrences(connectors: List<Nat>, connector: Nat) -> Nat {
+  fold(connectors, init: 0, f: (acc, c) => if c == connector { acc + 1 } else { acc })
+}
+
+// Lookup uses identity equality, never arithmetic on J-numbers or SMBIOS locator order.
+// Parameters admit missing, duplicate and cross-socket fixtures on the actual join path.
+fn resolve_dimm_diagram_identity(connector: Nat, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollinsDimmIdentityOutcome {
+  let layout_count = fold(banks, init: 0, f: (acc, bank) => acc + connector_occurrences(connectors: bank.connectors_left_to_right, connector: connector))
+  let matching_banks = filter(banks, bank => connector_occurrences(connectors: bank.connectors_left_to_right, connector: connector) > 0)
+  let matching_pairs = filter(pairs, pair => pair.table_left_connector == connector || pair.table_right_connector == connector)
+  let pair_count = fold(pairs, init: 0, f: (acc, pair) => acc + connector_occurrences(connectors: [pair.table_left_connector, pair.table_right_connector], connector: connector))
+  if layout_count == 0 {
+    DimmDiagramIdentityRefused { connector: connector, cause: ConnectorMissingFromLayout }
+  } else { if layout_count != 1 {
+    DimmDiagramIdentityRefused { connector: connector, cause: ConnectorRepeatedInLayout }
+  } else { if pair_count == 0 {
+    DimmDiagramIdentityRefused { connector: connector, cause: ConnectorMissingFromPairTable }
+  } else { if pair_count != 1 {
+    DimmDiagramIdentityRefused { connector: connector, cause: ConnectorRepeatedInPairTable }
+  } else {
+    let bank = matching_banks.first()
+    let pair = matching_pairs.first()
+    if bank.processor_socket != pair.processor_socket {
+      DimmDiagramIdentityRefused { connector: connector, cause: ProcessorSocketDisagrees }
+    } else {
+      match mt_collins_population_role_of_pair(pair: pair) {
+        PopulationRoleRefused { refusal: _ } => DimmDiagramIdentityRefused { connector: connector, cause: PopulationRoleUnresolved }
+        PopulationRoleResolved { role: r } => DimmDiagramIdentityResolved {
+          identity: MtCollinsDimmDiagramIdentity {
+            connector: connector,
+            diagram_label: concat(dimm_figure_connector_label_prefix, to_string(connector)) as NonEmptyStr,
+            channel: pair,
+            bank: bank,
+            legend: if connector == r.connector_used_at_one_dpc { one_dpc_diagram_legend } else { additional_two_dpc_diagram_legend },
+          }
+        }
+      }
+    }
+  } } } }
+}
+
+// A population with even one unresolved connector yields no partial set of instructions.
+// The success arm still carries documentary gaps: diagram resolution is NOT physical
+// silkscreen verification and does not authorize a colour-only installation instruction.
+type MtCollinsDimmPopulationIdentity
+  = PopulationDiagramResolved {
+      population: MtCollinsDimmPopulationRow,
+      slots: List<MtCollinsDimmDiagramIdentity>,
+      orientation: MtCollinsChassisFigureOrientation,
+      physical_gaps: List<MtCollinsPhysicalIdentificationGap>,
+      photographed_colours: List<NonEmptyStr>,
+      user_guide_citation: MtCollins2uMemoryTopologyCitation,
+      mirror_read: MtCollins2uMirrorRead,
+    }
+  | PopulationDiagramRefused { unresolved: List<MtCollinsDimmIdentityOutcome> }
+  | PopulationCountDisagrees { declared: Nat, listed: Nat }
+  | PopulationConnectorRepeated { connectors: List<Nat> }
+
+type MtCollinsDimmIdentityTally {
+  slots: List<MtCollinsDimmDiagramIdentity>
+  unresolved: List<MtCollinsDimmIdentityOutcome>
+}
+
+fn tally_dimm_identity(acc: MtCollinsDimmIdentityTally, outcome: MtCollinsDimmIdentityOutcome) -> MtCollinsDimmIdentityTally {
+  match outcome {
+    DimmDiagramIdentityResolved { identity: i } => MtCollinsDimmIdentityTally { slots: concat(acc.slots, [i]), unresolved: acc.unresolved }
+    DimmDiagramIdentityRefused { connector: _, cause: _ } => MtCollinsDimmIdentityTally { slots: acc.slots, unresolved: concat(acc.unresolved, [outcome]) }
+  }
+}
+
+fn population_diagram_identity(population: MtCollinsDimmPopulationRow) -> MtCollinsDimmPopulationIdentity {
+  let repeated = filter(population.connectors, c => connector_occurrences(connectors: population.connectors, connector: c) != 1)
+  if list_length(items: population.connectors) != population.dimm_count {
+    PopulationCountDisagrees { declared: population.dimm_count, listed: list_length(items: population.connectors) }
+  } else { if list_length(items: repeated) > 0 {
+    PopulationConnectorRepeated { connectors: repeated }
+  } else {
+  let tally = fold(population.connectors, init: MtCollinsDimmIdentityTally { slots: [], unresolved: [] }, f: (acc, c) => tally_dimm_identity(acc: acc, outcome: resolve_dimm_diagram_identity(connector: c, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)))
+  if list_length(items: tally.unresolved) == 0 {
+    PopulationDiagramResolved {
+      population: population,
+      slots: tally.slots,
+      orientation: chassis_figure_orientation,
+      physical_gaps: physical_identification_gaps,
+      photographed_colours: motherboard_photo_colours.visible_connector_colours,
+      user_guide_citation: memory_topology_citation,
+      mirror_read: mt_collins_2u_mirror_read,
+    }
+  } else {
+    PopulationDiagramRefused { unresolved: tally.unresolved }
+  }
+  } }
+}
+
+// Executable inspection entry point; the operator UI is the declared frontier below.
+fn sixteen_dimm_diagram_identity() -> MtCollinsDimmPopulationIdentity {
+  population_diagram_identity(population: mt_collins_population_16_dimms)
+}
+
+data operator_projection_frontier: FrontierRow = FrontierRow {
+  subject: DeclSubject { ref: DeclarationRef {
+    module_path: "gunbc.mt_collins_dimm_physical_identity",
+    decl_name: "population_diagram_identity",
+    field: WholeDeclaration,
+  } },
+  reason: "The named later change Mt. Collins rack-facing DIMM population projection will consume population_diagram_identity for each enumerated population. It must show orientation, ordered banks and per-connector J diagram labels while keeping physical silkscreen and colour gaps visible. No rack UI lands here.",
+  dissolution: UnboundDissolution {
+    description: "An operator-facing population projection executes this join, renders the selected population and all physical identification gaps, and refuses partial or count-inconsistent population rows (including Table 11's known 32-DIMM omission). Colour-only or silkscreen-specific instructions require separately cited physical evidence; a diagram legend does not discharge that boundary.",
+  },
+}
