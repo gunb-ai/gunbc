@@ -358,6 +358,16 @@ type RoundSegment {
   kind: RoundSegmentKind
 }
 
+// THE TWO ORDER-DEPENDENT FOLDS BUILD WITH `list_push`, NOT `concat(acc, [x])`, and the difference
+// is measured rather than assumed (review 63840). Both carry state a per-element read cannot have --
+// the previous round and the last measured file count here, a running elapsed sum in the playback
+// fold -- so neither reduces to the map/scan/flat_map shape the ledger and the block folds use. The
+// append is what had to change instead. THE INSTRUMENT: `claim_batch` under `GUNBC_INTERP_STATS=1`,
+// folding a list of n Ints both ways, reports `concat` at 18 / 258 / 1107 ms for n = 1k / 4k / 16k
+// against `list_push` at 3 / 12 / 48 -- push exactly linear in n, concat superlinear and 23x worse
+// by 16k. The primitive-copy counters report zero entries copied for BOTH, so the counter is not
+// the instrument here and the timing is; a reader tempted to restore `concat` for symmetry with the
+// other folds should re-run that probe rather than read the counters.
 type SegmentFold {
   previous: RoundObservation?
   last_measured: Int?
@@ -390,12 +400,12 @@ fn segment_fold_step(acc: SegmentFold, r: RoundObservation) -> SegmentFold {
       SegmentFold {
         previous: Present { value: r },
         last_measured: match r.files_changed { Present { value: n } => Present { value: n }  Absent => acc.last_measured },
-        segments: concat(acc.segments, [RoundSegment {
+        segments: acc.segments.list_push(RoundSegment {
           step: r.step,
           duration_ms: r.epoch_ms - p.epoch_ms,
           output_tokens: r.output_tokens,
           kind: round_segment_kind(now: r.files_changed, last_measured: acc.last_measured, tool_calls: r.tool_calls),
-        }]),
+        }),
       }
   }
 }
@@ -448,7 +458,7 @@ fn round_playback_step(acc: PlaybackFold, seg: RoundSegment, total: Int, playbac
   let shown = if scaled < round_playback_floor_ms { round_playback_floor_ms } else { scaled }
   PlaybackFold {
     elapsed: acc.elapsed + seg.duration_ms,
-    out: concat(acc.out, [ RoundPlayback { segment: seg, delay_ms: acc.elapsed * playback_ms / total, duration_ms: shown } ]),
+    out: acc.out.list_push(RoundPlayback { segment: seg, delay_ms: acc.elapsed * playback_ms / total, duration_ms: shown }),
   }
 }
 

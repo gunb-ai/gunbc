@@ -421,3 +421,38 @@ test fn an_unmodelled_block_between_two_others_vanishes_without_reordering() -> 
         && (match blocks.last() { Present { value: WireTextBlock { text: t } } => t == "second"  _ => false })
   }
 }
+
+// A REFUSAL MAY NOT STATE A FALSE FACT ABOUT WHICH LOOKUP OUTCOME HAPPENED (review 63850). Every
+// json_object_unique_member in the decoder used to close with a wildcard, so a member arriving
+// TWICE was reported as a member that was not there -- true of nothing that happened, and it sends
+// a reader looking for a member the sender in fact sent. Each red below asserts the WORD its arm
+// exists to say and that the misleading word is absent, which is what makes reinstating a wildcard
+// fail here rather than pass with a plausible sentence.
+test fn a_duplicated_function_member_says_duplicated_not_missing() -> Bool {
+  let c = chat_decode_cause(body: chat_with_tool_call(call: "{\"id\":\"c1\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"},\"function\":{\"name\":\"other\",\"arguments\":\"{}\"}}"))
+  c.contains("more than once") && !c.contains("carries no function member")
+}
+
+test fn a_duplicated_message_member_says_duplicated_not_missing() -> Bool {
+  let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"a\"},\"message\":{\"content\":\"b\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
+  c.contains("more than once") && !c.contains("carries no message member")
+}
+
+test fn a_duplicated_choices_member_says_duplicated_not_missing() -> Bool {
+  let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"a\"}}],\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
+  c.contains("more than once") && !c.contains("carries no choices array")
+}
+
+// AND THE MESSAGES SHAPE'S content, WHICH IS THE SHARPEST OF THE FOUR: a duplicated content member
+// there decided what the model produced this round, and the old sentence said it produced nothing.
+test fn a_duplicated_messages_content_member_says_duplicated_not_missing() -> Bool {
+  let c = messages_decode_cause(body: "{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"a\"}],\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
+  c.contains("more than once") && !c.contains("carries no content member")
+}
+
+// FOUND-BUT-NOT-AN-ARRAY IS ITS OWN FACT, separate from the lookup's. It used to fall to the same
+// wildcard and be reported as a missing choices array.
+test fn a_choices_member_that_is_not_an_array_says_so() -> Bool {
+  let c = chat_decode_cause(body: "{\"choices\":\"one\",\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
+  c.contains("not an array") && !c.contains("carries no choices array")
+}

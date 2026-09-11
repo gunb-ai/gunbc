@@ -284,6 +284,7 @@ fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> 
                   output_tokens: harness_token_count_of(n: ov),
                 }
               }
+            // Over HarnessIntRead, whose every non-read arm harness_int_read_gap names by outcome.
             _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
           }
         _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
@@ -343,6 +344,22 @@ fn harness_block_member_gap(kind: String, key: String) -> String {
 // diagnostic honest about which of the two happened.
 fn harness_null_member_cause(subject: String, key: String) -> String {
   join([subject, " carries '", key, "' as null; the shape requires a string there"], "")
+}
+
+// A LOOKUP HAS FOUR OUTCOMES AND A REFUSAL MAY NOT STATE A FALSE FACT ABOUT WHICH ONE HAPPENED.
+// Every `json_object_unique_member` in this file now writes its three non-found arms out; the
+// wildcards that used to close them reported "carries no 'function' member" for a tool_call that
+// carried `function` TWICE, and the same for `message`, `choices` and the messages shape's
+// `content` (review 63850). Nothing failed open -- each still refused -- but the sentence sent a
+// reader looking for a member that was in fact there, and a diagnostic is read by a person
+// deciding what to fix. These two helpers are the arms that were missing; the absent arm stays
+// per-site because what a missing member COSTS differs at each one.
+fn harness_duplicate_member_cause(subject: String, key: String) -> String {
+  join([subject, " carries '", key, "' more than once; which one the sender meant is unknowable"], "")
+}
+
+fn harness_not_an_object_cause(subject: String, key: String) -> String {
+  join([subject, " is not a JSON object, so its '", key, "' could not be read"], "")
 }
 
 fn harness_decode_block(v: JsonValue) -> HarnessBlockRead {
@@ -449,6 +466,9 @@ fn harness_decode_each(els: List<JsonValue>, decode: fn(JsonValue) -> HarnessBlo
 fn harness_decode_blocks(v: JsonValue) -> HarnessBlocksRead {
   match v {
     JsonArray { elements: els } => harness_decode_each(els: els, decode: e => harness_decode_block(v: e))
+    // The wildcard here is over the VALUE's type, not over a lookup: duplicated and not-an-object
+    // were decided by the lookup that produced this value and never reach it, so "not an array" is
+    // the only fact left to state.
     _ => BlocksUnreadable { cause: "the response content member is not an array of content blocks" }
   }
 }
@@ -497,7 +517,13 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
                         usage: harness_usage_read(doc: doc, input_key: "input_tokens", output_key: "output_tokens"),
                       }
                   }
-                _ => HarnessResponseUnreadable {
+                JsonMemberDuplicated => HarnessResponseUnreadable {
+                  cause: harness_duplicate_member_cause(subject: "the response", key: "content"),
+                }
+                JsonMemberNotAnObject => HarnessResponseUnreadable {
+                  cause: harness_not_an_object_cause(subject: "the response body", key: "content"),
+                }
+                JsonMemberAbsent => HarnessResponseUnreadable {
                   cause: "response carries no content member; what the model produced this round is unknown",
                 }
               }
@@ -811,7 +837,11 @@ fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
               }
           }
       }
-    _ => BlockUnreadable { cause: "a chat tool_call carries no function member" }
+    JsonMemberDuplicated =>
+      BlockUnreadable { cause: harness_duplicate_member_cause(subject: "a chat tool_call", key: "function") }
+    JsonMemberNotAnObject =>
+      BlockUnreadable { cause: harness_not_an_object_cause(subject: "a chat tool_call", key: "function") }
+    JsonMemberAbsent => BlockUnreadable { cause: "a chat tool_call carries no function member" }
   }
 }
 
@@ -889,6 +919,7 @@ fn harness_chat_message_calls(msg: JsonValue) -> HarnessBlocksRead {
       match tc {
         JsonArray { elements: es } =>
           harness_decode_each(els: es, decode: e => harness_chat_tool_call_block(v: e))
+        // Over the value's type, not the lookup: the three non-found outcomes are the arms below.
         _ => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
       }
     JsonMemberAbsent => BlocksRead { blocks: [] }
@@ -905,7 +936,25 @@ fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> Har
       HarnessResponseUnreadable { cause: join(["response body is not a JSON document: ", json_document_gap_text(gap: g)], "") }
     JsonDocumentParsed { value: doc } =>
       match json_object_unique_member(v: doc, key: "choices") {
-        JsonMemberFound { value: JsonArray { elements: choices } } =>
+        JsonMemberDuplicated => HarnessResponseUnreadable {
+          cause: harness_duplicate_member_cause(subject: "the chat completion", key: "choices"),
+        }
+        JsonMemberNotAnObject => HarnessResponseUnreadable {
+          cause: harness_not_an_object_cause(subject: "the chat completion body", key: "choices"),
+        }
+        JsonMemberAbsent => HarnessResponseUnreadable { cause: "chat completion carries no choices array" }
+        JsonMemberFound { value: cv } =>
+          harness_decode_chat_choices(unit: unit, doc: doc, choices_value: cv)
+      }
+  }
+}
+
+// THE CHOICES MEMBER IS FOUND, THEN IT IS AN ARRAY, AND THOSE ARE TWO FACTS. Reading them in one
+// nested pattern left the not-an-array case to the lookup's wildcard, where "choices is a string"
+// came out as "carries no choices array" -- true of nothing that happened.
+fn harness_decode_chat_choices(unit: HarnessServingUnit, doc: JsonValue, choices_value: JsonValue) -> HarnessResponseRead {
+  match choices_value {
+    JsonArray { elements: choices } =>
           match choices.first() {
             Absent => HarnessResponseUnreadable { cause: "chat completion carries no choices" }
             Present { value: choice } =>
@@ -932,13 +981,21 @@ fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> Har
                                 usage: harness_usage_read(doc: doc, input_key: "prompt_tokens", output_key: "completion_tokens"),
                               }
                           }
-                        _ => HarnessResponseUnreadable { cause: "the chat completion choice carries no message member" }
+                        JsonMemberDuplicated => HarnessResponseUnreadable {
+                          cause: harness_duplicate_member_cause(subject: "the chat completion choice", key: "message"),
+                        }
+                        JsonMemberNotAnObject => HarnessResponseUnreadable {
+                          cause: harness_not_an_object_cause(subject: "the chat completion choice", key: "message"),
+                        }
+                        JsonMemberAbsent =>
+                          HarnessResponseUnreadable { cause: "the chat completion choice carries no message member" }
                       }
                   }
               }
           }
-        _ => HarnessResponseUnreadable { cause: "chat completion carries no choices array" }
-      }
+    _ => HarnessResponseUnreadable {
+      cause: "the chat completion's choices member is not an array; what the model returned this round is unknown",
+    }
   }
 }
 
