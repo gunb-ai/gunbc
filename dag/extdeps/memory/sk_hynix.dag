@@ -25,16 +25,20 @@ data c_die_rdimm_datasheet_rev_1_7: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// ONE subject: SK hynix DDR4 registered modules in this file, represented by the first
+// catalog row the module already carried. The C-die datasheet does not list AFR4N/AFR8N, so
+// it cannot be first_citation; Wikipedia is the DDR4 standing those rows already had, and
+// the datasheet is the additional manufacturer citation for HMA82GR7CJR8N-VK.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.memory.sk_hynix",
-      decl_name: "hma82gr7cjr8n_vk_catalog",
+      decl_name: "hma82gr7afr4n_vk_catalog",
       field: WholeDeclaration
     }
   },
-  first_citation: c_die_rdimm_datasheet_rev_1_7,
-  further_citations: []
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [c_die_rdimm_datasheet_rev_1_7]
 }
 
 data stick_capacity_bytes_16g: ByteSize = byte_size(17179869184)
