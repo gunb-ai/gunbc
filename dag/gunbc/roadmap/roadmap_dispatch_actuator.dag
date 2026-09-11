@@ -146,6 +146,7 @@ import gunbc.worker_lifecycle {
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
+import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
@@ -179,7 +180,9 @@ import gunbc.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
 import gunbc.roadmap_dispatch_destination {
-  node_has_dispatch_destination,
+  node_dispatch_destination,
+  DispatchDestinationResolved,
+  DispatchDestinationMissing,
   dispatch_spawn_origin_basename,
 }
 
@@ -2778,10 +2781,6 @@ fn node_in_ready(node_id: RoadmapNodeId, ready: List<RoadmapNode>) -> Bool {
   any(ready, n => n.node == node_id)
 }
 
-fn node_repo_supported(node: RoadmapNode) -> Bool {
-  node_has_dispatch_destination(node: node)
-}
-
 fn dispatch_permitted_from_selection(
   node: RoadmapNode,
   attempt_key: String,
@@ -2810,26 +2809,28 @@ fn classify_dispatch_request_for_process_fingerprint(
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
-    if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "the node has no dispatch destination" as NonEmptyStr }
-    } else {
-      let scope = dispatch_tmux_session_scope_for_process_fingerprint(
-        node_id: node.node,
-        process_fingerprint: process_fingerprint,
-      )
-      let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
-      match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
-        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
-          DispatchRefused { reason: reason }
-        UpsertClassification { verdict: _, decision: Noop } =>
-          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
-        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-          dispatch_permitted_from_selection(
-            node: node,
-            attempt_key: attempt_key,
-            effort: effort,
-            model: model,
-          )
+    match node_dispatch_destination(node: node) {
+      DispatchDestinationMissing { reason } =>
+        DispatchRefused { reason: reason }
+      DispatchDestinationResolved { identity: _ } => {
+        let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+          node_id: node.node,
+          process_fingerprint: process_fingerprint,
+        )
+        let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
+        match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
+          UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+            DispatchRefused { reason: reason }
+          UpsertClassification { verdict: _, decision: Noop } =>
+            DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+          UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+            dispatch_permitted_from_selection(
+              node: node,
+              attempt_key: attempt_key,
+              effort: effort,
+              model: model,
+            )
+        }
       }
     }
   }
@@ -2861,23 +2862,24 @@ fn classify_dispatch_request(
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
-    if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "the node has no dispatch destination" as NonEmptyStr }
-    } else {
-      match selection {
-        DispatchActuatorSelectionRefused { reason } =>
-          DispatchRefused { reason: reason }
-        DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
-          classify_dispatch_request_for_process_fingerprint(
-            node: node,
-            ready: ready,
-            tmux_entries: tmux_entries,
-            attempt_key: attempt_key,
-            process_fingerprint: process_fingerprint,
-            effort: effort,
-            model: model,
-          )
-      }
+    match node_dispatch_destination(node: node) {
+      DispatchDestinationMissing { reason } =>
+        DispatchRefused { reason: reason }
+      DispatchDestinationResolved { identity: _ } =>
+        match selection {
+          DispatchActuatorSelectionRefused { reason } =>
+            DispatchRefused { reason: reason }
+          DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
+            classify_dispatch_request_for_process_fingerprint(
+              node: node,
+              ready: ready,
+              tmux_entries: tmux_entries,
+              attempt_key: attempt_key,
+              process_fingerprint: process_fingerprint,
+              effort: effort,
+              model: model,
+            )
+        }
     }
   }
 }

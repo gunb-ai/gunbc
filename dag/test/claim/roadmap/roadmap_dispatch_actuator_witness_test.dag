@@ -5,6 +5,7 @@ import std.types { NonEmptyStr, GitRef, FilePath }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
   RoadmapNodeId,
+  RoadmapNodeIdentity,
   RoadmapNode, RoadmapEdge,
   Intricacy, IntricacyHigh, IntricacyLow, VolumeMedium,
   PrsMerged,
@@ -156,17 +157,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn roadmap_dispatch_actuator_nid(s: String) -> RoadmapNodeId { s }
 
-fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+fn sized_derivable_in_repo(id: String, prs: List<Int>, title: String, repo: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: repo, acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
+}
+
+fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+  sized_derivable_in_repo(id: id, prs: prs, title: title, repo: "gunbc")
 }
 
 fn fixture_section(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
@@ -646,6 +651,25 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
         && b == "dispatch/ready-node-afeedfacefeedface"
         && string_contains(s: br, pattern: "Ready")
         && reasoning_effort_label(effort: e) == "medium"
+    _ => false
+  }
+}
+
+test fn witness_missing_destination_reason_reaches_classify() -> Bool {
+  let node = sized_derivable_in_repo(id: "ready-node", prs: [10], title: "Ready", repo: "not-a-slug")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let ready = next_spawnable(doc: doc, merged: [])
+  match classify_dispatch_request_for_process_fingerprint(
+    node: node,
+    ready: ready,
+    tmux_entries: [],
+    attempt_key: "feedfacefeedface",
+    process_fingerprint: dispatch_codex_process_fingerprint,
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+  ) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "is not owner/name")
     _ => false
   }
 }

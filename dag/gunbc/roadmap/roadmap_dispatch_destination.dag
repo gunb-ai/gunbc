@@ -181,13 +181,6 @@ fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
   destination_from_sizing(sizing: node.sizing)
 }
 
-fn node_has_dispatch_destination(node: RoadmapNode) -> Bool {
-  match node_dispatch_destination(node: node) {
-    DispatchDestinationResolved { identity: _ } => true
-    DispatchDestinationMissing { reason: _ } => false
-  }
-}
-
 // Recorded at spawn so an attempt can later say which repository and which exact base
 // revision it was branched from. The instance's dispatch_base_ref is a name; the SHA
 // is the fact. Privacy and default branch are recorded as standings, not as GitHub
@@ -221,11 +214,23 @@ fn destination_default_branch_json_member(standing: DestinationDefaultBranchStan
   }
 }
 
+fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
+  origin.identity.full_name == gunbc_repository.full_name
+    && destination_is_known_public(identity: origin.identity)
+}
+
 fn dispatch_spawn_origin_json_members(origin: DispatchSpawnOrigin) -> List<String> {
   [
     join(["\"repository\":\"", origin.identity.full_name, "\""], ""),
     destination_privacy_json_member(privacy: origin.identity.privacy),
     destination_default_branch_json_member(standing: origin.identity.default_branch),
+    join(
+      [
+        "\"known_public_gunbc\":",
+        if spawn_origin_is_public_gunbc(origin: origin) { "true" } else { "false" },
+      ],
+      "",
+    ),
     join(["\"base_ref\":\"", origin.base_ref as String, "\""], ""),
     join(["\"base_sha\":\"", origin.base_sha as String, "\""], ""),
   ]
@@ -236,8 +241,3 @@ fn dispatch_spawn_origin_json(origin: DispatchSpawnOrigin) -> String {
 }
 
 data dispatch_spawn_origin_basename: String = "spawn-destination.json"
-
-fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
-  origin.identity.full_name == gunbc_repository.full_name
-    && destination_is_known_public(identity: origin.identity)
-}
