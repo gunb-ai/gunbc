@@ -47,6 +47,7 @@ import gunbc.spark.serving_deployment_selection {
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
+  VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
   NoFeasibleServingDeployment,
 }
 
@@ -529,6 +530,16 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
         && topology_in(shapes: admitted, tp: 1, replicas: 1)
         && count(v4_1_declared_profiles) == 3
         && (v4_1_runtime_published_arm64.image as String) == "vllm/vllm-openai:deepseekv41-flash-0909"
+        && match v4_1_runtime_published_arm64.vllm_source {
+          VllmSourceRevisionUnestablished { reported_version: v, obligation: _ } =>
+            (v as String) == "vllm-0.1.dev20904+g179dd0fa9"
+          VllmSourceRevisionEstablished { git: _ } => false
+        }
+        && match v4_1_runtime_vllm_gb10_lead.vllm_source {
+          VllmSourceRevisionEstablished { git: g } =>
+            (g as String) == "07b75534651a0dd584c6f3be75d8c62fb8426397"
+          VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => false
+        }
     ServingFieldUnestablished { causes: _ } => false
   }
 }

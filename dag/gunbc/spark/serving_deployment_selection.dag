@@ -211,17 +211,29 @@ fn kv_layout_wire(k: KvLayoutPolicy) -> NonEmptyStr {
   }
 }
 
+type VllmSourceStanding
+  = VllmSourceRevisionEstablished { git: NonEmptyStr }
+  | VllmSourceRevisionUnestablished { reported_version: NonEmptyStr, obligation: NonEmptyStr }
+
 type RuntimeRevision sole_constructor {
   image: NonEmptyStr
-  vllm_revision: NonEmptyStr
+  vllm_source: VllmSourceStanding
 }
 
 fn runtime_revision(image: NonEmptyStr, vllm_revision: NonEmptyStr) -> RuntimeRevision {
-  RuntimeRevision { image: image, vllm_revision: vllm_revision }
+  RuntimeRevision {
+    image: image,
+    vllm_source: VllmSourceRevisionEstablished { git: vllm_revision },
+  }
 }
 
 fn runtime_revision_key(r: RuntimeRevision) -> String {
-  join([r.image as String, "@", r.vllm_revision as String], "")
+  match r.vllm_source {
+    VllmSourceRevisionEstablished { git: g } =>
+      join([r.image as String, "@git:", g as String], "")
+    VllmSourceRevisionUnestablished { reported_version: v, obligation: _ } =>
+      join([r.image as String, "@reported:", v as String, "|src-unest"], "")
+  }
 }
 
 type ServingDecisionParameters sole_constructor {
@@ -341,12 +353,15 @@ fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
 
 data v4_1_runtime_supported_tp_widths_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: DSV41-1 (loyal-ram-346) shows which tensor-parallel widths the GB10 vLLM lead accepts. Until then the V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1. SUFFICIENT FOR: a derived admitted-width set from that runtime observation replaces an unfiltered fleet cartesian for this image." as NonEmptyStr)
 
-data v4_1_runtime_published_arm64: RuntimeRevision = runtime_revision(
+data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
   image: "vllm/vllm-openai:deepseekv41-flash-0909" as NonEmptyStr,
-  vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
-)
+  vllm_source: VllmSourceRevisionUnestablished {
+    reported_version: "vllm-0.1.dev20904+g179dd0fa9" as NonEmptyStr,
+    obligation: "TRIGGER: clever-bat-173's published-image observation is the home for this distribution's source revision. The installed distribution reports vllm-0.1.dev20904+g179dd0fa9; commit 179dd0fa9 is not in the public vLLM repo; provenance labels read unknown. 07b75534651a0dd584c6f3be75d8c62fb8426397 is the public-source fallback (#11022 route B), not this image. SUFFICIENT FOR: v4_1_runtime_published_arm64.vllm_source is VllmSourceRevisionEstablished from that observation, not a fused pin of the fallback." as NonEmptyStr,
+  },
+}
 
-data v4_1_published_image_digest_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: clever-bat-173 records the arm64 content digest for vllm/vllm-openai:deepseekv41-flash-0909 (operator-adopted published image) on the runtime row that owns it. This field enumerates that image as a V4.1 runtime; it does not transcribe a truncated sha256. SUFFICIENT FOR: v4_1_runtime_published_arm64.image carries the digest-pinned reference from that module." as NonEmptyStr)
+data v4_1_published_image_digest_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: clever-bat-173 records the arm64 content digest for vllm/vllm-openai:deepseekv41-flash-0909 on the runtime row that owns it. This field enumerates that image as a V4.1 runtime; it does not transcribe the digest. SUFFICIENT FOR: v4_1_runtime_published_arm64.image carries the digest-pinned reference from that module." as NonEmptyStr)
 
 data v4_1_declared_profiles: List<ServingDecisionParameters> = [
   v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
