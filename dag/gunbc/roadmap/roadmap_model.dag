@@ -1,6 +1,6 @@
 module gunbc.roadmap_model
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Bool }
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap_status {
@@ -59,6 +59,16 @@ type RoadmapNode {
   execution: WorkItemExecutionContract
   owner: String
   signoff: Signoff
+}
+
+// THE DISCRIMINANT OF WorkItemDispatch, asked of a node. NotDispatchable means the row is not a
+// dispatchable work item; Dispatchable means it is. One fold at this home: a second match-to-Bool
+// over the same coproduct is a nickname (DESIGN 3).
+fn node_is_dispatchable(n: RoadmapNode) -> Bool {
+  match n.dispatch {
+    NotDispatchable => false
+    Dispatchable { repo: _, acceptance: _ } => true
+  }
 }
 
 // THE ROADMAP'S ADAPTER ONTO THE TASK SIZER, and the only place a RoadmapNode meets it. The

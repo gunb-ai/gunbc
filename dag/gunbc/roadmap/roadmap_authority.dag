@@ -31,6 +31,7 @@ import gunbc.roadmap_model {
   acceptance_history_integrity_verdict_detail,
   NotDispatchable,
   Dispatchable,
+  node_is_dispatchable,
   PrsMerged,
   ManualAcceptance,
   section_group,
@@ -3258,13 +3259,6 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // worth enforcing would be enforced at MINT time by construction, not by editing identities already
 // in the graph.
 
-fn node_dispatch_is_declared(n: RoadmapNode) -> Bool {
-  match n.dispatch {
-    NotDispatchable => false
-    Dispatchable { repo: _, acceptance: _ } => true
-  }
-}
-
 // A NODE WITH NO DISPATCH BINDING IS UNPLANNED, AND NOTHING ABOUT IT IS SCHEDULED -- including the
 // task to write its closing check. Before this filter a ticket_row (NotDispatchable) still minted a
 // Dispatchable closing-contract task that sat in Ready, so parking a node by clearing its binding
@@ -3273,7 +3267,7 @@ fn node_dispatch_is_declared(n: RoadmapNode) -> Bool {
 fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
   declared_roadmap_nodes()
     |> filter(n => !(accepted |> any(a => a == n.node)))
-    |> filter(n => node_dispatch_is_declared(n: n))
+    |> filter(n => node_is_dispatchable(n: n))
     |> filter(n => node_lacks_closing_validation(n: n))
     |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
 }

@@ -2,10 +2,10 @@ module gunbc.roadmap_launch_admission
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge, node_is_dispatchable }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
-import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_is_dispatchable, node_unmet_parent_ids }
+import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_unmet_parent_ids }
 import gunbc.roadmap_execution_contract {
   ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses, ContractNotAgentWork,
   OperatorExclusiveMode, ExternalLeadMode, CalendarObservationMode,

@@ -4,6 +4,7 @@ import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   Acceptance, PrsMerged, ManualAcceptance,
   WorkItemDispatch, NotDispatchable, Dispatchable,
+  node_is_dispatchable,
   node_sizing_derivation,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
@@ -178,29 +179,16 @@ fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: Roadmap
 }
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
-  match n.dispatch {
-    NotDispatchable => false
-    Dispatchable { repo: _, acceptance: _ } =>
-      !node_is_complete(n: n)
-        && !frontier_node_is_superseded(n: n)
-        && node_dep_done(nodes: nodes, edges: edges, id: n.node)
-  }
+  node_is_dispatchable(n: n)
+    && !node_is_complete(n: n)
+    && !frontier_node_is_superseded(n: n)
+    && node_dep_done(nodes: nodes, edges: edges, id: n.node)
 }
 
 fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges))
-}
-
-// Renamed from node_is_sized with the fact it actually reads. It never consulted a size: it asked
-// whether the row carries a dispatch binding at all, which is what the coproduct's discriminant
-// always meant. Keeping the old name after the unbundling would be a section 3 meaning fork.
-fn node_is_dispatchable(n: RoadmapNode) -> Bool {
-  match n.dispatch {
-    NotDispatchable => false
-    Dispatchable { repo: _, acceptance: _ } => true
-  }
 }
 
 fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
