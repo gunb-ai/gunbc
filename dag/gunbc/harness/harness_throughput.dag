@@ -227,46 +227,70 @@ fn round_required_int(doc: JsonValue, key: String) -> RequiredIntRead {
 // every projection over it -- the rate, the strip, the budget track -- would render confidently
 // from a population nobody was told had shrunk. A line that is not JSON, or is not a usage row, is
 // not a gap: this stream carries other event types and older writers' lines by design.
-type LedgerRead
-  = LedgerRows { rows: List<RoundObservation> }
-  | LedgerGap { cause: String }
+// ONE LINE IS A ROW, IS NOT OURS, OR IS A GAP -- read independently of what came before it, which
+// is what lets the fold be linear. The accumulating version of this function carried the rows so
+// far and appended with `concat(rows, [r])`, COPYING the accumulator once per line: quadratic in
+// the stream length for a pass that reads each line once, the same cost-shape defect this change
+// removes in the block folds next door and authored in the same diff (review 63840). A per-line
+// read depends on nothing but its line, so the three passes below -- map, first-gap scan, flat_map
+// -- replace the carry, exactly as `harness_decode_each` does for content blocks.
+type LineRead
+  = LineIsRow { round: RoundObservation }
+  | LineIsNotOurs
+  | LineIsGap { cause: String }
 
-fn ledger_absorb_line(acc: LedgerRead, line: String) -> LedgerRead {
-  match acc {
-    LedgerGap { cause: c } => LedgerGap { cause: c }
-    LedgerRows { rows } =>
-      if trim(line) == "" {
-        LedgerRows { rows: rows }
-      } else {
-        match parse_json_document(s: line) {
-          JsonDocumentUnreadable { gap: _ } => LedgerRows { rows: rows }
-          JsonDocumentParsed { value: doc } =>
-            match throughput_is_usage_row(doc: doc) {
-              UsageRowIsAnotherEvent => LedgerRows { rows: rows }
-              UsageRowUnreadable { cause: c } => LedgerGap { cause: c }
-              UsageRowIsOurs =>
-                match round_observation_of(doc: doc) {
-                  RoundReadOk { round: r } => LedgerRows { rows: concat(rows, [r]) }
-                  RoundReadUnclocked => LedgerGap {
-                    cause: "a round.usage row carries no epoch_ms; its counts belong to a time this ledger cannot place, so the rate and the strip over these rounds are unavailable rather than computed without it",
-                  }
-                  RoundReadGap { cause: c } => LedgerGap { cause: c }
-                }
+fn ledger_read_line(line: String) -> LineRead {
+  if trim(line) == "" {
+    LineIsNotOurs
+  } else {
+    match parse_json_document(s: line) {
+      JsonDocumentUnreadable { gap: _ } => LineIsNotOurs
+      JsonDocumentParsed { value: doc } =>
+        match throughput_is_usage_row(doc: doc) {
+          UsageRowIsAnotherEvent => LineIsNotOurs
+          UsageRowUnreadable { cause: c } => LineIsGap { cause: c }
+          UsageRowIsOurs =>
+            match round_observation_of(doc: doc) {
+              RoundReadOk { round: r } => LineIsRow { round: r }
+              RoundReadUnclocked => LineIsGap {
+                cause: "a round.usage row carries no epoch_ms; its counts belong to a time this ledger cannot place, so the rate and the strip over these rounds are unavailable rather than computed without it",
+              }
+              RoundReadGap { cause: c } => LineIsGap { cause: c }
             }
         }
-      }
+    }
   }
 }
 
+// FIRST GAP WINS, IN STREAM ORDER, and it decides for the whole ledger before any row is kept --
+// the fail-closed half of the same fold. A ledger missing the rows it could not read is a shorter
+// run that looks complete.
 fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
-  match fold(split(s: body, delimiter: "\n"), init: LedgerRows { rows: [] }, f: (a, line) => ledger_absorb_line(acc: a, line: line)) {
-    LedgerGap { cause: c } => RoundsUnobserved { reason: c as NonEmptyStr }
-    LedgerRows { rows } =>
+  let reads = map(split(s: body, delimiter: "\n"), l => ledger_read_line(line: l))
+  match fold(reads, init: none, f: (acc, r) =>
+         match acc {
+           Present { value: c } => Present { value: c }
+           Absent =>
+             match r {
+               LineIsGap { cause: c } => Present { value: c }
+               LineIsRow { round: _ } => none
+               LineIsNotOurs => none
+             }
+         }) {
+    Present { value: c } => RoundsUnobserved { reason: c as NonEmptyStr }
+    Absent => {
+      let rows = flat_map(reads, r =>
+        match r {
+          LineIsRow { round: x } => [x]
+          LineIsNotOurs => []
+          LineIsGap { cause: _ } => []
+        })
       if list_length(items: rows) == 0 {
         RoundsUnobserved { reason: "no clocked round.usage row in the event stream" as NonEmptyStr }
       } else {
         RoundsObserved { rounds: rows }
       }
+    }
   }
 }
 
