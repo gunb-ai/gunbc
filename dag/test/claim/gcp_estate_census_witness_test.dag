@@ -90,6 +90,12 @@ import gunbc.gcp_estate_observation {
   workspace_admin_display_name_says_test,
   workspace_admin_has_no_gunb_ci_project_roles,
   workspace_admin_has_no_user_managed_keys,
+  sa_key_listings_are_empty,
+  project_iam_member_roles_are_empty,
+  ObservedSaKeyListing,
+  ObservedProjectIamMemberRoles,
+  observed_workspace_admin_user_managed_keys,
+  observed_workspace_admin_gunb_ci_project_roles,
   secrets_named_sas_all_have_display_names,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
@@ -455,6 +461,26 @@ test fn unread_pool_rows_do_not_classify_desired_pool_as_absent() -> Bool {
       (r as String).contains("not readable")
     _ => false
   }
+}
+
+test fn a_user_managed_key_or_project_role_row_is_not_none() -> Bool {
+  let one_key = [
+    ObservedSaKeyListing {
+      key_id: "user-managed-fixture",
+      created_at: "2026-09-11T00:00:00Z",
+      expires_at: "2027-09-11T00:00:00Z",
+      disabled: false,
+    },
+  ]
+  let one_role = ObservedProjectIamMemberRoles {
+    project_id: gunb_ci_project_id,
+    member: gunbai_ci_workspace_admin_sa_email,
+    roles: ["roles/viewer" as NonEmptyStr],
+  }
+  sa_key_listings_are_empty(keys: observed_workspace_admin_user_managed_keys)
+    && !sa_key_listings_are_empty(keys: one_key)
+    && project_iam_member_roles_are_empty(row: observed_workspace_admin_gunb_ci_project_roles)
+    && !project_iam_member_roles_are_empty(row: one_role)
 }
 
 test fn estate_rows_name_their_producer_and_stay_hand_observed() -> Bool {

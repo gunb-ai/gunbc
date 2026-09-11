@@ -32,6 +32,7 @@ type GcloudReadVerb
   | GcloudWifProvidersList { project_id: String, pool_id: String }
   | GcloudSaKeysListUserManaged { email: String }
   | GcloudSaGetIamPolicy { email: String }
+  | GcloudProjectsGetIamPolicy { project_id: String }
 
 type EstateReadInstrument {
   identity: NonEmptyStr
@@ -95,6 +96,8 @@ fn gcloud_read_argv(verb: GcloudReadVerb) -> List<String> {
     ]
     GcloudSaGetIamPolicy { email: email } =>
       ["gcloud", "iam", "service-accounts", "get-iam-policy", email, "--format=json"]
+    GcloudProjectsGetIamPolicy { project_id: p } =>
+      ["gcloud", "projects", "get-iam-policy", p, "--format=json"]
   }
 }
 
@@ -151,6 +154,14 @@ fn gcloud_sa_get_iam_policy_instrument(email: String) -> EstateReadInstrument {
     identity: concat("gcloud-sa-get-iam-policy-", email) as NonEmptyStr,
     verb: GcloudSaGetIamPolicy { email: email },
     refreshes: concat("principalSet bindings on ", email) as NonEmptyStr,
+  }
+}
+
+fn gcloud_projects_get_iam_policy_instrument(project_id: String) -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: concat("gcloud-projects-get-iam-policy-", project_id) as NonEmptyStr,
+    verb: GcloudProjectsGetIamPolicy { project_id: project_id },
+    refreshes: concat("project IAM member roles for ", project_id) as NonEmptyStr,
   }
 }
 
@@ -254,6 +265,7 @@ fn sandbox_project_read_instruments() -> List<EstateReadInstrument> {
     ),
     gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com"),
     gcloud_sa_keys_list_user_managed_instrument(email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com"),
+    gcloud_projects_get_iam_policy_instrument(project_id: "gunb-ci"),
   ]
 }
 

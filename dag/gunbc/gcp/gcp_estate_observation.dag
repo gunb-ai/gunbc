@@ -489,38 +489,79 @@ type ObservedSaKeyListing {
   disabled: Bool
 }
 
-data observed_workspace_admin_key_listings: List<ObservedSaKeyListing> = [
+data workspace_admin_google_managed_key_id_first: String = "8e110efbbc81c8a779f61e8e81faefaba97672d4"
+
+data workspace_admin_google_managed_key_id_second: String = "4d701b4fd4461aaafe369e4a7eadc3ba78364257"
+
+data observed_workspace_admin_google_managed_keys: List<ObservedSaKeyListing> = [
   ObservedSaKeyListing {
-    key_id: "8e110efbbc81c8a779f61e8e81faefaba97672d4",
+    key_id: workspace_admin_google_managed_key_id_first,
     created_at: "2026-05-27T19:09:29Z",
     expires_at: "2027-05-27T19:09:29Z",
     disabled: false,
   },
   ObservedSaKeyListing {
-    key_id: "4d701b4fd4461aaafe369e4a7eadc3ba78364257",
+    key_id: workspace_admin_google_managed_key_id_second,
     created_at: "2026-05-27T19:09:29Z",
     expires_at: "2027-05-27T19:09:29Z",
     disabled: false,
   },
 ]
 
+data observed_workspace_admin_user_managed_keys: List<ObservedSaKeyListing> = []
+
 type WorkspaceAdminKeyStanding
   = UserManagedKeysNone {
+      user_managed: List<ObservedSaKeyListing>
       google_managed: List<ObservedSaKeyListing>
     }
 
+fn sa_key_listings_are_empty(keys: List<ObservedSaKeyListing>) -> Bool {
+  fold(keys, init: true, f: fn(acc, _) { false })
+}
+
 fn workspace_admin_key_standing() -> WorkspaceAdminKeyStanding {
-  UserManagedKeysNone { google_managed: observed_workspace_admin_key_listings }
+  UserManagedKeysNone {
+    user_managed: observed_workspace_admin_user_managed_keys,
+    google_managed: observed_workspace_admin_google_managed_keys,
+  }
+}
+
+fn google_managed_key_id_is_named(id: String) -> Bool {
+  id == workspace_admin_google_managed_key_id_first
+    || id == workspace_admin_google_managed_key_id_second
+}
+
+fn every_google_managed_listing_id_is_named(keys: List<ObservedSaKeyListing>) -> Bool {
+  fold(
+    keys,
+    init: true,
+    f: fn(acc, k) { acc && google_managed_key_id_is_named(id: k.key_id) },
+  )
+}
+
+fn named_google_managed_id_is_listed(keys: List<ObservedSaKeyListing>, id: String) -> Bool {
+  fold(keys, init: false, f: fn(acc, k) { acc || k.key_id == id })
+}
+
+fn workspace_admin_google_managed_keys_are_the_named_set() -> Bool {
+  every_google_managed_listing_id_is_named(keys: observed_workspace_admin_google_managed_keys)
+    && named_google_managed_id_is_listed(
+      keys: observed_workspace_admin_google_managed_keys,
+      id: workspace_admin_google_managed_key_id_first,
+    )
+    && named_google_managed_id_is_listed(
+      keys: observed_workspace_admin_google_managed_keys,
+      id: workspace_admin_google_managed_key_id_second,
+    )
 }
 
 fn workspace_admin_has_no_user_managed_keys() -> Bool {
   match workspace_admin_key_standing() {
-    UserManagedKeysNone { google_managed: ks } => ks.length() == 2
+    UserManagedKeysNone { user_managed: um, google_managed: _ } =>
+      sa_key_listings_are_empty(keys: um)
+        && workspace_admin_google_managed_keys_are_the_named_set()
   }
-}
-
-fn workspace_admin_has_no_gunb_ci_project_roles() -> Bool {
-  true
 }
 
 data gap_workspace_admin_domain_wide_delegation: EstateCoverageGap = EstateCoverageGap {
@@ -835,6 +876,28 @@ data gunb_test_project_id: GcpProjectId = "gunb-test"
 data gunbai_auto_project_id: GcpProjectId = "gunbai-auto"
 
 data gunb_ci_project_id: GcpProjectId = "gunb-ci"
+
+type ObservedProjectIamMemberRoles {
+  project_id: GcpProjectId
+  member: ServiceAccountEmail
+  roles: List<NonEmptyStr>
+}
+
+data observed_workspace_admin_gunb_ci_project_roles: ObservedProjectIamMemberRoles = ObservedProjectIamMemberRoles {
+  project_id: gunb_ci_project_id,
+  member: gunbai_ci_workspace_admin_sa_email,
+  roles: [],
+}
+
+fn project_iam_member_roles_are_empty(row: ObservedProjectIamMemberRoles) -> Bool {
+  fold(row.roles, init: true, f: fn(acc, _) { false })
+}
+
+fn workspace_admin_has_no_gunb_ci_project_roles() -> Bool {
+  observed_workspace_admin_gunb_ci_project_roles.project_id == gunb_ci_project_id
+    && observed_workspace_admin_gunb_ci_project_roles.member == gunbai_ci_workspace_admin_sa_email
+    && project_iam_member_roles_are_empty(row: observed_workspace_admin_gunb_ci_project_roles)
+}
 
 fn project_number_from_sa_email(email: ServiceAccountEmail) -> String? {
   match project_id_from_sa_email(email: email) {
