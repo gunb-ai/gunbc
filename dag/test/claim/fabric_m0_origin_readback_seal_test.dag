@@ -89,7 +89,7 @@ fn sole_constructor_on_origin_reading(source: String) -> Int {
 // is NOT authorable, and cannot be. A green arm returning a bare reading would have to unwrap the
 // Outcome, whose unavailable branch would then need to produce an OriginReading from nothing -- which
 // is precisely what has no constructor. The seal is what makes that pair unwritable.
-fn probe_source(body: String) -> String {
+fn origin_reading_probe_source(body: String) -> String {
   "module probe_fabric_m0_axis\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReading, OriginReadingOutcome, OriginReadingTaken, read_origin_staged_file }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn subject(p: NonEmptyStr) -> OriginReadingOutcome {\n  "
     + body + "\n}\n"
 }
@@ -104,7 +104,7 @@ data sanctioned_body: String = "read_origin_staged_file(staged_path: p)"
 // EXACTLY ONE refusal is the proposition, so the assertion says one. `>= 1` would hide a second,
 // unintended refusal on the same key.
 test fn a_forged_origin_reading_is_refused_at_compile() -> Bool {
-  sole_constructor_on_origin_reading(source: probe_source(body: forged_reading_source)) == 1
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: forged_reading_source)) == 1
 }
 
 // RED 2: the same forgery reached through the CARRIER a caller actually holds. The commit
@@ -159,10 +159,10 @@ test fn the_deleted_wrapper_proxy_route_no_longer_compiles() -> Bool {
 // GREEN CONTROL, KEYED: the sanctioned route -- the real read -- draws no violation ON THIS
 // SUBJECT. Without it every red above is satisfied by a harness that refuses everything.
 test fn the_sanctioned_read_route_draws_no_violation() -> Bool {
-  sole_constructor_on_origin_reading(source: probe_source(body: sanctioned_body)) == 0
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: sanctioned_body)) == 0
 }
 
-// THE DIFFERENTIAL, AND IT IS A REAL ONE NOW. Both sources come from probe_source and differ on
+// THE DIFFERENTIAL, AND IT IS A REAL ONE NOW. Both sources come from origin_reading_probe_source and differ on
 // exactly one axis -- the expression that produces the reading. The comparison is over the COMPLETE
 // blocking key set of each compile, not over a chosen target key: every row that appears on both
 // sides cancels, and what survives on the RED side must be exactly the one key this wall is about,
@@ -179,8 +179,8 @@ test fn the_sanctioned_read_route_draws_no_violation() -> Bool {
 // and test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test consume it.
 test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
   censuses_differ_by_exactly_the_target_key(
-    red: census_rows_or_refuse(source: probe_source(body: forged_reading_source)),
-    green: census_rows_or_refuse(source: probe_source(body: sanctioned_body)),
+    red: census_rows_or_refuse(source: origin_reading_probe_source(body: forged_reading_source)),
+    green: census_rows_or_refuse(source: origin_reading_probe_source(body: sanctioned_body)),
     target_class: "SoleConstructorViolation",
     target_subject: "OriginReading",
   )
@@ -190,8 +190,8 @@ test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
 // sides would cancel in the differential above and read as agreement -- the sentinel key is carried
 // into the key set precisely so it cannot hide there, and this arm names it.
 test fn both_arms_of_the_differential_actually_compiled() -> Bool {
-  (census_key_count(rows: census_rows_or_refuse(source: probe_source(body: forged_reading_source)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
-    && (census_key_count(rows: census_rows_or_refuse(source: probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+  (census_key_count(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: forged_reading_source)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+    && (census_key_count(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
 }
 
 // PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (DESIGN 3c).
@@ -205,11 +205,11 @@ test fn both_arms_of_the_differential_actually_compiled() -> Bool {
 // Same shape and same purpose as the f10_diag_* / f13_diag_* entries in
 // test.claim.sole_constructor_completeness_audit_probe, which is the precedent this follows.
 fn diag_forged_reading_count() -> Int {
-  sole_constructor_on_origin_reading(source: probe_source(body: forged_reading_source))
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: forged_reading_source))
 }
 
 fn diag_sanctioned_count() -> Int {
-  sole_constructor_on_origin_reading(source: probe_source(body: sanctioned_body))
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: sanctioned_body))
 }
 
 fn diag_wrapper_missing_export_count() -> Int {

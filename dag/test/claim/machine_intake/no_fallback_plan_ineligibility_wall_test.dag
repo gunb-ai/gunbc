@@ -9,6 +9,7 @@ import gunbc.compile_diagnostic_census {
   census_blocking_rows,
   census_rows_of_class,
   census_total_count,
+  census_key_count,
   censuses_differ_by_exactly_the_target_key
 }
 import v2.std.optional { Absent, Present }
