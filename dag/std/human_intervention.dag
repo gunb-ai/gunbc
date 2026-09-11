@@ -45,6 +45,13 @@ type HumanIntervention {
   completion_evidence: InterventionCompletionEvidence
 }
 
+fn intervention_is_discharged(intervention: HumanIntervention) -> Bool {
+  match intervention.completion_evidence {
+    DischargedAt { evidence: _ } => true
+    NoDischargeSiteModeled => false
+  }
+}
+
 type ProvisioningHumanBurden {
   interventions: List<HumanIntervention>
 }

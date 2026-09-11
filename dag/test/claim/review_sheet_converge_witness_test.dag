@@ -86,6 +86,7 @@ import std.human_intervention {
   BreakGlassOnly,
   NoDischargeSiteModeled,
   DischargedAt,
+  intervention_is_discharged,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.review_sheet_operator {
@@ -102,7 +103,6 @@ import gunbc.review_sheet_operator {
   review_sheet_gcp_project,
   review_sheet_writer,
   serviceusage_enable_iam_grant_intervention,
-  intervention_is_discharged,
   SpreadsheetAwaitingCreation,
   SpreadsheetIdentified,
   ReviewSheetGcpProjectAwaitingIdentification,
