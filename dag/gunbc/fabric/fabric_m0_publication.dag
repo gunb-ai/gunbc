@@ -43,8 +43,15 @@ import gunbc.fabric_m0_commit {
 // GitHub check via floor_exit_to_check_conclusion. That ending never constructs
 // CommitTransportOutcome or ManifestReadbackObservation. Wiring it through
 // this join without an independent origin readback would refuse every green
-// job (ReadbackUnknown) or fabricate DurableOriginRead. The missing
+// job (ReadbackUnknown) or fabricate a confirming readback. The missing
 // capability is named on gunbc.fabric_m0_commit publish_after_commit.
+//
+// THAT SENTENCE NAMED DurableOriginRead UNTIL NOW, and the symbol has not existed since gunbc#10934
+// deleted the ReadSource stamp. A citation naming a declaration that no longer resolves is the
+// decay DESIGN 3's cite-the-symbol rule exists to prevent, and fabricating one is no longer even
+// expressible: a confirming readback carries an OriginReading, which only
+// gunbc.fabric_m0_origin_readback read_origin_staged_file can produce. The hazard the sentence
+// warns about is real and unchanged; only its spelling was stale.
 
 fn publish_work<P>(
   work: Work<P>,

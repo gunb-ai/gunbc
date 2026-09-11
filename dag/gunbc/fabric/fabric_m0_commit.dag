@@ -227,10 +227,20 @@ fn manifest_observation(
 
 // The consumer: one call from a real commit attempt to a published outcome.
 //
-// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). Today this function is exercised by the
-// enrolled witnesses and by nothing else: no production route reaches it, so the declarations
-// below are a DECLARED FRONTIER rather than a consumed model, and this annotation is here so
-// that state is legible in the module rather than inferred from an import census.
+// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c), AND THE CONSUMERS ARE NAMED. This sentence used
+// to read `exercised by the enrolled witnesses and by nothing else: no production route reaches
+// it`. That was true when it was written and is now false, which is the decay 3c's own instruction
+// prevents: NAME THE CONSUMER AND THE ROUTE, because a named join survives a change that an absence
+// claim does not.
+//
+// THE CONSUMERS, with their routes: gunbc.fabric_m0_publication publish_work calls this function,
+// and is the join that holds a run's Work, resolves its obligations at the admission gate, and
+// returns the publication; and the instrument tools.fabric_m0_origin_readback_probe calls it to
+// drive the whole gate over real bytes. Both are in-tree and both execute.
+//
+// SO THE FRONTIER MOVED RATHER THAN VANISHED, and it is one layer up: publish_work itself is
+// reached by enrolled witnesses and by no JOB-ENDING. The frontier is that missing ending, not a
+// missing caller here.
 //
 // THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a job-publication path that
 // holds a run's required work and decides its ending -- the roadmap's compute-artifact-return-
