@@ -4,9 +4,12 @@ import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
 import std.measure {
   TokenCount, token_count, token_count_value,
+  ParameterCount, parameter_count,
   ByteSize, byte_size, byte_size_count,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority,
+}
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -24,13 +27,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THE MODEL IDENTITY ON THE PUBLISHER REPOSITORY, and the hosted-API spelling as a second named
-// fact rather than a second name for the same row. The Hub path is what the weights are; the API
-// string `deepseek-flash` is what the official endpoint accepts after the 2026-09-10 cutover
-// (api-docs.deepseek.com/news/news260910). A serving realization that wants a different alias
-// declares the alias beside this row.
+// THE WEIGHTS' IDENTITY IS THE HUB REPO AT THE PIN. The hosted API string `deepseek-flash` is a
+// dated provider mapping (2026-09-10 cutover; legacy `deepseek-v4-flash` names also route there).
+// No hosted route in this repository consumes it, so it is not declared here.
 data deepseek_v4_1_flash_hub_repo: NonEmptyStr = "deepseek-ai/DeepSeek-V4.1-Flash" as NonEmptyStr
-data deepseek_v4_1_flash_hosted_api_model_id: NonEmptyStr = "deepseek-flash" as NonEmptyStr
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
@@ -182,8 +182,9 @@ data deepseek_v4_1_flash_config_declares_engram_off_accelerator: Bool = false
 // over a 64K native window. Declared frontier for the working-window constraint: DSV41-2.
 data deepseek_v4_1_flash_context_length: TokenCount = token_count(count: 1048576)
 data deepseek_v4_1_flash_native_context_length: TokenCount = token_count(count: 65536)
-data deepseek_v4_1_flash_yarn_factor: Nat = 16
-data deepseek_v4_1_flash_rope_type: NonEmptyStr = "yarn" as NonEmptyStr
+fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
+  token_count(count: token_count_value(t: deepseek_v4_1_flash_native_context_length) * deepseek_v4_1_flash_yarn_factor)
+}
 
 // NO OUTPUT CEILING IN CONFIG.JSON. The card's sampling table is not this module's authority.
 data deepseek_v4_1_flash_declares_no_output_ceiling: Bool = true
@@ -221,6 +222,30 @@ data deepseek_v4_1_flash_safetensors_payload_footprint: DeepseekV41SafetensorsPa
   draft_bytes: byte_size(count: 7932874632),
 }
 
+// PUBLISHER-REPORTED, NOT FLEET-READ. The standing is the Hub authority; DSV41-2 maps this onto
+// ArtifactFootprint.FootprintReportedExternally until a Spark reading exists. Trigger: a
+// FootprintObservedOnFleet row keyed at this revision.
+data deepseek_v4_1_flash_payload_footprint_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+// CARD-REPORTED PARAMETER COUNTS, labelled as such because the card contradicts itself (552B
+// backbone + 196B Engram, also "763B total") and is not the fit authority. Kept beside the bytes so
+// the two sources cannot be confused. Not a consumer of serving memory.
+type DeepseekV41CardReportedParameters {
+  backbone: ParameterCount
+  engram: ParameterCount
+  activated_prefill: ParameterCount
+  activated_decode: ParameterCount
+}
+
+data deepseek_v4_1_flash_card_reported_parameters: DeepseekV41CardReportedParameters = DeepseekV41CardReportedParameters {
+  backbone: parameter_count(millions: 552000),
+  engram: parameter_count(millions: 196000),
+  activated_prefill: parameter_count(millions: 8000),
+  activated_decode: parameter_count(millions: 16000),
+}
+
 data deepseek_v4_1_flash_safetensors_index_total_size: ByteSize = byte_size(count: 510286023000)
 
 // HUB TREE FILE SIZE, a different quantity from the payload above. Hugging Face tree API at this
@@ -239,11 +264,56 @@ fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloa
 
 data deepseek_v4_1_flash_footprint_unread_on_fleet: Bool = true
 
-data deepseek_v4_1_flash_declared_frontier_dsv41_1: NonEmptyStr =
-  "DSV41-1 loyal-ram-346: architecture class DeepseekV41ForCausalLM for the registry probe; kv dtype absence; vLLM tokenizer/parser names" as NonEmptyStr
+fn deepseek_v4_1_flash_fact(decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef {
+    module_path: "extdeps.deepseek.deepseek_v4_1_flash" as NonEmptyStr,
+    decl_name: decl_name,
+    field: WholeDeclaration,
+  }
+}
 
-data deepseek_v4_1_flash_declared_frontier_dsv41_2: NonEmptyStr =
-  "DSV41-2 crisp-crane-661: DeepseekV41SafetensorsPayloadFootprint as ArtifactFootprint FootprintReportedExternally; native vs scaled context; Engram off-accelerator is not a publisher config and cannot add GB10 pool" as NonEmptyStr
+type DeepseekV41DeclaredFrontier {
+  lane: NonEmptyStr
+  trigger: NonEmptyStr
+  facts: List<DeclarationRef>
+}
+
+data deepseek_v4_1_flash_frontier_dsv41_1: DeepseekV41DeclaredFrontier = DeepseekV41DeclaredFrontier {
+  lane: "DSV41-1 loyal-ram-346 registry probe" as NonEmptyStr,
+  trigger: "a serving-image probe that asks whether DeepseekV41ForCausalLM is registered" as NonEmptyStr,
+  facts: [
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_architecture_class" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_model_type" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_config_declares_kv_cache_dtype" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vllm_tokenizer_mode" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vllm_tool_call_parser" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vllm_reasoning_parser" as NonEmptyStr),
+  ],
+}
+
+data deepseek_v4_1_flash_frontier_dsv41_2: DeepseekV41DeclaredFrontier = DeepseekV41DeclaredFrontier {
+  lane: "DSV41-2 crisp-crane-661 serving_deployment_selection" as NonEmptyStr,
+  trigger: "ArtifactFootprint.FootprintReportedExternally rows keyed at this revision, until FootprintObservedOnFleet exists" as NonEmptyStr,
+  facts: [
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_payload_footprint" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_tree_file_bytes" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_payload_footprint_standing" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_context_length" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_native_context_length" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_config_declares_engram_off_accelerator" as NonEmptyStr),
+  ],
+}
+
+data deepseek_v4_1_flash_frontier_harness_wire: DeepseekV41DeclaredFrontier = DeepseekV41DeclaredFrontier {
+  lane: "harness-wire (not yet dispatched)" as NonEmptyStr,
+  trigger: "a harness-reasoning-wire arm that speaks this encoder rather than DeepseekV4ReasoningMode" as NonEmptyStr,
+  facts: [
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_named_effort_budget" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dsml_tool_calls_block_name" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_encoder_prefill" as NonEmptyStr),
+    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_chat_reasoning_field" as NonEmptyStr),
+  ],
+}
 
 // ===========================================================================================
 // ENCODER, transcribed from encoding/encoding.py at the pinned revision. The release ships no
@@ -273,6 +343,8 @@ fn deepseek_v4_1_flash_encoder_thinking_mode_wire(m: DeepseekV41EncoderThinkingM
   }
 }
 
+data deepseek_v4_1_flash_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
+data deepseek_v4_1_flash_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
 data deepseek_v4_1_flash_image_placeholder: NonEmptyStr = "<｜deepseek_image｜>" as NonEmptyStr
 
 fn deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinkingMode) -> NonEmptyStr {
@@ -282,15 +354,8 @@ fn deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinkingMode) -> Non
   }
 }
 
-// EFFORT IS A NUMERIC BUDGET, which is the structural difference from V4. V4's encoder accepts
-// "max"/"high"/None and ships a prose preamble for max alone. This encoder accepts an int in
-// [1, 100] or the names "low"/"high"/"max" mapped to 50/75/100, defaults to "high", and renders
-//
-//   Reasoning Effort: {budget} (range 1-100, the higher the value, the more thorough the reasoning)
-//
-// and only when thinking_mode is thinking and the message index is 0. An unknown name ASSERTs
-// in the reference encoder; it does not silently become max (that is GLM-5.3-Flash's rule, and
-// carrying it here would be the wrong model's default).
+// encoding.py `REASONING_EFFORT_MAPPINGS` and `DEFAULT_REASONING_EFFORT` at the pinned revision.
+// low/high/max are names for 50/75/100; default is high. An unknown name asserts in that file.
 type DeepseekV41NamedEffort
   = DeepseekV41EffortLow
   | DeepseekV41EffortHigh
@@ -337,10 +402,8 @@ fn deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderThinkingMode, mes
   }
 }
 
-// DSML TAG NAMES CARRY A LEADING SPACE, which is the first numbered change in this encoder relative
-// to V4. Tool calls are wrapped in `<｜DSML｜ calls>` with `<｜DSML｜ invoke>` /
-// `<｜DSML｜ parameter>` tags. Copying V4's `<｜DSML｜tool_calls>` spelling onto this model is a
-// different protocol.
+// encoding.py `tool_calls_block_name` / `tool_call_tag_name` / `tool_parameter_tag_name` at the
+// pinned revision. The leading space on those three names is the V4.1 DSML change.
 data deepseek_v4_1_flash_dsml_token: NonEmptyStr = "｜DSML｜" as NonEmptyStr
 data deepseek_v4_1_flash_dsml_tool_calls_block_name: NonEmptyStr = " calls" as NonEmptyStr
 data deepseek_v4_1_flash_dsml_invoke_tag_name: NonEmptyStr = " invoke" as NonEmptyStr
