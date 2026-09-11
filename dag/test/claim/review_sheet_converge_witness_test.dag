@@ -119,6 +119,7 @@ import gunbc.gcp_service_enablement {
   ServiceObservedEnabled,
   ServiceObservedDisabled,
   ServiceEnablementUnobserved,
+  ServiceEnablementStateForeign,
 }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId }
@@ -871,6 +872,63 @@ test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
   ) {
     ServiceObservedEnabled { project: p, service_id: s } =>
       (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
+    ServiceObservedDisabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
+  }
+}
+
+test fn enablement_state_wire_disabled_is_not_unobserved() -> Bool {
+  match service_enablement_from_state_wire(
+    project: w_fixture_project(),
+    service_id: sheets_serviceusage_api_id,
+    state_wire: "DISABLED",
+  ) {
+    ServiceObservedDisabled { project: p, service_id: s } =>
+      (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
+    ServiceObservedEnabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
+  }
+}
+
+test fn unspecified_or_unknown_serviceusage_state_is_foreign_not_unobserved() -> Bool {
+  match service_enablement_from_state_wire(
+    project: w_fixture_project(),
+    service_id: sheets_serviceusage_api_id,
+    state_wire: "STATE_UNSPECIFIED",
+  ) {
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: r } =>
+      r == "STATE_UNSPECIFIED"
+        && match service_enablement_from_state_wire(
+          project: w_fixture_project(),
+          service_id: sheets_serviceusage_api_id,
+          state_wire: "NOT_A_STATE",
+        ) {
+          ServiceEnablementStateForeign { project: _, service_id: _, raw: raw2 } =>
+            raw2 == "NOT_A_STATE"
+              && match decide_service_enablement(
+                desired: ServiceDesiredEnabled {
+                  project: w_fixture_project(),
+                  service_id: sheets_serviceusage_api_id,
+                },
+                observed: ServiceEnablementStateForeign {
+                  project: w_fixture_project(),
+                  service_id: sheets_serviceusage_api_id,
+                  raw: "STATE_UNSPECIFIED",
+                },
+              ) {
+                Refuse { reason: reason } =>
+                  string_contains(s: reason as String, pattern: "state foreign")
+                    && string_contains(s: reason as String, pattern: "STATE_UNSPECIFIED")
+                Noop => false
+                Apply { plan: _ } => false
+              }
+          ServiceObservedEnabled { project: _, service_id: _ } => false
+          ServiceObservedDisabled { project: _, service_id: _ } => false
+          ServiceEnablementUnobserved { project: _, service_id: _ } => false
+        }
+    ServiceObservedEnabled { project: _, service_id: _ } => false
     ServiceObservedDisabled { project: _, service_id: _ } => false
     ServiceEnablementUnobserved { project: _, service_id: _ } => false
   }
