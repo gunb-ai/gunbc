@@ -1731,7 +1731,14 @@ pub struct TransitionAdmission {
 /// merge and was never authored on this branch; that is not evidence of anything, and the reason it
 /// goes is that the wall computed its transition as merged and printed it.
 ///
-/// FOURTH MERGE OF THIS FILE FROM THIS BRANCH. Both sides live again, so this is the UNION case:
+/// THE RECEIPT ARRIVED AND THE ROW IS GONE. Required floor run 34594161197 reported `CONSUMED
+/// ADMISSION gunbc#10956 runner provider roster rehome ... already satisfied at the base` and
+/// refused adjudication with `1 consumed admission(s) due for deletion on this roster-touching
+/// change`, with the floor otherwise `verdict=FloorClean`. That measurement -- not the prediction
+/// below, which happened to agree with it -- is what deletes the row. The distinction is the whole
+/// reason the previous paragraph was written before the run rather than after.
+///
+/// FOURTH MERGE OF THIS FILE FROM THIS BRANCH. Both sides live again, so this was the UNION case:
 /// 40 SCM rows here, one for gunbc#10956 from main. Kept both. The tempting shortcut was to delete
 /// main's row on sight, because the last time both sides were live the floor then reported that
 /// row CONSUMED at this base and charged its deletion to the roster-touching change. That pattern
@@ -2262,16 +2269,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
                 "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
             spelling: "MergeBaseSourceAlreadyConsumed",
             target: "gunbc.scm.repository_envelope",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10956 runner provider roster rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner_shape_census",
-            in_declaration: "surveyed_runner_shapes",
-            spelling: "surveyed_runner_catalogs",
-            target: "gunbc.runner_provider_survey",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
