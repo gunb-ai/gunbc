@@ -1701,7 +1701,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
       },
-    ], concat(required_ci_measurement_bound_steps(), [
+    ], concat(required_ci_measurement_bound_steps(), concat([
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's admission roster",
@@ -1752,22 +1752,13 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Upload the floor's cross-claim demand census",
       },
-      WitnessFloorBoundStep {
-        step: floor_attempt_receipt_finalize_step(),
-        role: capability_neutral,
-        step_name: "Publish the floor attempt receipt",
-      },
-      WitnessFloorBoundStep {
-        step: floor_attempt_receipt_upload_step(),
-        role: capability_neutral,
-        step_name: "Upload the floor attempt receipt",
-      },
+    ], concat(floor_attempt_receipt_bound_steps(), [
       WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
       },
-    ])),
+    ])))),
   )
 }
 
@@ -1870,7 +1861,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
 fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(build_script: build_lane_build_script()),
-    items: [
+    items: concat([
       WitnessFloorBoundStep {
         step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
@@ -1886,22 +1877,13 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
         role: consumes_only(capabilities: [CargoCapability]),
         step_name: "clippy, all targets",
       },
-      WitnessFloorBoundStep {
-        step: floor_attempt_receipt_finalize_step(),
-        role: capability_neutral,
-        step_name: "Publish the floor attempt receipt",
-      },
-      WitnessFloorBoundStep {
-        step: floor_attempt_receipt_upload_step(),
-        role: capability_neutral,
-        step_name: "Upload the floor attempt receipt",
-      },
+    ], concat(floor_attempt_receipt_bound_steps(), [
       WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
       },
-    ],
+    ])),
   )
 }
 
