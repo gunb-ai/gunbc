@@ -4054,6 +4054,7 @@ fn render_round_cost_receipt(
     changed_paths: &[String],
     convergence_stage_receipt_ids: &[String],
     installed_mirrors: &[String],
+    host_shell_modules: &[String],
     rebuild_packages: &[String],
     executable_digest: &str,
     second_generation_candidate_digest: &str,
@@ -4161,6 +4162,10 @@ fn render_round_cost_receipt(
                 Value::List(Rc::new(installed_values.into())),
             ),
             (
+                ctx.sym("host_shell_modules"),
+                model_string_list(host_shell_modules),
+            ),
+            (
                 ctx.sym("rebuild_packages"),
                 Value::List(Rc::new(
                     rebuild_packages
@@ -4233,6 +4238,7 @@ fn model_value_to_string_list(value: &ModelValue, what: &str) -> Result<Vec<Stri
 fn partition_rebuild_actuation(
     source_roots: &[String],
     installed_mirrors: &[String],
+    host_shell_modules: &[String],
 ) -> Result<PartitionRebuildActuation, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
@@ -4249,6 +4255,10 @@ fn partition_rebuild_actuation(
                 model_string_list(installed_mirrors),
             ),
             (Some("unlocatable".to_string()), model_string_list(&[])),
+            (
+                Some("host_shell_modules".to_string()),
+                model_string_list(host_shell_modules),
+            ),
         ];
         v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
@@ -4991,7 +5001,12 @@ fn install_convergence_stage(
     dependency_closure_id: &str,
 ) -> Result<RegenConvergenceStageReceipt, String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
-    let actuation = partition_rebuild_actuation(source_roots, basenames)?;
+    // The generated shell declares the emitted modules not owned by a partition.
+    // Read the same declaration surface convergence_surface_roles uses for seed
+    // membership; missing partition ownership alone must never imply shell ownership.
+    let host_shell_modules =
+        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
+    let actuation = partition_rebuild_actuation(source_roots, basenames, &host_shell_modules)?;
     install_convergence_stage_with_backend(
         model,
         workspace,
@@ -5973,6 +5988,8 @@ pub fn run_regen_round_cost(
         .iter()
         .cloned()
         .collect();
+    let host_shell_modules =
+        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,
@@ -5985,6 +6002,7 @@ pub fn run_regen_round_cost(
         &changed_paths,
         &convergence_stage_receipt_ids,
         &installed_mirrors,
+        &host_shell_modules,
         &rebuild_packages,
         &executable_digest,
         &second_generation_candidate_digest,
@@ -6023,6 +6041,94 @@ mod regen_round_cost_tests {
         assert!(assembled.contains("v1_compiler_infer_service"));
     }
 
+    /// Identity join over the independently observed emitted/seed population and
+    /// the package map. A whole-build input cannot mask a different unowned mirror:
+    /// each identity is asked separately. Removing the shell declaration then
+    /// exercises the real host-to-model boundary's named refusal.
+    #[test]
+    fn live_seed_mirrors_have_owners_and_removed_shell_owner_refuses() {
+        use crate::v1_interpreter::{self, ExecutionMode, Value};
+        let workspace = workspace_root();
+        let stage0 = workspace.join("src/v1/stage0/src");
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace.join(r).to_string_lossy().into_owned())
+            .collect();
+        let shell =
+            super::super::emitted_closure_compile_host::closure_modules(&stage0.join("lib.rs"))
+                .expect("generated shell declarations are readable");
+        let rows = crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows();
+        let seed = assembled_seed_modules(shell.iter().cloned().collect(), rows.as_ref());
+        let emitted = HashMap::from([(
+            format!("src/{}", emitted_population_manifest_basename()),
+            fs::read_to_string(stage0.join(emitted_population_manifest_basename())).unwrap(),
+        )]);
+        let mirrors = generated_basenames_from_emit(&emitted).unwrap();
+        let seed_mirrors: Vec<String> = mirrors
+            .into_iter()
+            .filter(|m| {
+                m.strip_suffix(".rs")
+                    .is_some_and(|module| seed.contains(module))
+            })
+            .collect();
+        assert!(
+            !seed_mirrors.is_empty(),
+            "no emitted seed population observed"
+        );
+        let entry = round_cost_entry(&roots).unwrap();
+        let index = super::super::process_shared_index(&roots);
+        let (graph, indices) =
+            super::super::resolve_entry_with_index_for_discovery_corpus(&index, &entry).unwrap();
+        let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let decision_line = |mirror: &str, shell: &[String]| {
+            let args = vec![
+                (
+                    Some("changed_mirrors".to_string()),
+                    model_string_list(&[mirror.to_string()]),
+                ),
+                (Some("unlocatable".to_string()), model_string_list(&[])),
+                (
+                    Some("host_shell_modules".to_string()),
+                    model_string_list(shell),
+                ),
+            ];
+            let value = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "stage0_partition_rebuild_decision_line_today",
+                    &args,
+                    false,
+                )
+            })
+            .unwrap();
+            let Value::Str(line) = value else {
+                panic!("decision was not a String")
+            };
+            line.to_string()
+        };
+        for mirror in &seed_mirrors {
+            let line = decision_line(mirror, &shell);
+            assert!(!line.contains("RebuildScopeRefused"), "{mirror}: {line}");
+        }
+        let subject = "v1_compiler_compile.rs";
+        assert!(seed_mirrors.iter().any(|m| m == subject));
+        let green = decision_line(subject, &shell);
+        assert!(
+            green.contains("owning_packages=[v1-compiler] package_closure=[v1-compiler]"),
+            "{green}"
+        );
+        let removed: Vec<String> = shell
+            .into_iter()
+            .filter(|m| m != "v1_compiler_compile")
+            .collect();
+        let red = decision_line(subject, &removed);
+        assert_eq!(red, "partition-rebuild: RebuildScopeRefused MirrorHasNoOwningPackage mirror=v1_compiler_compile.rs");
+        eprintln!(
+            "ownership identity join: {} emitted seed mirrors; {green}; mutation: {red}",
+            seed_mirrors.len()
+        );
+    }
+
     /// THE SEED-TO-MODEL LOCKSTEP the .dag witness says it cannot hold: the host builds the
     /// receipt Value with these field and variant names, and the model's renderer either
     /// accepts them or refuses. A renamed field on either side reds here, not in a
@@ -6059,6 +6165,7 @@ mod regen_round_cost_tests {
             &["v1_rt.rs".to_string()],
             &["stage-1".to_string()],
             &["v1_rt.rs".to_string()],
+            &[],
             &["v1-stage0-runtime".to_string()],
             "sha256:claim-executor",
             "sha256:g1-candidate-tree",
