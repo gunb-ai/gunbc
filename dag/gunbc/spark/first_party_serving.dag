@@ -51,9 +51,19 @@ import gunbc.fleet_intent_network {
 // THE SITE IS NOT MINTED HERE, AND THAT IS THE SECOND HALF OF THE POINT. The operator's premises
 // already have one authority -- gunbc.fleet_physical_inventory operator_site -- and
 // gunbc.fleet_site_locale records that minting a second SiteIdentity for this exact place was
-// already done once and reverted as the section 3 nickname failure. The operator's 2026-09-11
-// assertion NAMES that site (his NYC home) and scopes every Spark unit to it; it does not introduce
-// a place the corpus did not already carry. The NEARBY NAME THAT IS NOT THIS ONE:
+// already done once and reverted as the section 3 nickname failure. So the allocation is keyed on
+// that identity rather than on a new one.
+//
+// AND THE JOIN TO THE OPERATOR'S HOME IS A BELIEF, NOT A CONFIRMED FACT, which is recorded rather
+// than smoothed over because this whole module exists to keep an assertion from reading as a
+// measurement. Asked directly on 2026-09-11, the operator said he BELIEVES operator-lab is his NYC
+// apartment and does not actually know. What IS asserted is where the units sit -- his NYC home,
+// outside the rack -- and what is NOT established is that the site identity the corpus already
+// carries names that same place. Nothing here depends on closing that gap: the route's region cites
+// the allocation, and the allocation states both halves. Confirmation is an address tagged to this
+// site identity, which belongs in the private fleet records and not in this repository.
+//
+// THE NEARBY NAME THAT IS NOT THIS ONE:
 // gunbc.spark.serving_deployment_selection serving_topology_region is a Pareto DecisionRegion -- a
 // region of a decision field, not a place a machine sits.
 
@@ -81,7 +91,7 @@ data spark_fleet_site_allocation: SparkFleetSiteAllocation = SparkFleetSiteAlloc
   allocation: OperatorAllocation {
     decided_by: "operator (2026-09-11): 'srv5, 6, and all the sparks sit outside the rack right now, but in my NYC home'",
     decided_on: "2026-09-11",
-    basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. It names the site the corpus already carries as gunbc.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale already records as America/New_York, rather than introducing a second name for one place. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
+    basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. IT IS KEYED ON THE SITE IDENTITY THE CORPUS ALREADY CARRIES -- gunbc.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale records as America/New_York -- rather than introducing a second name for one place. WHAT IS NOT ESTABLISHED, asked and answered on the same date: the operator BELIEVES operator-lab is his NYC apartment and does not know it, so the join between that site identity and the home named in the assertion is a belief and is not confirmed here. Confirming it means tagging an address to this site identity, which belongs in the private fleet records rather than this repository. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
   },
 }
 
@@ -268,7 +278,7 @@ data spark_sanctions_not_engaged: UseProgramStanding = UseProgramStanding {
 data spark_export_not_engaged: UseProgramStanding = UseProgramStanding {
   program: "export control",
   engagement: "NOT ENGAGED under first-party self-use. This is NOT an export determination, classification or licence finding.",
-  basis: "Nothing leaves gunbc and nothing crosses a national boundary on this route: the units sit at one site, the operator's NYC home (gunbc.spark.first_party_serving spark_fleet_site_allocation), and the turns begin and end inside gunbc. With no transfer and no recipient there is no export to classify, so the program has no subject here. It acquires one the moment the posture is superseded by serving anyone else or by placing a unit outside that site.",
+  basis: "Nothing leaves gunbc and nothing crosses a national boundary on this route: the units sit at ONE site, which the operator states is his NYC home (gunbc.spark.first_party_serving spark_fleet_site_allocation, which also records what about that site is believed rather than confirmed), and the turns begin and end inside gunbc. With no transfer and no recipient there is no export to classify, so the program has no subject here. It acquires one the moment the posture is superseded by serving anyone else or by placing a unit outside that site.",
 }
 
 fn spark_prohibited_use_disposition() -> DispositionStanding {
