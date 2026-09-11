@@ -3,9 +3,6 @@ module test.claim.machine_intake.boot_control_grounding_witness_test
 import std.types { Bool, Int, String }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootCdrom,
-  IpmiBootLegacy,
-  IpmiBootPersistent,
-  IpmiBootSelection,
   aarch64_uefi_once_boot_selection,
 }
 import gunbc.machine_intake_oob_boot_handoff {
@@ -186,15 +183,16 @@ fn sole_constructor_violations(source: String) -> Int {
   }
 }
 
-// The RED spells the exact live defect as a record literal: Aarch64 + Legacy + CD + Persistent.
-// IpmiBootSelection is a sole-constructor record, so the cross-module construction must refuse.
-data forged_legacy_aarch64_source: String = "module probe_legacy_aarch64_boot\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootCdrom, IpmiBootLegacy, IpmiBootPersistent }\nimport extdeps.toolchain.types { Aarch64 }\nfn forged() -> IpmiBootSelection { IpmiBootSelection { architecture: Aarch64, device: IpmiBootCdrom, firmware_mode: IpmiBootLegacy, persistence: IpmiBootPersistent, device_wire: \\\"cdrom\\\", options_wire: \\\"options=persistent\\\", expected_flag_rendering: \\\"Boot Flag Valid\\\", expected_device_rendering: \\\"Force Boot from CD/DVD\\\", expected_mode_rendering: \\\"BIOS PC Compatible (legacy) boot\\\", expected_persistence_rendering: \\\"Options apply to all future boots\\\" } }\n"
+// The red fixture differs from the sanctioned route at the construction site itself. It spells
+// Aarch64 + Legacy + CD + Persistent as a cross-module record literal. Its strings are ordinary
+// valid source strings; the expected refusal is SoleConstructorViolation, not a parser accident.
+data forged_legacy_aarch64_source: String = "module probe_legacy_aarch64_boot\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootCdrom, IpmiBootLegacy, IpmiBootPersistent }\nimport extdeps.toolchain.types { Aarch64 }\nfn forged() -> IpmiBootSelection {\n  IpmiBootSelection {\n    architecture: Aarch64,\n    device: IpmiBootCdrom,\n    firmware_mode: IpmiBootLegacy,\n    persistence: IpmiBootPersistent,\n    device_wire: \"cdrom\",\n    options_wire: \"options=persistent\",\n    expected_flag_rendering: \"Boot Flag Valid\",\n    expected_device_rendering: \"Force Boot from CD/DVD\",\n    expected_mode_rendering: \"BIOS PC Compatible (legacy) boot\",\n    expected_persistence_rendering: \"Options apply to all future boots\",\n  }\n}\n"
 
 test fn legacy_cdrom_on_aarch64_is_unconstructible() -> Bool {
   sole_constructor_violations(source: forged_legacy_aarch64_source) >= 1
 }
 
-data sanctioned_aarch64_source: String = "module probe_sanctioned_aarch64_boot\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }\nfn legal() -> Bool { let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom) true }\n"
+data sanctioned_aarch64_source: String = "module probe_sanctioned_aarch64_boot\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }\nfn legal() -> Bool {\n  let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)\n  true\n}\n"
 
 test fn sanctioned_aarch64_constructor_remains_clean() -> Bool {
   sole_constructor_violations(source: sanctioned_aarch64_source) == 0
