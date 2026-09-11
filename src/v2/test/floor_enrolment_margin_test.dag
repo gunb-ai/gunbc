@@ -184,13 +184,18 @@ test fn a_change_that_enrols_nothing_blocks_nothing() -> Bool {
 
 // THE FOLD KEEPS ONLY THE BLOCKING ROWS, IN INPUT ORDER, EACH CARRYING ITS OWN CAUSE. A change
 // enrolling one healthy and one over-margin witness blocks on exactly the second.
+//
+// RENDERED RATHER THAN INDEXED. `blockers[0]` reds this witness on an index error the moment the
+// fold returns empty, which is a failure on the WRONG AXIS: it reports a type error where the
+// claim is about which rows survive. Folding to a string reds as a plain inequality for every
+// wrong population -- empty, longer, reordered, or right-length-wrong-cause.
 test fn the_fold_reports_only_blocking_rows_with_their_causes() -> Bool {
   let blockers = enrolment_margin_blockers(rows: [
     EnrolmentMarginRow { identity: "fixture.cheap", standing: standing_of(reading: observed(cpu_ms: 1)) },
     EnrolmentMarginRow { identity: "fixture.over", standing: standing_of(reading: observed(cpu_ms: 450)) },
     EnrolmentMarginRow { identity: "fixture.also_cheap", standing: standing_of(reading: observed(cpu_ms: 2)) },
   ])
-  count(blockers) == 1
-    && blockers[0].identity == "fixture.over"
-    && blockers[0].cause == "enrolment_measured_over_margin"
+  fold(blockers, init: "", f: fn(acc, b) {
+    concat(acc, concat(b.identity, concat("=", concat(b.cause, ";"))))
+  }) == "fixture.over=enrolment_measured_over_margin;"
 }

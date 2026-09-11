@@ -136,6 +136,15 @@ type EnrolmentCostReading =
     EnrolmentCostMeasured { reading: ClaimCostReading }
   | EnrolmentCostAbsent { witness_identity: String, cause: String }
 
+// THE HOST READ POINT. The seed evaluates its policy figures out of the model rather than
+// mirroring them as Rust literals -- `floor_required_int` does exactly this for the CPU and wall
+// deadlines -- so the budget crosses the boundary as the wire scalar the interpreter returns.
+// This is a PROJECTION of the function above and not a second home for the figure: it has no
+// arithmetic of its own, and a reader who changes the margin changes the envelope, never this.
+fn floor_enrolment_margin_budget_ms_count() -> Int {
+  millisecond_count(m: floor_enrolment_margin_budget_ms())
+}
+
 // THE STANDING OF ONE NEWLY ENROLLED IDENTITY AGAINST THE MARGIN.
 //
 // `EnrolmentCeilingCensored` IS A SEPARATE ARM FROM `EnrolmentOverMargin` AND MAY NOT BE MERGED
