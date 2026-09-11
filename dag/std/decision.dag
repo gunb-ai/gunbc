@@ -878,6 +878,25 @@ fn unread_axis_gaps(entry: ParetoEntry, wanted: List<DeclarationRef>) -> List<Ax
   )
 }
 
+fn constraint_definitely_infeasible(
+  entry: ParetoEntry,
+  constraints: List<HardConstraint>,
+  axes: List<SelectionAxis>,
+) -> Bool {
+  any(constraints, c =>
+    match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+      Present { value: cmp } =>
+        match cmp {
+          Worse => true
+          Better => false
+          Same => false
+          UndecidedOnEvidence => false
+        }
+      Absent => false
+    }
+  )
+}
+
 fn scan_feasibility(
   field: List<ParetoEntry>,
   axes: List<SelectionAxis>,
@@ -889,6 +908,9 @@ fn scan_feasibility(
   } else {
   let wanted = feasibility_unread_axes(axes: axes, constraints: constraints)
   let folded = fold(field, init: FeasibilityAccum { remaining: [], gaps: [] }, f: (acc, entry) => {
+    if constraint_definitely_infeasible(entry: entry, constraints: constraints, axes: axes) {
+      acc
+    } else {
     let unread = unread_axis_gaps(
       entry: entry,
       wanted: wanted,
@@ -903,27 +925,12 @@ fn scan_feasibility(
           gaps: concat(acc.gaps, undecided),
         }
       } else {
-        let infeasible = any(constraints, c =>
-          match constraint_cmp(entry: entry, constraint: c, axes: axes) {
-            Present { value: cmp } =>
-              match cmp {
-                Worse => true
-                Better => false
-                Same => false
-                UndecidedOnEvidence => false
-              }
-            Absent => false
-          }
-        )
-        if infeasible {
-          acc
-        } else {
-          FeasibilityAccum {
-            remaining: concat(acc.remaining, [entry]),
-            gaps: acc.gaps,
-          }
+        FeasibilityAccum {
+          remaining: concat(acc.remaining, [entry]),
+          gaps: acc.gaps,
         }
       }
+    }
     }
   })
   if (folded.gaps |> count) > 0 {

@@ -13,8 +13,8 @@ import std.decision {
   HardConstraint, SelectionPolicy, UniqueSurvivorRequired, SelectionReceipt,
   SelectionEvidenceNeed, CandidateFieldEstablished, CandidateFieldUnestablishedStanding,
   DecisionAssessment, DecisionSubject, DecisionVariable,
-  DecisionConstraint, DecisionRegion, ContextParameter, ObjectiveTerm, ObjectiveMeasure,
-  ChoiceDomain, VariesAlong, MonotoneIncreasing, ConstraintSatisfied, ParameterBound,
+  DecisionConstraint, DecisionRegion, ObjectiveTerm, ObjectiveMeasure,
+  ChoiceDomain, VariesAlong, InvariantAlong, MonotoneIncreasing, ConstraintSatisfied,
   ConstraintDisposition,
   PhysicalModelEstablished, CausalModelEstablished, VendorDocumentedCoupling,
   SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
@@ -341,8 +341,16 @@ fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
 
 data v4_1_runtime_supported_tp_widths_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: DSV41-1 (loyal-ram-346) shows which tensor-parallel widths the GB10 vLLM lead accepts. Until then the V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1. SUFFICIENT FOR: a derived admitted-width set from that runtime observation replaces an unfiltered fleet cartesian for this image." as NonEmptyStr)
 
+data v4_1_runtime_published_arm64: RuntimeRevision = runtime_revision(
+  image: "vllm/vllm-openai:deepseekv41-flash-0909" as NonEmptyStr,
+  vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+)
+
+data v4_1_published_image_digest_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: clever-bat-173 records the arm64 content digest for vllm/vllm-openai:deepseekv41-flash-0909 (operator-adopted published image) on the runtime row that owns it. This field enumerates that image as a V4.1 runtime; it does not transcribe a truncated sha256. SUFFICIENT FOR: v4_1_runtime_published_arm64.image carries the digest-pinned reference from that module." as NonEmptyStr)
+
 data v4_1_declared_profiles: List<ServingDecisionParameters> = [
   v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
+  v4_1_profile_at(runtime: v4_1_runtime_published_arm64),
   v4_1_profile_at(runtime: spark_runtime),
 ]
 
@@ -754,9 +762,7 @@ data deepseek_v4_1_engram_standing: EngramAcceleratorStanding = EngramOffloadZer
     "config.json does not declare off-accelerator Engram (deepseek_v4_1_flash_config_declares_engram_off_accelerator=",
     if deepseek_v4_1_flash_config_declares_engram_off_accelerator { "true" } else { "false" },
     "); tables at layers ",
-    to_string(deepseek_v4_1_flash_engram.layer_a),
-    " and ",
-    to_string(deepseek_v4_1_flash_engram.layer_b),
+    join(map(deepseek_v4_1_flash_engram.layer_ids, n => to_string(n)), ","),
     "; payload ",
     to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes)),
     " bytes. UVA offload cannot add the GB10 unified pool. inference_compresses_kv_as_fp4=",
@@ -785,8 +791,8 @@ fn derived_candidate_identity(stem: String, art: ModelArtifact, t: TopologyShape
       to_string(t.tensor_parallel_degree),
       "_x",
       to_string(t.replica_count),
-      "_rt",
-      runtime_revision_key(r: profile.runtime),
+      "_p",
+      parameters_key(p: profile),
     ], ""),
   )
 }
@@ -801,7 +807,7 @@ fn candidate_for_profile(stem: String, art: ModelArtifact, t: TopologyShape, p: 
       " x",
       to_string(t.replica_count),
       " ",
-      runtime_revision_key(r: p.runtime),
+      parameters_key(p: p),
     ], "") as NonEmptyStr,
     artifact: art,
     topology: t,
@@ -1309,7 +1315,14 @@ fn decision_snapshot_key(input: ServingDeploymentDecisionInput) -> String {
     "|", to_string(input.quality_requirement.max_divergence_millinats),
     "|", to_string(input.quality_requirement.min_task_score_delta_hundredths), "}",
     "|policy{", declaration_ref_display_key(ref: input.selection_policy), "}",
-    "|constraints{", declaration_ref_display_key(ref: input.constraint_authority), "}",
+    "|constraints{", join(map(input.constraints, c => join([
+      declaration_ref_display_key(ref: c.identity),
+      "@",
+      declaration_ref_display_key(ref: c.axis),
+      "=",
+      to_string(c.bound_micro),
+    ], "")), ","), "}",
+    "|authority{", declaration_ref_display_key(ref: input.constraint_authority), "}",
   ], "")
 }
 
@@ -1320,11 +1333,13 @@ data tensor_parallel_authority: ExternalAuthority = ExternalAuthority {
 
 data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_deployment_subject")
 data id_var_topology: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_fleet_topology")
+data id_var_execution: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_execution_profile")
 data id_term_isolation: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "term_failure_isolation")
-data id_param_execution: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_execution_parameters")
 data id_region: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_topology_region")
+data id_region_execution: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_execution_region")
 
 data var_fleet_topology: DecisionVariable = DecisionVariable { identity: id_var_topology }
+data var_execution_profile: DecisionVariable = DecisionVariable { identity: id_var_execution }
 
 // A tensor-parallel replica FAILS AS A UNIT across its ranks -- upstream's documented behaviour, not
 // something this repository decided. The division that turns that into a percentage is downstream of
@@ -1334,8 +1349,8 @@ data term_failure_isolation: ObjectiveTerm = ObjectiveTerm {
   ground: CitedToAuthority { authority: tensor_parallel_authority },
 }
 
-data param_execution_parameters: ContextParameter = ContextParameter { identity: id_param_execution }
 data serving_topology_region: DecisionRegion = DecisionRegion { identity: id_region }
+data serving_execution_region: DecisionRegion = DecisionRegion { identity: id_region_execution }
 
 data serving_objective: ObjectiveMeasure = ObjectiveMeasure {
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_objective"),
@@ -1345,7 +1360,7 @@ data serving_objective: ObjectiveMeasure = ObjectiveMeasure {
 
 data serving_choice_domain_cell: ChoiceDomain = ChoiceDomain {
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_choice_domain_cell"),
-  variables: [var_fleet_topology],
+  variables: [var_fleet_topology, var_execution_profile],
 }
 
 fn unique_constraint_identities(cs: List<HardConstraint>) -> List<DeclarationRef> {
@@ -1356,8 +1371,8 @@ fn unique_constraint_identities(cs: List<HardConstraint>) -> List<DeclarationRef
 fn subject_for(input: ServingDeploymentDecisionInput) -> DecisionSubject {
   DecisionSubject {
     identity: id_subject,
-    question: "which whole-fleet deployment shape serves this exact artifact under this exact execution profile" as NonEmptyStr,
-    parameters: [param_execution_parameters],
+    question: "which whole-fleet topology and execution profile serve this exact artifact" as NonEmptyStr,
+    parameters: [],
     constraints: map(unique_constraint_identities(cs: input.constraints), id => DecisionConstraint { identity: id }),
     objective: serving_objective,
     choice_domain: serving_choice_domain_cell,
@@ -1402,14 +1417,15 @@ fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
         relation: MonotoneIncreasing,
         coupling: CitedToAuthority { authority: tensor_parallel_authority },
       },
-    ],
-    constraints: constraint_dispositions_for(input: input),
-    parameters: [
-      ParameterBound {
-        parameter: id_param_execution,
-        evidence: join(["every candidate is built at a declared execution profile from the domain: ", join(map(input.field.domain.profiles, p => parameters_key(p: p)), ";")], "") as NonEmptyStr,
+      InvariantAlong {
+        term: id_term_isolation,
+        variable: id_var_execution,
+        region: serving_execution_region,
+        coupling: CitedToAuthority { authority: tensor_parallel_authority },
       },
     ],
+    constraints: constraint_dispositions_for(input: input),
+    parameters: [],
     selected_candidate: Absent,
     term_drops: [],
     physical_model: PhysicalModelEstablished { terms: [id_term_isolation] },
@@ -1419,6 +1435,12 @@ fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
           authority: tensor_parallel_authority,
           term: id_term_isolation,
           variable: id_var_topology,
+          subject: id_subject,
+        },
+        VendorDocumentedCoupling {
+          authority: tensor_parallel_authority,
+          term: id_term_isolation,
+          variable: id_var_execution,
           subject: id_subject,
         },
       ],
