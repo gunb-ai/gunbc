@@ -22,12 +22,8 @@ import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
-import v2.workflow.floor_discovery_producer {
-  FloorDiscoveryAccepted,
-  FloorDiscoveryProducerResult,
-  FloorDiscoveryRefused,
-  discover_floor_corpus_rows_from_host_facts
-}
+import v2.workflow.floor_discovery_producer { discover_floor_corpus_rows_from_host_facts }
+import v2.workflow.floor_discovery_source_authority { FloorDiscoveryAccepted, FloorDiscoveryProducerResult, FloorDiscoveryRefused }
 import v2.workflow.required_floor {
   DeclinedCostDebt,
   DeclinedFixtureMember,
