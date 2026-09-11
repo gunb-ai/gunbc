@@ -1,0 +1,196 @@
+module v2.test.floor_enrolment_margin
+
+import v2.workflow.floor_enrolment_margin {
+  floor_enrolment_margin_envelope_permille,
+  floor_enrolment_margin_budget_ms,
+  EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent,
+  EnrolmentMarginStanding,
+  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentNotMeasured,
+  enrolment_margin_standing,
+  enrolment_margin_standing_blocks,
+  enrolment_margin_blocking_cause,
+  EnrolmentMarginBlocker, EnrolmentMarginRow,
+  enrolment_margin_blockers,
+}
+import v2.workflow.required_floor { required_floor_claim_cpu_safety_limit_ms }
+import gunbc.floor_cost_distribution {
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
+  implied_clean_run_budget,
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EXECUTING EVIDENCE FOR THE ENROLMENT MARGIN GATE. These run the .dag fold itself, one
+// discriminating arm each, so the model's rung is established by execution rather than by the host
+// citing it (DESIGN section 4b(1): a type name, a diagnostic variant or a plan establishes
+// nothing). The host mirror in `v1_compiler.cli_run` realizes these same functions.
+//
+// THESE WITNESSES ARE THEMSELVES A SPECIMEN OF WHAT THE GATE GUARDS: they are new identities under
+// the `v2.test.` gate prefix, so the PR that lands them must show them measured and inside the
+// margin. A gate whose own witnesses could not clear it would be self-refuting.
+
+fn observed(cpu_ms: Int) -> EnrolmentCostReading {
+  EnrolmentCostMeasured {
+    reading: ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms) }
+  }
+}
+
+fn censored(lower_bound_ms: Int, ceiling_ms: Int) -> EnrolmentCostReading {
+  EnrolmentCostMeasured {
+    reading: RightCensoredCpuReading {
+      cpu_lower_bound_ms: millisecond(count: lower_bound_ms),
+      censoring_ceiling_ms: millisecond(count: ceiling_ms),
+    }
+  }
+}
+
+fn standing_of(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
+  enrolment_margin_standing(reading: reading, budget_ms: floor_enrolment_margin_budget_ms())
+}
+
+fn standing_kind(s: EnrolmentMarginStanding) -> String {
+  match s {
+    EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => "within-margin"
+    EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "over-margin"
+    EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "ceiling-censored"
+    EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not-measured"
+  }
+}
+
+// THE MARGIN EXISTS AT ALL, WHICH IS THE ONE CHECK THAT CANNOT BE SATISFIED BY A DECORATION.
+//
+// If the envelope permille were ever set to 1000 (no inflation), `implied_clean_run_budget` returns
+// the ceiling unchanged and every arm below still type-checks while the gate silently becomes the
+// ceiling it was built to sit inside -- permanently green by construction against the population it
+// exists for, which DESIGN section 4b calls worse than absent because it would still be cited as
+// coverage. This witness is the guard: the budget must be STRICTLY BELOW the ceiling.
+test fn the_enrolment_budget_is_strictly_below_the_ceiling() -> Bool {
+  millisecond_count(m: floor_enrolment_margin_budget_ms())
+    < required_floor_claim_cpu_safety_limit_ms()
+}
+
+// THE BUDGET IS THE DERIVATION'S ANSWER AND NOT A LITERAL ANYONE WROTE. 302 appears in no
+// declaration: it is 500ms through the p90 envelope of 1653 permille, measured by
+// `tools.floor_cost_distribution_instrument` `floor_cost_envelope_report` over TWELVE green main
+// runs across THREE hosts on 398 identities at identical eval_steps. The sample size is stated
+// here as it is at every other site that names the percentile.
+test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool {
+  millisecond_count(m: floor_enrolment_margin_budget_ms()) == 302
+    && millisecond_count(
+         m: implied_clean_run_budget(
+              ceiling_ms: millisecond(count: required_floor_claim_cpu_safety_limit_ms()),
+              inflation_permille: floor_enrolment_margin_envelope_permille(),
+            )
+       ) == 302
+}
+
+// THE DISCRIMINATING RED, AND IT IS THE WHOLE POINT OF THE LANE.
+//
+// 450ms is UNDER the 500ms CPU ceiling, so the floor admits this row today: it completes, it
+// reaches a verdict, nothing refuses it. It is also a row that the measured runner envelope says
+// will cross the ceiling on an unlucky host -- which is the cliff the incidents landed on, every
+// one of the fifteen interrupts sitting between 501ms and 521ms against that 500ms line. This
+// witness goes RED if the gate is deleted, if its budget is widened back to the ceiling, or if the
+// comparison is written the wrong way round. No other witness in this module discriminates that.
+test fn a_row_under_the_ceiling_but_over_the_margin_is_refused_at_enrolment() -> Bool {
+  let reading = observed(cpu_ms: 450)
+  millisecond_count(m: millisecond(count: 450)) < required_floor_claim_cpu_safety_limit_ms()
+    && standing_kind(s: standing_of(reading: reading)) == "over-margin"
+    && enrolment_margin_standing_blocks(standing: standing_of(reading: reading))
+}
+
+// THE POSITIVE CONTROL. An ordinary witness -- the measured per-identity median is ~1ms -- is
+// admitted, and the gate reports it as measured and inside the margin rather than merely not
+// blocking. Without this arm the module could pass by refusing everything.
+test fn an_ordinary_row_well_under_the_margin_is_admitted() -> Bool {
+  let s = standing_of(reading: observed(cpu_ms: 1))
+  standing_kind(s: s) == "within-margin"
+    && !enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == ""
+}
+
+// THE BOUNDARY IS AT THE BUDGET AND IS INCLUSIVE, stated by execution rather than left to a reader
+// of the comparison operator. A row exactly AT 302ms is admitted; one millisecond above it is not.
+test fn the_margin_boundary_admits_the_budget_and_refuses_one_above_it() -> Bool {
+  standing_kind(s: standing_of(reading: observed(cpu_ms: 302))) == "within-margin"
+    && standing_kind(s: standing_of(reading: observed(cpu_ms: 303))) == "over-margin"
+}
+
+// NOT-MEASURED IS ITS OWN STANDING WITH ITS OWN CAUSE. This is precision two of the ruling: a
+// witness nobody timed and a witness timed at 840ms are different states with different remedies.
+// gunbc#10946 is the live specimen -- its v2-native job was cancelled, so its identities carried no
+// measurement at all.
+test fn an_unmeasured_identity_is_refused_and_not_confused_with_a_slow_one() -> Bool {
+  let absent = standing_of(
+    reading: EnrolmentCostAbsent {
+      witness_identity: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_parses_and_is_carried_holds",
+      cause: "lane_cancelled_before_measurement",
+    }
+  )
+  let slow = standing_of(reading: observed(cpu_ms: 840))
+  standing_kind(s: absent) == "not-measured"
+    && enrolment_margin_standing_blocks(standing: absent)
+    && enrolment_margin_standing_blocks(standing: slow)
+    && enrolment_margin_blocking_cause(standing: absent) != enrolment_margin_blocking_cause(standing: slow)
+}
+
+// ABSENCE IS NOT A ZERO, WHICH IS THE ARM THAT WOULD MAKE THE GATE FAIL OPEN. A zero-cost default
+// for an unmeasured identity would classify it "within-margin" and admit it silently -- the
+// absorbing fallback in its most ordinary costume. The two must not agree.
+test fn an_unmeasured_identity_does_not_classify_as_a_zero_cost_one() -> Bool {
+  standing_kind(
+    s: standing_of(
+         reading: EnrolmentCostAbsent { witness_identity: "fixture.unmeasured", cause: "no_claim_cost_row" }
+       )
+  ) != standing_kind(s: standing_of(reading: observed(cpu_ms: 0)))
+}
+
+// A CENSORED ROW BLOCKS ON ITS OWN ARM, AND ITS BOUND IS NEVER REPORTED AS A COST. Its cause is
+// distinct from the measured-over cause because the remedies differ: an exact 450ms row is told to
+// reduce its cost, while a censored row has no upper bound at all and may be arbitrarily worse.
+test fn a_censored_row_blocks_under_its_own_cause() -> Bool {
+  let s = standing_of(reading: censored(lower_bound_ms: 514, ceiling_ms: 500))
+  standing_kind(s: s) == "ceiling-censored"
+    && enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == "enrolment_censored_at_ceiling"
+    && enrolment_margin_blocking_cause(standing: s) != enrolment_margin_blocking_cause(standing: standing_of(reading: observed(cpu_ms: 450)))
+}
+
+// THE THREE BLOCKING CAUSES ARE THREE DISTINCT STRINGS. A shared cause would offer the rerun that
+// discharges none of them, which is the defect `v2.workflow.floor_changed_witness` records for its
+// own blocker shape.
+test fn the_blocking_causes_are_pairwise_distinct() -> Bool {
+  let over = enrolment_margin_blocking_cause(standing: standing_of(reading: observed(cpu_ms: 450)))
+  let cens = enrolment_margin_blocking_cause(standing: standing_of(reading: censored(lower_bound_ms: 514, ceiling_ms: 500)))
+  let miss = enrolment_margin_blocking_cause(
+    standing: standing_of(reading: EnrolmentCostAbsent { witness_identity: "fixture.unmeasured", cause: "no_claim_cost_row" })
+  )
+  (over != cens) && (cens != miss) && (over != miss)
+}
+
+// THE FOLD'S POSITIVE CONTROL: no newly enrolled identities is the ordinary case for the
+// overwhelming majority of changes, and it must leave the required context green with no
+// projection lines at all.
+test fn a_change_that_enrols_nothing_blocks_nothing() -> Bool {
+  count(enrolment_margin_blockers(rows: [])) == 0
+}
+
+// THE FOLD KEEPS ONLY THE BLOCKING ROWS, IN INPUT ORDER, EACH CARRYING ITS OWN CAUSE. A change
+// enrolling one healthy and one over-margin witness blocks on exactly the second.
+test fn the_fold_reports_only_blocking_rows_with_their_causes() -> Bool {
+  let blockers = enrolment_margin_blockers(rows: [
+    EnrolmentMarginRow { identity: "fixture.cheap", standing: standing_of(reading: observed(cpu_ms: 1)) },
+    EnrolmentMarginRow { identity: "fixture.over", standing: standing_of(reading: observed(cpu_ms: 450)) },
+    EnrolmentMarginRow { identity: "fixture.also_cheap", standing: standing_of(reading: observed(cpu_ms: 2)) },
+  ])
+  count(blockers) == 1
+    && blockers[0].identity == "fixture.over"
+    && blockers[0].cause == "enrolment_measured_over_margin"
+}
