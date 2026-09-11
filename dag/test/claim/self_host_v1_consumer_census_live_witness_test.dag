@@ -3,10 +3,10 @@ module test.claim.self_host_v1_consumer_census_live_witness_test
 import std.types { Bool }
 import gunbc.rust_item_host_observation { RustReferencesObserved, RustReferenceHostRefused }
 import gunbc.v1_consumer_census {
-  v1_consumers, v1_uncitable_consumers, v1_consumer_population, v1_row_keys,
+  v1_consumers_of, v1_uncitable_consumers_of, v1_consumer_population, v1_row_keys,
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer,
-  v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
-  consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
+  v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count_of, v1_consumer_member_count_of,
+  ConsumerPopulation, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
   v1_shim_partition_over, v1_current_rust_references, v1_claimed_successors,
   MintedManifestJoin, MintedManifestJoined, MintedManifestJoinUnobserved, v1_minted_manifest_join
 }
@@ -50,29 +50,29 @@ fn the_live_reference_population_is_produced() -> Bool {
 // is at least one blocking consumer AND not every consumer blocks -- three independent facts whose
 // conjunction is what 'XL-5 has not run yet' means.
 fn the_live_transaction_refuses_for_recorded_reasons() -> Bool {
-  !consumer_population_is_complete(p: v1_consumer_population())
-    && v1_blocking_consumer_count() > 0
-    && v1_blocking_consumer_count() < v1_consumer_member_count()
+  let p = v1_consumer_population()
+  !consumer_population_is_complete(p: p)
+    && v1_blocking_consumer_count_of(p: p) > 0
+    && v1_blocking_consumer_count_of(p: p) < v1_consumer_member_count_of(p: p)
 }
 
 // THE GATE ITSELF, EXECUTED ON THE LIVE POPULATION, against the most generous realized population
 // that can be written -- every successor this census claims, handed to the gate as realized -- so
 // the false cannot be coming from an unrealized successor.
 fn the_live_gate_refuses_even_with_every_successor_realized() -> Bool {
-  !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: [])
-    && !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: v1_claimed_successors(rows: v1_consumers()))
+  let p = v1_consumer_population()
+  !v1_bankruptcy_transaction_admitted(population: p, realized: [])
+    && !v1_bankruptcy_transaction_admitted(population: p, realized: v1_claimed_successors(rows: v1_consumers_of(p: p)))
 }
 
-// THE ROSTER AND THE POPULATION NAME ONE LIST.
+// THE ROSTER AND THE POPULATION NAME ONE LIST -- asked of ONE read of the tree, so the two sides
+// of each comparison are the same observation rather than two observations that happen to agree.
 fn the_live_population_carries_the_whole_roster() -> Bool {
-  v1_every_discovered_consumer_disposed(
-      discovered: v1_row_keys(rows: v1_consumers()),
-      rows: consumer_population_rows(p: v1_consumer_population())
-    ) && v1_every_row_names_a_live_consumer(
-      discovered: v1_row_keys(rows: v1_consumers()),
-      rows: consumer_population_rows(p: v1_consumer_population())
-    )
-    && count(v1_uncitable_consumers()) == count(consumer_population_uncitable(p: v1_consumer_population()))
+  let p = v1_consumer_population()
+  let keys = v1_row_keys(rows: v1_consumers_of(p: p))
+  v1_every_discovered_consumer_disposed(discovered: keys, rows: consumer_population_rows(p: p))
+    && v1_every_row_names_a_live_consumer(discovered: keys, rows: consumer_population_rows(p: p))
+    && count(v1_uncitable_consumers_of(p: p)) == count(consumer_population_uncitable(p: p))
 }
 
 // THE SEED-LINK JOIN IS OBSERVED ON THE LIVE TREE, and the two directions this census controls are

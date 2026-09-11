@@ -94,12 +94,16 @@ fn v1_subject_key(s: V1Subject) -> String {
 // reaches v1 through an argv string that no Rust instrument reads. Carrying the medium is what
 // makes the omission of a medium a visible hole rather than a silent green.
 
+// RustSourceReference, NOT RustUseEdge: the arm was named for `use` edges when its rows were
+// authored by hand, and the produced population attributes ANY token-carrying line to its item --
+// a `pub use`, a `pub mod v1_rt;`, a `v1_rt::answer()` call in a body -- so the old name said less
+// than the rows carried. One name, one meaning: a reference in Rust source to the named authority.
 type ConsumerMedium
   = CargoManifestDependency
   | CargoBinTarget
   | WorkflowArgv
   | DagArgvRow
-  | RustUseEdge
+  | RustSourceReference
   | GitHookScript
   | CommittedGeneratedMirror
   | SerializedArtifactPath
@@ -111,7 +115,7 @@ fn consumer_medium_key(m: ConsumerMedium) -> String {
     CargoBinTarget => "cargo-bin-target"
     WorkflowArgv => "workflow-argv"
     DagArgvRow => "dag-argv-row"
-    RustUseEdge => "rust-use-edge"
+    RustSourceReference => "rust-source-reference"
     GitHookScript => "git-hook-script"
     CommittedGeneratedMirror => "committed-generated-mirror"
     SerializedArtifactPath => "serialized-artifact-path"
@@ -602,7 +606,7 @@ type V1ShimPartition {
 fn v1_shim_cited_row(ref: DeclarationRef, authority: V1ReferenceAuthority) -> V1ConsumerRow {
   {
     boundary: v1cc_boundary(consumer: ref, authority: authority.authority, disposition: v1_shim_disposition()),
-    medium: RustUseEdge,
+    medium: RustSourceReference,
     subject: authority.subject,
     discovered_by: producer_rust_bridge_edge,
   }
@@ -612,7 +616,7 @@ fn v1_shim_uncitable_row(item_key: String, detail: String, authority: V1Referenc
   {
     item_key: item_key,
     refusal_detail: detail,
-    medium: RustUseEdge,
+    medium: RustSourceReference,
     subject: authority.subject,
     disposition: v1_shim_disposition(),
     discovered_by: producer_rust_bridge_edge,
@@ -761,19 +765,19 @@ fn v1_native_cutover_selector_consumers() -> List<V1ConsumerRow> {
     v1_operational_consumer(
       consumer: decl_ref(module_path: "v1_compiler.main", decl_name: "run_verb"),
       authority: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "run_in_context_with_args"),
-      medium: RustUseEdge, subject: V1Interpreter,
+      medium: RustSourceReference, subject: V1Interpreter,
       obligation: "The ordinary CLI Run arm executes through the linked v1 interpreter. This reaches product workflows and generated-artifact producers, not only compiler tests. Retire the operational interpreter route after the native run contract is satisfied."
     ),
     v1_operational_consumer(
       consumer: decl_ref(module_path: "v1_compiler.required_regen_host", decl_name: "compile_stage0"),
       authority: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_sources_selected"),
-      medium: RustUseEdge, subject: V1CompilerCrate,
+      medium: RustSourceReference, subject: V1CompilerCrate,
       obligation: "Required regeneration calls the linked v1 compile_sources_selected over regen_input_sources. This is an internal dependency inside the deletion set. Preserve required source and generated-file populations; a passing byte comparison is not native successor production."
     ),
     v1_operational_consumer(
       consumer: decl_ref(module_path: "v1_compiler.required_regen_host", decl_name: "run_built_seed_regen"),
       authority: claim_executor_bin,
-      medium: RustUseEdge, subject: V1HostedCiBinary,
+      medium: RustSourceReference, subject: V1HostedCiBinary,
       obligation: "The convergence driver hashes current_exe and launches the rebuilt executable with --required-regen. That artifact is the seed claim_executor and its regeneration calls compile_stage0. This existing second-generation route cannot be relabeled as seed-independent G1-to-G2 production."
     )
   ]
@@ -1200,12 +1204,17 @@ fn v1_consumers_for(partition: V1ShimPartition, join: MintedManifestJoin) -> Lis
   )
 }
 
-fn v1_consumers() -> List<V1ConsumerRow> {
-  consumer_population_rows(p: v1_consumer_population())
+// THE LIVE POPULATION IS READ ONCE PER QUESTION. Every derivation below takes the population as a
+// parameter; the zero-argument forms exist for the operator instrument and read the tree exactly
+// once each. A caller asking several questions of one tree binds v1_consumer_population() once
+// and hands it down -- two calls are two scans of HEAD, which DESIGN section 2 prices as authored
+// duplication at a visible ancestor rather than something to cache.
+fn v1_consumers_of(p: ConsumerPopulation) -> List<V1ConsumerRow> {
+  consumer_population_rows(p: p)
 }
 
-fn v1_uncitable_consumers() -> List<V1UncitableConsumer> {
-  consumer_population_uncitable(p: v1_consumer_population())
+fn v1_uncitable_consumers_of(p: ConsumerPopulation) -> List<V1UncitableConsumer> {
+  consumer_population_uncitable(p: p)
 }
 
 // THE POPULATION THIS ROSTER CONSTITUTES TODAY, and it is deliberately not the Complete arm. Seven
@@ -1303,12 +1312,20 @@ fn v1_blocking_uncitable(uncitable: List<V1UncitableConsumer>) -> List<V1Uncitab
   uncitable |> filter(u => consumer_disposition_blocks(d: u.disposition))
 }
 
+fn v1_blocking_consumer_count_of(p: ConsumerPopulation) -> Int {
+  count(v1_blocking_consumers(rows: v1_consumers_of(p: p))) + count(v1_blocking_uncitable(uncitable: v1_uncitable_consumers_of(p: p)))
+}
+
+fn v1_consumer_member_count_of(p: ConsumerPopulation) -> Int {
+  count(v1_consumers_of(p: p)) + count(v1_uncitable_consumers_of(p: p))
+}
+
 fn v1_blocking_consumer_count() -> Int {
-  count(v1_blocking_consumers(rows: v1_consumers())) + count(v1_blocking_uncitable(uncitable: v1_uncitable_consumers()))
+  v1_blocking_consumer_count_of(p: v1_consumer_population())
 }
 
 fn v1_consumer_member_count() -> Int {
-  count(v1_consumers()) + count(v1_uncitable_consumers())
+  v1_consumer_member_count_of(p: v1_consumer_population())
 }
 
 // THE ADMISSION GATE FOR THE BANKRUPTCY TRANSACTION. All four conditions, and the first is the one
