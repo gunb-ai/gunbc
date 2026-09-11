@@ -13027,10 +13027,11 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
 /// `process_group(0)`, NEVER a `pre_exec` closure. A `pre_exec` forces std off `posix_spawn`
 /// onto a real `fork()` of this whole process, and the kernel's page-table copy and the
 /// parent's copy-on-write faults are SYSTEM time charged to the calling thread -- the quantity
-/// `CLOCK_THREAD_CPUTIME_ID` reports as evaluation CPU. Measured on an 8.4 GB serve process,
-/// one dispatch: utime +0.38s, stime +53.93s, so the evaluation budget was bounding how often
-/// the process forked, not how much it evaluated. `process_group(0)` sets the same group
-/// through `POSIX_SPAWN_SETPGROUP` with no fork.
+/// `CLOCK_THREAD_CPUTIME_ID` reports as evaluation CPU. On a multi-GB serve process, system time
+/// was nearly all of a dispatch's thread CPU, so the evaluation budget was bounding how often the
+/// process forked, not how much it evaluated (gunbc.recurring_failure_mode
+/// metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound names the instrument).
+/// `process_group(0)` sets the same group through `POSIX_SPAWN_SETPGROUP` with no fork.
 fn configure_shell_process_group_for_wall_kill(
     cmd: &mut std::process::Command,
     ctx: &InterpContext,
