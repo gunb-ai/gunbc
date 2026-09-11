@@ -15,6 +15,7 @@ import gunbc.spark.runtime_architecture_registry_reading {
 }
 
 import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
@@ -43,8 +44,8 @@ test fn each_runtime_answers_the_membership_question_from_its_own_measured_regis
   runtime_registers(rrow: gitcommit90_sm121_exl3_row, architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr)
     && !runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr)
     && runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "DeepseekV4ForCausalLM" as NonEmptyStr)
-    && !runtime_registers(rrow: gitcommit90_sm121_exl3_row, architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
-    && !runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
+    && !runtime_registers(rrow: gitcommit90_sm121_exl3_row, architecture: deepseek_v4_1_flash_architecture_class)
+    && !runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: deepseek_v4_1_flash_architecture_class)
 }
 
 // THE REFUSAL THE SET REPLACED A BOOL WITH STILL FIRES, AND IT NAMES THE ARCHITECTURE IT LOOKED FOR.

@@ -57,15 +57,9 @@ fn registry_reading_contains(r: ArchitectureRegistryReading, architecture: NonEm
 // THE READING FOR ONE IMAGE, OR NOTHING. `none` is not "this image registers nothing": it is "no
 // reading of this digest exists here", and a consumer that folded those together would turn an
 // unasked question into a measured negative.
-fn registry_reading_names(r: ArchitectureRegistryReading, image_reference: NonEmptyStr) -> Bool {
-  let observed = r.image_reference as String
-  let wanted = image_reference as String
-  observed == wanted
-}
-
 fn registry_reading_for(readings: List<ArchitectureRegistryReading>, image_reference: NonEmptyStr) -> ArchitectureRegistryReading? {
   fold(readings, init: none, f: (acc, r) =>
-    if registry_reading_names(r: r, image_reference: image_reference) { Present { value: r } } else { acc })
+    if reading_applies_to(r: r, desired_reference: image_reference) { Present { value: r } } else { acc })
 }
 
 data vllm_registry_instrument: NonEmptyStr = "python3 -c: vllm.model_executor.models.registry.ModelRegistry.get_supported_archs(), executed by `docker run --gpus all` against the pinned digest" as NonEmptyStr
