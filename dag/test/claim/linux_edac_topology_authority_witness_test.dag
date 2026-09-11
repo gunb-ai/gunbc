@@ -21,7 +21,10 @@ import extdeps.linux.edac {
   edac_channel_topology_absence_standing,
   edac_dimm_node_source,
   apei_firmware_first_from_dmesg,
-  ghes_edac_registered_controller_count,
+  ControllerCountFixedByDriver,
+  ControllerCountIsAPlatformReading,
+  ControllerCountNotApplicable,
+  edac_registered_controller_count,
 }
 import extdeps.linux.kernel { LinuxKernelModuleName }
 import std.types { Bool }
@@ -123,8 +126,32 @@ test fn unbound_edac_has_no_dimm_node_source_holds() -> Bool {
   }
 }
 
+// The one is the SHIM's, so the law is that it does not depend on the platform -- and the
+// discriminating half is the other arm: a native driver's count must NOT come back as a
+// driver-fixed number, because this module does not know it and inventing one would be the
+// fabricated-plausible-output failure with a Nat on it.
 test fn ghes_edac_registers_exactly_one_controller_holds() -> Bool {
-  ghes_edac_registered_controller_count == 1
+  match edac_registered_controller_count(binding: GhesEdac) {
+    ControllerCountFixedByDriver { count: n } => n == 1
+    ControllerCountIsAPlatformReading => false
+    ControllerCountNotApplicable => false
+  }
+}
+
+test fn native_driver_controller_count_is_not_fixed_by_the_driver_holds() -> Bool {
+  match edac_registered_controller_count(binding: skx_binding) {
+    ControllerCountIsAPlatformReading => true
+    ControllerCountFixedByDriver { count: _ } => false
+    ControllerCountNotApplicable => false
+  }
+}
+
+test fn unbound_edac_has_no_controller_count_holds() -> Bool {
+  match edac_registered_controller_count(binding: NoEdacDriverBound) {
+    ControllerCountNotApplicable => true
+    ControllerCountFixedByDriver { count: _ } => false
+    ControllerCountIsAPlatformReading => false
+  }
 }
 
 test fn firmware_first_detector_reads_the_real_dmesg_line_holds() -> Bool {

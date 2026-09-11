@@ -141,10 +141,27 @@ fn edac_channel_topology_absence_standing(
   }
 }
 
-// HOW MANY CONTROLLERS ghes_edac REGISTERS, and it is one regardless of how many the hardware has —
-// the number is a property of the shim, not of the platform, which is why a memory_controller_count
-// of 1 beside sixteen DIMMs is the expected reading rather than an anomaly.
+// HOW MANY CONTROLLERS ARE REGISTERED IS ITSELF TWO DIFFERENT KINDS OF FACT, which is why it is a
+// fold and not a number. Under the shim the count is ONE regardless of what the hardware has,
+// because it is a property of ghes_edac rather than of the platform — a memory_controller_count of
+// 1 beside sixteen DIMMs is the expected reading, not an anomaly to investigate. Under a native
+// driver the count is whatever the machine actually has, which this module cannot know and must not
+// guess: that is a per-platform reading for the observing layer, so the fold declines to answer
+// rather than fabricating a plausible one.
 data ghes_edac_registered_controller_count: Nat = 1
+
+type EdacRegisteredControllerCount
+  = ControllerCountFixedByDriver { count: Nat }
+  | ControllerCountIsAPlatformReading
+  | ControllerCountNotApplicable
+
+fn edac_registered_controller_count(binding: EdacDriverBinding) -> EdacRegisteredControllerCount {
+  match binding {
+    GhesEdac => ControllerCountFixedByDriver { count: ghes_edac_registered_controller_count }
+    NativeMemoryControllerEdac { kernel_module: _ } => ControllerCountIsAPlatformReading
+    NoEdacDriverBound => ControllerCountNotApplicable
+  }
+}
 
 // WHERE THE DIMM NODES COME FROM, which is the same question asked of both drivers and gets
 // different answers — that difference IS the shim. A native driver's dimm nodes are the controller's
