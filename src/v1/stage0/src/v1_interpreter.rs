@@ -9931,6 +9931,13 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // tower, std.coercion grounded_primitive_coproduct_identities), Milliseconds, Octet, Int8, ...
     // The carrier is the authority here, not a kernel-name comparison: Nat's grounding is not an
     // alias chain (`type Nat = CommutativeSemiring<Magnitude>`), so a name walk cannot reach Int.
+    // This sheds a BRAND, never a UNIT: `Milliseconds = Int where brand(..)` already flows into any
+    // Int position without a cast, so `as Int` removes nothing a position enforced. A unit-bearing
+    // type is a `std.measure` Measure, carried as a Record, and still refuses here.
+    //
+    // Cast admissibility is decided ONLY here: validate_cast abstains whenever either side is
+    // outside std.coercion's dag_cast_rules domain, so this runtime arm is the sole wall, and
+    // std.coercion admits `Int as Nat` and `Bool as Int` while this fold refuses both.
     match target_name.as_str() {
         "Float" => match val {
             Value::Float(n) => Ok(Value::Float(n)),
