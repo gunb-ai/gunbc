@@ -162,6 +162,7 @@ pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
     fn_type_param_names, is_user_generic_use_site, peel_nominal_alias_identity,
     preserve_nominal_brand_on_resolve, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded,
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
@@ -12883,10 +12884,12 @@ pub fn peel_alias_once_for_field_access(
     module_name: String,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let once = crate::v1_compiler_infer_resolve::resolve_node(
+        let once = crate::v1_compiler_infer_resolve::resolve_node_bounded(
             n.clone(),
             env.clone(),
             module_name.clone(),
+            0,
+            false,
         );
         let resolved_once = once.resolved.clone();
         if ((resolved_once.connective.clone() == Connective::Conj)
@@ -23335,6 +23338,30 @@ pub fn build_type_env(
                                     v1_rt::rc_map_insert(x, n.clone(), true)
                                 },
                             );
+                            let a2 = Rc::new(v1_rt::map_keys(
+                                &parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .str_bindings
+                                    .clone(),
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
+                                a1.clone(),
+                                |x: Rc<HashMap<String, bool>>, n: String| {
+                                    v1_rt::rc_map_insert(
+                                        x,
+                                        v1_rt::concat(
+                                            imp.module_path.clone(),
+                                            v1_rt::concat(".".to_string(), n.clone()),
+                                        ),
+                                        true,
+                                    )
+                                },
+                            );
                             Rc::new(v1_rt::map_keys(
                                 &parent_mod
                                     .interface
@@ -23347,7 +23374,7 @@ pub fn build_type_env(
                             .iter()
                             .cloned()
                             .fold(
-                                a1.clone(),
+                                a2.clone(),
                                 |x: Rc<HashMap<String, bool>>, n: String| {
                                     v1_rt::rc_map_insert(x, n.clone(), true)
                                 },
@@ -23356,12 +23383,27 @@ pub fn build_type_env(
                         std::option::Option::None => acc.clone(),
                     }
                 } else {
-                    imp.specific_names.clone().iter().cloned().fold(
-                        acc.clone(),
-                        |x: Rc<HashMap<String, bool>>, n: String| {
-                            v1_rt::rc_map_insert(x, n.clone(), true)
-                        },
-                    )
+                    {
+                        let with_bare = imp.specific_names.clone().iter().cloned().fold(
+                            acc.clone(),
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(x, n.clone(), true)
+                            },
+                        );
+                        imp.specific_names.clone().iter().cloned().fold(
+                            with_bare.clone(),
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(
+                                    x,
+                                    v1_rt::concat(
+                                        imp.module_path.clone(),
+                                        v1_rt::concat(".".to_string(), n.clone()),
+                                    ),
+                                    true,
+                                )
+                            },
+                        )
+                    }
                 }
             },
         );
