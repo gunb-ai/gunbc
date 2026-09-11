@@ -15005,20 +15005,11 @@ fn decide_rest_exchange(
         });
     }
     let mapped = if response_format == "Text" {
-        emit_rest_wire_receipt(status, &body, "text", "text-body", "<text>", ctx);
         map_response_to_value(&body, None, op_node, ctx)?
     } else {
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
-                emit_rest_wire_receipt(
-                    status,
-                    &body,
-                    "undecodable",
-                    "<json-parse-refused>",
-                    &error.to_string(),
-                    ctx,
-                );
                 let cause = format!("JSON body did not decode: {}", error);
                 return match outcome_field {
                     Some(field) => Ok(attach_rest_outcome(
@@ -15034,17 +15025,7 @@ fn decide_rest_exchange(
                 };
             }
         };
-        let root_kind = rest_json_root_kind(&json);
-        let mapped = map_response_to_value_json(&json, op_node, ctx)?;
-        emit_rest_wire_receipt(
-            status,
-            &body,
-            root_kind,
-            &rest_mapped_field_kinds(&mapped, ctx),
-            &format!("{}", json),
-            ctx,
-        );
-        mapped
+        map_response_to_value_json(&json, op_node, ctx)?
     };
     if let Some(missing) = rest_payload_null_fields(&mapped, outcome_field, ctx) {
         let cause = format!(
@@ -15677,28 +15658,6 @@ fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
     authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("List")
 }
 
-fn rest_json_root_kind(json: &serde_json::Value) -> &'static str {
-    match json {
-        serde_json::Value::Null => "null",
-        serde_json::Value::Bool(_) => "bool",
-        serde_json::Value::Number(_) => "number",
-        serde_json::Value::String(_) => "string",
-        serde_json::Value::Array(_) => "array",
-        serde_json::Value::Object(_) => "object",
-    }
-}
-
-fn rest_mapped_field_kinds(mapped: &Value, ctx: &InterpContext) -> String {
-    match mapped {
-        Value::Record { fields, .. } => fields
-            .iter()
-            .map(|(name, value)| format!("{}:{}", ctx.resolve(*name), value.type_label()))
-            .collect::<Vec<_>>()
-            .join(","),
-        other => other.type_label().to_string(),
-    }
-}
-
 fn rest_payload_null_fields(
     mapped: &Value,
     outcome_field: Option<&str>,
@@ -15722,41 +15681,6 @@ fn rest_payload_null_fields(
         }
         Value::Null => Some("<mapped-null>".to_string()),
         _ => None,
-    }
-}
-
-fn emit_rest_wire_receipt(
-    status: u16,
-    body: &str,
-    json_root: &str,
-    mapper_output: &str,
-    mapper_input: &str,
-    _ctx: &InterpContext,
-) {
-    if std::env::var_os("GUNBC_REST_WIRE_RECEIPT").is_none() {
-        return;
-    }
-    let bytes = body.as_bytes();
-    let prefix_len = bytes.len().min(200);
-    let prefix = String::from_utf8_lossy(&bytes[..prefix_len]);
-    let digest = v1_rt::atom_identity_hash(body.to_string());
-    let input_prefix_len = mapper_input.len().min(200);
-    let line = format!(
-        "[rest-wire-receipt] status={} body_bytes={} digest={} json_root={} mapper_input_prefix={:?} mapper_output={} body_prefix={:?}",
-        status,
-        bytes.len(),
-        digest,
-        json_root,
-        &mapper_input[..input_prefix_len],
-        mapper_output,
-        prefix.as_ref(),
-    );
-    trace_emit(OutputChannel::ShellTrace, &line);
-    eprintln!("{}", line);
-    if let Ok(path) = std::env::var("GUNBC_REST_WIRE_RECEIPT_PATH") {
-        if !path.is_empty() {
-            let _ = std::fs::write(&path, format!("{}\n", line));
-        }
     }
 }
 
