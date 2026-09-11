@@ -1,0 +1,292 @@
+module strategy.node_rental_page
+
+import std.types { Int, String, List, Bool }
+import std.markup { Fragment, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import strategy.node_rental {
+  RentalRow, market_rows, hetzner_row, oci_row,
+  reference_cores, reference_memory_gib, reference_slice_note,
+  our_cost_per_slice_micro, our_memory_per_slice_gib, slices_per_node,
+  node_cost_per_month_micro, node_capex_per_month_micro, node_site_per_month_micro,
+  nodes_per_site, nodes_per_site_note,
+  core_kind_label, money_side_label, billing_basis_label, row_cost_per_core_micro,
+  compare_to, verdict_label, RentalVerdict, WeAreCheaper, WeAreDearer, TooCloseToCall,
+  CurrencyIncomparable, compare_per_core, compare_per_gib, grain_verdict_label,
+  GrainVerdict, GrainCheaper, GrainDearer, GrainTooClose, GrainNotLikeForLike,
+  our_micro_per_core_month, our_micro_per_gib_month, our_core_kind,
+  row_micro_per_month_in_our_currency,
+  cost_versus_price_note, absent_costs_note, utilization_note,
+  commodity_warning_note, one_sentence_summary, hours_per_month,
+  region_label, supply_standing_label, competitive_floor_count, market_row_count,
+  evidence_census_note,
+}
+import strategy.ci_node_build {
+  selected_build, cores_per_node, memory_gib_per_node, planning_capex_micro,
+  capex_life_months, evidence_grade_label,
+}
+import strategy.ci_site_cost { unpriced_site_lines, UnpricedCostLine }
+
+// A page about one thing: a server, a month, a price. Deliberately free of the vocabulary the rest
+// of this tree uses, because the comparison is only useful if it survives being read by somebody who
+// does not work in this industry.
+
+fn nr_pad2(v: Int) -> String {
+  if v >= 10 { to_string(v) } else { join(["0", to_string(v)], "") }
+}
+
+fn nr_usd(micro: Int) -> String {
+  let whole = micro / 1000000
+  join(["$", to_string(whole), ".", nr_pad2(v: (micro - whole * 1000000) / 10000)], "")
+}
+
+fn nr_permille(p: Int) -> String {
+  join([to_string(p / 10), ".", to_string(p - p / 10 * 10), "%"], "")
+}
+
+fn nr_th(text: String) -> Fragment { el(tag: "th", children: [txt(s: text)]) }
+fn nr_td(text: String) -> Fragment { el(tag: "td", children: [txt(s: text)]) }
+fn nr_td_dim(text: String) -> Fragment { el_class(tag: "td", cls: "dim", children: [txt(s: text)]) }
+fn nr_td_win(text: String) -> Fragment { el_class(tag: "td", cls: "win", children: [txt(s: text)]) }
+fn nr_note(text: String) -> Fragment { el_class(tag: "p", cls: "note", children: [txt(s: text)]) }
+fn nr_para(text: String) -> Fragment { el(tag: "p", children: [txt(s: text)]) }
+
+fn nr_head(cells: List<String>) -> Fragment {
+  el(tag: "thead", children: [el(tag: "tr", children: map(cells, c => nr_th(text: c)))])
+}
+
+fn nr_scroll(t: Fragment) -> Fragment {
+  el_class(tag: "div", cls: "scroll", children: [t])
+}
+
+fn nr_section(label: String, heading: String, body: List<Fragment>) -> Fragment {
+  el(tag: "section", children: concat([
+    el_class(tag: "span", cls: "sec-label", children: [txt(s: label)]),
+    el(tag: "h2", children: [txt(s: heading)]),
+  ], body))
+}
+
+// The build-up: four lines and a total, so the cost figure is never a number that arrived from
+// nowhere.
+fn cost_line(label: String, micro: Int, detail: String) -> Fragment {
+  el(tag: "tr", children: [
+    nr_td(text: label),
+    nr_td_dim(text: nr_usd(micro: micro)),
+    nr_td(text: detail),
+  ])
+}
+
+fn cost_buildup_table() -> Fragment {
+  nr_scroll(t: el_class(tag: "table", cls: "wide", children: [
+    nr_head(cells: ["What we pay", "Per month", "Why"]),
+    el(tag: "tbody", children: [
+      cost_line(label: "The machine, spread over three years",
+        micro: node_capex_per_month_micro(),
+        detail: join([nr_usd(micro: planning_capex_micro(c: selected_build)), " of parts divided by ",
+          to_string(capex_life_months), " months"], "")),
+      cost_line(label: "Rent, transit, power and cooling",
+        micro: node_site_per_month_micro(),
+        detail: join(["one server's share of a room holding ", to_string(nodes_per_site)], "")),
+      cost_line(label: "Total, one server, one month",
+        micro: node_cost_per_month_micro(),
+        detail: join([to_string(cores_per_node(c: selected_build)), " cores and ",
+          to_string(memory_gib_per_node(c: selected_build)), " GB"], "")),
+      cost_line(label: join(["One ", to_string(reference_cores), "-core slice of it"], ""),
+        micro: our_cost_per_slice_micro(),
+        detail: join(["a server splits into ", to_string(slices_per_node()),
+          " such slices, each with ", to_string(our_memory_per_slice_gib()), " GB"], "")),
+    ]),
+  ]))
+}
+
+// EVERY MONEY CELL IN THIS TABLE IS SHOWN IN OUR CURRENCY, converted where the row is quoted in
+// another one, because a column of numbers under one heading that silently mixes two currencies is
+// the defect this page exists to avoid. A row whose currency has no cited rate shows a refusal
+// rather than a number.
+fn nr_row_converted_micro(r: RentalRow) -> Int {
+  row_micro_per_month_in_our_currency(r: r)
+}
+
+fn nr_money_cell(micro: Int) -> Fragment {
+  if micro < 0 { nr_td_dim(text: "priced in another market") } else { nr_td_dim(text: nr_usd(micro: micro)) }
+}
+
+fn nr_per_core_cell(r: RentalRow) -> Fragment {
+  let m = nr_row_converted_micro(r: r)
+  if m < 0 || r.cores_delivered <= 0 { nr_td_dim(text: "-") } else { nr_td_dim(text: nr_usd(micro: m / r.cores_delivered)) }
+}
+
+// The comparison itself.
+fn market_row_fragment(r: RentalRow) -> Fragment {
+  let v = compare_to(r: r)
+  el(tag: "tr", children: [
+    nr_td(text: join([r.provider, " ", r.product], "")),
+    nr_td_dim(text: core_kind_label(k: r.core_kind)),
+    nr_td_dim(text: join([to_string(r.cores_delivered), " cores / ", to_string(r.memory_gib_delivered), " GB"], "")),
+    nr_td_dim(text: region_label(r: r.region)),
+    nr_td_dim(text: supply_standing_label(s: r.supply)),
+    nr_money_cell(micro: nr_row_converted_micro(r: r)),
+    nr_per_core_cell(r: r),
+    match v {
+      WeAreCheaper { by_permille, note } => nr_td_win(text: join([nr_permille(p: by_permille), " cheaper"], "")),
+      WeAreDearer { by_permille, note } => nr_td_dim(text: join([nr_permille(p: by_permille), " dearer"], "")),
+      TooCloseToCall { obligation } => nr_td_dim(text: "too close to call"),
+      CurrencyIncomparable { ours, theirs, obligation } => nr_td_dim(text: "priced in another market"),
+    },
+  ])
+}
+
+fn our_row_fragment() -> Fragment {
+  el_class(tag: "tr", cls: "ours", children: [
+    nr_td(text: "Ours, as a cost"),
+    nr_td_dim(text: "dedicated core"),
+    nr_td_dim(text: join([to_string(reference_cores), " cores / ", to_string(our_memory_per_slice_gib()), " GB"], "")),
+    nr_td_dim(text: "our sites"),
+    nr_td_dim(text: "our machines"),
+    nr_td_dim(text: nr_usd(micro: our_cost_per_slice_micro())),
+    nr_td_dim(text: nr_usd(micro: our_cost_per_slice_micro() / reference_cores)),
+    nr_td_dim(text: "-"),
+  ])
+}
+
+fn comparison_table() -> Fragment {
+  nr_scroll(t: el_class(tag: "table", cls: "widest", children: [
+    nr_head(cells: ["Who", "What kind of CPU", "What you get", "Region", "Supply", "Per month", "Per core", "Against ours"]),
+    el(tag: "tbody", children: concat([our_row_fragment()],
+      map(market_rows, r => market_row_fragment(r: r)))),
+  ]))
+}
+
+fn floor_census_line() -> Fragment {
+  el_class(tag: "p", cls: "refused", children: [txt(s: join([
+    "EVIDENCE CENSUS, NOT A MARKET FINDING: ",
+    to_string(market_row_count()),
+    " retail rows in this module, ",
+    to_string(competitive_floor_count()),
+    " currently admissible as a purchasable floor. ",
+    evidence_census_note,
+    " Hetzner CAX41's listed rate is located in Helsinki and Nuremberg. Supply is derived from three dated not-orderable displays to this account, not Unobserved. That is a fact about this vendor's CAX line for this account, not about the arm64 market as a whole. Wholesale term quotes and reseller quantity live in strategy.wholesale_buyer.",
+  ], ""))])
+}
+
+fn verdict_banner() -> Fragment {
+  el(tag: "div", children: [slice_verdict_line(), memory_verdict_line(), core_verdict_line()])
+}
+
+fn slice_verdict_line() -> Fragment {
+  match compare_to(r: hetzner_row) {
+    WeAreCheaper { by_permille, note } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "PER SLICE, against the cheapest row in the table, our cost is ",
+        nr_permille(p: by_permille), " below their price. ", note], ""))]),
+    WeAreDearer { by_permille, note } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "PER SLICE, our cost is ABOVE the cheapest row in the table by ", nr_permille(p: by_permille),
+        " - and that row buys half the memory ours does, so read the next line before drawing a conclusion. ",
+        note], ""))]),
+    TooCloseToCall { obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "PER SLICE, too close to call. ", obligation], ""))]),
+    CurrencyIncomparable { ours, theirs, obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "PER SLICE, not comparable: this row is a list price quoted to another market, and this vendor's prices are not FX-linked across its markets. ",
+        obligation], ""))]),
+  }
+}
+
+fn memory_verdict_line() -> Fragment {
+  match compare_per_gib(r: hetzner_row) {
+    GrainCheaper { by_permille } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "PER GIBIBYTE OF LISTED MEMORY our cost is ", nr_permille(p: by_permille),
+        " below theirs. That is capacity per dollar and NOT a claim of better value: the price on each side buys a bundle, and dividing a bundle by one resource in it does not price that resource."], ""))]),
+    GrainDearer { by_permille } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "PER GIBIBYTE OF MEMORY our cost is ABOVE theirs by ", nr_permille(p: by_permille), "."], ""))]),
+    GrainTooClose { obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join(["PER GIBIBYTE, too close to call. ", obligation], ""))]),
+    GrainNotLikeForLike { ours, theirs, obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join(["PER GIBIBYTE, not like for like. ", obligation], ""))]),
+  }
+}
+
+fn core_verdict_line() -> Fragment {
+  match compare_per_core(r: hetzner_row) {
+    GrainCheaper { by_permille } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "PER CORE our cost is ", nr_permille(p: by_permille), " below theirs."], ""))]),
+    GrainDearer { by_permille } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "PER CORE our cost is ABOVE theirs by ", nr_permille(p: by_permille), "."], ""))]),
+    GrainTooClose { obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join(["PER CORE, too close to call. ", obligation], ""))]),
+    GrainNotLikeForLike { ours, theirs, obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "PER CORE the comparison REFUSES, and the refusal is the finding: they sell ", theirs,
+        " and we sell ", ours, ". ", obligation], ""))]),
+  }
+}
+
+fn unpriced_row(u: UnpricedCostLine) -> Fragment {
+  el(tag: "tr", children: [nr_td(text: u.label), nr_td(text: u.obligation)])
+}
+
+fn unpriced_table() -> Fragment {
+  nr_scroll(t: el(tag: "table", children: [
+    nr_head(cells: ["Not counted", "What is missing"]),
+    el(tag: "tbody", children: map(unpriced_site_lines, u => unpriced_row(u: u))),
+  ]))
+}
+
+data nr_standfirst: String = "A server costs money to own and money to keep running. Somebody else will rent you the same server by the month. This page puts those two numbers side by side, and nothing else."
+
+data nr_intro: String = "Everything here is one machine for one month. There is no talk of jobs, minutes, scheduling or how busy anything is, because none of that changes what a machine costs to keep switched on. If our number is not below theirs, nothing further along can rescue it."
+
+data nr_cpu_explainer: String = "One thing does need explaining, because it is where most price comparisons quietly go wrong. A 'CPU' is not one thing. A dedicated core is a whole processor core doing only your work. An SMT thread is half a core sharing with another task. A shared burstable core gives you a slice of a core most of the time and more of it briefly. The cheapest machine in the table is the third kind; ours is the first."
+
+fn page_body() -> Fragment {
+  el_attrs(tag: "div", attributes: [attr(name: "data-generated-by", value: "strategy.node_rental_page")], children: [
+    el(tag: "style", children: [txt(s: nr_css)]),
+    el_class(tag: "div", cls: "wrap", children: [
+      el(tag: "h1", children: [txt(s: "A server, a month, a price.")]),
+      el_class(tag: "p", cls: "standfirst", children: [txt(s: nr_standfirst)]),
+      verdict_banner(),
+      floor_census_line(),
+
+      nr_section(label: "The question", heading: "Can we own a server for less than it costs to rent one?", body: [
+        nr_para(text: nr_intro),
+        nr_note(text: utilization_note),
+      ]),
+
+      nr_section(label: "Our cost", heading: "What one machine costs us for a month.", body: [
+        cost_buildup_table(),
+        nr_note(text: nodes_per_site_note),
+      ]),
+
+      nr_section(label: "The comparison", heading: "The same slice, from four sources.", body: [
+        nr_para(text: nr_cpu_explainer),
+        comparison_table(),
+        nr_note(text: reference_slice_note),
+        nr_note(text: cost_versus_price_note),
+      ]),
+
+      nr_section(label: "The catch", heading: "What this number does not include.", body: [
+        nr_para(text: absent_costs_note),
+        unpriced_table(),
+        nr_note(text: commodity_warning_note),
+      ]),
+
+      el_class(tag: "p", cls: "kicker", children: [txt(s: one_sentence_summary)]),
+      el(tag: "footer", children: [txt(s: "generated by strategy.node_rental_page - no server bought, none rented")]),
+    ]),
+  ])
+}
+
+fn render_node_rental_body() -> String {
+  match try_serialize_html_source(node: page_body()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+  }
+}
+
+data nr_css: String = ":root\{--plaster:#EFEAE0;--ink:#241F1A;--muted:#6B6357;--oak:#8C6A3F;--rule:#CFC6B6;--green:#3F6B4A;--alarm:#9C4A38;--alarm-ink:#FFF4F0}\n@media (prefers-color-scheme:dark)\{:root:not([data-theme=\"light\"])\{--plaster:#17150F;--ink:#EDE7DA;--muted:#9A9384;--oak:#C79A5C;--rule:#39342A;--green:#7FAE86;--alarm:#A85039;--alarm-ink:#FFF0EA}}\n:root[data-theme=\"dark\"]\{--plaster:#17150F;--ink:#EDE7DA;--muted:#9A9384;--oak:#C79A5C;--rule:#39342A;--green:#7FAE86;--alarm:#A85039;--alarm-ink:#FFF0EA}\n*\{box-sizing:border-box}\nbody\{background:var(--plaster);color:var(--ink);margin:0;padding:0 1.25rem 5rem;font-family:ui-sans-serif,system-ui,Helvetica,Arial,sans-serif;font-size:18px;line-height:1.7}\n.wrap\{max-width:44rem;margin:0 auto}\nh1\{font-family:Georgia,serif;font-weight:400;font-size:clamp(2.1rem,6vw,3.2rem);line-height:1.05;margin:3.5rem 0 1rem;letter-spacing:-0.02em}\nh2\{font-family:Georgia,serif;font-weight:400;font-size:1.55rem;line-height:1.25;margin:0 0 0.9rem}\n.standfirst\{font-family:Georgia,serif;font-size:1.2rem;line-height:1.55;margin:0 0 1.6rem;color:var(--muted)}\n.sec-label\{font-family:ui-monospace,Menlo,monospace;font-size:0.66rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--oak);display:block;margin:0 0 0.7rem}\nsection\{padding-top:2.8rem}\np\{margin:0 0 1rem}\n.note\{font-size:0.92rem;color:var(--muted);border-top:1px solid var(--rule);padding-top:0.9rem}\n.kicker\{font-family:Georgia,serif;font-size:1.3rem;line-height:1.45;margin:3rem 0 0;padding-top:1.6rem;border-top:2px solid var(--ink)}\n.refused\{font-family:ui-monospace,Menlo,monospace;font-size:0.78rem;line-height:1.65;color:var(--alarm-ink);background:var(--alarm);padding:1rem 1.1rem;margin:1.4rem 0}\n.gen\{font-size:1.02rem;line-height:1.55;border:1px solid var(--rule);border-left:3px solid var(--green);padding:1rem 1.1rem;margin:1.4rem 0;background:none}\n.scroll\{overflow-x:auto;margin:1.4rem 0}\n.scroll table\{margin:0}\ntable.wide\{min-width:34rem}\ntable.widest\{min-width:44rem}\ntable\{border-collapse:collapse;width:100%;font-size:0.92rem;margin:1.4rem 0}\nth,td\{text-align:left;padding:0.5rem 0.6rem;border-bottom:1px solid var(--rule);vertical-align:top;line-height:1.45}\nth\{font-family:ui-monospace,Menlo,monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--ink)}\ntd.dim\{font-family:ui-monospace,Menlo,monospace;font-size:0.84rem;font-variant-numeric:tabular-nums;white-space:nowrap}\ntd.win\{font-family:ui-monospace,Menlo,monospace;font-size:0.84rem;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--green);font-weight:600}\ntr.ours td\{background:var(--rule);background-clip:padding-box}\ntr.ours td:first-child\{font-weight:600}\nfooter\{max-width:44rem;margin:3.5rem auto 0;padding-top:1.4rem;border-top:1.5px solid var(--ink);font-family:ui-monospace,Menlo,monospace;font-size:0.7rem;color:var(--muted)}"

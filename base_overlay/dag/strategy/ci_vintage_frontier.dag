@@ -1,0 +1,490 @@
+module strategy.ci_vintage_frontier
+
+import std.types { Int, List, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused }
+import std.pareto {
+  AxisGoal, LowerIsBetter, HigherIsBetter,
+  SelectionAxis, AxisReading, AxisGap, ParetoEntry, ParetoStanding,
+  ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused,
+  entry_standing, pareto_label,
+}
+
+// THE VINTAGE-GRAIN FRONTIER (seeded from docs/strategy/2026-08-29-blacksmith-gaming-cpu-
+// comparison.md sections 4e-4g; operator direction 2026-08-29: "make sure to add all of
+// these options" to the Pareto selection).
+//
+// GRAIN, and why this is not ci_build_frontier. That module compares BUILDABLE
+// CONFIGURATIONS of observed facts - boards, processor lots, DIMM lots with marketplace
+// rates - on the DDR4/Altra spine, and its generator grows by fact rows. The options this
+// module carries are HARDWARE VINTAGES, most of which cannot be a NodeBuildCandidate yet:
+// the gaming node needs an AM5 board/DDR5-lot fact population that extdeps does not carry,
+// and AmpereOne and Bergamo have NO liquidation market at all - their capex is not a
+// missing rate but a market that has not happened. Comparing vintages at planning grade,
+// with the unpurchasable ones held incomparable by their own declaration, is exactly what
+// the std.pareto missing-inputs discipline is for. When a vintage becomes buildable
+// (facts land in extdeps), it graduates into the ci_node_build generator and its row here
+// becomes provenance.
+//
+// THE UNIT. Readings are denominated in ALTRA-EQUIVALENTS: one equivalent is the loaded
+// throughput of one Altra Q80-30 core at 3.0 GHz. Cross-ISA throughput equivalence is a
+// modelling estimate chained from public benchmark readings (memo section 4e: the 1T gap
+// decomposes as clock x IPC; SMT sharing costs each sibling thread ~35-40%), NOT a
+// measurement - which is why every entry carries the benchmark obligation in its
+// sensitivities and the section-5 pilot's realized-throughput measurement retires it.
+
+// ---------------------------------------------------------------------------------------------
+// AXES. Identity is structural per the std.pareto ruling; display strings are presentation.
+// Four funded axes carry the operator's "efficient in all dimensions" objective - capex,
+// power, space - plus the single axis the gaming vintage exists for. Liquidity/ops axes
+// (supply depth, firmware openness, parts liquidity) remain sensitivities, not readings.
+// ---------------------------------------------------------------------------------------------
+
+data axis_capex_per_equiv_id: DeclarationRef = decl_ref(module_path: "strategy.ci_vintage_frontier", decl_name: "axis_capex_per_equiv_id")
+data axis_watts_per_equiv_id: DeclarationRef = decl_ref(module_path: "strategy.ci_vintage_frontier", decl_name: "axis_watts_per_equiv_id")
+data axis_single_thread_id: DeclarationRef = decl_ref(module_path: "strategy.ci_vintage_frontier", decl_name: "axis_single_thread_id")
+data axis_equiv_per_ru_id: DeclarationRef = decl_ref(module_path: "strategy.ci_vintage_frontier", decl_name: "axis_equiv_per_ru_id")
+
+data axis_capex_per_equiv: SelectionAxis = SelectionAxis { identity: axis_capex_per_equiv_id, goal: LowerIsBetter }
+data axis_watts_per_equiv: SelectionAxis = SelectionAxis { identity: axis_watts_per_equiv_id, goal: LowerIsBetter }
+data axis_single_thread: SelectionAxis = SelectionAxis { identity: axis_single_thread_id, goal: HigherIsBetter }
+data axis_equiv_per_ru: SelectionAxis = SelectionAxis { identity: axis_equiv_per_ru_id, goal: HigherIsBetter }
+
+// The full axis set: the efficiency dimensions plus latency.
+data vintage_axes: List<SelectionAxis> = [
+  axis_capex_per_equiv,
+  axis_watts_per_equiv,
+  axis_single_thread,
+  axis_equiv_per_ru,
+]
+
+// The AGENT-BUYER axis set (memo section 4f): wall-clock premium is a human-attention
+// artifact, so an agent-denominated demand book un-funds the single-thread axis and the
+// selection runs on efficient capacity alone. Both sets are carried because the demand mix
+// is an open empirical question (JobInitiatorClass on the billing receipt answers it);
+// which axis set is THE selection is a demand fact, not a modelling choice.
+data agent_buyer_axes: List<SelectionAxis> = [
+  axis_capex_per_equiv,
+  axis_watts_per_equiv,
+  axis_equiv_per_ru,
+]
+
+data vintage_sensitivities: List<NonEmptyStr> = [
+  "throughput equivalence: every equivalent-count is a benchmark-chained estimate, never a measurement - the section-5 pilot's realized throughput on a representative workload retires it and could move any verdict here",
+  "single-thread under load: the gaming index is quoted charitably at the lightly-occupied best case; at full SMT occupancy it sags toward ~2x an Altra core, which narrows its one winning axis",
+  "supply and liquidation state: Altra is deep and cheap today, the gaming node is retail-infinite, AmpereOne and Bergamo have no liquidation market yet - a numeric axis cannot carry this and the purchase gates in ci_node_build own it",
+  "ops and parts liquidity: NDA-gated Altra firmware versus retail-everywhere AM5 parts is unpriced on any axis (memo section 4c); it runs in the gaming vintage's favour and is the strongest argument the frontier cannot see",
+  "memory platform cost: equivalents price the CPU, but DDR5 RDIMMs across 8 channels can exceed a liquidated CPU's price (memo section 4g) - the balanced-point lesson of ci_node_build will bind harder on AmpereOne and Bergamo than a per-equiv capex axis shows",
+  "power price and site admission: watts-per-equiv is site-neutral here, but section 4e's ruling is per-site - where admitted watts bind, this axis dominates the selection; where a colo sells watts by the kW, it is ~5% of runner revenue",
+]
+
+// ---------------------------------------------------------------------------------------------
+// CANDIDATES. Planning-grade rows seeded from the memo; each figure names its provenance in
+// the note. Capex is a standing, not a number: a vintage without a market carries the watch
+// obligation instead of a guessed price, and that alone holds it incomparable.
+// ---------------------------------------------------------------------------------------------
+
+// THREE ROWS CARRIED "OBSERVED" CAPEX AND NOT ONE OF THEM WAS A QUOTE. Milan's note says
+// "band (2-3k); memo 4f table midpoint" - a declared band already collapsed to its middle. Gaming's
+// note is a BOM of component RANGES read at their favourable ends, with the NVMe and the 1U
+// chassis/cooler/PSU never quantified at all. Mt. Jade's is derived at planning rates that include
+// ci_node_build's own 32-GiB DIMM band. The old scalar could not tell those apart from a quote;
+// interval_micro can, so each one now says what it actually is.
+type VintageCapex
+  = VintageCapexBanded { low_usd_micro: Int, high_usd_micro: Int, note: NonEmptyStr }
+  | VintageCapexAwaitingSharedScenario { obligation: NonEmptyStr }
+  | VintageCapexIncompleteBom { obligation: NonEmptyStr }
+  | VintageAwaitingLiquidation { watch_obligation: NonEmptyStr }
+
+// THE EQUIVALENCE IS THE DIVISOR UNDER THREE OF THE FOUR AXES, so its evidence grade decides
+// theirs. It was a bare Int, which let a grounded capex band be divided by an unbounded benchmark
+// estimate and emerge as an interval that LOOKS like evidence while carrying only the numerator's
+// width. One row is the definition of the unit and is exact; the rest are benchmark-chained
+// planning figures with no declared spread, and an unbounded divisor does not yield a region at
+// all - so those axes are not computable for those rows, which is a located missing input rather
+// than a narrower interval than the evidence supports.
+type EquivalenceEvidence
+  = EquivalenceByDefinition { equiv_per_node: Int, note: NonEmptyStr }
+  | EquivalenceBenchmarkEstimated { planning_equiv_per_node: Int, obligation: NonEmptyStr }
+
+// The single-thread index is the same shape: a ratio against the reference core.
+// POWER IS EVIDENCE-GRADED FOR THE SAME REASON EQUIVALENCE IS, and missing this was the sharpest
+// finding on review 5091375040. Altra's equivalence is exact BY DEFINITION of the unit, so
+// per_equiv_readings funded its axes -- and the numerator it divided was the old bare-Int watts
+// field carrying 350, a figure the row's own description calls a loaded PLANNING number. An exact
+// divisor cannot launder an estimated numerator: the quotient is no better than its worst input,
+// and a degenerate [350,350] asserted a wall measurement nobody took.
+//
+// It was not deciding today's field only because Altra is separately blocked on capex, so this was a
+// point that becomes load-bearing the moment the capex debt is discharged -- a latent wrong answer
+// with a scheduled arrival date, which is worse than an active one for being invisible now.
+type PowerEvidence
+  = PowerMeasured { watts: Int, note: NonEmptyStr }
+  | PowerPlanningEstimated { planning_watts: Int, obligation: NonEmptyStr }
+
+type SingleThreadEvidence
+  = SingleThreadByDefinition { index_micro: Int }
+  | SingleThreadEstimated { planning_index_micro: Int, obligation: NonEmptyStr }
+
+type VintageCandidate {
+  id: NonEmptyStr
+  description: NonEmptyStr
+  equivalence: EquivalenceEvidence
+  power: PowerEvidence
+  rack_units_per_node: Int
+  single_thread: SingleThreadEvidence
+  capex: VintageCapex
+}
+
+data altra_mt_jade_vintage: VintageCandidate = VintageCandidate {
+  id: "altra-mt-jade",
+  description: "2P Altra Q80-30 Mt. Jade 2U: 160 physical cores at 3.0 GHz, the owned reference vintage. 350 W loaded planning figure, ~3.5k loaded node (2k barebones + 16x 32GiB DDR4). Single-thread index 1.0 by definition of the unit.",
+  equivalence: EquivalenceByDefinition { equiv_per_node: 160, note: "the reference vintage DEFINES the Altra-equivalent unit: 160 physical cores at 3.0 GHz counted one-for-one. This is exact by construction of the unit, not a benchmark estimate" },
+  power: PowerPlanningEstimated { planning_watts: 350, obligation: "the 350 W loaded figure is a PLANNING number, called that in this row's own description: a budgeting figure for a 2P Q80-30 chassis, not a wall reading taken at the socket on our workload. The equivalence divisor being exact by definition does not ground it" },
+  rack_units_per_node: 2,
+  single_thread: SingleThreadByDefinition { index_micro: 1000000 },
+  capex: VintageCapexAwaitingSharedScenario { obligation: "no grounded capex region: the 3.5k figure is derived at PLANNING rates - a 2k barebones planning figure plus sixteen 32-GiB modules priced from ci_node_build's declared 80-to-120 band. That band is a SHARED market parameter, not this candidate's own width, so it cannot be collapsed into a per-row interval here without recreating the correlation loss corrected in ci_build_frontier. It funds when the memory-price scenario is threaded across modules, which is deliberately not done in this cut" },
+}
+
+data milan_7713_vintage: VintageCandidate = VintageCandidate {
+  id: "milan-7713-quiet-4u",
+  description: "1P EPYC Milan 7713 quiet 4U tower: 64c/128t Zen 3, the admitted x86 candidate (Aug-09 doc section 6). ~100 Altra-equivalents loaded, ~300 W wall, ~2.5k built. Single-thread ~1.5x an Altra core.",
+  equivalence: EquivalenceBenchmarkEstimated { planning_equiv_per_node: 100, obligation: "benchmark-chained equivalence has no declared spread: the ~100 Altra-equivalents for a 64c/128t Milan is a benchmark-chained planning figure (Aug-09 doc section 6) stated as a single approximate number with no bounds. Every per-equivalent axis divides by it, so an unbounded divisor leaves those axes not computable for this row - including the capex-per-equivalent axis whose 2-3k NUMERATOR is genuinely grounded" },
+  power: PowerPlanningEstimated { planning_watts: 300, obligation: "the ~300 W wall figure for the quiet Milan tower is a stated approximation (Aug-09 doc section 6) with no metered receipt and no bounds" },
+  rack_units_per_node: 4,
+  single_thread: SingleThreadEstimated { planning_index_micro: 1500000, obligation: "the ~1.5x single-thread ratio against an Altra core is a stated approximation with no benchmark receipt and no bounds" },
+  capex: VintageCapexBanded { low_usd_micro: 2000000000, high_usd_micro: 3000000000, note: "Aug-09 doc section 6 quiet-Milan-tower band, carried as the 2-3k band the source actually states rather than the midpoint the memo 4f table took. This is genuine candidate-local width: it is this build's own quoted spread, not a market parameter shared with any other row, so an interval is the right carrier and the overlap it creates is real uncertainty rather than discarded correlation" },
+}
+
+// CHARITABLE BEST CASE by operator direction 2026-08-29: assume Blacksmith's node is the
+// best gaming build available (Ryzen 9 9950X class), read at the favourable end of every
+// band - 70 equivalents (32 threads x ~2.2), 280 W wall, 2.2k built on an ASRock Rack
+// D4U-class server board. The point of charity: the conclusions below survive it.
+data gaming_9950x_vintage: VintageCandidate = VintageCandidate {
+  id: "gaming-9950x-1u",
+  description: "Ryzen 9 9950X 1U on an AM5 server board (BMC + ECC UDIMM): 16c/32t Zen 5 at 5.7 GHz boost. Charitable best-case readings throughout - the Blacksmith-inferred vintage as its strongest self.",
+  equivalence: EquivalenceBenchmarkEstimated { planning_equiv_per_node: 70, obligation: "benchmark-chained equivalence has no declared spread: 70 equivalents is 32 threads x ~2.2, a charitable BEST-CASE reading chosen by operator direction rather than measured, and a best case read as a point is the narrowest possible interval over an unmeasured quantity" },
+  power: PowerPlanningEstimated { planning_watts: 280, obligation: "the 280 W wall figure is the charitable BEST-CASE reading chosen by operator direction, unmetered on this workload - a best case read as a point is the narrowest possible interval over an unmeasured quantity" },
+  rack_units_per_node: 1,
+  single_thread: SingleThreadEstimated { planning_index_micro: 3400000, obligation: "the 3.4x single-thread index is the charitable best-case reading of a 5.7 GHz Zen 5 core against the reference, unmeasured on this workload" },
+  capex: VintageCapexIncompleteBom { obligation: "no grounded capex region: the memo 4b BOM bands the CPU at 500-560, the board at 430 and DDR5 ECC at 550-700, but the NVMe and the 1U chassis/cooler/PSU carry no figure at all, so the parts that ARE banded cannot be summed into a total. The 2.2k row read every band at its favourable end and then dropped the unpriced lines, which is a best case presented as a reading" },
+}
+
+data ampereone_a160_vintage: VintageCandidate = VintageCandidate {
+  id: "ampereone-a160-28x",
+  description: "AmpereOne A160-28X 1U: 160 custom cores at 2.8 GHz, 215 W TDP (276 W max), LGA-5964, 8-channel DDR5. ~208 equivalents at ~450 W wall (planning). The successor vintage - same buy as the Altras, one generation later.",
+  equivalence: EquivalenceBenchmarkEstimated { planning_equiv_per_node: 208, obligation: "benchmark-chained equivalence has no declared spread: ~208 equivalents at ~450 W is a planning figure for hardware this project has never run; no benchmark receipt exists on any workload of ours" },
+  power: PowerPlanningEstimated { planning_watts: 450, obligation: "the ~450 W wall figure is a planning estimate for hardware this project has never run; no metered receipt exists" },
+  rack_units_per_node: 1,
+  single_thread: SingleThreadEstimated { planning_index_micro: 1300000, obligation: "the 1.3x single-thread index for a 2.8 GHz custom core is a planning figure, unmeasured" },
+  capex: VintageAwaitingLiquidation { watch_obligation: "No liquidation market exists: new-market ~3.2-4.2k per CPU alone, thin merchant channel (OEM/cloud-direct). Watch triggers (memo 4g): first for-parts A160/A192 listings, used AMPONED8-class boards, OCI A2 price cuts, any Ampere merchant-channel exit. Admission price ~<=500-700/CPU with <=1k board; hyperscaler-refresh estimate 2028-29." },
+}
+
+data bergamo_9754_vintage: VintageCandidate = VintageCandidate {
+  id: "bergamo-9754-1u",
+  description: "EPYC Bergamo 9754-class 1U: 128 Zen 4c cores, SP5, 12-channel DDR5. ~200 equivalents at ~450 W wall (planning). The x86 successor vintage; Aug-09 doc already rules it watch-don't-buy.",
+  equivalence: EquivalenceBenchmarkEstimated { planning_equiv_per_node: 200, obligation: "benchmark-chained equivalence has no declared spread: ~200 equivalents for 128 Zen 4c cores is a planning figure for hardware this project has never run; no benchmark receipt exists on any workload of ours" },
+  power: PowerPlanningEstimated { planning_watts: 450, obligation: "the ~450 W wall figure is a planning estimate for hardware this project has never run; no metered receipt exists" },
+  rack_units_per_node: 1,
+  single_thread: SingleThreadEstimated { planning_index_micro: 1600000, obligation: "the 1.6x single-thread index for a Zen 4c core is a planning figure, unmeasured" },
+  capex: VintageAwaitingLiquidation { watch_obligation: "DDR5-platform liquidation has not happened: 2021-era DDR4 fleets are what is liquidating now. Expected window ~2027-28 as Genoa/Bergamo/Siena fleets rotate (Aug-09 doc section 6). No admission price set until first observed lots." },
+}
+
+data vintage_candidates: List<VintageCandidate> = [
+  altra_mt_jade_vintage,
+  milan_7713_vintage,
+  gaming_9950x_vintage,
+  ampereone_a160_vintage,
+  bergamo_9754_vintage,
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE PROJECTION. Per-equiv figures are derived from the node figures so a row edit moves
+// every reading together; a missing capex market yields a missing input, never a guess.
+// ---------------------------------------------------------------------------------------------
+
+data no_vintage_readings: List<AxisReading> = []
+data no_vintage_missing: List<AxisGap> = []
+
+fn one_vintage_missing(axis: DeclarationRef, text: NonEmptyStr) -> List<AxisGap> {
+  [AxisGap { axis: axis, cause: text }]
+}
+
+// THE EQUIVALENCE GAP EXCUSES THREE AXES, AND THIS MODULE ALREADY SAID SO IN PROSE. The comment
+// below has always stated that every per-equivalent axis divides by the equivalence, so none can be
+// funded more strongly than it -- but with a flat gap list there was nowhere to say WHICH axes that
+// was, and the standing collapsed to "incomparable" without recording the reasoning. The
+// single-thread axis does not divide by the equivalence and is deliberately absent from this list:
+// its reading is independently grounded, so an estimated equivalence gives it no gap.
+//
+// That is the whole claim, and the earlier text overstated it as "perfectly comparable". No partial
+// comparison proceeds on a surviving axis: entry_standing returns NotComputable for ANY nonempty
+// missing_inputs, so while the candidate carries the other three gaps its single-thread reading
+// buys no comparison at all. What the omission buys is that the single-thread axis is not blamed
+// for a shortfall that is not its own.
+data per_equivalent_axes: List<DeclarationRef> = [axis_capex_per_equiv_id, axis_watts_per_equiv_id, axis_equiv_per_ru_id]
+
+fn gap_on_each(axes: List<DeclarationRef>, text: NonEmptyStr) -> List<AxisGap> {
+  fold(axes, init: [], f: fn(acc, ax) { concat(acc, [AxisGap { axis: ax, cause: text }]) })
+}
+
+fn le_int(a: Int, b: Int) -> Bool { a <= b }
+
+// EVERY PER-EQUIVALENT AXIS DIVIDES BY THE EQUIVALENCE, so none of them can be funded more
+// strongly than it. The divisor is exact only for the row that DEFINES the unit; everywhere else
+// it is a benchmark-chained planning number with no declared spread, and there is no interval
+// arithmetic that rescues that - an unbounded divisor does not produce a bounded quotient, so the
+// axis is not computable for that row and says so by name. This is the reviewer's correction: a
+// grounded 2-3k capex NUMERATOR over an unbounded divisor was emerging as an interval that looked
+// like evidence while carrying only the numerator's width.
+fn equivalence_divisor(c: VintageCandidate) -> Int {
+  match c.equivalence {
+    EquivalenceByDefinition { equiv_per_node, note } => equiv_per_node
+    EquivalenceBenchmarkEstimated { planning_equiv_per_node, obligation } => planning_equiv_per_node
+  }
+}
+
+fn equivalence_is_exact(c: VintageCandidate) -> Bool {
+  match c.equivalence {
+    EquivalenceByDefinition { equiv_per_node, note } => true
+    EquivalenceBenchmarkEstimated { planning_equiv_per_node, obligation } => false
+  }
+}
+
+fn equivalence_missing(c: VintageCandidate) -> List<AxisGap> {
+  match c.equivalence {
+    EquivalenceByDefinition { equiv_per_node, note } => no_vintage_missing
+    EquivalenceBenchmarkEstimated { planning_equiv_per_node, obligation } =>
+      gap_on_each(axes: per_equivalent_axes, text: obligation)
+  }
+}
+
+fn power_watts(c: VintageCandidate) -> Int {
+  match c.power {
+    PowerMeasured { watts, note } => watts
+    PowerPlanningEstimated { planning_watts, obligation } => planning_watts
+  }
+}
+
+fn power_is_grounded(c: VintageCandidate) -> Bool {
+  match c.power {
+    PowerMeasured { watts, note } => true
+    PowerPlanningEstimated { planning_watts, obligation } => false
+  }
+}
+
+fn power_missing(c: VintageCandidate) -> List<AxisGap> {
+  match c.power {
+    PowerMeasured { watts, note } => no_vintage_missing
+    PowerPlanningEstimated { planning_watts, obligation } =>
+      one_vintage_missing(axis: axis_watts_per_equiv_id, text: obligation)
+  }
+}
+
+fn watts_per_equiv_micro(c: VintageCandidate) -> Int {
+  power_watts(c: c) * 1000000 / equivalence_divisor(c: c)
+}
+
+fn equiv_per_ru_micro(c: VintageCandidate) -> Int {
+  equivalence_divisor(c: c) * 1000000 / c.rack_units_per_node
+}
+
+// THE TWO DERIVED AXES NO LONGER SHARE AN EVIDENCE GRADE, and the note that said they did was true
+// only while both had exactly one input. watts-per-equivalent divides POWER by the equivalence
+// divisor and so needs BOTH grounded; equivalents-per-RU divides that same divisor by an exact
+// chassis height and needs only the divisor. Gating them together would refuse an axis whose inputs
+// are actually established -- the fail-shut mirror of the fail-open this whole cut is removing, and
+// no more honest for erring the other way.
+fn per_equiv_readings(c: VintageCandidate) -> List<AxisReading> {
+  let watts_axis = if equivalence_is_exact(c: c) && power_is_grounded(c: c) {
+    [AxisReading { axis: axis_watts_per_equiv_id, interval_micro: degenerate_interval(point: watts_per_equiv_micro(c: c)) }]
+  } else { no_vintage_readings }
+  let ru_axis = if equivalence_is_exact(c: c) {
+    [AxisReading { axis: axis_equiv_per_ru_id, interval_micro: degenerate_interval(point: equiv_per_ru_micro(c: c)) }]
+  } else { no_vintage_readings }
+  concat(watts_axis, ru_axis)
+}
+
+fn single_thread_readings(c: VintageCandidate) -> List<AxisReading> {
+  match c.single_thread {
+    SingleThreadByDefinition { index_micro } =>
+      [AxisReading { axis: axis_single_thread_id, interval_micro: degenerate_interval(point: index_micro) }]
+    SingleThreadEstimated { planning_index_micro, obligation } => no_vintage_readings
+  }
+}
+
+fn single_thread_missing(c: VintageCandidate) -> List<AxisGap> {
+  match c.single_thread {
+    SingleThreadByDefinition { index_micro } => no_vintage_missing
+    SingleThreadEstimated { planning_index_micro, obligation } =>
+      one_vintage_missing(axis: axis_single_thread_id, text: obligation)
+  }
+}
+
+fn base_readings(c: VintageCandidate) -> List<AxisReading> {
+  concat(per_equiv_readings(c: c), single_thread_readings(c: c))
+}
+
+// THE BAND DIVIDES BY THE EQUIVALENCE AT BOTH ENDS, and the division is monotone in the numerator,
+// so where the divisor is EXACT the capex-per-equivalent region is exactly the image of the capex
+// region. Where it is not, the band funds nothing here however grounded the numerator is. A refused
+// construction becomes a declared gap rather than a repaired point: reversed endpoints would mean
+// the source band was authored backwards, and answering anyway would hide it.
+fn banded_capex_reading(c: VintageCandidate, low_usd_micro: Int, high_usd_micro: Int) -> List<AxisReading> {
+  if equivalence_is_exact(c: c) {
+    match closed_interval(low: low_usd_micro / equivalence_divisor(c: c), high: high_usd_micro / equivalence_divisor(c: c), le: le_int) {
+      IntervalReady { interval } => [AxisReading { axis: axis_capex_per_equiv_id, interval_micro: interval }]
+      IntervalRefused { reason } => no_vintage_readings
+    }
+  } else { no_vintage_readings }
+}
+
+fn banded_capex_missing(c: VintageCandidate, low_usd_micro: Int, high_usd_micro: Int) -> List<AxisGap> {
+  if equivalence_is_exact(c: c) {
+    match closed_interval(low: low_usd_micro / equivalence_divisor(c: c), high: high_usd_micro / equivalence_divisor(c: c), le: le_int) {
+      IntervalReady { interval } => no_vintage_missing
+      IntervalRefused { reason } => one_vintage_missing(axis: axis_capex_per_equiv_id, text: join(["capex band is unusable: ", reason], ""))
+    }
+  } else {
+    one_vintage_missing(axis: axis_capex_per_equiv_id, text: "capex-per-equivalent is not computable although the capex band itself is grounded: the divisor is an unbounded benchmark estimate, so the quotient has no bounded region. The numerator is not the blocker and grounding it further will not fund this axis")
+  }
+}
+
+fn vintage_readings(c: VintageCandidate) -> List<AxisReading> {
+  match c.capex {
+    VintageCapexBanded { low_usd_micro, high_usd_micro, note } =>
+      concat(base_readings(c: c), banded_capex_reading(c: c, low_usd_micro: low_usd_micro, high_usd_micro: high_usd_micro)),
+    VintageCapexAwaitingSharedScenario { obligation } => base_readings(c: c),
+    VintageCapexIncompleteBom { obligation } => base_readings(c: c),
+    VintageAwaitingLiquidation { watch_obligation } => base_readings(c: c),
+  }
+}
+
+fn capex_missing(c: VintageCandidate) -> List<AxisGap> {
+  match c.capex {
+    VintageCapexBanded { low_usd_micro, high_usd_micro, note } =>
+      banded_capex_missing(c: c, low_usd_micro: low_usd_micro, high_usd_micro: high_usd_micro),
+    VintageCapexAwaitingSharedScenario { obligation } => one_vintage_missing(axis: axis_capex_per_equiv_id, text: obligation),
+    VintageCapexIncompleteBom { obligation } => one_vintage_missing(axis: axis_capex_per_equiv_id, text: obligation),
+    VintageAwaitingLiquidation { watch_obligation } => one_vintage_missing(axis: axis_capex_per_equiv_id, text: watch_obligation),
+  }
+}
+
+fn vintage_missing(c: VintageCandidate) -> List<AxisGap> {
+  concat(concat(concat(equivalence_missing(c: c), single_thread_missing(c: c)), capex_missing(c: c)), power_missing(c: c))
+}
+
+// A GAP IS RELATIVE TO THE AXES BEING COMPARED, AND THIS MODULE COMPARES UNDER TWO SETS.
+//
+// A candidate's gaps are computed once, per candidate; funding is decided per COMPARISON. This
+// module runs the same rows under vintage_axes and again under agent_buyer_axes, which drops
+// single-thread -- so the single-thread gap, perfectly correct under the first set, names an axis
+// the second one does not fund. std.pareto refuses exactly that: "a gap must name a funded axis or
+// it excuses and blocks nothing". The refusal is right. A gap on an unfunded axis is not evidence
+// of anything, and letting it stand would let an irrelevant absence block a comparison it has no
+// bearing on -- the very failure the axis-scoping was introduced to end.
+//
+// Before gunbc#10150 this could not even be noticed: gaps carried no axis, so the single-thread
+// obligation was indistinguishable from the capex one and both blocked both comparisons.
+//
+// The entry is therefore built against the axis set it will be compared under, and the readings are
+// left alone -- std.pareto ignores a reading on an unfunded axis, while a GAP on one is a
+// contradiction, so only the gaps need scoping.
+// A GENERIC INTERSECTION WAS THE WRONG SHAPE, AND IT SILENCED THE WALL IT WAS MEANT TO RESPECT.
+//
+// The first version kept a gap when its axis appeared in the comparison roster and dropped it
+// otherwise. That treats the INTENDED omission of one known axis exactly like a typo or a foreign
+// identity: std.pareto refuses a gap naming an axis the selection does not fund, and an
+// intersection deletes the offending row before Pareto can ever see it. The check would have been
+// permanently green by construction -- a decoration, and worse than absent because this module
+// would have been cited as respecting it.
+//
+// The projection is therefore typed and names the one axis it drops. Every other gap survives,
+// INCLUDING one naming an axis outside this module's vocabulary, so a mis-authored gap stays loud
+// and reaches the refusal that exists for it.
+fn without_axis(gaps: List<AxisGap>, drop: DeclarationRef) -> List<AxisGap> {
+  fold(gaps, init: [], f: fn(acc, g) {
+    if declaration_ref_eq(a: g.axis, b: drop) { acc } else { concat(acc, [g]) }
+  })
+}
+
+fn vintage_entry_with(c: VintageCandidate, gaps: List<AxisGap>) -> ParetoEntry {
+  ParetoEntry {
+    identity: decl_ref(module_path: "strategy.ci_vintage_frontier", decl_name: c.id),
+    display_label: c.id,
+    readings: vintage_readings(c: c),
+    missing_inputs: gaps,
+  }
+}
+
+fn vintage_entry(c: VintageCandidate) -> ParetoEntry {
+  vintage_entry_with(c: c, gaps: vintage_missing(c: c))
+}
+
+// THE AGENT-BUYER COMPARISON DROPS SINGLE-THREAD AND NOTHING ELSE. It is the one axis that does not
+// divide by the equivalence, so it is the one gap that names an axis this comparison stops funding.
+fn agent_buyer_entry(c: VintageCandidate) -> ParetoEntry {
+  vintage_entry_with(c: c, gaps: without_axis(gaps: vintage_missing(c: c), drop: axis_single_thread_id))
+}
+
+data no_vintage_entries: List<ParetoEntry> = []
+
+fn agent_buyer_entries() -> List<ParetoEntry> {
+  fold(vintage_candidates, init: no_vintage_entries, f: fn(acc, c) { concat(acc, [agent_buyer_entry(c: c)]) })
+}
+
+fn vintage_standing(c: VintageCandidate) -> ParetoStanding {
+  standing_in_field(c: c, field: vintage_candidates)
+}
+
+// The production projector over an explicit field. The live roster and a fixture roster go through
+// exactly the same path, so a control that plants a challenger is exercising the real seam rather
+// than a test-only re-implementation of it.
+fn standing_in_field(c: VintageCandidate, field: List<VintageCandidate>) -> ParetoStanding {
+  entry_standing(
+    subject: vintage_entry(c: c),
+    field: fold(field, init: no_vintage_entries, f: fn(acc, x) { concat(acc, [vintage_entry(c: x)]) }),
+    axes: vintage_axes,
+    sensitivities: vintage_sensitivities,
+  )
+}
+
+fn vintage_standing_label(c: VintageCandidate) -> NonEmptyStr {
+  pareto_label(s: vintage_standing(c: c))
+}
+
+// The same field under the agent-buyer axis set: single-thread un-funded.
+fn agent_buyer_standing(c: VintageCandidate) -> ParetoStanding {
+  entry_standing(subject: agent_buyer_entry(c: c), field: agent_buyer_entries(), axes: agent_buyer_axes, sensitivities: vintage_sensitivities)
+}
+
+// The prior note asserted "under the full set every observed vintage survives" and "the Altra build
+// dominates the gaming node under the agent-buyer set". Both conclusions rested on capex POINTS that
+// no source supports, so they are retracted here rather than left standing beside the corrected
+// model - a note that keeps asserting what the evidence no longer carries is the same false claim in
+// prose instead of in a reading.
+data frontier_reading_note: NonEmptyStr = "What the two axis sets say together, at planning grade with the sensitivities attached: Milan is the only vintage carrying a grounded capex region (its stated 2-3k band), and it survives the full set. Mt. Jade and the gaming node are NotComputable on capex BY THEIR OWN DECLARATION - Mt. Jade because its figure is derived at planning rates including the shared 32-GiB memory band, the gaming node because its BOM prices neither the NVMe nor the chassis/cooler/PSU - and the unliquidated successors are incomparable for want of a liquidation market. RETRACTED, and named so it is not quietly missed: the earlier reading that every observed vintage survives, and that the Altra build dominates the charitably-read gaming node once single-thread is un-funded. That second claim IS the operator's thesis (wall-clock premium is a human-attention artifact) stated as a selection fact, and it is UNFUNDED rather than refuted - agent_buyer_axes still funds capex, so a missing capex genuinely blocks the comparison. It returns when the two capex obligations below are discharged; the demand-mix measurement (JobInitiatorClass on billing receipts) then decides which axis set the business actually faces."
+
+// VintageCapexDebt WAS HERE AND IS DELETED (2026-09-02). It was a three-arm coproduct whose arms
+// mapped ONE-TO-ONE onto VintageCapex's - grounded, ungrounded, awaiting-market - with the payloads
+// dropped. That is one concept under two names, and the second name was strictly weaker: the
+// obligations are the part that says WHEN each debt dissolves, and the projection threw them away.
+//
+// The review asked for the two ungrounded rows to carry distinct arms, because Mt. Jade's capex funds
+// when the shared memory scenario is threaded across modules while the gaming row's funds when two
+// unpriced BOM lines are quoted. Those really are different debts with different triggers - and the
+// distinction already existed, in the obligation strings this renaming discarded. So the fix is to
+// delete the renaming and read c.capex directly, not to widen a type that should not exist.
+fn capex_is_a_grounded_band(c: VintageCandidate) -> Bool {
+  match c.capex {
+    VintageCapexBanded { low_usd_micro, high_usd_micro, note } => true
+    VintageCapexAwaitingSharedScenario { obligation } => false
+    VintageCapexIncompleteBom { obligation } => false
+    VintageAwaitingLiquidation { watch_obligation } => false
+  }
+}
+
+fn agent_buyer_flip_is_fundable() -> Bool {
+  capex_is_a_grounded_band(c: altra_mt_jade_vintage) && capex_is_a_grounded_band(c: gaming_9950x_vintage)
+}

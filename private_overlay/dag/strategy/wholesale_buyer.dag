@@ -1,0 +1,229 @@
+module strategy.wholesale_buyer
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.measure { money_amount_micro_count }
+import extdeps.currency.currency { Usd, CurrencyCode }
+import extdeps.cloud.ubicloud {
+  ubicloud_standard_16_arm_catalog,
+}
+import extdeps.pricing.ubicloud {
+  ubicloud_arm_standard_16_price,
+}
+import extdeps.ci_runner.blacksmith {
+  blacksmith_instance_types_authority,
+  blacksmith_runner_catalog,
+}
+import extdeps.ci_runner.types { RunnerShapesCited, RunnerShapesUnavailable }
+import strategy.node_rental {
+  RentalRow, hetzner_row, our_cost_per_slice_micro,
+  admissible_as_competitive_floor, competitive_floor_count, market_row_count,
+  region_is_known, supply_is_known, supply_is_purchasable, not_orderable_reading_count,
+  evidence_census_note,
+  hetzner_wholesale_quantity_enquiry, SupplyClosingExperiment,
+}
+
+// A RETAIL MONTHLY LISTING IS NOT A WHOLESALE SUPPLY CONTRACT. strategy.node_rental answers what
+// the open market CHARGES an end customer to rent a slice for a month. Selling dedicated Ampere
+// to Ubicloud or Blacksmith is a different question: what a RESELLER would pay under a term for
+// capacity they then wrap as CI minutes. Reusing a RentalRow as that price is the section-3
+// meaning fork — one shape, two commercial roles.
+//
+// Ubicloud and Blacksmith are independently versioned upstreams (DESIGN section 3). This module
+// cites their modules. It does not enumerate their products, and it does not contact them —
+// census_outreach_admission refuses GitHub-derived contact; outreach is the operator's.
+
+type ResellerBuyer
+  = UbicloudReseller { catalog_note: NonEmptyStr }
+  | BlacksmithReseller { catalog_note: NonEmptyStr }
+
+fn buyer_label(b: ResellerBuyer) -> NonEmptyStr {
+  match b {
+    UbicloudReseller { catalog_note } => "Ubicloud",
+    BlacksmithReseller { catalog_note } => "Blacksmith",
+  }
+}
+
+// WHAT THEY CHARGE THEIR CUSTOMERS is observed on their pricing pages. WHAT THEY WOULD PAY US
+// is a term quote we do not have. Mixing the two is how a 1250-micro-dollar CI minute becomes
+// a fake wholesale server-month.
+type ResellerFacingPrice
+  = EndCustomerMinuteRate {
+      micro_per_minute: Int
+      currency: CurrencyCode
+      product: NonEmptyStr
+      citation: NonEmptyStr
+      not_wholesale_reason: NonEmptyStr
+    }
+  | EndCustomerRateUnquoted { obligation: NonEmptyStr }
+  | WholesaleTermQuoted {
+      micro_per_month: Int
+      term_months: Int
+      currency: CurrencyCode
+      source: NonEmptyStr
+    }
+  | WholesaleTermUnquoted { obligation: NonEmptyStr }
+
+fn facing_is_wholesale_term(p: ResellerFacingPrice) -> Bool {
+  match p {
+    WholesaleTermQuoted { micro_per_month, term_months, currency, source } => true,
+    EndCustomerMinuteRate { micro_per_minute, currency, product, citation, not_wholesale_reason } => false,
+    EndCustomerRateUnquoted { obligation } => false,
+    WholesaleTermUnquoted { obligation } => false,
+  }
+}
+
+// THE SUPPLY-SIDE TWIN OF WholesaleTermUnquoted. Their end-customer minute rate is not a bid
+// for metal; Hetzner's retail one-unit CAX orderability is not a bid for quantity under a term.
+type ResellerQuantityStanding
+  = ResellerQuantityUnquoted { experiment: SupplyClosingExperiment }
+
+data hetzner_reseller_quantity: ResellerQuantityStanding = ResellerQuantityUnquoted {
+  experiment: hetzner_wholesale_quantity_enquiry,
+}
+
+fn reseller_quantity_is_quoted(s: ResellerQuantityStanding) -> Bool {
+  match s {
+    ResellerQuantityUnquoted { experiment } => false,
+  }
+}
+
+type WholesaleInquiry {
+  buyer: ResellerBuyer
+  they_resell: NonEmptyStr
+  end_customer_price: ResellerFacingPrice
+  what_they_would_pay_us: ResellerFacingPrice
+  comparator_retail: RentalRow
+  note: NonEmptyStr
+}
+
+data ubicloud_inquiry: WholesaleInquiry = WholesaleInquiry {
+  buyer: UbicloudReseller {
+    catalog_note: "extdeps.cloud.ubicloud runner catalog; arm64 rows are Ampere Altra Q80-30 with each vCPU a dedicated physical core — not Hetzner Altra Max M128-30, which rules Hetzner DEDICATED out as their arm source and rules nothing in, and no proof they buy CAX either.",
+  },
+  they_resell: ubicloud_standard_16_arm_catalog.runs_on_label,
+  end_customer_price: EndCustomerMinuteRate {
+    micro_per_minute: money_amount_micro_count(m: ubicloud_arm_standard_16_price.per_minute.amount),
+    currency: Usd,
+    product: ubicloud_standard_16_arm_catalog.runs_on_label,
+    citation: ubicloud_arm_standard_16_price.pricing_citation,
+    not_wholesale_reason: "This is what Ubicloud charges a GitHub Actions user per minute of a managed runner. It already contains their control plane, scheduling, cache path and margin. It is not a bid for dedicated metal under a term, and dividing it into a month does not recover what they pay Hetzner or anyone else.",
+  },
+  what_they_would_pay_us: WholesaleTermUnquoted {
+    obligation: "No term, volume or reliability quote from Ubicloud exists in this tree. Do not invent one from their runner tariff. The operator conducts outreach; this row stays Unquoted until a dated receipt lands.",
+  },
+  comparator_retail: hetzner_row,
+  note: "Processor coincidence on their x64 line with Hetzner dedicated SKUs is recorded in strategy.node_rental ubicloud_supplier_hypotheses as SharedCommodityPartOnly, which is what it establishes: EPYC 9454P and Ryzen 9 7950X3D are volume parts every dedicated-server vendor sells, so Hetzner is a POSSIBLE supplier among others and this says nothing about who Ubicloud actually buys from - and nothing about a wholesale price either way. Operator ruling, 2026-09-10. Their arm SKU is Q80-30; the Hetzner CAX processor model is uncited here and would not settle the question if it were cited, so it is not owed.",
+}
+
+data blacksmith_inquiry: WholesaleInquiry = WholesaleInquiry {
+  buyer: BlacksmithReseller {
+    catalog_note: "extdeps.ci_runner.blacksmith blacksmith_runner_catalog — Linux families only; entitlement Unstated even though the vendor says bare metal.",
+  },
+  they_resell: "blacksmith-16vcpu-ubuntu-2404-arm",
+  end_customer_price: EndCustomerRateUnquoted {
+    obligation: "extdeps.ci_runner.blacksmith cites the instance-types page and does not carry a price. A wholesale model that filled this from a blog or a screenshot would be a second pricing authority. Leave it until an extdeps.pricing.blacksmith row exists.",
+  },
+  what_they_would_pay_us: WholesaleTermUnquoted {
+    obligation: "No Blacksmith term quote exists in this tree. Do not contact them from this lane.",
+  },
+  comparator_retail: hetzner_row,
+  note: "Prospective customer, not a comparator. Their arm catalog is the product they would wrap, not the price they would pay.",
+}
+
+data wholesale_inquiries: List<WholesaleInquiry> = [ubicloud_inquiry, blacksmith_inquiry]
+
+type WholesaleArgument
+  = ArgumentUngrounded {
+      retail_rows: Int
+      purchasable_floors: Int
+      term_quotes: Int
+      obligation: NonEmptyStr
+    }
+  | ArgumentGroundedAgainstPurchasableFloor { note: NonEmptyStr }
+  | ArgumentBeatsQuotedTerm { by_permille: Int, note: NonEmptyStr }
+  | ArgumentLosesToQuotedTerm { by_permille: Int, note: NonEmptyStr }
+
+fn inquiry_has_term_quote(i: WholesaleInquiry) -> Bool {
+  facing_is_wholesale_term(p: i.what_they_would_pay_us)
+}
+
+fn term_quote_count() -> Int {
+  count(filter(wholesale_inquiries, i => inquiry_has_term_quote(i: i)))
+}
+
+fn end_customer_rate_is_not_our_wholesale_bid(i: WholesaleInquiry) -> Bool {
+  match i.end_customer_price {
+    EndCustomerMinuteRate { micro_per_minute, currency, product, citation, not_wholesale_reason } =>
+      facing_is_wholesale_term(p: i.what_they_would_pay_us) == false,
+    EndCustomerRateUnquoted { obligation } => facing_is_wholesale_term(p: i.what_they_would_pay_us) == false,
+    WholesaleTermQuoted { micro_per_month, term_months, currency, source } => false,
+    WholesaleTermUnquoted { obligation } => true,
+  }
+}
+
+// THE HONEST STANDING OF THE WHOLESALE DIRECTION, computed rather than asserted. Zero
+// admissible floors is a statement about this corpus's evidence, not about the market.
+fn wholesale_argument() -> WholesaleArgument {
+  let floors = competitive_floor_count()
+  let quotes = term_quote_count()
+  if floors == 0 && quotes == 0 {
+    ArgumentUngrounded {
+      retail_rows: market_row_count(),
+      purchasable_floors: floors,
+      term_quotes: quotes,
+      obligation: "EVIDENCE CENSUS: four retail rows, zero currently admissible as a purchasable floor, zero wholesale term quotes. Hetzner CAX is not Unobserved: three dated not-orderable displays to this account derive DisplayedNotOrderableToThisAccount. That is a fact about this vendor's CAX line for this account, not about the arm64 market as a whole. Reseller QUANTITY under a term is still Unquoted. Do not treat Ubicloud's per-minute runner tariff as a term quote.",
+    }
+  } else if quotes == 0 {
+    ArgumentUngrounded {
+      retail_rows: market_row_count(),
+      purchasable_floors: floors,
+      term_quotes: quotes,
+      obligation: "A purchasable retail floor exists, but no reseller has quoted a term, so the buyer-side number is still missing.",
+    }
+  } else {
+    ArgumentUngrounded {
+      retail_rows: market_row_count(),
+      purchasable_floors: floors,
+      term_quotes: quotes,
+      obligation: "A term quote is present; reduce it against our_cost_per_slice_micro before claiming a win. This arm is a placeholder until a quote lands — do not treat reaching it with a fabricated quote as success.",
+    }
+  }
+}
+
+fn wholesale_argument_is_ungrounded(a: WholesaleArgument) -> Bool {
+  match a {
+    ArgumentUngrounded { retail_rows, purchasable_floors, term_quotes, obligation } => true,
+    ArgumentGroundedAgainstPurchasableFloor { note } => false,
+    ArgumentBeatsQuotedTerm { by_permille, note } => false,
+    ArgumentLosesToQuotedTerm { by_permille, note } => false,
+  }
+}
+
+fn console_reading_is_scoped_not_orderable(r: RentalRow) -> Bool {
+  supply_is_purchasable(s: r.supply) == false
+    && region_is_known(r: r.region)
+    && supply_is_known(s: r.supply)
+    && not_orderable_reading_count(s: r.supply) == 3
+}
+
+fn hetzner_may_not_be_cited_as_reseller_cost_floor() -> Bool {
+  admissible_as_competitive_floor(r: hetzner_row) == false
+    && console_reading_is_scoped_not_orderable(r: hetzner_row)
+    && reseller_quantity_is_quoted(s: hetzner_reseller_quantity) == false
+}
+
+fn evidence_census_is_not_a_market_claim() -> NonEmptyStr { evidence_census_note }
+
+fn our_slice_cost_micro() -> Int { our_cost_per_slice_micro() }
+
+// Blacksmith catalog membership is consumed so the buyer row cannot silently drop the upstream.
+fn blacksmith_catalog_is_cited() -> Bool {
+  match blacksmith_runner_catalog {
+    RunnerShapesCited { rows } => count(rows) > 0
+    RunnerShapesUnavailable { cause } => false
+  }
+}
+
+fn blacksmith_authority_is_cited() -> Bool {
+  blacksmith_instance_types_authority.uri.locator == "docs.blacksmith.sh/blacksmith-runners/overview"
+}

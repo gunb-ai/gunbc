@@ -1,0 +1,174 @@
+module test.claim.ci_sellable_unit_witness
+
+import std.types { Bool, List }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.measure { gigabyte_count }
+import extdeps.ci_runner.types { QuotedWithoutBasis, QuotedDecimalGigabytes }
+import gunbc.memory_per_vcpu_convention { MemoryPerVcpuConvention, arm64_three_gb_per_vcpu_convention, Unattributed, Attributed }
+import strategy.ci_sellable_unit {
+  ci_sellable_unit, revoked_four_gb_unit, units_by_memory_gib, required_memory_gib_ceiling_for_units,
+  SellableUnitContract, unit_byte_law, ByteLawEstablished, ByteLawUnestablished,
+  customer_visible_memory_numeral,
+  required_usable_memory, MemoryRequirementEstablished, MemoryRequirementUnestablished,
+  memory_capacity_verdict, MemoryCapacityAdmitted, MemoryCapacityRefused, MemoryCapacityUnestablished,
+  units_by_usable_memory_bytes,
+  physical_memory_gib_required, hostable_unit_counts, shape_is_hostable,
+  second_sku_needs_a_dramatically_different_market, SplitAdmittedForAnyMarket,
+}
+import strategy.ci_node_build {
+  candidate_r12spd_q80_32, candidate_q64_16, candidate_q64_32, candidate_q128_32,
+  sellable_units, standard_units, stranded_cores, unused_standard_memory_gib, host_reserved_memory_gib,
+}
+import strategy.mobo_x {
+  mobo_x_research, custom_tile_production, mobo_x_rungs, rung_count, program_contract,
+  ResearchAdmittedByOperator, ResearchRefused, NotYetDerivable, Derived,
+  rung_identities_are_unique, serial_order_chains, rung_receipts_name_roster_identities,
+}
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The basis-free contract both REDs below construct: identical to the live contract except the
+// convention's magnitude carries no basis, so no byte law can be established from it.
+fn basis_free_contract() -> SellableUnitContract {
+  SellableUnitContract {
+    cores_per_unit: 1,
+    convention: MemoryPerVcpuConvention {
+      architecture: ci_sellable_unit.convention.architecture,
+      per_vcpu: QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
+      origin: ci_sellable_unit.convention.origin,
+      consulted: ci_sellable_unit.convention.consulted,
+    },
+    effective_from: ci_sellable_unit.effective_from,
+    second_sku_admission: ci_sellable_unit.second_sku_admission,
+  }
+}
+// ONE SKU: one core, the arm64 market convention's three decimal GB, adopted (not re-authored)
+// from the public convention row whose origin is typed Unattributed; the four-GB unit is revoked
+// on the same date the three-GB contract takes effect, and the only admission for a second SKU is
+// a dramatically different market.
+test fn w_one_sellable_unit_adopts_the_arm64_convention() -> Bool {
+  let one_core = ci_sellable_unit.cores_per_unit == 1
+  let law_from_the_convention = match unit_byte_law(c: ci_sellable_unit) {
+    ByteLawEstablished { bytes_per_unit } => bytes_per_unit == 3000000000
+    ByteLawUnestablished { quoted_label: _ } => false
+  }
+  let adopted_by_identity = ci_sellable_unit.convention == arm64_three_gb_per_vcpu_convention
+  let origin_still_open = match ci_sellable_unit.convention.origin {
+    Unattributed { searched: _ } => true
+    Attributed { authority: _ } => false
+  }
+  let revoked_same_day = revoked_four_gb_unit.revoked_on == ci_sellable_unit.effective_from
+  let revoked_names_four_decimal_gb = match revoked_four_gb_unit.memory_per_unit {
+    QuotedDecimalGigabytes { value: v } => gigabyte_count(g: v) == 4
+    _ => false
+  }
+  let supersession_names_the_contract = revoked_four_gb_unit.superseded_by.module_path == "strategy.ci_sellable_unit"
+    && revoked_four_gb_unit.superseded_by.decl_name == "ci_sellable_unit"
+  let only_admission = second_sku_needs_a_dramatically_different_market(c: ci_sellable_unit)
+  let any_market_split = SellableUnitContract {
+    cores_per_unit: ci_sellable_unit.cores_per_unit,
+    convention: ci_sellable_unit.convention,
+    effective_from: ci_sellable_unit.effective_from,
+    second_sku_admission: SplitAdmittedForAnyMarket,
+  }
+  let red_split_refused = !second_sku_needs_a_dramatically_different_market(c: any_market_split)
+  let red_basis_free_law_refused = match unit_byte_law(c: basis_free_contract()) {
+    ByteLawEstablished { bytes_per_unit: _ } => false
+    ByteLawUnestablished { quoted_label: l } => l == "GB"
+  }
+  let projection_is_derived = customer_visible_memory_numeral(units: 8) == 24
+  one_core && law_from_the_convention && adopted_by_identity && origin_still_open && revoked_same_day
+    && revoked_names_four_decimal_gb && supersession_names_the_contract
+    && only_admission && red_split_refused && red_basis_free_law_refused && projection_is_derived
+}
+
+// THE ADMISSION LAW IS BYTE-EXACT AND THE GIB FIGURES ARE PROJECTIONS. 76 units require exactly
+// 228_000_000_000 bytes; 3 GiB is 3.22e9 bytes, one unit and change, never two; the ceiling
+// projection of 76 units is 213 GiB and the node's physical requirement is that plus the host
+// reserve. RED: an observed 212 GiB (227.6e9 bytes) is REFUSED for 76 units even though the whole-GiB
+// rendering rounds to the requirement -- the rounded number must never become the authority.
+test fn w_the_byte_law_is_canonical_and_gib_is_a_projection() -> Bool {
+  let required_is_byte_exact = match required_usable_memory(c: ci_sellable_unit, units: 76) {
+    MemoryRequirementEstablished { bytes } => bytes == 228000000000
+    MemoryRequirementUnestablished { quoted_label: _ } => false
+  }
+  let admitted_at_256_gib = match memory_capacity_verdict(c: ci_sellable_unit, observed_usable_bytes: 256 * 1073741824, units: 76) {
+    MemoryCapacityAdmitted => true
+    _ => false
+  }
+  let refused_at_212_gib = match memory_capacity_verdict(c: ci_sellable_unit, observed_usable_bytes: 212 * 1073741824, units: 76) {
+    MemoryCapacityRefused { required_bytes: b } => b == 228000000000
+    _ => false
+  }
+  let red_unestablished_law_cannot_admit = match memory_capacity_verdict(c: basis_free_contract(), observed_usable_bytes: 999999999999999, units: 1) {
+    MemoryCapacityUnestablished { quoted_label: l } => l == "GB"
+    _ => false
+  }
+  required_is_byte_exact && admitted_at_256_gib && refused_at_212_gib && red_unestablished_law_cannot_admit
+    && units_by_usable_memory_bytes(observed_usable_bytes: 228000000000) == 76
+    && units_by_usable_memory_bytes(observed_usable_bytes: 227999999999) == 75
+    && units_by_memory_gib(gib: 3) == 1
+    && units_by_memory_gib(gib: 6) == 2
+    && units_by_memory_gib(gib: 256) == 91
+    && required_memory_gib_ceiling_for_units(units: 76) == 213
+    && physical_memory_gib_required(sellable_units: 76, host_reserved_memory_gib: host_reserved_memory_gib) == 213 + host_reserved_memory_gib
+}
+
+// THE NODE-BUILD FIELD READS THE CONTRACT, NOT A LITERAL. Under three decimal GB, 256 GiB backs 91
+// units (a Q64 pair strands 37 cores), 512 GiB backs 183 (the Q64 pair is core-bound at 128 with
+// 154 GiB unsold; the Q128 pair strands 73 cores).
+test fn w_node_build_capacities_follow_the_contract() -> Bool {
+  standard_units(c: candidate_q64_16) == 91
+    && stranded_cores(c: candidate_q64_16) == 37
+    && standard_units(c: candidate_q64_32) == 128
+    && stranded_cores(c: candidate_q64_32) == 0
+    && unused_standard_memory_gib(c: candidate_q64_32) == 154
+    && standard_units(c: candidate_q128_32) == 183
+    && stranded_cores(c: candidate_q128_32) == 73
+}
+
+// THE LARGEST OFFERED SHAPE IS WHAT A NODE EXPOSES, NOT A SECOND SKU. A one-socket Q80 node cannot
+// host the 128-unit shape; the menu filtered by that node stops at 64.
+test fn w_the_128_unit_shape_is_not_hostable_on_a_one_socket_q80() -> Bool {
+  let per_node = sellable_units(c: candidate_r12spd_q80_32)
+  let hostable = hostable_unit_counts(offered: [2, 4, 8, 16, 32, 64, 128], sellable_units_per_node: per_node)
+  per_node < 128
+    && !shape_is_hostable(units: 128, sellable_units_per_node: per_node)
+    && shape_is_hostable(units: 64, sellable_units_per_node: per_node)
+    && count(hostable) == 6
+}
+
+// MOBO-X: RESEARCH IS ADMITTED, PRODUCTION IS NOT YET DERIVABLE, AND THE TWO ARE DIFFERENT ROWS.
+// The program designs against the one contract by identity, and its fourteen rungs are serial with
+// the receipt chain one rung behind the work.
+test fn w_mobo_x_research_admitted_and_production_undetermined() -> Bool {
+  let admitted = match mobo_x_research {
+    ResearchAdmittedByOperator { ruled_on: d } => d == "2026-08-30"
+    ResearchRefused { reason: _ } => false
+  }
+  let undetermined = match custom_tile_production {
+    NotYetDerivable { waiting_on_rung: r } => r != ""
+    Derived { receipt: _ } => false
+  }
+  admitted && undetermined
+    && rung_count() == 14
+    && rung_identities_are_unique()
+    && serial_order_chains()
+    && rung_receipts_name_roster_identities()
+    && program_contract().cores_per_unit == ci_sellable_unit.cores_per_unit
+}
+
+fn sellable_unit_witness_main() -> ProcessExit {
+  if w_one_sellable_unit_adopts_the_arm64_convention()
+    && w_the_byte_law_is_canonical_and_gib_is_a_projection()
+    && w_node_build_capacities_follow_the_contract()
+    && w_the_128_unit_shape_is_not_hostable_on_a_one_socket_q80()
+    && w_mobo_x_research_admitted_and_production_undetermined() {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

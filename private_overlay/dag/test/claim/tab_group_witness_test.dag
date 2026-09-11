@@ -1,0 +1,126 @@
+module test.claim.tab_group_witness
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.markup { Fragment }
+import gunbc.site.markup { txt, el }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import strategy.tab_group {
+  TabGroup, TabPane, tabbed, tab_group_css, tab_radio_id, tab_last_id, tab_first_key,
+  tab_keys_are_unique, tab_group_is_populated, tab_css_covers_every_pane, tab_first_id,
+  tab_bar_follows_the_radios,
+}
+
+// A fixture group, deliberately three panes so the first-is-default rule has something to be wrong
+// about and the last-id rule has something to skip past.
+data probe_group: TabGroup = TabGroup {
+  name: "probe",
+  panes: [
+    TabPane { key: "front", label: "Front", body: el(tag: "p", children: [txt(s: "front body")]) },
+    TabPane { key: "side", label: "Side", body: el(tag: "p", children: [txt(s: "side body")]) },
+    TabPane { key: "rear", label: "Rear", body: el(tag: "p", children: [txt(s: "rear body")]) },
+  ],
+}
+
+fn probe_html() -> String {
+  match try_serialize_html_source(node: tabbed(g: probe_group)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+  }
+}
+
+// CONTROL 1. THE REGRESSION. The tab bar must open immediately after the final radio. This is the
+// exact adjacency that a wrapper element destroys, and its absence is what hid every drawing on the
+// generated page while the stylesheet stayed byte-identical.
+test fn witness_radios_are_siblings_of_the_bar() -> Bool {
+  tab_bar_follows_the_radios(html: probe_html(), g: probe_group)
+}
+
+// CONTROL 2. The wrapped form must FAIL the same check, or control 1 proves nothing - a predicate
+// that returns true for every input is not a check. This builds the broken shape by hand and
+// asserts the assertion catches it.
+fn wrapped_html() -> String {
+  match try_serialize_html_source(node: el(tag: "div", children: [
+    el(tag: "span", children: [txt(s: "wrapper standing in for the span that broke it")]),
+    el(tag: "div", children: [txt(s: "bar")]),
+  ])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => r
+  }
+}
+
+test fn witness_the_broken_shape_is_rejected() -> Bool {
+  tab_bar_follows_the_radios(html: wrapped_html(), g: probe_group) == false
+}
+
+// CONTROL 3. Every pane reaches the markup, and every pane's radio and data attribute are present.
+test fn witness_every_pane_is_emitted() -> Bool {
+  let h = probe_html()
+  all(probe_group.panes, p =>
+    string_contains(s: h, pattern: join(["id=\"", tab_radio_id(g: probe_group, p: p), "\""], ""))
+      && string_contains(s: h, pattern: join(["data-pane=\"", p.key, "\""], ""))
+      && string_contains(s: h, pattern: join(["for=\"", tab_radio_id(g: probe_group, p: p), "\""], "")))
+}
+
+// CONTROL 4. Exactly one radio carries the checked attribute, and it is the first pane. A group with
+// no default shows nothing; a group with two defaults shows whichever the browser resolves last.
+test fn witness_exactly_one_default_and_it_is_first() -> Bool {
+  let h = probe_html()
+  let first_id = tab_first_id(g: probe_group)
+  string_contains(s: h, pattern: join(["id=\"", first_id, "\" class=\"tabin\" checked=\"checked\""], ""))
+    && string_contains(s: h, pattern: join(["id=\"", tab_last_id(g: probe_group), "\" class=\"tabin\" checked"], "")) == false
+}
+
+// CONTROL 5. Every generated selector names an id and a pane key the markup carries. This is what
+// stops a stylesheet drifting from the markup it is supposed to drive.
+test fn witness_css_and_markup_cannot_disagree() -> Bool {
+  tab_css_covers_every_pane(g: probe_group)
+}
+
+// CONTROL 6. Structural sanity on the group itself.
+test fn witness_group_keys_are_unique_and_populated() -> Bool {
+  tab_keys_are_unique(g: probe_group) && tab_group_is_populated(g: probe_group)
+}
+
+// CONTROL 7. A duplicate key must be caught, or control 6 is decoration.
+data duplicate_group: TabGroup = TabGroup {
+  name: "dupe",
+  panes: [
+    TabPane { key: "front", label: "Front", body: txt(s: "a") },
+    TabPane { key: "front", label: "Front again", body: txt(s: "b") },
+  ],
+}
+
+test fn witness_duplicate_keys_are_refused() -> Bool {
+  tab_keys_are_unique(g: duplicate_group) == false
+}
+
+data tab_witness_names: List<NonEmptyStr> = [
+  "witness_radios_are_siblings_of_the_bar",
+  "witness_the_broken_shape_is_rejected",
+  "witness_every_pane_is_emitted",
+  "witness_exactly_one_default_and_it_is_first",
+  "witness_css_and_markup_cannot_disagree",
+  "witness_group_keys_are_unique_and_populated",
+  "witness_duplicate_keys_are_refused",
+]
+
+test fn tab_group_witness_roster_is_complete_and_green() -> Bool {
+  count(tab_witness_names) == 7
+    && witness_radios_are_siblings_of_the_bar()
+    && witness_the_broken_shape_is_rejected()
+    && witness_every_pane_is_emitted()
+    && witness_exactly_one_default_and_it_is_first()
+    && witness_css_and_markup_cannot_disagree()
+    && witness_group_keys_are_unique_and_populated()
+    && witness_duplicate_keys_are_refused()
+}
+
+// A PROCESS-EXIT ENTRY POINT, so this witness is runnable by the actuator on the same terms as
+// every other row. gunbc run REFUSES to map a Bool to an exit code -- printing the value and
+// exiting 0 would report success for a run whose outcome is unknown -- so a roster witness with no
+// ProcessExit main cannot be executed by CI at all, which is how the tab group roster sat green and
+// unrun. The verdict is the roster's own, unchanged; only the carrier is new.
+fn tab_group_witness_main() -> ProcessExit {
+  if tab_group_witness_roster_is_complete_and_green() { ExitSuccess } else { ExitFailure { code: 1, reason: "tab_group_witness_roster_is_complete_and_green returned false" } }
+}

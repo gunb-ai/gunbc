@@ -1,0 +1,228 @@
+module strategy.fleet_decisions
+
+import std.types { NonEmptyStr, List, Bool, Int }
+
+// THE DECISION REGISTER. A plan item is work still to do; a decision is a question already
+// ANSWERED, and until now the repository had a carrier for the first and none for the second.
+// The cost of that gap is visible in this project's own history: the boot materialization was
+// settled in compute_fabric_model as RamRoot with the reasoning recorded, and was then
+// re-derived from scratch weeks later by someone who could not tell a settled question from an
+// open one. Re-deriving a settled decision is not merely wasted time - it is dangerous, because
+// the second derivation runs on whatever facts happen to be at hand and may land somewhere else.
+//
+// So a decision here is not a note. It carries the BASIS it was taken on and the TRIGGER that
+// would reopen it, and those two fields are what make it safe to stop thinking about. A decision
+// with no reopen trigger is either an eternal truth - rare - or an unexamined assumption wearing
+// a decision's clothes.
+//
+// The Deferred arm is equally load-bearing and is NOT a placeholder. It names what the decision
+// is blocked on and, more usefully, what would make it decidable, so that a question nobody can
+// answer today is distinguishable from one nobody has bothered to answer. Confusing those two is
+// how a project stalls while looking busy.
+
+type DecisionStanding
+  = Decided {
+      decided_on: NonEmptyStr
+      basis: NonEmptyStr
+      reopen_trigger: NonEmptyStr
+    }
+  | Deferred {
+      blocked_on_plan_item: NonEmptyStr
+      why_not_now: NonEmptyStr
+      decidable_when: NonEmptyStr
+    }
+
+type FleetDecision {
+  key: NonEmptyStr
+  question: NonEmptyStr
+  standing: DecisionStanding
+  forecloses: NonEmptyStr
+}
+
+fn is_decided(d: FleetDecision) -> Bool {
+  match d.standing {
+    Decided { decided_on, basis, reopen_trigger } => true,
+    Deferred { blocked_on_plan_item, why_not_now, decidable_when } => false,
+  }
+}
+
+fn blocking_item(d: FleetDecision) -> NonEmptyStr {
+  match d.standing {
+    Decided { decided_on, basis, reopen_trigger } => "none",
+    Deferred { blocked_on_plan_item, why_not_now, decidable_when } => blocked_on_plan_item,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// DECIDED. Each of these is closed. Reopening one requires its named trigger to fire, and a
+// proposal that reopens one without its trigger is re-litigation rather than new information.
+// ---------------------------------------------------------------------------------------------
+
+data decision_host_boot: FleetDecision = FleetDecision {
+  key: "host-boot-materialization",
+  question: "How does a compute node get its operating system - RAM-resident image, network root, or local disk?",
+  standing: Decided {
+    decided_on: "2026-08 in strategy.compute_fabric_model; restated 2026-09-04",
+    basis: "RamRoot. A root materialised into RAM confines the network dependency to the BOOT WINDOW, where an NFS or iSCSI root keeps the network on a running node's continuous execution path so that losing the boot server hangs a LIVE node rather than merely blocking a new one. netboot-m0 states the same. The image arrives once per boot as a bounded transfer rather than as sustained traffic.",
+    reopen_trigger: "A measured boot-herd burst that exceeds the admitted network envelope, or a root image that no longer fits the RAM budget once the cache reservation is set. Neither is a matter of preference.",
+  },
+  forecloses: "Do not re-evaluate NFS-root or iSCSI-root. Do not price a per-node OS drive. The question of what the GUEST and SCRATCH layers use is separate and remains open.",
+}
+
+data decision_compute_node_storage: FleetDecision = FleetDecision {
+  key: "compute-node-local-storage",
+  question: "Do the compute nodes carry local drives for cache and scratch?",
+  standing: Decided {
+    decided_on: "2026-09-04, operator",
+    basis: "NO DRIVES IN COMPUTE NODES. The operator's stated preference is explicit - handling this on the network is preferred to maintaining boot drives - and the arithmetic agrees at both ends: a per-node cache would have absorbed roughly 8.6 TB of writes per node per day at a zero hit rate, which is over four drive-writes per day on a 2 TB part against roughly one for used enterprise, and the launch is a bounded design-partner rollout that fits 1 GbE with no cache benefit at all. A compute node with no drive has no drive to fail, which is the operational property being bought.",
+    reopen_trigger: "cache-hit-floor MEASURING leaf-link saturation under an admitted workload, together with diskless_promotion_gate control six showing the remote-scratch demand that removing local scratch actually adds. An estimate does not reopen this; a measurement does.",
+  },
+  forecloses: "Do not put per-node NVMe into any purchase order. Do not justify drives from a projected full-rack workload - the launch workload is the one that has to be served.",
+}
+
+data decision_leaf_network: FleetDecision = FleetDecision {
+  key: "leaf-network-speed",
+  question: "Do the compute nodes get 10 gigabit networking?",
+  standing: Decided {
+    decided_on: "2026-09-04, operator",
+    basis: "1 GbE at the leaves, using the two onboard ports, bonded where the switch does LACP. The OCP 3.0 slots are empty so 10 gigabit is a per-node purchase of 900 to 2700 dollars for the fleet, and the launch envelope does not need it: a bounded design-partner concurrency fits 1 GbE with no cache benefit. Bonding is worth its patch cable but must not be sold as a 2x, because LACP hashes per flow and a single restore stays capped at one gigabit.",
+    reopen_trigger: "cache-hit-floor measuring the leaf links saturating under an admitted workload. Reopening buys cards for the specific nodes that need them, not for the fleet.",
+  },
+  forecloses: "Do not buy 21 OCP cards. Do not treat the Arista 7050S-52 as the fleet's data switch - its role is the infrastructure uplink.",
+}
+
+data decision_management_network: FleetDecision = FleetDecision {
+  key: "management-network",
+  question: "How are the BMCs reached?",
+  standing: Decided {
+    decided_on: "2026-09-04",
+    basis: "A separate switch and a separate VLAN from the data plane. This is required under EVERY branch of every other open decision - colo or residence, RAM-root or otherwise, 1 gigabit or 10 - which makes it the one networking purchase carrying no decision risk. 21 BMC ports plus 42 bonded data ports is 63, which does not fit one 48-port chassis, so two switches is arithmetic rather than preference.",
+    reopen_trigger: "None foreseen. A management plane sharing a failure domain with the data plane it exists to rescue is not a variant worth reconsidering.",
+  },
+  forecloses: "Do not wait on siting, netboot or caching to buy this. It is orderable today.",
+}
+
+data decision_infrastructure_pair: FleetDecision = FleetDecision {
+  key: "infrastructure-pair",
+  question: "Where does state live, if not on the compute nodes?",
+  standing: Decided {
+    decided_on: "2026-09-04",
+    basis: "A REDUNDANT PAIR of nodes carries boot service, the rack cache tier and artifact ingest, and they are the only stateful machines in the fleet. They take the drives and the 10 gigabit cards, because the restore fan-in is a property of the origin and not of any leaf. The pair is redundant rather than single because the diskless design converts nineteen independent drive failures into one shared dependency, and a shared dependency that is not redundant is strictly worse than what it replaced.",
+    reopen_trigger: "None on the shape. The COUNT of drives and the storage layout inside the pair remain open.",
+  },
+  forecloses: "Do not design a single boot or cache server. Do not treat the pair as ordinary compute capacity in sellable-unit arithmetic.",
+}
+
+data decision_launch_concurrency_posture: FleetDecision = FleetDecision {
+  key: "launch-concurrency-posture",
+  question: "How much work is admitted at launch?",
+  standing: Decided {
+    decided_on: "2026-09-04",
+    basis: "BOUNDED AND MEASURED, admitted upward from evidence rather than sized from the full-rack projection. The 64 percent cache-hit requirement belongs to one workload envelope - 315 concurrent jobs across twenty workers - and is not a property of running CI on 1 GbE. A small admitted workload fits the links with no cache benefit at all, so the launch does not have to solve full-rack utilisation before serving anyone.",
+    reopen_trigger: "Not a reopening but a ratchet: the admitted bound rises when measurement supports it. The POSTURE is settled; the NUMBER is a separate decision below.",
+  },
+  forecloses: "Do not derive purchases from the 2100-vCPU planning population. Do not describe the cache as what makes the fleet work at all - it is what governs growth beyond the admitted bound.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// DEFERRED. Each names what it is blocked on AND what would make it decidable, so a question
+// that cannot be answered today is distinguishable from one nobody has answered.
+// ---------------------------------------------------------------------------------------------
+
+data decision_pilot_node_population: FleetDecision = FleetDecision {
+  key: "pilot-node-population",
+  question: "How many nodes are POWERED, ADMITTED and SELLING in the design-partner phase, as distinct from the 21 owned or invoiced chassis?",
+  standing: Deferred {
+    blocked_on_plan_item: "home-soft-launch-readiness",
+    why_not_now: "The owned count is an inventory fact and the admitted count is a siting and power fact. home_hosting puts roughly 5.76 kW of usable draw against a fleet whose planning demand is 13.65 kW, so the residence admits about eight nodes and not twenty-one. Deriving purchase quantities from the owned count spends cash on capacity the pilot cannot energise, and deriving them from a guessed pilot count hides the constraint that produced it.",
+    decidable_when: "The site is chosen and its usable circuit budget is measured, at which point admitted nodes is a division rather than an estimate.",
+  },
+  forecloses: "Every quantity in procurement_order that multiplies a per-node count. Until it is decided the DIMM line is gross of an uncounted inventory AND denominated in a node population the pilot will not run.",
+}
+
+data decision_memory_population: FleetDecision = FleetDecision {
+  key: "memory-population",
+  question: "Which DIMMs, how many per node, and may capacities be mixed?",
+  standing: Deferred {
+    blocked_on_plan_item: "memory-bom-decision",
+    why_not_now: "Two incompatible census readings stand and capacity cannot discriminate them: 8 x 32 GiB and 16 x 16 GiB both total roughly 256 GB while disagreeing about whether half the sixteen memory channels are unpopulated, which is the difference between full and half memory bandwidth on a 160-core build workload. The board carries 32 slots against 16 channels, so what is installed does not bound what it holds. No sellable-unit target can be set either, because the host cache reservation that competes for the same memory is itself undecided.",
+    decidable_when: "A host-side per-slot census exists - the BMC firmware cannot produce one, so a node must be powered and booted for the dmidecode route - AND the cache reservation is chosen. ON MIXING CAPACITIES, which is the operator's question: identical modules within a channel is close to universal, and mixing capacity ACROSS channels within a socket generally forces a non-uniform interleave that costs bandwidth, while an asymmetric population between the two sockets makes NUMA asymmetric in a way the scheduler cannot see. Whether this platform admits a mixed population at full speed is a fact owned by the Ampere Altra and Gigabyte MP72 memory population guide and must be READ THERE rather than reasoned out - it is exactly the kind of vendor rule that is cheap to look up and expensive to assume. The commercially relevant framing is that a fleet standard should admit any population passing the capacity floor and the bandwidth measurement, rather than mandate a module capacity, because mandating one converts cheap secondary-market supply into inadmissible inventory.",
+  },
+  forecloses: "Nothing yet. In particular this does NOT stand behind the withdrawn claims that 32 GiB modules are forced or that 64 GiB are wasted.",
+}
+
+data decision_cache_reservation: FleetDecision = FleetDecision {
+  key: "cache-reservation-size",
+  question: "How much node RAM is reserved for the host layer cache?",
+  standing: Deferred {
+    blocked_on_plan_item: "cache-tier-fabric",
+    why_not_now: "It is a decision variable that was being used as a premise. Every reserved gigabyte is a unit not sold, so the reservation is priced in revenue and cannot be assumed in order to justify a RAM purchase - which is what an earlier version of the memory reasoning did. The 100 GiB figure in circulation was illustrative and has no basis behind it.",
+    decidable_when: "The admitted launch concurrency has a number and a measured hit-rate curve exists against it, so the reservation can be chosen where marginal hit rate stops paying for the units it costs. Until then any figure is arbitrary.",
+  },
+  forecloses: "Nothing. No RAM purchase may cite a cache reservation as its justification while this stands.",
+}
+
+data decision_admitted_concurrency_number: FleetDecision = FleetDecision {
+  key: "admitted-concurrency-number",
+  question: "What concurrent job count is admitted at launch?",
+  standing: Deferred {
+    blocked_on_plan_item: "workload-benchmark-suite",
+    why_not_now: "The posture is settled as bounded-and-measured, but the bound itself needs a real job mix rather than the planning grain of 2 vCPU for 5 minutes restoring 2 GB. Without it the number would be derived from the same projection the posture exists to avoid.",
+    decidable_when: "The benchmark suite runs on a powered node against a representative build workload and produces restore size, duration and concurrency as MEASUREMENTS rather than planning constants.",
+  },
+  forecloses: "Nothing. Every capacity figure quoted before this lands is a planning figure and must say so.",
+}
+
+data decision_siting: FleetDecision = FleetDecision {
+  key: "siting",
+  question: "Colo or the residence?",
+  standing: Deferred {
+    blocked_on_plan_item: "siting-decision",
+    why_not_now: "The colo chain anchors at year end because colo-rfq does, and the residence has a hard power ceiling: 13.65 kW of fleet demand at the 650 W planning draw against roughly 5.76 kW usable on a 30 A circuit, which is about eight nodes. So the two branches do not deploy the same number of machines and therefore do not need the same number of racks, PDUs, rails or blanking panels.",
+    decidable_when: "colo-vendor-selection produces a dated signable contract, or the residence readiness assessment produces a measured node count. Either resolves the fork; neither has run.",
+  },
+  forecloses: "Nothing yet, but it holds every rack-scaled purchase, which is why those lines are blocked rather than estimated.",
+}
+
+data decision_swap: FleetDecision = FleetDecision {
+  key: "swap-on-compute-nodes",
+  question: "Is swap configured on compute nodes, on cheap SSDs or anywhere else?",
+  standing: Decided {
+    decided_on: "2026-09-04",
+    basis: "NO SWAP. Proposed as cheap SSDs for supplementary swap on the reasoning that a dead drive would strand a few cores rather than take the machine out, and the graceful-degradation instinct is right but swap is the one workload where it does not hold. THREE REASONS, each independently sufficient. First, the failure is not graceful: swapped-out pages exist ONLY on the swap device, so a drive that dies mid-job takes those pages with it and the processes holding them fault or hang - a clean swapoff degrades, a dying drive does not, and the difference is that nothing warns you. Second, swap-backed memory sold under a three-decimal-gigabytes-per-unit contract is externalized degradation in DESIGN section 5's sense: swap exists precisely to admit units the physical memory cannot back, and the customer then receives disk-speed memory under an unchanged name and price. If more units than RAM supports are to be sold, the honest form is a separately named and priced product. Third, it inverts the endurance argument: swap is the most write-heavy thing that could be placed on a drive and cheap consumer SSDs have the worst endurance available, so the cheapest parts would be carrying the harshest workload. A job exceeding its cgroup limit should be killed, which is correct CI behaviour and a bound worth setting deliberately.",
+    reopen_trigger: "A memory contract that does not promise customer-visible physical memory per unit - that is a different product, and it would reopen this as a property of that product rather than of this one.",
+  },
+  forecloses: "Do not size swap. Do not treat swap as a way to admit concurrency beyond the physical memory budget. The graceful-degradation idea belongs to the cache row below, where it actually works.",
+}
+
+data decision_local_cache_drives: FleetDecision = FleetDecision {
+  key: "local-cache-drive-shape",
+  question: "If cheap drives go into compute nodes at all, what are they FOR?",
+  standing: Deferred {
+    blocked_on_plan_item: "cache-hit-floor",
+    why_not_now: "Whether a node-local tier is worth anything at the admitted launch concurrency is unmeasured, and the compute-node-local-storage decision already stands against buying drives on a projection. What CAN be settled in advance is the shape any such drive would take, so that if the measurement supports it the purchase is not redesigned from scratch.",
+    decidable_when: "cache-hit-floor measures a hit rate that pays for the drives at the admitted concurrency, AND the front 2.5 inch backplane is established as SATA or U.2 - mt_collins_held_unit does not record which, used drives for either are cheap but they are not interchangeable. THE SHAPE, IF BOUGHT: a DISPOSABLE CACHE and never swap, never a boot device, never anything whose loss is not reconstructible. That is what makes the operator's degradation argument correct here where it fails for swap - a cache is reconstructible by definition, so a dead drive means the node fetches over the network and runs slower rather than losing work. It also inverts the endurance objection, because a layer cache is read-mostly once warm where swap is write-heavy, so cheap parts become appropriate rather than reckless. Both a node with a dead cache drive and a node with no drive at all must be fully admissible states, which is what makes the drives genuinely optional rather than a fleet commitment acquired by degrees.",
+  },
+  forecloses: "Nothing yet. This does NOT reopen compute-node-local-storage, whose trigger is a measurement of leaf saturation - it is a separate proposal about what an optional tier would look like.",
+}
+
+data fleet_decisions: List<FleetDecision> = [
+  decision_host_boot,
+  decision_compute_node_storage,
+  decision_leaf_network,
+  decision_management_network,
+  decision_infrastructure_pair,
+  decision_launch_concurrency_posture,
+  decision_pilot_node_population,
+  decision_memory_population,
+  decision_cache_reservation,
+  decision_admitted_concurrency_number,
+  decision_siting,
+  decision_swap,
+  decision_local_cache_drives,
+]
+
+fn decided() -> List<FleetDecision> { filter(fleet_decisions, d => is_decided(d: d)) }
+fn deferred() -> List<FleetDecision> { filter(fleet_decisions, d => !is_decided(d: d)) }
+
+data register_thesis: NonEmptyStr = "The point of this register is that a question appearing here as Decided should not be thought about again. Every Decided row carries the trigger that would reopen it, and a proposal that reopens one without its trigger having fired is re-litigation rather than new information - the reviewer's job is to check the trigger, not to re-run the reasoning. Every Deferred row names what would make it decidable, so the difference between a question that cannot be answered and one that has not been answered is visible rather than inferred."

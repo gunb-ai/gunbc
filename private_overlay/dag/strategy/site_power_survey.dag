@@ -1,0 +1,430 @@
+module strategy.site_power_survey
+
+import std.types { Int, Bool, NonEmptyStr, List, EpochMs }
+import extdeps.utility.types { ElectricUtility }
+import extdeps.utility.first_energy_jcpl { jcpl }
+import extdeps.utility.first_energy_met_ed { met_ed }
+import extdeps.utility.pseg { pseg }
+import strategy.rack_power_engineering { collins_node_planning_watts }
+import strategy.workflow_stage_gate {
+  WorkStage, DecisionGate, Actuation, WorkflowNode, StageNode, GateNode, ActuationNode,
+  WorkflowNodeSpec, WorkflowTemplate, WorkflowDependency, TemplateSelection, NoSelection, SelectedBy,
+  DependencyKind, OrderingOnly, RequiresAdmission,
+  EvidenceGrain, ProgramGrain, CandidateGrain, ParcelGrain, SiteRealizationGrain, subject_grain,
+  WorkflowExtensionObligation,
+  NodeActivation, AlwaysActive, AfterSelection, OnlyWhenSelected,
+  GatePurpose, SelectionAmong, ExternalAuthority, IrreversibleCommitment, Verification,
+  ConstructionConformance,
+  EvidenceRequirement, EvidenceProducer, ProducedByStage, PublishedByExternalSubject,
+  EvidenceSubject, AboutCandidate,
+  RouteApplicability, AnyRoute, OnlyRoute,
+  EvidenceReceipt, SelectionDecision,
+  WorkflowGraphAdmission, admit_template, graph_is_admitted,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.regulation.types {
+  RegulatoryInstrumentFinding, ApplicabilityQuery,
+  LegalForceStanding, PlanningReliance,
+  legal_force, planning_reliance, reliance_is_clear,
+  SpatialExtent, EveryZoningDistrict, extent_covers_all_zoning_districts,
+}
+import extdeps.regulation.nj_phillipsburg {
+  phillipsburg_ordinance_o2026_08, phillipsburg_zoning_officer,
+  phillipsburg_data_center_subject,
+}
+import extdeps.regulation.nj_jersey_city {
+  jc_ordinance_26_057, jersey_city_zoning_officer, jc_data_center_subject,
+}
+
+// THE MUNICIPAL BUILD WORKFLOW, SIMULATED ACROSS SIX TOWNS (operator request
+// 2026-08-30: a gradient anchored on the hometown - Washington NJ 07882 - out to
+// Jersey City). This is the OWN-SPACE rung's inquiry instrument made concrete: the
+// same questions the colo RFQ asks of a rented supplier, asked of a utility and a
+// parcel. Scope pinned to loads in the ordinary-request planning band (up to a few
+// hundred kW) - what this program EXPECTS to be an ordinary commercial service
+// request rather than a studied project; the utility classifies the request itself.
+// Every duration/cost band here is a PLANNING ESTIMATE at directory grain; each is
+// replaced by the receipt the workflow stage itself produces (a will-serve letter,
+// a quote, a permit) - the stages are the instrument, this file only names them.
+//
+// WHAT THE DECLARED WORKFLOW COVERS TODAY IS NARROWER THAN THAT TITLE. Only the
+// candidate-grain prefix - discovery, the regulatory census, and the market-area
+// screening gate that consumes it - is declared, because every later step asks a
+// question about a specific property that does not exist yet. The stopping point is
+// a typed row, not a silence; see property_identity_needed.
+
+// ---- planning bands: what WE expect from a load, not what the utility will call it ----
+
+// THE TIERS WERE THIS PROGRAM'S OWN EXPECTATION WEARING THE UTILITY'S VOCABULARY. ServiceTier
+// named three arms - SmallCommercial, StudiedDistribution, TransmissionScale - selected from
+// requested kW alone by two thresholds nobody cited, under a heading that said difficulty is a
+// function of requested kW AND NOTHING ELSE. That sentence is false and the type made it
+// load-bearing: which process a utility applies to a service request is decided by the utility
+// under its tariff, from the requested load together with the capacity actually present at the
+// address, the condition of the circuit that serves it, and its own thresholds - none of which
+// this program has observed for any address, because it has no address (see
+// property_identity_needed).
+//
+// So the vocabulary is given back. What survives is what a planner can honestly compute with no
+// address at all: a BAND, self-authored, used to decide how much runway to expect before asking
+// anyone. A band is not a classification and cannot stand in for one - it has no authority
+// behind it, and the type says so rather than the prose.
+type ServicePlanningBand
+  = OrdinaryRequestExpected
+  | StudyExpected
+  | MajorInterconnectExpected
+
+// THE THRESHOLDS ARE WRITTEN ONCE. The first revision of this repair carried the interval on the
+// band arms AND repeated it as literals in the selection - two authorities for one fact, which is
+// the class this whole item exists to remove, reintroduced by the repair itself. They had already
+// diverged: StudyExpected declared floor_kw 400 while 400 selects the ordinary band, and
+// MajorInterconnectExpected declared floor_kw 5000 while 5000 selects study. The payload was
+// describing an interval the function did not implement, and nothing could see the difference.
+//
+// So these two numbers are the authority and every bound is derived from them. They are this
+// program's own convention, not a tariff fact: the load at which the surveyed utilities'
+// published small-commercial process stopped being the obvious one, chosen to plan against. A
+// cited tariff threshold would be a fact about a named utility and would live in extdeps beside
+// that utility, not here.
+// AND THE CONVENTION IS A VALUE, SO THAT CONSUMING IT IS OBSERVABLE. Two bare declarations were
+// a single authority in the only sense a reader could check by eye: a consumer that spelled 400
+// instead of ordinary_through_kw behaved identically, so no probe could tell the declaration from
+// an equal literal, and a future edit could reintroduce the second authority at the same value
+// without any wall firing. A convention that can be VARIED makes the difference observable - a
+// witness supplies a different one and everything that genuinely reads it moves together.
+type ServicePlanningConvention { ordinary_through_kw: Int, study_through_kw: Int }
+
+data survey_planning_convention: ServicePlanningConvention = ServicePlanningConvention {
+  ordinary_through_kw: 400,
+  study_through_kw: 5000,
+}
+
+// A BAND RUNS FROM ABOVE THE PREVIOUS THRESHOLD THROUGH ITS OWN, and the names say which end is
+// included, because "floor" and "ceiling" did not: the old floor_kw was one below the smallest
+// load the band actually contains.
+fn planning_band_for_kw(c: ServicePlanningConvention, kw: Int) -> ServicePlanningBand {
+  if kw <= c.ordinary_through_kw { OrdinaryRequestExpected } else {
+    if kw <= c.study_through_kw { StudyExpected } else { MajorInterconnectExpected }
+  }
+}
+
+// The bounds are a PROJECTION of the same two numbers, never a second copy. An empty list is an
+// open end - the ordinary band has no lower bound a load can fall below, and the major band has
+// no upper one - rather than a sentinel standing in for one.
+type BandBounds { above_kw: List<Int>, through_kw: List<Int> }
+
+fn band_bounds(c: ServicePlanningConvention, b: ServicePlanningBand) -> BandBounds {
+  match b {
+    OrdinaryRequestExpected => BandBounds { above_kw: [], through_kw: [c.ordinary_through_kw] },
+    StudyExpected => BandBounds { above_kw: [c.ordinary_through_kw], through_kw: [c.study_through_kw] },
+    MajorInterconnectExpected => BandBounds { above_kw: [c.study_through_kw], through_kw: [] },
+  }
+}
+
+// AND THE AUTHORITATIVE ANSWER IS AN OBSERVATION THIS PROGRAM OWES, not a value it may derive.
+// The utility's own classification of a service request is an external fact about a named
+// address, so it enters through the same door every other external fact does - a receipt on a
+// stage, produced by the utility as an external subject. It cannot be declared yet for the reason
+// every other property-specific row was deleted: there is no parcel identity to name a service
+// address with. The obligation is recorded rather than the row invented.
+data utility_service_classification_needed: WorkflowExtensionObligation = WorkflowExtensionObligation {
+  self_ref: DeclarationRef {
+    module_path: "strategy.site_power_survey",
+    decl_name: "utility_service_classification_needed",
+    field: WholeDeclaration,
+  },
+  after_node: gate_market_area_screening.self_ref,
+  needs_grain: ParcelGrain,
+  because: "the utility's classification of a service request is its own decision under its tariff, made about a specific service address against the capacity present there; this program can band a load but cannot classify a service, and has no address to ask about",
+}
+
+// ---- sizing: what a service rating buys in Mt. Collins nodes ----
+
+// A service is sized at 125 percent of continuous load (the same NEC continuous
+// rule the circuit menu applies), so usable continuous watts = rating x 0.8.
+fn continuous_watts_of_service(service_kw: Int) -> Int {
+  service_kw * 1000 * 800 / 1000
+}
+
+fn collins_nodes_at_service(service_kw: Int) -> Int {
+  continuous_watts_of_service(service_kw: service_kw) / collins_node_planning_watts
+}
+
+// 13 nodes per 208V/30A three-phase feed (rack_power_engineering nodes_per_circuit).
+fn racks_at_service(service_kw: Int) -> Int {
+  let n = collins_nodes_at_service(service_kw: service_kw)
+  (n + 12) / 13
+}
+
+// ---- the declarable workflow: everything the CANDIDATE grain can carry, and nothing past it ----
+
+// WHAT THIS REVISION DELETES, AND WHY. The previous revision declared the whole dirt-up workflow
+// - route selection, site control, site-plan approval, construction, as-built conformance,
+// inspection, energize - against site_washington, a market-area SiteCandidate. Every one of
+// those rows asks a PROPERTY-SPECIFIC question: a will-serve letter is for a service address, a
+// deed or lease is for a parcel, a site-plan approval and an electrical cut-in are decisions
+// about a building. Declaring them at candidate grain did not model them; it relabelled them,
+// and the relabelling was load-bearing, because those requirements then closed gates.
+//
+// The same edit removes a jurisdiction fault of the same kind: those rows named
+// phillipsburg_zoning_officer as the issuing authority for a WASHINGTON candidate. An authority
+// we have not identified is an open obligation, and filling it with an exact officer from a
+// different municipality is the two-values-that-never-meet defect at its most concrete.
+//
+// Inventing a parcel identity to make the rows writable again would repeat the error one layer
+// down, so the workflow ENDS where the identity ends, and says so in a typed row rather than in
+// prose. What is deleted here is not the modelling - the substrate keeps every route, activation
+// and conditional-edge capability, exercised by the module witness - it is the CLAIM that this
+// program can currently describe work it cannot name a subject for.
+
+fn here(name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef { module_path: "strategy.site_power_survey", decl_name: name, field: WholeDeclaration }
+}
+
+data ref_candidate: DeclarationRef = here(name: "site_washington")
+
+// THE REVISION IS AN IDENTITY, NOT A SENTENCE. It was a prose NonEmptyStr doing two jobs at once
+// - naming which design a document answers for, and describing it - so a reworded description
+// silently invalidated every receipt while a materially changed design that kept its wording did
+// not. The facts that make one revision different from another are now fields, and the join is
+// declaration identity.
+type SiteUseRevision {
+  self_ref: DeclarationRef
+  fleet_plan: DeclarationRef
+  requested_service_kw: Int
+  building_posture: NonEmptyStr
+  generator_posture: NonEmptyStr
+  fuel_storage_posture: NonEmptyStr
+}
+
+data use_revision_a: SiteUseRevision = SiteUseRevision {
+  self_ref: here(name: "use_revision_a"),
+  fleet_plan: DeclarationRef { module_path: "strategy.rack_power_engineering", decl_name: "collins_fleet_nodes", field: WholeDeclaration },
+  requested_service_kw: 200,
+  building_posture: "compute room inside a host building; no dedicated structure",
+  generator_posture: "none",
+  fuel_storage_posture: "none",
+}
+
+fn ordering(pred: DeclarationRef) -> WorkflowDependency {
+  WorkflowDependency { predecessor: pred, required_when: AlwaysActive, kind: OrderingOnly }
+}
+
+// ---- the candidate-grain prefix ----
+
+data stage_site_inquiry: WorkStage = WorkStage {
+  self_ref: here(name: "stage_site_inquiry"),
+  title: "market-area and candidate discovery",
+  depends_on: [],
+  planning_owner: "us + commercial broker",
+  planning_duration_band: "weeks to months; an existing light-industrial building is preferred because it collapses the zoning question to near-nothing",
+}
+
+data stage_regulatory_diligence: WorkStage = WorkStage {
+  self_ref: here(name: "stage_regulatory_diligence"),
+  title: "regulatory census for the market area",
+  depends_on: [ordering(pred: stage_site_inquiry.self_ref)],
+  planning_owner: "us + land-use attorney for anything ambiguous",
+  planning_duration_band: "days of reading per town; a measure adopted during closing is the failure this work exists to catch",
+}
+
+data req_regulatory_census: EvidenceRequirement = EvidenceRequirement {
+  self_ref: here(name: "req_regulatory_census"),
+  gate: here(name: "gate_market_area_screening"),
+  producer: ProducedByStage { stage: stage_regulatory_diligence.self_ref },
+  subject: AboutCandidate { candidate: ref_candidate },
+  design_revision: use_revision_a.self_ref,
+  applies_to: AnyRoute,
+  describes: "the per-layer regulatory census for this market area, every instrument touching the use at this revision, plus a pending-measure scan",
+}
+
+// THIS GATE ASKS A QUESTION THE CANDIDATE GRAIN CAN ANSWER: is this market area worth naming a
+// property in? It does not ask whether any particular property is authorized - that question has
+// no subject until a property exists.
+data gate_market_area_screening: DecisionGate = DecisionGate {
+  self_ref: here(name: "gate_market_area_screening"),
+  title: "does this market area survive the regulatory census at this use revision?",
+  purpose: Verification { measures: "every instrument the census found, read against this use revision, with each open question named rather than assumed absent" },
+  depends_on: [ordering(pred: stage_regulatory_diligence.self_ref)],
+  requirements: [req_regulatory_census],
+}
+
+// ---- where the workflow stops, and what would let it continue ----
+
+data property_identity_needed: WorkflowExtensionObligation = WorkflowExtensionObligation {
+  self_ref: here(name: "property_identity_needed"),
+  after_node: gate_market_area_screening.self_ref,
+  needs_grain: ParcelGrain,
+  because: "every remaining step - will-serve, commitment terms, route selection, site control, site-plan approval, construction conformance, inspection and energize - is a question about a specific property and its issuing authorities. Neither exists yet, and a candidate-grain subject beside an authority from another municipality is a relabelling, not a model",
+}
+
+data municipal_build_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_site_inquiry }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_regulatory_diligence }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: gate_market_area_screening }, activation: AlwaysActive },
+  ],
+}
+
+data municipal_template_admission: WorkflowGraphAdmission = admit_template(t: municipal_build_template)
+
+// NO RECEIPTS AND NO DECISION EXIST. The census has not been produced, so the screening gate
+// stands pending - which is the correct reading of a program that has surveyed towns and
+// committed to none.
+data municipal_build_receipts: List<EvidenceReceipt> = []
+data municipal_selection_decisions: List<SelectionDecision> = []
+
+// ---- the six candidate sites ----
+
+type SiteUrbanity = SmallTown | RiverCityPostIndustrial | SuburbanCommercial | UrbanCore
+
+// THE MONOTONE LAYER RULE IS DELETED, INCLUDING HERE. It was removed from
+// extdeps.regulation.types as unsound - authority is a function of subject and scope, not
+// altitude - and this consumer went on restating it, which is the deleted rule surviving in the
+// place it is actually read. Instruments now relate through the typed AuthorityRelation graph;
+// there is no layer ordering left to appeal to.
+//
+// Facts we have not read stay OPEN QUESTIONS on the site row - a coverage obligation here in
+// the survey, never fabricated rows inside a jurisdiction's extdeps module.
+type DiligenceStanding
+  = DiligenceOpen { questions: List<NonEmptyStr> }
+  | DiligenceCleared { census_receipt: NonEmptyStr }
+
+type RegulatoryDiligence {
+  standing: DiligenceStanding
+  findings: List<RegulatoryInstrumentFinding>
+}
+
+fn diligence_findings(d: RegulatoryDiligence) -> List<RegulatoryInstrumentFinding> {
+  d.findings
+}
+
+fn diligence_open_questions(d: RegulatoryDiligence) -> List<NonEmptyStr> {
+  match d.standing {
+    DiligenceOpen { questions } => questions,
+    DiligenceCleared { census_receipt } => [],
+  }
+}
+
+// EVERY LEGAL-FORCE QUESTION IS ASKED AS OF A DATE. Without one, an instrument effective from a
+// future date reads as presently binding - the defect review of PR #24 found in the first
+// revision, which asked the question with no as-of at all.
+data survey_as_of: EpochMs = 1788091200000
+
+// THE USE THIS SURVEY IS ASKING ABOUT - a 21-node Mt. Collins fleet at 650W planning wall draw
+// per node, in a compute room inside a host building, with no generator and no fuel storage.
+// A determination is admitted only against a stated use profile and revision, and the revision is
+// load-bearing: change the load, footprint or programme and a prior ruling stops governing. Those
+// three facts were carried as query fields and as two data rows, and NOTHING READ ANY OF THEM -
+// mutating them changed no admission, effect or clearance. They are removed rather than kept as
+// decoration, and return with DU-0 item 4's authority receipt, which is the first consumer that
+// can compare a determination's scope against the use it was issued for.
+fn market_area_query(instrument: DeclarationRef) -> ApplicabilityQuery {
+  ApplicabilityQuery { instrument: instrument }
+}
+
+data standard_dc_diligence_questions: List<NonEmptyStr> = [
+  "municipal: any data-center-specific ordinance, ban, or moratorium, enacted or pending - read from the MUNICIPAL CODE, never inferred from absence on a statewide roster (Phillipsburg is adopted-and-absent, the executed counterexample)?",
+  "municipal: does this town's OWN data-center definition reach a compute room inside a building used mainly for something else? Asked per instrument on each finding rather than in one shared wording - the three NJ instruments modeled so far use materially different definitional tests, and a question that misquotes the ordinance it asks about would be carried to a zoning officer as if it were their text.",
+  "municipal: which zones permit the use by-right vs conditionally, under the state land-use law?",
+  "municipal/county: noise and generator/fuel-storage rules at the parcel's lot lines?",
+  "state: utility/BPU or PUC measures touching large new loads or DC tariffs?",
+  "state/federal: environmental overlays on the parcel (brownfield status, floodplain, air permits for gensets)?",
+]
+
+type SiteCandidate {
+  town: NonEmptyStr
+  state: NonEmptyStr
+  utility: ElectricUtility
+  urbanity: SiteUrbanity
+  posture: NonEmptyStr
+  diligence: RegulatoryDiligence
+}
+
+data site_washington: SiteCandidate = SiteCandidate {
+  town: "Washington (07882)", state: "NJ", utility: jcpl, urbanity: SmallTown,
+  posture: "the hometown anchor: Warren County small borough, cheap light-industrial stock, thin fiber - carrier options are the question to survey before power, since JCP&L will serve trivially at this tier",
+  diligence: RegulatoryDiligence { standing: DiligenceOpen { questions: standard_dc_diligence_questions }, findings: [] },
+}
+
+data site_easton: SiteCandidate = SiteCandidate {
+  town: "Easton", state: "PA", utility: met_ed, urbanity: RiverCityPostIndustrial,
+  posture: "Lehigh Valley river city: post-industrial building stock, PA commercial power typically cheaper than NJ, same FirstEnergy parent as JCP&L but under the PA PUC - the two-state arbitrage candidate",
+  diligence: RegulatoryDiligence { standing: DiligenceOpen { questions: standard_dc_diligence_questions }, findings: [] },
+}
+
+// THE PAIRED-COMPARISON CLAIM IS WITHDRAWN, AND THE MECHANISM THAT WITHDREW IT IS THE FINDING.
+// This row was authored to "isolate the STATE variable with geography held fixed" against
+// Easton. It cannot: Phillipsburg adopted Ordinance 2026-08 on 2026-04-14 prohibiting data
+// centers in every zoning district - four months before this survey named it - and a municipal
+// prohibition IS a state-regime effect, so the variable the pair was meant to isolate is what
+// removed the row from comparison. The pair survives as a MATCHED REGIONAL PAIR (analyst ruling
+// 2026-08-30): utility, parcel, building stock, tax, flood and carrier conditions still differ
+// across the river, so a contrast may be projected after controlling the evidence actually
+// held - it may never be reported as causal isolation inferred from geographic proximity.
+// DERIVED FROM THE INSTRUMENT'S OWN LIFECYCLE, NEVER AUTHORED HERE. A hand-set standing on
+// the consuming row is a second authority for a fact the instrument already carries, and
+// it would go stale silently the day the ordinance's row changes.
+data site_phillipsburg: SiteCandidate = SiteCandidate {
+  town: "Phillipsburg", state: "NJ", utility: jcpl, urbanity: RiverCityPostIndustrial,
+  posture: "Easton's NJ twin across the Delaware: same building-stock character, NJ regime. Carried as a matched regional comparator and as the census's live example of a prohibiting instrument on a candidate - NOT as a selectable market area while Ordinance 2026-08 stands unread and undetermined.",
+  diligence: RegulatoryDiligence {
+    standing: DiligenceOpen { questions: standard_dc_diligence_questions },
+    findings: [RegulatoryInstrumentFinding {
+      instrument: phillipsburg_ordinance_o2026_08,
+      remaining_obligations: [
+        "Transcribe or independently verify the ADOPTED text and read its temporal / savings provisions. The adopted four-page instrument IS pinned as this row's provenance; what is missing is machine-readable content, because that PDF is a CCITT fax scan carrying no text layer. The earlier wording here said the digested copy was the introduced version, which stopped being true when the adopted scan was pinned.",
+        "Retrieve the publication notice fixing the effective date under Section 7.",
+      ],
+    }],
+  },
+}
+
+data site_hackettstown: SiteCandidate = SiteCandidate {
+  town: "Hackettstown", state: "NJ", utility: jcpl, urbanity: SmallTown,
+  posture: "Warren County town with a real industrial base (the Mars plant anchors utility-scale commercial service familiarity); slightly better transport links than Washington",
+  diligence: RegulatoryDiligence { standing: DiligenceOpen { questions: standard_dc_diligence_questions }, findings: [] },
+}
+
+data site_morristown: SiteCandidate = SiteCandidate {
+  town: "Morristown", state: "NJ", utility: jcpl, urbanity: SuburbanCommercial,
+  posture: "the slightly-urban probe: Morris County HQ market - land and rent price OUT the small-datacenter use well before power does; expect zoning friction and no industrial stock",
+  diligence: RegulatoryDiligence { standing: DiligenceOpen { questions: standard_dc_diligence_questions }, findings: [] },
+}
+
+// JERSEY CITY IS NOT A CITYWIDE BAN, AND CALLING IT ONE WAS THE ERROR. An earlier revision
+// carried no instrument here at all, on the stated grounds that designation, dates, extent and
+// definition were all unread - and the row was reported up the lane as "BANNED" anyway. Both
+// halves were wrong: the ordinance is published, and it is a NAMED-DISTRICT instrument. Ord.
+// 26-057 strikes cyber hotels/data centers from the permitted principal uses of the I Industrial
+// District alone; every other district is untouched, and offices remain permitted in Industrial.
+//
+// This is the row that shows why extent had to be modeled rather than reduced to a Boolean. It
+// is also, on the city's own account of its existing downtown stock, the market area where the
+// accessory-use question is most clearly OPEN - the opposite of what "banned" conveys.
+data site_jersey_city: SiteCandidate = SiteCandidate {
+  town: "Jersey City", state: "NJ", utility: pseg, urbanity: UrbanCore,
+  posture: "the super-urban probe: PSE&G territory, richest fiber/interconnection in the state (the carrier-hotel corridor), but industrial land is scarce and contested and the grid is loaded. The row was authored expecting POWER to be the binding constraint here; the regulatory answer arrived first.",
+  diligence: RegulatoryDiligence {
+    standing: DiligenceOpen { questions: standard_dc_diligence_questions },
+    findings: [RegulatoryInstrumentFinding {
+      instrument: jc_ordinance_26_057,
+      remaining_obligations: [
+        "Retrieve the publication receipt fixing the effective date. The adoption receipt is NOT outstanding: the digested ordinance records the 2026-08-19 final 9-0 vote and the Mayor's 2026-08-20 approval on its own certification page.",
+        "Because the extent is a single district, the parcel search here is not foreclosed - obtain the zoning-map district for any candidate parcel before ranking it.",
+      ],
+    }],
+  },
+}
+
+
+
+// No municipal-electric shortcut exists on this list: all six are investor-owned
+// territory (JCP&L x4, Met-Ed, PSE&G). NJ's municipal electrics (Madison, Butler,
+// et al.) are elsewhere - a deliberate future widening of the census if the
+// same-government permitting advantage proves decisive.
+data site_candidates: List<SiteCandidate> = [
+  site_washington, site_easton, site_phillipsburg,
+  site_hackettstown, site_morristown, site_jersey_city,
+]

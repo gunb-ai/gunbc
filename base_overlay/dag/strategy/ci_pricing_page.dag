@@ -1,0 +1,648 @@
+module strategy.ci_pricing_page
+
+import std.types { Int, String, List }
+import std.markup { Fragment, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import extdeps.ci_compute_pricing {
+  ComputeOfferObservation, ci_compute_offers, competitor_offers,
+  offer_unit_price, UnitPriceUsd, UnitPriceForeign,
+  offer_unit_count_permille, entitlement_label, architecture_label,
+  dedication_label, interruption_label, spill_admission_label, market_class_label,
+  circleci_caveat_note, namespace_note, price_provenance_note,
+  ci_product_defaults_note,
+}
+import strategy.ci_spill_policy {
+  JobRequirement, spill_job_shapes, cheapest_admissible,
+  SpillSelection, SpillRouteSelected, SpillRouteRefused,
+  service_class_label, architecture_requirement_label,
+  spill_authority_note, committed_capacity_note, shared_family_note, service_class_note,
+}
+import strategy.ci_node_build {
+  NodeBuildCandidate, node_build_candidates, selected_build, node_watts,
+  capacity_receipt, landed_capex, LandedCapexResolved, LandedCapexIncomplete,
+  duty_reserve_note, processor_market_note, selection_note, reserve_basis_note,
+  finishing_allowance_note, memory_curve_note, memory_lots, MemoryLotObservation,
+  memory_price_per_gib_micro, condition_label, supply_label,
+  purchase_authorization, PurchaseAuthorized, PurchaseBlocked, two_layer_note,
+  evidence_grade_label, memory_band_note,
+}
+import std.pareto {
+  ParetoStanding, ProvisionallyNonDominated, DominatedBy,
+  NotComputable, PendingEvidence, pareto_label,
+}
+import strategy.ci_build_frontier {
+  band_standing_label, frontier_sensitivities, frontier_note,
+  split_versus_dense, SplitVersusDense, split_versus_dense_note, capex_ceiling_note,
+  maintenance_axis_note, upgrade_optionality_note, band_stability_note,
+}
+import strategy.ci_site_cost {
+  admitted_node_count, allocate_site, site_cost_per_node_micro,
+  dia_sensitivity_micro_per_month, dia_planning_micro_per_month,
+  unpriced_site_lines, UnpricedCostLine,
+  electricity_tariff_note, cooling_note, dia_note, density_note,
+}
+import strategy.ci_runner_economics {
+  RetailComparison, RetailUnder, RetailOver, RetailLevel, RetailNotComparable,
+  offer_retail_comparison,
+  offered_unit_counts, retail_price_micro, volume_price_micro,
+  retail_per_unit_minute_micro, volume_per_unit_minute_micro,
+  SpillSpread, SpreadPositive, SpreadNegative, SpreadUnavailable,
+  retail_spread_for, volume_spread_for, spread_naming_note,
+  sellable_units, node_revenue_per_month_micro, modelled_cost_per_month_micro,
+  break_even_permille, contribution, contribution_permille_of,
+  margin_standing, MarginStanding, ActualMargin, MarginSensitivity,
+  selected_utilization_permille, utilization_note,
+  pricing_position_note, no_free_tier_note,
+}
+import strategy.ci_alpha {
+  AlphaSource, alpha_sources, alpha_evidence_label, alpha_summation_refusal,
+  three_readings_note, packing_reading, PackingReading, packing_conclusion_note,
+  selected_software_execution_alpha, SoftwareExecutionAlpha,
+  WorkAvoidedMeasured, WorkAvoidedUnmeasured,
+  SkuPricingBasis, MeteredExecutionOnly, StructuralWorkElimination,
+  first_runner_sku_pricing_basis, saleable_work_elimination, internal_work_elimination,
+  WorkEliminationReach, InternalWorkload, ExternalWorkload, alpha_reach_note,
+  customer_alpha, CustomerAlpha,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Number rendering. Micro-dollars are integers; a price is rendered by splitting rather than
+// dividing, so no rounding happens on the way to the page.
+// ---------------------------------------------------------------------------------------------
+
+fn cp_micro6(micro: Int) -> String {
+  let whole = micro / 1000000
+  join([to_string(whole), ".", cp_pad6(v: micro - whole * 1000000)], "")
+}
+
+fn cp_pad6(v: Int) -> String {
+  if v >= 100000 { to_string(v) }
+  else if v >= 10000 { join(["0", to_string(v)], "") }
+  else if v >= 1000 { join(["00", to_string(v)], "") }
+  else if v >= 100 { join(["000", to_string(v)], "") }
+  else if v >= 10 { join(["0000", to_string(v)], "") }
+  else { join(["00000", to_string(v)], "") }
+}
+
+fn cp_pad2(v: Int) -> String {
+  if v >= 10 { to_string(v) } else { join(["0", to_string(v)], "") }
+}
+
+fn cp_usd6(micro: Int) -> String { join(["$", cp_micro6(micro: micro)], "") }
+
+// Dollars, not fractions of a cent.
+fn cp_usd2(micro: Int) -> String {
+  let whole = micro / 1000000
+  join(["$", to_string(whole), ".", cp_pad2(v: (micro - whole * 1000000) / 10000)], "")
+}
+
+fn cp_permille_text(p: Int) -> String {
+  join([to_string(p / 10), ".", to_string(p - p / 10 * 10), "%"], "")
+}
+
+fn cp_signed_permille_text(p: Int) -> String {
+  if p < 0 { join(["-", cp_permille_text(p: 0 - p)], "") } else { cp_permille_text(p: p) }
+}
+
+fn cp_units_text(permille: Int) -> String {
+  let whole = permille / 1000
+  join([to_string(whole), ".", to_string((permille - whole * 1000) / 100)], "")
+}
+
+fn cp_th(text: String) -> Fragment { el(tag: "th", children: [txt(s: text)]) }
+fn cp_td(text: String) -> Fragment { el(tag: "td", children: [txt(s: text)]) }
+fn cp_td_dim(text: String) -> Fragment { el_class(tag: "td", cls: "dim", children: [txt(s: text)]) }
+fn cp_td_warn(text: String) -> Fragment { el_class(tag: "td", cls: "warn", children: [txt(s: text)]) }
+fn cp_note(text: String) -> Fragment { el_class(tag: "p", cls: "note", children: [txt(s: text)]) }
+fn cp_para(text: String) -> Fragment { el(tag: "p", children: [txt(s: text)]) }
+
+// A table that outgrows a phone scrolls inside its own box, not by dragging the page sideways.
+fn cp_scrollable(t: Fragment) -> Fragment {
+  el_class(tag: "div", cls: "scroll", children: [t])
+}
+
+fn cp_head_row(cells: List<String>) -> Fragment {
+  el(tag: "thead", children: [el(tag: "tr", children: map(cells, c => cp_th(text: c)))])
+}
+
+fn cp_section(label: String, heading: String, body: List<Fragment>) -> Fragment {
+  el(tag: "section", children: concat([
+    el_class(tag: "span", cls: "sec-label", children: [txt(s: label)]),
+    el(tag: "h2", children: [txt(s: heading)]),
+  ], body))
+}
+
+// ---------------------------------------------------------------------------------------------
+// ALPHA
+// ---------------------------------------------------------------------------------------------
+
+fn alpha_row(a: AlphaSource) -> Fragment {
+  el(tag: "tr", children: [
+    cp_td(text: a.name),
+    cp_td(text: a.mechanism),
+    cp_td_dim(text: alpha_evidence_label(e: a.evidence)),
+    cp_td(text: a.durability),
+  ])
+}
+
+fn alpha_table() -> Fragment {
+  cp_scrollable(t: el_class(tag: "table", cls: "wide", children: [
+    cp_head_row(cells: ["Source", "Mechanism", "Standing", "How durable"]),
+    el(tag: "tbody", children: map(alpha_sources, a => alpha_row(a: a))),
+  ]))
+}
+
+fn packing_row(b: NodeBuildCandidate) -> Fragment {
+  let r = packing_reading(b: b)
+  el(tag: "tr", children: [
+    cp_td(text: r.label),
+    cp_td_dim(text: to_string(r.cores)),
+    cp_td_dim(text: join([to_string(r.memory_gib), " GiB"], "")),
+    cp_td_dim(text: to_string(r.standard_units)),
+    cp_td_dim(text: to_string(r.sellable_units)),
+    if r.stranded_cores > 0 { cp_td_warn(text: to_string(r.stranded_cores)) } else { cp_td_dim(text: "0") },
+    cp_td_dim(text: join([to_string(r.unused_memory_gib), " GiB"], "")),
+    cp_td_dim(text: cp_usd2(micro: r.capex_micro)),
+    cp_td_dim(text: cp_usd2(micro: r.capex_per_unit_micro)),
+    cp_td_dim(text: band_standing_label(c: b)),
+  ])
+}
+
+fn packing_table() -> Fragment {
+  cp_scrollable(t: el_class(tag: "table", cls: "widest", children: [
+    cp_head_row(cells: ["Candidate", "Cores", "Memory", "Standard units", "Sellable", "Stranded cores", "Unused RAM", "Known capex", "Capex per unit", "Frontier"]),
+    el(tag: "tbody", children: map(node_build_candidates, b => packing_row(b: b))),
+  ]))
+}
+
+fn memory_lot_row(m: MemoryLotObservation) -> Fragment {
+  el(tag: "tr", children: [
+    cp_td(text: m.part_description),
+    cp_td_dim(text: join([to_string(m.data_rate_mt_s), " MT/s"], "")),
+    cp_td_dim(text: condition_label(c: m.condition)),
+    cp_td_dim(text: cp_usd2(micro: m.unit_price_micro)),
+    cp_td_dim(text: cp_usd2(micro: memory_price_per_gib_micro(m: m))),
+    cp_td_dim(text: supply_label(q: m.supply)),
+    cp_td_dim(text: m.observed_on),
+  ])
+}
+
+fn memory_lot_table() -> Fragment {
+  cp_scrollable(t: el_class(tag: "table", cls: "widest", children: [
+    cp_head_row(cells: ["Module", "Speed", "Condition", "Price", "Per GiB", "Supply", "Observed"]),
+    el(tag: "tbody", children: map(memory_lots, m => memory_lot_row(m: m))),
+  ]))
+}
+
+fn frontier_axes_banner() -> Fragment {
+  el_class(tag: "p", cls: "refused", children: [txt(s: join([
+    "PLANNING ASSUMPTIONS, AND NOTHING IS RANKED. ",
+    to_string(count(frontier_sensitivities)),
+    " observations could still reorder the survivors: ",
+    join(frontier_sensitivities, "; "), ".",
+  ], ""))])
+}
+
+fn split_versus_dense_table() -> Fragment {
+  let s = split_versus_dense()
+  cp_scrollable(t: el_class(tag: "table", cls: "wide", children: [
+    cp_head_row(cells: ["", "Planning capex", "Sellable units", "Failure domain", "Machines"]),
+    el(tag: "tbody", children: [
+      el(tag: "tr", children: [
+        cp_td(text: s.split_label), cp_td_dim(text: cp_usd2(micro: s.split_capex_micro)),
+        cp_td_dim(text: to_string(s.split_units)), cp_td_dim(text: to_string(s.split_failure_domain)),
+        cp_td_dim(text: "2"),
+      ]),
+      el(tag: "tr", children: [
+        cp_td(text: s.dense_label), cp_td_dim(text: cp_usd2(micro: s.dense_capex_micro)),
+        cp_td_dim(text: to_string(s.dense_units)), cp_td_warn(text: to_string(s.dense_failure_domain)),
+        cp_td_dim(text: "1"),
+      ]),
+      el(tag: "tr", children: [
+        cp_td(text: "Split saves"), cp_td_dim(text: cp_usd2(micro: s.known_saving_micro)),
+        cp_td_warn(text: join(["-", to_string(s.unit_shortfall)], "")),
+        cp_td_dim(text: "half"), cp_td_warn(text: "+1"),
+      ]),
+    ]),
+  ]))
+}
+
+// TWO QUESTIONS IN ORDER, AND THE FIRST DECIDES WHETHER THE SECOND IS EVEN A PRODUCT CLAIM.
+//
+// This banner previously rendered "THE BIGGEST CLAIM HAS NO NUMBER" straight from the measurement
+// state, which framed work elimination as the latent centerpiece of the offer merely awaiting a
+// figure. That framing IS the claim first_runner_sku_pricing_basis refuses: a reader takes it as
+// "this is what they sell, unpriced" rather than "this is not what they sell". So the SKU basis is
+// consulted first. Under MeteredExecutionOnly the page states the refusal; the measurement state is
+// then reported as an INTERNAL engineering question, which is what it is.
+fn work_avoided_banner() -> Fragment {
+  match first_runner_sku_pricing_basis {
+    MeteredExecutionOnly { basis, refused_claim } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "NOT SOLD ON THIS. ", refused_claim,
+      ], ""))]),
+    StructuralWorkElimination { basis, evidence } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "SOLD ON THIS. ", basis, " Evidence: ", evidence,
+      ], ""))]),
+  }
+}
+
+// The measurement state, rendered as the internal question it is. Reached under either basis: it is
+// what is true about the mechanism, and it does not become a product claim by being displayed.
+fn work_avoided_measurement_banner() -> Fragment {
+  match selected_software_execution_alpha {
+    WorkAvoidedMeasured { baseline_unit_minutes, admitted_unit_minutes, receipt } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "Work avoided on our own workload: ", to_string(baseline_unit_minutes - admitted_unit_minutes),
+        " unit-minutes of ", to_string(baseline_unit_minutes), ". ", receipt,
+      ], ""))]),
+    WorkAvoidedUnmeasured { obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "UNMEASURED, AND THE INSTRUMENT IS GONE. ", obligation,
+      ], ""))]),
+  }
+}
+
+// Why the two questions are separate, rendered from the reach carrier rather than restated.
+fn work_elimination_reach_line(r: WorkEliminationReach) -> Fragment {
+  match r {
+    InternalWorkload { question, answerable_by } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "Internal - ", question, " ", answerable_by,
+      ], ""))]),
+    ExternalWorkload { question, blocked_by, unblocking_contracts } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "Saleable - ", question, " BLOCKED: ", blocked_by, " Unblocked by: ", unblocking_contracts,
+      ], ""))]),
+  }
+}
+
+// Customer saving is the customer's money. It is rendered against the competitor rows only, and
+// never beside our contribution, because the two are not the same quantity.
+fn customer_alpha_row(o: ComputeOfferObservation) -> Fragment {
+  match offer_unit_price(o: o) {
+    UnitPriceForeign { micro, currency, obligation } =>
+      el(tag: "tr", children: [cp_td(text: o.identity.provider), cp_td_dim(text: "not comparable"), cp_td_dim(text: "-")]),
+    UnitPriceUsd { micro } => {
+      let a = customer_alpha(competitor: o.identity.provider, competitor_micro: micro, our_price_micro: retail_per_unit_minute_micro)
+      el(tag: "tr", children: [
+        cp_td(text: join([o.identity.provider, " ", o.product], "")),
+        cp_td_dim(text: cp_usd6(micro: a.saving_micro)),
+        cp_td_dim(text: cp_signed_permille_text(p: a.saving_permille)),
+      ])
+    },
+  }
+}
+
+fn customer_alpha_table() -> Fragment {
+  cp_scrollable(t: el(tag: "table", children: [
+    cp_head_row(cells: ["Instead of", "Customer keeps, per unit-minute", "Share of their price"]),
+    el(tag: "tbody", children: map(competitor_offers(), o => customer_alpha_row(o: o))),
+  ]))
+}
+
+// ---------------------------------------------------------------------------------------------
+// MARKET
+// ---------------------------------------------------------------------------------------------
+
+fn unit_price_text(o: ComputeOfferObservation) -> String {
+  match offer_unit_price(o: o) {
+    UnitPriceUsd { micro } => cp_usd6(micro: micro),
+    UnitPriceForeign { micro, currency, obligation } => join(["EUR ", cp_micro6(micro: micro)], ""),
+  }
+}
+
+fn comparison_text(c: RetailComparison) -> String {
+  match c {
+    RetailUnder { permille } => join([cp_permille_text(p: permille), " under"], ""),
+    RetailOver { permille } => join([cp_permille_text(p: permille), " over"], ""),
+    RetailLevel => "level",
+    RetailNotComparable { reason } => "not comparable",
+  }
+}
+
+fn market_row(o: ComputeOfferObservation) -> Fragment {
+  el(tag: "tr", children: [
+    cp_td(text: join([o.identity.provider, " ", o.product], "")),
+    cp_td_dim(text: market_class_label(c: o.market_class)),
+    cp_td_dim(text: architecture_label(a: o.architecture)),
+    cp_td_dim(text: join([entitlement_label(e: o.entitlement), ", ", dedication_label(d: o.dedication)], "")),
+    cp_td_dim(text: interruption_label(i: o.interruption)),
+    cp_td_dim(text: join([
+      to_string(o.vcpu_count), " / ", to_string(o.memory_gib), " GiB = ",
+      cp_units_text(permille: offer_unit_count_permille(o: o)), " u",
+    ], "")),
+    cp_td_dim(text: unit_price_text(o: o)),
+    cp_td_dim(text: comparison_text(c: offer_retail_comparison(o: o))),
+    cp_td_dim(text: spill_admission_label(s: o.spill_admission)),
+  ])
+}
+
+fn market_table() -> Fragment {
+  cp_scrollable(t: el_class(tag: "table", cls: "widest", children: [
+    cp_head_row(cells: ["Provider", "Class", "Arch", "CPU unit", "Durability", "Shape", "Per unit-minute", "Our retail", "Spill"]),
+    el(tag: "tbody", children: map(ci_compute_offers, o => market_row(o: o))),
+  ]))
+}
+
+// ---------------------------------------------------------------------------------------------
+// SCHEDULE
+// ---------------------------------------------------------------------------------------------
+
+fn shape_row(units: Int) -> Fragment {
+  el(tag: "tr", children: [
+    cp_td_dim(text: join([to_string(units), " core / ", to_string(customer_visible_memory_numeral(units: units)), " ", customer_visible_memory_unit_label()], "")),
+    cp_td_dim(text: cp_usd6(micro: retail_price_micro(units: units))),
+    cp_td_dim(text: cp_usd6(micro: volume_price_micro(units: units))),
+  ])
+}
+
+fn shape_table() -> Fragment {
+  cp_scrollable(t: el(tag: "table", children: [
+    cp_head_row(cells: ["Shape", "Retail / min", "Volume / min"]),
+    el(tag: "tbody", children: map(offered_unit_counts, u => shape_row(units: u))),
+  ]))
+}
+
+// ---------------------------------------------------------------------------------------------
+// SPILL
+// ---------------------------------------------------------------------------------------------
+
+fn selection_text(s: SpillSelection) -> String {
+  match s {
+    SpillRouteSelected { identity, product, per_unit_minute_micro, considered } =>
+      join([identity.provider, " ", product], ""),
+    SpillRouteRefused { job, considered, obligation } => "no admissible route",
+  }
+}
+
+fn selection_cost_text(s: SpillSelection) -> String {
+  match s {
+    SpillRouteSelected { identity, product, per_unit_minute_micro, considered } =>
+      cp_usd6(micro: per_unit_minute_micro),
+    SpillRouteRefused { job, considered, obligation } => "refused",
+  }
+}
+
+fn spread_text(s: SpillSpread) -> String {
+  match s {
+    SpreadPositive { permille, route } => cp_permille_text(p: permille),
+    SpreadNegative { shortfall_micro, route } => join(["LOSS ", cp_usd6(micro: shortfall_micro)], ""),
+    SpreadUnavailable { obligation } => "no route",
+  }
+}
+
+fn spill_row(j: JobRequirement) -> Fragment {
+  let sel = cheapest_admissible(j: j)
+  el(tag: "tr", children: [
+    cp_td(text: j.label),
+    cp_td_dim(text: service_class_label(c: j.service_class)),
+    cp_td_dim(text: architecture_requirement_label(r: j.architecture)),
+    cp_td(text: selection_text(s: sel)),
+    cp_td_dim(text: selection_cost_text(s: sel)),
+    cp_td_dim(text: spread_text(s: retail_spread_for(j: j))),
+    cp_td_dim(text: spread_text(s: volume_spread_for(j: j))),
+  ])
+}
+
+fn spill_table() -> Fragment {
+  cp_scrollable(t: el_class(tag: "table", cls: "widest", children: [
+    cp_head_row(cells: ["Job shape", "Class", "Arch", "Cheapest admitted route", "Route cost", "Retail spread", "Volume spread"]),
+    el(tag: "tbody", children: map(spill_job_shapes, j => spill_row(j: j))),
+  ]))
+}
+
+// ---------------------------------------------------------------------------------------------
+// BUILD AND SITE
+// ---------------------------------------------------------------------------------------------
+
+fn purchase_gate_banner() -> Fragment {
+  match purchase_authorization(c: selected_build) {
+    PurchaseAuthorized { receipt } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join(["Purchase authorized. ", receipt], ""))]),
+    PurchaseBlocked { obligations } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "PLANNING LAYER ONLY - NOT A PURCHASE ORDER. ", two_layer_note,
+        " Before this build can be bought: ", join(obligations, "; "), ".",
+      ], ""))]),
+  }
+}
+
+fn capex_banner() -> Fragment {
+  match landed_capex(c: selected_build) {
+    LandedCapexResolved { usd_micro, receipt } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "Landed capex resolved at ", cp_usd2(micro: usd_micro), ". ", receipt,
+      ], ""))]),
+    LandedCapexIncomplete { known_subtotal_micro, missing, obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "NOT A LANDED COST. Known lines for the selected build total ",
+        cp_usd2(micro: known_subtotal_micro), ", covering board, duty reserve, processors and memory. Still unpriced: ",
+        join(missing, "; "), ". ", obligation,
+      ], ""))]),
+  }
+}
+
+fn dia_row(dia_micro: Int) -> Fragment {
+  let b = selected_build
+  el(tag: "tr", children: [
+    cp_td_dim(text: join([cp_usd2(micro: dia_micro), " / month"], "")),
+    cp_td_dim(text: cp_usd2(micro: site_cost_per_node_micro(a: allocate_site(admitted_nodes: admitted_node_count, dia_micro: dia_micro, node_watts: node_watts())))),
+    cp_td_dim(text: cp_signed_permille_text(p: contribution_permille_of(c: contribution(b: b, price_micro: volume_per_unit_minute_micro, utilization_permille: selected_utilization_permille, dia_micro: dia_micro)))),
+    cp_td_dim(text: cp_permille_text(p: break_even_permille(b: b, price_micro: volume_per_unit_minute_micro, dia_micro: dia_micro))),
+  ])
+}
+
+fn dia_table() -> Fragment {
+  cp_scrollable(t: el_class(tag: "table", cls: "wide", children: [
+    cp_head_row(cells: ["Transit quote", "Modelled cost / node / month", "Volume contribution at 30%", "Break-even use"]),
+    el(tag: "tbody", children: map(dia_sensitivity_micro_per_month, d => dia_row(dia_micro: d))),
+  ]))
+}
+
+fn unpriced_row(u: UnpricedCostLine) -> Fragment {
+  el(tag: "tr", children: [cp_td(text: u.label), cp_td(text: u.obligation)])
+}
+
+fn unpriced_table() -> Fragment {
+  cp_scrollable(t: el(tag: "table", children: [
+    cp_head_row(cells: ["Cost", "What is missing"]),
+    el(tag: "tbody", children: map(unpriced_site_lines, u => unpriced_row(u: u))),
+  ]))
+}
+
+// ---------------------------------------------------------------------------------------------
+// CONTRIBUTION
+// ---------------------------------------------------------------------------------------------
+
+fn contribution_row(b: NodeBuildCandidate, price_micro: Int, tier: String) -> Fragment {
+  let dia = dia_planning_micro_per_month
+  let rev = node_revenue_per_month_micro(b: b, price_micro: price_micro, utilization_permille: selected_utilization_permille)
+  let cost = modelled_cost_per_month_micro(b: b, dia_micro: dia)
+  let contrib = contribution_permille_of(c: contribution(b: b, price_micro: price_micro, utilization_permille: selected_utilization_permille, dia_micro: dia))
+  el(tag: "tr", children: [
+    cp_td(text: join([b.label, ", ", tier], "")),
+    cp_td_dim(text: to_string(sellable_units(c: b))),
+    cp_td_dim(text: cp_usd2(micro: rev)),
+    cp_td_dim(text: cp_usd2(micro: cost)),
+    if contrib < 0 { cp_td_warn(text: cp_signed_permille_text(p: contrib)) } else { cp_td_dim(text: cp_signed_permille_text(p: contrib)) },
+    cp_td_dim(text: cp_permille_text(p: break_even_permille(b: b, price_micro: price_micro, dia_micro: dia))),
+  ])
+}
+
+fn contribution_table() -> Fragment {
+  cp_scrollable(t: el_class(tag: "table", cls: "widest", children: [
+    cp_head_row(cells: ["Build and tier", "Units", "Revenue / month at 30%", "Modelled cost / month", "Contribution", "Break-even use"]),
+    el(tag: "tbody", children: concat(
+      map(node_build_candidates, b => contribution_row(b: b, price_micro: retail_per_unit_minute_micro, tier: "retail")),
+      map(node_build_candidates, b => contribution_row(b: b, price_micro: volume_per_unit_minute_micro, tier: "volume")),
+    )),
+  ]))
+}
+
+fn margin_banner() -> Fragment {
+  match margin_standing(b: selected_build, price_micro: volume_per_unit_minute_micro, utilization_permille: selected_utilization_permille) {
+    ActualMargin { permille, receipt } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "Margin ", cp_permille_text(p: permille), ". ", receipt,
+      ], ""))]),
+    MarginSensitivity { contribution_permille, low_permille, high_permille, unresolved_inputs, unpriced, caveat } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "THIS IS NOT A MARGIN. Selected build at volume pricing contributes ",
+        cp_signed_permille_text(p: contribution_permille), " on the planning transit quote, ranging ",
+        cp_signed_permille_text(p: low_permille), " to ", cp_signed_permille_text(p: high_permille),
+        " across the transit ladder. ", caveat, " Unresolved inputs: ",
+        join(unresolved_inputs, "; "), ".",
+      ], ""))]),
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// PAGE
+// ---------------------------------------------------------------------------------------------
+
+data ci_page_standfirst: String = "What CI minutes cost elsewhere, what we would charge, where overflow work actually goes, what a node costs to build, and what is left after the room is paid for. Every figure is computed from the model beneath it. Nothing on this page is a margin."
+
+data unit_definition_note: String = "One unit-minute is one CPU entitlement plus 3 GB (decimal, strategy.ci_sellable_unit) of RAM for one minute. Whichever of CPU and memory runs out first is what a shape can actually deliver, so every row takes the smaller of the two and prints the result. A 2-vCPU box with 4 GiB is one unit, not two: the second vCPU has no memory to work with."
+
+data performance_note: String = "A physical Arm core and an x86 hardware thread are counted as one unit each, and that is deliberately conservative. No benchmark has been run on any route in this table or on our own hardware, so no row is credited with delivering more work per unit than another. A 160-core node is 160 billing units until a benchmark receipt says otherwise, and a higher-performance class would be a separate product with its own price rather than a quiet multiplier on this one."
+
+data build_intro: String = "Cores are cheap and unevenly priced; high-density memory is expensive and on a cliff. The build question is therefore not how many cores fit on a board, it is where those two curves cross the product's own contract of three decimal gigabytes per core (strategy.ci_sellable_unit). Every row below is derived from marketplace listings with dates and quantities attached, and none of them is a purchase authorization."
+
+data alpha_intro: String = "A price under the market is a spread, not an explanation. If the only thing behind the number is cheaper hardware, the advantage lasts until someone else shops the same market. There are seven separate sources here and they are not equally real: four are derived from the model below, three are claims with no measurement behind them, and the largest one is a claim."
+
+// The economics sections as a list, so another page can compose them beside the physical drawings
+// without either page owning the other's chrome.
+fn pricing_sections() -> List<Fragment> {
+  [
+      cp_section(label: "The unit", heading: "One core, three gigabytes, one minute.", body: [
+        cp_para(text: unit_definition_note),
+        cp_note(text: performance_note),
+      ]),
+
+      cp_section(label: "Where the alpha lives", heading: "Seven sources, four of them measured.", body: [
+        cp_para(text: alpha_intro),
+        alpha_table(),
+        cp_note(text: alpha_summation_refusal),
+        cp_note(text: packing_conclusion_note),
+        el(tag: "h3", children: [txt(s: "Work elimination, and why it is not in this SKU")]),
+        work_avoided_banner(),
+        work_elimination_reach_line(r: internal_work_elimination),
+        work_elimination_reach_line(r: saleable_work_elimination),
+        work_avoided_measurement_banner(),
+        cp_note(text: alpha_reach_note),
+        el(tag: "h3", children: [txt(s: "What the customer keeps")]),
+        customer_alpha_table(),
+        cp_note(text: three_readings_note),
+      ]),
+
+      cp_section(label: "The market", heading: "What everyone else charges, normalized.", body: [
+        market_table(),
+        cp_note(text: ci_product_defaults_note),
+        cp_note(text: circleci_caveat_note),
+        cp_note(text: namespace_note),
+        cp_note(text: price_provenance_note),
+      ]),
+
+      cp_section(label: "Our schedule", heading: "Multiplication, not a price list.", body: [
+        shape_table(),
+        cp_note(text: pricing_position_note),
+        cp_note(text: no_free_tier_note),
+      ]),
+
+      cp_section(label: "Spill", heading: "Where overflow work goes.", body: [
+        spill_table(),
+        cp_note(text: spread_naming_note),
+        cp_note(text: spill_authority_note),
+        cp_note(text: shared_family_note),
+        cp_note(text: service_class_note),
+        cp_note(text: committed_capacity_note),
+      ]),
+
+      cp_section(label: "The build", heading: "The cheapest balanced point, not the most cores.", body: [
+        cp_para(text: build_intro),
+        el(tag: "h3", children: [txt(s: "The memory market, as observed")]),
+        memory_lot_table(),
+        cp_note(text: memory_curve_note),
+        cp_note(text: memory_band_note),
+        el(tag: "h3", children: [txt(s: "The candidate frontier")]),
+        packing_table(),
+        cp_note(text: frontier_note),
+        frontier_axes_banner(),
+        cp_note(text: capex_ceiling_note),
+        el(tag: "h3", children: [txt(s: "Two smaller nodes, or one dense node")]),
+        split_versus_dense_table(),
+        cp_note(text: split_versus_dense_note),
+        el(tag: "h3", children: [txt(s: "What is still unpriced")]),
+        purchase_gate_banner(),
+        capex_banner(),
+        cp_note(text: duty_reserve_note),
+        cp_note(text: processor_market_note),
+        cp_note(text: reserve_basis_note),
+        cp_note(text: finishing_allowance_note),
+        cp_note(text: selection_note),
+      ]),
+
+      cp_section(label: "The room", heading: "Rent, transit, power, and how many nodes share them.", body: [
+        dia_table(),
+        cp_note(text: dia_note),
+        cp_note(text: density_note),
+        cp_note(text: electricity_tariff_note),
+        cp_note(text: cooling_note),
+        el(tag: "h3", children: [txt(s: "Costs with no reading at all")]),
+        unpriced_table(),
+      ]),
+
+      cp_section(label: "Contribution", heading: "What is left, and how little demand it needs.", body: [
+        contribution_table(),
+        margin_banner(),
+        cp_note(text: utilization_note),
+      ]),
+
+  ]
+}
+
+fn page_body() -> Fragment {
+  el_attrs(tag: "div", attributes: [attr(name: "data-generated-by", value: "strategy.ci_pricing_page")], children: [
+    el(tag: "style", children: [txt(s: ci_page_css)]),
+    el_class(tag: "div", cls: "wrap", children: concat(
+      [
+        el(tag: "h1", children: [txt(s: "Selling CI minutes.")]),
+        el_class(tag: "p", cls: "standfirst", children: [txt(s: ci_page_standfirst)]),
+      ],
+      concat(pricing_sections(), [
+        el(tag: "footer", children: [txt(s: "generated by strategy.ci_pricing_page - no tile cut, no minute sold")]),
+      ]))),
+  ])
+}
+
+fn render_ci_pricing_body() -> String {
+  match try_serialize_html_source(node: page_body()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+  }
+}
+
+data ci_page_css: String = ":root\{--plaster:#E9E4DA;--ink:#2A2620;--muted:#6E675C;--oak:#A97C3E;--rule:#C8C0B2;--green:#4F7A4A;--alarm:#9C4A38;--alarm-ink:#FFF4F0}\n@media (prefers-color-scheme:dark)\{:root:not([data-theme=\"light\"])\{--plaster:#191713;--ink:#EAE4D8;--muted:#9C9485;--oak:#D2A057;--rule:#3A352C;--green:#7CA876;--alarm:#A85039;--alarm-ink:#FFF0EA}}\n:root[data-theme=\"dark\"]\{--plaster:#191713;--ink:#EAE4D8;--muted:#9C9485;--oak:#D2A057;--rule:#3A352C;--green:#7CA876;--alarm:#A85039;--alarm-ink:#FFF0EA}\n*\{box-sizing:border-box}\nbody\{background:var(--plaster);color:var(--ink);margin:0;padding:0 1.25rem 5rem;font-family:ui-sans-serif,system-ui,Helvetica,Arial,sans-serif;font-size:17px;line-height:1.7}\n.wrap\{max-width:52rem;margin:0 auto}\nh1\{font-family:Georgia,serif;font-weight:400;font-size:clamp(2rem,5vw,3rem);line-height:1.1;margin:3.5rem 0 1rem;letter-spacing:-0.02em}\nh2\{font-family:Georgia,serif;font-weight:400;font-size:1.6rem;line-height:1.25;margin:0 0 0.9rem}\nh3\{font-family:ui-monospace,Menlo,monospace;font-size:0.72rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);margin:2.2rem 0 0.2rem;font-weight:400}\n.standfirst\{font-family:Georgia,serif;font-size:1.15rem;line-height:1.55;margin:0 0 1.4rem}\n.sec-label\{font-family:ui-monospace,Menlo,monospace;font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--oak);display:block;margin:0 0 0.7rem}\nsection\{padding-top:2.8rem}\np\{margin:0 0 1rem}\n.note\{font-size:0.93rem;color:var(--muted);border-top:1px solid var(--rule);padding-top:0.9rem}\n.refused\{font-family:ui-monospace,Menlo,monospace;font-size:0.75rem;line-height:1.65;letter-spacing:0.02em;color:var(--alarm-ink);background:var(--alarm);padding:0.9rem 1rem;margin:1.4rem 0}\n.gen\{font-family:ui-monospace,Menlo,monospace;font-size:0.72rem;color:var(--muted);border:1px solid var(--rule);border-left:2.5px solid var(--green);padding:0.9rem 1rem;margin:1.4rem 0}\n.scroll\{overflow-x:auto;margin:1.4rem 0}\n.scroll table\{margin:0}\ntable.wide\{min-width:40rem}\ntable.widest\{min-width:52rem}\ntable\{border-collapse:collapse;width:100%;font-size:0.9rem;margin:1.4rem 0}\nth,td\{text-align:left;padding:0.45rem 0.6rem;border-bottom:1px solid var(--rule);vertical-align:top;line-height:1.45}\nth\{font-family:ui-monospace,Menlo,monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--ink)}\ntd.dim\{font-family:ui-monospace,Menlo,monospace;font-size:0.8rem;font-variant-numeric:tabular-nums;white-space:nowrap}\ntd.warn\{font-family:ui-monospace,Menlo,monospace;font-size:0.8rem;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--alarm);font-weight:600}\nfooter\{max-width:52rem;margin:3.5rem auto 0;padding-top:1.4rem;border-top:1.5px solid var(--ink);font-family:ui-monospace,Menlo,monospace;font-size:0.7rem;color:var(--muted)}"

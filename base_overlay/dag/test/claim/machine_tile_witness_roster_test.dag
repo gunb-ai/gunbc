@@ -1,0 +1,171 @@
+module test.claim.machine_tile_witness_roster
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { NonEmptyStr, List, Int }
+import test.claim.machine_tile_design_witness {
+  witness_interface_contract_is_single_and_three,
+  witness_dc_population_is_unresolved_not_invented,
+  witness_every_feature_is_datumed,
+  witness_grip_to_board_web_survives_minimum,
+  witness_lift_holds_are_bolted_and_never_feet,
+  witness_selected_hold_is_gated_not_deleted,
+  witness_cleat_seating_is_legible,
+  witness_shape_is_irregular_only_where_nothing_is_measured,
+  witness_power_budget_closes,
+  witness_branch_circuits_carry_the_ceiling,
+  witness_48v_distribution_beats_12v_on_conductor,
+  witness_rejected_rear_fixed_fork_stays_measurable,
+  witness_depth_is_derived_and_liquid_is_not_shallow,
+  witness_no_scenario_claims_zero_fans,
+  witness_preset_crossings_derive_correctly,
+  witness_impossible_grip_roundovers_refuse,
+  witness_no_extent_anchors_to_the_live_edge,
+  witness_grip_integration_is_incomplete_not_ready,
+  witness_grip_obligations_are_derived_and_complete,
+  witness_lift_qualification_refuses_on_axis_and_proof_load,
+}
+
+// One entry, one module-path index, seventeen claim bodies.
+//
+// MEASURED, not assumed. Running these as one process per witness cost 132-155 s each and about
+// 37 minutes for the suite. A control run of a trivial 46-line entry against the same source root
+// cost 133,171 ms, and the nine-witness public entry cost 146,352 ms, against 472 ms of logged
+// compile phases. The tax is therefore FIXED and independent of what is being evaluated: roughly
+// 133 s to build a module-path index over 2,141 .dag files and 24 MB before the entry graph
+// narrows anything. Claim evaluation is the small remainder.
+//
+// "The witnesses take two minutes" was the wrong conclusion. The witnesses take milliseconds; the
+// harness takes two minutes, and paying it once per witness multiplied it by seventeen. Reporting
+// one wall-clock number per witness concealed an addressable harness defect as an inherent
+// property of the claims -- the same shape as every other defect on this branch, where a number
+// that looked like a measurement was never measuring what its name said.
+data machine_tile_roster_cost_note: NonEmptyStr = "Fixed per-process index cost measured at ~133 s against 472 ms of logged compile phases; claim bodies are the small remainder. Seventeen separate invocations paid the index seventeen times."
+
+type WitnessOutcome {
+  name: NonEmptyStr
+  passed: Bool
+}
+
+// Hand-listed and exact. A glob covers whatever happens to exist, so a witness deleted by an edit
+// leaves the suite silently; a declared roster with an expected count reds instead.
+data machine_tile_witness_outcomes: List<WitnessOutcome> = [
+  WitnessOutcome {
+    name: "witness_interface_contract_is_single_and_three",
+    passed: witness_interface_contract_is_single_and_three(),
+  },
+  WitnessOutcome {
+    name: "witness_dc_population_is_unresolved_not_invented",
+    passed: witness_dc_population_is_unresolved_not_invented(),
+  },
+  WitnessOutcome {
+    name: "witness_every_feature_is_datumed",
+    passed: witness_every_feature_is_datumed(),
+  },
+  WitnessOutcome {
+    name: "witness_grip_to_board_web_survives_minimum",
+    passed: witness_grip_to_board_web_survives_minimum(),
+  },
+  WitnessOutcome {
+    name: "witness_lift_holds_are_bolted_and_never_feet",
+    passed: witness_lift_holds_are_bolted_and_never_feet(),
+  },
+  WitnessOutcome {
+    name: "witness_selected_hold_is_gated_not_deleted",
+    passed: witness_selected_hold_is_gated_not_deleted(),
+  },
+  WitnessOutcome {
+    name: "witness_cleat_seating_is_legible",
+    passed: witness_cleat_seating_is_legible(),
+  },
+  WitnessOutcome {
+    name: "witness_shape_is_irregular_only_where_nothing_is_measured",
+    passed: witness_shape_is_irregular_only_where_nothing_is_measured(),
+  },
+  WitnessOutcome {
+    name: "witness_power_budget_closes",
+    passed: witness_power_budget_closes(),
+  },
+  WitnessOutcome {
+    name: "witness_branch_circuits_carry_the_ceiling",
+    passed: witness_branch_circuits_carry_the_ceiling(),
+  },
+  WitnessOutcome {
+    name: "witness_48v_distribution_beats_12v_on_conductor",
+    passed: witness_48v_distribution_beats_12v_on_conductor(),
+  },
+  WitnessOutcome {
+    name: "witness_rejected_rear_fixed_fork_stays_measurable",
+    passed: witness_rejected_rear_fixed_fork_stays_measurable(),
+  },
+  WitnessOutcome {
+    name: "witness_depth_is_derived_and_liquid_is_not_shallow",
+    passed: witness_depth_is_derived_and_liquid_is_not_shallow(),
+  },
+  WitnessOutcome {
+    name: "witness_no_scenario_claims_zero_fans",
+    passed: witness_no_scenario_claims_zero_fans(),
+  },
+  WitnessOutcome {
+    name: "witness_preset_crossings_derive_correctly",
+    passed: witness_preset_crossings_derive_correctly(),
+  },
+  WitnessOutcome {
+    name: "witness_impossible_grip_roundovers_refuse",
+    passed: witness_impossible_grip_roundovers_refuse(),
+  },
+  WitnessOutcome {
+    name: "witness_no_extent_anchors_to_the_live_edge",
+    passed: witness_no_extent_anchors_to_the_live_edge(),
+  },
+  WitnessOutcome {
+    name: "witness_grip_integration_is_incomplete_not_ready",
+    passed: witness_grip_integration_is_incomplete_not_ready(),
+  },
+  WitnessOutcome {
+    name: "witness_grip_obligations_are_derived_and_complete",
+    passed: witness_grip_obligations_are_derived_and_complete(),
+  },
+  WitnessOutcome {
+    name: "witness_lift_qualification_refuses_on_axis_and_proof_load",
+    passed: witness_lift_qualification_refuses_on_axis_and_proof_load(),
+  },
+]
+
+data machine_tile_witness_expected_count: Int = 20
+
+fn machine_tile_roster_all_green() -> Bool {
+  all(machine_tile_witness_outcomes, o => o.passed)
+}
+
+fn machine_tile_roster_count_matches() -> Bool {
+  count(machine_tile_witness_outcomes) == machine_tile_witness_expected_count
+}
+
+fn machine_tile_roster_names_are_unique() -> Bool {
+  all(
+    machine_tile_witness_outcomes,
+    o => count(filter(machine_tile_witness_outcomes, p => p.name == o.name)) == 1,
+  )
+}
+
+fn machine_tile_roster_failing_names() -> List<NonEmptyStr> {
+  machine_tile_witness_outcomes |> filter(o => !o.passed) |> map(o => o.name)
+}
+
+// The receipt: the expected number of witnesses ran, each exactly once under its own name, and
+// every body returned true. Stronger than seventeen separate green exit codes, which cannot detect
+// an eighteenth witness that was never invoked.
+test fn witness_machine_tile_roster_is_complete_unique_and_green() -> Bool {
+  machine_tile_roster_count_matches()
+    && machine_tile_roster_names_are_unique()
+    && machine_tile_roster_all_green()
+}
+
+// A PROCESS-EXIT ENTRY POINT, so this witness is runnable by the actuator on the same terms as
+// every other row. gunbc run REFUSES to map a Bool to an exit code -- printing the value and
+// exiting 0 would report success for a run whose outcome is unknown -- so a roster witness with no
+// ProcessExit main cannot be executed by CI at all, which is how the machine tile roster sat green and
+// unrun. The verdict is the roster's own, unchanged; only the carrier is new.
+fn machine_tile_witness_main() -> ProcessExit {
+  if witness_machine_tile_roster_is_complete_unique_and_green() { ExitSuccess } else { ExitFailure { code: 1, reason: "witness_machine_tile_roster_is_complete_unique_and_green returned false" } }
+}

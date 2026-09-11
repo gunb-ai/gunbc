@@ -1,0 +1,80 @@
+module test.claim.cost_floor_witness
+
+import std.types { Bool, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.rack_power_engineering { collins_fleet_nodes }
+import strategy.cost_floor {
+  floor_micro_per_unit_minute, floor_standing, FloorMeasured, FloorLowerBound,
+  priced_per_node_month_micro, capex_per_node_month_micro, rent_per_node_month_micro,
+  dia_per_node_month_micro, electricity_per_node_month_micro, operator_per_node_month_micro,
+  unquoted_components, component_micro, component_is_priced, units_per_node,
+  floor_at_divisor_micro, site_divisor_nodes, priced_per_node_month_at_divisor_micro,
+}
+
+// UTILISATION IS THE DIVISOR AND THE FLOOR MUST FALL AS IT RISES. An inverted or ignored
+// divisor is silent - the figure stays plausible - and it is the single most leveraged input,
+// so getting it backwards would misprice everything downstream in the same direction.
+fn floor_falls_as_utilisation_rises() -> Bool {
+  floor_micro_per_unit_minute(utilization_permille: 1000)
+    < floor_micro_per_unit_minute(utilization_permille: 300)
+    && floor_micro_per_unit_minute(utilization_permille: 300)
+      < floor_micro_per_unit_minute(utilization_permille: 100)
+    && floor_micro_per_unit_minute(utilization_permille: 1000) > 0
+}
+
+// Zero utilisation must not divide by zero and must not fabricate a figure.
+fn zero_utilisation_refuses() -> Bool {
+  floor_micro_per_unit_minute(utilization_permille: 0) == 0
+}
+
+// THE FLOOR MUST REFUSE TO CALL ITSELF MEASURED while anything is unpriced. This is the
+// module's whole safety claim over ci_runner_economics, whose exclusions live in prose where
+// no consumer can see them.
+fn floor_refuses_to_be_measured() -> Bool {
+  match floor_standing(utilization_permille: 300) {
+    FloorMeasured { micro_per_unit_minute } => false,
+    FloorLowerBound { micro_per_unit_minute, unquoted_count, causes } => unquoted_count > 0,
+  }
+}
+
+// Unquoted components contribute NOTHING, which is what makes the sum a lower bound rather
+// than an estimate. A row that quietly contributed would make the floor look complete.
+fn unquoted_contribute_zero() -> Bool {
+  all(unquoted_components, c => component_micro(c: c) == 0 && !component_is_priced(c: c))
+    && count(unquoted_components) > 0
+}
+
+// The priced sum is exactly its five components - a dropped component would lower the floor
+// silently, which is the direction that flatters the business.
+fn priced_sum_is_its_components() -> Bool {
+  priced_per_node_month_micro() ==
+    capex_per_node_month_micro() + rent_per_node_month_micro() + dia_per_node_month_micro()
+      + electricity_per_node_month_micro() + operator_per_node_month_micro()
+    && capex_per_node_month_micro() > 0 && rent_per_node_month_micro() > 0
+    && dia_per_node_month_micro() > 0 && electricity_per_node_month_micro() > 0
+    && operator_per_node_month_micro() > 0
+    && units_per_node() > 0
+}
+
+// A SMALLER DIVISOR MUST RAISE THE FLOOR. Site fixed costs spread across fewer nodes cost
+// more each, and the two authorities disagreeing about that count is exactly why the
+// sensitivity is computed rather than described. Reds if the relationship inverts or if the
+// chosen divisor stops matching the one the priced sum actually used.
+fn fewer_nodes_raise_the_floor() -> Bool {
+  floor_at_divisor_micro(nodes: 6, utilization_permille: 300)
+    > floor_at_divisor_micro(nodes: 21, utilization_permille: 300)
+    && site_divisor_nodes() == collins_fleet_nodes
+    && priced_per_node_month_at_divisor_micro(nodes: collins_fleet_nodes)
+      == priced_per_node_month_micro()
+    && floor_at_divisor_micro(nodes: 0, utilization_permille: 300) == 0
+}
+
+fn cost_floor_witness_all() -> Bool {
+  floor_falls_as_utilisation_rises() && zero_utilisation_refuses() && fewer_nodes_raise_the_floor()
+    && floor_refuses_to_be_measured() && unquoted_contribute_zero()
+    && priced_sum_is_its_components()
+}
+
+fn cost_floor_witness_main() -> ProcessExit {
+  if cost_floor_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "cost_floor_witness_all returned false" } }
+}

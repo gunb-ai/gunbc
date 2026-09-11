@@ -1,0 +1,39 @@
+module strategy.licensing_fee_model
+
+import std.nat { Nat }
+
+data licensing_fee_model_note: String = "Executable form of the graduated enterprise contribution from the 2026-08-02 routed licensing design (docs/strategy/2026-08-02-licensing-fee-structure-review.md). The schedule is the single authority; the fee is derived; any pricing page, calculator, FAQ, or quote projects from this carrier and never restates thresholds. UNITS: revenue is carried in whole units of 40,000 USD (usd40k) because the three marginal basis-point rates - one, half, and quarter - become the integer dollar multipliers 4, 2, and 1 per unit, making every fee exact by construction with no division and no floating point. Anti-engineering properties the witnesses pin (operator requirement 2026-08-02: immune to financial engineering AND too small to warrant it): continuity - the step across every band edge equals exactly one unit's marginal fee, so no revenue-timing or classification move can save more than one basis point of the amount moved; the cap bounds the total prize of ANY avoidance strategy at one million USD per year, below the cost of maintaining a compiler fork; the free threshold with a per-entity curve creates a real split incentive (ten 99M shells owe zero where the 990M group owes 89,000), which is exactly why the fee base is the CONSOLIDATED corporate group under the accounting-control test, never the using entity. The base is always the group's own audited prior-fiscal-year consolidated gross revenue - the license never mints its own accounting. Dissolve-on: ground the money magnitude on std.measure when this tree adopts the public Money carriers. Fee-schedule changes are prospective-only and version-bound: a release binds the schedule revision it shipped under."
+
+data fee_free_threshold_usd40k: Nat = 2500
+
+data fee_band2_floor_usd40k: Nat = 25000
+
+data fee_band3_floor_usd40k: Nat = 250000
+
+data fee_band1_usd_per_unit: Nat = 4
+
+data fee_band2_usd_per_unit: Nat = 2
+
+data fee_band3_usd_per_unit: Nat = 1
+
+data fee_annual_cap_usd: Nat = 1000000
+
+fn fee_min(a: Nat, b: Nat) -> Nat {
+  if a < b { a } else { b }
+}
+
+fn fee_band_slice(revenue_usd40k: Nat, floor_usd40k: Nat, ceiling_usd40k: Nat) -> Nat {
+  let clipped = fee_min(a: revenue_usd40k, b: ceiling_usd40k)
+  clipped - fee_min(a: clipped, b: floor_usd40k)
+}
+
+fn fee_top_slice(revenue_usd40k: Nat, floor_usd40k: Nat) -> Nat {
+  revenue_usd40k - fee_min(a: revenue_usd40k, b: floor_usd40k)
+}
+
+fn enterprise_fee_usd(group_revenue_usd40k: Nat) -> Nat {
+  let band1 = fee_band_slice(revenue_usd40k: group_revenue_usd40k, floor_usd40k: fee_free_threshold_usd40k, ceiling_usd40k: fee_band2_floor_usd40k) * fee_band1_usd_per_unit
+  let band2 = fee_band_slice(revenue_usd40k: group_revenue_usd40k, floor_usd40k: fee_band2_floor_usd40k, ceiling_usd40k: fee_band3_floor_usd40k) * fee_band2_usd_per_unit
+  let band3 = fee_top_slice(revenue_usd40k: group_revenue_usd40k, floor_usd40k: fee_band3_floor_usd40k) * fee_band3_usd_per_unit
+  fee_min(a: fee_annual_cap_usd, b: band1 + band2 + band3)
+}

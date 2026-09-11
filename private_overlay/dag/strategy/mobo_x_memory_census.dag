@@ -1,0 +1,1925 @@
+module strategy.mobo_x_memory_census
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import strategy.ci_sellable_unit {
+  ci_sellable_unit, required_usable_memory,
+  MemoryRequirementEstablished, MemoryRequirementUnestablished,
+}
+import strategy.ci_node_build { altra_q80_lot, host_reserved_cores }
+import strategy.mt_collins_held_unit {
+  MemoryCensusCapability, BmcGroupTelemetryOnly, HostSmbiosCensusAvailable,
+  mt_collins_memory_census_capability,
+}
+
+// MOBO-X-2, INSTRUMENTATION ONLY. The rung's subject is "selects the routed topology", and this
+// module deliberately does NOT select one: it lands the protocol, the carriers, the candidate set
+// and a TOTAL selector whose only currently constructible result is its refusal arm, because the
+// receipts that would let it select are physical observations of the held unit that nobody has
+// made yet. Landing the selector and calling the rung complete would be rung inflation on the
+// rung roster itself (side-chat ruling, 2026-08-31): MOBO-X-2 stays OPEN, and its rung receipt is
+// withheld until the census, the depopulation runs and the selection have actually happened.
+//
+// WHAT THIS BUYS TODAY. The topology hypothesis stops being a sentence somebody might act on: the
+// only route from "4 channels x 1DPC x 64 GiB" to a selection now runs through a named producer,
+// an operator-executed mutation, a post-mutation re-census and a workload observation, and the
+// selector refuses, loudly and locatedly, until they exist.
+
+// ---------------------------------------------------------------------------------------------
+// THE PRODUCER CONTRACT, WHICH IS NOT A HOSTNAME. What MOBO-X-2 requires is an authoritative
+// host-side census carrying SLOT IDENTITY; that today's only known route happens to be booting a
+// Linux image staged on one particular NFS server is an accident of this week's credentials, and
+// writing that path into the contract would make a semantic requirement out of an implementation
+// detail. The realizations are the contract; the current plan below is one realization's recipe.
+type AuthoritativeHostMemoryCensusProducer
+  = LinuxDmidecodeEdac
+  | FirmwareInventoryWithSlotIdentity
+  | OtherValidatedHostCensusInstrument { instrument: NonEmptyStr, validation: NonEmptyStr }
+
+// ONLY A HOST-SIDE INSTRUMENT CAN FEED THE CENSUS, AND THE MATCH IS WHERE THAT RULE LIVES. The
+// held unit's capability row is an observation owned by the unit; the rule that group telemetry
+// never becomes a channel census is MOBO-X-2's, so it is stated here, over that observation.
+fn capability_can_feed_channel_census(capability: MemoryCensusCapability) -> Bool {
+  match capability {
+    BmcGroupTelemetryOnly { cpu_domains_observed: _, memory_power_observed: _, dimm_group_temperature_observed: _, per_slot_inventory: _ } => false
+    HostSmbiosCensusAvailable { producer: _, first_evidence: _ } => true
+  }
+}
+
+fn held_unit_can_feed_channel_census() -> Bool {
+  capability_can_feed_channel_census(capability: mt_collins_memory_census_capability)
+}
+
+// THE CURRENT EXECUTION PLAN, CARRIED BESIDE THE CONTRACT RATHER THAN INSIDE IT. This is the
+// recipe an operator runs today; a different route that produces slot identity satisfies the same
+// producer contract and needs no edit here beyond a new row.
+type CensusExecutionPlan {
+  realizes: AuthoritativeHostMemoryCensusProducer
+  recipe: NonEmptyStr
+  known_obstacle: NonEmptyStr
+}
+
+data current_census_execution_plan: CensusExecutionPlan = CensusExecutionPlan {
+  realizes: LinuxDmidecodeEdac,
+  recipe: "stage an aarch64 UEFI Linux image on the BMC's configured NFS remote-media share, PUT the media configuration with image_redirection:1, POST /api/settings/media/remote/start-media, set bootdev cdrom and power-reset the host; once booted, capture dmidecode --type 17 (slot designation, size, rank, speed, part number per DIMM) and the EDAC csrow/channel tree, and record the pair as one HostMemoryCensusReceipt",
+  known_obstacle: "as of 2026-08-31 the container running this program cannot write the NFS share (the ssh identity for it is absent), so this recipe is operator-executed today; the obstacle is credentials, not the model",
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REV-A TARGET IS A FACT ABOUT THE TILE, NOT ABOUT A COMMODITY BOARD. The unit count this
+// board must back is the Q80-30's physical cores less the host reserve; deriving it from a
+// Supermicro node candidate instead subtracted that candidate's maintenance and admission
+// headroom and quietly enforced 68 units where MOBO-X-0 adopted 76.
+type RevASellableUnitTarget {
+  processor: NonEmptyStr
+  physical_cores: Nat
+  host_reserved_cores: Nat
+}
+
+data rev_a_sellable_unit_target: RevASellableUnitTarget = RevASellableUnitTarget {
+  processor: "Ampere Altra Q80-30, the part MOBO-X-1 selected and the operator owns sixty-two of",
+  physical_cores: altra_q80_lot.physical_cores,
+  host_reserved_cores: host_reserved_cores,
+}
+
+fn rev_a_target_units() -> Nat {
+  rev_a_sellable_unit_target.physical_cores - rev_a_sellable_unit_target.host_reserved_cores
+}
+
+// THE REQUIREMENT IS A COPRODUCT, NOT A NUMBER WITH A ZERO ESCAPE.
+type RevACapacityRequirement
+  = CapacityRequirementEstablished { bytes: Nat }
+  | CapacityRequirementUnestablished { quoted_label: NonEmptyStr }
+
+fn rev_a_capacity_requirement() -> RevACapacityRequirement {
+  match required_usable_memory(c: ci_sellable_unit, units: rev_a_target_units()) {
+    MemoryRequirementEstablished { bytes: b } => CapacityRequirementEstablished { bytes: b }
+    MemoryRequirementUnestablished { quoted_label: l } => CapacityRequirementUnestablished { quoted_label: l }
+  }
+}
+
+data nat_zero: Nat = 0
+data bytes_per_gib: Nat = 1073741824
+data no_such_slot: NonEmptyStr = "none"
+
+fn unique_strings(values: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(values, init: [], f: (acc, d) => if count(acc |> filter(x => x == d)) > 0 { acc } else { concat(acc, [d]) })
+}
+
+fn first_repeated(values: List<NonEmptyStr>) -> NonEmptyStr {
+  fold(values, init: no_such_slot, f: (acc, v) =>
+    if acc == no_such_slot && count(values |> filter(x => x == v)) > 1 { v } else { acc })
+}
+
+fn distinct_count(values: List<NonEmptyStr>) -> Nat {
+  count(unique_strings(values: values))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DENOMINATOR IS ITS OWN RECEIPT WITH EVIDENCE FOR ITS AUTHORITY.
+type SlotUniverseAuthority
+  = BoardDrawingAuthority { drawing: DeclarationRef, drawing_digest: NonEmptyStr }
+  | PhysicalInspectionAuthority { receipt: DeclarationRef }
+  | FirmwareTopologyAuthority { receipt: DeclarationRef, validation: DeclarationRef }
+
+type MemoryModuleClass
+  = Rdimm
+  | Lrdimm
+  | Udimm
+
+type UniverseSlot {
+  slot_designation: NonEmptyStr
+  channel_designation: NonEmptyStr
+  processor_domain: NonEmptyStr
+}
+
+type MemorySlotUniverseReceipt {
+  universe_identity: NonEmptyStr
+  board_identity: NonEmptyStr
+  board_revision: NonEmptyStr
+  authority: SlotUniverseAuthority
+  note: NonEmptyStr
+  first_slot: UniverseSlot
+  additional_slots: List<UniverseSlot>
+}
+
+fn universe_slots(u: MemorySlotUniverseReceipt) -> List<UniverseSlot> {
+  concat([u.first_slot], u.additional_slots)
+}
+
+fn universe_entries_named(u: MemorySlotUniverseReceipt, designation: NonEmptyStr) -> Nat {
+  count(universe_slots(u: u) |> filter(e => e.slot_designation == designation))
+}
+
+fn universe_entries_at(u: MemorySlotUniverseReceipt, domain: NonEmptyStr, channel: NonEmptyStr, designation: NonEmptyStr) -> Nat {
+  count(universe_slots(u: u) |> filter(e =>
+    e.processor_domain == domain && e.channel_designation == channel && e.slot_designation == designation))
+}
+
+type SlotUniverseStanding
+  = SlotUniverseEstablished { slot_count: Nat }
+  | DuplicateSlotDesignation { duplicated: NonEmptyStr }
+  | DuplicatePhysicalSlotIdentity { duplicated: NonEmptyStr }
+
+fn universe_standing(u: MemorySlotUniverseReceipt) -> SlotUniverseStanding {
+  let slots = universe_slots(u: u)
+  let dup_name = fold(slots, init: no_such_slot, f: (acc, e) =>
+    if acc == no_such_slot && universe_entries_named(u: u, designation: e.slot_designation) > 1 { e.slot_designation } else { acc })
+  let dup_identity = fold(slots, init: no_such_slot, f: (acc, e) =>
+    if acc == no_such_slot && universe_entries_at(u: u, domain: e.processor_domain, channel: e.channel_designation, designation: e.slot_designation) > 1 { e.slot_designation } else { acc })
+  if dup_name != no_such_slot {
+    DuplicateSlotDesignation { duplicated: dup_name }
+  } else {
+    if dup_identity != no_such_slot {
+      DuplicatePhysicalSlotIdentity { duplicated: dup_identity }
+    } else {
+      SlotUniverseEstablished { slot_count: count(slots) }
+    }
+  }
+}
+
+fn universe_is_established(standing: SlotUniverseStanding) -> Bool {
+  match standing {
+    SlotUniverseEstablished { slot_count: _ } => true
+    DuplicateSlotDesignation { duplicated: _ } => false
+    DuplicatePhysicalSlotIdentity { duplicated: _ } => false
+  }
+}
+
+fn universe_domains(u: MemorySlotUniverseReceipt) -> List<NonEmptyStr> {
+  unique_strings(values: universe_slots(u: u) |> map(e => e.processor_domain))
+}
+
+fn universe_channels(u: MemorySlotUniverseReceipt, domain: NonEmptyStr) -> List<NonEmptyStr> {
+  unique_strings(values: universe_slots(u: u) |> filter(e => e.processor_domain == domain) |> map(e => e.channel_designation))
+}
+
+// ---------------------------------------------------------------------------------------------
+// WHAT A PHYSICAL INSPECTION CAN SEE, AND WHAT ONLY A BOOTED PLATFORM CAN. A pre-power-on
+// inspection establishes the module in the slot - capacity, ranks, width, class, exact part, and
+// at most the part's RATED speed from the part authority. It cannot establish a TRAINED speed,
+// because nothing has trained yet, and on a run that later fails DDR training nothing ever will.
+// Sharing one observation type between the two forced the pre-power producer to invent a trained
+// speed, which is the fabricated-plausible-output failure at the smallest possible grain.
+type ModuleAxes {
+  capacity_gib: Nat
+  ranks: Nat
+  device_width_bits: Nat
+  module_class: MemoryModuleClass
+  part_identity: NonEmptyStr
+}
+
+type InstalledModule
+  = SlotVacant
+  | ModuleInstalled { axes: ModuleAxes, rated_speed_mts: Nat, part_authority: DeclarationRef }
+
+type InstalledSlotObservation {
+  slot_designation: NonEmptyStr
+  channel_designation: NonEmptyStr
+  processor_domain: NonEmptyStr
+  module: InstalledModule
+}
+
+type TrainedModule
+  = TrainedSlotEmpty
+  | TrainedModulePresent { axes: ModuleAxes, trained_speed_mts: Nat }
+
+type MemorySlotObservation {
+  slot_designation: NonEmptyStr
+  channel_designation: NonEmptyStr
+  processor_domain: NonEmptyStr
+  trained: TrainedModule
+}
+
+// THE AXES A SHAPE IS DERIVED FROM ARE COMMON TO BOTH OBSERVATIONS, so the derivation has one
+// authority and neither side needs the other's facts.
+type SlotAxes
+  = AxesVacant
+  | AxesPresent { axes: ModuleAxes }
+
+type AxisSlot {
+  slot_designation: NonEmptyStr
+  channel_designation: NonEmptyStr
+  processor_domain: NonEmptyStr
+  axes: SlotAxes
+}
+
+fn installed_axis_slot(s: InstalledSlotObservation) -> AxisSlot {
+  AxisSlot {
+    slot_designation: s.slot_designation,
+    channel_designation: s.channel_designation,
+    processor_domain: s.processor_domain,
+    axes: installed_axes(m: s.module),
+  }
+}
+
+fn installed_axes(m: InstalledModule) -> SlotAxes {
+  match m {
+    SlotVacant => AxesVacant
+    ModuleInstalled { axes: a, rated_speed_mts: _, part_authority: _ } => AxesPresent { axes: a }
+  }
+}
+
+fn trained_axis_slot(s: MemorySlotObservation) -> AxisSlot {
+  AxisSlot {
+    slot_designation: s.slot_designation,
+    channel_designation: s.channel_designation,
+    processor_domain: s.processor_domain,
+    axes: trained_axes(m: s.trained),
+  }
+}
+
+fn trained_axes(m: TrainedModule) -> SlotAxes {
+  match m {
+    TrainedSlotEmpty => AxesVacant
+    TrainedModulePresent { axes: a, trained_speed_mts: _ } => AxesPresent { axes: a }
+  }
+}
+
+fn trained_speed_of(m: TrainedModule) -> Nat {
+  match m {
+    TrainedSlotEmpty => nat_zero
+    TrainedModulePresent { axes: _, trained_speed_mts: sp } => sp
+  }
+}
+
+fn axes_nominal_bytes(a: SlotAxes) -> Nat {
+  match a {
+    AxesVacant => nat_zero
+    AxesPresent { axes: x } => x.capacity_gib * bytes_per_gib
+  }
+}
+
+fn axes_are_present(a: SlotAxes) -> Bool {
+  match a {
+    AxesVacant => false
+    AxesPresent { axes: _ } => true
+  }
+}
+
+fn axes_agree(a: SlotAxes, model: ModuleAxes) -> Bool {
+  match a {
+    AxesVacant => true
+    AxesPresent { axes: x } =>
+      x.capacity_gib == model.capacity_gib && x.ranks == model.ranks
+        && x.device_width_bits == model.device_width_bits && x.module_class == model.module_class
+        && x.part_identity == model.part_identity
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// USABLE MEMORY IS OBSERVED PER DOMAIN AND CARRIES BOTH QUANTITIES.
+type DomainUsableMemoryObservation {
+  subject_machine: NonEmptyStr
+  processor_domain: NonEmptyStr
+  producer_run_identity: NonEmptyStr
+  os_visible_bytes: Nat
+  host_reserved_bytes: Nat
+}
+
+fn customer_allocatable_bytes(o: DomainUsableMemoryObservation) -> Nat {
+  if o.os_visible_bytes > o.host_reserved_bytes { o.os_visible_bytes - o.host_reserved_bytes } else { nat_zero }
+}
+
+type HostMemoryCensusReceipt {
+  subject_machine: NonEmptyStr
+  board_identity: NonEmptyStr
+  board_revision: NonEmptyStr
+  firmware_identity: NonEmptyStr
+  universe: MemorySlotUniverseReceipt
+  producer: AuthoritativeHostMemoryCensusProducer
+  producer_run_identity: NonEmptyStr
+  observed_at: NonEmptyStr
+  observed_slots: List<MemorySlotObservation>
+  domain_usable_memory: List<DomainUsableMemoryObservation>
+  first_raw_evidence: NonEmptyStr
+  additional_raw_evidence: List<NonEmptyStr>
+  trained_visible_bytes: Nat
+}
+
+fn census_axis_slots(census: HostMemoryCensusReceipt) -> List<AxisSlot> {
+  census.observed_slots |> map(s => trained_axis_slot(s: s))
+}
+
+fn populated_nominal_bytes(census: HostMemoryCensusReceipt) -> Nat {
+  fold(census_axis_slots(census: census), init: nat_zero, f: (acc, s) => acc + axes_nominal_bytes(a: s.axes))
+}
+
+fn domain_nominal_bytes(census: HostMemoryCensusReceipt, domain: NonEmptyStr) -> Nat {
+  fold(census_axis_slots(census: census) |> filter(s => s.processor_domain == domain), init: nat_zero, f: (acc, s) => acc + axes_nominal_bytes(a: s.axes))
+}
+
+fn observations_at(census: HostMemoryCensusReceipt, domain: NonEmptyStr, channel: NonEmptyStr, designation: NonEmptyStr) -> Nat {
+  count(census.observed_slots |> filter(s =>
+    s.processor_domain == domain && s.channel_designation == channel && s.slot_designation == designation))
+}
+
+type DomainMemoryReconciliation
+  = DomainMemoryReconciled {
+      processor_domain: NonEmptyStr
+      nominal_bytes: Nat
+      os_visible_bytes: Nat
+      customer_allocatable_bytes: Nat
+      host_reserved_bytes: Nat
+    }
+  | MissingUsableMemoryDomain { processor_domain: NonEmptyStr }
+  | DuplicateUsableMemoryDomain { processor_domain: NonEmptyStr }
+  | UnexpectedUsableMemoryDomain { processor_domain: NonEmptyStr }
+  | UsableMemoryRunNotBound { processor_domain: NonEmptyStr }
+  | DomainUsableExceedsNominal { processor_domain: NonEmptyStr, os_visible_bytes: Nat, nominal_bytes: Nat }
+  | HostReserveExceedsVisible { processor_domain: NonEmptyStr }
+
+fn usable_observations_for(census: HostMemoryCensusReceipt, domain: NonEmptyStr) -> List<DomainUsableMemoryObservation> {
+  census.domain_usable_memory |> filter(o => o.processor_domain == domain)
+}
+
+fn reconcile_one_domain(census: HostMemoryCensusReceipt, o: DomainUsableMemoryObservation, nominal: Nat) -> DomainMemoryReconciliation {
+  if o.producer_run_identity != census.producer_run_identity || o.subject_machine != census.subject_machine {
+    UsableMemoryRunNotBound { processor_domain: o.processor_domain }
+  } else {
+    if o.host_reserved_bytes > o.os_visible_bytes {
+      HostReserveExceedsVisible { processor_domain: o.processor_domain }
+    } else {
+      if o.os_visible_bytes > nominal {
+        DomainUsableExceedsNominal { processor_domain: o.processor_domain, os_visible_bytes: o.os_visible_bytes, nominal_bytes: nominal }
+      } else {
+        DomainMemoryReconciled {
+          processor_domain: o.processor_domain,
+          nominal_bytes: nominal,
+          os_visible_bytes: o.os_visible_bytes,
+          customer_allocatable_bytes: customer_allocatable_bytes(o: o),
+          host_reserved_bytes: o.host_reserved_bytes,
+        }
+      }
+    }
+  }
+}
+
+fn reconcile_domain_memory(census: HostMemoryCensusReceipt, domain: NonEmptyStr) -> DomainMemoryReconciliation {
+  let obs = usable_observations_for(census: census, domain: domain)
+  let nominal = domain_nominal_bytes(census: census, domain: domain)
+  if count(universe_domains(u: census.universe) |> filter(d => d == domain)) == 0 {
+    UnexpectedUsableMemoryDomain { processor_domain: domain }
+  } else {
+    if count(obs) == 0 {
+      MissingUsableMemoryDomain { processor_domain: domain }
+    } else {
+      if count(obs) > 1 {
+        DuplicateUsableMemoryDomain { processor_domain: domain }
+      } else {
+        match obs.first() {
+          Absent => MissingUsableMemoryDomain { processor_domain: domain }
+          Present { value: o } => reconcile_one_domain(census: census, o: o, nominal: nominal)
+        }
+      }
+    }
+  }
+}
+
+fn domain_memory_is_reconciled(r: DomainMemoryReconciliation) -> Bool {
+  match r {
+    DomainMemoryReconciled { processor_domain: _, nominal_bytes: _, os_visible_bytes: _, customer_allocatable_bytes: _, host_reserved_bytes: _ } => true
+    MissingUsableMemoryDomain { processor_domain: _ } => false
+    DuplicateUsableMemoryDomain { processor_domain: _ } => false
+    UnexpectedUsableMemoryDomain { processor_domain: _ } => false
+    UsableMemoryRunNotBound { processor_domain: _ } => false
+    DomainUsableExceedsNominal { processor_domain: _, os_visible_bytes: _, nominal_bytes: _ } => false
+    HostReserveExceedsVisible { processor_domain: _ } => false
+  }
+}
+
+fn domain_customer_allocatable(r: DomainMemoryReconciliation) -> Nat {
+  match r {
+    DomainMemoryReconciled { processor_domain: _, nominal_bytes: _, os_visible_bytes: _, customer_allocatable_bytes: c, host_reserved_bytes: _ } => c
+    MissingUsableMemoryDomain { processor_domain: _ } => nat_zero
+    DuplicateUsableMemoryDomain { processor_domain: _ } => nat_zero
+    UnexpectedUsableMemoryDomain { processor_domain: _ } => nat_zero
+    UsableMemoryRunNotBound { processor_domain: _ } => nat_zero
+    DomainUsableExceedsNominal { processor_domain: _, os_visible_bytes: _, nominal_bytes: _ } => nat_zero
+    HostReserveExceedsVisible { processor_domain: _ } => nat_zero
+  }
+}
+
+fn domain_host_reserve(r: DomainMemoryReconciliation) -> Nat {
+  match r {
+    DomainMemoryReconciled { processor_domain: _, nominal_bytes: _, os_visible_bytes: _, customer_allocatable_bytes: _, host_reserved_bytes: h } => h
+    MissingUsableMemoryDomain { processor_domain: _ } => nat_zero
+    DuplicateUsableMemoryDomain { processor_domain: _ } => nat_zero
+    UnexpectedUsableMemoryDomain { processor_domain: _ } => nat_zero
+    UsableMemoryRunNotBound { processor_domain: _ } => nat_zero
+    DomainUsableExceedsNominal { processor_domain: _, os_visible_bytes: _, nominal_bytes: _ } => nat_zero
+    HostReserveExceedsVisible { processor_domain: _ } => nat_zero
+  }
+}
+
+type CensusCoverageStanding
+  = ExactSlotCoverage { slot_count: Nat, firmware_reserved_bytes: Nat }
+  | SlotUniverseUnestablished { standing: SlotUniverseStanding }
+  | UniverseBoardMismatch { census_board: NonEmptyStr, universe_board: NonEmptyStr }
+  | DuplicateObservation { duplicated: NonEmptyStr }
+  | MissingExpectedSlots { missing: NonEmptyStr }
+  | UnexpectedSlots { unexpected: NonEmptyStr }
+  | DomainMemoryNotReconciled { standing: DomainMemoryReconciliation }
+  | CapacityReconciliationFailed { populated_nominal_bytes: Nat, trained_visible_bytes: Nat }
+
+fn first_duplicate_observation(census: HostMemoryCensusReceipt) -> NonEmptyStr {
+  fold(census.observed_slots, init: no_such_slot, f: (acc, s) =>
+    if acc == no_such_slot && observations_at(census: census, domain: s.processor_domain, channel: s.channel_designation, designation: s.slot_designation) > 1 { s.slot_designation } else { acc })
+}
+
+fn first_missing_observation(census: HostMemoryCensusReceipt) -> NonEmptyStr {
+  fold(universe_slots(u: census.universe), init: no_such_slot, f: (acc, e) =>
+    if acc == no_such_slot && observations_at(census: census, domain: e.processor_domain, channel: e.channel_designation, designation: e.slot_designation) == 0 { e.slot_designation } else { acc })
+}
+
+fn first_unexpected_observation(census: HostMemoryCensusReceipt) -> NonEmptyStr {
+  fold(census.observed_slots, init: no_such_slot, f: (acc, s) =>
+    if acc == no_such_slot && universe_entries_at(u: census.universe, domain: s.processor_domain, channel: s.channel_designation, designation: s.slot_designation) == 0 { s.slot_designation } else { acc })
+}
+
+fn domain_reconciliations(census: HostMemoryCensusReceipt) -> List<DomainMemoryReconciliation> {
+  concat(
+    universe_domains(u: census.universe) |> map(d => reconcile_domain_memory(census: census, domain: d)),
+    census.domain_usable_memory
+      |> filter(o => count(universe_domains(u: census.universe) |> filter(d => d == o.processor_domain)) == 0)
+      |> map(o => UnexpectedUsableMemoryDomain { processor_domain: o.processor_domain }))
+}
+
+fn census_os_visible_sum(census: HostMemoryCensusReceipt) -> Nat {
+  fold(census.domain_usable_memory, init: nat_zero, f: (acc, o) => acc + o.os_visible_bytes)
+}
+
+fn census_coverage(census: HostMemoryCensusReceipt) -> CensusCoverageStanding {
+  let ustanding = universe_standing(u: census.universe)
+  let duplicate = first_duplicate_observation(census: census)
+  let missing = first_missing_observation(census: census)
+  let unexpected = first_unexpected_observation(census: census)
+  let unreconciled = domain_reconciliations(census: census) |> filter(r => !domain_memory_is_reconciled(r: r))
+  let nominal = populated_nominal_bytes(census: census)
+  if !universe_is_established(standing: ustanding) {
+    SlotUniverseUnestablished { standing: ustanding }
+  } else {
+    if census.board_identity != census.universe.board_identity || census.board_revision != census.universe.board_revision {
+      UniverseBoardMismatch { census_board: census.board_identity, universe_board: census.universe.board_identity }
+    } else {
+      if duplicate != no_such_slot {
+        DuplicateObservation { duplicated: duplicate }
+      } else {
+        if missing != no_such_slot {
+          MissingExpectedSlots { missing: missing }
+        } else {
+          if unexpected != no_such_slot {
+            UnexpectedSlots { unexpected: unexpected }
+          } else {
+            match unreconciled.first() {
+              Present { value: bad } => DomainMemoryNotReconciled { standing: bad }
+              Absent =>
+                if nominal < census.trained_visible_bytes || census_os_visible_sum(census: census) > census.trained_visible_bytes {
+                  CapacityReconciliationFailed { populated_nominal_bytes: nominal, trained_visible_bytes: census.trained_visible_bytes }
+                } else {
+                  ExactSlotCoverage {
+                    slot_count: count(census.observed_slots),
+                    firmware_reserved_bytes: nominal - census.trained_visible_bytes,
+                  }
+                }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn coverage_is_exact(standing: CensusCoverageStanding) -> Bool {
+  match standing {
+    ExactSlotCoverage { slot_count: _, firmware_reserved_bytes: _ } => true
+    SlotUniverseUnestablished { standing: _ } => false
+    UniverseBoardMismatch { census_board: _, universe_board: _ } => false
+    DuplicateObservation { duplicated: _ } => false
+    MissingExpectedSlots { missing: _ } => false
+    UnexpectedSlots { unexpected: _ } => false
+    DomainMemoryNotReconciled { standing: _ } => false
+    CapacityReconciliationFailed { populated_nominal_bytes: _, trained_visible_bytes: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CANDIDATE SET IS PER SOCKET, CARRIES THE MODULE CLASS, AND SEPARATES MEASUREMENT POINTS
+// FROM ROUTABLE SHAPES. Two channels is a required measurement - it prices the four-channel
+// choice - and is not a shape Rev-A would route.
+//
+// THE ADMISSIBILITY NAME IS DELIBERATELY WEAKER THAN "QUALIFIED". A candidate here is a
+// ProductionTopologyCandidate: a shape Rev-A could route. Exact-part qualification - that this
+// specific module is admissible on this platform at this speed - is NOT established by these
+// rows and is MOBO-X-5B's gate; the observed part identity and trained speed travel with every
+// result so that gate has its evidence. Calling the rows "ProductionRoutable" claimed more than
+// the prose behind them supported.
+type CandidateAdmissibility
+  = ProductionTopologyCandidate { grounds: NonEmptyStr }
+  | MeasurementOnly { reason: NonEmptyStr }
+
+type RevARoutedTopologyCandidate {
+  identity: NonEmptyStr
+  channels_per_socket: Nat
+  dimms_per_channel: Nat
+  dimm_capacity_gib: Nat
+  ranks: Nat
+  device_width_bits: Nat
+  module_class: MemoryModuleClass
+  admissibility: CandidateAdmissibility
+}
+
+data candidate_2ch_2dpc_64gib: RevARoutedTopologyCandidate = RevARoutedTopologyCandidate {
+  identity: "2ch-2dpc-64gib-2Rx4-rdimm",
+  channels_per_socket: 2,
+  dimms_per_channel: 2,
+  dimm_capacity_gib: 64,
+  ranks: 2,
+  device_width_bits: 4,
+  module_class: Rdimm,
+  admissibility: MeasurementOnly {
+    reason: "the degraded control the operator asked for: it answers how much throughput two channels cost, and a Rev-A routing two channels at 2DPC would carry the DPC signal-integrity penalty for no capacity gain, so it is a measurement point and never a production shape",
+  },
+}
+
+data candidate_4ch_1dpc_64gib: RevARoutedTopologyCandidate = RevARoutedTopologyCandidate {
+  identity: "4ch-1dpc-64gib-2Rx4-rdimm",
+  channels_per_socket: 4,
+  dimms_per_channel: 1,
+  dimm_capacity_gib: 64,
+  ranks: 2,
+  device_width_bits: 4,
+  module_class: Rdimm,
+  admissibility: ProductionTopologyCandidate {
+    grounds: "the provisional hypothesis carried in the MOBO-X-2 rung subject; a routable shape, left BlockedByNamedFact by MOBO-X-1 until measured, with exact-part qualification outstanding at MOBO-X-5B",
+  },
+}
+
+data candidate_6ch_1dpc_64gib: RevARoutedTopologyCandidate = RevARoutedTopologyCandidate {
+  identity: "6ch-1dpc-64gib-2Rx4-rdimm",
+  channels_per_socket: 6,
+  dimms_per_channel: 1,
+  dimm_capacity_gib: 64,
+  ranks: 2,
+  device_width_bits: 4,
+  module_class: Rdimm,
+  admissibility: ProductionTopologyCandidate {
+    grounds: "the intermediate shape: a bandwidth cliff between four and eight channels is exactly what the matrix exists to locate, and a two-point matrix could not locate it",
+  },
+}
+
+data candidate_8ch_1dpc_32gib: RevARoutedTopologyCandidate = RevARoutedTopologyCandidate {
+  identity: "8ch-1dpc-32gib-2Rx8-rdimm",
+  channels_per_socket: 8,
+  dimms_per_channel: 1,
+  dimm_capacity_gib: 32,
+  ranks: 2,
+  device_width_bits: 8,
+  module_class: Rdimm,
+  admissibility: ProductionTopologyCandidate {
+    grounds: "the full-width control, and the population the held unit's 254 GB visible reading is consistent with; it varies capacity and organization as well as channel count, which the comparison carries as independent axes",
+  },
+}
+
+data routed_topology_candidates: List<RevARoutedTopologyCandidate> = [
+  candidate_2ch_2dpc_64gib,
+  candidate_4ch_1dpc_64gib,
+  candidate_6ch_1dpc_64gib,
+  candidate_8ch_1dpc_32gib,
+]
+
+data unmatched_candidate: RevARoutedTopologyCandidate = RevARoutedTopologyCandidate {
+  identity: "no-candidate-matched",
+  channels_per_socket: 0,
+  dimms_per_channel: 0,
+  dimm_capacity_gib: 0,
+  ranks: 0,
+  device_width_bits: 0,
+  module_class: Udimm,
+  admissibility: MeasurementOnly { reason: "an observation matching no roster shape selects nothing; this row exists so that miss is representable rather than silently answered by a real candidate" },
+}
+
+fn candidate_for_shape(channels: Nat, dpc: Nat, cap: Nat, ranks: Nat, width: Nat, cls: MemoryModuleClass) -> RevARoutedTopologyCandidate {
+  fold(routed_topology_candidates, init: unmatched_candidate, f: (acc, c) =>
+    if c.channels_per_socket == channels
+      && c.dimms_per_channel == dpc
+      && c.dimm_capacity_gib == cap
+      && c.ranks == ranks
+      && c.device_width_bits == width
+      && c.module_class == cls { c } else { acc })
+}
+
+fn candidate_by_identity(identity: NonEmptyStr) -> RevARoutedTopologyCandidate {
+  fold(routed_topology_candidates, init: unmatched_candidate, f: (acc, c) => if c.identity == identity { c } else { acc })
+}
+
+fn candidate_is_routable_shape(c: RevARoutedTopologyCandidate) -> Bool {
+  match c.admissibility {
+    ProductionTopologyCandidate { grounds: _ } => true
+    MeasurementOnly { reason: _ } => false
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// ONE SHAPE DERIVATION OVER THE COMMON AXES, ASKED OF BOTH OBSERVATIONS.
+type DomainShapeStanding
+  = ShapeDerived {
+      active_channels: Nat
+      dimms_per_channel: Nat
+      axes: ModuleAxes
+    }
+  | DomainNotObserved { processor_domain: NonEmptyStr }
+  | HeterogeneousDomainPopulation { detail: NonEmptyStr }
+
+fn axis_slots_in_channel(slots: List<AxisSlot>, domain: NonEmptyStr, channel: NonEmptyStr) -> Nat {
+  count(slots |> filter(s => s.processor_domain == domain && s.channel_designation == channel && axes_are_present(a: s.axes)))
+}
+
+fn active_channels_of(u: MemorySlotUniverseReceipt, slots: List<AxisSlot>, domain: NonEmptyStr) -> List<NonEmptyStr> {
+  universe_channels(u: u, domain: domain) |> filter(c => axis_slots_in_channel(slots: slots, domain: domain, channel: c) > 0)
+}
+
+fn shape_from_model(
+  u: MemorySlotUniverseReceipt,
+  slots: List<AxisSlot>,
+  domain: NonEmptyStr,
+  model: ModuleAxes,
+) -> DomainShapeStanding {
+  let populated = slots |> filter(s => s.processor_domain == domain && axes_are_present(a: s.axes))
+  let actives = active_channels_of(u: u, slots: slots, domain: domain)
+  if count(populated |> filter(s => !axes_agree(a: s.axes, model: model))) > 0 {
+    HeterogeneousDomainPopulation { detail: "the populated slots in this processor domain do not agree on capacity, rank organization, width, module class or part, so no single shape describes it" }
+  } else {
+    if count(actives) == 0 {
+      DomainNotObserved { processor_domain: domain }
+    } else {
+      if count(actives |> filter(c => axis_slots_in_channel(slots: slots, domain: domain, channel: c) != count(populated) / count(actives))) > 0 {
+        HeterogeneousDomainPopulation { detail: "the active channels in this processor domain do not carry equal DIMM counts, so DIMMs-per-channel is not a property of this population" }
+      } else {
+        ShapeDerived {
+          active_channels: count(actives),
+          dimms_per_channel: count(populated) / count(actives),
+          axes: model,
+        }
+      }
+    }
+  }
+}
+
+fn model_axes_of(a: SlotAxes, fallback: ModuleAxes) -> ModuleAxes {
+  match a {
+    AxesVacant => fallback
+    AxesPresent { axes: x } => x
+  }
+}
+
+data vacant_axes: ModuleAxes = ModuleAxes {
+  capacity_gib: 0,
+  ranks: 0,
+  device_width_bits: 0,
+  module_class: Udimm,
+  part_identity: "no-module",
+}
+
+fn domain_shape(u: MemorySlotUniverseReceipt, slots: List<AxisSlot>, domain: NonEmptyStr) -> DomainShapeStanding {
+  match (slots |> filter(s => s.processor_domain == domain && axes_are_present(a: s.axes))).first() {
+    Absent => DomainNotObserved { processor_domain: domain }
+    Present { value: model_slot } => shape_from_model(u: u, slots: slots, domain: domain, model: model_axes_of(a: model_slot.axes, fallback: vacant_axes))
+  }
+}
+
+fn shape_candidate(shape: DomainShapeStanding) -> RevARoutedTopologyCandidate {
+  match shape {
+    DomainNotObserved { processor_domain: _ } => unmatched_candidate
+    HeterogeneousDomainPopulation { detail: _ } => unmatched_candidate
+    ShapeDerived { active_channels: ch, dimms_per_channel: dpc, axes: a } =>
+      candidate_for_shape(channels: ch, dpc: dpc, cap: a.capacity_gib, ranks: a.ranks, width: a.device_width_bits, cls: a.module_class)
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE TRAINED TOPOLOGY, PER PROCESSOR DOMAIN. Trained speed is checked for uniformity here, where
+// it exists; the installed side has no such fact and is not asked for one.
+type ObservedMemoryTopology {
+  subject_machine: NonEmptyStr
+  processor_domain: NonEmptyStr
+  producer_run_identity: NonEmptyStr
+  active_channels: Nat
+  dimms_per_channel: Nat
+  axes: ModuleAxes
+  trained_speed_mts: Nat
+  customer_allocatable_bytes: Nat
+  host_reserved_bytes: Nat
+}
+
+type ObservedTopologyStanding
+  = TopologyObserved { topology: ObservedMemoryTopology }
+  | CensusIncomplete { standing: CensusCoverageStanding }
+  | TopologyShapeUnderivable { standing: DomainShapeStanding }
+
+fn domain_trained_speeds(census: HostMemoryCensusReceipt, domain: NonEmptyStr) -> List<NonEmptyStr> {
+  census.observed_slots
+    |> filter(s => s.processor_domain == domain && axes_are_present(a: trained_axes(m: s.trained)))
+    |> map(s => nat_label(n: trained_speed_of(m: s.trained)))
+}
+
+// A LABEL FOR A NUMBER, USED ONLY FOR SAMENESS COUNTING. Distinctness of speeds is a question
+// about values, and the distinct-count helper reads strings; nothing here depends on the label's
+// shape beyond equality.
+fn nat_label(n: Nat) -> NonEmptyStr {
+  if n == nat_zero { "0" } else { "speed" }
+}
+
+fn domain_trained_speed(census: HostMemoryCensusReceipt, domain: NonEmptyStr) -> Nat {
+  fold(census.observed_slots |> filter(s => s.processor_domain == domain), init: nat_zero, f: (acc, s) =>
+    if trained_speed_of(m: s.trained) > acc { trained_speed_of(m: s.trained) } else { acc })
+}
+
+fn domain_trained_speed_min(census: HostMemoryCensusReceipt, domain: NonEmptyStr) -> Nat {
+  fold(census.observed_slots |> filter(s => s.processor_domain == domain && axes_are_present(a: trained_axes(m: s.trained))), init: nat_zero, f: (acc, s) =>
+    if acc == nat_zero || trained_speed_of(m: s.trained) < acc { trained_speed_of(m: s.trained) } else { acc })
+}
+
+fn topology_from_shape(census: HostMemoryCensusReceipt, domain: NonEmptyStr, shape: DomainShapeStanding) -> ObservedTopologyStanding {
+  match shape {
+    DomainNotObserved { processor_domain: p } => TopologyShapeUnderivable { standing: DomainNotObserved { processor_domain: p } }
+    HeterogeneousDomainPopulation { detail: d } => TopologyShapeUnderivable { standing: HeterogeneousDomainPopulation { detail: d } }
+    ShapeDerived { active_channels: ch, dimms_per_channel: dpc, axes: a } =>
+      if domain_trained_speed(census: census, domain: domain) != domain_trained_speed_min(census: census, domain: domain) {
+        TopologyShapeUnderivable { standing: HeterogeneousDomainPopulation { detail: "the populated slots in this processor domain trained at different speeds, so no single trained speed describes it" } }
+      } else {
+        TopologyObserved { topology: ObservedMemoryTopology {
+          subject_machine: census.subject_machine,
+          processor_domain: domain,
+          producer_run_identity: census.producer_run_identity,
+          active_channels: ch,
+          dimms_per_channel: dpc,
+          axes: a,
+          trained_speed_mts: domain_trained_speed(census: census, domain: domain),
+          customer_allocatable_bytes: domain_customer_allocatable(r: reconcile_domain_memory(census: census, domain: domain)),
+          host_reserved_bytes: domain_host_reserve(r: reconcile_domain_memory(census: census, domain: domain)),
+        } }
+      }
+  }
+}
+
+fn observed_topology(census: HostMemoryCensusReceipt, domain: NonEmptyStr) -> ObservedTopologyStanding {
+  let coverage = census_coverage(census: census)
+  if !coverage_is_exact(standing: coverage) {
+    CensusIncomplete { standing: coverage }
+  } else {
+    topology_from_shape(census: census, domain: domain, shape: domain_shape(u: census.universe, slots: census_axis_slots(census: census), domain: domain))
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE WHOLE-BOARD PHYSICAL INSPECTION, OBSERVED BEFORE POWER-ON. It covers every slot the universe
+// declares - not just the source domain's - because on a two-socket subject the other socket's
+// population is a variable that changes boot behavior, training and NUMA, and an uncontrolled
+// variable makes the channel-count attribution ambiguous.
+type ExecutedPhysicalPopulationReceipt {
+  subject_machine: NonEmptyStr
+  universe: MemorySlotUniverseReceipt
+  installed_slots: List<InstalledSlotObservation>
+  first_evidence: DeclarationRef
+  additional_evidence: List<DeclarationRef>
+  observed_before_power_on: NonEmptyStr
+  producer: NonEmptyStr
+}
+
+fn installed_axis_slots(r: ExecutedPhysicalPopulationReceipt) -> List<AxisSlot> {
+  r.installed_slots |> map(s => installed_axis_slot(s: s))
+}
+
+type InstalledTopologyStanding
+  = InstalledTopologyObserved { shape: DomainShapeStanding, candidate: RevARoutedTopologyCandidate }
+  | InstalledSlotUniverseUnestablished { standing: SlotUniverseStanding }
+  | InstalledPopulationIncomplete { missing: NonEmptyStr }
+  | InstalledPopulationNotInUniverse { unexpected: NonEmptyStr }
+  | InstalledPopulationUnderivable { standing: DomainShapeStanding }
+  | InstalledPopulationNotCandidate { detail: NonEmptyStr }
+
+fn installed_at(r: ExecutedPhysicalPopulationReceipt, domain: NonEmptyStr, channel: NonEmptyStr, designation: NonEmptyStr) -> Nat {
+  count(r.installed_slots |> filter(s =>
+    s.processor_domain == domain && s.channel_designation == channel && s.slot_designation == designation))
+}
+
+fn installed_missing_slot(r: ExecutedPhysicalPopulationReceipt) -> NonEmptyStr {
+  fold(universe_slots(u: r.universe), init: no_such_slot, f: (acc, e) =>
+    if acc == no_such_slot && installed_at(r: r, domain: e.processor_domain, channel: e.channel_designation, designation: e.slot_designation) != 1 { e.slot_designation } else { acc })
+}
+
+fn installed_unexpected_slot(r: ExecutedPhysicalPopulationReceipt) -> NonEmptyStr {
+  fold(r.installed_slots, init: no_such_slot, f: (acc, s) =>
+    if acc == no_such_slot && universe_entries_at(u: r.universe, domain: s.processor_domain, channel: s.channel_designation, designation: s.slot_designation) == 0 { s.slot_designation } else { acc })
+}
+
+// THE UNIVERSE GATE RUNS FIRST HERE TOO. A universe carrying the same slot identity twice makes
+// every per-entry count come out at one, so missing and unexpected both stay silent and a
+// malformed denominator would have established a failed candidate.
+fn installed_topology(r: ExecutedPhysicalPopulationReceipt, domain: NonEmptyStr) -> InstalledTopologyStanding {
+  let ustanding = universe_standing(u: r.universe)
+  if !universe_is_established(standing: ustanding) {
+    InstalledSlotUniverseUnestablished { standing: ustanding }
+  } else {
+    installed_after_universe(r: r, domain: domain)
+  }
+}
+
+fn installed_after_universe(r: ExecutedPhysicalPopulationReceipt, domain: NonEmptyStr) -> InstalledTopologyStanding {
+  let missing = installed_missing_slot(r: r)
+  let unexpected = installed_unexpected_slot(r: r)
+  if missing != no_such_slot {
+    InstalledPopulationIncomplete { missing: missing }
+  } else {
+    if unexpected != no_such_slot {
+      InstalledPopulationNotInUniverse { unexpected: unexpected }
+    } else {
+      installed_from_shape(shape: domain_shape(u: r.universe, slots: installed_axis_slots(r: r), domain: domain))
+    }
+  }
+}
+
+fn installed_from_shape(shape: DomainShapeStanding) -> InstalledTopologyStanding {
+  match shape {
+    DomainNotObserved { processor_domain: p } => InstalledPopulationUnderivable { standing: DomainNotObserved { processor_domain: p } }
+    HeterogeneousDomainPopulation { detail: d } => InstalledPopulationUnderivable { standing: HeterogeneousDomainPopulation { detail: d } }
+    ShapeDerived { active_channels: ch, dimms_per_channel: dpc, axes: a } =>
+      installed_candidate_of(shape: ShapeDerived { active_channels: ch, dimms_per_channel: dpc, axes: a },
+        candidate: candidate_for_shape(channels: ch, dpc: dpc, cap: a.capacity_gib, ranks: a.ranks, width: a.device_width_bits, cls: a.module_class))
+  }
+}
+
+fn installed_candidate_of(shape: DomainShapeStanding, candidate: RevARoutedTopologyCandidate) -> InstalledTopologyStanding {
+  if candidate.identity == unmatched_candidate.identity {
+    InstalledPopulationNotCandidate { detail: "the installed population in this domain matches no roster shape, so the run was not attempting a candidate this program declares" }
+  } else {
+    InstalledTopologyObserved { shape: shape, candidate: candidate }
+  }
+}
+
+// THE CONTROL DOMAINS' SIGNATURE: what every processor domain OTHER than the source was carrying,
+// as a derived label per domain. Equality of these across the matrix is what makes the source
+// domain the only thing that varied.
+fn control_domain_signature(r: ExecutedPhysicalPopulationReceipt, source_domain: NonEmptyStr) -> List<NonEmptyStr> {
+  universe_domains(u: r.universe)
+    |> filter(d => d != source_domain)
+    |> map(d => installed_signature_of(r: r, domain: d))
+}
+
+fn installed_signature_of(r: ExecutedPhysicalPopulationReceipt, domain: NonEmptyStr) -> NonEmptyStr {
+  match installed_topology(r: r, domain: domain) {
+    InstalledTopologyObserved { shape: _, candidate: c } => c.identity
+    InstalledSlotUniverseUnestablished { standing: _ } => "universe-unestablished"
+    InstalledPopulationIncomplete { missing: _ } => "incomplete"
+    InstalledPopulationNotInUniverse { unexpected: _ } => "not-in-universe"
+    InstalledPopulationUnderivable { standing: _ } => "underivable"
+    InstalledPopulationNotCandidate { detail: _ } => "non-candidate-population"
+  }
+}
+
+// A ONE- OR TWO-DOMAIN SUBJECT HAS AT MOST ONE CONTROL DOMAIN, which the subject standing
+// enforces, so its signature is that domain's label or the no-control-domain marker.
+data no_control_domain: NonEmptyStr = "no-control-domain"
+
+fn signature_label(sig: List<NonEmptyStr>) -> NonEmptyStr {
+  fold(sig, init: no_control_domain, f: (acc, s) => if acc == no_control_domain { s } else { acc })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SUBJECT'S PROCESSOR POPULATION IS OBSERVED, NOT DECLARED BY THE EXPERIMENT. Letting the
+// experiment write its own socket count meant a run could declare "one socket, CPU0, direct
+// observation" over the held two-socket board and have the transfer gate believe it. The subject
+// receipt is evidence about the machine, and the experiment is checked against it.
+type SubjectProcessorPopulationReceipt {
+  subject_machine: NonEmptyStr
+  board_identity: NonEmptyStr
+  populated_processor_domains: List<NonEmptyStr>
+  processor_identities: List<NonEmptyStr>
+  first_evidence: DeclarationRef
+  additional_evidence: List<DeclarationRef>
+  observed_at: NonEmptyStr
+}
+
+type ExperimentSubjectStanding
+  = DirectOneSocketSubjectEstablished { processor_domain: NonEmptyStr }
+  | TwoSocketSubjectEstablished { source_domain: NonEmptyStr, control_domain: NonEmptyStr }
+  | DeclaredPopulationDoesNotMatchSubject { detail: NonEmptyStr }
+
+// THE WORKLOAD PROTOCOL IS A RECEIPT, NOT A NAME. Two runs sharing a protocol string are not
+// running the same protocol unless the recipe behind the string is the same, so the receipt
+// carries the recipe and travels with every result.
+type WorkloadProtocolReceipt {
+  identity: NonEmptyStr
+  workload_identity: NonEmptyStr
+  workload_revision: NonEmptyStr
+  recipe_digest: NonEmptyStr
+  warm_up: NonEmptyStr
+  repetitions: Nat
+  affinity: NonEmptyStr
+  numa_placement: NonEmptyStr
+  completed_work_measure: NonEmptyStr
+  timing_boundary: NonEmptyStr
+  sampling: NonEmptyStr
+  result_extraction: NonEmptyStr
+}
+
+// BILLED UNITS ARE NOT A FREE FIELD. Under a fixed-concurrency experiment the billed units ARE the
+// concurrency; any other law must be declared and is checked against the same rule.
+type BilledUnitLaw
+  = BilledUnitsEqualConcurrency
+  | BilledUnitsFromContract { law: NonEmptyStr, grounds: DeclarationRef }
+
+// WHAT MAY NOT VARY ACROSS THE MATRIX, AS ONE RECEIPT EVERY RUN CONSUMES. Comparability then has
+// one structural question - do all results consume the same control - instead of a growing list
+// of equality booleans, and a failed run inherits its pre-run controls (configured firmware,
+// baseline, protocol, reserve policy) from the same place a successful one does.
+type NonSourceDomainPolicy
+  = NoNonSourceDomain
+  | FixedControlPopulation { expected_signature: NonEmptyStr }
+  | SymmetricPopulation
+
+type MemoryChannelExperimentControl {
+  identity: NonEmptyStr
+  subject: SubjectProcessorPopulationReceipt
+  board_identity: NonEmptyStr
+  board_revision: NonEmptyStr
+  configured_firmware_identity: NonEmptyStr
+  slot_universe_identity: NonEmptyStr
+  baseline: ExecutableBaseline
+  workload_protocol: WorkloadProtocolReceipt
+  source_domain: NonEmptyStr
+  non_source_domain_policy: NonSourceDomainPolicy
+  concurrency: Nat
+  billed_unit_law: BilledUnitLaw
+  host_memory_reserve_bytes: Nat
+  workload_pinning: NonEmptyStr
+  numa_policy: NonEmptyStr
+}
+
+// ABANDONING THE PRIOR RUN UNBLOCKS PLANNING A NEW BASELINE; IT IS NOT A BASELINE. ExecutableBaseline
+// has no abandoned-only arm, so an experiment against a merely-abandoned baseline is unwritable.
+type ExecutableBaseline
+  = PriorVerdictCaptured { identity: NonEmptyStr, verdict: NonEmptyStr, producer_note: NonEmptyStr }
+  | ReplacementBaselineCaptured {
+      identity: NonEmptyStr
+      abandoned_prior_run: NonEmptyStr
+      replacement_verdict: NonEmptyStr
+      producer_note: NonEmptyStr
+    }
+
+type DepopulationPlan {
+  identity: NonEmptyStr
+  subject_machine: NonEmptyStr
+  prior_run_disposition: NonEmptyStr
+  planned_populations: List<NonEmptyStr>
+}
+
+type PhysicalMutationOwner
+  = OperatorExecuted
+  | RemotelyActuated { actuator: NonEmptyStr }
+
+type HeldUnitToRevATransferStanding
+  = DirectOneSocketObservation
+  | TwoSocketObservationTransferEstablished {
+      workload_pinning: NonEmptyStr
+      numa_behavior: NonEmptyStr
+      grounds: NonEmptyStr
+    }
+  | TransferUnestablished { reason: NonEmptyStr }
+
+// THE EXPERIMENT NO LONGER DECLARES ITS SUBJECT'S SHAPE. It names the control it runs under, what
+// it requested, the whole-board inspection, and how the 2P observation is meant to transfer; the
+// socket count and domains come from the control's subject receipt.
+type MemoryDepopulationExperiment {
+  identity: NonEmptyStr
+  control: MemoryChannelExperimentControl
+  subject_machine: NonEmptyStr
+  requested_candidate: NonEmptyStr
+  transfer: HeldUnitToRevATransferStanding
+  installed: ExecutedPhysicalPopulationReceipt
+  shutdown_requirement: NonEmptyStr
+  physical_mutation: PhysicalMutationOwner
+}
+
+type DepopulationFailure
+  = BootRefused { evidence: NonEmptyStr }
+  | TrainingFailed { evidence: NonEmptyStr }
+  | CensusUnavailableAfterMutation { evidence: NonEmptyStr }
+
+type WorkloadObservation {
+  subject_machine: NonEmptyStr
+  processor_domain: NonEmptyStr
+  workload_identity: NonEmptyStr
+  workload_revision: NonEmptyStr
+  workload_protocol_identity: NonEmptyStr
+  invocation_identity: NonEmptyStr
+  concurrency: Nat
+  billed_units: Nat
+  completed_work: Nat
+  elapsed_seconds: Nat
+  workload_pinning: NonEmptyStr
+  numa_behavior: NonEmptyStr
+  power_observation: NonEmptyStr
+  thermal_observation: NonEmptyStr
+}
+
+type MemoryChannelResponseReceipt
+  = CandidateResponseObserved {
+      response_identity: NonEmptyStr
+      experiment: MemoryDepopulationExperiment
+      census: HostMemoryCensusReceipt
+      workload: WorkloadObservation
+    }
+  | CandidateResponseFailed {
+      response_identity: NonEmptyStr
+      experiment: MemoryDepopulationExperiment
+      failure: DepopulationFailure
+    }
+
+fn baseline_identity(b: ExecutableBaseline) -> NonEmptyStr {
+  match b {
+    PriorVerdictCaptured { identity: i, verdict: _, producer_note: _ } => i
+    ReplacementBaselineCaptured { identity: i, abandoned_prior_run: _, replacement_verdict: _, producer_note: _ } => i
+  }
+}
+
+// THE SUBJECT STANDING IS DERIVED FROM THE RECEIPT AND CHECKED AGAINST THE DECLARED TRANSFER.
+fn subject_standing(control: MemoryChannelExperimentControl, transfer: HeldUnitToRevATransferStanding) -> ExperimentSubjectStanding {
+  let domains = unique_strings(values: control.subject.populated_processor_domains)
+  let source_is_populated = count(domains |> filter(d => d == control.source_domain)) == 1
+  if !source_is_populated {
+    DeclaredPopulationDoesNotMatchSubject { detail: "the control's source domain is not one of the subject's populated processor domains" }
+  } else {
+    subject_standing_for(domains: domains, control: control, transfer: transfer)
+  }
+}
+
+fn subject_standing_for(domains: List<NonEmptyStr>, control: MemoryChannelExperimentControl, transfer: HeldUnitToRevATransferStanding) -> ExperimentSubjectStanding {
+  match transfer {
+    DirectOneSocketObservation =>
+      if count(domains) == 1 {
+        DirectOneSocketSubjectEstablished { processor_domain: control.source_domain }
+      } else {
+        DeclaredPopulationDoesNotMatchSubject { detail: "the run claims a direct one-socket observation, but the subject receipt shows more than one populated processor domain; a multi-socket board informs the one-socket tile only through an established transfer" }
+      }
+    TwoSocketObservationTransferEstablished { workload_pinning: _, numa_behavior: _, grounds: _ } =>
+      if count(domains) == 2 {
+        two_socket_standing(domains: domains, source: control.source_domain)
+      } else {
+        DeclaredPopulationDoesNotMatchSubject { detail: "a two-socket transfer requires a subject receipt showing exactly two populated processor domains" }
+      }
+    TransferUnestablished { reason: r } => DeclaredPopulationDoesNotMatchSubject { detail: r }
+  }
+}
+
+fn two_socket_standing(domains: List<NonEmptyStr>, source: NonEmptyStr) -> ExperimentSubjectStanding {
+  match (domains |> filter(d => d != source)).first() {
+    Absent => DeclaredPopulationDoesNotMatchSubject { detail: "a two-socket subject must have a control domain distinct from the source" }
+    Present { value: control_domain } => TwoSocketSubjectEstablished { source_domain: source, control_domain: control_domain }
+  }
+}
+
+fn standing_source_domain(s: ExperimentSubjectStanding) -> NonEmptyStr {
+  match s {
+    DirectOneSocketSubjectEstablished { processor_domain: d } => d
+    TwoSocketSubjectEstablished { source_domain: d, control_domain: _ } => d
+    DeclaredPopulationDoesNotMatchSubject { detail: _ } => no_such_slot
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RECONCILIATION. Every arm is a way a run can be real and still not be evidence. A failed run
+// reconciles to a terminal failure for the population its whole-board inspection shows was
+// installed in the source domain - and only when the non-source domain was under control, since
+// a board-wide boot failure cannot be attributed to the source population otherwise.
+type InstalledTrainedAgreement
+  = InstalledTopologyTrainedAsRequested { candidate: RevARoutedTopologyCandidate }
+  | InstalledButNotTrained { installed: NonEmptyStr, trained: NonEmptyStr }
+  | InstalledPopulationUnusable { standing: InstalledTopologyStanding }
+
+fn installed_trained_agreement(installed: InstalledTopologyStanding, trained: RevARoutedTopologyCandidate) -> InstalledTrainedAgreement {
+  match installed {
+    InstalledSlotUniverseUnestablished { standing: s } => InstalledPopulationUnusable { standing: InstalledSlotUniverseUnestablished { standing: s } }
+    InstalledPopulationIncomplete { missing: m } => InstalledPopulationUnusable { standing: InstalledPopulationIncomplete { missing: m } }
+    InstalledPopulationNotInUniverse { unexpected: u } => InstalledPopulationUnusable { standing: InstalledPopulationNotInUniverse { unexpected: u } }
+    InstalledPopulationUnderivable { standing: s } => InstalledPopulationUnusable { standing: InstalledPopulationUnderivable { standing: s } }
+    InstalledPopulationNotCandidate { detail: d } => InstalledPopulationUnusable { standing: InstalledPopulationNotCandidate { detail: d } }
+    InstalledTopologyObserved { shape: _, candidate: c } =>
+      if c.identity == trained.identity {
+        InstalledTopologyTrainedAsRequested { candidate: c }
+      } else {
+        InstalledButNotTrained { installed: c.identity, trained: trained.identity }
+      }
+  }
+}
+
+fn agreement_is_as_requested(a: InstalledTrainedAgreement) -> Bool {
+  match a {
+    InstalledTopologyTrainedAsRequested { candidate: _ } => true
+    InstalledButNotTrained { installed: _, trained: _ } => false
+    InstalledPopulationUnusable { standing: _ } => false
+  }
+}
+
+// THE NON-SOURCE DOMAIN MUST BE UNDER THE DECLARED POLICY. A fixed control population is checked
+// against its declared signature; a symmetric experiment requires the control domain to carry the
+// same candidate as the source; a one-socket subject has no control domain to police.
+type ControlDomainStanding
+  = ControlDomainAsPolicy { signature: NonEmptyStr }
+  | ControlDomainUncontrolled { detail: NonEmptyStr }
+
+fn control_domain_standing(e: MemoryDepopulationExperiment, source_candidate: NonEmptyStr) -> ControlDomainStanding {
+  let signature = signature_label(sig: control_domain_signature(r: e.installed, source_domain: e.control.source_domain))
+  match e.control.non_source_domain_policy {
+    NoNonSourceDomain =>
+      if signature == "no-control-domain" {
+        ControlDomainAsPolicy { signature: signature }
+      } else {
+        ControlDomainUncontrolled { detail: "the control declares no non-source domain, but the board carries one" }
+      }
+    FixedControlPopulation { expected_signature: expected } =>
+      if signature == expected {
+        ControlDomainAsPolicy { signature: signature }
+      } else {
+        ControlDomainUncontrolled { detail: "the non-source domain does not carry the population the control fixes it at, so the source domain is not the only thing that varied" }
+      }
+    SymmetricPopulation =>
+      if signature == source_candidate {
+        ControlDomainAsPolicy { signature: signature }
+      } else {
+        ControlDomainUncontrolled { detail: "a symmetric-population experiment requires every domain to carry the candidate population" }
+      }
+  }
+}
+
+fn control_standing_signature(s: ControlDomainStanding) -> NonEmptyStr {
+  match s {
+    ControlDomainAsPolicy { signature: sig } => sig
+    ControlDomainUncontrolled { detail: _ } => no_such_slot
+  }
+}
+
+fn control_domain_is_controlled(s: ControlDomainStanding) -> Bool {
+  match s {
+    ControlDomainAsPolicy { signature: _ } => true
+    ControlDomainUncontrolled { detail: _ } => false
+  }
+}
+
+type ExperimentTopologyReconciliation
+  = RequestedTopologyObserved {
+      candidate: RevARoutedTopologyCandidate
+      observed: ObservedMemoryTopology
+      workload: WorkloadObservation
+      experiment: MemoryDepopulationExperiment
+      response_identity: NonEmptyStr
+      firmware_identity: NonEmptyStr
+      control_signature: NonEmptyStr
+    }
+  | CandidateTerminallyFailed {
+      candidate: RevARoutedTopologyCandidate
+      failure: DepopulationFailure
+      experiment: MemoryDepopulationExperiment
+      response_identity: NonEmptyStr
+      control_signature: NonEmptyStr
+    }
+  | SubjectStandingUnestablished { standing: ExperimentSubjectStanding }
+  | SubjectMachineMismatch { experiment_machine: NonEmptyStr, census_machine: NonEmptyStr }
+  | ControlNotJoinedToRun { detail: NonEmptyStr }
+  | WorkloadNotJoinedToControl { detail: NonEmptyStr }
+  | CensusNotExact { standing: CensusCoverageStanding }
+  | DomainTopologyUnderivable { standing: ObservedTopologyStanding }
+  | CandidateNotInRoster { requested: NonEmptyStr }
+  | RequestedObservedMismatch { requested: NonEmptyStr, observed_candidate: NonEmptyStr }
+  | InstalledPopulationNotJoined { detail: NonEmptyStr }
+  | InstalledTrainedDisagreement { standing: InstalledTrainedAgreement }
+  | FailureAttributionUnestablished { detail: NonEmptyStr }
+  | CapacityContractRefused { observed_bytes: Nat, required_bytes: Nat }
+  | CapacityContractUnestablished { quoted_label: NonEmptyStr }
+
+fn capacity_verdict(observed_bytes: Nat, requirement: RevACapacityRequirement) -> ExperimentTopologyReconciliation {
+  match requirement {
+    CapacityRequirementUnestablished { quoted_label: l } => CapacityContractUnestablished { quoted_label: l }
+    CapacityRequirementEstablished { bytes: b } => CapacityContractRefused { observed_bytes: observed_bytes, required_bytes: b }
+  }
+}
+
+fn capacity_is_satisfied(observed_bytes: Nat, requirement: RevACapacityRequirement) -> Bool {
+  match requirement {
+    CapacityRequirementUnestablished { quoted_label: _ } => false
+    CapacityRequirementEstablished { bytes: b } => observed_bytes >= b
+  }
+}
+
+// EVERY PRE-RUN CONTROL IS JOINED TO THE ARTIFACTS THE RUN PRODUCED. The census must be the
+// configured firmware on the controlled board and universe; the physical inspection must be of
+// the same machine and universe; the workload must be the control's protocol, concurrency,
+// pinning and NUMA policy, and its billed units must obey the declared law.
+fn census_joins_control(c: HostMemoryCensusReceipt, control: MemoryChannelExperimentControl) -> Bool {
+  c.board_identity == control.board_identity
+    && c.board_revision == control.board_revision
+    && c.firmware_identity == control.configured_firmware_identity
+    && c.universe.universe_identity == control.slot_universe_identity
+    && c.subject_machine == control.subject.subject_machine
+}
+
+fn installed_joins_control(r: ExecutedPhysicalPopulationReceipt, control: MemoryChannelExperimentControl) -> Bool {
+  r.subject_machine == control.subject.subject_machine
+    && r.universe.universe_identity == control.slot_universe_identity
+}
+
+fn billed_units_obey_law(w: WorkloadObservation, control: MemoryChannelExperimentControl) -> Bool {
+  match control.billed_unit_law {
+    BilledUnitsEqualConcurrency => w.billed_units == w.concurrency
+    BilledUnitsFromContract { law: _, grounds: _ } => w.billed_units > 0
+  }
+}
+
+fn workload_joins_control(w: WorkloadObservation, control: MemoryChannelExperimentControl, topology: ObservedMemoryTopology) -> Bool {
+  w.subject_machine == topology.subject_machine
+    && w.processor_domain == topology.processor_domain
+    && w.workload_protocol_identity == control.workload_protocol.identity
+    && w.workload_identity == control.workload_protocol.workload_identity
+    && w.workload_revision == control.workload_protocol.workload_revision
+    && w.concurrency == control.concurrency
+    && w.workload_pinning == control.workload_pinning
+    && w.numa_behavior == control.numa_policy
+    && billed_units_obey_law(w: w, control: control)
+    && topology.host_reserved_bytes == control.host_memory_reserve_bytes
+}
+
+fn reconcile_topology(
+  e: MemoryDepopulationExperiment,
+  response_identity: NonEmptyStr,
+  t: ObservedMemoryTopology,
+  workload: WorkloadObservation,
+  requirement: RevACapacityRequirement,
+) -> ExperimentTopologyReconciliation {
+  let observed_candidate = candidate_for_shape(channels: t.active_channels, dpc: t.dimms_per_channel,
+    cap: t.axes.capacity_gib, ranks: t.axes.ranks, width: t.axes.device_width_bits, cls: t.axes.module_class)
+  let agreement = installed_trained_agreement(installed: installed_topology(r: e.installed, domain: t.processor_domain), trained: observed_candidate)
+  let control_standing = control_domain_standing(e: e, source_candidate: observed_candidate.identity)
+  if observed_candidate.identity == unmatched_candidate.identity
+    || candidate_by_identity(identity: e.requested_candidate).identity == unmatched_candidate.identity {
+    CandidateNotInRoster { requested: e.requested_candidate }
+  } else {
+    if observed_candidate.identity != e.requested_candidate {
+      RequestedObservedMismatch { requested: e.requested_candidate, observed_candidate: observed_candidate.identity }
+    } else {
+      if !workload_joins_control(w: workload, control: e.control, topology: t) {
+        WorkloadNotJoinedToControl { detail: "the workload observation does not run under the control's protocol, concurrency, pinning, NUMA policy, billing law or host reserve, or names another machine or domain" }
+      } else {
+        if !agreement_is_as_requested(a: agreement) {
+          InstalledTrainedDisagreement { standing: agreement }
+        } else {
+          if !control_domain_is_controlled(s: control_standing) {
+            FailureAttributionUnestablished { detail: "the non-source processor domain was not under the control's declared policy, so this run's result cannot be attributed to its source population" }
+          } else {
+            if !capacity_is_satisfied(observed_bytes: t.customer_allocatable_bytes, requirement: requirement) {
+              capacity_verdict(observed_bytes: t.customer_allocatable_bytes, requirement: requirement)
+            } else {
+              RequestedTopologyObserved {
+                candidate: observed_candidate,
+                observed: t,
+                workload: workload,
+                experiment: e,
+                response_identity: response_identity,
+                firmware_identity: e.control.configured_firmware_identity,
+                control_signature: control_standing_signature(s: control_standing),
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn reconcile_observed(
+  e: MemoryDepopulationExperiment,
+  response_identity: NonEmptyStr,
+  c: HostMemoryCensusReceipt,
+  workload: WorkloadObservation,
+  domain: NonEmptyStr,
+  requirement: RevACapacityRequirement,
+) -> ExperimentTopologyReconciliation {
+  match observed_topology(census: c, domain: domain) {
+    CensusIncomplete { standing: st } => CensusNotExact { standing: st }
+    TopologyShapeUnderivable { standing: s } => DomainTopologyUnderivable { standing: TopologyShapeUnderivable { standing: s } }
+    TopologyObserved { topology: t } => reconcile_topology(e: e, response_identity: response_identity, t: t, workload: workload, requirement: requirement)
+  }
+}
+
+// A FAILED RUN'S CANDIDATE COMES FROM ITS PHYSICAL INSPECTION, AND ITS FAILURE MAY ONLY BE
+// ATTRIBUTED TO THAT POPULATION WHEN THE REST OF THE BOARD WAS UNDER CONTROL. Boot and DDR
+// training are board-wide: an uncontrolled second socket is an unnamed alternative cause.
+fn reconcile_failure(
+  e: MemoryDepopulationExperiment,
+  response_identity: NonEmptyStr,
+  failure: DepopulationFailure,
+  domain: NonEmptyStr,
+) -> ExperimentTopologyReconciliation {
+  match installed_topology(r: e.installed, domain: domain) {
+    InstalledSlotUniverseUnestablished { standing: s } => InstalledTrainedDisagreement { standing: InstalledPopulationUnusable { standing: InstalledSlotUniverseUnestablished { standing: s } } }
+    InstalledPopulationIncomplete { missing: m } => InstalledTrainedDisagreement { standing: InstalledPopulationUnusable { standing: InstalledPopulationIncomplete { missing: m } } }
+    InstalledPopulationNotInUniverse { unexpected: u } => InstalledTrainedDisagreement { standing: InstalledPopulationUnusable { standing: InstalledPopulationNotInUniverse { unexpected: u } } }
+    InstalledPopulationUnderivable { standing: s } => InstalledTrainedDisagreement { standing: InstalledPopulationUnusable { standing: InstalledPopulationUnderivable { standing: s } } }
+    InstalledPopulationNotCandidate { detail: d } => InstalledTrainedDisagreement { standing: InstalledPopulationUnusable { standing: InstalledPopulationNotCandidate { detail: d } } }
+    InstalledTopologyObserved { shape: _, candidate: c } => attribute_failure(e: e, response_identity: response_identity, failure: failure, candidate: c)
+  }
+}
+
+fn attribute_failure(
+  e: MemoryDepopulationExperiment,
+  response_identity: NonEmptyStr,
+  failure: DepopulationFailure,
+  candidate: RevARoutedTopologyCandidate,
+) -> ExperimentTopologyReconciliation {
+  let control_standing = control_domain_standing(e: e, source_candidate: candidate.identity)
+  if !control_domain_is_controlled(s: control_standing) {
+    FailureAttributionUnestablished { detail: "a board-wide boot or training failure cannot be attributed to the source population while the non-source domain is outside the control's declared policy" }
+  } else {
+    CandidateTerminallyFailed { candidate: candidate, failure: failure, experiment: e, response_identity: response_identity, control_signature: control_standing_signature(s: control_standing) }
+  }
+}
+
+fn reconcile_receipt(receipt: MemoryChannelResponseReceipt, requirement: RevACapacityRequirement) -> ExperimentTopologyReconciliation {
+  match receipt {
+    CandidateResponseFailed { response_identity: rid, experiment: e, failure: f } =>
+      if !installed_joins_control(r: e.installed, control: e.control) || e.subject_machine != e.control.subject.subject_machine {
+        ControlNotJoinedToRun { detail: "the experiment, its control and its physical inspection do not name one machine and one slot universe" }
+      } else {
+        match subject_standing(control: e.control, transfer: e.transfer) {
+          DeclaredPopulationDoesNotMatchSubject { detail: d } => SubjectStandingUnestablished { standing: DeclaredPopulationDoesNotMatchSubject { detail: d } }
+          DirectOneSocketSubjectEstablished { processor_domain: d } => reconcile_failure(e: e, response_identity: rid, failure: f, domain: d)
+          TwoSocketSubjectEstablished { source_domain: d, control_domain: _ } => reconcile_failure(e: e, response_identity: rid, failure: f, domain: d)
+        }
+      }
+    CandidateResponseObserved { response_identity: rid, experiment: e, census: c, workload: w } =>
+      if e.subject_machine != c.subject_machine {
+        SubjectMachineMismatch { experiment_machine: e.subject_machine, census_machine: c.subject_machine }
+      } else {
+        if !census_joins_control(c: c, control: e.control) || !installed_joins_control(r: e.installed, control: e.control) {
+          ControlNotJoinedToRun { detail: "the census or the physical inspection does not run under the control's board, revision, configured firmware and slot universe" }
+        } else {
+          match subject_standing(control: e.control, transfer: e.transfer) {
+            DeclaredPopulationDoesNotMatchSubject { detail: d } => SubjectStandingUnestablished { standing: DeclaredPopulationDoesNotMatchSubject { detail: d } }
+            DirectOneSocketSubjectEstablished { processor_domain: d } => reconcile_observed(e: e, response_identity: rid, c: c, workload: w, domain: d, requirement: requirement)
+            TwoSocketSubjectEstablished { source_domain: d, control_domain: _ } => reconcile_observed(e: e, response_identity: rid, c: c, workload: w, domain: d, requirement: requirement)
+          }
+        }
+      }
+  }
+}
+
+fn reconcile(receipt: MemoryChannelResponseReceipt) -> ExperimentTopologyReconciliation {
+  reconcile_receipt(receipt: receipt, requirement: rev_a_capacity_requirement())
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE MATRIX IS OVER TERMINAL RESULTS, AND EVERY RESULT CARRIES THE CONTROL IT RAN UNDER.
+type CandidateMatrixResult
+  = CandidatePerformanceObserved {
+      response_identity: NonEmptyStr
+      candidate: RevARoutedTopologyCandidate
+      observed: ObservedMemoryTopology
+      workload: WorkloadObservation
+      experiment_identity: NonEmptyStr
+      control: MemoryChannelExperimentControl
+      control_signature: NonEmptyStr
+      census_run_identity: NonEmptyStr
+    }
+  | CandidateUnavailable {
+      response_identity: NonEmptyStr
+      candidate: RevARoutedTopologyCandidate
+      failure: DepopulationFailure
+      experiment_identity: NonEmptyStr
+      control: MemoryChannelExperimentControl
+      control_signature: NonEmptyStr
+    }
+
+fn reconciliation_results(r: ExperimentTopologyReconciliation) -> List<CandidateMatrixResult> {
+  match r {
+    RequestedTopologyObserved { candidate: c, observed: t, workload: w, experiment: e, response_identity: rid, firmware_identity: _, control_signature: sig } =>
+      [CandidatePerformanceObserved {
+        response_identity: rid, candidate: c, observed: t, workload: w,
+        experiment_identity: e.identity, control: e.control, control_signature: sig,
+        census_run_identity: t.producer_run_identity,
+      }]
+    CandidateTerminallyFailed { candidate: c, failure: f, experiment: e, response_identity: rid, control_signature: sig } =>
+      [CandidateUnavailable {
+        response_identity: rid, candidate: c, failure: f,
+        experiment_identity: e.identity, control: e.control, control_signature: sig,
+      }]
+    SubjectStandingUnestablished { standing: _ } => []
+    SubjectMachineMismatch { experiment_machine: _, census_machine: _ } => []
+    ControlNotJoinedToRun { detail: _ } => []
+    WorkloadNotJoinedToControl { detail: _ } => []
+    CensusNotExact { standing: _ } => []
+    DomainTopologyUnderivable { standing: _ } => []
+    CandidateNotInRoster { requested: _ } => []
+    RequestedObservedMismatch { requested: _, observed_candidate: _ } => []
+    InstalledPopulationNotJoined { detail: _ } => []
+    InstalledTrainedDisagreement { standing: _ } => []
+    FailureAttributionUnestablished { detail: _ } => []
+    CapacityContractRefused { observed_bytes: _, required_bytes: _ } => []
+    CapacityContractUnestablished { quoted_label: _ } => []
+  }
+}
+
+fn result_of(receipt: MemoryChannelResponseReceipt) -> List<CandidateMatrixResult> {
+  reconciliation_results(r: reconcile(receipt: receipt))
+}
+
+fn matrix_results(receipts: List<MemoryChannelResponseReceipt>) -> List<CandidateMatrixResult> {
+  fold(receipts, init: [], f: (acc, r) => concat(acc, result_of(receipt: r)))
+}
+
+fn result_candidate(r: CandidateMatrixResult) -> RevARoutedTopologyCandidate {
+  match r {
+    CandidatePerformanceObserved { response_identity: _, candidate: c, observed: _, workload: _, experiment_identity: _, control: _, control_signature: _, census_run_identity: _ } => c
+    CandidateUnavailable { response_identity: _, candidate: c, failure: _, experiment_identity: _, control: _, control_signature: _ } => c
+  }
+}
+
+fn result_is_observed(r: CandidateMatrixResult) -> Bool {
+  match r {
+    CandidatePerformanceObserved { response_identity: _, candidate: _, observed: _, workload: _, experiment_identity: _, control: _, control_signature: _, census_run_identity: _ } => true
+    CandidateUnavailable { response_identity: _, candidate: _, failure: _, experiment_identity: _, control: _, control_signature: _ } => false
+  }
+}
+
+fn result_experiment_identity(r: CandidateMatrixResult) -> NonEmptyStr {
+  match r {
+    CandidatePerformanceObserved { response_identity: _, candidate: _, observed: _, workload: _, experiment_identity: id, control: _, control_signature: _, census_run_identity: _ } => id
+    CandidateUnavailable { response_identity: _, candidate: _, failure: _, experiment_identity: id, control: _, control_signature: _ } => id
+  }
+}
+
+fn result_response_identity(r: CandidateMatrixResult) -> NonEmptyStr {
+  match r {
+    CandidatePerformanceObserved { response_identity: rid, candidate: _, observed: _, workload: _, experiment_identity: _, control: _, control_signature: _, census_run_identity: _ } => rid
+    CandidateUnavailable { response_identity: rid, candidate: _, failure: _, experiment_identity: _, control: _, control_signature: _ } => rid
+  }
+}
+
+fn result_control_signature(r: CandidateMatrixResult) -> NonEmptyStr {
+  match r {
+    CandidatePerformanceObserved { response_identity: _, candidate: _, observed: _, workload: _, experiment_identity: _, control: _, control_signature: sig, census_run_identity: _ } => sig
+    CandidateUnavailable { response_identity: _, candidate: _, failure: _, experiment_identity: _, control: _, control_signature: sig } => sig
+  }
+}
+
+fn result_control(r: CandidateMatrixResult) -> List<MemoryChannelExperimentControl> {
+  match r {
+    CandidatePerformanceObserved { response_identity: _, candidate: _, observed: _, workload: _, experiment_identity: _, control: c, control_signature: _, census_run_identity: _ } => [c]
+    CandidateUnavailable { response_identity: _, candidate: _, failure: _, experiment_identity: _, control: c, control_signature: _ } => [c]
+  }
+}
+
+fn result_census_run(r: CandidateMatrixResult) -> NonEmptyStr {
+  match r {
+    CandidatePerformanceObserved { response_identity: _, candidate: _, observed: _, workload: _, experiment_identity: _, control: _, control_signature: _, census_run_identity: rid } => rid
+    CandidateUnavailable { response_identity: rid, candidate: _, failure: _, experiment_identity: _, control: _, control_signature: _ } => rid
+  }
+}
+
+fn result_workload(r: CandidateMatrixResult) -> List<WorkloadObservation> {
+  match r {
+    CandidatePerformanceObserved { response_identity: _, candidate: _, observed: _, workload: w, experiment_identity: _, control: _, control_signature: _, census_run_identity: _ } => [w]
+    CandidateUnavailable { response_identity: _, candidate: _, failure: _, experiment_identity: _, control: _, control_signature: _ } => []
+  }
+}
+
+fn result_invocation(r: CandidateMatrixResult) -> NonEmptyStr {
+  fold(result_workload(r: r), init: result_response_identity(r: r), f: (acc, w) => w.invocation_identity)
+}
+
+fn workload_measurement_is_valid(w: WorkloadObservation) -> Bool {
+  w.billed_units > 0 && w.elapsed_seconds > 0 && w.completed_work > 0
+}
+
+fn result_measurement_is_valid(r: CandidateMatrixResult) -> Bool {
+  count(result_workload(r: r) |> filter(w => !workload_measurement_is_valid(w: w))) == 0
+}
+
+fn result_score_permille(r: CandidateMatrixResult) -> Nat {
+  fold(result_workload(r: r), init: nat_zero, f: (acc, w) =>
+    if workload_measurement_is_valid(w: w) { (w.completed_work * 1000) / (w.billed_units * w.elapsed_seconds) } else { nat_zero })
+}
+
+fn observed_results(results: List<CandidateMatrixResult>) -> List<CandidateMatrixResult> {
+  results |> filter(r => result_is_observed(r: r))
+}
+
+fn results_for_population(results: List<CandidateMatrixResult>, identity: NonEmptyStr) -> Nat {
+  count(results |> filter(r => result_candidate(r: r).identity == identity))
+}
+
+data required_matrix_populations: List<NonEmptyStr> = [
+  "2ch-2dpc-64gib-2Rx4-rdimm",
+  "4ch-1dpc-64gib-2Rx4-rdimm",
+  "6ch-1dpc-64gib-2Rx4-rdimm",
+  "8ch-1dpc-32gib-2Rx8-rdimm",
+]
+
+type MatrixStanding
+  = MatrixComplete { results: List<CandidateMatrixResult> }
+  | MissingRequiredPopulation { missing: NonEmptyStr }
+  | DuplicateRunForPopulation { duplicated: NonEmptyStr }
+  | ResultsNotComparable { detail: NonEmptyStr }
+  | InvalidWorkloadMeasurement { detail: NonEmptyStr }
+
+// COMPARABILITY HAS ONE STRUCTURAL QUESTION: do all results consume the SAME experiment control?
+// Every pre-run fact that could otherwise vary - subject receipt, board, revision, configured
+// firmware, universe, baseline record, protocol recipe, concurrency, billing law, host reserve,
+// pinning, NUMA policy - is a field of that one receipt, so this compares the records rather than
+// a growing list of identity strings.
+fn results_share_one_control(results: List<CandidateMatrixResult>) -> Bool {
+  match (fold(results, init: [], f: (acc, r) => concat(acc, result_control(r: r)))).first() {
+    Absent => false
+    Present { value: first } =>
+      count(fold(results, init: [], f: (acc, r) => concat(acc, result_control(r: r))) |> filter(c => !(c == first))) == 0
+  }
+}
+
+fn matrix_standing(receipts: List<MemoryChannelResponseReceipt>) -> MatrixStanding {
+  let results = matrix_results(receipts: receipts)
+  let observed = observed_results(results: results)
+  let missing = fold(required_matrix_populations, init: no_such_slot, f: (acc, p) =>
+    if acc == no_such_slot && results_for_population(results: results, identity: p) == 0 { p } else { acc })
+  let duplicated = fold(required_matrix_populations, init: no_such_slot, f: (acc, p) =>
+    if acc == no_such_slot && results_for_population(results: results, identity: p) > 1 { p } else { acc })
+  let repeated_experiment = first_repeated(values: results |> map(r => result_experiment_identity(r: r)))
+  let repeated_response = first_repeated(values: results |> map(r => result_response_identity(r: r)))
+  let repeated_run = first_repeated(values: observed |> map(r => result_census_run(r: r)))
+  let repeated_invocation = first_repeated(values: observed |> map(r => result_invocation(r: r)))
+  let signatures = distinct_count(values: results |> map(r => result_control_signature(r: r)))
+  let invalid = count(observed |> filter(r => !result_measurement_is_valid(r: r)))
+  if missing != no_such_slot {
+    MissingRequiredPopulation { missing: missing }
+  } else {
+    if duplicated != no_such_slot {
+      DuplicateRunForPopulation { duplicated: duplicated }
+    } else {
+      if repeated_experiment != no_such_slot || repeated_response != no_such_slot || repeated_run != no_such_slot || repeated_invocation != no_such_slot {
+        ResultsNotComparable { detail: "two results share a response, experiment, census run or workload invocation identity - that is one run reported twice, not two comparable runs" }
+      } else {
+        if !results_share_one_control(results: results) || signatures > 1 {
+          ResultsNotComparable { detail: "the results did not all run under one admitted experiment control, or the non-source processor domain carried different populations across runs, so the source population is not the only thing that varied" }
+        } else {
+          if invalid > 0 {
+            InvalidWorkloadMeasurement { detail: "an observed result carries a zero denominator; a measurement that cannot be divided is not a slow measurement, it is an invalid one" }
+          } else {
+            MatrixComplete { results: results }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE COMPARISON DERIVES ITS OWN WINNER OVER THE ACTUAL MATRIX. The receipt carries the criterion
+// and the outcome and NOT a second writable copy of the results, so there is nothing to replay: a
+// comparison is checked by recomputing it over the results the selector is selecting from.
+type TopologyComparisonCriterion
+  = MaximizeDeliveredWorkPerBilledUnit
+  | MinimizeRoutedChannelsWithinPerformanceFloor { floor_permille: Nat }
+  | OperatorProvisionalChoice { chosen: NonEmptyStr, rationale: NonEmptyStr }
+
+type ComparisonOutcome
+  = WinnerDerived { winner: NonEmptyStr, score_permille: Nat }
+  | TiedWinners { detail: NonEmptyStr }
+  | NoComparableWinner { detail: NonEmptyStr }
+
+fn routable_observed(results: List<CandidateMatrixResult>) -> List<CandidateMatrixResult> {
+  observed_results(results: results) |> filter(r => candidate_is_routable_shape(c: result_candidate(r: r)))
+}
+
+fn best_score(results: List<CandidateMatrixResult>) -> Nat {
+  fold(routable_observed(results: results), init: nat_zero, f: (acc, r) =>
+    if result_score_permille(r: r) > acc { result_score_permille(r: r) } else { acc })
+}
+
+fn maximize_outcome(results: List<CandidateMatrixResult>) -> ComparisonOutcome {
+  let best = best_score(results: results)
+  let winners = routable_observed(results: results) |> filter(r => result_score_permille(r: r) == best)
+  if best == nat_zero || count(winners) == 0 {
+    NoComparableWinner { detail: "no production-topology candidate carries a scoreable workload observation" }
+  } else {
+    if count(winners) > 1 {
+      TiedWinners { detail: "two production-topology candidates share the best delivered work per billed unit; the criterion does not discriminate between them" }
+    } else {
+      match winners.first() {
+        Absent => NoComparableWinner { detail: "no winner" }
+        Present { value: w } => WinnerDerived { winner: result_candidate(r: w).identity, score_permille: best }
+      }
+    }
+  }
+}
+
+fn floor_outcome(results: List<CandidateMatrixResult>, floor_permille: Nat) -> ComparisonOutcome {
+  let best = best_score(results: results)
+  let threshold = (best * floor_permille) / 1000
+  let eligible = routable_observed(results: results) |> filter(r => result_score_permille(r: r) >= threshold && result_score_permille(r: r) > nat_zero)
+  let fewest = fold(eligible, init: nat_zero, f: (acc, r) =>
+    if acc == nat_zero || result_candidate(r: r).channels_per_socket < acc { result_candidate(r: r).channels_per_socket } else { acc })
+  let winners = eligible |> filter(r => result_candidate(r: r).channels_per_socket == fewest)
+  if best == nat_zero || count(winners) == 0 {
+    NoComparableWinner { detail: "no production-topology candidate reaches the declared performance floor" }
+  } else {
+    if count(winners) > 1 {
+      TiedWinners { detail: "two production-topology candidates reach the floor at the same channel count" }
+    } else {
+      match winners.first() {
+        Absent => NoComparableWinner { detail: "no winner" }
+        Present { value: w } => WinnerDerived { winner: result_candidate(r: w).identity, score_permille: result_score_permille(r: w) }
+      }
+    }
+  }
+}
+
+fn operator_choice_outcome(results: List<CandidateMatrixResult>, chosen: NonEmptyStr) -> ComparisonOutcome {
+  let winners = routable_observed(results: results)
+    |> filter(r => result_candidate(r: r).identity == chosen && result_measurement_is_valid(r: r))
+  match winners.first() {
+    Absent => NoComparableWinner { detail: "the operator's provisional choice names a population that is not a validly measured production-topology result in this matrix" }
+    Present { value: w } => WinnerDerived { winner: chosen, score_permille: result_score_permille(r: w) }
+  }
+}
+
+fn compare_matrix(results: List<CandidateMatrixResult>, criterion: TopologyComparisonCriterion) -> ComparisonOutcome {
+  match criterion {
+    MaximizeDeliveredWorkPerBilledUnit => maximize_outcome(results: results)
+    MinimizeRoutedChannelsWithinPerformanceFloor { floor_permille: f } => floor_outcome(results: results, floor_permille: f)
+    OperatorProvisionalChoice { chosen: c, rationale: _ } => operator_choice_outcome(results: results, chosen: c)
+  }
+}
+
+type TopologyComparisonReceipt {
+  criterion: TopologyComparisonCriterion
+  outcome: ComparisonOutcome
+}
+
+fn outcome_winner(o: ComparisonOutcome) -> NonEmptyStr {
+  match o {
+    WinnerDerived { winner: w, score_permille: _ } => w
+    TiedWinners { detail: _ } => no_such_slot
+    NoComparableWinner { detail: _ } => no_such_slot
+  }
+}
+
+fn outcome_score(o: ComparisonOutcome) -> Nat {
+  match o {
+    WinnerDerived { winner: _, score_permille: s } => s
+    TiedWinners { detail: _ } => nat_zero
+    NoComparableWinner { detail: _ } => nat_zero
+  }
+}
+
+data memory_channel_response_receipts: List<MemoryChannelResponseReceipt> = []
+data topology_comparison_receipts: List<TopologyComparisonReceipt> = []
+
+type SelectionBlocker
+  = NoEstablishedCandidateResponses
+  | MatrixIncomplete { standing: MatrixStanding }
+  | ComparisonCriterionUnestablished { required: List<NonEmptyStr> }
+  | AmbiguousComparisonReceipts { receipt_count: Nat }
+  | ComparisonOutcomeNotDerived { claimed_winner: NonEmptyStr, derived_winner: NonEmptyStr }
+  | ComparisonYieldedNoWinner { outcome_detail: NonEmptyStr }
+  | SelectedCandidateNotProductionRoutable { selected: NonEmptyStr }
+
+type TopologySelection
+  = RoutedTopologySelected {
+      comparison_receipt: TopologyComparisonReceipt
+      candidate: RevARoutedTopologyCandidate
+    }
+  | TopologySelectionBlocked {
+      blocker: SelectionBlocker
+      resolution: NonEmptyStr
+    }
+
+fn select_from_matrix(results: List<CandidateMatrixResult>, comparison: TopologyComparisonReceipt) -> TopologySelection {
+  let derived = compare_matrix(results: results, criterion: comparison.criterion)
+  if outcome_winner(o: derived) != outcome_winner(o: comparison.outcome)
+    || outcome_score(o: derived) != outcome_score(o: comparison.outcome) {
+    TopologySelectionBlocked {
+      blocker: ComparisonOutcomeNotDerived {
+        claimed_winner: outcome_winner(o: comparison.outcome),
+        derived_winner: outcome_winner(o: derived),
+      },
+      resolution: "the receipt's outcome must equal what this matrix and that criterion derive; a hand-written winner is an assertion, not a comparison",
+    }
+  } else {
+    if outcome_winner(o: derived) == no_such_slot {
+      TopologySelectionBlocked {
+        blocker: ComparisonYieldedNoWinner { outcome_detail: "the criterion derived a tie or no comparable winner over this matrix" },
+        resolution: "resolve the tie with a discriminating criterion, or measure what the current criterion cannot separate",
+      }
+    } else {
+      if !candidate_is_routable_shape(c: candidate_by_identity(identity: outcome_winner(o: derived))) {
+        TopologySelectionBlocked {
+          blocker: SelectedCandidateNotProductionRoutable { selected: outcome_winner(o: derived) },
+          resolution: "a measurement-only control cannot be the routed production topology; it exists to price the shapes that can",
+        }
+      } else {
+        RoutedTopologySelected { comparison_receipt: comparison, candidate: candidate_by_identity(identity: outcome_winner(o: derived)) }
+      }
+    }
+  }
+}
+
+fn select_routed_topology(
+  receipts: List<MemoryChannelResponseReceipt>,
+  comparisons: List<TopologyComparisonReceipt>,
+) -> TopologySelection {
+  let results = matrix_results(receipts: receipts)
+  if count(results) == 0 {
+    TopologySelectionBlocked {
+      blocker: NoEstablishedCandidateResponses,
+      resolution: "execute current_census_execution_plan against a grounded slot universe, then run the depopulation experiments; a run becomes a result only once its census, physical inspection, request, machine, domain and workload all reconcile",
+    }
+  } else {
+    match matrix_standing(receipts: receipts) {
+      MissingRequiredPopulation { missing: m } => blocked_matrix(standing: MissingRequiredPopulation { missing: m },
+        resolution: "run every required population, including the two-channel control; a terminal failure counts as that population's result, an absence does not")
+      DuplicateRunForPopulation { duplicated: d } => blocked_matrix(standing: DuplicateRunForPopulation { duplicated: d },
+        resolution: "one result per population; two runs of one population must be reconciled or one retired before the matrix is comparable")
+      ResultsNotComparable { detail: dt } => blocked_matrix(standing: ResultsNotComparable { detail: dt },
+        resolution: "make the runs comparable - distinct responses on one machine, board, firmware, protocol and baseline, under one workload identity and revision")
+      InvalidWorkloadMeasurement { detail: dt } => blocked_matrix(standing: InvalidWorkloadMeasurement { detail: dt },
+        resolution: "re-measure: a zero denominator or billed units disagreeing with concurrency is an invalid measurement, not a low score")
+      MatrixComplete { results: rs } =>
+        if count(comparisons) == 0 {
+          TopologySelectionBlocked {
+            blocker: ComparisonCriterionUnestablished { required: required_matrix_populations },
+            resolution: "declare a TopologyComparisonCriterion and derive a comparison over this matrix; a complete matrix is a measurement, not a selection",
+          }
+        } else {
+          if count(comparisons) > 1 {
+            TopologySelectionBlocked {
+              blocker: AmbiguousComparisonReceipts { receipt_count: count(comparisons) },
+              resolution: "two comparison receipts are two answers to one question; retire or supersede one before the selector may read either",
+            }
+          } else {
+            match comparisons.first() {
+              Absent => TopologySelectionBlocked {
+                blocker: ComparisonCriterionUnestablished { required: required_matrix_populations },
+                resolution: "no comparison receipt is readable",
+              }
+              Present { value: comparison } => select_from_matrix(results: rs, comparison: comparison)
+            }
+          }
+        }
+    }
+  }
+}
+
+fn blocked_matrix(standing: MatrixStanding, resolution: NonEmptyStr) -> TopologySelection {
+  TopologySelectionBlocked { blocker: MatrixIncomplete { standing: standing }, resolution: resolution }
+}
+
+fn selection_is_blocked(selection: TopologySelection) -> Bool {
+  match selection {
+    RoutedTopologySelected { comparison_receipt: _, candidate: _ } => false
+    TopologySelectionBlocked { blocker: _, resolution: _ } => true
+  }
+}
+
+fn routed_topology_is_unselected() -> Bool {
+  selection_is_blocked(selection: select_routed_topology(
+    receipts: memory_channel_response_receipts,
+    comparisons: topology_comparison_receipts))
+}
+
+fn candidate_identities_are_unique() -> Bool {
+  fold(routed_topology_candidates, init: 0, f: (acc, c) =>
+    acc + fold(routed_topology_candidates, init: 0, f: (n, d) => if d.identity == c.identity { n + 1 } else { n })
+  ) == count(routed_topology_candidates)
+}
+
+fn required_populations_are_candidates() -> Bool {
+  count(required_matrix_populations |> filter(p => candidate_by_identity(identity: p).identity == unmatched_candidate.identity)) == 0
+}
+
+// WHAT THE RUNG STILL OWES, AS STRUCTURE RATHER THAN A NOTE. Each obligation names its producer,
+// so "MOBO-X-2 is not done" is a list of exactly what is missing and who can close it.
+type CensusObligation {
+  identity: NonEmptyStr
+  owed: NonEmptyStr
+  producer: NonEmptyStr
+  blocks: DeclarationRef
+}
+
+data obligation_verdict_capture: CensusObligation = CensusObligation {
+  identity: "memtest-verdict-capture",
+  owed: "a terminal verdict for the 2026-08-29 MemTest86 execution, or an explicit abandonment of that run",
+  producer: "operator console or KVM session against the held unit; no reachable BMC endpoint exposes the screen",
+  blocks: decl_ref(module_path: "strategy.mobo_x_memory_census", decl_name: "obligation_channel_census"),
+}
+
+data obligation_channel_census: CensusObligation = CensusObligation {
+  identity: "host-channel-census",
+  owed: "a HostMemoryCensusReceipt over the held unit carrying slot identity, channel membership, rank organization and trained speed for every populated slot",
+  producer: "an AuthoritativeHostMemoryCensusProducer; current_census_execution_plan is today's realization",
+  blocks: decl_ref(module_path: "strategy.mobo_x_memory_census", decl_name: "obligation_depopulation_runs"),
+}
+
+data obligation_depopulation_runs: CensusObligation = CensusObligation {
+  identity: "depopulation-runs",
+  owed: "one MemoryDepopulationExperiment per candidate channel count, each with its post-mutation census and workload observation, yielding the MemoryChannelResponseReceipts",
+  producer: "operator-executed physical mutation plus the same host census instrument re-run after each change",
+  blocks: decl_ref(module_path: "strategy.mobo_x_architecture", decl_name: "role_memory_routed_topology"),
+}
+
+// THE SLOT UNIVERSE ITSELF IS OWED. The census cannot be judged against a denominator nobody has
+// authored, and SlotUniverseAuthority requires a drawing, an inspection or a firmware receipt -
+// none of which exists for the held unit today.
+data obligation_slot_universe: CensusObligation = CensusObligation {
+  identity: "slot-universe-receipt",
+  owed: "a MemorySlotUniverseReceipt for the held Mt. Collins, grounded in a board drawing, a physical inspection receipt or a validated firmware topology - the denominator every census is judged against",
+  producer: "the board's own documentation or a physical inspection of the populated and empty slots",
+  blocks: decl_ref(module_path: "strategy.mobo_x_memory_census", decl_name: "obligation_channel_census"),
+}
+
+// EXACT-PART QUALIFICATION IS NOT ESTABLISHED BY A TOPOLOGY ROW. A candidate here is a routable
+// SHAPE; whether this exact module is admissible on this platform at this trained speed is
+// MOBO-X-5B's gate, and the observed part identity and trained speed travel with every result so
+// that gate has its evidence rather than having to re-measure.
+data obligation_part_qualification: CensusObligation = CensusObligation {
+  identity: "memory-part-qualification",
+  owed: "an exact-part or substitution-class qualification for the modules a selected topology would route, at the trained speed observed",
+  producer: "MOBO-X-5B's DDR schematic and its platform compatibility evidence",
+  blocks: decl_ref(module_path: "strategy.mobo_x_architecture", decl_name: "role_system_memory"),
+}
+
+// TWO ROSTERS, BECAUSE THEY ANSWER TWO QUESTIONS. What MOBO-X-2 must close before it closes is
+// not the same list as what a selected topology still owes downstream: exact-part qualification is
+// produced by MOBO-X-5B, a LATER rung, so putting it in the completion roster would either invent
+// a forward dependency on a rung that has not started or make the roster's own name false.
+data mobo_x_2_completion_obligations: List<CensusObligation> = [
+  obligation_verdict_capture,
+  obligation_slot_universe,
+  obligation_channel_census,
+  obligation_depopulation_runs,
+]
+
+data mobo_x_downstream_obligations: List<CensusObligation> = [
+  obligation_part_qualification,
+]
+
+fn obligation_count() -> Nat {
+  count(mobo_x_2_completion_obligations)
+}
+
+fn downstream_obligation_count() -> Nat {
+  count(mobo_x_downstream_obligations)
+}
+
+fn obligations_name_their_producer() -> Bool {
+  fold(concat(mobo_x_2_completion_obligations, mobo_x_downstream_obligations), init: true, f: (acc, o) => acc && o.owed != "" && o.producer != "")
+}

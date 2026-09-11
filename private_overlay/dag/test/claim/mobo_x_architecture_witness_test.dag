@@ -1,0 +1,84 @@
+module test.claim.mobo_x_architecture_witness
+
+import std.types { Bool, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.mobo_x_architecture {
+  rev_a_roles, role_processor_socket,
+  identities_are_unique, role_identities_are_unique,
+  role_is_selected, role_is_absent, role_is_blocked,
+  blocked_roles_name_their_resolution, blocked_role_count,
+  RevABoardRole,
+}
+import strategy.mobo_x { rung_is_landed, rung_receipts_name_roster_identities }
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ROSTER IS WELL-FORMED, AND THE UNIQUENESS WALL IS SHOWN REFUSING. The duplicate roster is
+// the discriminating RED: two rows with one identity is exactly the state the wall exists to
+// refuse, and constructing it proves the fn discriminates rather than returning true over
+// whatever it is handed.
+test fn w_role_roster_is_unique_and_the_wall_discriminates() -> Bool {
+  let duplicate_roster: List<RevABoardRole> = [role_processor_socket, role_processor_socket]
+  role_identities_are_unique()
+    && !identities_are_unique(roles: duplicate_roster)
+}
+
+// EVERY LOAD-BEARING DISPOSITION, CHECKED BY IDENTITY AND ARM — with cross-arm negative controls,
+// so a lookup that answered true for every identity or every arm would refuse here.
+test fn w_selected_absent_and_blocked_land_on_their_declared_arms() -> Bool {
+  role_is_selected(identity: "processor-socket")
+    && role_is_selected(identity: "system-memory")
+    && role_is_selected(identity: "network-interface")
+    && role_is_selected(identity: "bmc-management")
+    && role_is_selected(identity: "boot-firmware-storage")
+    && role_is_selected(identity: "power-input-and-vrd")
+    && role_is_selected(identity: "clock-distribution")
+    && role_is_selected(identity: "reset-sequencing-logic")
+    && role_is_selected(identity: "debug-bringup")
+    && role_is_absent(identity: "second-processor-socket")
+    && role_is_absent(identity: "two-socket-coherent-interconnect")
+    && role_is_absent(identity: "pcie-expansion-slots")
+    && role_is_absent(identity: "video-display")
+    && role_is_absent(identity: "usb-host-ports")
+    && role_is_absent(identity: "pcie-hot-plug")
+    && role_is_absent(identity: "tpm-attestation")
+    && role_is_blocked(identity: "memory-routed-topology")
+    && role_is_blocked(identity: "local-boot-storage")
+    && !role_is_selected(identity: "memory-routed-topology")
+    && !role_is_blocked(identity: "processor-socket")
+    && !role_is_absent(identity: "system-memory")
+    && !role_is_selected(identity: "a-role-nobody-declared")
+}
+
+// EXACTLY THE TWO DECLARED BLOCKED ROWS, EACH NAMING WHAT RESOLVES IT. The count is grounded in
+// this same change's declarations (the two BlockedByNamedFact rows above), not in a measurement
+// of the tree — a third blocked row is a decision this witness makes its author restate here.
+test fn w_blocked_rows_are_the_two_declared_and_carry_their_resolution() -> Bool {
+  blocked_roles_name_their_resolution()
+    && blocked_role_count() == 2
+}
+
+// THE PROGRAM CHAIN, ONE RUNG FURTHER ON: MOBO-X-0 and MOBO-X-1 are both landed by receipt (the
+// MOBO-X-1 receipt lands in this PR, the one after the rung it describes), MOBO-X-2 is NOT landed
+// -- it is open, and this PR is its instrumentation, not its completion -- and every receipt names
+// a roster identity. The MOBO-X-2 clause is the one that would have to be edited by anyone
+// claiming the rung: it cannot be claimed by silence.
+test fn w_rung_one_is_landed_and_rung_two_is_not() -> Bool {
+  rung_is_landed(identity: "MOBO-X-0")
+    && rung_is_landed(identity: "MOBO-X-1")
+    && !rung_is_landed(identity: "MOBO-X-2")
+    && rung_receipts_name_roster_identities()
+}
+
+fn mobo_x_architecture_witness_main() -> ProcessExit {
+  if w_role_roster_is_unique_and_the_wall_discriminates()
+    && w_selected_absent_and_blocked_land_on_their_declared_arms()
+    && w_blocked_rows_are_the_two_declared_and_carry_their_resolution()
+    && w_rung_one_is_landed_and_rung_two_is_not() {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

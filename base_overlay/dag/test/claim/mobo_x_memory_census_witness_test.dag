@@ -1,0 +1,969 @@
+module test.claim.mobo_x_memory_census_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, decl_ref }
+import strategy.mt_collins_held_unit {
+  MemoryCensusCapability, HostSmbiosCensusAvailable,
+  held_unit_memtest_verdict_is_captured,
+}
+import strategy.mobo_x_memory_census {
+  rev_a_sellable_unit_target, rev_a_target_units,
+  RevACapacityRequirement, CapacityRequirementEstablished, CapacityRequirementUnestablished,
+  rev_a_capacity_requirement,
+  MemoryModuleClass, Rdimm, Lrdimm,
+  SlotUniverseAuthority, BoardDrawingAuthority, PhysicalInspectionAuthority,
+  UniverseSlot, MemorySlotUniverseReceipt, universe_standing, universe_is_established,
+  ModuleAxes, InstalledModule, SlotVacant, ModuleInstalled, InstalledSlotObservation,
+  TrainedModule, TrainedSlotEmpty, TrainedModulePresent, MemorySlotObservation,
+  DomainUsableMemoryObservation, HostMemoryCensusReceipt, LinuxDmidecodeEdac,
+  census_coverage, coverage_is_exact,
+  ExecutedPhysicalPopulationReceipt, installed_topology,
+  InstalledTopologyStanding, InstalledTopologyObserved,
+  candidate_by_identity, unmatched_candidate,
+  candidate_identities_are_unique, required_populations_are_candidates, required_matrix_populations,
+  SubjectProcessorPopulationReceipt, WorkloadProtocolReceipt,
+  BilledUnitLaw, BilledUnitsEqualConcurrency,
+  NonSourceDomainPolicy, NoNonSourceDomain, FixedControlPopulation,
+  MemoryChannelExperimentControl,
+  MemoryDepopulationExperiment, OperatorExecuted,
+  ExecutableBaseline, PriorVerdictCaptured,
+  HeldUnitToRevATransferStanding, DirectOneSocketObservation,
+  TwoSocketObservationTransferEstablished,
+  MemoryChannelResponseReceipt, CandidateResponseObserved, CandidateResponseFailed,
+  BootRefused, TrainingFailed, WorkloadObservation,
+  ExperimentTopologyReconciliation, reconcile, reconcile_receipt, reconciliation_results,
+  CandidateMatrixResult, matrix_results, result_candidate, result_is_observed,
+  TopologyComparisonCriterion, MaximizeDeliveredWorkPerBilledUnit,
+  MinimizeRoutedChannelsWithinPerformanceFloor, OperatorProvisionalChoice,
+  ComparisonOutcome, WinnerDerived, TiedWinners, NoComparableWinner,
+  compare_matrix,
+  TopologyComparisonReceipt,
+  TopologySelection, RoutedTopologySelected, TopologySelectionBlocked,
+  SelectionBlocker, NoEstablishedCandidateResponses, MatrixIncomplete,
+  ComparisonCriterionUnestablished, AmbiguousComparisonReceipts,
+  ComparisonOutcomeNotDerived, ComparisonYieldedNoWinner, SelectedCandidateNotProductionRoutable,
+  select_routed_topology, selection_is_blocked, routed_topology_is_unselected,
+  memory_channel_response_receipts, topology_comparison_receipts,
+  capability_can_feed_channel_census, held_unit_can_feed_channel_census,
+  obligation_count, downstream_obligation_count, obligations_name_their_producer,
+}
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE BOARD. Source handed to the compiler by a test, never a strategy-layer observation:
+// no real census exists yet, and a refusal never seen to stop refusing carries no information.
+data fixture_first_slot: UniverseSlot = UniverseSlot { slot_designation: "A0", channel_designation: "CH0", processor_domain: "CPU0" }
+
+data fixture_cpu0_rest: List<UniverseSlot> = [
+  UniverseSlot { slot_designation: "A1", channel_designation: "CH1", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "A2", channel_designation: "CH2", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "A3", channel_designation: "CH3", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "A4", channel_designation: "CH4", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "A5", channel_designation: "CH5", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "A6", channel_designation: "CH6", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "A7", channel_designation: "CH7", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B0", channel_designation: "CH0", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B1", channel_designation: "CH1", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B2", channel_designation: "CH2", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B3", channel_designation: "CH3", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B4", channel_designation: "CH4", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B5", channel_designation: "CH5", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B6", channel_designation: "CH6", processor_domain: "CPU0" },
+  UniverseSlot { slot_designation: "B7", channel_designation: "CH7", processor_domain: "CPU0" },
+]
+
+data fixture_cpu1_slots: List<UniverseSlot> = [
+  UniverseSlot { slot_designation: "C0", channel_designation: "CH0", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "C1", channel_designation: "CH1", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "C2", channel_designation: "CH2", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "C3", channel_designation: "CH3", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "C4", channel_designation: "CH4", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "C5", channel_designation: "CH5", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "C6", channel_designation: "CH6", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "C7", channel_designation: "CH7", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D0", channel_designation: "CH0", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D1", channel_designation: "CH1", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D2", channel_designation: "CH2", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D3", channel_designation: "CH3", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D4", channel_designation: "CH4", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D5", channel_designation: "CH5", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D6", channel_designation: "CH6", processor_domain: "CPU1" },
+  UniverseSlot { slot_designation: "D7", channel_designation: "CH7", processor_domain: "CPU1" },
+]
+
+data fixture_machine: NonEmptyStr = "fixture board, not the held unit"
+data fixture_ref: DeclarationRef = decl_ref(module_path: "test.claim.mobo_x_memory_census_witness", decl_name: "fixture_machine")
+
+data fixture_authority: SlotUniverseAuthority = BoardDrawingAuthority {
+  drawing: fixture_ref,
+  drawing_digest: "fixture-digest",
+}
+
+data universe_1p: MemorySlotUniverseReceipt = MemorySlotUniverseReceipt {
+  universe_identity: "fixture-universe-1p",
+  board_identity: "fixture board",
+  board_revision: "revA-fixture",
+  authority: fixture_authority,
+  note: "fixture",
+  first_slot: fixture_first_slot,
+  additional_slots: fixture_cpu0_rest,
+}
+
+data universe_2p: MemorySlotUniverseReceipt = MemorySlotUniverseReceipt {
+  universe_identity: "fixture-universe-2p",
+  board_identity: "fixture board",
+  board_revision: "revA-fixture",
+  authority: fixture_authority,
+  note: "fixture",
+  first_slot: fixture_first_slot,
+  additional_slots: concat(fixture_cpu0_rest, fixture_cpu1_slots),
+}
+
+fn universe_slots_named(u: MemorySlotUniverseReceipt, designation: NonEmptyStr) -> List<UniverseSlot> {
+  universe_slot_list(u: u) |> filter(e => e.slot_designation == designation)
+}
+
+fn universe_slot_list(u: MemorySlotUniverseReceipt) -> List<UniverseSlot> {
+  concat([u.first_slot], u.additional_slots)
+}
+
+fn fixture_axes(capacity_gib: Nat, ranks: Nat, width: Nat, cls: MemoryModuleClass) -> ModuleAxes {
+  ModuleAxes {
+    capacity_gib: capacity_gib,
+    ranks: ranks,
+    device_width_bits: width,
+    module_class: cls,
+    part_identity: "fixture part",
+  }
+}
+
+// THE PHYSICAL INSPECTION KNOWS THE MODULE AND ITS RATED SPEED; IT DOES NOT KNOW A TRAINED SPEED,
+// and the type gives it nowhere to invent one.
+fn fixture_installed_slots(u: MemorySlotUniverseReceipt, designations: List<NonEmptyStr>, capacity_gib: Nat, ranks: Nat, width: Nat, cls: MemoryModuleClass) -> List<InstalledSlotObservation> {
+  universe_slot_list(u: u) |> map(e => InstalledSlotObservation {
+    slot_designation: e.slot_designation,
+    channel_designation: e.channel_designation,
+    processor_domain: e.processor_domain,
+    module: if count(designations |> filter(d => d == e.slot_designation)) > 0 {
+      ModuleInstalled { axes: fixture_axes(capacity_gib: capacity_gib, ranks: ranks, width: width, cls: cls), rated_speed_mts: 3200, part_authority: fixture_ref }
+    } else {
+      SlotVacant
+    },
+  })
+}
+
+fn fixture_trained_slots(u: MemorySlotUniverseReceipt, designations: List<NonEmptyStr>, capacity_gib: Nat, ranks: Nat, width: Nat, cls: MemoryModuleClass) -> List<MemorySlotObservation> {
+  universe_slot_list(u: u) |> map(e => MemorySlotObservation {
+    slot_designation: e.slot_designation,
+    channel_designation: e.channel_designation,
+    processor_domain: e.processor_domain,
+    trained: if count(designations |> filter(d => d == e.slot_designation)) > 0 {
+      TrainedModulePresent { axes: fixture_axes(capacity_gib: capacity_gib, ranks: ranks, width: width, cls: cls), trained_speed_mts: 3200 }
+    } else {
+      TrainedSlotEmpty
+    },
+  })
+}
+
+data fixture_os_visible: Nat = 250000000000
+data fixture_host_reserve: Nat = 10000000000
+
+fn fixture_usable(machine: NonEmptyStr, domain: NonEmptyStr, run: NonEmptyStr, os_visible: Nat, reserve: Nat) -> DomainUsableMemoryObservation {
+  DomainUsableMemoryObservation {
+    subject_machine: machine,
+    processor_domain: domain,
+    producer_run_identity: run,
+    os_visible_bytes: os_visible,
+    host_reserved_bytes: reserve,
+  }
+}
+
+fn fixture_census(
+  machine: NonEmptyStr,
+  u: MemorySlotUniverseReceipt,
+  firmware: NonEmptyStr,
+  run: NonEmptyStr,
+  designations: List<NonEmptyStr>,
+  capacity_gib: Nat,
+  ranks: Nat,
+  width: Nat,
+  cls: MemoryModuleClass,
+  os_visible: Nat,
+  domains: List<NonEmptyStr>,
+  machine_visible: Nat,
+) -> HostMemoryCensusReceipt {
+  HostMemoryCensusReceipt {
+    subject_machine: machine,
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    firmware_identity: firmware,
+    universe: u,
+    producer: LinuxDmidecodeEdac,
+    producer_run_identity: run,
+    observed_at: "fixture",
+    observed_slots: fixture_trained_slots(u: u, designations: designations, capacity_gib: capacity_gib, ranks: ranks, width: width, cls: cls),
+    domain_usable_memory: domains |> map(d => fixture_usable(machine: machine, domain: d, run: run, os_visible: os_visible, reserve: fixture_host_reserve)),
+    first_raw_evidence: "fixture dmidecode --type 17 transcript",
+    additional_raw_evidence: [],
+    trained_visible_bytes: machine_visible,
+  }
+}
+
+fn census_1p(run: NonEmptyStr, designations: List<NonEmptyStr>, capacity_gib: Nat, ranks: Nat, width: Nat) -> HostMemoryCensusReceipt {
+  fixture_census(machine: fixture_machine, u: universe_1p, firmware: "fixture firmware", run: run, designations: designations,
+    capacity_gib: capacity_gib, ranks: ranks, width: width, cls: Rdimm,
+    os_visible: fixture_os_visible, domains: ["CPU0"], machine_visible: fixture_os_visible)
+}
+
+fn fixture_inspection_over(machine: NonEmptyStr, cited: MemorySlotUniverseReceipt, rows_from: MemorySlotUniverseReceipt, designations: List<NonEmptyStr>, capacity_gib: Nat, ranks: Nat, width: Nat) -> ExecutedPhysicalPopulationReceipt {
+  ExecutedPhysicalPopulationReceipt {
+    subject_machine: machine,
+    universe: cited,
+    installed_slots: fixture_installed_slots(u: rows_from, designations: designations, capacity_gib: capacity_gib, ranks: ranks, width: width, cls: Rdimm),
+    first_evidence: fixture_ref,
+    additional_evidence: [],
+    observed_before_power_on: "fixture: every slot inspected before power-on",
+    producer: "fixture operator",
+  }
+}
+
+fn fixture_inspection(machine: NonEmptyStr, u: MemorySlotUniverseReceipt, designations: List<NonEmptyStr>, capacity_gib: Nat, ranks: Nat, width: Nat) -> ExecutedPhysicalPopulationReceipt {
+  ExecutedPhysicalPopulationReceipt {
+    subject_machine: machine,
+    universe: u,
+    installed_slots: fixture_installed_slots(u: u, designations: designations, capacity_gib: capacity_gib, ranks: ranks, width: width, cls: Rdimm),
+    first_evidence: fixture_ref,
+    additional_evidence: [],
+    observed_before_power_on: "fixture: every slot inspected before power-on",
+    producer: "fixture operator",
+  }
+}
+
+data fixture_protocol: WorkloadProtocolReceipt = WorkloadProtocolReceipt {
+  identity: "fixture-protocol",
+  workload_identity: "fixture workload",
+  workload_revision: "r1",
+  recipe_digest: "fixture-recipe-digest",
+  warm_up: "fixture",
+  repetitions: 3,
+  affinity: "fixture",
+  numa_placement: "fixture",
+  completed_work_measure: "fixture",
+  timing_boundary: "fixture",
+  sampling: "fixture",
+  result_extraction: "fixture",
+}
+
+data subject_1p: SubjectProcessorPopulationReceipt = SubjectProcessorPopulationReceipt {
+  subject_machine: fixture_machine,
+  board_identity: "fixture board",
+  populated_processor_domains: ["CPU0"],
+  processor_identities: ["fixture processor"],
+  first_evidence: fixture_ref,
+  additional_evidence: [],
+  observed_at: "fixture",
+}
+
+data subject_2p: SubjectProcessorPopulationReceipt = SubjectProcessorPopulationReceipt {
+  subject_machine: fixture_machine,
+  board_identity: "fixture board",
+  populated_processor_domains: ["CPU0", "CPU1"],
+  processor_identities: ["fixture processor", "fixture processor"],
+  first_evidence: fixture_ref,
+  additional_evidence: [],
+  observed_at: "fixture",
+}
+
+fn fixture_control(
+  identity: NonEmptyStr,
+  subject: SubjectProcessorPopulationReceipt,
+  firmware: NonEmptyStr,
+  universe_identity: NonEmptyStr,
+  policy: NonSourceDomainPolicy,
+  concurrency: Nat,
+) -> MemoryChannelExperimentControl {
+  MemoryChannelExperimentControl {
+    identity: identity,
+    subject: subject,
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    configured_firmware_identity: firmware,
+    slot_universe_identity: universe_identity,
+    baseline: PriorVerdictCaptured { identity: "fixture-baseline", verdict: "fixture pass", producer_note: "fixture" },
+    workload_protocol: fixture_protocol,
+    source_domain: "CPU0",
+    non_source_domain_policy: policy,
+    concurrency: concurrency,
+    billed_unit_law: BilledUnitsEqualConcurrency,
+    host_memory_reserve_bytes: fixture_host_reserve,
+    workload_pinning: "fixture-pinning",
+    numa_policy: "fixture-numa",
+  }
+}
+
+data control_1p: MemoryChannelExperimentControl = fixture_control(identity: "fixture-control", subject: subject_1p,
+  firmware: "fixture firmware", universe_identity: "fixture-universe-1p", policy: NoNonSourceDomain, concurrency: 76)
+
+data control_2p: MemoryChannelExperimentControl = fixture_control(identity: "fixture-control-2p", subject: subject_2p,
+  firmware: "fixture firmware", universe_identity: "fixture-universe-2p",
+  policy: FixedControlPopulation { expected_signature: "4ch-1dpc-64gib-2Rx4-rdimm" }, concurrency: 76)
+
+fn fixture_workload(machine: NonEmptyStr, domain: NonEmptyStr, invocation: NonEmptyStr, completed_work: Nat, concurrency: Nat, billed: Nat) -> WorkloadObservation {
+  WorkloadObservation {
+    subject_machine: machine,
+    processor_domain: domain,
+    workload_identity: "fixture workload",
+    workload_revision: "r1",
+    workload_protocol_identity: "fixture-protocol",
+    invocation_identity: invocation,
+    concurrency: concurrency,
+    billed_units: billed,
+    completed_work: completed_work,
+    elapsed_seconds: 60,
+    workload_pinning: "fixture-pinning",
+    numa_behavior: "fixture-numa",
+    power_observation: "fixture",
+    thermal_observation: "fixture",
+  }
+}
+
+fn fixture_experiment(
+  identity: NonEmptyStr,
+  control: MemoryChannelExperimentControl,
+  machine: NonEmptyStr,
+  u: MemorySlotUniverseReceipt,
+  requested: NonEmptyStr,
+  transfer: HeldUnitToRevATransferStanding,
+  installed_designations: List<NonEmptyStr>,
+  installed_capacity_gib: Nat,
+  installed_ranks: Nat,
+  installed_width: Nat,
+) -> MemoryDepopulationExperiment {
+  MemoryDepopulationExperiment {
+    identity: identity,
+    control: control,
+    subject_machine: machine,
+    requested_candidate: requested,
+    transfer: transfer,
+    installed: fixture_inspection(machine: machine, u: u, designations: installed_designations,
+      capacity_gib: installed_capacity_gib, ranks: installed_ranks, width: installed_width),
+    shutdown_requirement: "fixture",
+    physical_mutation: OperatorExecuted,
+  }
+}
+
+fn observed_receipt_under(control: MemoryChannelExperimentControl, firmware: NonEmptyStr, tag: NonEmptyStr, population: NonEmptyStr, designations: List<NonEmptyStr>, capacity_gib: Nat, ranks: Nat, width: Nat, completed_work: Nat, concurrency: Nat, billed: Nat) -> MemoryChannelResponseReceipt {
+  CandidateResponseObserved {
+    response_identity: tag,
+    experiment: fixture_experiment(identity: tag, control: control, machine: fixture_machine, u: universe_1p, requested: population,
+      transfer: DirectOneSocketObservation, installed_designations: designations,
+      installed_capacity_gib: capacity_gib, installed_ranks: ranks, installed_width: width),
+    census: fixture_census(machine: fixture_machine, u: universe_1p, firmware: firmware, run: tag, designations: designations,
+      capacity_gib: capacity_gib, ranks: ranks, width: width, cls: Rdimm, os_visible: fixture_os_visible,
+      domains: ["CPU0"], machine_visible: fixture_os_visible),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU0", invocation: tag, completed_work: completed_work, concurrency: concurrency, billed: billed),
+  }
+}
+
+fn observed_receipt(tag: NonEmptyStr, population: NonEmptyStr, designations: List<NonEmptyStr>, capacity_gib: Nat, ranks: Nat, width: Nat, completed_work: Nat) -> MemoryChannelResponseReceipt {
+  observed_receipt_under(control: control_1p, firmware: "fixture firmware", tag: tag, population: population,
+    designations: designations, capacity_gib: capacity_gib, ranks: ranks, width: width, completed_work: completed_work,
+    concurrency: 76, billed: 76)
+}
+
+data pop_2ch: List<NonEmptyStr> = ["A0", "B0", "A1", "B1"]
+data pop_4ch: List<NonEmptyStr> = ["A0", "A1", "A2", "A3"]
+data pop_6ch: List<NonEmptyStr> = ["A0", "A1", "A2", "A3", "A4", "A5"]
+data pop_8ch: List<NonEmptyStr> = ["A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7"]
+data pop_2p_4ch: List<NonEmptyStr> = ["A0", "A1", "A2", "A3", "C0", "C1", "C2", "C3"]
+data pop_2p_4ch_control_6: List<NonEmptyStr> = ["A0", "A1", "A2", "A3", "C0", "C1", "C2", "C3", "C4", "C5"]
+
+data id_2ch: NonEmptyStr = "2ch-2dpc-64gib-2Rx4-rdimm"
+data id_4ch: NonEmptyStr = "4ch-1dpc-64gib-2Rx4-rdimm"
+data id_6ch: NonEmptyStr = "6ch-1dpc-64gib-2Rx4-rdimm"
+data id_8ch: NonEmptyStr = "8ch-1dpc-32gib-2Rx8-rdimm"
+
+fn receipt_2ch() -> MemoryChannelResponseReceipt { observed_receipt(tag: "run-2ch", population: id_2ch, designations: pop_2ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 1000) }
+fn receipt_4ch() -> MemoryChannelResponseReceipt { observed_receipt(tag: "run-4ch", population: id_4ch, designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 2000) }
+fn receipt_6ch() -> MemoryChannelResponseReceipt { observed_receipt(tag: "run-6ch", population: id_6ch, designations: pop_6ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 2400) }
+fn receipt_8ch() -> MemoryChannelResponseReceipt { observed_receipt(tag: "run-8ch", population: id_8ch, designations: pop_8ch, capacity_gib: 32, ranks: 2, width: 8, completed_work: 2600) }
+
+fn complete_matrix() -> List<MemoryChannelResponseReceipt> {
+  [receipt_2ch(), receipt_4ch(), receipt_6ch(), receipt_8ch()]
+}
+
+fn failed_2ch() -> MemoryChannelResponseReceipt {
+  CandidateResponseFailed {
+    response_identity: "run-2ch-failed",
+    experiment: fixture_experiment(identity: "run-2ch-failed", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_2ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_2ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    failure: TrainingFailed { evidence: "fixture: DDR training never completed at two channels 2DPC" },
+  }
+}
+
+fn matrix_with_failed_control() -> List<MemoryChannelResponseReceipt> {
+  [failed_2ch(), receipt_4ch(), receipt_6ch(), receipt_8ch()]
+}
+
+fn derived_comparison(receipts: List<MemoryChannelResponseReceipt>, criterion: TopologyComparisonCriterion) -> TopologyComparisonReceipt {
+  TopologyComparisonReceipt {
+    criterion: criterion,
+    outcome: compare_matrix(results: matrix_results(receipts: receipts), criterion: criterion),
+  }
+}
+
+fn asserted_comparison(criterion: TopologyComparisonCriterion, claimed_winner: NonEmptyStr) -> TopologyComparisonReceipt {
+  TopologyComparisonReceipt {
+    criterion: criterion,
+    outcome: WinnerDerived { winner: claimed_winner, score_permille: 1 },
+  }
+}
+
+fn blocker_label(b: SelectionBlocker) -> NonEmptyStr {
+  match b {
+    NoEstablishedCandidateResponses => "no-responses"
+    MatrixIncomplete { standing: _ } => "matrix-incomplete"
+    ComparisonCriterionUnestablished { required: _ } => "criterion-unestablished"
+    AmbiguousComparisonReceipts { receipt_count: _ } => "ambiguous-comparisons"
+    ComparisonOutcomeNotDerived { claimed_winner: _, derived_winner: _ } => "outcome-not-derived"
+    ComparisonYieldedNoWinner { outcome_detail: _ } => "no-winner"
+    SelectedCandidateNotProductionRoutable { selected: _ } => "selected-not-routable"
+  }
+}
+
+fn blocker_of(selection: TopologySelection) -> NonEmptyStr {
+  match selection {
+    RoutedTopologySelected { comparison_receipt: _, candidate: _ } => "selected"
+    TopologySelectionBlocked { blocker: b, resolution: _ } => blocker_label(b: b)
+  }
+}
+
+fn selected_identity(selection: TopologySelection) -> NonEmptyStr {
+  match selection {
+    RoutedTopologySelected { comparison_receipt: _, candidate: c } => c.identity
+    TopologySelectionBlocked { blocker: _, resolution: _ } => "blocked"
+  }
+}
+
+fn requirement_bytes(r: RevACapacityRequirement) -> Nat {
+  match r {
+    CapacityRequirementEstablished { bytes: b } => b
+    CapacityRequirementUnestablished { quoted_label: _ } => 0
+  }
+}
+
+fn establishes_performance(r: ExperimentTopologyReconciliation) -> Bool {
+  count(reconciliation_results(r: r) |> filter(x => result_is_observed(r: x))) == 1
+}
+
+fn establishes_any_result(r: ExperimentTopologyReconciliation) -> Bool {
+  count(reconciliation_results(r: r)) == 1
+}
+
+fn established_transfer() -> HeldUnitToRevATransferStanding {
+  TwoSocketObservationTransferEstablished {
+    workload_pinning: "fixture-pinning",
+    numa_behavior: "fixture-numa",
+    grounds: "fixture: the source domain's population is the only thing that varies",
+  }
+}
+
+fn observed_2p(control: MemoryChannelExperimentControl, tag: NonEmptyStr, transfer: HeldUnitToRevATransferStanding, designations: List<NonEmptyStr>, completed_work: Nat) -> MemoryChannelResponseReceipt {
+  CandidateResponseObserved {
+    response_identity: tag,
+    experiment: fixture_experiment(identity: tag, control: control, machine: fixture_machine, u: universe_2p, requested: id_4ch,
+      transfer: transfer, installed_designations: designations,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: fixture_census(machine: fixture_machine, u: universe_2p, firmware: "fixture firmware", run: tag,
+      designations: designations, capacity_gib: 64, ranks: 2, width: 4, cls: Rdimm,
+      os_visible: fixture_os_visible, domains: ["CPU0", "CPU1"], machine_visible: 500000000000),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU0", invocation: tag, completed_work: completed_work, concurrency: 76, billed: 76),
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE 76-UNIT CONTRACT IS DERIVED FROM THE PROCESSOR, NOT FROM ANY BOARD CANDIDATE.
+test fn w_the_capacity_requirement_is_the_seventy_six_unit_contract() -> Bool {
+  rev_a_target_units() == 76
+    && requirement_bytes(r: rev_a_capacity_requirement()) == 228000000000
+    && rev_a_sellable_unit_target.physical_cores == 80
+}
+
+// TODAY THE SELECTOR REFUSES, AND THE REFUSAL NAMES WHICH GATE IS SHUT.
+test fn w_today_the_selector_refuses_for_want_of_any_established_response() -> Bool {
+  routed_topology_is_unselected()
+    && blocker_of(selection: select_routed_topology(
+         receipts: memory_channel_response_receipts,
+         comparisons: topology_comparison_receipts)) == "no-responses"
+}
+
+// THE DENOMINATOR IS ITS OWN AUTHORITY AND MUST BE DUPLICATE-FREE.
+test fn w_the_slot_universe_refuses_duplicates() -> Bool {
+  let duplicated = MemorySlotUniverseReceipt {
+    universe_identity: "fixture-duplicate",
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    authority: PhysicalInspectionAuthority { receipt: fixture_ref },
+    note: "fixture",
+    first_slot: UniverseSlot { slot_designation: "A0", channel_designation: "CH0", processor_domain: "CPU0" },
+    additional_slots: [UniverseSlot { slot_designation: "A0", channel_designation: "CH1", processor_domain: "CPU0" }],
+  }
+  universe_is_established(standing: universe_standing(u: universe_1p))
+    && !universe_is_established(standing: universe_standing(u: duplicated))
+}
+
+// AN INSPECTION WITHOUT AN ESTABLISHED UNIVERSE ESTABLISHES NOTHING - including on the FAILED
+// path, where there is no census to catch it downstream. The duplicate below is the one the
+// coverage counts CANNOT see: the universe carries the same physical slot identity twice, so
+// every per-entry count still comes out at one and both the missing and the unexpected check
+// stay silent. Only the universe gate itself refuses.
+test fn w_the_failed_path_needs_an_established_slot_universe() -> Bool {
+  let duplicated = MemorySlotUniverseReceipt {
+    universe_identity: "fixture-universe-1p",
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    authority: PhysicalInspectionAuthority { receipt: fixture_ref },
+    note: "fixture",
+    first_slot: fixture_first_slot,
+    additional_slots: concat(fixture_cpu0_rest,
+      [UniverseSlot { slot_designation: "A1", channel_designation: "CH1", processor_domain: "CPU0" }]),
+  }
+  let on_bad_universe = CandidateResponseFailed {
+    response_identity: "red-universe",
+    experiment: MemoryDepopulationExperiment {
+      identity: "red-universe",
+      control: control_1p,
+      subject_machine: fixture_machine,
+      requested_candidate: id_2ch,
+      transfer: DirectOneSocketObservation,
+      installed: fixture_inspection_over(machine: fixture_machine, cited: duplicated, rows_from: universe_1p,
+        designations: pop_2ch, capacity_gib: 64, ranks: 2, width: 4),
+      shutdown_requirement: "fixture",
+      physical_mutation: OperatorExecuted,
+    },
+    failure: BootRefused { evidence: "fixture: no POST" },
+  }
+  !universe_is_established(standing: universe_standing(u: duplicated))
+    && count(universe_slots_named(u: duplicated, designation: "A1")) == 2
+    && !establishes_any_result(r: reconcile(receipt: on_bad_universe))
+    && establishes_any_result(r: reconcile(receipt: failed_2ch()))
+}
+
+// THE OBSERVATION SELECTS THE CANDIDATE AND THE REQUEST CANNOT - including the module class.
+test fn w_the_observation_selects_the_candidate_and_the_request_cannot() -> Bool {
+  let one_channel = observed_receipt(tag: "red-1ch", population: id_4ch, designations: ["A0"], capacity_gib: 64, ranks: 2, width: 4, completed_work: 100)
+  let eight_channel = observed_receipt(tag: "red-8ch", population: id_4ch, designations: pop_8ch, capacity_gib: 32, ranks: 2, width: 8, completed_work: 100)
+  let wrong_class = CandidateResponseObserved {
+    response_identity: "red-class",
+    experiment: fixture_experiment(identity: "red-class", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_4ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_4ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: fixture_census(machine: fixture_machine, u: universe_1p, firmware: "fixture firmware", run: "red-class", designations: pop_4ch,
+      capacity_gib: 64, ranks: 2, width: 4, cls: Lrdimm, os_visible: fixture_os_visible,
+      domains: ["CPU0"], machine_visible: fixture_os_visible),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU0", invocation: "red-class", completed_work: 100, concurrency: 76, billed: 76),
+  }
+  establishes_performance(r: reconcile(receipt: receipt_4ch()))
+    && !establishes_performance(r: reconcile(receipt: one_channel))
+    && !establishes_performance(r: reconcile(receipt: eight_channel))
+    && !establishes_performance(r: reconcile(receipt: wrong_class))
+}
+
+// WHAT WAS INSTALLED MUST BE WHAT WAS TRAINED. A run whose whole-board inspection shows six
+// channels fitted while the firmware trained four is a module that failed training - a real
+// result, and NOT evidence for the four-channel candidate.
+test fn w_installed_and_trained_populations_must_agree() -> Bool {
+  let installed_six_trained_four = CandidateResponseObserved {
+    response_identity: "red-agree",
+    experiment: fixture_experiment(identity: "red-agree", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_4ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_6ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: census_1p(run: "red-agree", designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU0", invocation: "red-agree", completed_work: 100, concurrency: 76, billed: 76),
+  }
+  !establishes_performance(r: reconcile(receipt: installed_six_trained_four))
+}
+
+// A FAILED RUN'S CANDIDATE COMES FROM ITS SLOTS, NEVER FROM THE REQUEST STRING.
+test fn w_a_failed_runs_candidate_is_derived_from_its_physical_inspection() -> Bool {
+  let mislabelled = CandidateResponseFailed {
+    response_identity: "red-failed-label",
+    experiment: fixture_experiment(identity: "red-failed-label", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_2ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_6ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    failure: BootRefused { evidence: "fixture: no POST" },
+  }
+  let results = reconciliation_results(r: reconcile(receipt: mislabelled))
+  count(results |> filter(r => result_candidate(r: r).identity == id_6ch)) == 1
+    && count(results |> filter(r => result_is_observed(r: r))) == 0
+}
+
+// THE CONTRACT IS COMPARED AGAINST CUSTOMER-USABLE MEMORY, NOT DIMM LABELS, AND A DOMAIN MAY NOT
+// CLAIM MORE THAN IS PHYSICALLY ATTACHED TO IT.
+test fn w_usable_memory_is_observed_bounded_and_decisive() -> Bool {
+  let starved = CandidateResponseObserved {
+    response_identity: "red-usable",
+    experiment: fixture_experiment(identity: "red-usable", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_4ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_4ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: fixture_census(machine: fixture_machine, u: universe_1p, firmware: "fixture firmware", run: "red-usable", designations: pop_4ch,
+      capacity_gib: 64, ranks: 2, width: 4, cls: Rdimm, os_visible: 200000000000,
+      domains: ["CPU0"], machine_visible: 200000000000),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU0", invocation: "red-usable", completed_work: 100, concurrency: 76, billed: 76),
+  }
+  // CPU0 claims 300 GB while only 4 x 64 GiB - about 274.9 GB - is attached to it. Every
+  // machine-wide total stays plausible: the domain sum is under the machine's visible memory and
+  // the visible memory is under the machine's nominal capacity. Only the per-domain bound catches it.
+  let over_nominal = HostMemoryCensusReceipt {
+    subject_machine: fixture_machine,
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    firmware_identity: "fixture firmware",
+    universe: universe_2p,
+    producer: LinuxDmidecodeEdac,
+    producer_run_identity: "red-nominal",
+    observed_at: "fixture",
+    observed_slots: fixture_trained_slots(u: universe_2p, designations: pop_2p_4ch, capacity_gib: 64, ranks: 2, width: 4, cls: Rdimm),
+    domain_usable_memory: [
+      fixture_usable(machine: fixture_machine, domain: "CPU0", run: "red-nominal", os_visible: 300000000000, reserve: fixture_host_reserve),
+      fixture_usable(machine: fixture_machine, domain: "CPU1", run: "red-nominal", os_visible: 100000000000, reserve: fixture_host_reserve),
+    ],
+    first_raw_evidence: "fixture",
+    additional_raw_evidence: [],
+    trained_visible_bytes: 500000000000,
+  }
+  !establishes_performance(r: reconcile(receipt: starved))
+    && !coverage_is_exact(standing: census_coverage(census: over_nominal))
+    && !establishes_performance(r: reconcile_receipt(receipt: receipt_4ch(),
+         requirement: CapacityRequirementUnestablished { quoted_label: "GB" }))
+    && establishes_performance(r: reconcile_receipt(receipt: receipt_4ch(),
+         requirement: rev_a_capacity_requirement()))
+}
+
+// A CROSS-MACHINE CENSUS, AN UNJOINED WORKLOAD, AN UNJOINED INSPECTION AND AN INCOMPLETE CENSUS
+// ALL REFUSE.
+test fn w_runs_whose_parts_do_not_join_refuse() -> Bool {
+  let other_machine = CandidateResponseObserved {
+    response_identity: "red-machine",
+    experiment: fixture_experiment(identity: "red-machine", control: control_1p, machine: "some other machine", u: universe_1p, requested: id_4ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_4ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: census_1p(run: "red-machine", designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU0", invocation: "red-machine", completed_work: 100, concurrency: 76, billed: 76),
+  }
+  let foreign_workload = CandidateResponseObserved {
+    response_identity: "red-workload",
+    experiment: fixture_experiment(identity: "red-workload", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_4ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_4ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: census_1p(run: "red-workload", designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU1", invocation: "red-workload", completed_work: 100, concurrency: 76, billed: 76),
+  }
+  let short_census = HostMemoryCensusReceipt {
+    subject_machine: fixture_machine,
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    firmware_identity: "fixture firmware",
+    universe: universe_1p,
+    producer: LinuxDmidecodeEdac,
+    producer_run_identity: "red-short",
+    observed_at: "fixture",
+    observed_slots: fixture_trained_slots(u: universe_1p, designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4, cls: Rdimm) |> skip(n: 1),
+    domain_usable_memory: [fixture_usable(machine: fixture_machine, domain: "CPU0", run: "red-short", os_visible: fixture_os_visible, reserve: fixture_host_reserve)],
+    first_raw_evidence: "fixture",
+    additional_raw_evidence: [],
+    trained_visible_bytes: fixture_os_visible,
+  }
+  !establishes_any_result(r: reconcile(receipt: other_machine))
+    && !establishes_performance(r: reconcile(receipt: foreign_workload))
+    && coverage_is_exact(standing: census_coverage(census: census_1p(run: "green", designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4)))
+    && !coverage_is_exact(standing: census_coverage(census: short_census))
+}
+
+// THE SUBJECT'S PROCESSOR POPULATION IS OBSERVED, AND THE EXPERIMENT IS CHECKED AGAINST IT. A run
+// over the two-socket board may not declare itself a direct one-socket observation, and the
+// control's source domain must be one the subject receipt actually shows populated.
+test fn w_the_subject_receipt_governs_the_transfer() -> Bool {
+  let two_socket_direct = fixture_control(identity: "red-direct-control", subject: subject_2p,
+    firmware: "fixture firmware", universe_identity: "fixture-universe-2p",
+    policy: FixedControlPopulation { expected_signature: id_4ch }, concurrency: 76)
+  let unpopulated_source = MemoryChannelExperimentControl {
+    identity: "red-source-control",
+    subject: subject_1p,
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    configured_firmware_identity: "fixture firmware",
+    slot_universe_identity: "fixture-universe-1p",
+    baseline: PriorVerdictCaptured { identity: "fixture-baseline", verdict: "fixture pass", producer_note: "fixture" },
+    workload_protocol: fixture_protocol,
+    source_domain: "CPU7",
+    non_source_domain_policy: NoNonSourceDomain,
+    concurrency: 76,
+    billed_unit_law: BilledUnitsEqualConcurrency,
+    host_memory_reserve_bytes: fixture_host_reserve,
+    workload_pinning: "fixture-pinning",
+    numa_policy: "fixture-numa",
+  }
+  let claimed_direct = observed_2p(control: two_socket_direct, tag: "red-direct",
+    transfer: DirectOneSocketObservation, designations: pop_2p_4ch, completed_work: 100)
+  let foreign_source = CandidateResponseObserved {
+    response_identity: "red-source",
+    experiment: fixture_experiment(identity: "red-source", control: unpopulated_source, machine: fixture_machine, u: universe_1p, requested: id_4ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_4ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: census_1p(run: "red-source", designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU7", invocation: "red-source", completed_work: 100, concurrency: 76, billed: 76),
+  }
+  let transferred = observed_2p(control: control_2p, tag: "run-2p",
+    transfer: established_transfer(), designations: pop_2p_4ch, completed_work: 100)
+  !establishes_performance(r: reconcile(receipt: claimed_direct))
+    && !establishes_any_result(r: reconcile(receipt: foreign_source))
+    && establishes_performance(r: reconcile(receipt: transferred))
+}
+
+// A FAILURE ON A TWO-SOCKET BOARD MAY BE ATTRIBUTED TO THE SOURCE POPULATION ONLY WHEN THE OTHER
+// SOCKET WAS UNDER THE DECLARED POLICY. Boot and DDR training are board-wide.
+test fn w_an_uncontrolled_second_socket_forfeits_both_results() -> Bool {
+  let uncontrolled_failure = CandidateResponseFailed {
+    response_identity: "red-attrib",
+    experiment: fixture_experiment(identity: "red-attrib", control: control_2p, machine: fixture_machine, u: universe_2p, requested: id_2ch,
+      transfer: established_transfer(), installed_designations: pop_2p_4ch_control_6,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    failure: TrainingFailed { evidence: "fixture: training never completed" },
+  }
+  let controlled_failure = CandidateResponseFailed {
+    response_identity: "run-2p-failed",
+    experiment: fixture_experiment(identity: "run-2p-failed", control: control_2p, machine: fixture_machine, u: universe_2p, requested: id_4ch,
+      transfer: established_transfer(), installed_designations: pop_2p_4ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    failure: TrainingFailed { evidence: "fixture: training never completed" },
+  }
+  let uncontrolled_success = observed_2p(control: control_2p, tag: "red-attrib-ok",
+    transfer: established_transfer(), designations: pop_2p_4ch_control_6, completed_work: 100)
+  !establishes_any_result(r: reconcile(receipt: uncontrolled_failure))
+    && !establishes_performance(r: reconcile(receipt: uncontrolled_success))
+    && establishes_any_result(r: reconcile(receipt: controlled_failure))
+}
+
+// EVERY RUN CONSUMES ONE EXPERIMENT CONTROL, AND THE MEASUREMENT MUST HAVE RUN UNDER IT. A
+// different configured firmware, a different concurrency, a different host reserve and a protocol
+// receipt sharing a name but not a recipe are each refused.
+test fn w_one_control_governs_every_run() -> Bool {
+  let other_firmware_control = fixture_control(identity: "fixture-control-f2", subject: subject_1p,
+    firmware: "fixture firmware F2", universe_identity: "fixture-universe-1p", policy: NoNonSourceDomain, concurrency: 76)
+  let other_firmware_run = observed_receipt_under(control: other_firmware_control, firmware: "fixture firmware F2",
+    tag: "run-8ch-f2", population: id_8ch, designations: pop_8ch, capacity_gib: 32, ranks: 2, width: 8,
+    completed_work: 2600, concurrency: 76, billed: 76)
+  let firmware_matrix = [receipt_2ch(), receipt_4ch(), receipt_6ch(), other_firmware_run]
+  let wrong_concurrency = observed_receipt_under(control: control_1p, firmware: "fixture firmware",
+    tag: "red-concurrency", population: id_4ch, designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4,
+    completed_work: 100, concurrency: 1, billed: 1)
+  let reserve_control = MemoryChannelExperimentControl {
+    identity: "red-reserve-control",
+    subject: subject_1p,
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    configured_firmware_identity: "fixture firmware",
+    slot_universe_identity: "fixture-universe-1p",
+    baseline: PriorVerdictCaptured { identity: "fixture-baseline", verdict: "fixture pass", producer_note: "fixture" },
+    workload_protocol: fixture_protocol,
+    source_domain: "CPU0",
+    non_source_domain_policy: NoNonSourceDomain,
+    concurrency: 76,
+    billed_unit_law: BilledUnitsEqualConcurrency,
+    host_memory_reserve_bytes: 999,
+    workload_pinning: "fixture-pinning",
+    numa_policy: "fixture-numa",
+  }
+  let wrong_reserve = observed_receipt_under(control: reserve_control, firmware: "fixture firmware",
+    tag: "red-reserve", population: id_4ch, designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4,
+    completed_work: 100, concurrency: 76, billed: 76)
+  // SAME PROTOCOL NAME, DIFFERENT RECIPE. Every identity string matches; only the receipts differ.
+  let renamed_recipe = MemoryChannelExperimentControl {
+    identity: "fixture-control",
+    subject: subject_1p,
+    board_identity: "fixture board",
+    board_revision: "revA-fixture",
+    configured_firmware_identity: "fixture firmware",
+    slot_universe_identity: "fixture-universe-1p",
+    baseline: PriorVerdictCaptured { identity: "fixture-baseline", verdict: "fixture pass", producer_note: "fixture" },
+    workload_protocol: WorkloadProtocolReceipt {
+      identity: "fixture-protocol",
+      workload_identity: "fixture workload",
+      workload_revision: "r1",
+      recipe_digest: "a different recipe under the same name",
+      warm_up: "fixture",
+      repetitions: 3,
+      affinity: "fixture",
+      numa_placement: "fixture",
+      completed_work_measure: "fixture",
+      timing_boundary: "fixture",
+      sampling: "fixture",
+      result_extraction: "fixture",
+    },
+    source_domain: "CPU0",
+    non_source_domain_policy: NoNonSourceDomain,
+    concurrency: 76,
+    billed_unit_law: BilledUnitsEqualConcurrency,
+    host_memory_reserve_bytes: fixture_host_reserve,
+    workload_pinning: "fixture-pinning",
+    numa_policy: "fixture-numa",
+  }
+  let renamed_run = observed_receipt_under(control: renamed_recipe, firmware: "fixture firmware",
+    tag: "run-8ch-recipe", population: id_8ch, designations: pop_8ch, capacity_gib: 32, ranks: 2, width: 8,
+    completed_work: 2600, concurrency: 76, billed: 76)
+  let recipe_matrix = [receipt_2ch(), receipt_4ch(), receipt_6ch(), renamed_run]
+  let foreign_protocol = CandidateResponseObserved {
+    response_identity: "red-protocol",
+    experiment: fixture_experiment(identity: "red-protocol", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_4ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_4ch,
+      installed_capacity_gib: 64, installed_ranks: 2, installed_width: 4),
+    census: census_1p(run: "red-protocol", designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4),
+    workload: WorkloadObservation {
+      subject_machine: fixture_machine,
+      processor_domain: "CPU0",
+      workload_identity: "fixture workload",
+      workload_revision: "r1",
+      workload_protocol_identity: "some other protocol",
+      invocation_identity: "red-protocol",
+      concurrency: 76,
+      billed_units: 76,
+      completed_work: 100,
+      elapsed_seconds: 60,
+      workload_pinning: "fixture-pinning",
+      numa_behavior: "fixture-numa",
+      power_observation: "fixture",
+      thermal_observation: "fixture",
+    },
+  }
+  blocker_of(selection: select_routed_topology(receipts: firmware_matrix,
+    comparisons: [derived_comparison(receipts: firmware_matrix, criterion: MaximizeDeliveredWorkPerBilledUnit)])) == "matrix-incomplete"
+    && blocker_of(selection: select_routed_topology(receipts: recipe_matrix,
+         comparisons: [derived_comparison(receipts: recipe_matrix, criterion: MaximizeDeliveredWorkPerBilledUnit)])) == "matrix-incomplete"
+    && !establishes_performance(r: reconcile(receipt: wrong_concurrency))
+    && !establishes_performance(r: reconcile(receipt: wrong_reserve))
+    && !establishes_performance(r: reconcile(receipt: foreign_protocol))
+}
+
+// A TERMINALLY FAILED POPULATION COMPLETES THE MATRIX AND CANNOT WIN IT.
+test fn w_a_failed_population_completes_the_matrix_and_cannot_win() -> Bool {
+  let results = matrix_results(receipts: matrix_with_failed_control())
+  let selection = select_routed_topology(receipts: matrix_with_failed_control(),
+    comparisons: [derived_comparison(receipts: matrix_with_failed_control(), criterion: MaximizeDeliveredWorkPerBilledUnit)])
+  count(results) == 4
+    && count(results |> filter(r => result_is_observed(r: r))) == 3
+    && selected_identity(selection: selection) == id_8ch
+}
+
+// THE RUNS MUST BE DISTINGUISHABLE AND VALIDLY MEASURED.
+test fn w_indistinguishable_or_invalid_runs_are_not_a_matrix() -> Bool {
+  let cloned = [
+    observed_receipt(tag: "same", population: id_2ch, designations: pop_2ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 1000),
+    observed_receipt(tag: "same", population: id_4ch, designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 2000),
+    observed_receipt(tag: "same", population: id_6ch, designations: pop_6ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 2400),
+    observed_receipt(tag: "same", population: id_8ch, designations: pop_8ch, capacity_gib: 32, ranks: 2, width: 8, completed_work: 2600),
+  ]
+  let underbilled = CandidateResponseObserved {
+    response_identity: "run-8ch-cheap",
+    experiment: fixture_experiment(identity: "run-8ch-cheap", control: control_1p, machine: fixture_machine, u: universe_1p, requested: id_8ch,
+      transfer: DirectOneSocketObservation, installed_designations: pop_8ch,
+      installed_capacity_gib: 32, installed_ranks: 2, installed_width: 8),
+    census: census_1p(run: "run-8ch-cheap", designations: pop_8ch, capacity_gib: 32, ranks: 2, width: 8),
+    workload: fixture_workload(machine: fixture_machine, domain: "CPU0", invocation: "run-8ch-cheap", completed_work: 2600, concurrency: 76, billed: 0),
+  }
+  let underbilled_matrix = [receipt_2ch(), receipt_4ch(), receipt_6ch(), underbilled]
+  blocker_of(selection: select_routed_topology(receipts: cloned,
+    comparisons: [derived_comparison(receipts: cloned, criterion: MaximizeDeliveredWorkPerBilledUnit)])) == "matrix-incomplete"
+    && blocker_of(selection: select_routed_topology(receipts: underbilled_matrix,
+         comparisons: [derived_comparison(receipts: underbilled_matrix, criterion: MaximizeDeliveredWorkPerBilledUnit)])) == "matrix-incomplete"
+}
+
+// THE COMPARISON MUST BE DERIVED OVER THE ACTUAL MATRIX AND YIELD A ROUTABLE WINNER.
+test fn w_selection_needs_a_derived_comparison_over_a_complete_matrix() -> Bool {
+  let single = select_routed_topology(receipts: [receipt_4ch()], comparisons: [])
+  let no_criterion = select_routed_topology(receipts: complete_matrix(), comparisons: [])
+  let ambiguous = select_routed_topology(receipts: complete_matrix(), comparisons: [
+    derived_comparison(receipts: complete_matrix(), criterion: MaximizeDeliveredWorkPerBilledUnit),
+    derived_comparison(receipts: complete_matrix(), criterion: MaximizeDeliveredWorkPerBilledUnit),
+  ])
+  let asserted = select_routed_topology(receipts: complete_matrix(),
+    comparisons: [asserted_comparison(criterion: MaximizeDeliveredWorkPerBilledUnit, claimed_winner: id_4ch)])
+  let control_chosen = select_routed_topology(receipts: complete_matrix(),
+    comparisons: [derived_comparison(receipts: complete_matrix(), criterion: OperatorProvisionalChoice { chosen: id_2ch, rationale: "fixture" })])
+  let maximized = select_routed_topology(receipts: complete_matrix(),
+    comparisons: [derived_comparison(receipts: complete_matrix(), criterion: MaximizeDeliveredWorkPerBilledUnit)])
+  let floored = select_routed_topology(receipts: complete_matrix(),
+    comparisons: [derived_comparison(receipts: complete_matrix(), criterion: MinimizeRoutedChannelsWithinPerformanceFloor { floor_permille: 900 })])
+  blocker_of(selection: single) == "matrix-incomplete"
+    && blocker_of(selection: no_criterion) == "criterion-unestablished"
+    && blocker_of(selection: ambiguous) == "ambiguous-comparisons"
+    && blocker_of(selection: asserted) == "outcome-not-derived"
+    && blocker_of(selection: control_chosen) == "no-winner"
+    && selected_identity(selection: maximized) == id_8ch
+    && selected_identity(selection: floored) == id_6ch
+    && !selection_is_blocked(selection: maximized)
+}
+
+// A TIE REFUSES RATHER THAN PICKING ONE.
+test fn w_a_tie_refuses() -> Bool {
+  let tied = [
+    receipt_2ch(),
+    observed_receipt(tag: "tie-4ch", population: id_4ch, designations: pop_4ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 2000),
+    observed_receipt(tag: "tie-6ch", population: id_6ch, designations: pop_6ch, capacity_gib: 64, ranks: 2, width: 4, completed_work: 2000),
+    observed_receipt(tag: "tie-8ch", population: id_8ch, designations: pop_8ch, capacity_gib: 32, ranks: 2, width: 8, completed_work: 1000),
+  ]
+  blocker_of(selection: select_routed_topology(receipts: tied,
+    comparisons: [derived_comparison(receipts: tied, criterion: MaximizeDeliveredWorkPerBilledUnit)])) == "no-winner"
+}
+
+// THE INSTRUMENT CEILING IS ENFORCED, WITH ITS POSITIVE CONTROL.
+test fn w_bmc_group_telemetry_cannot_feed_a_census_but_a_host_census_can() -> Bool {
+  let host: MemoryCensusCapability = HostSmbiosCensusAvailable {
+    producer: "fixture host census",
+    first_evidence: "fixture",
+  }
+  !held_unit_can_feed_channel_census()
+    && capability_can_feed_channel_census(capability: host)
+}
+
+// THE PRIOR MEMTEST HAS NO CAPTURED VERDICT; MOBO-X-2 OWES FOUR COMPLETION OBLIGATIONS AND ONE
+// DOWNSTREAM ONE; AND EVERY REQUIRED MATRIX POPULATION IS A ROSTER SHAPE.
+test fn w_open_obligations_and_the_required_matrix_are_well_formed() -> Bool {
+  !held_unit_memtest_verdict_is_captured()
+    && obligation_count() == 4
+    && downstream_obligation_count() == 1
+    && obligations_name_their_producer()
+    && candidate_identities_are_unique()
+    && required_populations_are_candidates()
+    && count(required_matrix_populations) == 4
+}
+
+fn mobo_x_memory_census_witness_main() -> ProcessExit {
+  if w_the_capacity_requirement_is_the_seventy_six_unit_contract()
+    && w_today_the_selector_refuses_for_want_of_any_established_response()
+    && w_the_slot_universe_refuses_duplicates()
+    && w_the_failed_path_needs_an_established_slot_universe()
+    && w_the_observation_selects_the_candidate_and_the_request_cannot()
+    && w_installed_and_trained_populations_must_agree()
+    && w_a_failed_runs_candidate_is_derived_from_its_physical_inspection()
+    && w_usable_memory_is_observed_bounded_and_decisive()
+    && w_runs_whose_parts_do_not_join_refuse()
+    && w_the_subject_receipt_governs_the_transfer()
+    && w_an_uncontrolled_second_socket_forfeits_both_results()
+    && w_one_control_governs_every_run()
+    && w_a_failed_population_completes_the_matrix_and_cannot_win()
+    && w_indistinguishable_or_invalid_runs_are_not_a_matrix()
+    && w_selection_needs_a_derived_comparison_over_a_complete_matrix()
+    && w_a_tie_refuses()
+    && w_bmc_group_telemetry_cannot_feed_a_census_but_a_host_census_can()
+    && w_open_obligations_and_the_required_matrix_are_well_formed() {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

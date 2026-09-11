@@ -1,0 +1,155 @@
+module extdeps.regulation.nj_phillipsburg
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionIdentity }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.citation { CitationSelector, CitationTarget, citation_target, citation_exact_pin, RawResponseBody }
+import std.content_hash { Sha256Digest }
+import extdeps.external_authority { ExternalSubjectRef }
+import extdeps.uri { uri_https }
+import extdeps.regulation.types {
+  RegulatoryInstrument, IssuingAuthority, Municipal,
+  InstrumentLifecycle, Adopted, EffectiveDate, EffectiveDatePendingEvidence,
+  ExecutiveDisposition, SignaturePresentDateUnread,
+  ProhibitionOfUse, SpatialExtent, EveryZoningDistrict,
+  GovernedSubject, SubjectStanding, DefinitionFromSupersededDraft,
+  TemporalApplication, TemporalApplicationUnread,
+  ApplicabilityBasis, PrincipalUseZoning,
+  InstrumentProvenance, OfficialText,
+}
+
+// THE TOWN OF PHILLIPSBURG, WARREN COUNTY, NEW JERSEY.
+//
+// THIS ONE LANDS ON A CANDIDATE. Phillipsburg is row `site_phillipsburg` of the six-town census,
+// chosen there as "Easton's NJ twin across the Delaware" - the NJ half of a pair meant to isolate
+// the STATE variable with geography held fixed. It adopted O2026-08 on 2026-04-14 prohibiting
+// data centers in every zone, four months BEFORE the survey named it. The consequence for that
+// experimental design is stated where the design lives (strategy.site_power_survey): an upstream
+// module records what the town did, never what it means for our comparison.
+//
+// PROVENANCE IS THE ADOPTED ORDINANCE, retrieved and digested from the Town register. The
+// first revision of this module carried an all-zero digest under version "unretrieved" with the
+// terms taken from news reports. That was defended in a comment as "failing loudly", which was
+// wrong twice: nothing executes a citation verifier in this repository today, so the bad digest
+// was not loud but merely precise-looking; and a placeholder digest is not evidence of anything
+// either way. Retrieving the document was the answer, and it was one fetch away.
+//
+// A ROSTER IS NOT AN AUTHORITY. Phillipsburg is ABSENT from the statewide advocacy roster most
+// reporting on NJ data-center bans cites, while its ordinance has been adopted law since April.
+// A roster is a tertiary aggregation with no completeness obligation, so absence from one is
+// evidence of NOTHING - and any clearance derived from roster absence is fabricated. This row is
+// the executed counterexample.
+
+data phillipsburg_town: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.regulation.nj_phillipsburg",
+    decl_name: "phillipsburg_town",
+    field: WholeDeclaration,
+  },
+}
+
+// THE ENFORCER REFERENCE IS THE FIELD, AND CONSUMERS MUST CITE THE SAME ONE. Review of PR #24
+// caught the instrument pointing at phillipsburg_town.zoning_officer while the consuming site row
+// constructed a reference to the `phillipsburg_zoning_officer` carrier declaration as a whole.
+// Those are different DeclarationRefs, so the authority join added since would have refused a
+// perfectly valid determination. The carrier below is the single spelling; nobody rebuilds it.
+data phillipsburg_zoning_officer: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.regulation.nj_phillipsburg",
+  decl_name: "phillipsburg_town",
+  field: NamedField { field_name: "zoning_officer" },
+}
+
+data phillipsburg_council: IssuingAuthority = IssuingAuthority {
+  subject: DeclarationRef {
+    module_path: "extdeps.regulation.nj_phillipsburg",
+    decl_name: "phillipsburg_town",
+    field: WholeDeclaration,
+  },
+  level: Municipal,
+}
+
+// Digest of the Town's own Land Use Board consistency review (Van Cleef Engineering Associates,
+// 2026-03-20), which carries the ordinance as an attachment. Retrieved 2026-08-30.
+// THE ADOPTED INSTRUMENT, from the Town's own ordinance register - four pages, as the review
+// said. The previous revision pinned the March Land Use Board CONSISTENCY REVIEW instead, whose
+// attachment this module itself described as the INTRODUCED copy, while the lifecycle said
+// Adopted and the provenance said OfficialText. Pinning a draft under an adopted claim is the
+// citation equivalent of the fabricated signing date.
+data phillipsburg_o2026_08_digest: Sha256Digest = Sha256Digest {
+  hex: "2fba2534262b2d3d47ccfcc5b4467a66a87c3e61c8bad819b13e9f6b29ce77aa",
+}
+
+// The consistency review is retained as a SECOND, DIFFERENT source rather than deleted: it is
+// where the definition text below actually comes from, and dropping it would leave that text
+// with no producer at all.
+data phillipsburg_consistency_review_digest: Sha256Digest = Sha256Digest {
+  hex: "6c2820756eb4096b142cedde6abe906210d31ffad301c5af4789d586a1e53c6a",
+}
+
+// THE PRODUCER OF THE PROVISIONAL WORDING, as its own citation. The previous revision left this
+// digest as a standalone value with no edge to the text it produced, so the definition below had
+// an adopted-instrument provenance above it and no source of its own - the definition's actual
+// origin was carried in prose only.
+data phillipsburg_consistency_review_citation: CitationTarget<CitationSelector> = citation_target(
+  expected_pin: citation_exact_pin(
+    source: phillipsburg_town,
+    access_route: uri_https(locator: "phillipsburgnj.org/wp-content/uploads/2026/03/Data-Center-Ban-Consistency-Review-32026.pdf"),
+    byte_domain: RawResponseBody,
+    version: "retrieved-2026-08-30" as VersionIdentity,
+    expected_identity: phillipsburg_consistency_review_digest,
+  ),
+  selector: none,
+)
+
+data phillipsburg_o2026_08_citation: CitationTarget<CitationSelector> = citation_target(
+  expected_pin: citation_exact_pin(
+    source: phillipsburg_town,
+    access_route: uri_https(locator: "phillipsburgnj.org/wp-content/uploads/2026/04/O2026-08-Prohibit-Data-Centers.pdf"),
+    byte_domain: RawResponseBody,
+    version: "retrieved-2026-08-30" as VersionIdentity,
+    expected_identity: phillipsburg_o2026_08_digest,
+  ),
+  selector: none,
+)
+
+// Quoted from the ordinance text as attached to the consistency review. Section 1 amends Chapter
+// 625 "Zoning", Article II "Definitions", section 625-3 to add this term; Section 2 adds data
+// centers to 625-98.A, "Prohibited Uses", in all zones.
+//
+// NOTE THE DEFINITIONAL TEST: "used primarily for". Phillipsburg does NOT carry Bayonne's
+// "portion thereof" or its liberal-construction direction - which is exactly why the applicability
+// question is derived per instrument rather than authored once and shared.
+data phillipsburg_data_center_subject: GovernedSubject = GovernedSubject {
+  defined_term: "DATA CENTER",
+  standing: DefinitionFromSupersededDraft {
+    draft_source: phillipsburg_consistency_review_citation,
+    definition_text: "any facility used primarily for the storage, management, and processing of digital or electronic data, which houses computer and network systems, including associated components such as servers, network equipment and appliances, telecommunications, and data storage systems, systems for monitoring and managing infrastructure performance, Internet-related equipment and services, data communications connections, environmental controls, fire protection systems, and security systems and services. Typical accessory components of a data center may include transformers, electrical substations, environmental controls, fire suppression, generators, redundant power supplies",
+    draft_stage: "the copy attached to the Land Use Board consistency review of 2026-03-20, i.e. the ordinance as INTRODUCED on 2026-02-24 - before the 2026-04-14 adoption, which could have amended it",
+    obligation: "Confirm the wording against the ADOPTED instrument, which is the provenance pinned on the instrument itself. That PDF is a four-page CCITT fax scan carrying zero embedded fonts, so it has no machine-readable text: settling this needs OCR, a modeled visual-transcription receipt naming page identity and transcription producer, or a text copy from the Town Clerk. A reviewer reports having read the rendered page images visually and that the definition ends 'security facilities'; a visual read is not text extraction and is not adopted here as repository authority. Section 1 amends Chapter 625 Zoning Article II section 625-3; Section 2 adds data centers to 625-98.A Prohibited Uses in all zones.",
+  },
+}
+
+data phillipsburg_ordinance_o2026_08: RegulatoryInstrument = RegulatoryInstrument {
+  self_ref: DeclarationRef { module_path: "extdeps.regulation.nj_phillipsburg", decl_name: "phillipsburg_ordinance_o2026_08", field: WholeDeclaration },
+  designation: "O2026-08",
+  issuer: phillipsburg_council,
+  lifecycle: Adopted {
+    adopted_at: 1776124800000,
+    executive: SignaturePresentDateUnread {
+      obligation: "The adopted instrument's certification page IS executed - it carries the 2026-02-24 introduction, the 2026-04-14 adoption, a mayoral signature and the clerk's attestation. What is absent is a separately stated SIGNATURE DATE, which is why this arm rather than SignedOn.",
+    },
+    effective: EffectiveDatePendingEvidence {
+      obligation: "Retrieve the publication notice. Section 7 fixes the trigger as final passage plus publication; only the publication date is outstanding.",
+    },
+  },
+  force: ProhibitionOfUse,
+  extent: EveryZoningDistrict,
+  subject: phillipsburg_data_center_subject,
+  temporal: TemporalApplicationUnread {
+    obligation: "Read the adopted instrument's savings / vested-rights treatment. Bayonne's prospective structure must NOT be assumed to carry over - two towns drafting in one season is not evidence of a shared clause.",
+  },
+  provenance: OfficialText { citation: phillipsburg_o2026_08_citation },
+  enforcer: phillipsburg_zoning_officer,
+  applicability_basis: PrincipalUseZoning { zoning_officer: phillipsburg_zoning_officer },
+  note: "Introduced 2026-02-24 on unanimous first reading; Land Use Board consistency review 2026-03-20 (Van Cleef Engineering Associates) found it consistent with the Master Plan; adopted 2026-04-14. The Town has since moved to reinforce the ban through a Master Plan update - a SECOND instrument, and it gets its own row once read.",
+}

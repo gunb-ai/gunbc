@@ -1,0 +1,61 @@
+module strategy.serving_capacity
+
+import std.types { NonEmptyStr, List, Bool }
+
+// Home for the serving-side typed carriers named by buyers_pipeline.architecture_posture_ruling.
+// Deliberately OUTSIDE ci_product_surface: that module's import closure reaches the rostered
+// KnownRed pricing modules (ci_alpha -> ci_runner_economics -> extdeps.ci_compute_pricing),
+// and these carriers must be readable by ENFORCED witnesses today.
+
+// Typed carriers the posture ruling names (buyers_pipeline.architecture_posture_ruling).
+// Prose alone was the analyst's core objection - these are the consumable shapes; the
+// scheduler/router/metering consumers that must eventually read them are declared
+// enrollment debt in that ruling.
+type SchedulingClass {
+  label: NonEmptyStr
+  preemptible: Bool
+  commercial_demand_credit: Bool
+  customer_queue_precedence: Bool
+}
+
+data internal_scavenger: SchedulingClass = SchedulingClass {
+  label: "InternalScavenger - dogfood and internal fill",
+  preemptible: true,
+  commercial_demand_credit: false,
+  customer_queue_precedence: false,
+}
+
+// The three utilization readings the posture ruling splits '100 percent utilized' into.
+// Numerator/denominator are NAMED here so no future dashboard can conflate them; the
+// producing instrument lands with fleet metering.
+type UtilizationReading {
+  label: NonEmptyStr
+  numerator: NonEmptyStr
+  denominator: NonEmptyStr
+  target_note: NonEmptyStr
+}
+
+data owned_economic_occupancy: UtilizationReading = UtilizationReading {
+  label: "owned_economic_occupancy",
+  numerator: "customer work + preemptible internal fill on owned capacity",
+  denominator: "admitted healthy online owned capacity (never cold spares or warehoused inventory)",
+  target_note: "may approach 100 percent - scavenger fill makes idle owned capacity free to consume",
+}
+
+data owned_commercial_utilization: UtilizationReading = UtilizationReading {
+  label: "owned_commercial_utilization",
+  numerator: "paid customer work on owned capacity",
+  denominator: "admitted healthy online owned capacity",
+  target_note: "an OBSERVED demand fact, never a target - inflating it with dogfood is the conflation this type exists to refuse",
+}
+
+data spill_share: UtilizationReading = UtilizationReading {
+  label: "spill_share",
+  numerator: "customer work served outside owned capacity",
+  denominator: "total customer work",
+  target_note: "prices whether the fleet is undersized - feeds the avoided-spill purchase rule in the buyers pipeline",
+}
+
+data utilization_readings: List<UtilizationReading> = [
+  owned_economic_occupancy, owned_commercial_utilization, spill_share,
+]

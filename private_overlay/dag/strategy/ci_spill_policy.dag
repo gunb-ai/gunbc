@@ -1,0 +1,242 @@
+module strategy.ci_spill_policy
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import extdeps.ci_compute_pricing {
+  ComputeOfferObservation, ComputeOfferIdentity, admitted_spill_offers, route_cost,
+  RouteCostKnown, RouteCostRefused,
+  CpuArchitecture, Amd64, Arm64, ArchitectureUnstated, architecture_label,
+  ResourceDedication, DedicatedResource, SharedResource, DedicationUnread,
+  InterruptionStanding, NonPreemptible, Preemptible, InterruptionUnread,
+  PerformanceStanding, PerformanceMeasured, PerformanceUnmeasured,
+}
+
+// WHERE OVERFLOW WORK GOES when our own capacity is full.
+//
+// The previous version of this model asked one question - does the price clear GCP N2 on-demand -
+// and answered it with three provider-specific functions. That made an expensive x86 cloud the
+// authority over every product tier's price floor. It is not the authority; it is one route, and
+// for an Arm fleet it is the wrong-architecture emergency route at that.
+//
+// A route is selected by matching a JOB's requirements against the ADMITTED routes. Nothing here
+// picks a default provider.
+
+// The customer-facing classes. These are commitments, so each one narrows which routes may serve it.
+type ServiceClass
+  = Standard
+  | Priority
+  | Committed
+
+fn service_class_label(c: ServiceClass) -> NonEmptyStr {
+  match c {
+    Standard => "Standard",
+    Priority => "Priority",
+    Committed => "Committed",
+  }
+}
+
+data service_class_note: NonEmptyStr = "Standard runs on owned capacity first and may queue; best-effort and preemptible spill are both admissible. Priority holds a tighter queue bound and therefore needs durable, dedicated capacity. Committed is a reserved pool at a contract price and is warm capacity rather than instantaneous spill: a monthly dedicated server costs the same whether or not a job arrives, so it is a fixed cost that must not be modelled as an hourly spill rate."
+
+// What a job needs. Architecture is the hard one: an x86-only job on an Arm route does not run
+// slowly, it does not run.
+type ArchitectureRequirement
+  = RequiresAmd64
+  | RequiresArm64
+  | ArchitecturePortable
+
+fn architecture_requirement_label(r: ArchitectureRequirement) -> NonEmptyStr {
+  match r {
+    RequiresAmd64 => "x86-64 only",
+    RequiresArm64 => "Arm64 only",
+    ArchitecturePortable => "either",
+  }
+}
+
+type JobRequirement {
+  label: NonEmptyStr
+  architecture: ArchitectureRequirement
+  service_class: ServiceClass
+  restartable: Bool
+}
+
+// A route may satisfy an architecture requirement only if it STATES its architecture. An unstated
+// architecture is not a wildcard; it is an unread field, and it fails both directions.
+fn architecture_satisfies(need: ArchitectureRequirement, have: CpuArchitecture) -> Bool {
+  match need {
+    RequiresAmd64 => match have { Amd64 => true, Arm64 => false, ArchitectureUnstated => false },
+    RequiresArm64 => match have { Amd64 => false, Arm64 => true, ArchitectureUnstated => false },
+    ArchitecturePortable =>
+      match have { Amd64 => true, Arm64 => true, ArchitectureUnstated => false },
+  }
+}
+
+fn is_dedicated(d: ResourceDedication) -> Bool {
+  match d {
+    DedicatedResource { note } => true,
+    SharedResource { note } => false,
+    DedicationUnread { obligation } => false,
+  }
+}
+
+fn is_preemptible(i: InterruptionStanding) -> Bool {
+  match i {
+    NonPreemptible { note } => false,
+    Preemptible { note } => true,
+    InterruptionUnread { obligation } => true,
+  }
+}
+
+fn has_performance_receipt(p: PerformanceStanding) -> Bool {
+  match p {
+    PerformanceMeasured { benchmark_suite, score, receipt } => true,
+    PerformanceUnmeasured { obligation } => false,
+  }
+}
+
+// A guaranteed-performance tier cannot be served from shared-burstable capacity on the strength of
+// a price alone. Shared families give baseline performance with temporary bursting, and CI
+// compilation is precisely the sustained load that exposes the gap. The only thing that could admit
+// one is a benchmark receipt, and no benchmark has been run.
+fn dedication_satisfies(c: ServiceClass, o: ComputeOfferObservation) -> Bool {
+  match c {
+    Standard => true,
+    Priority => is_dedicated(d: o.dedication) || has_performance_receipt(p: o.performance),
+    Committed => is_dedicated(d: o.dedication) || has_performance_receipt(p: o.performance),
+  }
+}
+
+// Preemption is acceptable exactly when the job can be re-run and the class does not promise a
+// queue bound. A non-restartable job on a preemptible route is a job that can disappear.
+fn interruption_satisfies(j: JobRequirement, o: ComputeOfferObservation) -> Bool {
+  if is_preemptible(i: o.interruption) {
+    j.restartable && match j.service_class { Standard => true, Priority => false, Committed => false }
+  } else {
+    true
+  }
+}
+
+type RouteRejection
+  = RejectedArchitecture { route: NonEmptyStr, need: NonEmptyStr, have: NonEmptyStr }
+  | RejectedDedication { route: NonEmptyStr, note: NonEmptyStr }
+  | RejectedInterruption { route: NonEmptyStr, note: NonEmptyStr }
+  | RejectedCost { route: NonEmptyStr, reason: NonEmptyStr }
+
+fn route_rejection_label(r: RouteRejection) -> NonEmptyStr {
+  match r {
+    RejectedArchitecture { route, need, have } =>
+      join([route, ": needs ", need, ", route is ", have], ""),
+    RejectedDedication { route, note } => join([route, ": ", note], ""),
+    RejectedInterruption { route, note } => join([route, ": ", note], ""),
+    RejectedCost { route, reason } => join([route, ": ", reason], ""),
+  }
+}
+
+fn route_admits(j: JobRequirement, o: ComputeOfferObservation) -> Bool {
+  architecture_satisfies(need: j.architecture, have: o.architecture)
+    && dedication_satisfies(c: j.service_class, o: o)
+    && interruption_satisfies(j: j, o: o)
+    && match route_cost(id: o.identity) {
+         RouteCostKnown { per_unit_minute_micro, offer } => true,
+         RouteCostRefused { identity, reason } => false,
+       }
+}
+
+fn admissible_routes(j: JobRequirement) -> List<ComputeOfferObservation> {
+  filter(admitted_spill_offers(), o => route_admits(j: j, o: o))
+}
+
+// The selection itself. There is no default route: if nothing is admissible the answer is a refusal
+// carrying what was wrong, not a fallback to whichever cloud happens to be hard-coded.
+type SpillSelection
+  = SpillRouteSelected {
+      identity: ComputeOfferIdentity
+      product: NonEmptyStr
+      per_unit_minute_micro: Int
+      considered: Int
+    }
+  | SpillRouteRefused { job: NonEmptyStr, considered: Int, obligation: NonEmptyStr }
+
+fn cheapest_admissible(j: JobRequirement) -> SpillSelection {
+  let routes = admissible_routes(j: j)
+  let considered = count(admitted_spill_offers())
+  fold(routes, init: SpillRouteRefused {
+    job: j.label,
+    considered: considered,
+    obligation: "No admitted spill route satisfies this job's architecture, dedication and interruption requirements at a resolvable price. Add a route or narrow the promise; do not send the work to whichever cloud is cheapest on paper.",
+  }, f: fn(acc, o) {
+    match route_cost(id: o.identity) {
+      RouteCostRefused { identity, reason } => acc,
+      RouteCostKnown { per_unit_minute_micro, offer } =>
+        match acc {
+          SpillRouteRefused { job, considered, obligation } =>
+            SpillRouteSelected {
+              identity: o.identity,
+              product: o.product,
+              per_unit_minute_micro: per_unit_minute_micro,
+              considered: considered,
+            },
+          SpillRouteSelected { identity, product, per_unit_minute_micro: best, considered } =>
+            if per_unit_minute_micro < best {
+              SpillRouteSelected {
+                identity: o.identity,
+                product: o.product,
+                per_unit_minute_micro: per_unit_minute_micro,
+                considered: considered,
+              }
+            } else { acc },
+        },
+    }
+  })
+}
+
+fn selection_cost_micro(s: SpillSelection) -> Int {
+  match s {
+    SpillRouteSelected { identity, product, per_unit_minute_micro, considered } => per_unit_minute_micro,
+    SpillRouteRefused { job, considered, obligation } => 0 - 1,
+  }
+}
+
+// The four job shapes the product actually has to answer for. These are the rows the page renders,
+// and each one selects its own route rather than inheriting one.
+data portable_standard_job: JobRequirement = JobRequirement {
+  label: "Standard, portable, restartable",
+  architecture: ArchitecturePortable,
+  service_class: Standard,
+  restartable: true,
+}
+
+data arm_standard_job: JobRequirement = JobRequirement {
+  label: "Standard, Arm-only, restartable",
+  architecture: RequiresArm64,
+  service_class: Standard,
+  restartable: true,
+}
+
+data arm_priority_job: JobRequirement = JobRequirement {
+  label: "Priority, Arm-only, not restartable",
+  architecture: RequiresArm64,
+  service_class: Priority,
+  restartable: false,
+}
+
+data amd64_priority_job: JobRequirement = JobRequirement {
+  label: "Priority, x86-only, not restartable",
+  architecture: RequiresAmd64,
+  service_class: Priority,
+  restartable: false,
+}
+
+data spill_job_shapes: List<JobRequirement> = [
+  portable_standard_job,
+  arm_standard_job,
+  arm_priority_job,
+  amd64_priority_job,
+]
+
+// THE HEADLINE, and it is derived rather than asserted: the cheapest route for a portable
+// restartable job is not GCP. Naming which one it is here would be a second copy of the fold's
+// answer, so this note names the shape of the result and the table carries the winner.
+data spill_authority_note: NonEmptyStr = "GCP is a route, not the authority. The previous model compared every price against GCP N2 on-demand, which set an expensive x86 floor under an Arm product. Each job shape now selects its own cheapest admissible route, and the Arm shapes do not select GCP at all."
+
+data committed_capacity_note: NonEmptyStr = "A monthly dedicated server can act as an overflow reserve, but it is warm capacity, not instantaneous spill: it costs the same whether or not a job arrives. It belongs in the fixed-cost model beside rent and transit, never in a per-minute spill rate, and it is deliberately absent from the routes above."
+
+data shared_family_note: NonEmptyStr = "The cheapest Arm route in the table is a shared-burstable family. Shared instances provide baseline performance with temporary bursting, and the vendor recommends dedicated instances for continuous CPU-intensive work - which is what a compile is. It is therefore admitted for Standard and refused for Priority until a benchmark receipt exists, which is why the Priority rows select a costlier route."

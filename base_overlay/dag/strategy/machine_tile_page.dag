@@ -1,0 +1,947 @@
+module strategy.machine_tile_page
+
+import std.nat { Nat }
+import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import std.spatial_knowledge {
+  SpatialRenderProjection, RenderMeasured, RenderEstimated, RenderHypothesis, RenderUnknown,
+  project_spatial_rendering,
+}
+import strategy.machine_tile_projection {
+  MountedComponent, routed_grip_exclusion_note,
+  hold_obligations, hold_use_obligations, hold_identity_card,
+  ProfilePoint, ProjectedClosedProfile, hold_profiles,
+  FrontElevationProjection, DatumAnchoredExtent, ProjectionRole,
+  StructuralSolid, ElectronicsBody, PowerBody, CoolingBody, RouteBody,
+  GripVoid, RestContact, ExclusionBand,
+  front_elevation_for, side_section_for, rear_elevation_for,
+  extent_left_mm, extent_top_mm, projection_claim_scope_note,
+  ViewKind, view_label, side_section_note, rear_elevation_note, view_kind_note,
+  grip_views, grip_section_honesty_note,
+  hazard_marks, HazardMark, placeable_hazards, unplaceable_hazards,
+  HazardMarkerPlacement, hazard_markers, hazard_marker_note,
+  unplaceable_hazard_note, hazard_overlay_note,
+}
+import strategy.machine_tile_ergonomics {
+  comfortable_span_low_mm, comfortable_span_high_mm, withdrawn_placement_span_mm,
+  derivation_was_narrow_note, ergonomic_scope_note,
+}
+import strategy.machine_tile_design {
+  MachineTileScenario,
+  scenarios, selected_scenario_id, backboard_thickness_mm,
+  ScenarioSelection, ScenarioSelected, ScenarioSelectionMissing, ScenarioSelectionAmbiguous,
+  resolve_selected_scenario, TileGeometryKnowledge, tile_drawing_intent, scenario_depth_layers,
+  scenario_total_wall_projection_mm, scenario_fans_on_tile,
+  scenario_boundary_crossings, scenario_fluid_crossings,
+  depth_envelope_note, zero_fan_claim_retraction_note, crossing_derivation_note,
+  rear_power_standing_note, board_profile_note, scenario_recut_note,
+  deferred_study_note, active_data_ports_note,
+}
+
+data machine_tile_page_note: String = "The concept page GENERATED from the model rather than written beside it. Operator request 2026-08-11, and it is the only complete answer to the drift the routed review found: a page that merely PROMISES to project from a carrier can still drift, because a human can type a number into it. A page whose configuration-sensitive numbers are computed by the same functions the witnesses check cannot. Every depth, crossing count, fan count and bar width below is derived here from strategy.machine_tile_design - none is transcribed. THAT CLAIM IS NARROWER THAN IT READS, and it was overstated. It holds for marked numeric projection fields, which arrive through named model functions. It does NOT hold for the page as a whole: explanatory prose remains authored, and the central layout standing is an authored quarantine rather than a derived scene result. A page carrying an authored physical verdict must not advertise that nothing on it is transcribed. The rule this module holds to is the reviewer's: no literal configuration-sensitive number appears in markup; every such number arrives through a function."
+
+data generator_authority_note: String = "Consumes std.markup and extdeps.languages.html rather than concatenating strings, so escaping is the corpus authority's problem and not this module's. That matters concretely here: style is registered in html5_raw_text_tags, so the stylesheet is emitted raw and a CSS child combinator survives instead of becoming an entity - the exact corruption class recorded in that authority's note. SVG geometry is emitted through the same Fragment tree, so a coordinate is a number computed from a scenario field, never a string typed into a path."
+
+fn n(v: Nat) -> Fragment {
+  txt(s: to_string(v))
+}
+
+fn mm(v: Nat) -> Fragment {
+  txt(s: join([to_string(v), " mm"], ""))
+}
+
+fn td(children: List<Fragment>) -> Fragment {
+  el(tag: "td", children: children)
+}
+
+fn td_dim(children: List<Fragment>) -> Fragment {
+  el_class(tag: "td", cls: "dim", children: children)
+}
+
+fn th(label: String) -> Fragment {
+  el(tag: "th", children: [txt(s: label)])
+}
+
+fn tr(children: List<Fragment>) -> Fragment {
+  el(tag: "tr", children: children)
+}
+
+fn p(text: String) -> Fragment {
+  el(tag: "p", children: [txt(s: text)])
+}
+
+fn h2(text: String) -> Fragment {
+  el(tag: "h2", children: [txt(s: text)])
+}
+
+fn label_row(text: String) -> Fragment {
+  el_class(tag: "span", cls: "sec-label", children: [txt(s: text)])
+}
+
+fn scenario_is_selected(s: MachineTileScenario) -> Bool {
+  match resolve_selected_scenario() {
+    ScenarioSelected { scenario } => scenario.id == s.id,
+    ScenarioSelectionMissing { id } => false,
+    ScenarioSelectionAmbiguous { id, matches } => false,
+  }
+}
+
+data selection_banner_note: String = "A page that cannot say which configuration it shows announces that instead of rendering a quiet lie. Missing and duplicated identity both surface here rather than degrading into a page with no selected badge or several."
+
+fn selection_banner() -> Fragment {
+  match resolve_selected_scenario() {
+    ScenarioSelected { scenario } =>
+      el_class(tag: "p", cls: "gen", children: [
+        txt(s: join(["GENERATED - strategy.machine_tile_page - configuration under study: ", scenario.id,
+                     " - ", to_string(count(scenarios)), " presets modelled - NO layout is admitted"], "")),
+      ]),
+    ScenarioSelectionMissing { id } =>
+      el_class(tag: "p", cls: "refused", children: [
+        txt(s: join(["REFUSED - selected_scenario_id \"", id, "\" matches no modelled scenario."], "")),
+      ]),
+    ScenarioSelectionAmbiguous { id, matches } =>
+      el_class(tag: "p", cls: "refused", children: [
+        txt(s: join(["REFUSED - selected_scenario_id \"", id, "\" matches ",
+                     to_string(matches), " scenarios."], "")),
+      ]),
+  }
+}
+
+// LAYOUT STANDING, replacing a SELECTED badge that was asserting something false.
+//
+// The badge said a scenario was the selected physical design. It is not: the two hold clearance
+// envelopes intersect the board, the cooler and, in preset A, the power supply. Those conflicts
+// were measured off this page's own emitted coordinates and off the model's placements, and they
+// are not a rendering artefact -- there is no free region on a 640 mm face large enough for a
+// 166 x 191 mm hold, so no coordinate adjustment fixes it.
+//
+// A green SELECTED badge on a layout whose parts occupy the same space is the most consequential
+// false claim this page has carried, because it is the one a reader acts on. It is removed now,
+// ahead of any collision machinery: saying "unresolved" needs no geometry kernel, and waiting for
+// one before withdrawing a claim already known to be wrong would be choosing the convenient
+// order.
+//
+// This is deliberately NOT computed. It is an authored standing that a resolved scene will
+// replace -- the layout must be REFUSED by a scene resolution, not reassured by a note. The
+// standing is written so it cannot quietly become green again: only a scene receipt may restore
+// a selected badge, and there is no scene.
+data layout_standing_note: String = "LAYOUT UNRESOLVED. Conservative hold clearance envelopes intersect occupied hardware regions: left hold with board and cooler, right hold with the power supply in preset A. A selected-build standing requires a resolved physical scene, and none exists. Overlap of conservative envelopes does not prove the exact sculpted bodies intersect - it proves clearance has NOT been established, which is sufficient to withhold admission."
+
+fn layout_standing_banner() -> Fragment {
+  el_class(tag: "p", cls: "refused", children: [txt(s: layout_standing_note)])
+}
+
+fn selected_marker(s: MachineTileScenario) -> Fragment {
+  if scenario_is_selected(s: s) {
+    el_class(tag: "span", cls: "refused", children: [txt(s: "UNRESOLVED")])
+  } else {
+    txt(s: "candidate")
+  }
+}
+
+data depth_scale_num: Nat = 1
+
+data depth_scale_den: Nat = 1
+
+fn px(v: Nat) -> Nat {
+  v * depth_scale_num / depth_scale_den
+}
+
+data depth_bar_origin_x: Nat = 150
+
+data depth_bar_height: Nat = 26
+
+fn bar_y(index: Nat) -> Nat {
+  40 + index * 54
+}
+
+data standing_class_note: String = "The renderer never reads raw geometry. It matches the arms of project_spatial_rendering, so the class it emits IS the standing - a hypothesis cannot be drawn as a measurement without matching an arm that says hypothesis, and unknown geometry has no arm that could produce a shape at all."
+
+fn standing_class(k: TileGeometryKnowledge) -> String {
+  match project_spatial_rendering(knowledge: k) {
+    RenderMeasured { value, uncertainty } => "spatial-measured",
+    RenderEstimated { region } => "spatial-estimated",
+    RenderHypothesis { value, purpose } => "spatial-hypothesis",
+    RenderUnknown { obligation } => "spatial-unknown",
+  }
+}
+
+fn rect(x: Nat, y: Nat, w: Nat, h: Nat, fill: String) -> Fragment {
+  el_attrs(
+    tag: "rect",
+    attributes: [
+      attr(name: "x", value: to_string(x)),
+      attr(name: "y", value: to_string(y)),
+      attr(name: "width", value: to_string(w)),
+      attr(name: "height", value: to_string(h)),
+      attr(name: "fill", value: fill),
+      attr(name: "class", value: standing_class(k: tile_drawing_intent(v: w))),
+    ],
+    children: [],
+  )
+}
+
+fn svg_text(x: Nat, y: Nat, cls: String, content: String) -> Fragment {
+  el_attrs(
+    tag: "text",
+    attributes: [
+      attr(name: "x", value: to_string(x)),
+      attr(name: "y", value: to_string(y)),
+      attr(name: "class", value: cls),
+    ],
+    children: [txt(s: content)],
+  )
+}
+
+data layer_fill_void: String = "var(--alu-soft)"
+
+data layer_fill_board: String = "var(--ply)"
+
+data layer_fill_rear: String = "var(--red-soft)"
+
+data layer_fill_carrier: String = "var(--ply-soft)"
+
+data layer_fill_front: String = "var(--oak)"
+
+fn depth_bar(s: MachineTileScenario, index: Nat) -> Fragment {
+  let y = bar_y(index: index)
+  let x0 = depth_bar_origin_x
+  let w1 = px(v: s.wall_to_backboard_face_mm)
+  let x1 = x0 + w1
+  let w2 = px(v: backboard_thickness_mm)
+  let x2 = x1 + w2
+  let w3 = px(v: s.rear_service_depth_mm)
+  let x3 = x2 + w3
+  let w4 = px(v: s.carrier_thickness_mm)
+  let x4 = x3 + w4
+  let w5 = px(v: s.tile_plane_to_front_tip_mm)
+  let x5 = x4 + w5
+  el(tag: "g", children: [
+    svg_text(x: 10, y: y + 17, cls: "lbl", content: s.label),
+    rect(x: x0, y: y, w: w1, h: depth_bar_height, fill: layer_fill_void),
+    rect(x: x1, y: y, w: w2, h: depth_bar_height, fill: layer_fill_board),
+    rect(x: x2, y: y, w: w3, h: depth_bar_height, fill: layer_fill_rear),
+    rect(x: x3, y: y, w: w4, h: depth_bar_height, fill: layer_fill_carrier),
+    rect(x: x4, y: y, w: w5, h: depth_bar_height, fill: layer_fill_front),
+    svg_text(
+      x: x5 + 12,
+      y: y + 17,
+      cls: "tot",
+      content: join([to_string(scenario_total_wall_projection_mm(s: s)), " mm total"], ""),
+    ),
+  ])
+}
+
+type BarFold {
+  index: Nat
+  items: List<Fragment>
+}
+
+fn depth_bars() -> List<Fragment> {
+  fold(scenarios, init: BarFold { index: 0, items: [] }, f: fn(acc, s) {
+    BarFold { index: acc.index + 1, items: acc.items.concat([depth_bar(s: s, index: acc.index)]) }
+  }).items
+}
+
+data depth_legend_note: String = "void . backboard . rear service . carrier . front projection"
+
+fn depth_figure() -> Fragment {
+  el_class(tag: "figure", cls: "fig", children: [
+    el_class(tag: "div", cls: "figbox", children: [
+      el_attrs(
+        tag: "svg",
+        attributes: [
+          attr(name: "viewBox", value: "0 0 820 210"),
+          attr(name: "role", value: "img"),
+          attr(name: "aria-label", value: "Wall projection of each preset, drawn to scale at one pixel per millimetre, with every bar segment computed from the model"),
+        ],
+        children: [
+          svg_text(x: 10, y: 22, cls: "cap", content: "TRUE WALL PROJECTION - 1 PX PER MM - DASHED = HYPOTHESIS, NOTHING MEASURED"),
+          el(tag: "g", children: depth_bars()),
+          svg_text(x: 10, y: 200, cls: "lgd", content: depth_legend_note),
+        ],
+      ),
+    ]),
+    el(tag: "figcaption", children: [txt(s: depth_envelope_note)]),
+  ])
+}
+
+
+data elevation_renderer_note: String = "The renderer performs ONE job: lower physical millimetres to drawing units and choose appearance from role plus standing. It knows nothing about where a supply belongs or which way a board faces - those are projection facts. Two coordinate spaces are kept apart deliberately: a 28 mm web is physical and arrives through an extent; a 24 px margin is page layout and may be a literal here. They never share a field."
+
+data elevation_scale_num: Nat = 3
+
+data elevation_scale_den: Nat = 5
+
+data elevation_margin_px: Nat = 24
+
+fn mm_to_px(v: Nat) -> Nat {
+  v * elevation_scale_num / elevation_scale_den
+}
+
+fn role_class(r: ProjectionRole) -> String {
+  match r {
+    MountedComponent => "role-mounted-component",
+    StructuralSolid => "role-structure",
+    ElectronicsBody => "role-electronics",
+    PowerBody => "role-power",
+    CoolingBody => "role-cooling",
+    RouteBody => "role-route",
+    GripVoid => "role-grip-void",
+    RestContact => "role-rest",
+    ExclusionBand => "role-exclusion",
+  }
+}
+
+fn role_group_of(r: ProjectionRole) -> String {
+  match r {
+    MountedComponent => "projection-components",
+    StructuralSolid => "projection-structure",
+    ElectronicsBody => "projection-components",
+    PowerBody => "projection-components",
+    CoolingBody => "projection-components",
+    RouteBody => "projection-routes",
+    GripVoid => "projection-structure",
+    RestContact => "projection-structure",
+    ExclusionBand => "projection-clearances",
+  }
+}
+
+fn extent_fragment(e: DatumAnchoredExtent, w: Nat, h: Nat) -> Fragment {
+  el_attrs(
+    tag: "rect",
+    attributes: [
+      attr(name: "x", value: to_string(elevation_margin_px + mm_to_px(v: extent_left_mm(e: e, canvas_width_mm: w)))),
+      attr(name: "y", value: to_string(elevation_margin_px + mm_to_px(v: extent_top_mm(e: e, canvas_height_mm: h)))),
+      attr(name: "width", value: to_string(mm_to_px(v: e.width_mm))),
+      attr(name: "height", value: to_string(mm_to_px(v: e.height_mm))),
+      attr(name: "class", value: join([role_class(r: e.role), " ", standing_class(k: e.standing)], "")),
+    ],
+    children: [el(tag: "title", children: [txt(s: join([e.subject_id, " - ", e.note], ""))])],
+  )
+}
+
+fn extents_in_group(p: FrontElevationProjection, group: String) -> List<Fragment> {
+  map(
+    filter(p.extents, e => role_group_of(r: e.role) == group),
+    e => extent_fragment(e: e, w: p.canvas_width_mm, h: p.canvas_height_mm),
+  )
+}
+
+// Two hazards can name one subject - H3 and H4 both sit on the cooler - so the dots coincide and
+// one label paints over the other. Byte counts said 25 markers existed; they could not say 25 were
+// readable. The label is fanned by its index within the layer so colocated codes stack instead of
+// overprinting. The dot stays on the part; only the annotation moves, so this is layout, not
+// geometry.
+// How many markers before this one share its anchor point. Zero for the first at a location, one
+// for the second, and so on - which is exactly the vertical slot the label takes.
+fn colocated_rank(ms: List<HazardMarkerPlacement>, subject: HazardMarkerPlacement) -> Int {
+  count(filter(ms, o =>
+    o.centre_x_mm == subject.centre_x_mm
+      && o.centre_y_mm == subject.centre_y_mm
+      && o.code < subject.code))
+}
+
+fn hazard_marker_fragment(m: HazardMarkerPlacement, index: Int) -> Fragment {
+  el_attrs(tag: "g", attributes: [attr(name: "class", value: "hazard-marker")], children: [
+    el_attrs(tag: "circle", attributes: [
+      attr(name: "cx", value: to_string(elevation_margin_px + mm_to_px(v: m.centre_x_mm))),
+      attr(name: "cy", value: to_string(elevation_margin_px + mm_to_px(v: m.centre_y_mm))),
+      attr(name: "r", value: "3.5"),
+    ], children: [el(tag: "title", children: [txt(s: join([m.code, " - ", m.headline], ""))])]),
+    el_attrs(tag: "text", attributes: [
+      attr(name: "x", value: to_string(elevation_margin_px + mm_to_px(v: m.centre_x_mm) + 7)),
+      attr(name: "y", value: to_string(elevation_margin_px + mm_to_px(v: m.centre_y_mm) + 3 + index * 10)),
+      attr(name: "class", value: "hazard-code"),
+    ], children: [txt(s: m.code)]),
+  ])
+}
+
+fn hazard_layer(p: FrontElevationProjection) -> Fragment {
+  el_attrs(tag: "g", attributes: [attr(name: "class", value: "projection-hazards")],
+    children: map(
+      hazard_markers(p: p),
+      m => hazard_marker_fragment(m: m, index: colocated_rank(ms: hazard_markers(p: p), subject: m))))
+}
+
+// POLYGON PATH for organic profiles. The renderer previously emitted only <rect>, which is why a
+// sculpted hold could not be drawn even as an estimate: the drawing vocabulary had no shape that
+// was not a box, so "we cannot draw it" was partly a limitation of this function rather than a
+// fact about the evidence. An estimated silhouette needs points, so points exist now.
+fn profile_point_text(pt: ProfilePoint, left_mm: Nat, top_mm: Nat) -> String {
+  join([
+    to_string(elevation_margin_px + mm_to_px(v: left_mm + pt.x_mm)),
+    ",",
+    to_string(elevation_margin_px + mm_to_px(v: top_mm + pt.y_mm)),
+  ], "")
+}
+
+fn profile_points_attr(pr: ProjectedClosedProfile) -> String {
+  join(
+    map(pr.points, pt => join([profile_point_text(pt: pt, left_mm: pr.horizontal_offset_mm, top_mm: pr.vertical_offset_mm), " "], "")),
+    ""
+  )
+}
+
+fn profile_fragment(pr: ProjectedClosedProfile) -> Fragment {
+  el_attrs(
+    tag: "polygon",
+    attributes: [
+      attr(name: "points", value: profile_points_attr(pr: pr)),
+      attr(name: "class", value: join([role_class(r: pr.role), " ", standing_class(k: pr.standing)], "")),
+    ],
+    children: [el(tag: "title", children: [txt(s: join([pr.subject_id, " - ", pr.note], ""))])],
+  )
+}
+
+fn hold_profile_group() -> Fragment {
+  el_attrs(tag: "g", attributes: [attr(name: "class", value: "projection-holds")],
+    children: map(hold_profiles(), pr => profile_fragment(pr: pr)))
+}
+
+fn projection_group(p: FrontElevationProjection, group: String) -> Fragment {
+  el_attrs(tag: "g", attributes: [attr(name: "class", value: group)],
+    children: extents_in_group(p: p, group: group))
+}
+
+data elevation_group_order: List<String> = [
+  "projection-structure",
+  "projection-clearances",
+  "projection-components",
+  "projection-routes",
+]
+
+// The hold layer appears on FRONT elevations only. A side section through a sculpted body would
+// need a genuine section profile, and estimating one from a front-on photograph would be
+// inventing geometry rather than tracing it.
+fn front_elevation_hold_layer(p: FrontElevationProjection) -> List<Fragment> {
+  match p.view {
+    FrontElevationView => [hold_profile_group()]
+    SideSectionView => []
+    RearElevationView => []
+    GripPlanSectionView => []
+    GripThicknessDetailView => []
+    GripElevationView => []
+  }
+}
+
+fn front_elevation_svg(p: FrontElevationProjection) -> Fragment {
+  el_attrs(
+    tag: "svg",
+    attributes: [
+      attr(name: "viewBox", value: join(["0 0 ",
+        to_string(elevation_margin_px * 2 + mm_to_px(v: p.canvas_width_mm)), " ",
+        to_string(elevation_margin_px * 2 + mm_to_px(v: p.canvas_height_mm))], "")),
+      attr(name: "role", value: "img"),
+      attr(name: "data-scenario-id", value: p.scenario_id),
+      attr(name: "aria-label", value: join([view_label(v: p.view), " of preset ", p.scenario_id,
+        ", every extent projected from datum-anchored offsets"], "")),
+    ],
+    children: map(elevation_group_order, g => projection_group(p: p, group: g)).concat(front_elevation_hold_layer(p: p)).concat([hazard_layer(p: p)]),
+  )
+}
+
+fn view_figure(p: FrontElevationProjection, label: String) -> Fragment {
+  el_class(tag: "figure", cls: "fig", children: [
+    el_class(tag: "div", cls: "figbox", children: [front_elevation_svg(p: p)]),
+    el(tag: "figcaption", children: [
+      txt(s: join([label, " - ", view_label(v: p.view), ", ", to_string(count(p.extents)),
+        " extents, every one anchored to a straight datum and drawn dashed because it is hypothesis-grade."], "")),
+    ]),
+  ])
+}
+
+fn scenario_view_block(s: MachineTileScenario) -> Fragment {
+  el(tag: "section", children: [
+    label_row(text: s.id),
+    h2(text: s.label),
+    view_figure(p: front_elevation_for(s: s), label: s.label),
+    view_figure(p: side_section_for(s: s), label: s.label),
+    view_figure(p: rear_elevation_for(s: s), label: s.label),
+  ])
+}
+
+// TABS, and they are radio inputs rather than script. Nine drawings stacked vertically cannot be
+// compared - the reader has to scroll past two to reach the third and hold the first in memory. A
+// tab puts the same three views of the same preset in the same place on the page, so switching
+// preset moves only what actually differs.
+//
+// No JavaScript: a checked radio and a sibling selector do the whole job, and a page whose figures
+// depend on script is a page that shows nothing when the script is blocked.
+// The radio must be a SIBLING of the pane container, not a nephew. An input wrapped in a span
+// inside the tab bar cannot reach the panes with ~, the rule never matches, and since panes default
+// to display:none every drawing silently disappears. So the inputs are hoisted to the top of the
+// tab container, the labels stay in the bar, and both are reached from the input by ~.
+fn radio_input(group: String, id: String, checked: Bool) -> Fragment {
+  el_attrs(tag: "input", attributes: concat([
+    attr(name: "type", value: "radio"),
+    attr(name: "name", value: group),
+    attr(name: "id", value: id),
+    attr(name: "class", value: "tabin"),
+  ], if checked { [attr(name: "checked", value: "checked")] } else { [] }), children: [])
+}
+
+fn radio_label(id: String, label: String) -> Fragment {
+  el_attrs(tag: "label", attributes: [
+    attr(name: "for", value: id),
+    attr(name: "class", value: "tablab"),
+  ], children: [txt(s: label)])
+}
+
+fn view_pane(id: String, body: Fragment) -> Fragment {
+  el_attrs(tag: "div", attributes: [
+    attr(name: "class", value: "pane"),
+    attr(name: "data-pane", value: id),
+  ], children: [body])
+}
+
+// Each preset carries its own view-tab group, so switching preset does not silently reset which
+// face is being looked at. The hazard list for the preset travels with its drawings rather than
+// living in a separate section, because a hazard annotates the view above it.
+fn scenario_tab_panel(s: MachineTileScenario) -> Fragment {
+  let g = join(["view-", s.id], "")
+  let f = join([g, "-front"], "")
+  let d = join([g, "-side"], "")
+  let r = join([g, "-rear"], "")
+  el_attrs(tag: "div", attributes: [
+    attr(name: "class", value: "scenpane"),
+    attr(name: "data-scenario", value: s.id),
+  ], children: [
+    radio_input(group: g, id: f, checked: true),
+    radio_input(group: g, id: d, checked: false),
+    radio_input(group: g, id: r, checked: false),
+    el_class(tag: "div", cls: "tabbar", children: [
+      radio_label(id: f, label: "Front"),
+      radio_label(id: d, label: "Side section"),
+      radio_label(id: r, label: "Rear"),
+    ]),
+    el_class(tag: "div", cls: "panes", children: [
+      view_pane(id: "front", body: view_figure(p: front_elevation_for(s: s), label: s.label)),
+      view_pane(id: "side", body: view_figure(p: side_section_for(s: s), label: s.label)),
+      view_pane(id: "rear", body: view_figure(p: rear_elevation_for(s: s), label: s.label)),
+    ]),
+    el_class(tag: "p", cls: "note", children: [txt(s: s.note)]),
+    hazard_list_for(s: s),
+  ])
+}
+
+fn elevation_figures() -> List<Fragment> {
+  [
+    el_class(tag: "div", cls: "tabs", children: [
+      radio_input(group: "scenario", id: "scen-a", checked: true),
+      radio_input(group: "scenario", id: "scen-b", checked: false),
+      radio_input(group: "scenario", id: "scen-c", checked: false),
+      el_class(tag: "div", cls: "tabbar scen", children: [
+        radio_label(id: "scen-a", label: "A - face supply, air"),
+        radio_label(id: "scen-b", label: "B - rear supply, air"),
+        radio_label(id: "scen-c", label: "C - rear supply, liquid"),
+      ]),
+      el_class(tag: "div", cls: "scenpanes", children: [
+        scenario_tab_panel(s: scenario_a_face_air),
+        scenario_tab_panel(s: scenario_b_rear_air),
+        scenario_tab_panel(s: scenario_c_rear_liquid),
+      ]),
+    ]),
+  ]
+}
+
+// The hazard list for one preset, rendered inside that preset's tab so a marker code on a drawing
+// and its explanation are never separated by a scroll.
+fn hazard_list_for(s: MachineTileScenario) -> Fragment {
+  let p = front_elevation_for(s: s)
+  el(tag: "div", children: [
+    el(tag: "h3", children: [txt(s: "What can hurt you")]),
+    el(tag: "ol", children: map(placeable_hazards(p: p), m => hazard_item(m: m))),
+    el_class(tag: "p", cls: "note", children: [
+      txt(s: join(["Unplaced in this view: ", to_string(count(unplaceable_hazards(p: p))),
+        ". ", unplaceable_hazard_note], "")),
+    ]),
+    el(tag: "ol", children: map(unplaceable_hazards(p: p), m => hazard_item(m: m))),
+  ])
+}
+
+fn hazard_item(m: HazardMark) -> Fragment {
+  el(tag: "li", children: [
+    el_class(tag: "span", cls: "sel", children: [txt(s: m.code)]),
+    txt(s: join([" ", m.headline, " - ", m.detail], "")),
+  ])
+}
+
+fn hazard_panel(s: MachineTileScenario) -> Fragment {
+  let p = front_elevation_for(s: s)
+  el(tag: "section", children: [
+    label_row(text: join(["hazards - ", s.id], "")),
+    h2(text: join([s.label, " - what can hurt you"], "")),
+    el(tag: "ol", children: map(placeable_hazards(p: p), m => hazard_item(m: m))),
+    el_class(tag: "p", cls: "note", children: [
+      txt(s: join(["Unplaced in this view: ", to_string(count(unplaceable_hazards(p: p))),
+        ". ", unplaceable_hazard_note], "")),
+    ]),
+    el(tag: "ol", children: map(unplaceable_hazards(p: p), m => hazard_item(m: m))),
+  ])
+}
+
+fn hazard_panels() -> List<Fragment> {
+  map(scenarios, s => hazard_panel(s: s))
+}
+
+fn grip_figures() -> List<Fragment> {
+  map(grip_views(), p => view_figure(p: p, label: "NOT SELECTED - routed plywood edge grip, comparison only"))
+}
+
+fn depth_row(s: MachineTileScenario) -> Fragment {
+  tr(children: [
+    td(children: [txt(s: s.label), txt(s: " "), selected_marker(s: s)]),
+    td_dim(children: [mm(v: s.wall_to_backboard_face_mm)]),
+    td_dim(children: [mm(v: s.rear_service_depth_mm)]),
+    td_dim(children: [mm(v: s.tile_plane_to_front_tip_mm)]),
+    td_dim(children: [mm(v: scenario_total_wall_projection_mm(s: s))]),
+  ])
+}
+
+fn depth_table() -> Fragment {
+  el(tag: "table", children: [
+    el(tag: "thead", children: [
+      tr(children: [
+        th(label: "Preset"),
+        th(label: "Wall to board"),
+        th(label: "Rear service"),
+        th(label: "Front projection"),
+        th(label: "Total"),
+      ]),
+    ]),
+    el(tag: "tbody", children: map(scenarios, s => depth_row(s: s))),
+  ])
+}
+
+fn crossings_row(s: MachineTileScenario) -> Fragment {
+  tr(children: [
+    td(children: [txt(s: s.label)]),
+    td_dim(children: [n(v: s.active_data_ports)]),
+    td_dim(children: [n(v: scenario_fluid_crossings(s: s))]),
+    td_dim(children: [n(v: scenario_boundary_crossings(s: s))]),
+    td_dim(children: [n(v: scenario_fans_on_tile(s: s))]),
+    td_dim(children: [n(v: s.mass_estimate_dg)]),
+  ])
+}
+
+fn crossings_table() -> Fragment {
+  el(tag: "table", children: [
+    el(tag: "thead", children: [
+      tr(children: [
+        th(label: "Preset"),
+        th(label: "Active data ports"),
+        th(label: "Fluid couplings"),
+        th(label: "Crossings"),
+        th(label: "Fans on tile"),
+        th(label: "Mass (dg)"),
+      ]),
+    ]),
+    el(tag: "tbody", children: map(scenarios, s => crossings_row(s: s))),
+  ])
+}
+
+fn note_block(label: String, body: String) -> Fragment {
+  el(tag: "section", children: [
+    label_row(text: label),
+    el_class(tag: "p", cls: "note", children: [txt(s: body)]),
+  ])
+}
+
+data page_style: String = "
+:root\{--plaster:#E9E4DA;--card:#E0DACE;--ink:#2A2620;--muted:#6E675C;--oak:#A97C3E;
+--ply:#D9BE93;--ply-soft:#EBDCC2;--alu-soft:#CFD6DA;--rule:#C8C0B2;--green:#4F7A4A;
+--red-soft:#D8B3A6}
+@media (prefers-color-scheme:dark)\{:root:not([data-theme=\"light\"])\{--plaster:#191713;
+--card:#221F1A;--ink:#EAE4D8;--muted:#9C9485;--oak:#D2A057;--ply:#C0A278;--ply-soft:#3B3122;
+--alu-soft:#262E34;--rule:#3A352C;--green:#7CA876;--red-soft:#6B4436}}
+:root[data-theme=\"dark\"]\{--plaster:#191713;--card:#221F1A;--ink:#EAE4D8;--muted:#9C9485;
+--oak:#D2A057;--ply:#C0A278;--ply-soft:#3B3122;--alu-soft:#262E34;--rule:#3A352C;
+--green:#7CA876;--red-soft:#6B4436}
+*\{box-sizing:border-box}
+body\{background:var(--plaster);color:var(--ink);margin:0;padding:0 1.25rem 5rem;
+font-family:ui-sans-serif,system-ui,Helvetica,Arial,sans-serif;font-size:17px;line-height:1.7}
+.wrap\{max-width:46rem;margin:0 auto}
+h1\{font-family:Georgia,serif;font-weight:400;font-size:clamp(2rem,5vw,3rem);line-height:1.1;
+margin:3.5rem 0 1rem;letter-spacing:-0.02em}
+h2\{font-family:Georgia,serif;font-weight:400;font-size:1.6rem;line-height:1.25;margin:0 0 0.9rem}
+.standfirst\{font-family:Georgia,serif;font-size:1.15rem;line-height:1.55;margin:0 0 1.4rem}
+.sec-label\{font-family:ui-monospace,Menlo,monospace;font-size:0.68rem;letter-spacing:0.2em;
+text-transform:uppercase;color:var(--oak);display:block;margin:0 0 0.7rem}
+section\{padding-top:2.6rem}
+p\{margin:0 0 1rem}
+.note\{font-size:0.93rem;color:var(--muted);border-top:1px solid var(--rule);padding-top:0.9rem}
+.refused\{font-family:ui-monospace,Menlo,monospace;font-size:0.75rem;letter-spacing:0.05em;
+color:#fff;background:#9C4A38;padding:0.9rem 1rem;margin:1.4rem 0}
+.gen\{font-family:ui-monospace,Menlo,monospace;font-size:0.72rem;letter-spacing:0.05em;
+color:var(--muted);border:1px solid var(--rule);border-left:2.5px solid var(--green);
+padding:0.9rem 1rem;margin:1.4rem 0}
+table\{border-collapse:collapse;width:100%;font-size:0.9rem;margin:1.4rem 0}
+th,td\{text-align:left;padding:0.45rem 0.6rem;border-bottom:1px solid var(--rule);
+vertical-align:top;line-height:1.45}
+th\{font-family:ui-monospace,Menlo,monospace;font-size:0.62rem;letter-spacing:0.1em;
+text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--ink)}
+td.dim\{font-family:ui-monospace,Menlo,monospace;font-size:0.8rem;font-variant-numeric:tabular-nums}
+.sel\{font-family:ui-monospace,Menlo,monospace;font-size:0.6rem;letter-spacing:0.1em;
+color:var(--green);border:1px solid var(--green);padding:0.05rem 0.35rem;margin-left:0.3rem}
+.fig\{margin:2rem 0;max-width:100%}
+.figbox\{overflow-x:auto;background:var(--card);border:1px solid var(--rule);padding:1.2rem}
+.figbox svg\{display:block;width:100%;height:auto;min-width:700px}
+figcaption\{font-size:0.88rem;line-height:1.5;color:var(--muted);margin-top:0.7rem}
+g.hazard-marker circle\{fill:#9C4A38;fill-opacity:0.85}
+text.hazard-code\{font-family:ui-monospace,Menlo,monospace;font-size:8.5px;fill:#9C4A38;letter-spacing:0.04em}
+.role-structure\{fill:var(--ply-soft)}
+.role-electronics\{fill:var(--card)}
+.role-power\{fill:var(--alu-soft)}
+.role-cooling\{fill:var(--alu-soft)}
+.role-route\{fill:var(--cork-soft)}
+.role-grip-void\{fill:var(--plaster)}
+.role-rest\{fill:#3B3B3D}
+.role-exclusion\{fill:none;stroke:var(--oak);stroke-dasharray:6 4;stroke-width:1.2}
+rect.spatial-hypothesis\{stroke:var(--ink);stroke-width:1.1;stroke-dasharray:5 3;opacity:0.82}
+rect.spatial-measured\{stroke:var(--ink);stroke-width:1.1}
+rect.spatial-estimated\{stroke:var(--muted);stroke-width:1.1;stroke-dasharray:2 2}
+polygon.role-mounted-component\{fill:var(--oak);fill-opacity:0.30}
+polygon.spatial-estimated\{stroke:var(--oak);stroke-width:2;stroke-dasharray:7 4}
+text.cap\{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;letter-spacing:1.6px;
+fill:var(--ink)}
+text.lbl\{font-family:ui-monospace,Menlo,monospace;font-size:10px;fill:var(--muted)}
+text.tot\{font-family:ui-monospace,Menlo,monospace;font-size:11px;fill:var(--oak)}
+text.lgd\{font-family:ui-monospace,Menlo,monospace;font-size:9.5px;fill:var(--muted)}
+footer\{max-width:46rem;margin:3.5rem auto 0;padding-top:1.4rem;border-top:1.5px solid var(--ink);
+font-family:ui-monospace,Menlo,monospace;font-size:0.7rem;letter-spacing:0.06em;color:var(--muted)}
+.tabs\{margin:1.6rem 0}
+.tabbar\{display:flex;flex-wrap:wrap;gap:0.35rem;margin:0 0 0.9rem;border-bottom:1px solid var(--rule);padding-bottom:0.5rem}
+.tabbar.scen\{border-bottom-width:2px;border-bottom-color:var(--ink)}
+input.tabin\{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+label.tablab\{display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);border:1px solid var(--rule);padding:0.4rem 0.7rem;cursor:pointer}
+label.tablab:hover\{color:var(--ink);border-color:var(--ink)}
+input.tabin:focus-visible ~ .tabbar label.tablab\{outline:1px dotted var(--oak)}
+.scenpane\{display:none}
+.pane\{display:none}
+#scen-a:checked ~ .scenpanes .scenpane[data-scenario=\"altra-face-psu-air\"]\{display:block}
+#scen-b:checked ~ .scenpanes .scenpane[data-scenario=\"altra-rear-psu-air\"]\{display:block}
+#scen-c:checked ~ .scenpanes .scenpane[data-scenario=\"altra-rear-psu-liquid\"]\{display:block}
+#scen-a:checked ~ .tabbar label[for=\"scen-a\"]\{color:var(--plaster);background:var(--ink);border-color:var(--ink)}
+#scen-b:checked ~ .tabbar label[for=\"scen-b\"]\{color:var(--plaster);background:var(--ink);border-color:var(--ink)}
+#scen-c:checked ~ .tabbar label[for=\"scen-c\"]\{color:var(--plaster);background:var(--ink);border-color:var(--ink)}
+input[id$=\"-front\"]:checked ~ .panes .pane[data-pane=\"front\"]\{display:block}
+input[id$=\"-side\"]:checked ~ .panes .pane[data-pane=\"side\"]\{display:block}
+input[id$=\"-rear\"]:checked ~ .panes .pane[data-pane=\"rear\"]\{display:block}
+input[id$=\"-front\"]:checked ~ .tabbar label[for$=\"-front\"]\{color:var(--plaster);background:var(--ink);border-color:var(--ink)}
+input[id$=\"-side\"]:checked ~ .tabbar label[for$=\"-side\"]\{color:var(--plaster);background:var(--ink);border-color:var(--ink)}
+input[id$=\"-rear\"]:checked ~ .tabbar label[for$=\"-rear\"]\{color:var(--plaster);background:var(--ink);border-color:var(--ink)}"
+
+data page_title: String = "Machine tile - generated from the model"
+
+data standfirst_text: String = "A wall-mounted machine tile, worked out as a program so the drawing and the numbers cannot drift apart. Numeric projections below derive from modeled values; the prose is written by hand, and so is the verdict that no layout is admitted yet - that one is a note, not a calculation."
+
+data body_reconstruction_note: String = "REBUILT 2026-08-11 after a silent double failure worth recording. An earlier textual splice inserting selection_banner matched an end index four sections too far and DELETED the depth table, depth figure, crossings table and their headings; a later splice meant to insert the elevations targeted a string that no longer existed and silently did nothing, because a no-op replace raises nothing. Both faults were invisible in source review and invisible at compile - the module typechecked perfectly with most of its page missing - and only the executed render exposed them. The body is now written out explicitly rather than patched into, and witness_page_body_carries_every_section counts the sections so a future deletion reds instead of rendering quietly."
+
+data grip_section_note: String = "This section exists because hold_obligations() had no caller. It was authored in the projection when the hold was gated, and the projection's own note claimed the page carried an obligation instead of a silhouette. The page carried nothing: a grep of both generated artifacts found zero occurrences of the obligation text. That is the substrate-without-consumer defect one level down from the extdeps row, and it is worse than a missing feature, because a note asserted the mechanism existed. A refusal nobody renders is indistinguishable from no refusal at all."
+
+fn obligation_item(text: String) -> Fragment {
+  el(tag: "li", children: [txt(s: text)])
+}
+
+fn grip_standing_section() -> Fragment {
+  el(tag: "section", children: [
+    label_row(text: "Lift interface"),
+    h2(text: "A selected part, awaiting documents."),
+    el_class(tag: "ul", cls: "identity", children: map(hold_identity_card(), c => obligation_item(text: c))),
+    el_class(tag: "p", cls: "note", children: [txt(s: "Outstanding obligations, derived from the external part row rather than authored here - this list shortens only when a fact lands upstream:")]),
+    el_class(tag: "ul", cls: "refused", children: map(hold_obligations().concat(hold_use_obligations()), o => obligation_item(text: o))),
+  ])
+}
+
+
+fn grip_span_section() -> Fragment {
+  el(tag: "section", children: [
+    label_row(text: "Hands first"),
+    h2(text: "The span the tile has to fit, not the other way round."),
+    el_class(tag: "p", cls: "gen", children: [txt(s: join([
+      "COMFORTABLE TWO-HAND CARRY SPAN: ", to_string(comfortable_span_low_mm()), " - ",
+      to_string(comfortable_span_high_mm()), " mm centre to centre, operator-reported."], ""))]),
+    el_class(tag: "p", cls: "refused", children: [txt(s: join([
+      "WITHDRAWN PLACEMENT SPANNED ", to_string(withdrawn_placement_span_mm), " mm - too narrow by ",
+      to_string(comfortable_span_low_mm() - withdrawn_placement_span_mm),
+      " mm. A separate fault from the collisions: no geometry kernel would have caught it, because nothing was intersecting."], ""))]),
+    el_class(tag: "p", cls: "note", children: [txt(s: derivation_was_narrow_note)]),
+    el_class(tag: "p", cls: "note", children: [txt(s: ergonomic_scope_note)]),
+  ])
+}
+
+fn page_body_children() -> List<Fragment> {
+  [
+    el_class(tag: "div", cls: "wrap", children: [
+      el(tag: "h1", children: [txt(s: "The machine tile, computed.")]),
+      el_class(tag: "p", cls: "standfirst", children: [txt(s: standfirst_text)]),
+      selection_banner(),
+      layout_standing_banner(),
+      grip_span_section(),
+      el(tag: "section", children: [
+        label_row(text: "Why this page is a program"),
+        h2(text: "The drawing kept contradicting itself."),
+        p(text: scenario_recut_note),
+      ]),
+      el(tag: "section", children: [
+        label_row(text: "Depth"),
+        h2(text: "What the wall actually projects."),
+        depth_table(),
+      ]),
+    ]),
+    depth_figure(),
+    el_class(tag: "div", cls: "wrap", children: [
+      el(tag: "section", children: [
+        label_row(text: "Boundary"),
+        h2(text: "What you unplug, derived rather than declared."),
+        crossings_table(),
+        el_class(tag: "p", cls: "note", children: [txt(s: crossing_derivation_note)]),
+      ]),
+      grip_standing_section(),
+      el(tag: "section", children: [
+        label_row(text: "Front elevation"),
+        h2(text: "Three exact views of the same parts."),
+        p(text: projection_claim_scope_note),
+        el_class(tag: "p", cls: "note", children: [txt(s: view_kind_note)]),
+        el_class(tag: "p", cls: "note", children: [txt(s: side_section_note)]),
+        el_class(tag: "p", cls: "note", children: [txt(s: rear_elevation_note)]),
+      ]),
+    ]),
+    el_class(tag: "div", cls: "wrap", children: elevation_figures()),
+    el_class(tag: "div", cls: "wrap", children: [
+      el(tag: "section", children: [
+        label_row(text: "Alternative G2 - NOT SELECTED"),
+        h2(text: "The routed edge grip is not part of this design."),
+        el_class(tag: "p", cls: "note", children: [txt(s: routed_grip_exclusion_note)]),
+      ]),
+    ]),
+    el_class(tag: "div", cls: "wrap", children: [
+      el(tag: "section", children: [
+        label_row(text: "Hazards"),
+        h2(text: "Marked on the parts that already exist."),
+        el_class(tag: "p", cls: "note", children: [txt(s: hazard_overlay_note)]),
+      ]),
+    ]),
+    el_class(tag: "div", cls: "wrap", children: [
+      note_block(label: "Data ports", body: active_data_ports_note),
+      note_block(label: "Fans", body: zero_fan_claim_retraction_note),
+      note_block(label: "Rear power", body: rear_power_standing_note),
+      note_block(label: "Board", body: board_profile_note),
+      note_block(label: "Deferred", body: deferred_study_note),
+    ]),
+    el(tag: "footer", children: [
+      txt(s: "Generated from strategy.machine_tile_design - no tile cut, nothing measured"),
+    ]),
+  ]
+}
+
+fn page_section_count() -> Int {
+  count(page_body_children())
+}
+
+fn page_elevation_count() -> Int {
+  count(elevation_figures())
+}
+
+fn page_fragment() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [attr(name: "lang", value: "en")],
+    children: [
+      el(tag: "head", children: [
+        el(tag: "title", children: [txt(s: page_title)]),
+        el_attrs(tag: "meta", attributes: [attr(name: "charset", value: "utf-8")], children: []),
+        el_attrs(
+          tag: "meta",
+          attributes: [
+            attr(name: "name", value: "viewport"),
+            attr(name: "content", value: "width=device-width, initial-scale=1"),
+          ],
+          children: [],
+        ),
+        el(tag: "style", children: [RawNode { content: page_style }]),
+      ]),
+      el(tag: "body", children: page_body_children()),
+    ],
+  }
+}
+
+data hosted_body_note: String = "A SECOND serialisation of the SAME Fragment tree, for a host that supplies its own document shell. It shares page_body_children with the standalone document, so the two rendered forms cannot disagree about content - only about the wrapper each host needs. Emitting a hand-trimmed copy of the standalone file instead would have reintroduced exactly the two-representations defect this module exists to remove."
+
+fn hosted_body_fragment() -> Fragment {
+  Element {
+    tag: "div",
+    attributes: [attr(name: "data-generated-by", value: "strategy.machine_tile_page")],
+    children: [
+      el(tag: "style", children: [RawNode { content: page_style }]),
+      el(tag: "div", children: page_body_children()),
+    ],
+  }
+}
+
+// SELF-VALIDATION AT EMIT TIME, replacing a python script that validated after extraction.
+//
+// The defect this catches actually happened: hold_obligations() had no caller, the generated page
+// silently omitted the entire lift-interface section, and a note in the projection asserted the
+// page carried an obligation it had never carried. Nothing refused, because nothing was checking
+// what the emitted bytes contained. The first version of that check was a script, which is not
+// admissible in this repository and was also in the wrong place -- it inspected the artifact after
+// the fact, so a missing section was only caught if someone remembered to run it.
+//
+// A generator that can silently drop a required section is the same class of defect as a witness
+// that passes while measuring nothing. Here the generator refuses to emit at all: a body without
+// its required sections is not a slightly incomplete page, it is a page that lies by omission,
+// and a loud REFUSED string is strictly better than a plausible document with a hole in it.
+//
+// Marker PRESENCE is all that string_contains can decide. Occurrence counting and byte slicing are
+// not expressible in this language today -- there is no index_of and no split -- so the extraction
+// step remains an ad-hoc harness operation and is deliberately NOT modeled here rather than being
+// faked with something weaker that would look like coverage.
+data required_artifact_markers: List<String> = [
+  "SELECTED PART",
+  "SHAPE UNKNOWN",
+  "HARDWARE THREAD UNREAD",
+  "MOUNTING FACE UNCONFIRMED",
+  "MATERIAL UNREAD",
+  "SKU UNREAD",
+  "LIFT ROLE REFUSED",
+  "Lift interface",
+]
+
+data artifact_marker_scope_note: String = "These are the sections whose ABSENCE is silent. A missing figure or table is visible to anyone looking at the page; a missing obligation reads as an absence of obligations, which is the opposite of what the model says. Only the markers with that property are listed, so the guard stays a refusal about honesty rather than a general layout assertion."
+
+fn missing_artifact_markers(html: String) -> List<String> {
+  filter(required_artifact_markers, m => !string_contains(s: html, pattern: m))
+}
+
+fn guard_emitted_artifact(html: String) -> String {
+  let missing = missing_artifact_markers(html: html)
+  if count(missing) == 0 {
+    html
+  } else {
+    join(["REFUSED: generated artifact omits required sections: ", join(missing, ", ")], "")
+  }
+}
+
+fn render_artifact_body() -> String {
+  match try_serialize_html_source(node: hosted_body_fragment()) {
+    EmitOk { html: h } => guard_emitted_artifact(html: h)
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+  }
+}
+
+fn render_page() -> String {
+  match try_serialize_html_source(node: page_fragment()) {
+    EmitOk { html: h } => join(["<!doctype html>", guard_emitted_artifact(html: h)], "")
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+  }
+}
+
+fn page_renders() -> Bool {
+  match try_serialize_html_source(node: page_fragment()) {
+    EmitOk { html: _ } => true
+    EmitRejected { reason: _ } => false
+  }
+}

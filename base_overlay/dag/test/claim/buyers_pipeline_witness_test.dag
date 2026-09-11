@@ -1,0 +1,222 @@
+module test.claim.buyers_pipeline_witness
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.dependency_ladder { dependency_ladder, ladder_priced_above_bottom }
+import strategy.serving_capacity { internal_scavenger, utilization_readings, SchedulingClass, UtilizationReading }
+import strategy.fleet_convergence {
+  gap_for, best_selection, select_listing, SelectionOutcome, fill_standing, FillStanding, GapFilled, GapUnfilled,
+  SelectionAdmitted, SelectionRefusedIncompatible, SelectionRefusedSellerTrust, SelectionRefusedByProposal,
+}
+import strategy.buyers_pipeline {
+  DemandRow, ListingObservation, PurchaseProposal, ConditionClass, ListedWorking,
+  ProposalAdmissible, ProposalRefusedOverCeiling, ProposalRefusedNoVerifiedDepth,
+  propose, admitted_depth, buyer_demand_rows, demand_mt_collins, demand_epyc_rome_platform,
+  demand_ddr4_rdimm,
+}
+
+// THE DISCRIMINATING CLAIMS. (1) A listing priced over the demand row's delivered ceiling
+// is a TYPED refusal, never an admissible proposal. (2) A listing whose quantity is
+// claimed but not verified proposes NOTHING - admitted depth reads only the verified
+// field, so a hopeful buy is unwritable through propose(). (3) An in-ceiling, verified
+// listing is admitted and its unit count is clamped to the smaller of verified depth and
+// wanted units - the scout can never propose buying more than the demand row wants or
+// more than the seller provably has. (4) The demand book is non-empty and the EPYC
+// diversity row is present with a positive pilot quantity.
+
+data probe_over_ceiling: ListingObservation = ListingObservation {
+  demand_id: "mt-collins-1u",
+  source: "probe:over-ceiling",
+  unit_price_delivered_micro: 1775000001,
+  quantity_claimed: 10,
+  quantity_verified: 10,
+  seller_feedback_permille: 995,
+  seller_feedback_count: 300,
+  condition: ListedWorking,
+  observed_at: "2026-08-29",
+}
+
+data probe_unverified_depth: ListingObservation = ListingObservation {
+  demand_id: "mt-collins-1u",
+  source: "probe:unverified",
+  unit_price_delivered_micro: 900000000,
+  quantity_claimed: 60,
+  quantity_verified: 0,
+  seller_feedback_permille: 995,
+  seller_feedback_count: 300,
+  condition: ListedWorking,
+  observed_at: "2026-08-29",
+}
+
+data probe_admissible_deep: ListingObservation = ListingObservation {
+  demand_id: "epyc-rome-2s-platform",
+  source: "probe:admissible",
+  unit_price_delivered_micro: 1300000000,
+  quantity_claimed: 9,
+  quantity_verified: 9,
+  seller_feedback_permille: 995,
+  seller_feedback_count: 300,
+  condition: ListedWorking,
+  observed_at: "2026-08-29",
+}
+
+fn refused_over_ceiling(p: PurchaseProposal) -> Bool {
+  match p {
+    ProposalAdmissible { demand_id, source, units, unit_price_micro } => false,
+    ProposalRefusedOverCeiling { demand_id, unit_price_micro, ceiling_micro } => unit_price_micro > ceiling_micro,
+    ProposalRefusedNoVerifiedDepth { demand_id, quantity_claimed } => false,
+  }
+}
+
+fn refused_no_depth(p: PurchaseProposal) -> Bool {
+  match p {
+    ProposalAdmissible { demand_id, source, units, unit_price_micro } => false,
+    ProposalRefusedOverCeiling { demand_id, unit_price_micro, ceiling_micro } => false,
+    ProposalRefusedNoVerifiedDepth { demand_id, quantity_claimed } => quantity_claimed > 0,
+  }
+}
+
+fn admitted_units(p: PurchaseProposal) -> Int {
+  match p {
+    ProposalAdmissible { demand_id, source, units, unit_price_micro } => units,
+    ProposalRefusedOverCeiling { demand_id, unit_price_micro, ceiling_micro } => 0,
+    ProposalRefusedNoVerifiedDepth { demand_id, quantity_claimed } => 0,
+  }
+}
+
+fn has_positive_wanted(d: DemandRow) -> Bool {
+  d.wanted_units > 0
+}
+
+// Convergence probes: an LRDIMM-shaped listing (deep, cheap, trusted) must clamp to a
+// 1-unit sample per the qualification-layer standing; a low-feedback seller must refuse
+// before price ranks; the derived gaps must equal the demand rows' wanted_units so the
+// shopping list cannot fork from intent.
+
+data demand_lrdimm_probe: DemandRow = DemandRow {
+  id: "ddr4-32g-lrdimm",
+  spec: "probe: 32 GiB LRDIMM against the sample-first standing",
+  reference_unit_micro: 55000000,
+  viability_ceiling_micro: 120000000,
+  viability_source: "probe: same band top as the RDIMM row",
+  wanted_units: 16,
+  qualification_note: "probe row",
+  refusal_conditions: [],
+}
+
+data probe_lrdimm_deep: ListingObservation = ListingObservation {
+  demand_id: "ddr4-32g-lrdimm",
+  source: "probe:lrdimm-deep",
+  unit_price_delivered_micro: 30000000,
+  quantity_claimed: 40,
+  quantity_verified: 40,
+  seller_feedback_permille: 999,
+  seller_feedback_count: 500,
+  condition: ListedWorking,
+  observed_at: "2026-08-30",
+}
+
+data probe_untrusted_seller: ListingObservation = ListingObservation {
+  demand_id: "ddr4-32g-rdimm",
+  source: "probe:untrusted",
+  unit_price_delivered_micro: 30000000,
+  quantity_claimed: 40,
+  quantity_verified: 40,
+  seller_feedback_permille: 900,
+  seller_feedback_count: 12,
+  condition: ListedWorking,
+  observed_at: "2026-08-30",
+}
+
+fn selected_units(s: SelectionOutcome) -> Int {
+  match s {
+    SelectionAdmitted { component_id, source, units, unit_price_micro } => units,
+    SelectionRefusedIncompatible { component_id, cause } => 0,
+    SelectionRefusedSellerTrust { component_id, feedback_permille, feedback_count } => 0,
+    SelectionRefusedByProposal { component_id, note } => 0,
+  }
+}
+
+fn refused_for_trust(s: SelectionOutcome) -> Bool {
+  match s {
+    SelectionAdmitted { component_id, source, units, unit_price_micro } => false,
+    SelectionRefusedIncompatible { component_id, cause } => false,
+    SelectionRefusedSellerTrust { component_id, feedback_permille, feedback_count } => true,
+    SelectionRefusedByProposal { component_id, note } => false,
+  }
+}
+
+// Fill probes: two trusted RDIMM listings, one AT the dated reference (54) and one ABOVE
+// it (60, under the 120 viability wall) - the above-quote listing must be admitted and
+// the 320-unit gap fills at 100x54 + 220x60: the price curve, not the quote, prices the
+// convergence. A third probe holds the depth short and must report the unfilled remainder.
+
+data probe_rdimm_cheap: ListingObservation = ListingObservation {
+  demand_id: "ddr4-32g-rdimm",
+  source: "probe:rdimm-at-reference",
+  unit_price_delivered_micro: 54000000,
+  quantity_claimed: 100,
+  quantity_verified: 100,
+  seller_feedback_permille: 995,
+  seller_feedback_count: 300,
+  condition: ListedWorking,
+  observed_at: "2026-08-30",
+}
+
+data probe_rdimm_above_reference: ListingObservation = ListingObservation {
+  demand_id: "ddr4-32g-rdimm",
+  source: "probe:rdimm-above-reference",
+  unit_price_delivered_micro: 60000000,
+  quantity_claimed: 250,
+  quantity_verified: 250,
+  seller_feedback_permille: 990,
+  seller_feedback_count: 120,
+  condition: ListedWorking,
+  observed_at: "2026-08-30",
+}
+
+fn rdimm_fill_prices_the_curve() -> Bool {
+  let sels = [
+    select_listing(demand: demand_ddr4_rdimm, o: probe_rdimm_cheap),
+    select_listing(demand: demand_ddr4_rdimm, o: probe_rdimm_above_reference),
+  ]
+  match fill_standing(gap_units: gap_for(component_id: "ddr4-32g-rdimm"), selections: sels) {
+    GapFilled { total_cost_micro, marginal_unit_micro } => total_cost_micro == 18600000000 && marginal_unit_micro == 60000000,
+    GapUnfilled { remaining_units, admitted_cost_micro } => false,
+  }
+}
+
+fn rdimm_short_depth_reports_remainder() -> Bool {
+  match fill_standing(gap_units: gap_for(component_id: "ddr4-32g-rdimm"), selections: [select_listing(demand: demand_ddr4_rdimm, o: probe_rdimm_cheap)]) {
+    GapFilled { total_cost_micro, marginal_unit_micro } => false,
+    GapUnfilled { remaining_units, admitted_cost_micro } => remaining_units == 220 && admitted_cost_micro == 5400000000,
+  }
+}
+
+fn buyers_pipeline_witness_main() -> ProcessExit {
+  let ceiling_wall = refused_over_ceiling(p: propose(demand: demand_mt_collins, o: probe_over_ceiling))
+  let depth_wall = refused_no_depth(p: propose(demand: demand_mt_collins, o: probe_unverified_depth))
+  let clamp_holds = admitted_units(p: propose(demand: demand_epyc_rome_platform, o: probe_admissible_deep)) == 4
+  let book_carried = count(buyer_demand_rows) == 4
+  let ladder_disciplined = ladder_priced_above_bottom() && count(dependency_ladder) == 6
+  let scavenger_typed = internal_scavenger.preemptible
+    && !internal_scavenger.commercial_demand_credit
+    && !internal_scavenger.customer_queue_precedence
+  let readings_split = count(utilization_readings) == 3
+  let every_row_positive = fold(buyer_demand_rows, init: true, f: fn(acc, d) { acc && has_positive_wanted(d: d) })
+  let gaps_match = gap_for(component_id: "ddr4-32g-rdimm") == 320
+    && gap_for(component_id: "u2-nvme-4t") == 21
+    && gap_for(component_id: "mt-collins-1u") == 0
+  let wanted_is_gap = fold(buyer_demand_rows, init: true, f: fn(acc, d) {
+    acc && (d.id != "ddr4-32g-rdimm" || d.wanted_units == gap_for(component_id: d.id))
+      && (d.id != "u2-nvme-4t" || d.wanted_units == gap_for(component_id: d.id))
+  })
+  let curve_priced = rdimm_fill_prices_the_curve() && rdimm_short_depth_reports_remainder()
+  let lrdimm_sample_clamp = selected_units(s: select_listing(demand: demand_lrdimm_probe, o: probe_lrdimm_deep)) == 1
+  let trust_wall = refused_for_trust(s: select_listing(demand: demand_ddr4_rdimm, o: probe_untrusted_seller))
+  if ceiling_wall && depth_wall && clamp_holds && book_carried && every_row_positive && gaps_match && wanted_is_gap && curve_priced && lrdimm_sample_clamp && trust_wall && ladder_disciplined && scavenger_typed && readings_split {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

@@ -1,0 +1,104 @@
+module strategy.dependency_ladder
+
+import std.types { Int, List, NonEmptyStr, Bool }
+
+// THE FRAME THE OPERATOR KEEPS RETURNING TO (2026-08-30, third articulation in one day -
+// captured here so it stops living in chat): we are primarily a SOFTWARE company that
+// refuses to be disconnected from its hardware. The product is CI execution; every
+// supplier of compute beneath it - own fleet, cloud spill, colo, someday the power meter
+// itself - is one interchangeable REALIZATION behind that product, exactly the
+// interface/realization split the design doctrine demands of any dependency. The
+// hardware program is not hardware romanticism: it exists to make the dependency chain
+// EXPLICIT and progressively OWNABLE, rung by rung, and a rung is taken onto our own
+// balance sheet only when scale makes it pay. That is a lower-dependency operating model
+// than a normal software company (which never sees below its cloud bill) AND than a
+// normal infra company (which owns layers it cannot price). Supply-agnosticism is a
+// FEATURE TO PRESERVE: the product must never bind to one realization. The architecture
+// posture and served-segment rulings are instances of this frame, not peers of it.
+//
+// FOURTH ARTICULATION (2026-08-30, operator): the frame carries TWO SEPARATED GATES -
+// economics gate OWNERSHIP of a rung; NOTHING gates INQUIRY. No layer in the stack is
+// "owned by X, we don't touch it": a commoditized layer is still integrated with,
+// questioned, modeled - and maybe someday produced. Turning your brain off to a layer
+// is the refused move. The economic output of modeling a rung will often NOT be
+// justified short-to-medium term; long term it is the right approach ("Tesla for
+// compute"). Consequence: a trustworthy economic REFUSAL to take a rung (e.g. a custom
+// board losing to commodity supply) is the system working, never wasted modeling.
+//
+// THE TWO HARD ENDPOINTS (operator, same day): energy GENERATION and SILICON are the
+// bookends and are DIFFERENT problem shapes - generation is a scale/capital problem
+// (own it near-last, at load), silicon is a design/production-complexity problem (the
+// most problematic layer: few producers, extreme NRE). Everything BETWEEN them -
+// machines, boards, racks, space, delivered power, network - is judged reasonable and
+// tractable, which is why those rungs carry live pricing instruments today.
+
+type RungOwnership
+  = OwnedAndPriced { note: NonEmptyStr }
+  | RentedAndPriced { supplier_class: NonEmptyStr, note: NonEmptyStr }
+  | RentedPricingInFlight { instrument: NonEmptyStr }
+  | UnpricedBelowHere { note: NonEmptyStr }
+
+type LadderRung {
+  layer: NonEmptyStr
+  standing: RungOwnership
+  take_trigger: NonEmptyStr
+}
+
+data rung_silicon: LadderRung = LadderRung {
+  layer: "silicon (processor design and fabrication)",
+  standing: RentedAndPriced { supplier_class: "liquidation channel for hyperscaler-retired silicon", note: "the rung is rented at the best price that exists anywhere: someone else paid the NRE and the fab margin, we buy the depreciated output; the buyers pipeline frontier IS this rung price feed" },
+  take_trigger: "the far endpoint on the design/production-complexity axis - own design (not fab) becomes thinkable only if a workload-shaped part beats commodity silicon on delivered unit-minutes at fleet scale; modeled continuously (the Altra compute-cell lane is this rung inquiry), taken close to never",
+}
+
+data rung_machines: LadderRung = LadderRung {
+  layer: "compute machines",
+  standing: OwnedAndPriced { note: "the liquidation fleet; capex and watts per core priced continuously by ci_node_build and the vintage frontier" },
+  take_trigger: "TAKEN - and each further unit is taken by the buyers pipeline's frontier check, never by preference",
+}
+
+data rung_overflow_compute: LadderRung = LadderRung {
+  layer: "overflow compute (demand above owned supply)",
+  standing: RentedAndPriced { supplier_class: "cloud spill routes", note: "deliberately PERMANENT rental: supply runs beneath demand by design, so the top slice of demand is always someone else's balance sheet at our margin" },
+  take_trigger: "never taken whole - owned supply grows only underneath proven utilization",
+}
+
+data rung_space_power_delivered: LadderRung = LadderRung {
+  layer: "rack space + delivered power + cooling",
+  standing: RentedPricingInFlight { instrument: "colo-rfq (year_end_plan): the 17-line all-in RFQ prices this rung across the census candidates" },
+  take_trigger: "owned/leased space when fleet scale makes the colo premium exceed the operational burden we would absorb - decided on RFQ evidence vs makeshift_datacenter modeling, not on taste",
+}
+
+data rung_network_transit: LadderRung = LadderRung {
+  layer: "network transit and peering",
+  standing: RentedPricingInFlight { instrument: "the DIA/origin-budget lines in ci_storage_tiering; colo cross-connect lines in the RFQ" },
+  take_trigger: "own transit relationships when egress-sensitive volume makes blended colo bandwidth the dominant marginal cost",
+}
+
+data rung_raw_power: LadderRung = LadderRung {
+  layer: "raw power (metered energy, eventually generation/PPA)",
+  standing: UnpricedBelowHere { note: "the ladder's declared bottom: today power reaches us only as a component of colo/home pricing; it becomes its own priced rung when a site with our own meter exists" },
+  take_trigger: "power contracts/PPA when consumption is large and steady enough that the retail-to-wholesale spread on our load exceeds the contracting overhead - the scale/capital endpoint of the ladder, the operator's stated end state and likely among the LAST rungs taken",
+}
+
+data dependency_ladder: List<LadderRung> = [
+  rung_silicon, rung_machines, rung_overflow_compute, rung_space_power_delivered,
+  rung_network_transit, rung_raw_power,
+]
+
+fn rung_is_priced(r: LadderRung) -> Bool {
+  match r.standing {
+    OwnedAndPriced { note } => true,
+    RentedAndPriced { supplier_class, note } => true,
+    RentedPricingInFlight { instrument } => true,
+    UnpricedBelowHere { note } => false,
+  }
+}
+
+// The ladder's own discipline: at most the BOTTOM rung may be unpriced - an unpriced
+// rung above a priced one would mean we own or rent something we cannot see the cost of,
+// the normal-infra-company failure this frame exists to refuse.
+fn ladder_priced_above_bottom() -> Bool {
+  fold(dependency_ladder, init: 0, f: fn(acc, r) {
+    if rung_is_priced(r: r) { acc } else { acc + 1 }
+  }) <= 1
+}

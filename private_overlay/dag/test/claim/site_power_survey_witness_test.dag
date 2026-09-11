@@ -1,0 +1,734 @@
+module test.claim.site_power_survey_witness
+
+import std.types { Bool, Int, NonEmptyStr, List, EpochMs }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, declaration_ref_eq }
+import strategy.workflow_stage_gate {
+  graph_is_admitted, disposition_is_admitted, GateDisposition,
+  GatePending, GateAdmitted, GateRenewalRequired, GateNotActive, GateEvidenceConflicts,
+  actuation_is_authorized,
+  SelectionDisposition, SelectionPending, SelectionAdmitted,
+  SelectionRenewalRequired, SelectionRefused, SelectionDecision,
+  WorkflowRealizationStanding,
+  WorkflowFacts, GateAnswer, GateAnswered, GateUnanswerable, gate_answer,
+  SelectionAnswer, SelectionAnswered, SelectionUnanswerable, selection_answer, derivation_refusal,
+  SelectionPrefixActive, SelectedWorkflowDerived, PrefixReason, NoBranchDeclared, AwaitingSelection, AwaitingAdjudication,
+  project_edges, StageNode, GateNode, ActuationNode,
+  WorkflowRealizationRefused, realization_contains, active_node_refs,
+  NoSelection, SelectedBy, GateNoApplicableRequirements, GateRefusedByEvidence,
+  subject_grain, EvidenceGrain, ProgramGrain, CandidateGrain, ParcelGrain, SiteRealizationGrain,
+  WorkflowExtensionObligation, ProducedByStage, PublishedByExternalSubject,
+}
+import strategy.site_power_survey {
+  ServicePlanningBand, OrdinaryRequestExpected, StudyExpected, MajorInterconnectExpected,
+  planning_band_for_kw, utility_service_classification_needed, band_bounds, BandBounds,
+  ServicePlanningConvention, survey_planning_convention, continuous_watts_of_service, collins_nodes_at_service, racks_at_service,
+  municipal_build_template, municipal_template_admission, municipal_build_receipts,
+  municipal_selection_decisions,
+  gate_market_area_screening, stage_site_inquiry, stage_regulatory_diligence,
+  property_identity_needed, use_revision_a, SiteUseRevision,
+  ref_candidate, here,
+  site_candidates, SiteCandidate, RegulatoryDiligence, DiligenceStanding, DiligenceOpen, DiligenceCleared,
+  diligence_findings, diligence_open_questions, survey_as_of,
+  site_phillipsburg, site_jersey_city, market_area_query,
+}
+import extdeps.utility.first_energy_jcpl { jcpl }
+import extdeps.regulation.types {
+  InstrumentLifecycle, Introduced, Adopted, Superseded, Repealed,
+  EffectiveDate, EffectiveAt, EffectiveDatePendingEvidence,
+  ExecutiveDisposition, SignatureNotRequired,
+  SupersessionStanding, SupersededBySuccessorUnread, SupersededBySuccessor,
+  RepealSuccession, NoSuccessor, RepealSuccessorUnread, RepealedIntoSuccessor,
+  LegalForceStanding, BindsAsOf, NotYetEffective, NeverInForce, CeasedSuperseded, CeasedRepealed, ForceUndetermined,
+  PlanningReliance, ReliableClear, ForeclosedByInstrument, ForeclosedPendingEvidence,
+  legal_force, planning_reliance, reliance_is_clear,
+
+  ApplicabilityQuery,
+  RegulatoryInstrumentFinding,
+  InstrumentForce, ProhibitionOfUse, ByRight, ConditionalUseRequired, PerformanceStandard,
+  RegulatoryEffect, EffectPermitsByRight, EffectNoConstraint, EffectBlocks, EffectNotYetInForce,
+  EffectRequiresApproval, EffectRequiresCompliance, EffectPendingEvidence, EffectProposedNotInForce,
+  instrument_effect, effect_permits_by_right,
+  FindingStanding, FindingRefused, FindingPendingDetermination,
+  finding_standing, finding_is_refused, finding_decision_authority, finding_applicability_question,
+  principal_use_applicability_question,
+  ZoningMapRevision, MapRevisionKnown, MapRevisionPending,
+  RegulatoryInstrument, IssuingAuthority, GovernedSubject, SubjectUnread,
+  Moratorium, TemporalApplicationUnread, OperatorReported,
+  ApplicabilityBasis, PrincipalUseZoning, PerformanceStandardCompliance,
+  basis_decider, basis_question,
+  finding_instrument_ref, finding_reliance, finding_legal_force, finding_extent,
+  EffectiveDate, EffectiveAt, EffectiveDatePendingEvidence,
+  TemporalApplication, temporal_is_determined, subject_draft_source_is,
+  SpatialExtent, EveryZoningDistrict, NamedZoningDistricts, ZoningDistrictRef,
+  GovernedSubject, SubjectStanding, subject_is_exact,
+  InstrumentProvenance, provenance_is_official_text,
+  planning_reliance,
+  extent_covers_all_zoning_districts,
+  relations_well_formed, InstrumentRelation, AuthorityRelation, Preempts,
+}
+import std.citation { citation_target, citation_exact_pin, RawResponseBody }
+import std.content_hash { as_content_hash_cryptographic }
+import extdeps.uri { uri_https }
+import extdeps.pin { Pin, TrackedChannel }
+import std.citation { cited_representation_identity }
+import extdeps.version { VersionIdentity }
+import extdeps.regulation.nj_phillipsburg { phillipsburg_zoning_officer, phillipsburg_data_center_subject, phillipsburg_ordinance_o2026_08, phillipsburg_consistency_review_citation, phillipsburg_o2026_08_citation }
+import extdeps.regulation.nj_jersey_city { jc_data_center_subject, jc_ordinance_26_057, jc_industrial_district }
+import extdeps.regulation.nj_bayonne { bayonne_o_26_74, bayonne_o_26_74_citation, bayonne_data_center_subject }
+
+// THE DISCRIMINATING CLAIMS: (1) the sizing chain executes - a 200kW service carries
+// 246 Mt. Collins nodes (160kW continuous / 650W) in 19 three-phase racks; 400kW
+// carries 492; (2) the tier boundary binds - 200kW is small-commercial, 2MW is a
+// studied project, 20MW is transmission-scale; (3) the workflow graph is CLOSED -
+// every stage dependency names a stage that exists; (4) the census carries all six
+// towns, the utility join is real (exactly four of six sites in JCP&L territory,
+// compared against the extdeps authority row), and NO SITE has cleared regulatory
+// diligence without a receipt - every row still carries at least the five standard
+// open questions (the Bayonne class made this a wall, not a nicety); (5) the declared workflow
+// stops where the identity stops - three always-active nodes at candidate grain, every
+// requirement answerable at that grain, and a typed obligation naming the parcel identity that
+// would let it continue.
+
+fn band_key(b: ServicePlanningBand) -> String {
+  match b {
+    OrdinaryRequestExpected => "ordinary_expected",
+    StudyExpected => "study_expected",
+    MajorInterconnectExpected => "major_expected",
+  }
+}
+
+// THE REPORTED BOUNDS AND THE SELECTED BAND ARE THE SAME TWO NUMBERS OR THIS PROBE FAILS. The
+// first revision of this repair carried an interval on the arm and repeated it as literals in the
+// selection, and the two had already diverged - a band whose declared floor was one below the
+// smallest load it contained. Asking each band for its own bounds and then asking the selector
+// about exactly those loads is what makes that unwritable rather than merely wrong.
+fn band_at(c: ServicePlanningConvention, kw: Int) -> String { band_key(b: planning_band_for_kw(c: c, kw: kw)) }
+
+fn bounds_agree_with_selection(c: ServicePlanningConvention, b: ServicePlanningBand) -> Bool {
+  let bounds = band_bounds(c: c, b: b)
+  let through_ok = fold(bounds.through_kw, init: true, f: fn(acc, t) {
+    band_at(c: c, kw: t) == band_key(b: b) && band_at(c: c, kw: t + 1) != band_key(b: b)
+  })
+  let above_ok = fold(bounds.above_kw, init: true, f: fn(acc, a) {
+    band_at(c: c, kw: a + 1) == band_key(b: b) && band_at(c: c, kw: a) != band_key(b: b)
+  })
+  through_ok && above_ok
+}
+
+fn bounds_hold_under(c: ServicePlanningConvention) -> Bool {
+  bounds_agree_with_selection(c: c, b: OrdinaryRequestExpected)
+    && bounds_agree_with_selection(c: c, b: StudyExpected)
+    && bounds_agree_with_selection(c: c, b: MajorInterconnectExpected)
+    && count(band_bounds(c: c, b: OrdinaryRequestExpected).above_kw) == 0
+    && count(band_bounds(c: c, b: MajorInterconnectExpected).through_kw) == 0
+    && count(band_bounds(c: c, b: StudyExpected).above_kw) == 1
+    && count(band_bounds(c: c, b: StudyExpected).through_kw) == 1
+}
+
+// A SECOND CONVENTION IS WHAT SEPARATES READING THE DECLARATION FROM SPELLING THE SAME NUMBER.
+// Against one convention, a consumer that wrote 400 instead of the declared cut point behaved
+// identically and no probe could tell - so the single-authority claim was true of the source and
+// unproven by the evidence, and a later edit could reintroduce the second authority at the same
+// value with nothing firing. Under a convention that says something else, only a consumer that
+// actually reads it moves, and both consumers are asked to move together.
+data other_convention: ServicePlanningConvention = ServicePlanningConvention {
+  ordinary_through_kw: 100,
+  study_through_kw: 1000,
+}
+
+fn the_bounds_are_not_a_second_authority() -> Bool {
+  bounds_hold_under(c: survey_planning_convention)
+    && bounds_hold_under(c: other_convention)
+    && band_at(c: other_convention, kw: 200) == "study_expected"
+    && band_at(c: survey_planning_convention, kw: 200) == "ordinary_expected"
+    && band_at(c: other_convention, kw: 2000) == "major_expected"
+    && band_at(c: survey_planning_convention, kw: 2000) == "study_expected"
+    && fold(band_bounds(c: other_convention, b: StudyExpected).through_kw, init: false, f: fn(acc, t) { t == 1000 })
+    && fold(band_bounds(c: survey_planning_convention, b: StudyExpected).through_kw, init: false, f: fn(acc, t) { t == 5000 })
+}
+
+// THE BAND IS THIS PROGRAM'S EXPECTATION AND THE BOUNDARIES ARE ITS OWN CONVENTION, so the probe
+// asks for them exactly rather than for a class. The two loads either side of each threshold are
+// what makes it a band at all - a function that answered one arm everywhere would satisfy a
+// probe that only sampled the middle of each range.
+fn the_band_is_a_planning_band() -> Bool {
+  band_at(c: survey_planning_convention, kw: 200) == "ordinary_expected"
+    && band_at(c: survey_planning_convention, kw: 400) == "ordinary_expected"
+    && band_at(c: survey_planning_convention, kw: 401) == "study_expected"
+    && band_at(c: survey_planning_convention, kw: 2000) == "study_expected"
+    && band_at(c: survey_planning_convention, kw: 5000) == "study_expected"
+    && band_at(c: survey_planning_convention, kw: 5001) == "major_expected"
+    && band_at(c: survey_planning_convention, kw: 20000) == "major_expected"
+}
+
+// AND THE AUTHORITATIVE CLASSIFICATION IS STILL OWED, at the grain that would let it be asked.
+// A band that quietly became the answer is the failure this item exists to undo, so the
+// obligation is asserted to exist and to name the parcel grain - the same shape, and the same
+// reason, as property_identity_needed.
+fn the_classification_is_still_owed() -> Bool {
+  declaration_ref_eq(a: utility_service_classification_needed.after_node, b: gate_market_area_screening.self_ref)
+    && match utility_service_classification_needed.needs_grain {
+      ParcelGrain => true,
+      CandidateGrain => false,
+      ProgramGrain => false,
+      SiteRealizationGrain => false,
+    }
+}
+
+data as_of: EpochMs = 1788091200000
+data past: EpochMs = 1700000000000
+data future: EpochMs = 1900000000000
+
+data probe_authority: DeclarationRef = DeclarationRef { module_path: "extdeps.regulation.nj_bayonne", decl_name: "bayonne_city", field: NamedField { field_name: "zoning_officer" } }
+data probe_instrument: DeclarationRef = DeclarationRef { module_path: "extdeps.regulation.nj_bayonne", decl_name: "bayonne_o_26_74", field: WholeDeclaration }
+data other_instrument: DeclarationRef = DeclarationRef { module_path: "extdeps.regulation.nj_phillipsburg", decl_name: "phillipsburg_ordinance_o2026_08", field: WholeDeclaration }
+data our_own_module: DeclarationRef = DeclarationRef { module_path: "strategy.site_power_survey", decl_name: "site_phillipsburg", field: WholeDeclaration }
+data probe_site: DeclarationRef = DeclarationRef { module_path: "strategy.site_power_survey", decl_name: "site_jersey_city", field: WholeDeclaration }
+data other_site: DeclarationRef = DeclarationRef { module_path: "strategy.site_power_survey", decl_name: "site_washington", field: WholeDeclaration }
+data other_use: DeclarationRef = DeclarationRef { module_path: "strategy.rack_power_engineering", decl_name: "collins_node_planning_watts", field: WholeDeclaration }
+
+// BUILT THROUGH THE PRODUCTION CONSTRUCTOR, not hand-assembled here. An audit of this diff
+// found market_area_query defined and never called - the inert-function defect that
+// subject_is_exact was already caught for one round earlier. A helper the witness bypasses is
+// not exercised by anything, so it would ship green having never run.
+data probe_query: ApplicabilityQuery = market_area_query(instrument: probe_instrument)
+
+data probe_issuer: IssuingAuthority = IssuingAuthority {
+  subject: probe_authority,
+  level: Municipal,
+}
+
+data probe_subject: GovernedSubject = GovernedSubject {
+  defined_term: "PROBE USE",
+  standing: SubjectUnread { obligation: "probe" },
+}
+
+
+
+// ---- CONTROL GROUP 1: lifecycle, with supersession no longer able to claim clearance. ----
+
+data lc_introduced: InstrumentLifecycle = Introduced { introduced_at: past }
+data lc_future_effective: InstrumentLifecycle = Adopted { adopted_at: past, executive: SignatureNotRequired { because: "probe" }, effective: EffectiveAt { at: future } }
+data lc_effective_now: InstrumentLifecycle = Adopted { adopted_at: past, executive: SignatureNotRequired { because: "probe" }, effective: EffectiveAt { at: past } }
+data lc_superseded_unread: InstrumentLifecycle = Superseded { superseded_at: past, supersession: SupersededBySuccessorUnread { obligation: "probe" } }
+
+// A NAMED successor no longer buys clearance: the substrate cannot resolve it, so it forecloses
+// pending evidence. The previous carrier let the caller attach any standing to this identity.
+data lc_superseded_named: InstrumentLifecycle = Superseded { superseded_at: past, supersession: SupersededBySuccessor { successor: other_instrument } }
+
+data lc_repealed_no_successor: InstrumentLifecycle = Repealed { repealed_at: past, succession: NoSuccessor { basis: "repealed outright; no replacement instrument was adopted" } }
+data lc_repealed_into_successor: InstrumentLifecycle = Repealed { repealed_at: past, succession: RepealedIntoSuccessor { successor: other_instrument } }
+
+fn force_binds(l: InstrumentLifecycle) -> Bool {
+  match legal_force(l: l, as_of: as_of) {
+    BindsAsOf => true,
+    NotYetEffective { effective_at } => false,
+    NeverInForce { because } => false,
+    CeasedSuperseded => false,
+    CeasedRepealed => false,
+    ForceUndetermined { obligation } => false,
+  }
+}
+
+fn clear(l: InstrumentLifecycle) -> Bool { reliance_is_clear(r: planning_reliance(l: l)) }
+
+// A named-but-unresolvable successor must NOT clear the predecessor. And a PROSE basis cannot
+// establish that no successor exists - that is a negative fact about a jurisdiction's whole
+// instrument set, and absence from an incomplete roster proves nothing. The clearance positive
+// is carried by an effective ByRight instrument in effect_controls, which fabricates nothing.
+fn lifecycle_controls() -> Bool {
+  let introduced = force_binds(l: lc_introduced) == false && clear(l: lc_introduced) == false
+  let future_dated = force_binds(l: lc_future_effective) == false && clear(l: lc_future_effective) == false
+  let superseded_unread = clear(l: lc_superseded_unread) == false
+  let named_successor_pends = clear(l: lc_superseded_named) == false
+  let repealed_into_successor_pends = clear(l: lc_repealed_into_successor) == false
+  let prose_no_successor_pends = clear(l: lc_repealed_no_successor) == false
+  let genuinely_clear = force_binds(l: lc_effective_now)
+  introduced && future_dated && superseded_unread && named_successor_pends
+    && repealed_into_successor_pends && prose_no_successor_pends && genuinely_clear
+}
+
+// ---- CONTROL GROUP 2: substantive effect. Not every applicable instrument is adverse. ----
+
+data in_force: PlanningReliance = ForeclosedByInstrument { because: "probe: adopted and effective" }
+data pending: PlanningReliance = ForeclosedPendingEvidence { obligation: "probe" }
+
+fn effect_tag(e: RegulatoryEffect) -> String {
+  match e {
+    EffectPermitsByRight { because } => "permits_by_right",
+    EffectNoConstraint { because } => "no_constraint",
+    EffectBlocks { because } => "blocks",
+    EffectNotYetInForce { effective_at, obligation } => "not_yet_in_force",
+    EffectProposedNotInForce { obligation } => "proposed_not_in_force",
+    EffectRequiresApproval { obligation } => "requires_approval",
+    EffectRequiresCompliance { obligation } => "requires_compliance",
+    EffectPendingEvidence { obligation } => "pending",
+  }
+}
+
+fn effect_controls() -> Bool {
+  let prohibition_blocks = effect_tag(e: instrument_effect(force: ProhibitionOfUse, legal_force: BindsAsOf, reliance: in_force, as_of: as_of)) == "blocks"
+  let byright_permits = effect_permits_by_right(e: instrument_effect(force: ByRight, legal_force: BindsAsOf, reliance: in_force, as_of: as_of))
+  let conditional_pends = effect_tag(e: instrument_effect(force: ConditionalUseRequired, legal_force: BindsAsOf, reliance: in_force, as_of: as_of)) == "requires_approval"
+  let performance_pends = effect_tag(e: instrument_effect(force: PerformanceStandard { note: "probe" }, legal_force: BindsAsOf, reliance: in_force, as_of: as_of)) == "requires_compliance"
+  let unread_pends = effect_tag(e: instrument_effect(force: ProhibitionOfUse, legal_force: BindsAsOf, reliance: pending, as_of: as_of)) == "pending"
+  let moratorium_active_blocks = effect_tag(e: instrument_effect(force: Moratorium { expires: EffectiveAt { at: future }, note: "probe" }, legal_force: BindsAsOf, reliance: in_force, as_of: as_of)) == "blocks"
+  let moratorium_unread_pends = effect_tag(e: instrument_effect(force: Moratorium { expires: EffectiveDatePendingEvidence { obligation: "probe" }, note: "probe" }, legal_force: BindsAsOf, reliance: in_force, as_of: as_of)) == "pending"
+  let expired_moratorium = instrument_effect(force: Moratorium { expires: EffectiveAt { at: past }, note: "probe" }, legal_force: BindsAsOf, reliance: in_force, as_of: as_of)
+  let expired_lifts_only_itself = effect_tag(e: expired_moratorium) == "no_constraint"
+    && effect_permits_by_right(e: expired_moratorium) == false
+  let future_byright = instrument_effect(force: ByRight, legal_force: NotYetEffective { effective_at: future }, reliance: in_force, as_of: as_of)
+  let future_byright_is_not_authority = effect_tag(e: future_byright) == "not_yet_in_force"
+    && effect_permits_by_right(e: future_byright) == false
+  let future_prohibition_is_not_a_block = effect_tag(e: instrument_effect(force: ProhibitionOfUse, legal_force: NotYetEffective { effective_at: future }, reliance: in_force, as_of: as_of)) == "not_yet_in_force"
+  let undetermined_force_pends = effect_tag(e: instrument_effect(force: ByRight, legal_force: ForceUndetermined { obligation: "probe" }, reliance: in_force, as_of: as_of)) == "pending"
+  prohibition_blocks && byright_permits && conditional_pends && performance_pends && unread_pends
+    && moratorium_active_blocks && moratorium_unread_pends && expired_lifts_only_itself
+    && future_byright_is_not_authority && future_prohibition_is_not_a_block && undetermined_force_pends
+}
+
+// ---- CONTROL GROUP 3: the finding must be judged against ITS OWN instrument. ----
+
+// The finding can no longer carry instrument facts of its own, so a probe finding is a probe
+// INSTRUMENT. Forging a force beside a real instrument identity has no constructor: this fn must
+// build a whole instrument row, and the identity clearance reads comes from that row's self_ref.
+fn probe_instrument_row(force: InstrumentForce, l: InstrumentLifecycle, self_ref: DeclarationRef) -> RegulatoryInstrument {
+  RegulatoryInstrument {
+    self_ref: self_ref,
+    designation: "PROBE",
+    issuer: probe_issuer,
+    lifecycle: l,
+    force: force,
+    extent: EveryZoningDistrict,
+    subject: probe_subject,
+    temporal: TemporalApplicationUnread { obligation: "probe" },
+    applicability_basis: PrincipalUseZoning { zoning_officer: probe_authority },
+    provenance: OperatorReported { reported: "probe", obligation: "probe" },
+    enforcer: probe_authority,
+    note: "probe",
+  }
+}
+
+fn finding_with(force: InstrumentForce, l: InstrumentLifecycle, instrument: DeclarationRef) -> RegulatoryInstrumentFinding {
+  RegulatoryInstrumentFinding {
+    instrument: probe_instrument_row(force: force, l: l, self_ref: instrument),
+    remaining_obligations: [],
+  }
+}
+
+// Undetermined applicability never clears a live prohibition.
+// A by-right instrument on the same lifecycle does clear.
+// A query about ANOTHER instrument cannot clear this finding.
+// A question addressed to the wrong office is refused, not pending.
+fn standing_tag(x: FindingStanding) -> String {
+  match x {
+    FindingRefused { cause } => "refused",
+    FindingPendingDetermination { question, decision_authority, effect } => concat("pending:", effect_tag(e: effect)),
+  }
+}
+
+fn standing_question(x: FindingStanding) -> String {
+  match x {
+    FindingRefused { cause } => "refused",
+    FindingPendingDetermination { question, decision_authority, effect } => question as String,
+  }
+}
+
+fn standing_authority_key(x: FindingStanding) -> String {
+  match x {
+    FindingRefused { cause } => "refused",
+    FindingPendingDetermination { question, decision_authority, effect } => declaration_ref_display_key(ref: decision_authority),
+  }
+}
+
+// The terminal standing must say WHO can close the obligation, and that office is the
+// instrument's own enforcer rather than anything the caller supplied alongside it.
+fn clearance_controls() -> Bool {
+  let live_prohibition = standing_tag(x: finding_standing(f: finding_with(force: ProhibitionOfUse, l: lc_effective_now, instrument: probe_instrument), q: probe_query, as_of: as_of)) == "pending:blocks"
+  let live_byright = standing_tag(x: finding_standing(f: finding_with(force: ByRight, l: lc_effective_now, instrument: probe_instrument), q: probe_query, as_of: as_of)) == "pending:permits_by_right"
+  let wrong_subject = finding_is_refused(x: finding_standing(f: finding_with(force: ByRight, l: lc_effective_now, instrument: other_instrument), q: probe_query, as_of: as_of))
+  let authority_is_the_enforcer = standing_authority_key(x: finding_standing(f: finding_with(force: ByRight, l: lc_effective_now, instrument: probe_instrument), q: probe_query, as_of: as_of))
+    == declaration_ref_display_key(ref: probe_authority)
+  let future_dated_finding = standing_tag(x: finding_standing(f: finding_with(force: ProhibitionOfUse, l: lc_future_effective, instrument: probe_instrument), q: probe_query, as_of: as_of)) == "pending:not_yet_in_force"
+  live_prohibition && live_byright && wrong_subject && authority_is_the_enforcer && future_dated_finding
+}
+
+// ---- CONTROL GROUP 4: extent is a spatial fact; map revision is typed. ----
+
+data probe_district: ZoningDistrictRef = ZoningDistrictRef {
+  jurisdiction: probe_authority,
+  district_code: "I-1",
+  map_revision: MapRevisionKnown { revision: "probe LDO revision" },
+}
+
+data pending_district: ZoningDistrictRef = ZoningDistrictRef {
+  jurisdiction: probe_authority,
+  district_code: "I-1",
+  map_revision: MapRevisionPending { obligation: "probe" },
+}
+
+fn revision_known(z: ZoningDistrictRef) -> Bool {
+  match z.map_revision {
+    MapRevisionKnown { revision } => true,
+    MapRevisionPending { obligation } => false,
+  }
+}
+
+// The real row, not just the probes: Jersey City's district key is a key into a map whose
+// revision this repository has NOT read, and a named district code does not supply one.
+fn extent_controls() -> Bool {
+  extent_covers_all_zoning_districts(e: EveryZoningDistrict)
+    && extent_covers_all_zoning_districts(e: NamedZoningDistricts { first_district: probe_district, further_districts: [] }) == false
+    && revision_known(z: probe_district)
+    && revision_known(z: pending_district) == false
+    && revision_known(z: jc_industrial_district) == false
+}
+
+data phillipsburg_finding: RegulatoryInstrumentFinding = last_finding(
+  fs: diligence_findings(d: site_phillipsburg.diligence),
+  fallback: finding_with(force: ByRight, l: lc_effective_now, instrument: probe_instrument),
+)
+
+data jersey_city_finding: RegulatoryInstrumentFinding = last_finding(
+  fs: diligence_findings(d: site_jersey_city.diligence),
+  fallback: finding_with(force: ByRight, l: lc_effective_now, instrument: probe_instrument),
+)
+
+data jc_instrument_ref: DeclarationRef = jc_ordinance_26_057.self_ref
+
+data phillipsburg_instrument_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.regulation.nj_phillipsburg",
+  decl_name: "phillipsburg_ordinance_o2026_08",
+  field: WholeDeclaration,
+}
+
+fn phillipsburg_carries_its_instrument() -> Bool {
+  fold(diligence_findings(d: site_phillipsburg.diligence), init: false, f: fn(acc, f) {
+    acc || declaration_ref_eq(a: finding_instrument_ref(f: f), b: phillipsburg_instrument_ref)
+  })
+}
+
+data closed_probe: RegulatoryDiligence = RegulatoryDiligence {
+  standing: DiligenceCleared { census_receipt: "probe closure receipt" },
+  findings: diligence_findings(d: site_phillipsburg.diligence),
+}
+
+// The real rows, read through the derived accessors rather than through copied fields: the
+// Phillipsburg prohibition reaches every zoning district, Jersey City's reaches one. If either
+// were carried as a finding-local copy this could disagree with the instrument module; it cannot,
+// because the accessor reads the instrument row itself.
+data performance_probe: RegulatoryInstrument = RegulatoryInstrument {
+  self_ref: probe_instrument,
+  designation: "PROBE-PERF",
+  issuer: probe_issuer,
+  lifecycle: lc_effective_now,
+  force: PerformanceStandard { note: "probe" },
+  extent: EveryZoningDistrict,
+  subject: probe_subject,
+  temporal: TemporalApplicationUnread { obligation: "probe" },
+  provenance: OperatorReported { reported: "probe", obligation: "probe" },
+  enforcer: probe_authority,
+  applicability_basis: PerformanceStandardCompliance { evaluating_authority: other_site },
+  note: "probe",
+}
+
+data performance_finding: RegulatoryInstrumentFinding = RegulatoryInstrumentFinding {
+  instrument: performance_probe,
+  remaining_obligations: [],
+}
+
+// A performance standard does not raise a principal-use zoning question.
+// And its decider is the authority the instrument names, NOT its enforcer.
+fn inquiry_is_owned_by_the_instrument() -> Bool {
+  let st = finding_standing(f: performance_finding, q: probe_query, as_of: as_of)
+  let not_the_principal_use_question = (standing_question(x: st) == (principal_use_applicability_question(
+    instrument_designation: performance_probe.designation,
+    defined_term: probe_subject.defined_term,
+  ) as String)) == false
+  let decider_is_not_the_enforcer = standing_authority_key(x: st) == declaration_ref_display_key(ref: other_site)
+    && (standing_authority_key(x: st) == declaration_ref_display_key(ref: performance_probe.enforcer)) == false
+  not_the_principal_use_question && decider_is_not_the_enforcer
+}
+
+fn questions_are_per_instrument() -> Bool {
+  let ph = standing_question(x: finding_standing(f: phillipsburg_finding, q: market_area_query(instrument: phillipsburg_instrument_ref), as_of: as_of))
+  let jc = standing_question(x: finding_standing(f: jersey_city_finding, q: market_area_query(instrument: jc_instrument_ref), as_of: as_of))
+  ph == (principal_use_applicability_question(
+    instrument_designation: phillipsburg_ordinance_o2026_08.designation,
+    defined_term: phillipsburg_data_center_subject.defined_term,
+  ) as String)
+    && jc == (principal_use_applicability_question(
+      instrument_designation: jc_ordinance_26_057.designation,
+      defined_term: jc_data_center_subject.defined_term,
+    ) as String)
+    && (ph == jc) == false
+}
+
+// NAMED FOR WHAT IT DOES. This was called first_finding and returned the LAST element, because
+// the fold discards its accumulator - so it hid every earlier entry and checked one question out
+// of however many were present. Its callers want the sole finding, and the population assertions
+// below are what make "sole" true rather than assumed.
+fn last_finding(fs: List<RegulatoryInstrumentFinding>, fallback: RegulatoryInstrumentFinding) -> RegulatoryInstrumentFinding {
+  fold(fs, init: fallback, f: fn(acc, f) { f })
+}
+
+// THE EXACT EXPECTED SET, AT CARDINALITY AND IDENTITY. Whole-record equality over a fold seeded
+// with true says every present row is the imported instrument; it says nothing about how many
+// rows are present, so an exact DUPLICATE satisfied it - and satisfied the extent, reliance and
+// question checks too, because each of those is also a per-row property. A site that silently
+// carries one instrument twice would double-count in any consumer that folds these findings.
+fn site_carries_exactly(
+  d: RegulatoryDiligence,
+  expected: RegulatoryInstrument,
+) -> Bool {
+  count(diligence_findings(d: d)) == 1
+    && fold(diligence_findings(d: d), init: true, f: fn(acc, f) { acc && f.instrument == expected })
+}
+
+fn introduced_measure_is_not_neutral() -> Bool {
+  standing_tag(x: finding_standing(f: finding_with(force: ProhibitionOfUse, l: lc_introduced, instrument: probe_instrument), q: probe_query, as_of: as_of))
+    == "pending:proposed_not_in_force"
+}
+
+fn real_row_extents() -> Bool {
+  fold(diligence_findings(d: site_phillipsburg.diligence), init: false, f: fn(acc, f) {
+    acc || extent_covers_all_zoning_districts(e: finding_extent(f: f))
+  })
+    && fold(diligence_findings(d: site_jersey_city.diligence), init: true, f: fn(acc, f) {
+      acc && extent_covers_all_zoning_districts(e: finding_extent(f: f)) == false
+    })
+}
+
+fn finding_rows_are_the_imported_instruments() -> Bool {
+  site_carries_exactly(d: site_phillipsburg.diligence, expected: phillipsburg_ordinance_o2026_08)
+    && site_carries_exactly(d: site_jersey_city.diligence, expected: jc_ordinance_26_057)
+}
+
+fn findings_survive_closure() -> Bool {
+  count(diligence_findings(d: closed_probe)) == count(diligence_findings(d: site_phillipsburg.diligence))
+    && count(diligence_findings(d: closed_probe)) >= 1
+}
+
+fn findings_consistent() -> Bool {
+  fold(site_candidates, init: true, f: fn(acc, s) {
+    acc && fold(diligence_findings(d: s.diligence), init: true, f: fn(inner, f) {
+      inner && reliance_is_clear(r: finding_reliance(f: f)) == false
+    })
+  })
+}
+
+fn subject_standing_honest() -> Bool {
+  subject_is_exact(g: bayonne_data_center_subject) == false
+    && subject_is_exact(g: phillipsburg_data_center_subject) == false
+    && subject_is_exact(g: jc_data_center_subject)
+}
+
+fn provenance_standing_honest() -> Bool {
+  provenance_is_official_text(p: bayonne_o_26_74.provenance) == false
+    && provenance_is_official_text(p: phillipsburg_ordinance_o2026_08.provenance)
+    && provenance_is_official_text(p: jc_ordinance_26_057.provenance)
+}
+
+// CONTROL 7: Jersey City's temporal reach is UNREAD, and must not read as prospective.
+fn temporal_standing_honest() -> Bool {
+  temporal_is_determined(t: bayonne_o_26_74.temporal)
+    && temporal_is_determined(t: jc_ordinance_26_057.temporal) == false
+    && temporal_is_determined(t: phillipsburg_ordinance_o2026_08.temporal) == false
+}
+
+// CONTROL 8: the Phillipsburg definition must be joined to the CONSISTENCY REVIEW that produced
+// it, not to the adopted ordinance's own citation. Substituting the latter would relabel
+// provisional wording as authoritative text.
+data forged_same_bytes_citation: CitationTarget<CitationSelector> = citation_target(
+  expected_pin: citation_exact_pin(
+    source: phillipsburg_town,
+    access_route: uri_https(locator: "example.invalid/a-different-document.pdf"),
+    byte_domain: RawResponseBody,
+    version: "retrieved-2026-08-30" as VersionIdentity,
+    expected_identity: phillipsburg_consistency_review_digest,
+  ),
+  selector: none,
+)
+
+// The control the digest comparison could not carry: SAME BYTES, DIFFERENT DOCUMENT. A join
+// that compares only expected_identity accepts this, and would let any document with matching
+// content stand in as the producer of the provisional wording.
+data tracked_pin_citation: CitationTarget<CitationSelector> = CitationTarget {
+  expected_pin: Pin {
+    subject: cited_representation_identity(
+      source: phillipsburg_town,
+      access_route: uri_https(locator: "phillipsburgnj.org/wp-content/uploads/2026/03/Data-Center-Ban-Consistency-Review-32026.pdf"),
+      byte_domain: RawResponseBody,
+    ),
+    version: "retrieved-2026-08-30" as VersionIdentity,
+    expected_identity: as_content_hash_cryptographic(digest: phillipsburg_consistency_review_digest),
+    selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
+  },
+  selector: none,
+}
+
+fn phillipsburg_draft_source_joined() -> Bool {
+  subject_draft_source_is(
+    g: phillipsburg_data_center_subject,
+    expected: phillipsburg_consistency_review_citation,
+  )
+    && subject_draft_source_is(
+      g: phillipsburg_data_center_subject,
+      expected: phillipsburg_o2026_08_citation,
+    ) == false
+    && subject_draft_source_is(g: phillipsburg_data_center_subject, expected: forged_same_bytes_citation) == false
+    && subject_draft_source_is(g: phillipsburg_data_center_subject, expected: tracked_pin_citation) == false
+}
+
+data self_relation_probe: InstrumentRelation = InstrumentRelation {
+  subject_instrument: probe_instrument,
+  relation: Preempts,
+  object_instrument: probe_instrument,
+  note: "probe",
+}
+
+fn self_relation_is_refused() -> Bool {
+  relations_well_formed(rs: [self_relation_probe]) == false
+}
+
+// THE REAL WORKFLOW, NOT A FIXTURE. What it declares is now exactly what the CANDIDATE grain
+// can carry, and the controls below are the wall against the relabelling that was here before:
+// property-specific requirements declared against a market area, several of them naming an
+// issuing officer from a different municipality.
+
+// NO SELECTION VALUE IS SUPPLIED, BECAUSE THERE IS NO SELECTOR. The previous revision had to
+// invent a pending selection on the screening gate - a Verification gate that decides no route -
+// purely because one realization entry point demanded a disposition. That was the sentinel one
+// layer down; the unbranched entry point takes no selection at all, and realization now consumes
+// template admission rather than standing beside it.
+data municipal_facts: WorkflowFacts = WorkflowFacts {
+  template: municipal_build_template,
+  decisions: municipal_selection_decisions,
+  assessments: [],
+  receipts: municipal_build_receipts,
+  as_of: survey_as_of,
+}
+
+fn template_has_no_selection() -> Bool {
+  match municipal_build_template.selection {
+    NoSelection => true,
+    SelectedBy { gate, candidates } => false,
+  }
+}
+
+// EVERY DECLARED REQUIREMENT IS ANSWERABLE AT THE GRAIN OF ITS SUBJECT. A parcel- or
+// realization-grained row has no subject in this program yet, and an externally issued row has
+// no identified authority for this market area - so neither may appear. Re-adding one is what
+// this control exists to refuse.
+fn requirement_grains_are_honest() -> Bool {
+  fold(municipal_build_template.specs, init: true, f: fn(acc, sp) {
+    acc && match sp.node {
+      GateNode { gate } => fold(gate.requirements, init: true, f: fn(inner, r) {
+        inner && match subject_grain(s: r.subject) {
+          CandidateGrain => match r.producer {
+            ProducedByStage { stage } => true,
+            PublishedByExternalSubject { source } => false,
+          },
+          ProgramGrain => false,
+          ParcelGrain => false,
+          SiteRealizationGrain => false,
+        }
+      }),
+      StageNode { stage } => true,
+      ActuationNode { actuation } => true,
+    }
+  })
+}
+
+// A workflow that stops says WHERE and WHAT WOULD LET IT CONTINUE. An unstated stop reads as a
+// finished program.
+fn the_stop_is_declared() -> Bool {
+  declaration_ref_eq(a: property_identity_needed.after_node, b: gate_market_area_screening.self_ref)
+    && match property_identity_needed.needs_grain {
+      ParcelGrain => true,
+      CandidateGrain => false,
+      ProgramGrain => false,
+      SiteRealizationGrain => false,
+    }
+}
+
+// EXACT ARMS, NOT A BOOLEAN FALSE. "not admitted" cannot tell a pending gate from an inactive
+// one or from a malformed one, and those are three different facts about the program.
+fn disposition_key(d: GateDisposition) -> String {
+  match d {
+    GateAdmitted { gate, satisfied, by_receipts } => "admitted",
+    GatePending { gate, unmet } => "pending",
+    GateRenewalRequired { gate, stale, also_unmet } => "renewal",
+    GateEvidenceConflicts { gate, conflicted } => "evidence_conflicts",
+    GateRefusedByEvidence { gate, refused } => "refused_by_evidence",
+    GateNoApplicableRequirements { gate } => "no_applicable_requirements",
+    GateNotActive { gate } => "not_active",
+  }
+}
+
+fn real_workflow_stands_pending() -> Bool {
+  let screening = gate_answer(facts: municipal_facts, gate_ref: gate_market_area_screening.self_ref)
+  gate_answer_key(a: screening) == "pending"
+    && count(derivation_refusal(facts: municipal_facts)) == 0
+    && count(municipal_build_receipts) == 0
+    && count(municipal_selection_decisions) == 0
+}
+
+fn gate_answer_key(a: GateAnswer) -> String {
+  match a {
+    GateAnswered { disposition } => disposition_key(d: disposition),
+    GateUnanswerable { cause } => "unanswerable",
+  }
+}
+
+fn real_template_is_admitted() -> Bool {
+  graph_is_admitted(a: municipal_template_admission)
+    && template_has_no_selection()
+    && count(municipal_build_template.specs) == 3
+}
+
+fn site_power_survey_witness_main() -> ProcessExit {
+  let sizing = collins_nodes_at_service(service_kw: 200) == 246
+    && collins_nodes_at_service(service_kw: 400) == 492
+    && racks_at_service(service_kw: 200) == 19
+    && continuous_watts_of_service(service_kw: 200) == 160000
+  let tiers = the_band_is_a_planning_band() && the_classification_is_still_owed()
+    && the_bounds_are_not_a_second_authority()
+  let graph_closed = real_template_is_admitted()
+  let jcpl_sites = fold(site_candidates, init: 0, f: fn(acc, s) {
+    if s.utility.name == jcpl.name { acc + 1 } else { acc }
+  })
+  let census = count(site_candidates) == 6 && jcpl_sites == 4
+  let diligence_honest = fold(site_candidates, init: true, f: fn(acc, s) {
+    acc && match s.diligence.standing {
+      DiligenceOpen { questions } => count(diligence_open_questions(d: s.diligence)) >= 5,
+      DiligenceCleared { census_receipt } => true,
+    }
+  })
+  if sizing && tiers && graph_closed && census && diligence_honest
+    && lifecycle_controls()
+    && effect_controls()
+    && extent_controls()
+    && phillipsburg_carries_its_instrument()
+    && findings_survive_closure()
+    && clearance_controls()
+    && findings_consistent()
+    && subject_standing_honest()
+    && provenance_standing_honest()
+    && real_row_extents()
+    && introduced_measure_is_not_neutral()
+    && questions_are_per_instrument()
+    && inquiry_is_owned_by_the_instrument()
+    && finding_rows_are_the_imported_instruments()
+    && temporal_standing_honest()
+    && phillipsburg_draft_source_joined()
+    && self_relation_is_refused()
+    && real_workflow_stands_pending()
+    && requirement_grains_are_honest()
+    && the_stop_is_declared() {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

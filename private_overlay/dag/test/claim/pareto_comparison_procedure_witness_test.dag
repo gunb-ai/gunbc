@@ -1,0 +1,109 @@
+module test.claim.pareto_comparison_procedure_witness
+
+import std.types { NonEmptyStr, List, String }
+import std.logic { Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.pareto {
+  ParetoStanding, ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence,
+  SelectionRefused,
+}
+import strategy.pareto_comparison_procedure { outcome_of_standing, standing_detail_key }
+import strategy.workflow_stage_gate {
+  SelectionAssessmentOutcome, ProcedureSupportsSelection, ProcedureRejectsSelection,
+  ProcedurePending, ProcedureRefused,
+}
+
+// THE PROJECTION'S OWN WITNESS LIVES WITH THE PROJECTION.
+//
+// It is here rather than in the workflow witness for a structural reason, not a filing preference:
+// std.pareto and strategy.workflow_stage_gate each declare a variant spelled SelectionRefused, and
+// they are different types. A single module cannot bind both spellings, so the module that needs
+// pareto's vocabulary is the one that must own this evidence.
+
+fn outcome_key(o: SelectionAssessmentOutcome) -> String {
+  match o {
+    ProcedureSupportsSelection => "supports",
+    ProcedureRejectsSelection => "rejects",
+    ProcedurePending => "pending",
+    ProcedureRefused => "refused",
+  }
+}
+
+// EVERY ARM IS PROJECTED, AND THE PAIRING IS THE POINT.
+//
+// An earlier version of this witness asserted NotComputable -> "refused" and called the collapse
+// deliberate. It was wrong, and it inverted the distinction std.pareto was changed to make.
+// NotComputable is an HONEST declaration -- the subject says which funded input it does not have,
+// nothing is malformed, and the remedy is to supply the input. SelectionRefused is the opposite:
+// the selection inputs contradict themselves, so the comparison cannot be trusted to mean what it
+// says. Reporting an unfunded axis as a broken procedure is the same conflation gunbc#10150 removed
+// one level down, re-introduced by the projection above it.
+//
+// So NotComputable joins PendingEvidence: no terminal support-or-reject answer YET. The loss that
+// remains is real -- which input is missing, which roster contradicts itself, who dominated -- and
+// it is now genuinely absent from the generic arms rather than copied into their payloads while a
+// comment denied it.
+fn every_standing_projects_to_its_outcome() -> Bool {
+  outcome_key(o: outcome_of_standing(s: ProvisionallyNonDominated { sensitivities: [] })) == "supports"
+    && outcome_key(o: outcome_of_standing(s: DominatedBy { dominators: [] })) == "rejects"
+    && outcome_key(o: outcome_of_standing(s: PendingEvidence { undecided: "quote outstanding" })) == "pending"
+    && outcome_key(o: outcome_of_standing(s: NotComputable { missing: "no reading on cost" })) == "pending"
+    && outcome_key(o: outcome_of_standing(s: SelectionRefused { cause: "axes roster contradicts itself" })) == "refused"
+}
+
+// AN HONEST GAP AND A CONTRADICTED ROSTER MUST NOT LAND ON ONE ARM. This is the discriminating half
+// of the pairing above: a projection that mapped both to "pending", or both to "refused", would
+// satisfy every other conjunct in this file while erasing exactly the distinction std.pareto keeps.
+fn an_honest_gap_is_not_a_broken_procedure() -> Bool {
+  outcome_key(o: outcome_of_standing(s: NotComputable { missing: "no reading on cost" }))
+    != outcome_key(o: outcome_of_standing(s: SelectionRefused { cause: "axes roster contradicts itself" }))
+}
+
+// DOMINANCE IS THE ONLY ARM THAT MAY REJECT. A projection that answered "supports" for anything
+// other than a non-dominated standing would let the workflow admit a candidate the comparison
+// turned down, which is the entire defect this procedure exists to prevent.
+fn only_a_non_dominated_standing_supports() -> Bool {
+  let supporting = fold(
+    [ProvisionallyNonDominated { sensitivities: [] }, DominatedBy { dominators: [] },
+     PendingEvidence { undecided: "u" }, NotComputable { missing: "m" },
+     SelectionRefused { cause: "c" }],
+    init: 0,
+    f: fn(acc, s) { if outcome_key(o: outcome_of_standing(s: s)) == "supports" { acc + 1 } else { acc } })
+  supporting == 1
+}
+
+// THE RETENTION IS ONLY REAL IF SOMETHING READS IT. assess_by_pareto used to compute the standing
+// and discard it, keeping the four-arm outcome; a ParetoRuling that merely CARRIES a field nothing
+// consumes is the same defect wearing a record. So this asserts what the retained standing buys:
+// two comparisons that project to the SAME outcome and are NOT the same answer.
+//
+// PendingEvidence and NotComputable are the pair that proves it. Both project to ProcedurePending --
+// correctly, because the workflow may not proceed on either -- and they are different facts: one is
+// evidence that has not settled, the other is a reading that was never taken. Before retention that
+// distinction was destroyed at the adapter boundary.
+//
+// The closing arm covers the OTHER four standings too, so the retained detail is not merely
+// distinct for this one pair.
+fn the_retained_standing_outlives_the_projection() -> Bool {
+  let undecided = PendingEvidence { undecided: "u" }
+  let missing = NotComputable { missing: "m" }
+  outcome_key(o: outcome_of_standing(s: undecided)) == outcome_key(o: outcome_of_standing(s: missing))
+    && standing_detail_key(s: undecided) != standing_detail_key(s: missing)
+    && count(fold([ProvisionallyNonDominated { sensitivities: [] }, DominatedBy { dominators: [] },
+                   PendingEvidence { undecided: "u" }, NotComputable { missing: "m" },
+                   SelectionRefused { cause: "c" }],
+                  init: [], f: fn(acc, st) {
+      if fold(acc, init: false, f: fn(hit, seen) { if seen == standing_detail_key(s: st) { true } else { hit } })
+        { acc } else { concat(acc, [standing_detail_key(s: st)]) }
+    })) == 5
+}
+
+fn pareto_comparison_procedure_witness_main() -> ProcessExit {
+  if every_standing_projects_to_its_outcome() && only_a_non_dominated_standing_supports()
+    && an_honest_gap_is_not_a_broken_procedure()
+    && the_retained_standing_outlives_the_projection() {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

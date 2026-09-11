@@ -1,0 +1,208 @@
+module strategy.mobo_x
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import strategy.ci_sellable_unit { ci_sellable_unit, SellableUnitContract }
+
+// MOBO-X: DESIGN AND COST ONE EXACT REV-A ALTRA COMPUTE TILE FIRST; DISPOSE AFTERWARDS. The
+// side-chat ruling of 2026-08-30, adopted by the operator, replaced "decide whether a custom board
+// seems worthwhile" with "design and cost one exact board, then let the disposition decide whether
+// to procure it". Two standings that an earlier revision fused are therefore separate here: whether
+// the RESEARCH is admitted (it is -- by operator ruling, and the private fiat refusal of custom
+// board work in compute_fabric_model cannot refuse it), and what the PRODUCTION disposition is
+// (derived only at MOBO-X-10, from the exact design digest, the quote curve, the workload evidence
+// and the supply coverage -- never from a description such as "a four-channel Altra board").
+type MoboXResearchAdmission
+  = ResearchAdmittedByOperator { ruled_on: NonEmptyStr }
+  | ResearchRefused { reason: NonEmptyStr }
+
+data mobo_x_research: MoboXResearchAdmission = ResearchAdmittedByOperator { ruled_on: "2026-08-30" }
+
+// THE PRODUCTION DISPOSITION IS A DERIVATION WITH NO ROW YET, and its absence is typed. Every arm
+// below binds the exact public design digest it was derived from; until MOBO-X-9 has produced a
+// quote-backed cost curve for a digest, the only inhabitable arm is NotYetDerivable, which names
+// the rung that must land first.
+// A DERIVED OUTCOME AND ITS ABSENCE ARE DIFFERENT TYPES, AND ADMISSIONS AND REFUSALS ARE TOO.
+// The outcomes carry no digest of their own: the digest lives once, on the receipt that binds an
+// outcome to the exact design it was derived for, so a terminal cannot pair design A with a
+// disposition derived for design B. Splitting admission from refusal lets the build-refused
+// terminal below consume ONLY a refusal, so "refused" backed by an admitted outcome is unwritable.
+type DerivedProductionAdmission
+  = PilotBuildAdmitted
+  | CustomProductionAdmitted
+  | CommodityBoardsPreferred
+  | ResearchValueOnly
+
+type DerivedProductionRefusal
+  = FirmwarePathRefused
+  | AttachmentStackRefused
+  | ManufacturingCostRefused
+  | WorkloadPerformanceRefused
+
+type DerivedProductionOutcome
+  = ProductionAdmitted { admission: DerivedProductionAdmission }
+  | ProductionRefused { refusal: DerivedProductionRefusal }
+
+// A DERIVATION HAS AT LEAST ONE INPUT BY CONSTRUCTION: first + additional, so a receipt claiming
+// to be derived from nothing has no constructor (side-chat ruling 2026-08-31).
+type ProductionDispositionReceipt {
+  design_digest: NonEmptyStr
+  outcome: DerivedProductionOutcome
+  first_derived_from: DeclarationRef
+  additional_derived_from: List<DeclarationRef>
+}
+
+// The refusal-only receipt for the build-refused terminal: same digest-and-derivation discipline,
+// restricted to refusal outcomes.
+type ProductionRefusalReceipt {
+  design_digest: NonEmptyStr
+  refusal: DerivedProductionRefusal
+  first_derived_from: DeclarationRef
+  additional_derived_from: List<DeclarationRef>
+}
+
+type CustomTileProductionDisposition
+  = NotYetDerivable { waiting_on_rung: NonEmptyStr }
+  | Derived { receipt: ProductionDispositionReceipt }
+
+data custom_tile_production: CustomTileProductionDisposition = NotYetDerivable {
+  waiting_on_rung: "MOBO-X-9 quote-backed cost curve for the Rev-A manufacturing digest",
+}
+
+// THE TERMINAL. MOBO-X closes only when one of these evidence-derived arms is constructed; a
+// status row, a prose estimate, a block diagram or a preliminary disposition cannot construct it.
+// EVERY EVIDENCE POSITION IS first + additional, so an arm without at least one receipt has no
+// constructor; passing boards are receipts, not a count, so zero passing boards cannot inhabit
+// the built arm; and every economically-closing arm consumes a derived receipt -- a DERIVED
+// outcome bound once to its digest, never the NotYetDerivable arm, and never a digest of its own
+// beside the receipt's. The one arm WITHOUT a disposition receipt is PhysicalRealizationRefused:
+// it closes BEFORE an economic disposition can exist, because the design could not be realized to
+// derive one from -- its evidence is the unresolved requirement, not a cost verdict.
+type MoboXTerminal
+  = PilotBuiltAndCostObserved {
+      disposition: ProductionDispositionReceipt
+      first_invoice: DeclarationRef
+      additional_invoices: List<DeclarationRef>
+      first_bringup_receipt: DeclarationRef
+      additional_bringup_receipts: List<DeclarationRef>
+      first_passing_board: DeclarationRef
+      additional_passing_boards: List<DeclarationRef>
+    }
+  | QuoteBackedDesignEstablished {
+      disposition: ProductionDispositionReceipt
+      first_quote: DeclarationRef
+      additional_quotes: List<DeclarationRef>
+    }
+  | DesignEstablishedButBuildRefused {
+      refusal_receipt: ProductionRefusalReceipt
+      first_quote: DeclarationRef
+      additional_quotes: List<DeclarationRef>
+    }
+  | PhysicalRealizationRefused {
+      attempted_design_digest: NonEmptyStr
+      exact_unresolved_requirement: NonEmptyStr
+      first_evidence: DeclarationRef
+      additional_evidence: List<DeclarationRef>
+    }
+
+// THE SERIAL PROGRAM, as rungs with one subject each. Order is binding; the standing of each rung
+// is a fact about its PR, not a prose status.
+// THE ROSTER IS IMMUTABLE PROGRAM STRUCTURE: identity, subject, and the predecessor that makes
+// the serial order a checkable chain. Execution is NOT a field here -- a hand-ticked standing goes
+// stale at the exact moment a rung lands (the PR that lands MOBO-X-0 cannot update its own row).
+// Standing derives from MoboXRungReceipt rows, which land in the PR AFTER the one they describe.
+type RungPredecessor
+  = ProgramStart
+  | AfterRung { identity: NonEmptyStr }
+
+type MoboXRung {
+  identity: NonEmptyStr
+  subject: NonEmptyStr
+  follows: RungPredecessor
+}
+
+// A RECEIPT IS REVISION-BEARING, NOT A PROSE STATUS: it binds the rung to the accepted PR, the
+// head revision that was approved, the merge revision that landed it, and the witness whose
+// execution accepted it -- so "landed" is checkable against the repository, never a string ticked
+// by hand (side-chat ruling 2026-08-31).
+type MoboXRungReceipt {
+  rung_identity: NonEmptyStr
+  accepted_pr: NonEmptyStr
+  approved_head_revision: NonEmptyStr
+  merge_revision: NonEmptyStr
+  acceptance_witness: DeclarationRef
+}
+
+data mobo_x_rung_receipts: List<MoboXRungReceipt> = [
+  MoboXRungReceipt {
+    rung_identity: "MOBO-X-0",
+    accepted_pr: "gunb-ai/gunbc-private#26",
+    approved_head_revision: "7be81001def2a58c358e62f0071e04c9ab04a5e1",
+    merge_revision: "deb213d6354b788a551b5764d261c356cefdbfe3",
+    acceptance_witness: decl_ref(module_path: "test.claim.ci_sellable_unit_witness", decl_name: "sellable_unit_witness_main"),
+  },
+  MoboXRungReceipt {
+    rung_identity: "MOBO-X-1",
+    accepted_pr: "gunb-ai/gunbc-private#29",
+    approved_head_revision: "b821433c52e161267947f91848d22ec7062e56b9",
+    merge_revision: "1fff9cada5ac96030ea04682f1676647847424d2",
+    acceptance_witness: decl_ref(module_path: "test.claim.mobo_x_architecture_witness", decl_name: "mobo_x_architecture_witness_main"),
+  },
+]
+
+fn rung_is_landed(identity: NonEmptyStr) -> Bool {
+  fold(mobo_x_rung_receipts, init: false, f: (acc, r) => acc || r.rung_identity == identity)
+}
+
+// A receipt naming an identity outside the roster is inadmissible; the witness holds this over
+// every receipt row.
+fn rung_receipts_name_roster_identities() -> Bool {
+  fold(mobo_x_rung_receipts, init: true, f: (acc, r) =>
+    acc && fold(mobo_x_rungs, init: false, f: (hit, g) => hit || g.identity == r.rung_identity)
+  )
+}
+
+fn rung_identities_are_unique() -> Bool {
+  fold(mobo_x_rungs, init: 0, f: (acc, g) =>
+    acc + fold(mobo_x_rungs, init: 0, f: (n, h) => if h.identity == g.identity { n + 1 } else { n })
+  ) == count(mobo_x_rungs)
+}
+
+type SerialScan {
+  previous: String
+  ok: Bool
+}
+
+fn serial_order_chains() -> Bool {
+  let scan = fold(mobo_x_rungs, init: SerialScan { previous: "", ok: true }, f: (acc, g) =>
+    match g.follows {
+      ProgramStart => SerialScan { previous: g.identity, ok: acc.ok && acc.previous == "" }
+      AfterRung { identity: p } => SerialScan { previous: g.identity, ok: acc.ok && p == acc.previous }
+    }
+  )
+  scan.ok
+}
+
+data mobo_x_rungs: List<MoboXRung> = [
+  MoboXRung { identity: "MOBO-X-0", subject: "program authority and the exact one-SKU product contract (3 decimal GB per core; 4 GB revoked; /4 literals eliminated; 76 units; 128-unit shape refused on 1P Q80; terminal defined)", follows: ProgramStart },
+  MoboXRung { identity: "MOBO-X-1", subject: "exact Rev-A architecture and total role selection (every role SelectedForRevA | ExplicitlyAbsent | BlockedByNamedFact)", follows: AfterRung { identity: "MOBO-X-0" } },
+  MoboXRung { identity: "MOBO-X-2", subject: "Mt. Collins channel census, depopulation protocol, MemoryChannelResponseReceipt; selects the routed topology (provisional: 4ch x 1DPC x 64 GiB 2Rx4 RDIMM)", follows: AfterRung { identity: "MOBO-X-1" } },
+  MoboXRung { identity: "MOBO-X-3", subject: "per-contact disposition of all 4926 package contacts over the AZIFA072 footprint; escape problem; AZIF0222 late-binding via ProvisionalPlacementEnvelope", follows: AfterRung { identity: "MOBO-X-2" } },
+  MoboXRung { identity: "MOBO-X-4", subject: "firmware, boot, management and recovery contract (FirmwareBringupPath; PublicRequirementEnvelopeOnly suffices for schematic and quotes, not for the wet build)", follows: AfterRung { identity: "MOBO-X-3" } },
+  MoboXRung { identity: "MOBO-X-5A", subject: "power tree and sequencing: every rail binds producer, consumers, tolerance, current, order, fault, measurement point", follows: AfterRung { identity: "MOBO-X-4" } },
+  MoboXRung { identity: "MOBO-X-5B", subject: "DDR, clocks, reset and boot schematic bound to the MOBO-X-2 selection receipt", follows: AfterRung { identity: "MOBO-X-5A" } },
+  MoboXRung { identity: "MOBO-X-5C", subject: "network, BMC, control and service schematic; every routed lane has one exact consumer", follows: AfterRung { identity: "MOBO-X-5B" } },
+  MoboXRung { identity: "MOBO-X-6", subject: "outline, stackup, placement and escape study; layer count DERIVED, failure arms SocketEscapeFailed | DdrEscapeFailed | PowerDistributionFailed | MechanicalEnvelopeFailed | FabricatorCapabilityUnavailable", follows: AfterRung { identity: "MOBO-X-5C" } },
+  MoboXRung { identity: "MOBO-X-7", subject: "full Rev-A layout and RevAManufacturingPackage (ERC/DRC clean, final attachment facts, DFM receipt)", follows: AfterRung { identity: "MOBO-X-6" } },
+  MoboXRung { identity: "MOBO-X-8", subject: "manufacturing, programming, test and repair process with named producers and receipts", follows: AfterRung { identity: "MOBO-X-7" } },
+  MoboXRung { identity: "MOBO-X-9", subject: "quote campaign: ManufacturingQuoteReceipts at 1/5/10/31/62, QuoteBackedCostCurve, plus BoardOfferObservationReceipts -> CommoditySocketSupplyCoverage", follows: AfterRung { identity: "MOBO-X-8" } },
+  MoboXRung { identity: "MOBO-X-10", subject: "quote-backed private CustomTileProductionDisposition bound to the design digest; terminal report; first request to authorize money", follows: AfterRung { identity: "MOBO-X-9" } },
+  MoboXRung { identity: "MOBO-X-11", subject: "pilot build and ObservedPilotCost (preferred terminal PilotBuiltAndCostObserved)", follows: AfterRung { identity: "MOBO-X-10" } },
+]
+
+fn rung_count() -> Nat { count(mobo_x_rungs) }
+
+// THE CONTRACT THE PROGRAM DESIGNS AGAINST is the one sellable-unit row, by identity -- MOBO-X-1
+// may not receive a GB-per-core literal of its own.
+fn program_contract() -> SellableUnitContract { ci_sellable_unit }

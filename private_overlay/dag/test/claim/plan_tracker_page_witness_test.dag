@@ -1,0 +1,80 @@
+module test.claim.plan_tracker_page_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import strategy.plan_tracker_page {
+  calendar_agrees_with_anchors, day_to_iso, render_tracker_body, as_of_day,
+  item_row, item_x, item_y, all_dep_edges, next_starts,
+}
+import strategy.year_end_plan { year_end_plan_items, latest_start_day, find_item }
+
+// THE CALENDAR IS CHECKED AGAINST AN AUTHORITY IT DID NOT WRITE. day_to_iso converts a plan
+// day offset to a date, and every start-by date on the tracker depends on it. The plan
+// independently declares five anchor dates as ISO strings AND five anchor day offsets, so the
+// two representations must agree under the conversion. Getting a month boundary wrong shifts
+// every derived date silently - a date that is merely plausible is exactly the fabricated
+// output DESIGN section 5 forbids, and off-by-one in a calendar is always plausible.
+fn witness_calendar_agrees() -> Bool {
+  calendar_agrees_with_anchors()
+}
+
+// The month boundaries themselves, probed at the days that cross them. These are the values a
+// hand-written calendar gets wrong, and the anchor agreement above only exercises five of them.
+fn witness_month_boundaries() -> Bool {
+  day_to_iso(day: 0) == "2026-08-29"
+    && day_to_iso(day: 2) == "2026-08-31"
+    && day_to_iso(day: 3) == "2026-09-01"
+    && day_to_iso(day: 32) == "2026-09-30"
+    && day_to_iso(day: 33) == "2026-10-01"
+    && day_to_iso(day: 63) == "2026-10-31"
+    && day_to_iso(day: 64) == "2026-11-01"
+    && day_to_iso(day: 93) == "2026-11-30"
+    && day_to_iso(day: 94) == "2026-12-01"
+    && day_to_iso(day: 124) == "2026-12-31"
+    && day_to_iso(day: 125) == "2027-01-01"
+}
+
+// The drawing must contain an edge for every declared dependency that resolves. A diagram that
+// silently drops edges is worse than no diagram: it is read as evidence that an item has no
+// prerequisites. Counting edges against the declared dependency count is an identity the
+// drawing cannot satisfy by drawing something else.
+fn declared_dep_count() -> Bool {
+  count(all_dep_edges()) == fold(year_end_plan_items, init: 0, f: (acc, i) => acc + count(i.depends_on))
+}
+
+// The emission is a real string that passed its own section guard, not a REFUSED or REJECTED
+// message. Rendering is where a page most easily becomes specification-without-execution.
+fn witness_emits() -> Bool {
+  let html = render_tracker_body()
+  string_contains(s: html, pattern: "What I need, by when")
+    && string_contains(s: html, pattern: "svg")
+    && !string_contains(s: html, pattern: "REFUSED:")
+    && !string_contains(s: html, pattern: "REJECTED:")
+}
+
+// Layout positions are derived and must be distinct enough to be readable: no two items may
+// occupy the same row within the same column, which is what a rank-only layout would do.
+fn witness_layout_unique() -> Bool {
+  all(year_end_plan_items, i =>
+    count(filter(year_end_plan_items, j => item_x(i: j) == item_x(i: i) && item_y(i: j) == item_y(i: i))) == 1)
+}
+
+fn tracker_witness_all() -> Bool {
+  witness_calendar_agrees()
+    && witness_month_boundaries()
+    && declared_dep_count()
+    && witness_emits()
+    && witness_layout_unique()
+}
+
+fn plan_tracker_witness_main() -> ProcessExit {
+  if tracker_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "tracker_witness_all returned false" } }
+}
+
+// THE REGENERATION ACTUATOR. render_tracker_body is the authority for the committed
+// docs/strategy/plan-tracker-generated.html bytes. Hand-editing that file to agree is a second
+// authority. This entry prints the projection so a regeneration is an execution, not a transcription.
+fn plan_tracker_emit_cli() -> CliWireResponse {
+  CliWirePrintable { bytes: render_tracker_body(), exit: ExitSuccess }
+}

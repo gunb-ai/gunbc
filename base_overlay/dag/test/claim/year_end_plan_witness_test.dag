@@ -1,0 +1,112 @@
+module test.claim.year_end_plan_witness
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.year_end_plan {
+  PlanItem, PlanMilestone, year_end_plan_items, plan_graph_sound, gate_conjunction_exact,
+  done_implies_deps_done, on_track_at_day, items_late_at_day, items_at_risk_at_day,
+  milestone_anchor_date, milestone_anchor_day, milestone_order,
+  M1InternalVertical, M1bInternalS0Proof, M2FirstExternal, M2bPrivateCohort, M3YearEndGate,
+  M4JanuaryLaunch,
+  find_item,
+}
+
+// THE DISCRIMINATING CLAIMS. (1) The graph is sound INCLUDING acyclicity by declared
+// rank - a same-milestone two-cycle now reds. (2) The s1-gate conjunction is asserted by
+// IDENTITY (all 14 named deps present, count exact) - swapping one for an unrelated item
+// at constant count reds. (3) A Done item with a not-Done dependency reds (completion
+// coherence). (4) Tracking is non-vacuous: on plan epoch day 0 the plan is on track; by
+// day 13 runner-canary alone has passed its derived latest safe start (day 12) while
+// NotStarted, so the at-risk set is exactly 1; after the final anchor the late set is
+// nonempty. (5) The five anchors are strictly ordered in BOTH representations (ISO date
+// and epoch day), so the two carriers cannot drift apart silently.
+
+fn ids_unique() -> Bool {
+  fold(year_end_plan_items, init: true, f: fn(acc, i) {
+    acc && count(filter(year_end_plan_items, j => j.id == i.id)) == 1
+  })
+}
+
+fn anchors_ordered() -> Bool {
+  milestone_anchor_date(m: M1InternalVertical) < milestone_anchor_date(m: M1bInternalS0Proof)
+    && milestone_anchor_date(m: M1bInternalS0Proof) < milestone_anchor_date(m: M2FirstExternal)
+    && milestone_anchor_date(m: M2FirstExternal) < milestone_anchor_date(m: M2bPrivateCohort)
+    && milestone_anchor_date(m: M2bPrivateCohort) < milestone_anchor_date(m: M3YearEndGate)
+    && milestone_anchor_date(m: M3YearEndGate) < milestone_anchor_date(m: M4JanuaryLaunch)
+    && milestone_anchor_day(m: M1InternalVertical) < milestone_anchor_day(m: M1bInternalS0Proof)
+    && milestone_anchor_day(m: M1bInternalS0Proof) < milestone_anchor_day(m: M2FirstExternal)
+    && milestone_anchor_day(m: M2FirstExternal) < milestone_anchor_day(m: M2bPrivateCohort)
+    && milestone_anchor_day(m: M2bPrivateCohort) < milestone_anchor_day(m: M3YearEndGate)
+    && milestone_anchor_day(m: M3YearEndGate) < milestone_anchor_day(m: M4JanuaryLaunch)
+    && milestone_order(m: M1InternalVertical) < milestone_order(m: M3YearEndGate)
+    && milestone_order(m: M3YearEndGate) < milestone_order(m: M4JanuaryLaunch)
+}
+
+// THE CRITICAL PATH AS AN ORACLE, RE-DERIVED 2026-09-08. AtRisk was UNSTARTED past latest
+// safe start, so an InProgress item could never go amber. fabric-m0's legitimate start
+// then dropped it from the onset set, and the previous derivation recorded that honestly
+// -- count 2 to 1 -- while the state was the problem: the first M1 14-day item to cross
+// (day 20, 2026-09-17) would have been invisible. AtRisk is now UNFINISHED past that day.
+//
+// The claim now: slack until day 19, and on day 20 EXACTLY FOUR unfinished items share
+// latest_start 19 (M1, min_calendar_days 14). Three already started on receipts
+// (hw-first-host, fabric-m0, llc-publication-filing) and one has not (cohort-qualified).
+// Four, not two: the two extra are the other M1 14-day rows that were InProgress before
+// this predicate change, so they were already amber-suppressed and now show. If this
+// count is not four, the unfinished predicate is not what this comment says.
+fn at_risk_onset_is_m1_fourteen_day_floor() -> Bool {
+  let before = items_at_risk_at_day(today_day: 19)
+  let onset = items_at_risk_at_day(today_day: 20)
+  count(before) == 0
+    && count(onset) == 4
+    && any(onset, i => i.id == "hw-first-host")
+    && any(onset, i => i.id == "fabric-m0")
+    && any(onset, i => i.id == "llc-publication-filing")
+    && any(onset, i => i.id == "cohort-qualified")
+}
+
+// THE NEW ITEM IS LOAD-BEARING, NOT MERELY ROSTERED. storage-provider-accounts was added because
+// the requirement was live on a side list while fabric-m0 declared no dependencies and therefore
+// read as startable; an item nobody depends on would have reproduced that defect one row over.
+// This asserts the edge, not just the row -- adding the item without the edge is the failure.
+fn storage_accounts_gate_the_fabric() -> Bool {
+  fold(find_item(id: "fabric-m0"), init: false, f: fn(acc, i) {
+    acc || count(filter(i.depends_on, d => d == "storage-provider-accounts")) == 1
+  })
+    && fold(find_item(id: "storage-provider-accounts"), init: false, f: fn(acc, i) {
+      acc || count(i.depends_on) == 0
+    })
+}
+
+fn wholesale_grounding_gates_the_channel() -> Bool {
+  fold(find_item(id: "wholesale-supply-channel"), init: false, f: fn(acc, i) {
+    acc || count(filter(i.depends_on, d => d == "wholesale-argument-grounding")) == 1
+  })
+    && fold(find_item(id: "wholesale-argument-grounding"), init: false, f: fn(acc, i) {
+      acc || count(i.depends_on) == 0
+    })
+}
+
+fn every_item_related() -> Bool {
+  fold(year_end_plan_items, init: true, f: fn(acc, i) { acc && count(i.relates_to) > 0 })
+}
+
+fn year_end_plan_witness_main() -> ProcessExit {
+  let graph_sound = plan_graph_sound()
+  let unique = ids_unique()
+  let population = count(year_end_plan_items) == 86
+  let gate_exact = gate_conjunction_exact()
+  let coherent = done_implies_deps_done()
+  let ordered = anchors_ordered()
+  let epoch_on_track = on_track_at_day(today_day: 0)
+  let risk_derives = at_risk_onset_is_m1_fourteen_day_floor()
+  let late_after_final = count(items_late_at_day(today_day: 113)) > 0
+  let related = every_item_related()
+  let storage_gates = storage_accounts_gate_the_fabric()
+  let wholesale_gates = wholesale_grounding_gates_the_channel()
+  if graph_sound && unique && population && gate_exact && coherent && ordered && epoch_on_track && risk_derives && late_after_final && related && storage_gates && wholesale_gates {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

@@ -1,0 +1,149 @@
+module extdeps.regulation.nj_jersey_city
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionIdentity }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.citation { CitationSelector, CitationTarget, citation_target, citation_exact_pin, RawResponseBody }
+import std.content_hash { Sha256Digest }
+import extdeps.external_authority { ExternalSubjectRef }
+import extdeps.uri { uri_https }
+import extdeps.regulation.types {
+  RegulatoryInstrument, IssuingAuthority, Municipal,
+  InstrumentLifecycle, Adopted, EffectiveDate, EffectiveDatePendingEvidence,
+  ExecutiveDisposition, SignedOn,
+  ProhibitionOfUse, SpatialExtent, NamedZoningDistricts, ZoningDistrictRef,
+  ZoningMapRevision, MapRevisionPending,
+  GovernedSubject, SubjectStanding, ExactDefinition,
+  TemporalApplication, ExistingUseTreatmentFromGeneralLaw,
+  ApplicabilityBasis, PrincipalUseZoning,
+  InstrumentProvenance, OfficialText,
+}
+
+// THE CITY OF JERSEY CITY, HUDSON COUNTY, NEW JERSEY.
+//
+// THIS MODULE EXISTS BECAUSE THE PREMISE FOR WITHHOLDING IT WAS STALE. The previous revision
+// deliberately refused to author a Jersey City instrument, on the grounds that the only evidence
+// was a statewide roster entry with "no designation, no adoption date, no spatial extent, no
+// definition". That refusal was the right rule applied to a wrong fact: the City publishes the
+// ordinance, and it was one search away. Declining to model is only honest while the document is
+// genuinely unavailable - past that it is just an unread source with a principled-sounding label.
+//
+// AND THE CORRECTION MATTERS MORE THAN THE ROW. Jersey City was reported up the lane as
+// "BANNED", alongside Bayonne. It is not, and the difference is the whole reason SpatialExtent
+// exists: Ord. 26-057 removes cyber hotels/data centers from the permitted PRINCIPAL uses of ONE
+// district - the I Industrial District - by striking a single line from section 345-49.B. Every
+// other district in the city is untouched, and OFFICES REMAIN a permitted principal use in the
+// Industrial District itself.
+//
+// The city's own account of its existing stock sharpens the point: its roughly five data centers
+// sit downtown INSIDE EXISTING OFFICE BUILDINGS SHARED WITH OTHER COMMERCIAL TENANTS - which is
+// materially the arrangement our own 21-node install would occupy. Nothing here decides that
+// question for us; it means Jersey City is the market area where the accessory-use question is
+// most clearly LIVE rather than most clearly closed, which is the opposite of what a "BANNED"
+// label conveys.
+
+data jersey_city: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.regulation.nj_jersey_city",
+    decl_name: "jersey_city",
+    field: WholeDeclaration,
+  },
+}
+
+data jersey_city_zoning_officer: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.regulation.nj_jersey_city",
+  decl_name: "jersey_city",
+  field: NamedField { field_name: "zoning_officer" },
+}
+
+data jersey_city_council: IssuingAuthority = IssuingAuthority {
+  subject: DeclarationRef {
+    module_path: "extdeps.regulation.nj_jersey_city",
+    decl_name: "jersey_city",
+    field: WholeDeclaration,
+  },
+  level: Municipal,
+}
+
+data jc_26_057_digest: Sha256Digest = Sha256Digest {
+  hex: "f2b4f933a04fc5f2c98a0b6aec7527bc783389f295acaa97927f35c32bad0374",
+}
+
+data jc_26_057_citation: CitationTarget<CitationSelector> = citation_target(
+  expected_pin: citation_exact_pin(
+    source: jersey_city,
+    access_route: uri_https(locator: "cityofjerseycity.civicweb.net/document/456803/Data%20Center%20Amendment.pdf"),
+    byte_domain: RawResponseBody,
+    version: "retrieved-2026-08-30" as VersionIdentity,
+    expected_identity: jc_26_057_digest,
+  ),
+  selector: none,
+)
+
+// THE I INDUSTRIAL DISTRICT, and only it. The map revision is named because a district code is a
+// key into a map that is itself amended - the Land Development Ordinance's district scheme is
+// cited here against the Master Plan the Planning Board found this amendment consistent with.
+// THE MAP REVISION IS PENDING, NOT THE MASTER PLAN. The first revision named the 2022 Master
+// Plan here. That is the RECOMMENDING POLICY DOCUMENT - the ordinance itself distinguishes it
+// from the Land Development Ordinance whose permitted-use list actually governs, reciting only
+// that the Planning Board found the amendment consistent with it. Citing the plan as the
+// zoning-map authority would let a consistency finding stand in for the zoning map, which is a
+// different instrument with a different revision history.
+data jc_industrial_district: ZoningDistrictRef = ZoningDistrictRef {
+  jurisdiction: DeclarationRef {
+    module_path: "extdeps.regulation.nj_jersey_city",
+    decl_name: "jersey_city",
+    field: WholeDeclaration,
+  },
+  district_code: "I Industrial District, Jersey City Land Development Ordinance section 345-49",
+  map_revision: MapRevisionPending {
+    obligation: "Read the Land Development Ordinance / zoning-map revision in force at adoption. Ord. 26-057 amends sections 345-49.B and 345-6 without stating the revision it amends, and the 2022 Master Plan is the RECOMMENDING plan, not the map.",
+  },
+}
+
+data jc_data_center_subject: GovernedSubject = GovernedSubject {
+  defined_term: "DATA CENTERS",
+  standing: ExactDefinition {
+    definition_text: "A facility used to house computer systems and associated components, such as telecommunications and storage systems. Data center/cyber hotel shall not be considered warehousing.",
+    liberally_construed: false,
+    exclusions: [],
+  },
+}
+
+// LIFECYCLE IS Adopted, AND GETTING HERE TOOK A SELF-CORRECTION WORTH RECORDING. The first
+// draft of this row carried Introduced, with a comment arguing that this was "a measured claim
+// rather than a cautious one" because no adoption receipt had been read and a statewide roster
+// was not good enough provenance. The reasoning was right and the fact was wrong: the adoption
+// receipt was on page 3 of the very PDF this module already digests. Extraction had stopped at
+// the first page of body text, so the document was cited as evidence for a claim it refutes.
+//
+// Its own certification page records: adopted on first reading 2026-07-15 (9-0); public hearing
+// closed and RECORD OF FINAL COUNCIL VOTE 2026-08-19 (9-0); "Adopted on second and final reading
+// after hearing on Aug 19 2026"; to the Mayor 2026-08-20 and approved by Mayor James Solomon the
+// same day.
+//
+// The lesson generalizes past this row: an unread section of a retrieved document is not the same
+// as an unretrieved document, and only the first one is an excuse. Caution pointed the right way
+// does not make an assertion true.
+data jc_ordinance_26_057: RegulatoryInstrument = RegulatoryInstrument {
+  self_ref: DeclarationRef { module_path: "extdeps.regulation.nj_jersey_city", decl_name: "jc_ordinance_26_057", field: WholeDeclaration },
+  designation: "Ord. 26-057",
+  issuer: jersey_city_council,
+  lifecycle: Adopted {
+    adopted_at: 1787097600000,
+    executive: SignedOn { at: 1787184000000 },
+    effective: EffectiveDatePendingEvidence {
+      obligation: "Retrieve the publication receipt. The ordinance directs the clerk to transmit the finally-adopted copy under N.J.S.A. 40:55D-16 and to the Municipal Tax Assessor under N.J.S.A. 40:49-2.1; the date the amendment took effect follows from publication after final passage, which is a retrieval rather than an unread clause.",
+    },
+  },
+  force: ProhibitionOfUse,
+  extent: NamedZoningDistricts { first_district: jc_industrial_district, further_districts: [] },
+  subject: jc_data_center_subject,
+  temporal: ExistingUseTreatmentFromGeneralLaw {
+    obligation: "The amendment removes a permitted use prospectively and states no savings clause of its own. How it treats the city's existing data centers therefore follows from the Municipal Land Use Law's nonconforming-use regime, which is a question for counsel - reporting that existing facilities are unaffected is consistent with that but is not the instrument saying so. An earlier revision recorded vested_rights_preserved: true here while its own note said the treatment was an open question; a Boolean cannot hold 'we have not established this'.",
+  },
+  provenance: OfficialText { citation: jc_26_057_citation },
+  enforcer: jersey_city_zoning_officer,
+  applicability_basis: PrincipalUseZoning { zoning_officer: jersey_city_zoning_officer },
+  note: "Introduced 2026-07-15 under N.J.S.A. 40:55D-62. Planning Board public hearing 2026-06-30; found consistent with the 2022 Master Plan and recommended to the Council. Strikes 'Cyber hotels' from the permitted principal uses at section 345-49.B and adds the definition at section 345-6. Adopted 2026-08-19 on a 9-0 final vote and approved by the Mayor 2026-08-20. OWED: the publication receipt fixing the effective date.",
+}

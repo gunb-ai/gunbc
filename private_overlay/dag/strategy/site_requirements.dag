@@ -1,0 +1,104 @@
+module strategy.site_requirements
+
+import std.nat { Nat }
+import strategy.strategy_model { EvidenceAnchor }
+import strategy.site_model { SiteAxis, ContinuousPower, CoolingHeatRejection, ZoningPermittedUse, FireElectricalCompliance, Habitability, InsuranceCoverage, PhysicalAccess }
+
+data site_requirements_note: String = "Regulatory/contractual requirement pipeline seed (operator direction 2026-08-10): codify local/state/national requirements as CITED external authorities, evaluate each against site evidence, and QUANTIFY IGNORANCE - every Unknown names the survey obligation that discharges it, so what-we-do-not-know is a countable, blocking-weighted list, never a vibe. PLACEMENT DEBT: regulation rows are external authorities and belong in the public repo's dag/extdeps (e.g. extdeps/construction, extdeps/access already exists) per the extdeps discipline; they are seeded here because the site instantiation is private. Citations are from-knowledge readings pending pin-verification against the current published editions (the extdeps pin discipline) - each row says what it cites; none is a legal opinion. Evaluations are computed receipts: Pass rows show their inputs; Unknown rows point at survey items; NotYetTriggered rows name their trigger; no verdict is authored without its derivation shown (witness control 15)."
+
+type AuthorityLevel
+  = NationalAuthority
+  | StateAuthority
+  | LocalAuthority
+  | UtilityAuthority
+  | ContractualAuthority
+
+type SiteRequirement {
+  id: String
+  level: AuthorityLevel
+  authority: String
+  requirement: String
+  gates_axis: SiteAxis
+}
+
+type RequirementEvaluation
+  = RequirementPass { derivation: String, evidence: List<EvidenceAnchor> }
+  | RequirementFail { cause: String, evidence: List<EvidenceAnchor> }
+  | RequirementUnknown { missing: String, discharged_by_survey_item: String }
+  | NotYetTriggered { trigger: String }
+
+type SiteRequirementEvaluation {
+  requirement_id: String
+  site_id: String
+  evaluation: RequirementEvaluation
+}
+
+data site_requirements: List<SiteRequirement> = [
+  SiteRequirement { id: "req-egress-single-exit", level: NationalAuthority, authority: "IBC 1006.2.1 (NJ building subcode adopts IBC); IBC Table 1004.5 business occupant load 150 SF gross/person", requirement: "Single exit permitted for B occupancy up to 49 occupants within common-path limits", gates_axis: FireElectricalCompliance },
+  SiteRequirement { id: "req-occupancy-b", level: NationalAuthority, authority: "IBC 304 Business Group B (office, incl. electronic data processing at office scale)", requirement: "Use remains Group B - no change-of-use approval needed for office + small compute", gates_axis: ZoningPermittedUse },
+  SiteRequirement { id: "req-exit-signage", level: NationalAuthority, authority: "IBC 1013 / NJ Uniform Fire Code", requirement: "Exit signage and emergency egress lighting present and functional", gates_axis: FireElectricalCompliance },
+  SiteRequirement { id: "req-nec-continuous", level: NationalAuthority, authority: "NFPA 70 (NEC) Art. 210.19/210.20, 215: continuous loads at 125% conductor/OCPD sizing (the 80% rule)", requirement: "Dedicated branch circuit(s) for compute sized for continuous load at 80% derating", gates_axis: ContinuousPower },
+  SiteRequirement { id: "req-ada-route", level: NationalAuthority, authority: "2010 ADA Standards / ICC A117.1: 36-inch accessible route; 60-inch turning space; bathroom clearances and grab-bar geometry", requirement: "Accessible route and bathroom dimensional compliance maintained after any layout change", gates_axis: Habitability },
+  SiteRequirement { id: "req-floor-load", level: NationalAuthority, authority: "IBC Table 1607.1: office live load 50 psf + partition allowance; concentrated-load check for equipment", requirement: "Rack/cabinet point load within the 1911 wood-frame floor's demonstrated capacity", gates_axis: FireElectricalCompliance },
+  SiteRequirement { id: "req-nj-ucc-permits", level: StateAuthority, authority: "N.J.A.C. 5:23 (NJ Uniform Construction Code): electrical + mechanical subcode permits; municipal cut-in certificate before service changes", requirement: "Permits for new circuits and mini-split installation; inspections passed", gates_axis: FireElectricalCompliance },
+  SiteRequirement { id: "req-nj-noise", level: StateAuthority, authority: "N.J.A.C. 7:29 (NJ noise code, municipally enforced): 65 dBA daytime / 50 dBA nighttime at residential receiving property line", requirement: "Condenser and any exterior equipment within nighttime limits at the nearest residential line", gates_axis: Habitability },
+  SiteRequirement { id: "req-zoning-use", level: LocalAuthority, authority: "City of Bayonne zoning ordinance - district and permitted-use table for the E 21st St parcel", requirement: "Office/tech-studio use permitted as-of-right at this address", gates_axis: ZoningPermittedUse },
+  SiteRequirement { id: "req-fire-inspection", level: LocalAuthority, authority: "NJ Uniform Fire Code (N.J.A.C. 5:70) periodic inspections; portable extinguishers", requirement: "Registration and periodic fire inspection for the business premises", gates_axis: FireElectricalCompliance },
+  SiteRequirement { id: "req-pseg-service", level: UtilityAuthority, authority: "PSE&G tariff (GLP class at this scale); service capacity at the meter", requirement: "Utility service and metering adequate for base + compute increment without upgrade", gates_axis: ContinuousPower },
+  SiteRequirement { id: "req-lease-use", level: ContractualAuthority, authority: "Lease: use clause, alterations/penetration consent, continuous-operation equipment, insurance requirements", requirement: "Lease permits 24/7 equipment, added circuits, and mini-split penetration with landlord consent in writing", gates_axis: ZoningPermittedUse },
+  SiteRequirement { id: "req-insurance", level: ContractualAuthority, authority: "Commercial GL + property policy; landlord COI requirements", requirement: "Coverage bound for business operations including owned equipment; COI naming landlord", gates_axis: InsuranceCoverage },
+  SiteRequirement { id: "req-bayonne-dc-ordinance", level: LocalAuthority, authority: "City of Bayonne introduced ordinance (2026-07-22) adding data centers as a non-permitted use in every zoning district - PRIMARY SOURCE press release bayonnenj.org 2026-07-24; lifecycle Proposed", requirement: "The intended operation must not constitute a 'Data Center' under the ordinance as finally adopted, or must be established under authority vested before its effective date", gates_axis: ZoningPermittedUse },
+  SiteRequirement { id: "req-current-co", level: LocalAuthority, authority: "Bayonne zoning permit + certificate of occupancy regime (new CO required for any change of use, including permitted-to-permitted); N.J.S.A. 40:55D nonconforming-use law", requirement: "Occupancy authority for the intended use at this parcel, resolving the reported R-2 classification against the existing office use", gates_axis: ZoningPermittedUse },
+]
+
+data site_requirement_evaluations: List<SiteRequirementEvaluation> = [
+  SiteRequirementEvaluation { requirement_id: "req-egress-single-exit", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "Function-by-space occupant loads (community/assembly use computes at 15 net SF/person, not 150 gross), measured common path vs the ~100 ft unsprinklered-B limit, sprinkler status, door/route/shared-circulation facts. Provisional arithmetic retained as ESTIMATE only: 750/150 = 5 occupants under an all-business assumption. RETRACTION 2026-08-10 (external review): previously Pass on a plausibility inference ('cannot plausibly exceed') - the exact inference class the receipts discipline rejects.", discharged_by_survey_item: "srv-geometry-capture" } },
+  SiteRequirementEvaluation { requirement_id: "req-occupancy-b", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "The prior Pass conflated three distinct questions: building-code occupancy classification (reading favorable), municipal zoning/land-use permissibility (CONTROLLING: third-party records report R-2, whose permitted-use list contains no office principal use - the existing law office implies nonconforming status/variance/older CO to be obtained - AND the pending citywide data-center ordinance), and lease-authorized use. RETRACTION 2026-08-10: Group B answers none of the zoning questions.", discharged_by_survey_item: "srv-zoning-interpretation" } },
+  SiteRequirementEvaluation { requirement_id: "req-exit-signage", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "Fixtures OBSERVED in the entry photo (positive sub-reading: EXIT sign + twin-head emergency light present); powered/functional/duration and inspection status unknown; and NJ IBC exempts single-exit spaces from the exit-sign requirement, so the observed sign may not even be the code-relied fixture for this space. RETRACTION 2026-08-10: observed-fixture had been promoted to compliance Pass.", discharged_by_survey_item: "srv-co-history" } },
+  SiteRequirementEvaluation { requirement_id: "req-bayonne-dc-ordinance", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "VERIFIED PRIMARY SOURCE (bayonnenj.org press release 2026-07-24, PDF fetched 2026-08-10): ordinance introduced 2026-07-22 prohibiting data centers in every zoning district; definition covers any building 'or portion thereof' whose 'principal use' is operating servers/racks/cloud/AI infrastructure, 'liberally construed' toward 'large-scale digital infrastructure'; prospective; enforcement hook is any post-effective-date zoning permit/construction permit/CO. LIFECYCLE: Proposed - Planning Board 2026-08-11, Council public hearing + possible adoption 2026-08-12 18:00, 630 Avenue C. APPLICABILITY READING (operator ruling + second external review, 2026-08-10; supersedes the earlier binary self-use/hosted decomposition): four principal-use levels stay distinct - company business, building use, suite use, room/portion use. Neither 'we make money from the servers' nor 'we call ourselves a software company' is dispositive; the physical and operational use of the premises is the test, and there is NO rack-count safe harbor. Spectrum: (1) staffed office + self-use development cabinet -> strong accessory-use case, low practical risk; (2) staffed software office whose 1-2 racks also serve hosted-CI customers -> probably still accessory at this scale, obtain an authority reading; (3) premises primarily operated as an externally sold compute fleet -> approaches the prohibited use; (4) standalone server facility -> squarely targeted. WORKER CORRECTION RECORDED: the liberal-construction clause helps THE CITY (anti-relabeling), not us; what helps us is the operative principal-use requirement, the 'large-scale digital infrastructure' description, the findings' infrastructure-intensive profile, and the subordinate scale + staffed office/community functions. Posture: 'strong factual case for accessory office infrastructure, cheaply resolvable rather than privately proven' - proceed with modeling, layouts, spatial kernel, cloud alpha, pilot, broker contact, and document requests; only an irreversible commitment premised on customer-serving racks at this address waits for an authority reading. The CO/nonconforming lane (srv-co-history) may be MORE immediate than the ordinance. Risk bound (unchanged, not costless): the gateway keeps any serving fleet movable to colo or another municipality behind the same identity - bounded and reversible. Evidence: official City Clerk public notice (operator-supplied) - full ordinance text free from the Clerk before the 2026-08-12 hearing. PREFERRED MOVE: public comment at the hearing requesting an express exclusion for computing equipment, server rooms, or digital infrastructure accessory and subordinate to another permitted principal use - clarifying the rule pre-adoption for every ordinary business (banks, schools, medical, municipal IT), not a gunbai-specific exemption. Remaining unresolved: final adopted text.", discharged_by_survey_item: "srv-ordinance-track" } },
+  SiteRequirementEvaluation { requirement_id: "req-current-co", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "Current first-floor CO and approved use; certificate of nonconformity/variance/site-plan resolutions; parcel records (third-party claim: Block 456 Lot 2, 21.4 x 100 ft, R-2) confirmed against the official tax map. Bayonne requires a zoning permit before opening a business and a new CO for ANY change of use, including permitted-to-permitted - the existing fit-out does not transfer authority to a new tenant.", discharged_by_survey_item: "srv-co-history" } },
+  SiteRequirementEvaluation { requirement_id: "req-nec-continuous", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "panel capacity, spare positions, conductor path", discharged_by_survey_item: "srv-panel-photo" } },
+  SiteRequirementEvaluation { requirement_id: "req-ada-route", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "dimensional verification of route widths and bath clearances (grab bars, wall-hung sink observed in photos - pattern positive, dimensions unmeasured)", discharged_by_survey_item: "srv-geometry-capture" } },
+  SiteRequirementEvaluation { requirement_id: "req-floor-load", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "joist direction/condition and point-load capacity", discharged_by_survey_item: "srv-floor-loading" } },
+  SiteRequirementEvaluation { requirement_id: "req-nj-ucc-permits", site_id: "site-91-e21st-bayonne", evaluation: NotYetTriggered { trigger: "fires when a design variant requiring circuits or a mini-split is admitted AND lease consent exists; path is known and priced (electrician + permit fees)" } },
+  SiteRequirementEvaluation { requirement_id: "req-nj-noise", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "nearest residential receiving line, condenser placement options, baseline ambient", discharged_by_survey_item: "srv-dba-baseline" } },
+  SiteRequirementEvaluation { requirement_id: "req-zoning-use", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "zoning district and permitted-use table row for this parcel", discharged_by_survey_item: "srv-zoning-verify" } },
+  SiteRequirementEvaluation { requirement_id: "req-fire-inspection", site_id: "site-91-e21st-bayonne", evaluation: NotYetTriggered { trigger: "fires at occupancy; routine registration, no design consequence" } },
+  SiteRequirementEvaluation { requirement_id: "req-pseg-service", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "meter arrangement and service size for the first floor", discharged_by_survey_item: "srv-panel-photo" } },
+  SiteRequirementEvaluation { requirement_id: "req-lease-use", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "draft lease terms", discharged_by_survey_item: "srv-lease-use-clause" } },
+  SiteRequirementEvaluation { requirement_id: "req-insurance", site_id: "site-91-e21st-bayonne", evaluation: RequirementUnknown { missing: "quote and landlord COI requirements", discharged_by_survey_item: "srv-insurance-quote" } },
+]
+
+data site_ignorance_quantification_note: String = "QUANTIFIED IGNORANCE, 91 E 21st, REVISED 2026-08-10 after external review + primary-source verification: 15 requirements -> 0 authority-grade passes, 3 positive observations/provisional calculations (egress arithmetic under all-business assumption; favorable B-classification reading; exit/emergency fixtures observed), 13 Unknown, 2 NotYetTriggered, 0 known Fail. PRIORITY INVERSION (supersedes the panel-photo-first ordering): jurisdictional cheap kills come first - (1) srv-ordinance-track: the pending citywide data-center prohibition, Planning Board 2026-08-11 / Council hearing + possible adoption 2026-08-12 (VERIFIED primary source); (2) srv-zoning-interpretation: written applicability determination against the true operating profile, never a friendly label; (3) srv-co-history: current CO/approved use/nonconformity records - third-party records report R-2 at Block 456 Lot 2 (21.4 x 100 ft), whose permitted-use list carries no office principal use, so the existing law office itself implies nonconforming/variance authority that must be located; (4) srv-parcel-map: official tax map geometry (also demotes the 25-ft massing premise). Only then the physical chain: srv-panel-photo (still heaviest PHYSICAL item), srv-geometry-capture, the rest. AUTHORITY CEILING (recorded): internal consistency by construction; arithmetic preflight by derivation; physical condition by observation; ACTUAL LEGAL AUTHORIZATION ONLY BY AUTHORITY RECEIPT (written determination, zoning permit, CO, inspection) - a green model is a preflight, never a permit. CARRIER-REDESIGN DEBT: SiteRequirement lacks rule lifecycle (Proposed/Effective/Superseded), edition pinning, applicability conditions, enforcer, exceptions, multi-axis effects, and AuthorityReceipt rows; regulation rows decompose into independent public extdeps authorities (nj dca ucc/rehab/barrier-free, njdep noise, bayonne zoning/co/noise/fire/data-center-ordinance, pseg) at promotion, with the private graph binding them to this parcel and each design variant."
+
+type PremisesOperationalProfile {
+  site_id: String
+  workspace_character: String
+  compute_character: String
+  rack_count_max: Nat
+  admitted_it_load_watts_max: Nat
+  cooling: String
+  heavy_infrastructure: String
+  customer_colocation_access: String
+  externally_sold_compute: String
+  community_functions: String
+  maximum_expansion: String
+}
+
+data premises_profiles: List<PremisesOperationalProfile> = [
+  PremisesOperationalProfile {
+    site_id: "site-91-e21st-bayonne",
+    workspace_character: "2-6 person staffed software studio; meetings, demos, hiring, community activity; majority of area is ordinary workspace",
+    compute_character: "at most one quiet cabinet or distributed furniture nodes; open-room ~35 dBA habitability admission applies",
+    rack_count_max: 2,
+    admitted_it_load_watts_max: 4000,
+    cooling: "existing office HVAC plus at most one 1.5-2 ton mini-split scenario; no cooling tower",
+    heavy_infrastructure: "none: no generator, no battery energy storage, no redundant utility plant",
+    customer_colocation_access: "none - no customer-accessible colocation floor",
+    externally_sold_compute: "self-use CI always; hosted-customer serving OPEN and variant-dependent - realizable off-site via the gateway without changing this premises profile",
+    community_functions: "storefront presence, public demonstrations, local hiring",
+    maximum_expansion: "physically capped by the 750 SF suite - cannot exceed ~2 racks",
+  },
+]
+
+data applicability_derivation_note: String = "ApplicabilityReading := f(PremisesOperationalProfile, EffectiveOrdinanceVersion, OfficialInterpretation). Never encode rack_count <= N implies not-a-data-center: the ordinance supplies no numeric safe harbor; the profile is an input to an authority reading, never a self-adjudication (authority ceiling)."

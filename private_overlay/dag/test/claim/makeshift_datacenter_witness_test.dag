@@ -1,0 +1,129 @@
+module test.claim.makeshift_datacenter_witness
+
+import std.types { Bool, List, NonEmptyStr, Int, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.pareto { AxisGap, ParetoStanding, ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence }
+import strategy.makeshift_datacenter {
+  bay_missing_inputs, makeshift_cost_axis_id, makeshift_power_axis_id,
+  bay_power_gap_cause, bay_landlord_gap_cause, bay_buildout_gap_cause, bay_all_in_gap_cause,
+  small_bay, whole_building, bay_monthly_rent_micro, electricity_monthly_micro,
+  bay_all_in_monthly_micro, bay_per_kw_month_micro, colo_published_per_kw_month_micro,
+  CrossoverFinding, CrossoverAtWatts, NoCrossoverInScan, small_bay_crossover,
+  bay_standing, makeshift_sensitivities, bay_scouting_asks, co_warehousing_refusal,
+}
+
+// CONTROL 1. The arithmetic spine, pinned: the 2,000 sqft bay at the cited floor rate rents
+// for 2,333.33 USD a month, and a 3,500 W continuous load at the cited commercial rate
+// costs 406.48 USD a month. Exact-value fixtures over cited inputs, not tree-copied pins:
+// each figure re-derives from the cited row it names and the test states the arithmetic.
+test fn witness_planning_arithmetic_is_derived() -> Bool {
+  bay_monthly_rent_micro(b: small_bay) == 2000 * 14000000 / 12
+    && electricity_monthly_micro(it_watts: 3500) == 3500 * 720 * 161300 / 1000
+    && colo_published_per_kw_month_micro() == 705000000 * 1000 / 1500
+}
+
+// CONTROL 2. The operator's intuition, derived with its boundary: at the current fleet's
+// 3,500 W the published colo tier is CHEAPER per kW than the small bay; the bay crosses
+// under published colo only at 7,500 W on the scanned grain. Both directions asserted so
+// the crossover cannot drift silently when a cited rate moves.
+fn crossover_is_at(w: Int) -> Bool {
+  match small_bay_crossover() {
+    CrossoverAtWatts { it_watts } => it_watts == w,
+    NoCrossoverInScan { ceiling_watts } => false,
+  }
+}
+
+test fn witness_crossover_boundary() -> Bool {
+  bay_per_kw_month_micro(b: small_bay, it_watts: 3500) > colo_published_per_kw_month_micro()
+    && bay_per_kw_month_micro(b: small_bay, it_watts: 10000) < colo_published_per_kw_month_micro()
+    && crossover_is_at(w: 7500)
+}
+
+// CONTROL 3. A bay can never dominate on the funded axes: both archetypes land
+// NotComputable regardless of load, because their missing evidence (power
+// access, NNN adders, labor) is declared - the fail-closed spine rule doing the work.
+// A REFUSAL IS NOT A STANDING. std.pareto gained SelectionRefused so that malformed evidence
+// stops being reported as ordinary non-dominance - the same state-space conflation that got
+// pair_dominates deleted upstream. The controls below assert POSITIVE standings, so a refusal
+// must fail them rather than pass through as "not dominated".
+fn standing_incomparable(s: ParetoStanding) -> Bool {
+  match s {
+    NotComputable { missing } => true,
+    PendingEvidence { undecided } => false,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { dominators } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+test fn witness_bays_are_incomparable_pending_evidence() -> Bool {
+  standing_incomparable(s: bay_standing(b: small_bay, it_watts: 3500))
+    && standing_incomparable(s: bay_standing(b: whole_building, it_watts: 3500))
+    && standing_incomparable(s: bay_standing(b: small_bay, it_watts: 20000))
+}
+
+// CONTROL 4. The unpriced axes and the scouting list are carried, and the co-warehousing
+// refusal exists as a typed row.
+test fn witness_obligations_carried() -> Bool {
+  count(makeshift_sensitivities) >= 8
+    && count(bay_scouting_asks) >= 5
+    && count(co_warehousing_refusal) > 0
+}
+
+fn flag(b: Bool) -> String { if b { "pass" } else { "FAIL" } }
+
+fn makeshift_witness_report() -> String {
+  join([
+    "arithmetic_derived=", flag(b: witness_planning_arithmetic_is_derived()),
+    " crossover_boundary=", flag(b: witness_crossover_boundary()),
+    " bays_incomparable=", flag(b: witness_bays_are_incomparable_pending_evidence()),
+    " obligations_carried=", flag(b: witness_obligations_carried()),
+    " gap_axes=", flag(b: witness_each_bay_gap_names_the_axis_it_declares()),
+  ], "")
+}
+
+
+// THE AXIS IS THE NEW LOAD-BEARING FACT, SO IT IS ASSERTED DIRECTLY RATHER THAN THROUGH A STANDING.
+// A standing arm cannot witness an axis assignment: every entry carries readings on every funded
+// axis, and std.pareto refuses a candidate carrying ANY gap, so moving a gap to a different FUNDED
+// axis leaves the standing at NotComputable and every existing control green. Identity is compared
+// with declaration_ref_eq rather than by spelling decl_name, because a string match establishes
+// only that two names are spelled alike.
+fn gaps_on_axis(gs: List<AxisGap>, ax: DeclarationRef) -> Int {
+  count(filter(gs, g => declaration_ref_eq(a: g.axis, b: ax)))
+}
+
+// EACH CAUSE IS BOUND TO ITS AXIS, NOT MERELY THE MULTISET.
+//
+// My first version of this asserted one power gap and three cost gaps, which is exactly the shape
+// its own comment claimed to close and could not see: swapping the electrical cause's axis with one
+// money cause's preserves 1-and-3 and stays green. Counting the population is not checking the
+// assignment.
+//
+// The causes are read back from the module that declares them rather than duplicated here as
+// literals, so the pairing cannot drift from the sentences it is about.
+fn cause_is_on_axis(gs: List<AxisGap>, cause: NonEmptyStr, ax: DeclarationRef) -> Bool {
+  count(filter(gs, g => g.cause == cause && declaration_ref_eq(a: g.axis, b: ax))) == 1
+}
+
+fn witness_each_bay_gap_names_the_axis_it_declares() -> Bool {
+  let gs = bay_missing_inputs(b: small_bay)
+  count(gs) == 4
+    && cause_is_on_axis(gs: gs, cause: bay_power_gap_cause, ax: makeshift_power_axis_id)
+    && cause_is_on_axis(gs: gs, cause: bay_landlord_gap_cause, ax: makeshift_cost_axis_id)
+    && cause_is_on_axis(gs: gs, cause: bay_buildout_gap_cause, ax: makeshift_cost_axis_id)
+    && cause_is_on_axis(gs: gs, cause: bay_all_in_gap_cause, ax: makeshift_cost_axis_id)
+}
+
+fn makeshift_all_green() -> Bool {
+  witness_planning_arithmetic_is_derived()
+    && witness_crossover_boundary()
+    && witness_bays_are_incomparable_pending_evidence()
+    && witness_obligations_carried()
+    && witness_each_bay_gap_names_the_axis_it_declares()
+}
+
+fn makeshift_witness_main() -> ProcessExit {
+  if makeshift_all_green() { ExitSuccess } else { ExitFailure { code: 1, reason: makeshift_witness_report() } }
+}

@@ -1,0 +1,187 @@
+module strategy.ci_sellable_unit
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.measure { gigabyte, gigabyte_count }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.ci_runner.types { QuotedByteMagnitude, QuotedDecimalGigabytes, QuotedBinaryGibibytes, QuotedWithoutBasis, quoted_numeral, quoted_unit_label }
+import gunbc.memory_per_vcpu_convention { MemoryPerVcpuConvention, arm64_three_gb_per_vcpu_convention }
+
+// ONE SKU. The operator's ruling of 2026-08-30: gunbc sells exactly one unit -- one dedicated
+// physical core with three decimal gigabytes of customer-visible memory -- and does not shard the
+// SKU. The number is not ours: it is the arm64 market convention gunbc.memory_per_vcpu_convention
+// carries (with its origin typed Unattributed), adopted because memory is the binding resource and
+// the convention is what the surfaces this product competes with quote. Adopting it is a policy
+// act and this row is that act; the public module records the convention, this module records
+// that we chose it.
+//
+// THE UNIT IS DECIMAL, AND EVERY CAPACITY DOWNSTREAM CONVERTS EXPLICITLY. Ubicloud's "6GB" for two
+// vCPUs is 3 x 10^9 bytes per vCPU, which is 2.79 GiB; DIMM capacities are binary. An earlier
+// revision of strategy.ci_node_build divided binary GiB by a bare literal 4, which was both the
+// wrong number and the wrong basis and could not be told from either. The conversions below are
+// the single place the two bases meet.
+//
+// A SECOND SKU IS ADMISSIBLE ONLY FOR A DRAMATICALLY DIFFERENT MARKET. Every SKU split is a real
+// cost the operator has paid before. The refused alternative -- a split admitted for any market,
+// which is what "max compatibility" sharding is -- stays writable so the witness can construct it
+// and show the contract does not hold it; a one-arm type would be an alias, not a choice.
+type SecondSkuAdmission
+  = DramaticallyDifferentMarketOnly
+  | SplitAdmittedForAnyMarket
+
+// THE CONVENTION IS THE SOLE MEMORY AUTHORITY. An earlier revision also carried a memory_per_unit
+// field copied from the convention row; two independently writable fields for one fact is the fork
+// this contract exists to close (review 57638 successor finding), so the field is gone and every
+// byte below derives from convention.per_vcpu.
+type SellableUnitContract {
+  cores_per_unit: Nat
+  convention: MemoryPerVcpuConvention
+  effective_from: NonEmptyStr
+  second_sku_admission: SecondSkuAdmission
+}
+
+data ci_sellable_unit: SellableUnitContract = SellableUnitContract {
+  cores_per_unit: 1,
+  convention: arm64_three_gb_per_vcpu_convention,
+  effective_from: "2026-08-30",
+  second_sku_admission: DramaticallyDifferentMarketOnly,
+}
+
+// THE FOUR-GB UNIT IS REVOKED, NOT LEFT STANDING BESIDE THE THREE. Two live unit definitions let
+// each consumer pick its own, which is the fork this module exists to close. The revocation names
+// the public profile that still carries the four-GB figure so its retirement is a tracked follow-up
+// rather than a silent survivor.
+type RevokedUnitContract {
+  memory_per_unit: QuotedByteMagnitude
+  revoked_on: NonEmptyStr
+  superseded_by: DeclarationRef
+  still_carried_publicly_as: DeclarationRef
+}
+
+data revoked_four_gb_unit: RevokedUnitContract = RevokedUnitContract {
+  memory_per_unit: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  revoked_on: "2026-08-30",
+  superseded_by: decl_ref(module_path: "strategy.ci_sellable_unit", decl_name: "ci_sellable_unit"),
+  still_carried_publicly_as: decl_ref(module_path: "gunbc.memory_provisioning", decl_name: "arm_memory_profile"),
+}
+
+fn second_sku_needs_a_dramatically_different_market(c: SellableUnitContract) -> Bool {
+  match c.second_sku_admission {
+    DramaticallyDifferentMarketOnly => true
+    SplitAdmittedForAnyMarket => false
+  }
+}
+
+// THE BYTE LAW IS ESTABLISHED ONLY FROM THE DECIMAL ARM. The adopted convention is quoted in
+// decimal gigabytes; a binary or basis-free magnitude is not the adopted basis, so it cannot
+// construct the admitted byte law -- it lands on the Unestablished arm, which carries the label
+// that failed. This is what makes "x 1e9 applied to whatever numeral" unwritable.
+type AdmittedUnitByteLaw
+  = ByteLawEstablished { bytes_per_unit: Nat }
+  | ByteLawUnestablished { quoted_label: NonEmptyStr }
+
+fn unit_byte_law(c: SellableUnitContract) -> AdmittedUnitByteLaw {
+  match c.convention.per_vcpu {
+    QuotedDecimalGigabytes { value } => ByteLawEstablished { bytes_per_unit: gigabyte_count(g: value) * 1000000000 }
+    QuotedBinaryGibibytes { value: _ } => ByteLawUnestablished { quoted_label: quoted_unit_label(quoted: c.convention.per_vcpu) }
+    QuotedWithoutBasis { numeral: _, unit_label: l } => ByteLawUnestablished { quoted_label: l }
+  }
+}
+
+// THE UNESTABLISHED ARM PROPAGATES; IT NEVER COLLAPSES TO A NAT. An earlier revision projected
+// ByteLawUnestablished to a Nat zero, and the multiply-and-compare consumers built on that zero
+// admitted every capacity -- a fail-open arm (side-chat ruling 2026-08-31). Byte-dependent
+// derivations therefore return typed results with a distinct Unestablished arm. The ONE Nat
+// projection that remains is the divisor below, restricted by name and comment to divisor
+// position, where an unestablished law stops the interpreter loudly at the division itself.
+type MemoryRequirement
+  = MemoryRequirementEstablished { bytes: Nat }
+  | MemoryRequirementUnestablished { quoted_label: NonEmptyStr }
+
+type MemoryCapacityVerdict
+  = MemoryCapacityAdmitted
+  | MemoryCapacityRefused { required_bytes: Nat }
+  | MemoryCapacityUnestablished { quoted_label: NonEmptyStr }
+
+fn required_usable_memory(c: SellableUnitContract, units: Nat) -> MemoryRequirement {
+  match unit_byte_law(c: c) {
+    ByteLawEstablished { bytes_per_unit } => MemoryRequirementEstablished { bytes: units * bytes_per_unit }
+    ByteLawUnestablished { quoted_label: l } => MemoryRequirementUnestablished { quoted_label: l }
+  }
+}
+
+// THE CAPACITY GATE HAS THREE ARMS, AND ABSENCE OF THE BYTE LAW IS ITS OWN ARM -- an unestablished
+// law can never construct MemoryCapacityAdmitted, whatever bytes are observed.
+fn memory_capacity_verdict(c: SellableUnitContract, observed_usable_bytes: Nat, units: Nat) -> MemoryCapacityVerdict {
+  match required_usable_memory(c: c, units: units) {
+    MemoryRequirementEstablished { bytes } =>
+      if observed_usable_bytes >= bytes { MemoryCapacityAdmitted }
+      else { MemoryCapacityRefused { required_bytes: bytes } }
+    MemoryRequirementUnestablished { quoted_label: l } => MemoryCapacityUnestablished { quoted_label: l }
+  }
+}
+
+// DIVISOR POSITION ONLY. This is the single surviving Nat projection of the byte law, and it may
+// be consumed ONLY as a divisor: on the Unestablished arm it is zero, so every division through it
+// refuses loudly at the exact call site instead of fabricating a figure. Multiplying or comparing
+// against this value re-opens the fail-open arm this module closed; those consumers use the typed
+// functions above.
+fn unit_byte_law_divisor() -> Nat {
+  match unit_byte_law(c: ci_sellable_unit) {
+    ByteLawEstablished { bytes_per_unit } => bytes_per_unit
+    ByteLawUnestablished { quoted_label: _ } => 0
+  }
+}
+
+// ---- Blocker B repair: the customer-visible projection, derived, for rendering surfaces. ----
+fn customer_visible_memory_numeral(units: Nat) -> Nat {
+  units * quoted_numeral(quoted: ci_sellable_unit.convention.per_vcpu)
+}
+
+fn customer_visible_memory_unit_label() -> NonEmptyStr {
+  quoted_unit_label(quoted: ci_sellable_unit.convention.per_vcpu)
+}
+
+data bytes_per_gib: Nat = 1073741824
+
+// THE ADMISSION LAW IS BYTE-EXACT (side-chat ruling 2026-08-30): the canonical requirement is
+// units * 3_000_000_000 bytes, and every GiB figure below is a PROJECTION of it for board-population
+// reasoning -- 76 units need 228_000_000_000 bytes, about 212.34 GiB, 213 whole GiB rounded up. The
+// rounded rendering must never become the authority, so the byte functions are the ones the gate
+// consumes and the GiB functions are named for what they are.
+fn units_by_usable_memory_bytes(observed_usable_bytes: Nat) -> Nat {
+  observed_usable_bytes / unit_byte_law_divisor()
+}
+
+// Binary GiB installed -> whole units the memory can back, through the byte law. Floors, because a
+// partial unit is not sellable. This and the ceiling below are the ONLY place binary meets decimal.
+fn units_by_memory_gib(gib: Nat) -> Nat {
+  units_by_usable_memory_bytes(observed_usable_bytes: gib * bytes_per_gib)
+}
+
+// Units -> binary GiB they consume, rounded UP so "unused memory" never over-reports and a
+// population sized from it is never short.
+fn required_memory_gib_ceiling_for_units(units: Nat) -> Nat {
+  match required_usable_memory(c: ci_sellable_unit, units: units) {
+    MemoryRequirementEstablished { bytes } => (bytes + bytes_per_gib - 1) / bytes_per_gib
+    MemoryRequirementUnestablished { quoted_label: _ } => units / unit_byte_law_divisor()
+  }
+}
+
+// WORKING BACKWARDS FROM THE CUSTOMER: customer-visible units plus the host's own reserve is the
+// physical memory a node must carry. The reserve figures live in strategy.ci_node_build; this is
+// the derivation they feed. Nominal; the gate that admits a node is memory_capacity_verdict over
+// OBSERVED usable bytes, never this projection.
+fn physical_memory_gib_required(sellable_units: Nat, host_reserved_memory_gib: Nat) -> Nat {
+  required_memory_gib_ceiling_for_units(units: sellable_units) + host_reserved_memory_gib
+}
+
+// A SHAPE IS OFFERED ONLY IF SOME NODE CAN HOST IT. The offered menu is sizes of the one unit;
+// the largest size is whatever a node exposes, never a second SKU.
+fn hostable_unit_counts(offered: List<Nat>, sellable_units_per_node: Nat) -> List<Nat> {
+  filter(offered, n => n <= sellable_units_per_node)
+}
+
+fn shape_is_hostable(units: Nat, sellable_units_per_node: Nat) -> Bool {
+  units <= sellable_units_per_node
+}

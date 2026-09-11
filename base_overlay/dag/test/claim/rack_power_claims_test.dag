@@ -1,0 +1,36 @@
+module test.claim.rack_power_claims
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.rack_power_engineering {
+  CircuitShape, circuit_usable_watts, circuit_208_30_1p, circuit_208_30_3p, circuit_120_20,
+  fleet_demand_watts, fleet_heat_btu_hr, nodes_per_circuit, racks_at_density,
+  infra_duties, our_duties, InfraDuty,
+}
+
+// THE DISCRIMINATING CLAIMS - the arithmetic an electrician or colo contract would check
+// us against, executed: (1) the NEC derate isload-bearing: a 208V/30A single-phase
+// circuit yields 4,992W usable (not 6,240), and three-phase multiplies by sqrt(3) before
+// derating (8,645W). (2) The fleet demand derives (21 x 650 = 13,650W; ~46.6k BTU/hr),
+// so POWER forces 3 racks at standard 5kW density while SPACE would fit in half of one -
+// the newcomer inversion, asserted. (3) A 120V/20A household circuit carries 2 nodes,
+// the 3-phase rack feed 13. (4) The colo competence boundary is nonempty on OUR side:
+// PDUs, racking, capacity planning stay ours.
+
+fn rack_power_witness_main() -> ProcessExit {
+  let derate_wall = circuit_usable_watts(c: circuit_208_30_1p) == 4992
+    && circuit_usable_watts(c: circuit_208_30_3p) == 8645
+    && circuit_usable_watts(c: circuit_120_20) == 1920
+  let fleet_derives = fleet_demand_watts() == 13650 && fleet_heat_btu_hr() == 46573
+  let power_not_space = racks_at_density(rack_budget_watts: 5000) == 3
+    && racks_at_density(rack_budget_watts: 15000) == 1
+  let circuit_capacity = nodes_per_circuit(c: circuit_120_20) == 2
+    && nodes_per_circuit(c: circuit_208_30_3p) == 13
+  let boundary_ours = count(our_duties()) == 3 && count(infra_duties) == 7
+  if derate_wall && fleet_derives && power_not_space && circuit_capacity && boundary_ours {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}
+

@@ -1,0 +1,1662 @@
+module strategy.year_end_plan
+
+import std.types { Int, List, NonEmptyStr, Bool }
+
+// THE PLAN FROM 2026-08-29 TO YEAR END (operator direction 2026-08-29), worked BACKWARDS
+// from a small private demo - the current 4 servers, free founding credits to a handful of
+// trusted customers - with every long-lead lever (compliance, security, storage, colo
+// agreements, acquisition instrumentation, machine health) sorted BEFORE the exponential-
+// scaling window can demand it. AMENDED 2026-08-29 per the external analyst's ruling: the
+// three anchor DATES stand, but their exits are recut so each date establishes the
+// smallest executed fact that safely authorizes the next irreversible step, never the
+// largest plausible feature bundle attachable to the date; two internal stage gates
+// (2026-10-15, 2026-11-23) keep the outer anchors honest about what they prove.
+
+// M4JanuaryLaunch ADDED 2026-09-07 (operator: "I meant to say January 7"). The plan previously
+// terminated at the year-end gate, which made the launch reachable only in prose while the plan's
+// own arithmetic reported the graph finished. 2027-01-07 is day 131 on the plan epoch, nineteen
+// days past M3 -- and that spread is the whole schedule for whichever launch form is chosen, which
+// is why strategy.january_launch reads BOTH representations from here rather than restating the
+// date: one anchor, one authority.
+type PlanMilestone
+  = M1InternalVertical
+  | M1bInternalS0Proof
+  | M2FirstExternal
+  | M2bPrivateCohort
+  | M3YearEndGate
+  | M4JanuaryLaunch
+
+fn milestone_order(m: PlanMilestone) -> Int {
+  match m {
+    M1InternalVertical => 1,
+    M1bInternalS0Proof => 2,
+    M2FirstExternal => 3,
+    M2bPrivateCohort => 4,
+    M3YearEndGate => 5,
+    M4JanuaryLaunch => 6,
+  }
+}
+
+fn milestone_anchor_date(m: PlanMilestone) -> NonEmptyStr {
+  match m {
+    M1InternalVertical => "2026-10-01",
+    M1bInternalS0Proof => "2026-10-15",
+    M2FirstExternal => "2026-11-02",
+    M2bPrivateCohort => "2026-11-23",
+    M3YearEndGate => "2026-12-19",
+    M4JanuaryLaunch => "2027-01-07",
+  }
+}
+
+// Day offsets from plan epoch 2026-08-29 - the arithmetic carrier for schedule math (ISO
+// strings compare but do not subtract). Both representations are declared per milestone
+// and the witness asserts they order together.
+fn milestone_anchor_day(m: PlanMilestone) -> Int {
+  match m {
+    M1InternalVertical => 33,
+    M1bInternalS0Proof => 47,
+    M2FirstExternal => 65,
+    M2bPrivateCohort => 86,
+    M3YearEndGate => 112,
+    M4JanuaryLaunch => 131,
+  }
+}
+
+type PlanWorkstream
+  = Hardware
+  | StorageFabric
+  | RunnerSoftware
+  | SecurityCompliance
+  | AcquisitionMarketing
+  | OpsMachineHealth
+  | EconomicsQa
+  | PeopleAndProcess
+
+// THE SINGLE-OPERATOR CORRECTION (analyst): seven workstreams are NOT seven parallel
+// lanes - hardware handling, security judgment, legal review, customer onboarding,
+// commercial decisions and incident ownership all converge on one person. Every item
+// declares how it consumes the operator; the honest WIP shape is roughly one primary
+// OperatorExclusive build item plus concurrent ExternalLead queues at a time.
+type ExecutionMode
+  = OperatorExclusive
+  | AgentParallel
+  | ExternalLead
+  | CalendarObservation
+
+type PlanItemStatus
+  = NotStarted
+  | InProgress { note: NonEmptyStr }
+  | Done { receipt: NonEmptyStr }
+  | DeclaredBehind { reason: NonEmptyStr }
+
+// rank: a declared topological level - every dependency must carry a STRICTLY smaller
+// rank, which makes a dependency cycle unwritable (no cycle admits strictly decreasing
+// ranks). Construction standing where the previous witness only checked resolution.
+// min_calendar_days: the item's floor duration; latest safe start derives from it.
+type PlanItem {
+  id: NonEmptyStr
+  workstream: PlanWorkstream
+  milestone: PlanMilestone
+  rank: Int
+  min_calendar_days: Int
+  execution_mode: ExecutionMode
+  exit_criterion: NonEmptyStr
+  depends_on: List<NonEmptyStr>
+  relates_to: List<NonEmptyStr>
+  status: PlanItemStatus
+}
+
+data no_deps: List<NonEmptyStr> = []
+
+data no_refs: List<NonEmptyStr> = []
+
+// ---------------------------------------------------------------------------------------------
+// M1 - INTERNAL VERTICAL (2026-10-01): ONE qualified server accepts a real GitHub Actions
+// job through the App/webhook path, executes it isolated and ephemeral against M0 CAS with
+// durable commit, meters it, destroys the environment. Dogfood BEGINS. (Recut from
+// "4 servers + production netboot + 2 weeks dogfood complete", which required all four
+// predecessors done by ~Sep 17 - not honest with 20 of 21 items NotStarted on Aug 29.)
+// ---------------------------------------------------------------------------------------------
+
+data item_hw_first_host: PlanItem = PlanItem {
+  id: "hw-first-host",
+  workstream: Hardware,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 14,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Unit 1 through intake phases 1-5: FRU'd, BMC recredentialed, memtest pass, Linux EDAC pass clean (nproc 160), DIMM population matches the J-slot table - one held-unit receipt module. ONE admitted host is the M1 canary; the other three do not gate the vertical.",
+  depends_on: no_deps,
+  relates_to: ["strategy.mt_collins_held_unit", "strategy.ci_node_build"],
+  status: InProgress { note: "FRU'd, BMC probed, memtest PASSED. Route to the remaining phases is PXE netboot rather than a boot drive - the operator already has PXE install working and the unit is driveless - which gets nproc 160, EDAC and the dmidecode per-slot channel map in ONE session rather than three. Outstanding: BMC recredential, EDAC pass, and the J-slot census that decides whether filling the empty DIMM slots raises capacity at the cost of data rate or doubles memory bandwidth for free." },
+}
+
+data item_boot_minimum: PlanItem = PlanItem {
+  id: "boot-minimum",
+  workstream: Hardware,
+  milestone: M1InternalVertical,
+  rank: 20,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "The M1 boot property WITHOUT the full netboot product: deterministic digest-identified host image, no durable customer state on the boot device, BMC-driven unattended reinstall/reset with a measured host-reset receipt, short-lived runtime credentials, boot device treated as disposable. Production diskless netboot moves to netboot-m0 (M2b) - it can slip without invalidating the demo.",
+  depends_on: ["hw-first-host"],
+  relates_to: ["strategy.mobo_x_architecture"],
+  status: InProgress { note: "Transport PROVEN, boot-minimum NOT closed. Observed on the real machine: boots Linux over PXE (nproc 160, EDAC clean, dmidecode -t memory); the repo-built stateless host image boots; switch_root to tmpfs gives a RAM-backed runtime root; the stock Firecracker jailer is traversed and runs as uid 1000 in a chroot plus namespaces; /dev/kvm opens from inside the jail and a guest kernel is reached under KVM; the host deadline fires, nothing survives, the jail is removed. Receipts in gunbc#10733, on main at c9ef79fdeea. TWO CONJUNCTS REMAIN and neither is transport: (1) BMC-driven unattended reinstall with a MEASURED RESET RECEIPT -- the model merged as gunbc#10739 carrying 51 witnesses but has NEVER EXECUTED, because it needs a pinned BMC credential reachable from fleet converge, an open operator decision; (2) root mount identity before and after switch_root, where the claim is still ahead of its evidence. Production diskless netboot stays with netboot-m0: PXE is present and UNANSWERED on the unit (PXE-E16, no valid offer), so network boot is blocked on infrastructure this fleet has not stood up rather than on the machine. 2026-09-10: gunbc#10630 MERGED, and it changes the BOOT ROUTE rather than either remaining conjunct. Fetching the image, verifying its digest, publishing it into the export, attaching it as virtual media through the MegaRAC controller and handing off the boot device are now modeled operations with typed refusals, executed against the live controller -- so getting a bare unit to a booted state stops being hand-driven. Two things it deliberately does NOT do: it is DISKLESS, NOT RAM-RESIDENT (casper toram is absent from the observed command line, so the read-only layer is read from the presented media on demand, which decides whether the host depends on the boot server for as long as it runs); and it does not touch PXE, so netboot-m0's PXE-E16 blocker stands untouched. The two conjuncts above are unchanged: the reset receipt still needs its pinned BMC credential, and root mount identity across switch_root is still ahead of its evidence." },
+}
+
+// ADDED 2026-09-07 on operator instruction. This requirement was live and being tracked OUTSIDE
+// the plan -- it sat on the operator's own working list as "no accounts yet, create ASAP" while
+// fabric-m0 declared no dependencies and therefore read as startable. That is exactly what
+// requirement_coalescence_note forbids: a requirement discovered later is added HERE as an item,
+// never tracked in a side list, because an item the plan cannot see cannot be late. Two providers
+// rather than one is not redundancy -- the durable origin's whole claim is a failure domain
+// disjoint from the worker, and a single provider account is a single point of both failure and
+// commercial leverage. It is OperatorExclusive because payment instrument, legal entity and
+// region are the operator's to bind, and because none of that is delegable to an agent.
+// ADDED 2026-09-07 on operator instruction ("we need buyer agents ... there is no deterministic
+// filtering on ebay, too many wrong accounts"), then NARROWED the same day by the operator to the
+// scope this row now carries: scan the API listings, produce a sheet for manual review, and commit
+// a typed intent to buy after that review. The narrowing is what makes this a two-week item rather
+// than a programme -- with a human reading the sheet, the agent does not have to DECIDE fit, only
+// to SURFACE the evidence, and deciding fit from unreliable listings was the hard half.
+//
+// IT INHERITS THE EXISTING PIPELINE RATHER THAN RESTARTING IT. strategy.buyers_pipeline already
+// carries DemandRow, ListingObservation, propose(), the viability ceiling and the verified-depth
+// refusal, and its scout contract already rules that THE SCOUT NEVER ACTUATES A PURCHASE. This row
+// adds the three things that contract names but nothing produces: a cited upstream to read from, a
+// projection the operator can actually review, and a typed intent that survives the review.
+//
+// THE FAILURE THIS MUST NOT REPRODUCE, because a spreadsheet is where it hides best: an attribute
+// the listing never stated must not reach the sheet as a blank cell, because a blank reads as
+// nothing-to-see and an unstated ECC field is exactly the cell the operator needs to stop on. An
+// absence rendered as a value is the same defect the cost-account and actuator-selection lanes were
+// closing this week, and a review sheet is its most natural habitat.
+data item_buyer_agent_pipeline: PlanItem = PlanItem {
+  id: "buyer-agent-pipeline",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 10,
+  min_calendar_days: 14,
+  execution_mode: AgentParallel,
+  exit_criterion: "SCAN, SHEET, INTENT - and no actuation. (1) The marketplace is a cited upstream with its own extdeps module under the external-decomposition rule: API version, the endpoints read, the published rate limits, and the fields a listing payload ACTUALLY returns, so the sheet's columns are derived from the API's response shape rather than invented. (2) A scheduled run turns those responses into ListingObservation rows against buyer_demand_rows and projects them to a review sheet GENERATED FROM THE MODEL, never hand-assembled - a hand-authored projection of something the model can emit is the tell that the model is not the authority. The sheet ranks by the spread between delivered unit price and the row's viability ceiling, and every compatibility attribute renders three-valued: stated and corroborated by part number or photograph, stated only, or ABSENT AND SAID TO BE ABSENT. A blank cell for an unstated attribute is the defect, not the format. (3) After the operator reviews, a PurchaseIntent is COMMITTED TO THE CORPUS as a typed row - demand row, listing identity, units, delivered unit price, the attributes accepted on the operator's judgement rather than on evidence, and the intake obligation it triggers - so what was decided is readable later rather than living in a chat message. NOT owed and deliberately so: purchase actuation, which the scout contract keeps human by design; any scraping, since the agent reads the published API as a signed-in buyer; and automatic fit adjudication, which the manual review replaces for now and which becomes owed only if sheet volume makes reading every row impractical.",
+  depends_on: no_deps,
+  relates_to: ["strategy.buyers_pipeline", "strategy.procurement_order", "strategy.ci_node_build"],
+  status: NotStarted,
+}
+
+data item_storage_provider_accounts: PlanItem = PlanItem {
+  id: "storage-provider-accounts",
+  workstream: StorageFabric,
+  milestone: M1InternalVertical,
+  rank: 5,
+  min_calendar_days: 3,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Accounts live at BOTH candidate object-storage providers (Cloudflare R2 and Backblaze B2), American regions, billed to the LLC. Each provider gets its OWN extdeps module under the external-decomposition rule - one independently versioned upstream, one authority, no generic hub enumerating providers - carrying its cited pricing units (storage per GB-month, class A/B operations, egress) and its published quota and rate limits, each with the source URL and the date read. The bucket IDENTITY and the ENROLLED SCOPE are declared here, not left implicit: which bucket is the durable origin, what is admitted to it, and under whose credential. NOT owed by this item: choosing between the two, which is a cost decision the pricing modules make derivable rather than a preference to be asserted now.",
+  depends_on: no_deps,
+  relates_to: ["strategy.compute_fabric_model", "strategy.ci_storage_tiering"],
+  status: InProgress { note: "2026-09-10: ACCOUNTS EXIST AT BOTH PROVIDERS and the Cloudflare half is measured rather than assumed. Account 5f71db675ad3e94c16a3d5c159d16298; a bootstrap API token is in fleet custody at version 1 of cloudflare-account-api-token-bootstrap, pinned to that exact version rather than latest. Read LIVE from the account through the modeled path on 2026-09-10: the bootstrap token carries Account API Tokens Write, which is the group the mint model was written for; and the WRITE gap is closed with an OBSERVED id rather than a guessed one - Workers R2 Storage Bucket Item Write, bucket-scoped, so a durable origin CAN put. The read id already pinned in the public repo verified correct against the same listing. Backblaze account/key 6f38e5a145da. OUTSTANDING before Done: the two extdeps modules, the bucket identity and enrolled scope, and the executed token mint all sit on gunbc#10925, which is UNMERGED and being restructured after a correct request-changes (its bucket roster was a clone of the hostname roster). B2 published rates stay UNAVAILABLE - nothing observed retires that. This item is not Done while the declarations live only on a branch." },
+}
+
+data item_fabric_m0: PlanItem = PlanItem {
+  id: "fabric-m0",
+  workstream: StorageFabric,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 14,
+  execution_mode: AgentParallel,
+  exit_criterion: "M0 fabric per the reviewed sequence: per-node disposable CAS cache, one zero-egress durable origin, digest verification on fill, hit/miss/bytes receipts flowing, durable-commit gate (job success only after required artifact/receipt commit). No peer mesh.",
+  depends_on: ["storage-provider-accounts"],
+  relates_to: ["strategy.compute_fabric_model"],
+  status: InProgress { note: "2026-09-10 REFRESH -- the previous note said gunbc#10641 was open in draft. IT MERGED 2026-09-08, and planning from the stale note would have rebuilt what exists. LANDED: the durable-COMPLETION authority (gunbc.fabric_m0_completion admit_job_publication, total over four outcomes, with F0..F6 as gate predicates and 14 mutation-controlled witnesses). Its ordering is the load-bearing part -- the computation verdict is read FIRST and short-circuits, so a successful storage finalization CANNOT invert a failed build, and ReadbackUnknown is a THIRD arm because a lost acknowledgement does not establish that a write failed and an object existing does not establish it is the intended object. Also landed: gunbc#10687, the event-log root path authority that refuses on an unknown host rather than defaulting. REMAINING, AND THE TWO-TRACK SEQUENCING THIS NOTE CARRIED ON 2026-09-10 WAS WRONG. It said giving admit_job_publication a production consumer needed no origin and no cache, so it could run in parallel with the R2 mint. The fabric-M0 lane refuted that by tracing the real run path rather than by argument: the required-CI job ends at claim_executor --required-ci, where phases accumulate failures and the process exit maps to the GitHub check through floor_exit_to_check_conclusion, and NOTHING on that path constructs a CommitTransportOutcome or a ManifestReadbackObservation. So that path cannot ask admit_job_publication without one of two forbidden moves -- fabricating an origin readback, which is the laundering this item's own ceiling calls out and which is the sibling A1's whole subject, or refusing every green job. (1) THE DURABLE-COMMIT GATE IS THEREFORE GATED on the executed R2 token mint, exactly as the origin binding is. (2) SO IS the origin binding itself, then digest verification on fill. THE ONLY GENUINELY UNBLOCKED WORK IS origin-readback discipline as a construction, which is in flight. THE SCHEDULE CONSEQUENCE IS THE POINT: the executed mint is now the SINGLE critical-path item for this item, not a dependency of one half, so it slips the whole milestone rather than part of it. And the missing capability is named rather than the artifact: a job-ending that already possesses the run's Work, the attempt's commit transport, and an INDEPENDENT origin readback of the commit manifest, deciding the check conclusion from the returned JobPublication. (3) ONLY THEN the per-node disposable CAS cache -- no RAID, no scrub, no rebuild, media telemetry plus auto-cull plus spare pool -- and the hit/miss/bytes receipts, which under std.materialization_ladder ARE the cache's economic justification rather than telemetry beside it: a provider is an optimization only when measured total serving cost is below recomputation, so if the receipts say it does not pay, the honest outcome is to say so. THE SEQUENCE IS NOT ARBITRARY: gunbc#10641 built the completion contract before any cache on the reasoning that a cache accelerates a contract and cannot supply one, and the remainder inherits that. TWO CEILINGS, unchanged and named rather than assumed: computed digests exist today ONLY through a shell realization over a file path (sha256sum), with no in-substrate bytes-to-digest, which one lane confirmed is a ceiling and not a blocker; and the digested file at commit must be the ORIGIN READBACK OWN OUTPUT, never a cache copy, or a valid computation over locally-sourced bytes launders a cache-read refusal into a confirmation. NO PEER MESH is a scope wall in the exit criterion, not an oversight. STORAGE ACCOUNTS ARE NO LONGER THE BLOCKER they were: both provider accounts now exist and a write-capable permission group is observed -- see storage-provider-accounts -- so what gates the origin is the executed mint, not the operator." },
+}
+
+data item_runner_canary: PlanItem = PlanItem {
+  id: "runner-canary",
+  workstream: RunnerSoftware,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 3,
+  execution_mode: AgentParallel,
+  exit_criterion: "The control-plane canary, split from the oversized runner-path item (analyst rank-1 schedule risk): GitHub App + workflow_job webhook -> JIT ephemeral runner in a per-job microVM on the canary host -> one real job completes -> receipt with metered vCPU-minutes -> environment destroyed. Lifecycle hardening is runner-lifecycle (M2).",
+  depends_on: no_deps,
+  relates_to: ["strategy.ci_alpha"],
+  status: InProgress { note: "ONE REAL JOB NOW COMPLETES: GitHub Actions run 34086151842 executed to success in a per-job microVM on the Mt. Collins host (gunbc#10733, main c9ef79fdeea) -- host boots its own EFI-stub kernel from BMC media, the jailer drops privilege (CapEff/Prm/Inh/Amb zero, NoNewPrivs=1, Seccomp=2) and execs Firecracker v1.16.1 in place, the guest runs under KVM on kernel 6.1.128 against a host on 6.12.108, and the runner registers from inside the guest. Containment was asserted BY THE JOB rather than trusted from the host receipt: a step opened /dev/tcp to the BMC controlling its own machine and required failure, and two observers with no shared instrument agree -- GitHub log plus the host guest-to-bmc rule carrying exactly 3 dropped packets, the SYN and its two retransmits. forward-default-drop stayed at ZERO across 567 established packets of runner-chosen traffic. Since then: two VMs on one host, and a 5832-file checkout running node v24.19.0 inside the guest. THREE CONJUNCTS REMAIN. (a) GitHub App to workflow_job webhook via fleet convergence -- the host currently asks for a JIT config at boot and THE ENDPOINT SERVING IT IS UNAUTHENTICATED, recorded in gunbc#10733 as a real gap rather than left in a shell script. (b) Receipt with metered vCPU-minutes -- not established. (c) Environment destroyed in the SAME TRANSACTION as the mint -- and zero-surviving-jailer is NOT evidence for it, because the stock jailer execs into Firecracker in place on the same PID; teardown must bind to the attempt launch/exec identity set including the BusyBox timeout watcher. The srv1 kvm-group gap no longer blocks this item: the canary executes on Mt. Collins, not srv1." },
+}
+
+data item_cohort_qualified: PlanItem = PlanItem {
+  id: "cohort-qualified",
+  workstream: AcquisitionMarketing,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 14,
+  execution_mode: ExternalLead,
+  exit_criterion: "STARTS NOW - November customers cannot be manufactured after October dogfood. THE DISCOVERY METHOD IS A SEARCH, WITH TWO CLAIMS ABOUT IT WITHDRAWN. Repositories running on a third-party CI provider are ENUMERABLE, because the provider label appears verbatim in .github/workflows, and their workflows are readable, so the arm64 and container questions below are answered by READING rather than by interviewing. What that label does NOT establish was overstated on first writing and is corrected here. It does not establish ARM: a provider offering both architectures selects by SUFFIXED labels, and only the arm-suffixed ones are evidence of an arm64 workload - an unsuffixed label is evidence of the opposite. It does not establish PAID SPEND either, because free tiers and credits exist, so willingness to pay stays an interview question rather than a search result. The residual interview is therefore LARGER than first claimed: org-owner availability, secrets and private registries, which deploy jobs must be excluded, and whether the account is actually paying. The requirement: 3-5 prospects identified and workload-qualified (arm64 compatibility, Docker/service-container needs, privileged-mode assumptions, private registries, secrets, excluded deploy jobs, job memory/disk ceilings, untrusted-PR behavior), org-owner availability confirmed, expected usage and dates committed.",
+  depends_on: no_deps,
+  relates_to: ["strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+data item_app_install_rehearsal: PlanItem = PlanItem {
+  id: "external-app-install-rehearsal",
+  workstream: RunnerSoftware,
+  milestone: M1InternalVertical,
+  rank: 20,
+  min_calendar_days: 3,
+  execution_mode: ExternalLead,
+  exit_criterion: "The real public GitHub App installed into an external friendly org via direct install link (Marketplace review is NOT on the path) and an org-level JIT runner created there: the receipt names org, approving owner, granted permissions (incl. org self-hosted-runners write), selected repos, runner group, and one completed test job. The real external lead is ORG-OWNER APPROVAL, and this rehearses it.",
+  depends_on: ["runner-canary"],
+  relates_to: ["strategy.ci_product_surface"],
+  status: NotStarted,
+}
+
+data item_dogfood_started: PlanItem = PlanItem {
+  id: "dogfood-started",
+  workstream: EconomicsQa,
+  milestone: M1InternalVertical,
+  rank: 30,
+  min_calendar_days: 1,
+  execution_mode: AgentParallel,
+  exit_criterion: "gunbc's own CI runs on the canary host through the runner-canary path - the two-week observation clock STARTS. Split from window completion because the calendar minimum cannot be parallelized away and integration defects may restart part of the window.",
+  depends_on: ["hw-first-host", "boot-minimum", "fabric-m0", "runner-canary"],
+  relates_to: ["strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+// ---------------------------------------------------------------------------------------------
+// M1b - INTERNAL S0 PROOF (2026-10-15): two uninterrupted dogfood weeks complete; all four
+// machines admitted or explicitly refused; receipt streams and failure dispositions live.
+// ---------------------------------------------------------------------------------------------
+
+data item_hw_4_population: PlanItem = PlanItem {
+  id: "hw-4-population",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 20,
+  min_calendar_days: 21,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Units 2-4 through the same intake in parallel with the canary's software work: each ADMITTED (receipt module) or explicitly REFUSED with the defect named - a four-way disposition, not a four-way pass assumption. RATIONALE, ASKED FOR AND WORTH CARRYING (operator, 2026-09-10: \"i don't know which server was taken through what\"). THAT SENTENCE IS THE ITEM'S JUSTIFICATION, not an aside: if nobody can say which unit passed which step, then no unit has been qualified -- there is an impression of progress and no receipt. This item exists so admission is per-unit and legible, which buys three things. It prevents a defective unit reaching the fleet and being diagnosed later as a software fault, which is the expensive failure. It produces the four-way disposition the criterion demands, so a REFUSED unit is a named defect that can be returned or reworked while the vendor window is open rather than a machine quietly set aside. And it gives node-burnin-protocol its subject: that item writes the protocol, this one is the first population it runs against. The twenty invoiced units make it larger, not different.",
+  depends_on: ["hw-first-host"],
+  relates_to: ["strategy.ci_node_build"],
+  status: NotStarted,
+}
+
+data item_public_workload_census: PlanItem = PlanItem {
+  id: "public-workload-census",
+  workstream: EconomicsQa,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "A small VERSIONED population of public workflow JOBS inspected - jobs, not repositories, because compatibility is job-scoped and an Arm publishing job proves nothing about whether the build and tests run natively. Each candidate records repository and source revision, workflow/job/matrix identity, DECLARED provider and architecture, OBSERVED run evidence or its absence, workload commands, cache mechanisms, resource requirements, external effects, and replay-admission gaps. Two or three complementary workloads are selected; rejected and unresolved candidates stay visible with their reasons. FIVE PROMOTIONS ARE FORBIDDEN and they are what this item exists to prevent: an x64 label may not become Arm evidence, a skipped or failed test may not become a successful baseline, an unobserved cache may not become warm, provider use may not become verified spend, and a benchmark result may not become trial or outreach authorization. Each candidate therefore carries SEPARATE fields for provider declaration, observed execution, replay admission, commercial interest and trial authorization rather than one qualified Boolean. Two admission rules bind the replay itself: public visibility is not a licence, so the source, dependencies and data are checked before replay; and external mutations - registry pushes, cloud role assumption, deployment - are removed from BOTH realizations, which makes the result a build/test replay DERIVED from the workflow and not an execution of the original pipeline. No outreach is authorized by anything in this item, and code-search results may not become unsolicited contact.",
+  depends_on: no_deps,
+  relates_to: ["strategy.ci_acquisition", "extdeps.pricing.ubicloud"],
+  status: NotStarted,
+}
+
+data item_incumbent_head_to_head: PlanItem = PlanItem {
+  id: "incumbent-head-to-head",
+  workstream: EconomicsQa,
+  milestone: M1bInternalS0Proof,
+  rank: 30,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "One ADMITTED workload from public-workload-census executed on the srv1 canary AND on an authorized incumbent account, using the same identified source and workload contract, with any workflow adaptation recorded and applied to BOTH sides. Both sides must satisfy the selected correctness checks: a fast failure is not a speed win, and a job whose tests did not run has not been compared. THE MAINTAINER'S OWN RUN HISTORY IS SCREENING, NEVER THE BASELINE - its cache contents, account settings and environment are unknown, so both sides run in our own controlled account. COLD AND WARM ARE THREE CONDITIONS, NOT TWO, because the incumbent starts a fresh VM per job AND restores a remote cache by default, so a fresh worker is not a cold cache: logical cold is confirmed MISSES on the relevant caches; remote-warm-on-a-fresh-worker is the condition that actually tests an ephemeral-worker design; and a representative incremental change - parent commit populates, child commit does real work - keeps the verdict off an unchanged-source rerun. Which cache layers were controlled is recorded, because dependencies, compiler outputs, image layers and artifact inputs are different populations. Timing is decomposed into pre-execution wait, runner preparation, checkout, dependency install, cache restore, build and test, and required upload, read from the SPECIFIC run attempt rather than a workflow-level duration; for a multi-job workflow the customer-visible critical path is distinguished from the sum of job durations. EVERY MATERIAL GAP NAMES ITS OBSERVED STAGE, ITS ATTRIBUTION STANDING - measured cause, supported hypothesis, or unattributed - AND ITS NEXT DISCRIMINATING TEST; an earlier version of this row demanded that every gap name its cause, which is exactly the demand for premature certainty that manufactures the unsupported story it was meant to prevent. Resource allocation is matched and scratch is declared: if scratch consumes RAM it is charged to the memory budget, if it crosses the network that path is measured, and no worker drive appears as an unreported benchmark optimization. Roughly five to ten paired repetitions per condition with alternating order, individual observations reported alongside median and range, and cancellations, outages and test failures classified by a rule declared BEFORE the runs and retained in the population - not re-run until an attractive number appears. The commercial reading is COST TO OBTAIN AN EQUIVALENT VALID RESULT including failed-attempt charges, at dated tariffs, fed into the existing cost assessment rather than a new benchmark-specific cost authority: a higher rate can win by finishing sooner and a cheaper rate can lose on setup and retries. Missing evidence yields an explicit INCOMPLETE comparison, never an assumed winner, and no result here qualifies a customer or authorizes outreach. THE INCUMBENT SIDE IS A RUNNER WE OPERATE, NOT THE REPOSITORY'S OWN HISTORY, and the census made that distinction load-bearing rather than pedantic. The originating idea was to find a repository running on Ubicloud and clone it, and the observed population does not support it: of the selected workloads, the two with real correctness checks run on DEPOT and on GitHub-hosted arm runners, and the only job observed on Ubicloud Arm is the one whose baseline admission REFUSES it because no test executes. So the repository's declared and observed provider is SCREENING - it identifies an arm64 workload worth replaying - while the comparison arm is an incumbent account we open and control. Declared provider and observed provider are separate facts and neither may be promoted into the other. A consequence worth stating because it was invisible before the census: Depot, not Ubicloud, is the arm provider actually observed carrying these workloads, so the competitive set is wider than the price table's Ubicloud row and the choice of which incumbent to run against is now a decision rather than an assumption. Expectation set for the Ubicloud arm specifically: its Arm runners are Ampere Altra Q80-30, the same processor family this fleet holds, so THAT pairing measures the SERVICE PATH - cache, network, scheduling, setup - and not the silicon. No such equivalence is claimed for any other incumbent until its hardware is cited.",
+  depends_on: ["runner-canary", "fabric-m0"],
+  relates_to: ["strategy.ci_runner_economics", "extdeps.pricing.ubicloud", "strategy.workload_benchmark_suite"],
+  status: NotStarted,
+}
+
+data item_wholesale_argument_grounding: PlanItem = PlanItem {
+  id: "wholesale-argument-grounding",
+  workstream: EconomicsQa,
+  milestone: M1bInternalS0Proof,
+  rank: 20,
+  min_calendar_days: 3,
+  execution_mode: AgentParallel,
+  exit_criterion: "The wholesale direction is a typed argument, not a slogan. strategy.node_rental reports an EVIDENCE census: how many RentalRows exist, how many are admissible_as_competitive_floor (region known AND supply purchasable). Zero admissible is a statement about this corpus, not a statement that the market has no floor. Hetzner CAX41 is region-grounded from the listed hel1/nbg1 rate. Supply is DERIVED from hetzner_cax_supply_readings: three dated not-orderable displays to this account (2026-09-05, 2026-09-06, 2026-09-10), a scoped positive about this vendor's CAX line, not Unobserved, not a fact about the arm64 market as a whole. Repetition across five days makes a one-day transient stockout less plausible. Reseller quantity remains OPERATOR Unquoted. NOT owed: contacting either reseller. NOT owed: further arm64-market investigation.",
+  depends_on: no_deps,
+  relates_to: ["strategy.node_rental", "strategy.wholesale_buyer", "gunbc.procurement.hetzner_supply_observation"],
+  status: Done { receipt: "session vivid-deer-761: 0/4 floors is about our rows; Hetzner CAX supply derived from three dated this-account not-orderable readings; not a market-wide scarcity claim; reseller quantity Unquoted" },
+}
+
+data item_wholesale_supply_channel: PlanItem = PlanItem {
+  id: "wholesale-supply-channel",
+  workstream: AcquisitionMarketing,
+  milestone: M2FirstExternal,
+  rank: 40,
+  min_calendar_days: 14,
+  execution_mode: ExternalLead,
+  exit_criterion: "A scoped conversation with at least one CI provider that resells arm64 capacity - Ubicloud, Blacksmith or a peer - about supplying dedicated Ampere capacity underneath their product, carried to a stated price, volume and reliability requirement or to an explicit no. THE ARITHMETIC THAT MAKES THIS WORTH DOING, and it is not the one the idea starts from: selling supply means competing with HETZNER, not with the reseller. THE 56.72 DOLLAR FIGURE THAT USED TO STAND HERE IS A RECORDED ERROR: it was hourly 0.0777 times 730, and the vendor's monthly cap on the dollar console is 48.49 (extdeps.cloud.hetzner cax41_listed), which strategy.node_rental now reads. strategy.cost_floor puts our priced floor at 67 at full utilisation, 112 at sixty percent and 225 at the selected thirty. Read naively against 48.49 our cost is still not below Hetzner RETAIL at the planning utilisation. THAT COMPARISON IS ALSO NOT A FLOOR IN THIS CORPUS: admissible_as_competitive_floor is false for every market row because our EVIDENCE is incomplete, which is not the same as the market having no floor. Three things cut the other way and they are why it does not. FIRST, THE COMPARISON IS NOT LIKE-FOR-LIKE IN OUR FAVOUR: hetzner_row records CAX41 as SharedBurstable and cites the vendor's own recommendation of dedicated instances for sustained CPU-heavy work, which is exactly what CI is; our unit is a dedicated physical core, so the comparable Hetzner product is their dedicated line and not this one. SECOND, AND THIS IS THE REAL ARGUMENT: the thirty percent utilisation figure is a DIRECT-SALES assumption, because bursty developer demand is what makes it thirty. A supply contract is bulk, steady and predictable, which is the only realistic route to the utilisation at which our floor is competitive at all - so wholesale does not merely tolerate the denominator, it is the thing that fixes it. THIRD, most of the eight unquoted components in cost_floor are per-end-user costs - support, abuse response, payment processing - and one contract with one invoice does not carry them, so the wholesale floor sits closer to its priced subtotal than the direct floor does. A FOURTH ARGUMENT FOR, ADDED 2026-09-10, AND IT IS THE ONE THIS ITEM WAS MISSING -- SUPPLY, NOT PRICE. The paragraph below concludes that interchangeable capacity competes on price and reliability alone with no path to differentiation. That conclusion is now contradicted by our own measurement and is left standing beside it rather than quietly edited, because the correction is the point. strategy.node_rental hetzner_row carries supply derived from three dated not-orderable displays to this account, not SupplyUnobserved. The one-account console reading is hetzner_cax_account_console_reading, which quotes gunbc.procurement.hetzner_supply_observation hetzner_cax_line_unavailable.observation rather than paraphrasing it. That reading does not establish any-account, every-region, withdrawn-versus-stock, or CAX41-versus-quota. IF it were later confirmed as genuine reseller-facing scarcity, the same fact would both retire the advertised rate as a floor AND be the strongest argument for the wholesale direction — strategy.wholesale_buyer hetzner_arm_scarcity carries that dual as ScarcityWouldStrengthenWholesaleIfConfirmed, unconfirmed. IF ARM CAPACITY CANNOT BE BOUGHT AT THE PRICE THAT KILLS THE IDEA, THE PRICE DOES NOT KILL THE IDEA. Available supply is itself the differentiation, and it is measured rather than asserted. TWO CAVEATS THE OBSERVATION ITSELF CARRIES and which a pitch must not drop: it is ONE account at ONE moment, and a greyed control can mean sold-out capacity, an account verification tier, a region restriction or a project quota -- which was not determined. So this is a lead to confirm, not a claim to make to a reseller. AND THE US HALF IS UNESTABLISHED IN EITHER DIRECTION: hetzner_row is now RegionObserved for Helsinki (hel1) and Nuremberg (nbg1); Ashburn and the rest of North America were not in that reading. US-located dedicated Ampere capacity may well be the sharper differentiator than either price or aggregate supply, and this corpus currently cannot say so -- establishing it is a prerequisite to using it. AGAINST, and none of these are fatal but all must be answered before a price is quoted: Hetzner's retail contains their margin so their cost is below the listed monthly and we would be selling near ours against someone selling above theirs; one wholesale buyer is concentration risk who can dictate terms and leave; a reseller will require reliability evidence this fleet cannot yet produce, since the infrastructure pair has no failover exercise and the residence has no site-admission receipt; and interchangeable capacity competes on price and reliability alone with no path to differentiation. OWNERSHIP: EconomicsQa owns the census (wholesale-argument-grounding). AcquisitionMarketing owns this conversation. THE CONCLUSION IS BOTH CHANNELS AND THE REASON IS STRUCTURAL: direct sales carry margin and prove the product but cannot fill the fleet; wholesale fills the fleet and fixes utilisation but carries little margin. Each one's failure mode is the other's strength, which is what makes them complementary rather than a choice. A CONSEQUENCE FOR THE MODEL, filed here because it is where it was found: strategy.ci_site_cost selected_utilization_permille is ONE number serving both channels, and two channels with structurally different load shapes cannot share a utilisation constant - it has to become a per-channel fact or every per-unit cost derived from it is an average of two things nobody sells.",
+  depends_on: ["fleet-capacity-floor", "wholesale-argument-grounding"],
+  relates_to: ["strategy.cost_floor", "strategy.node_rental", "strategy.wholesale_buyer", "strategy.ci_site_cost", "strategy.ci_runner_economics"],
+  status: NotStarted,
+}
+
+data item_dogfood_window: PlanItem = PlanItem {
+  id: "dogfood-window",
+  workstream: EconomicsQa,
+  milestone: M1bInternalS0Proof,
+  rank: 40,
+  min_calendar_days: 14,
+  execution_mode: CalendarObservation,
+  exit_criterion: "Two full uninterrupted weeks of dogfood complete: witness floor green on our runners, job-length and cache-bytes distributions collected, failure dispositions ledgered. The S0 receipts start HERE, before any customer.",
+  depends_on: ["dogfood-started"],
+  relates_to: ["strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+// ---------------------------------------------------------------------------------------------
+// M2 - FIRST EXTERNAL DESIGN PARTNER (2026-11-02): ONE trusted customer runs a real
+// workload under the paperwork, billing-credit, support and isolation boundaries.
+// Onboarding may be assisted. (Recut from "3-5 customers, unaided, full portal".)
+// ---------------------------------------------------------------------------------------------
+
+data item_tenant_boundary_minimum: PlanItem = PlanItem {
+  id: "tenant-boundary-minimum",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 14,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "The constrained first tenancy topology - customer-dedicated host/pool, one clean microVM per job, no host credentials in the guest, no cross-customer peer cache, customer-scoped CAS identity, untrusted-PR action-cache writes disabled or trust-classed unreadable by trusted workflows, outbound 25 blocked, per-customer egress and flow receipts. Removes cross-customer co-residency from the demo; the shared-fleet adversarial suite is a separate pre-S1 item.",
+  depends_on: ["runner-canary", "fabric-m0"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+// PAPERWORK-MIN SPLIT (operator approval 2026-09-07; amended twice the same day).
+// The row asserted one fact that is really fourteen, and each amendment removed a wrong premise.
+// FIRST: ExternalLead + no_deps + 21 days said counsel AUTHORS the package, so the compliance
+// surface inherited an external queue as its critical path. Counsel is a BOUNDED ADVERSARIAL
+// SENSOR - the authorities are the statutes, agency interpretations, network rules and the signed
+// agreement - so there is no CounselApproved, LegallyCompliant or EnumerationComplete standing to
+// reach, and spend is gated rather than pre-authorized.
+//
+// SECOND, and the deeper one: the work was still producing a REGISTER AND A LAWYER PACKET when
+// what it owes is a PROVIDER-USE PERMIT THE FABRIC CANNOT ROUTE AROUND. The register already
+// claims region-as-admission covers object storage, logs, telemetry, backups, support access and
+// spill; the code that actually places work admits on architecture, dedication, interruption and
+// price, and cannot CONSTRUCT a jurisdiction refusal at all. Two authorities answer "may this job
+// run here" and the deciding one has no compliance term - so the claim is prose over an unenforced
+// path, and no amount of applicability modeling fixes it.
+//
+// The admitted subject is a ROUTE, never a company: provider x service x region x data-path
+// closure x contract revision. "Hetzner is compliant" is not a fact; the same provider is
+// admissible in one region and not another, for build source and not ePHI, before a subprocessor
+// change and not after. Authority direction is fixed: provider modules never import our posture -
+// a third module joins provider facts, active posture revision and the exact use scope, exactly as
+// gunbc.fabric_executor_class lets no supplier declare what it is sanctioned to serve.
+//
+// Three budget questions stay separate. May this work use this route is a PERMIT, not money, and
+// a cheap offer must never buy through a missing authority. Should we fund enabling a route is a
+// real appropriation carrying cash, operator time and latency on separate axes. Can this job
+// afford this offer is the existing demand-side budget. Funding an enablement item must never
+// itself mint a runtime permit.
+//
+// Support is DERIVED, not declared: the intent is maximal lawful global support, and the current
+// supported surface is the union of scopes for which some route can produce a permit under the
+// active posture. Dates live on enablement items, never on a permit - support is a present fact
+// and a forecast is a plan.
+data item_counsel_market_census: PlanItem = PlanItem {
+  id: "counsel-market-census",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 2,
+  min_calendar_days: 7,
+  execution_mode: ExternalLead,
+  exit_criterion: "ZERO EXTERNAL SPEND AND NO SUBSTANTIVE WORK AUTHORIZED. Three comparable responses, each carrying the individual reviewer rather than the firm, relevant experience, phase rates and hour caps, availability, whether they ACCEPT THE DELIVERABLE SHAPE, excluded specialties and conflicts standing. The discriminating question is whether their work JOINS our model and returns deltas, never whether they can sample the answer free on the call. Counsel questions are EMITTED FROM UNRESOLVED PROVIDER ENABLEMENT OBLIGATIONS - a bounded external interpretation is one owner arm among internal construction and provider evidence, never the owner of the onboarding program.",
+  depends_on: no_deps,
+  relates_to: ["strategy.compliance_posture", "finance.gunbai_llc"],
+  status: NotStarted,
+}
+
+data item_m2_contract_standard: PlanItem = PlanItem {
+  id: "m2-contract-standard",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 2,
+  min_calendar_days: 3,
+  execution_mode: AgentParallel,
+  exit_criterion: "ONE pinned external contract authority as a versioned extdep, because warranty, indemnity, IP, confidentiality, payment, liability, dispute and termination terms DO NOT DERIVE from a compliance model. Leading candidate Common Paper Cloud Service Agreement v2.1 - verified 2026-09-07 as current: CC BY 4.0, cover page plus incorporated standard terms, explicit pilot support, versions immutable once posted. Bonterms Cloud Terms is the credible alternative; PIN EXACTLY ONE.",
+  depends_on: no_deps,
+  relates_to: ["strategy.compliance_posture", "strategy.ci_product_surface"],
+  status: NotStarted,
+}
+
+data item_m2_launch_intent: PlanItem = PlanItem {
+  id: "m2-launch-intent",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 2,
+  min_calendar_days: 7,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "REPLACES THE US-ONLY LAUNCH PROFILE, which hardcoded a constant where the corpus already had a parameter - region-as-admission and per-customer regional placement both predate this plan. Declares MAXIMAL LAWFUL GLOBAL SUPPORT as the terminal intent plus the ACTIVE POSTURE REVISION as a content hash, and declares NOTHING about currently supported geography, which is derived from the admitted route population rather than asserted here. Jurisdictions are open declaration references, never a central US or EU or Asia enum, so adding Germany is a row and not an edit to a kernel. Named operator-approved organizations only with public self-service disabled; founding credit with no card collected; the authorities with no producer enumerated.",
+  depends_on: no_deps,
+  relates_to: ["strategy.compliance_posture", "strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+data item_provider_route_census: PlanItem = PlanItem {
+  id: "provider-route-census",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 4,
+  min_calendar_days: 14,
+  execution_mode: AgentParallel,
+  exit_criterion: "PREDECESSOR TO ANY CLAIM ABOUT SUPPORTED GEOGRAPHY. One row per provider x service x region, each answering the FULL data-path closure - execution, durable storage, backups, logs, telemetry, control plane, support access, administrative access and spill - plus downstream provider population and the exact contract and provider-term revisions. A vendor region label establishes none of these: a Helsinki VM whose backups, telemetry or administrators sit elsewhere is not a Helsinki-contained path. Every path arm distinguishes LOCATED from ABSENT from UNREAD, because an empty backup list must never conflate backups-disabled with nobody-looked - the discipline the Ubicloud binding already keeps by carrying IsolationNotObserved rather than inventing from a price list. Hetzner is already modeled in catalog, pricing and procurement; what is missing is its supplier-route realization.",
+  depends_on: ["m2-launch-intent"],
+  relates_to: ["strategy.compliance_posture", "strategy.compute_fabric_model"],
+  status: NotStarted,
+}
+
+data item_m2_applicability_model: PlanItem = PlanItem {
+  id: "m2-applicability-model",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 4,
+  min_calendar_days: 14,
+  execution_mode: AgentParallel,
+  exit_criterion: "The register climbs off free strings: every source applied to VERSIONED launch facts carrying cited authority, the instrument's own trigger, our observed facts, standing and recheck condition as separate fields, each authority pinned with official representation, retrieval time, content hash, effective standing and trigger extract. The cleared arm dies - NotApplicable admitted a conclusion drawn from our INTENT rather than the instrument's trigger, the single root cause of all four prior misclassifications - and non-applicability must carry a NONEMPTY observed-fact list and a recheck condition or it does not typecheck. Joins strategy.compliance_posture to the extdeps.regulation instrument model already carrying lifecycle, provenance, temporal application and derived applicability.",
+  depends_on: ["m2-launch-intent"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_m2_admission_spine: PlanItem = PlanItem {
+  id: "m2-admission-spine",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 6,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "THE SMALLEST EXECUTING REFUSAL, LANDED BEFORE THE FULL REGIME MODEL AND IN PARALLEL WITH IT. Four discriminating reds, executed rather than declared: a declared-ePHI job REFUSES because no producer of that handling authority exists; an unresolved classification HOLDS; a job with no admission receipt REFUSES; and A ZERO-DOLLAR NET INVOICE DOES NOT ALTER ADMISSION, the claim the canary makes concrete and the one most likely to erode into a just-for-the-pilot bypass.",
+  depends_on: ["m2-launch-intent", "provider-route-census"],
+  relates_to: ["strategy.compliance_posture", "strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+data item_provider_route_admission: PlanItem = PlanItem {
+  id: "provider-route-admission",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 8,
+  min_calendar_days: 14,
+  execution_mode: AgentParallel,
+  exit_criterion: "THE EXECUTABLE JOIN, AND THE CENTRE OF THE COMPLIANCE PROGRAM: active posture revision x exact demand and work and customer and data scope x provider route and its data-path closure -> a SEALED PERMIT naming demand, work, offer, route, posture revision, route-facts revision, customer profile revision and agreement revision. Refusals are typed and constructible - route unclassified, route facts incomplete, posture revision stale, customer scope unsupported, data handling unsupported, required agreement authority absent, transfer or location unresolved, downstream provider unassessed, access path unsupported - none of which the current RouteRejection can even express. The gate runs BEFORE capacity fungibility and before price, alongside executor sanction, because neither is economic and neither belongs in a selection cost. Required reds: the cheapest unadmitted route never wins; an unclassified route refuses rather than defaulting; the same provider in two regions may differ; a permit under one posture revision is stale under the next; available money cannot override a denial; and a permit cannot override an exhausted budget.",
+  depends_on: ["provider-route-census", "m2-applicability-model", "m2-admission-spine"],
+  relates_to: ["strategy.compliance_posture", "strategy.compute_fabric_model"],
+  status: NotStarted,
+}
+
+data item_m2_control_bindings: PlanItem = PlanItem {
+  id: "m2-control-bindings",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 10,
+  min_calendar_days: 14,
+  execution_mode: AgentParallel,
+  exit_criterion: "REQUIRES AN ACTUAL PERMIT PRODUCER, not a regional plan described in prose - and the permit must SURVIVE SELECTION, GRANT ISSUANCE AND THE EFFECT BOUNDARY, since a candidate that carries an admission proof but a selection that returns a raw offer loses the evidence between candidate and grant. One authority for may-this-job-run-here: the private spill policy CONSUMES admitted routes and never keeps a second compliance decision. An exclusion stays unwritable without all three of a customer clause, an executing refusal, and a defined response when reality contradicts the clause, checked in both directions. The permit is a typed or sealed carrier, never a sixth opaque receipt field beside five others of the same type.",
+  depends_on: ["provider-route-admission", "m2-applicability-model"],
+  relates_to: ["strategy.compliance_posture", "strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+data item_provider_enablement_budget: PlanItem = PlanItem {
+  id: "provider-enablement-budget",
+  workstream: EconomicsQa,
+  milestone: M2FirstExternal,
+  rank: 10,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "THE SECOND OF THE THREE BUDGET QUESTIONS, kept separate from the permit because compliance is not depleted by use. One item per unsupported route naming what it closes first, the posture revision it was sized against, its owner as internal construction or provider evidence or bounded external interpretation, and its cost as quoted or estimated or explicitly unpriced. Cash, operator time and calendar latency stay SEPARATE AXES rather than one scalar, so an internal hour is never silently interchangeable with an outside dollar. A one-time contract review is never charged per job, and a route that has not completed enablement never enters dispatch selection - the selector must not commission legal research or sign an agreement as a fallback.",
+  depends_on: ["provider-route-admission"],
+  relates_to: ["strategy.compliance_posture", "strategy.ci_runner_economics"],
+  status: NotStarted,
+}
+
+data item_m2_customer_projections: PlanItem = PlanItem {
+  id: "m2-customer-projections",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 12,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "PROJECTED from the pinned standard, the bindings and THE ADMITTED ROUTE POPULATION - the provider, subprocessor and location disclosures are derived from admitted routes rather than authored, so a schedule cannot promise a boundary no permit can produce. Cover page and order carrying founding-credit terms as a section, the M2 addendum, a privacy notice that projects the ACTUAL data map, the security and data-handling schedule, a versioned subprocessor snapshot, and the EXPLICIT DEVIATION LIST against the pinned standard - the only thing phase two is asked to read. No public ToS while public self-service is disabled.",
+  depends_on: ["m2-control-bindings", "m2-contract-standard", "provider-route-admission"],
+  relates_to: ["strategy.compliance_posture", "strategy.ci_product_surface"],
+  status: NotStarted,
+}
+
+data item_m2_legal_review_ready: PlanItem = PlanItem {
+  id: "m2-legal-review-ready",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 14,
+  min_calendar_days: 3,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "THE GATE THAT MAKES PAID REVIEW CONDITIONAL: ratified launch intent, named customer facts including state and sector, verified authority pins, a complete provider-route and data-path census, an EXECUTED admission spine and permit producer, a pinned contract standard, the projected addendum, privacy projection and security schedule, and the enablement obligations that survive. Unstable facts and a homegrown contract are the two reliable ways to burn legal hours and both are refused here rather than discovered on the invoice.",
+  depends_on: ["m2-control-bindings", "m2-customer-projections", "provider-enablement-budget", "counsel-market-census"],
+  relates_to: ["strategy.compliance_posture", "finance.gunbai_llc"],
+  status: NotStarted,
+}
+
+data item_m2_legal_issue_spot: PlanItem = PlanItem {
+  id: "m2-legal-issue-spot",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 16,
+  min_calendar_days: 14,
+  execution_mode: ExternalLead,
+  exit_criterion: "PHASE ONE, CAPPED AT THREE SENIOR HOURS - min_calendar_days is QUEUE LATENCY, not effort, and the census quote replaces it. Authorized: material omitted categories, materially wrong LIVE applicability findings, named-customer state or sector facts that change obligations, questions needing specialty counsel, and what must change before first dispatch. Unauthorized: drafting, redlining, rewriting the matrix, a narrative memo, DPA or BAA work, SOC 2 or ISO work, research outside scope, contacting another specialist, continuing past the cap. The return is a typed observation carrying reviewer, scope hash, assumptions and specialties NOT reviewed; arms are material omission identified, none identified within that declared boundary, or specialty review required. Never a completeness certificate.",
+  depends_on: ["m2-legal-review-ready"],
+  relates_to: ["strategy.compliance_posture", "finance.gunbai_llc"],
+  status: NotStarted,
+}
+
+data item_m2_contract_deviation_review: PlanItem = PlanItem {
+  id: "m2-contract-deviation-review",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 18,
+  min_calendar_days: 10,
+  execution_mode: ExternalLead,
+  exit_criterion: "PHASE TWO, SEPARATELY AUTHORIZED AND CAPPED AT THREE SENIOR HOURS - not authorized merely because phase one happened, and bought only if phase one demonstrated it useful. Input is the pinned standard plus our deviation list, never a blank page. Output is a redline, a clause-to-control mismatch table, launch-blocking wording changes and later-capability wording marked separately, with NO restatement of unchanged standard terms. A closeout of at most two further hours is separately authorized.",
+  depends_on: ["m2-legal-issue-spot"],
+  relates_to: ["strategy.compliance_posture", "strategy.ci_product_surface"],
+  status: NotStarted,
+}
+
+data item_m2_compliance_admission: PlanItem = PlanItem {
+  id: "m2-compliance-admission",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 7,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "FREEZES THE EXACT REVISIONS the launch runs against - posture revision, every route-facts revision, customer profile revision, agreement revision and the permit evidence - so a later posture change makes standing permits stale rather than silently tolerated. Every launch-blocking delta closed, and one rehearsal recorded, SYNTHETIC AND NON-NOTIFYING THROUGHOUT because a rehearsal that actually notifies is an incident: a synthetic sanctions potential match adjudicated, a synthetic declared-ePHI job refused and a detected signal contained, a synthetic unresolved export classification held, a cheapest-but-unadmitted route losing to a dearer admitted one, and an incident exercised to RECIPIENT SELECTION, SEQUENCING AND DRAFT GENERATION ONLY - nothing sent to any customer, regulator, law-enforcement agency or OFAC - plus a deletion to its typed terminal state and a test organization offboarded. First external job permitted only if the admission gate is constructible from those frozen versions. THE BINDING EVENT IS EXECUTION, NOT PAYMENT.",
+  depends_on: ["m2-control-bindings", "m2-legal-issue-spot", "m2-contract-deviation-review"],
+  relates_to: ["strategy.compliance_posture", "strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+data item_customer_authorizations: PlanItem = PlanItem {
+  id: "customer-authorizations",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "Typed consent artifacts, separate not bundled: read/audit consent, billing-export consent, benchmark-execution consent, migration-write authorization.",
+  depends_on: ["m2-customer-projections"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_billing_receipts: PlanItem = PlanItem {
+  id: "billing-receipts",
+  workstream: RunnerSoftware,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "PRICED FROM THE FIRST JOB (analyst hybrid, consistent with the operator's coupon ruling): metered usage x real founding price = gross charge; promotional credit (finite amount, expiry, per-org concurrency cap, no silent renewal) applied on the invoice; net due may be $0 but the invoice shows what the customer would owe. Proves metering, price application, credit accounting and invoice generation at once. JobInitiatorClass captured.",
+  depends_on: ["runner-canary"],
+  relates_to: ["strategy.ci_runner_economics"],
+  status: NotStarted,
+}
+
+data item_failure_billing: PlanItem = PlanItem {
+  id: "failure-billing-semantics",
+  workstream: RunnerSoftware,
+  milestone: M2FirstExternal,
+  rank: 30,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "Typed dispositions for every non-success: cancellation, timeout, runner disappearance, failed durable commit, queue refusal - each auto-unbilled or credited per declared policy, no silent widening. Billing and the failure ledger must agree exactly.",
+  depends_on: ["billing-receipts"],
+  relates_to: ["strategy.ci_runner_economics"],
+  status: NotStarted,
+}
+
+data item_machine_identity_secrets: PlanItem = PlanItem {
+  id: "machine-identity-secrets-lifecycle",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "App keys, object-storage credentials, image-signing keys, attempt-scoped tokens: rotation and revocation paths exercised, no long-lived host secret reachable from a job.",
+  depends_on: ["runner-canary"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_support_abuse: PlanItem = PlanItem {
+  id: "support-abuse",
+  workstream: OpsMachineHealth,
+  milestone: M2FirstExternal,
+  rank: 10,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "Narrowed to the demo promise: published abuse contact, real support channel with a declared response-time promise for the cohort, AUTOMATED suspension path executed against a synthetic abuser, status page, incident-response runbook with the breach-notification matrix's sequencing, one-person on-call declared.",
+  depends_on: no_deps,
+  relates_to: ["strategy.ci_operations"],
+  status: NotStarted,
+}
+
+data item_docs_dry_run: PlanItem = PlanItem {
+  id: "docs-dry-run",
+  workstream: AcquisitionMarketing,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "Quickstart + runner-migration docs tested by a previously-unfamiliar person (dry run). The REAL unaided-onboarding receipt is produced by the cohort item - splitting these removes the hidden real-world cycle where the cohort needed docs proven on a customer the graph had not yet admitted.",
+  depends_on: ["runner-canary"],
+  relates_to: ["strategy.ci_product_surface"],
+  status: NotStarted,
+}
+
+data item_soc2_baseline: PlanItem = PlanItem {
+  id: "soc2-baseline",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "Control baseline OPERATIONAL by M2, not designed in December: access-review schedule, vendor register, change receipts, incident procedure, restore procedure - so the demo itself produces evidence. Operating these controls is NOT a SOC report and may never be described as one to a customer: a SOC 2 report is independent assurance issued by a CPA practitioner over a defined scope and period, and control evidence is the input to that engagement rather than a substitute for it. Claiming otherwise is a quality claim carrying billing and remedy consequences, which DESIGN section 4b treats as a contract rather than marketing.",
+  depends_on: ["m2-control-bindings"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_soc2_window: PlanItem = PlanItem {
+  id: "soc2-window",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 30,
+  min_calendar_days: 1,
+  execution_mode: CalendarObservation,
+  exit_criterion: "Formal SOC 2 evidence window STARTED no later than 2026-11-02 (a Type II cannot retroactively prove operation); the paid auditor engagement stays demand-triggered.",
+  depends_on: ["soc2-baseline"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_runner_lifecycle: PlanItem = PlanItem {
+  id: "runner-lifecycle",
+  workstream: RunnerSoftware,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "Signed runner image with pinned runner version; current-release observation; rebuild/qualify/rollout transaction with rollback; emergency security-update path (GitHub's 30-day stale-runner queue cutoff and immediate critical-release block); external runner diagnostic retention; missed-webhook reconciliation; abandoned-runner cleanup; 60-second-pickup and 24-hour-queue dispositions.",
+  depends_on: ["runner-canary"],
+  relates_to: ["strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+data item_first_external: PlanItem = PlanItem {
+  id: "first-external-customer",
+  workstream: AcquisitionMarketing,
+  milestone: M2FirstExternal,
+  rank: 50,
+  min_calendar_days: 7,
+  execution_mode: ExternalLead,
+  exit_criterion: "One trusted design partner runs a real workload under the paperwork, credit, support and tenant-boundary controls; migration hand-done and TIMED; their receipts flow into the same S0 instruments as dogfood. Onboarding may be assisted.",
+  depends_on: ["dogfood-window", "tenant-boundary-minimum", "m2-compliance-admission", "customer-authorizations", "billing-receipts", "support-abuse", "docs-dry-run", "cohort-qualified", "external-app-install-rehearsal"],
+  relates_to: ["strategy.ci_acquisition"],
+  status: NotStarted,
+}
+
+// ---------------------------------------------------------------------------------------------
+// M2b - PRIVATE COHORT (2026-11-23): 3-5 customers active; at least one unaided onboarding
+// observed; minimal PAID path live (a 30-day paid-retention fact by Dec 19 requires a paid
+// customer by ~Nov 19 - free credits cannot produce retained MRR).
+// ---------------------------------------------------------------------------------------------
+
+data item_customer_portal: PlanItem = PlanItem {
+  id: "customer-portal",
+  workstream: RunnerSoftware,
+  milestone: M2bPrivateCohort,
+  rank: 30,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "CUT SHARPLY (analyst): App-install return page, org/repo selection + admission result, generated runner-setup/migration instructions, promotional-credit usage statement (a statement, not a live dashboard), support/incident contacts, LINKS to GitHub's own run/log pages. Custom log rendering, rich job history, account management and polished billing dashboards are post-gate.",
+  depends_on: ["runner-canary", "billing-receipts"],
+  relates_to: ["strategy.ci_product_surface"],
+  status: NotStarted,
+}
+
+data item_paid_minimum: PlanItem = PlanItem {
+  id: "paid-minimum",
+  workstream: RunnerSoftware,
+  milestone: M2bPrivateCohort,
+  rank: 30,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "The minimum hosted-checkout prepaid path, moved up from M3: one real payment, one balance credit, one usage debit, one invoice, one refund/adjustment rehearsal. Auto-reload, concurrency raises and tax automation stay M3 (billing-ux).",
+  depends_on: ["billing-receipts"],
+  relates_to: ["strategy.ci_runner_economics"],
+  status: NotStarted,
+}
+
+data item_netboot: PlanItem = PlanItem {
+  id: "netboot-m0",
+  workstream: Hardware,
+  milestone: M2bPrivateCohort,
+  rank: 30,
+  min_calendar_days: 14,
+  execution_mode: AgentParallel,
+  exit_criterion: "Production diskless netboot per operator_tier_policy, moved OFF the M1 path (boot-minimum holds the security property meanwhile): signed immutable image, iPXE/HTTP from a redundant boot pair, RAM-root, BMC power-cycled node rejoins unattended, boot-service failure behavior declared and tested.",
+  depends_on: ["boot-minimum", "hw-4-population"],
+  relates_to: ["strategy.mobo_x_architecture"],
+  status: NotStarted,
+}
+
+data item_demo_cohort: PlanItem = PlanItem {
+  id: "demo-cohort",
+  workstream: AcquisitionMarketing,
+  milestone: M2bPrivateCohort,
+  rank: 60,
+  min_calendar_days: 14,
+  execution_mode: ExternalLead,
+  exit_criterion: "3-5 trusted customers active on founding credits; at least one completes an UNAIDED onboarding (the receipt docs-dry-run deferred); migrations timed. OPERATOR RULING 2026-08-29, settled - do not relitigate: free minutes are fine given spare capacity and highly trusted users; the bound is a COUPON (fixed credit, expiry, per-org concurrency cap). Analyst refinement consistent with it: the SKU carries a real founding price from job one, credits pay the invoice, and at least one commercial sentinel pays a nonzero prepaid amount before the S1 decision.",
+  depends_on: ["first-external-customer", "customer-portal", "runner-lifecycle"],
+  relates_to: ["strategy.ci_acquisition"],
+  status: NotStarted,
+}
+
+// ---------------------------------------------------------------------------------------------
+// M3 - YEAR-END GATE (2026-12-19): a decision/refusal date, NOT guaranteed S1 admission.
+// Every scaling lever carries executable terms (PreparedLever grain: quoted price, quote
+// expiry, activation lead days, admitted capacity, prerequisites, deposit, cancellation,
+// supplier - and for software/security levers an EXECUTED DRILL, not a cost estimate).
+// ---------------------------------------------------------------------------------------------
+
+data item_s0_receipts: PlanItem = PlanItem {
+  id: "s0-receipts",
+  workstream: EconomicsQa,
+  milestone: M3YearEndGate,
+  rank: 70,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "Planning figures replaced by measurement WHERE SAMPLE COVERAGE PERMITS, with StillPlanningGrade an admissible per-figure disposition (retirement depends on sample sufficiency, not existence of a few observations): restore-bytes distribution into ci_storage_tiering, measured wall power into ci_node_build, job-length/initiator mix into the economics, hit ratios into the origin-budget admission.",
+  depends_on: ["demo-cohort", "dogfood-window"],
+  relates_to: ["strategy.ci_alpha"],
+  status: NotStarted,
+}
+
+data item_colo_rfq: PlanItem = PlanItem {
+  id: "colo-rfq",
+  workstream: Hardware,
+  milestone: M3YearEndGate,
+  rank: 10,
+  min_calendar_days: 30,
+  execution_mode: ExternalLead,
+  exit_criterion: "All-in RFQ (the reviewed 17-line schema) issued NOW to the census candidates; responses modeled as CostQuoted rows carrying quote validity, delivery/turn-up lead time, available capacity, deposit, and expansion rights - not only price. NOTHING SIGNED.",
+  depends_on: no_deps,
+  relates_to: ["strategy.colo_market", "strategy.site_requirements"],
+  status: NotStarted,
+}
+
+data item_acquisition_instrumented: PlanItem = PlanItem {
+  id: "acquisition-instrumented",
+  workstream: AcquisitionMarketing,
+  milestone: M3YearEndGate,
+  rank: 70,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "The opt-in audit product specified and the funnel receipt schema live BEFORE the cohort produces data that would otherwise be lost (CAC per retained MRR / retained vCPU-minute, migration-hours, support-hours); no outbound at scale per the acquisition authority's preconditions.",
+  depends_on: ["billing-receipts", "demo-cohort"],
+  relates_to: ["strategy.ci_acquisition", "strategy.buyers_pipeline"],
+  status: NotStarted,
+}
+
+data item_machine_health: PlanItem = PlanItem {
+  id: "machine-health-model",
+  workstream: OpsMachineHealth,
+  milestone: M3YearEndGate,
+  rank: 50,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "Machine-health understood BEFORE the 60-100 node window: health-receipt schema (EDAC counters, media telemetry, sensor baselines, cull thresholds) with the 4-node fleet emitting receipts as the living fixture; counters and cull receipts, no elaborate dashboard.",
+  depends_on: ["hw-4-population", "dogfood-window"],
+  relates_to: ["strategy.ci_operations"],
+  status: NotStarted,
+}
+
+data item_lot_decision: PlanItem = PlanItem {
+  id: "lot-decision",
+  workstream: Hardware,
+  milestone: M3YearEndGate,
+  rank: 20,
+  min_calendar_days: 7,
+  execution_mode: ExternalLead,
+  exit_criterion: "EXECUTE IMMEDIATELY - the dependency is the CURRENT unit's qualification plus price/terms/sample, NOT all four S0 machines (waiting on unrelated equipment risks losing the supply): random-sample yield bound if buying, at-or-below the hedge-priced ceiling, option/ROFR attempted on the remainder - or an explicit documented pass. Depth verified at purchase time.",
+  depends_on: ["hw-first-host"],
+  relates_to: ["strategy.asset_lifecycle", "strategy.mt_collins_held_unit"],
+  status: InProgress { note: "2026-08-30: 20 units ORDERED, and the PER-UNIT FIGURE RECORDED HERE WAS WRONG. The vendor order summary (operator, 2026-09-10) shows 35,000.00 for 20 items, which is 1,750 each, not the 1,700 this note carried - 50 per unit, 1,000 across the lot, in the direction a recalled number usually errs. FREIGHT AND TAX ARE NOW ASSESSED and that conjunct is discharged: shipping 1,650.00 plus tax 2,428.06 is 4,078.06 on top of goods, 11.7 per cent, for an order total of 39,078.06 and a DELIVERED unit cost of 1,953.90. Settled 2026-09-08 across two cards belonging to two principals - 20,000.00 personal, 19,078.06 entity - and booked in finance.personal_ledger mt_collins_owner_funded_leg for the personal leg, which is the authority for the money the MEMBER advanced; the entity's side has no carrier yet. This note is the authority for the buy decision. OUTSTANDING before Done: arrival intake sampling, and option/ROFR attempted on the remaining ~40. NOTE FOR EVERY DOWNSTREAM VIABILITY CEILING: rank on the 1,953.90 delivered figure, not the 1,750 goods figure - a ceiling compared against goods alone is wrong by 11.7 per cent" },
+}
+
+data item_billing_ux: PlanItem = PlanItem {
+  id: "billing-ux",
+  workstream: RunnerSoftware,
+  milestone: M3YearEndGate,
+  rank: 40,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "Paid-path automation above paid-minimum: auto-reload or hard spend cap before concurrency raises, invoices with tax-provenance fields (customer location, taxable class), account billing management.",
+  depends_on: ["paid-minimum", "customer-portal"],
+  relates_to: ["strategy.ci_pricing_page"],
+  status: NotStarted,
+}
+
+data item_marketing_min: PlanItem = PlanItem {
+  id: "marketing-min",
+  workstream: AcquisitionMarketing,
+  milestone: M3YearEndGate,
+  rank: 70,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "Public landing + pricing page generated from the strategy tree (no hand-copied numbers), founding-customer terms published, positioning per the corrected market table. Non-critical to the private cohort; may move post-gate without damaging proof.",
+  depends_on: ["demo-cohort"],
+  relates_to: ["strategy.node_rental_page"],
+  status: NotStarted,
+}
+
+data item_tenant_shared_fleet: PlanItem = PlanItem {
+  id: "tenant-shared-fleet-suite",
+  workstream: SecurityCompliance,
+  milestone: M3YearEndGate,
+  rank: 30,
+  min_calendar_days: 14,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "The full shared-fleet tenant adversarial suite - cross-customer co-residency, CAS tenancy, action-cache trust classes, egress - blocking broader launch/S1, deliberately NOT blocking the dedicated-topology demo.",
+  depends_on: ["tenant-boundary-minimum"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_storage_recovery_drill: PlanItem = PlanItem {
+  id: "storage-recovery-rewarm-drill",
+  workstream: StorageFabric,
+  milestone: M3YearEndGate,
+  rank: 30,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "Executed drills, not estimates: StorageRecoveryReceipt (restore sampled artifacts/receipts from the durable copy, object-account recovery exercised, integrity verified, duration) and ColdSiteRewarmReceipt (cold-cache restart under the WAN origin budget: origin bytes, peak Gbps, jobs queued/refused, time to declared warmth). At 4 servers a site-cold exercise; at S1 the rack-rewarm exercise.",
+  depends_on: ["fabric-m0"],
+  relates_to: ["strategy.ci_storage_tiering"],
+  status: NotStarted,
+}
+
+data item_commercial_demand: PlanItem = PlanItem {
+  id: "commercial-demand-standing",
+  workstream: EconomicsQa,
+  milestone: M3YearEndGate,
+  rank: 70,
+  min_calendar_days: 30,
+  execution_mode: ExternalLead,
+  exit_criterion: "THE MISSING GATE CONJUNCT (analyst): a typed CommercialDemandStanding - PaidUtilizationObserved at a declared threshold, CommittedRevenueObserved covering the next fleet increment, or DemandNotProven with the evidence named. Dogfood, benchmarks and free credits count toward physical occupancy, NEVER toward commercial demand. A 30-day paid-retention fact by Dec 19 needs a paid customer by ~Nov 19; if unmet, the gate reports it and the capital decision defers - never weakened to 'used free credits for 30 days'.",
+  depends_on: ["paid-minimum", "demo-cohort"],
+  relates_to: ["strategy.ci_acquisition"],
+  status: NotStarted,
+}
+
+data item_tax_insurance: PlanItem = PlanItem {
+  id: "tax-insurance-scope",
+  workstream: SecurityCompliance,
+  milestone: M3YearEndGate,
+  rank: 20,
+  min_calendar_days: 10,
+  execution_mode: ExternalLead,
+  exit_criterion: "Taxability/nexus determination for the SKU, plus insurance scope: cyber, technology E&O, property/transit (the lot!), general liability, colo-required coverage.",
+  depends_on: ["m2-launch-intent"],
+  relates_to: ["finance.gunbai_llc", "strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_spares_control_plane: PlanItem = PlanItem {
+  id: "spares-control-plane-readiness",
+  workstream: OpsMachineHealth,
+  milestone: M3YearEndGate,
+  rank: 30,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "Spares depth by failure class (PSUs, fans, NVMe, NICs, optics, switches, boot hosts) plus control-plane recovery: signing/key recovery and spare-node depth declared.",
+  depends_on: ["hw-4-population"],
+  relates_to: ["strategy.asset_lifecycle"],
+  status: NotStarted,
+}
+
+data item_package_upstream: PlanItem = PlanItem {
+  id: "package-upstream-admission",
+  workstream: SecurityCompliance,
+  milestone: M3YearEndGate,
+  rank: 30,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "Docker Hub/npm/crates/PyPI/apt/GHCR admission before S1: terms, pull limits, credentials, checksum verification, mutable-tag policy, tenant isolation of registry credentials, redistribution boundaries.",
+  depends_on: ["tenant-boundary-minimum"],
+  relates_to: ["strategy.dependency_ladder"],
+  status: NotStarted,
+}
+
+data item_year_end_gate: PlanItem = PlanItem {
+  id: "s1-gate",
+  workstream: EconomicsQa,
+  milestone: M3YearEndGate,
+  rank: 80,
+  min_calendar_days: 1,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "A TOTAL decision, not a task: the gate derives S1Admitted-with-evidence or S1Refused-with-unmet-list from upstream receipts - the date commits to an ANSWER, never that every prerequisite is green. Almost no independent implementation lives here.",
+  depends_on: ["s0-receipts", "colo-rfq", "soc2-window", "acquisition-instrumented", "machine-health-model", "lot-decision", "marketing-min", "billing-ux", "commercial-demand-standing", "tenant-shared-fleet-suite", "storage-recovery-rewarm-drill", "tax-insurance-scope", "spares-control-plane-readiness", "package-upstream-admission"],
+  relates_to: ["strategy.workflow_stage_gate"],
+  status: NotStarted,
+}
+
+
+// THE BENCHMARK GAP (operator, 2026-09-04). Fleet admission and the price claim both rest on
+// a workload figure and neither has one. The honest difficulty is that customer workloads are
+// DIVERSE, so a single build is not a benchmark suite — it is one sample presented as a
+// population. These five items separate what one node can settle now from what needs a real
+// customer, because conflating them is how a benchmark ends up measuring the operator's own
+// repository and being quoted as a customer fact.
+
+data item_workload_benchmark_suite: PlanItem = PlanItem {
+  id: "workload-benchmark-suite",
+  workstream: EconomicsQa,
+  milestone: M1bInternalS0Proof,
+  rank: 20,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "A NAMED, EXECUTABLE suite standing in for customer build and test work, with its representativeness argued rather than assumed: at least one large compiled-language build, one test-heavy run whose cost is dominated by process spawn rather than compute, and one dependency-fetch-dominated job — three different bottlenecks, so a fleet tuned to one can be wrong for the others. Each case declares what it stresses and what it deliberately does not measure. The repository's own release build is admissible as ONE case and is not the suite.",
+  depends_on: ["hw-first-host"],
+  relates_to: ["strategy.fleet_qualification", "strategy.ci_build_frontier"],
+  status: NotStarted,
+}
+
+data item_fleet_capacity_floor: PlanItem = PlanItem {
+  id: "fleet-capacity-floor",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 30,
+  min_calendar_days: 3,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "strategy.fleet_qualification's matrix executed on one node — 2666 reference, 2133, single-socket, dense-2133 — producing measured relative throughput per configuration and a DERIVED admission floor replacing the declared 900-per-mille placeholder, which currently records an intent rather than an observation. Memtest at each configuration in the same cycle discharges the engineering-sample sustained-load qualification as a by-product. SUBJECT NAMED 2026-09-10 (operator): RUN THE MATRIX ON THE MT. COLLINS 1U, deliberately, because it is the thermally tightest chassis in the fleet and is expected to struggle. A capacity floor measured on the most forgiving machine is an optimistic bound that every other node then fails to meet; measured on the tightest one it is a floor the fleet can actually hold. If the 1U throttles under sustained load, THAT IS THE RESULT -- record it as the measured ceiling for this chassis rather than retrying on a roomier one, because the fleet is twenty of these.",
+  depends_on: ["hw-first-host", "workload-benchmark-suite"],
+  relates_to: ["strategy.fleet_qualification"],
+  status: NotStarted,
+}
+
+data item_memory_bom_decision: PlanItem = PlanItem {
+  id: "memory-bom-decision",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 40,
+  min_calendar_days: 2,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "DIMM population selected against QUALIFIED STOCK and a chosen concurrency, NOT a mandatory module capacity - an earlier version of this row derived that 32 GB modules were forced and that 64 GB were wasted, and both claims are WITHDRAWN as invalid. THE TWENTY INVOICED UNITS SHIP WITHOUT RAM, so there is no incumbent population to preserve and this is a greenfield choice for the fleet; the held unit's sixteen installed modules are INVENTORY TO NET AGAINST, never a baseline, and its roughly 256 GiB is an artifact of one machine's current state rather than a deployment option. Any row that reads 256 GiB as a candidate has confused an observation with a plan. THE CONCURRENCY IS NO LONGER UNCHOSEN, and that is what changed: measured customer runner sizes on real arm64 CI - 16, 8 and 4 vCPU, with the 16-vCPU shape carrying the clear majority of one repository's minutes - run through strategy.ci_sellable_unit give the same answer at every size. A unit is one physical core with three DECIMAL gigabytes, so a 16-vCPU job needs 44.7 GiB, an 8-vCPU job 22.4 and a 4-vCPU job 11.2. Against 160 cores and an illustrative 4 GiB host allowance, a 256 GiB node is MEMORY-BOUND at every one of those sizes and sells only 80 to 88 of its 160 cores; a 512 GiB node is CORE-bound at every one of them and sells all 160; a 1024 GiB node sells no additional core and its extra memory buys cache or scratch rather than capacity. So the target is a population reaching approximately 512 GiB, derived from observed demand shape rather than from an assumed cache reservation, and the 1024 GiB case must be argued on cache or scratch or not at all. THE CACHE RESERVATION REMAINS A DECISION VARIABLE AND NOT A PREMISE: every GiB reserved is a unit not sold, and it may not authorize a purchase until its size is chosen. WHAT IS STILL OPEN IS HOW TO REACH 512, NOT WHETHER: thirty-two 16 GiB modules at two DIMMs per channel and sixteen 32 GiB modules at one per channel both total 512 GiB and are NOT equivalent - 2DPC derates the data rate against product.node_power_envelope altra_two_dpc_ceilings, whose rows are themselves transcribed and uncited. Blocked on the J-slot census, which decides whether the held unit's sixteen modules already occupy all sixteen channels - in which case filling the empty slots trades bandwidth for capacity - or only eight, in which case half the memory channels are dark today and filling them is free bandwidth",
+  depends_on: ["fleet-capacity-floor", "buyer-agent-pipeline", "fleet-network-baseline"],
+  relates_to: ["strategy.fleet_qualification", "strategy.ci_node_build"],
+  status: NotStarted,
+}
+
+data item_customer_workload_profile: PlanItem = PlanItem {
+  id: "customer-workload-profile",
+  workstream: AcquisitionMarketing,
+  milestone: M2bPrivateCohort,
+  rank: 60,
+  min_calendar_days: 14,
+  execution_mode: ExternalLead,
+  exit_criterion: "Real jobs from real prospects, profiled rather than described: job shape, wall time, parallelism, memory footprint, cache behaviour and monthly volume, across enough of the cohort that the benchmark suite can be checked AGAINST them instead of assumed to represent them. ExternalLead because it cannot be produced without customers, and its absence is exactly why the suite above is provisional.",
+  depends_on: ["cohort-qualified", "first-external-customer"],
+  relates_to: ["strategy.ci_acquisition", "strategy.fleet_qualification"],
+  status: NotStarted,
+}
+
+data item_competitive_price_benchmark: PlanItem = PlanItem {
+  id: "competitive-price-benchmark",
+  workstream: EconomicsQa,
+  milestone: M3YearEndGate,
+  rank: 70,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "The profiled jobs executed on our fleet and on the named competitors, reduced to COST PER COMPLETED JOB rather than cost per minute — a per-minute comparison flatters whichever side is faster and says nothing about what the customer pays for the work. Result is a per-workload advantage or disadvantage carrying its measurement receipt, admitting the cases where we lose. Deliberately NOT declared an s1-gate conjunct: whether a price claim gates the go/no-go is the operator's call, and adding a conjunct silently would change the gate's meaning.",
+  depends_on: ["economics-regrounding"],
+  relates_to: ["strategy.pareto_comparison_procedure", "strategy.ci_runner_economics"],
+  status: NotStarted,
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// SITING, MONEY AND COMPLIANCE (operator, 2026-09-04). Accumulate broadly now, consolidate
+// later — the operator's explicit instruction. Three families enter here.
+//
+// SITING was represented only by colo-rfq, which produces QUOTES and stops. A quote is not a
+// vendor, a vendor is not a signed date, and a signed date is not a rack you can put a server
+// in. Worse, the fallback had no carrier at all: "if colo is not ready we soft-launch from the
+// house" is a real plan the graph could not see, so nothing derived when it had to be decided.
+// A fallback with no decision date is not a fallback, it is a hope.
+//
+// MONEY was absent entirely. Everything built in finance.personal_ledger and finance.gunbai_llc
+// is invisible to every on-track derivation, so a 38,106.25 invoice and a January estimated
+// payment were tracked by memory. The schedule cannot see what the ledger knows.
+//
+// GDPR had zero occurrences. SOC 2 is rostered twice; the regime that binds on the FIRST EU
+// customer rather than at year end was not modelled at all.
+// ---------------------------------------------------------------------------------------------
+
+data item_colo_shortlist: PlanItem = PlanItem {
+  id: "colo-shortlist",
+  workstream: Hardware,
+  milestone: M3YearEndGate,
+  rank: 20,
+  min_calendar_days: 21,
+  execution_mode: ExternalLead,
+  exit_criterion: "RFQ responses reduced to a ranked shortlist of at most three named facilities, each carrying price, quote validity window, lead time to occupancy, committed capacity, deposit and expansion terms — the criteria colo-rfq was already extended to cover. A shortlist of one is a refusal to shop and must say so; a shortlist that omits validity windows is a list of numbers that expire without anyone noticing.",
+  depends_on: ["colo-rfq"],
+  relates_to: ["strategy.colo_market", "strategy.site_requirements"],
+  status: NotStarted,
+}
+
+data item_colo_vendor_selection: PlanItem = PlanItem {
+  id: "colo-vendor-selection",
+  workstream: Hardware,
+  milestone: M3YearEndGate,
+  rank: 30,
+  min_calendar_days: 14,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "ONE named facility selected with a dated, signable contract in hand — term, occupancy date, install window, power commitment, deposit, exit terms — unsigned is acceptable, undecided is not. The year-end gate requires levers priced and none pulled blind; an unselected vendor means the lever cannot be pulled at all, which is a different failure from choosing not to pull it.",
+  depends_on: ["colo-shortlist"],
+  relates_to: ["strategy.colo_market", "strategy.ci_site_cost"],
+  status: NotStarted,
+}
+
+data item_home_soft_launch_readiness: PlanItem = PlanItem {
+  id: "home-soft-launch-readiness",
+  workstream: Hardware,
+  milestone: M2bPrivateCohort,
+  rank: 20,
+  min_calendar_days: 14,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "The residence assessed as a serving site against its real constraints rather than its convenience: available circuits and measured headroom, thermal ceiling under sustained load, upstream bandwidth and its terms of service, noise, physical access control, insurance position, and the count of nodes that can actually run — which is a MEASURED number, not the number that fits. strategy.makeshift_datacenter and the home-hosting witness already carry much of this reasoning; this item is the readiness receipt, not a fresh analysis.",
+  depends_on: ["hw-first-host"],
+  relates_to: ["strategy.home_hosting", "strategy.makeshift_datacenter", "strategy.site_power_survey"],
+  status: NotStarted,
+}
+
+data item_siting_decision: PlanItem = PlanItem {
+  id: "siting-decision",
+  workstream: Hardware,
+  milestone: M3YearEndGate,
+  rank: 40,
+  min_calendar_days: 3,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "A DATED FORK, resolved: serve from colo, or soft-launch from the residence with colo as the scaling path. The decision names its trigger and its reversal cost — a soft launch that cannot migrate to colo without a customer-visible outage is a different commitment from one that can. Deciding late is itself a decision, so this item exists to make the date explicit rather than letting the answer be whichever site happens to be ready.",
+  depends_on: ["colo-vendor-selection", "home-soft-launch-readiness"],
+  relates_to: ["strategy.ci_site_fleet", "strategy.home_hosting", "strategy.colo_market"],
+  status: NotStarted,
+}
+
+data item_netboot_gap_analysis: PlanItem = PlanItem {
+  id: "netboot-gap-analysis",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 20,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "END-TO-END netboot install enumerated against what actually exists: DHCP/PXE or HTTP boot path, aarch64 UEFI chain, image identity and digest, per-node identity and secret injection, disk-free or disk-optional operation, unattended reinstall, and recovery when the boot service is the thing that is down. Each step is Present, Partial or Absent with evidence — an Absent that nobody wrote down is the one that surfaces during the first reinstall of a customer-serving node. THE HOST BOOT VARIANT IS ALREADY SETTLED AND THIS ITEM MUST NOT REOPEN IT: strategy.compute_fabric_model selects RamRoot with local NVMe as disposable scratch only, netboot-m0 states RAM-root, and the reasoning is recorded - a root materialised into RAM limits the network dependency to the BOOT WINDOW, where an NFS root keeps the network on a running node's continuous execution path so losing the server hangs a live node. What is open is the layer BELOW the host root: guest and scratch materialisation, and whether a node-local cache exists at all, which compute_fabric_model already carries as the choice between NetworkToRamNoNodeCache, NetworkToRamWithSiteCache and NetworkToLocalEphemeralRoot. Its diskless_promotion_gate owes eight controls before local scratch may be removed, and control six - that removing local scratch adds the EXACT remote-scratch network demand - is the one this fleet's 1 GbE links make expensive to get wrong. Precedes netboot-m0, which builds the product this analysis scopes.",
+  depends_on: ["hw-first-host"],
+  relates_to: ["strategy.mobo_x_architecture", "strategy.compute_fabric_model"],
+  status: NotStarted,
+}
+
+data item_node_burnin_protocol: PlanItem = PlanItem {
+  id: "node-burnin-protocol",
+  workstream: OpsMachineHealth,
+  milestone: M1bInternalS0Proof,
+  rank: 40,
+  min_calendar_days: 3,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "One written, executed intake protocol every node passes before admission: FRU capture, BMC recredential, memory census by the UEFI SMBIOS route, memtest to completion, sustained thermal load, EDAC clean, and the fleet_qualification capacity measurement. Applied identically to all twenty Mt. Collins units, so admission is a receipt rather than an impression. The engineering-sample CPU qualification discharges as a by-product on whichever node carries it.",
+  depends_on: ["hw-first-host", "fleet-capacity-floor"],
+  relates_to: ["strategy.fleet_qualification", "strategy.mobo_x_memory_census"],
+  status: NotStarted,
+}
+
+data item_scheduler_capacity_weights: PlanItem = PlanItem {
+  id: "scheduler-capacity-weights",
+  workstream: RunnerSoftware,
+  milestone: M2bPrivateCohort,
+  rank: 50,
+  min_calendar_days: 7,
+  execution_mode: AgentParallel,
+  exit_criterion: "Measured per-node throughput weights carried where work is placed, so a heterogeneous fleet stops being invisible to scheduling. Required only if the capacity matrix shows a spread wide enough to matter; if it does not, this item closes as explicitly unnecessary WITH the measurement that made it unnecessary, which is a different outcome from being forgotten.",
+  depends_on: ["fleet-capacity-floor"],
+  relates_to: ["strategy.fleet_qualification", "strategy.serving_capacity"],
+  status: NotStarted,
+}
+
+data item_owner_funded_purchase_protocol: PlanItem = PlanItem {
+  id: "owner-funded-purchase-protocol",
+  workstream: EconomicsQa,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 2,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "A written protocol for the owner-funded portion of a company purchase, applied to the split payment of the Mt Collins invoice: the personally-paid amount recorded as a member capital contribution or a documented member loan, dated, with the payment instrument and the asset it acquired named, and the company-side entry posted against it. THE MECHANISM THIS ITEM ORIGINALLY NAMED IS DEAD - a Mercury limit raise was requested and DENIED on 2026-09-05 - so the purpose is restated as the exit: what matters is not that the company card clears, but that an asset bought with personal money does not silently become a personal-book asset with no company basis. Absent the protocol the split payment produces exactly the defect the denied raise was meant to prevent, at eight times the size of the 4,750.49 charge that first exposed it.",
+  depends_on: no_deps,
+  relates_to: ["finance.personal_ledger"],
+  status: InProgress { note: "2026-09-06: on the operator list ahead of the split payment, which is the right order - the funding record has to exist before the money moves, not after. THE MONEY MOVED FIRST. On 2026-09-08, 20,000.00 of the Mt. Collins lot was funded from the operator PERSONAL card while this protocol was still unfinished (finance.personal_ledger mt_collins_owner_funded_leg, owner_contribution_preceded_its_protocol). This is not a bookkeeping detail: the terms an owner contribution carries - contribution or loan, interest, repayment priority, and whether the entity may deduct equipment it did not pay for - are decided BY this instrument, and deciding them now means deciding them under a fact that is already true rather than choosing freely. The item is therefore no longer preventive for this lot; it is retroactive for 20,000.00 and preventive for everything after. Its exit is unchanged in shape and larger in content: the instrument, plus the classification of THIS contribution recorded against it. A CANDIDATE DEFAULT IS NOW ON THE TABLE AND IS NOT YET AUTHORITY: because gunbai is a DisregardedEntity (finance.gunbai_llc gunbai_federal_classification), the clean default for temporary personal-card funding is DUE TO MEMBER -- an entity liability repaid exactly -- rather than a permanent capital contribution or a second expense. That reading came from an operator research thread, not from counsel and not from a cited authority, so it is recorded as a candidate with its reason and NOT as the classification. THE GAP IT EXPOSES IS STRUCTURAL AND IS THIS ITEM DOING ITS JOB: the personal side of the payment is booked in finance.personal_ledger, and there is NO ENTITY-SIDE LEDGER IN THIS CORPUS AT ALL, so the company-side entry the exit criterion requires has nowhere to be posted. Whichever classification is chosen, that carrier has to exist first." },
+}
+
+data item_mt_collins_invoice_payment: PlanItem = PlanItem {
+  id: "mt-collins-invoice-payment",
+  workstream: Hardware,
+  milestone: M1InternalVertical,
+  rank: 30,
+  min_calendar_days: 2,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "The twenty-unit invoice of 38,106.25 settled and its funding recorded, SPLIT between the company account and the owner personally because the company limit raise was denied. Payment discharges the payable and is what the vendor requires before release; it is NOT what creates basis - equipment acquired on credit has basis before it is paid, so the earlier wording here stated a tax rule that does not hold and is withdrawn. What the tax position turns on is the PLACED-IN-SERVICE date, which is a readiness fact about the equipment and not a fact about the payment, and the owner-funded portion needs its capital-contribution or member-loan entry or the company holds an asset it cannot show it acquired. THIS ITEM NO LONGER DECLARES owner-funded-purchase-protocol AS A DEPENDENCY, and the reason is not that the relation was imagined (corrected 2026-09-10). It was real and it was normative: the funding record was supposed to exist before the money moved. The money moved first, on 2026-09-08, and done_implies_deps_done went FALSE - a Done item whose prerequisite is InProgress. THE WITNESS WAS RIGHT AND THE EDGE WAS THE WRONG CARRIER FOR WHAT IT WAS SAYING. depends_on is a SCHEDULING constraint, and a scheduling constraint over a past event cannot be satisfied by anything anyone does now: the ordering was violated once and permanently, so the edge would sit red until the protocol finished and then go GREEN, silently retiring the record of the violation at the exact moment it looked resolved. A fact that disappears when the thing it indicts is completed is not a record of it. THE VIOLATION IS CARRIED WHERE IT CANNOT BE RETIRED BY COMPLETION: finance.personal_ledger owner_contribution_preceded_its_protocol names it as its own fact, and owner-funded-purchase-protocol's status note states that the item is no longer preventive for this lot but retroactive for 20,000.00 and preventive for everything after. Both survive the protocol being finished. What is lost by dropping the edge is CI pressure; what is gained is that the plan stops asserting an order it can no longer produce.",
+  depends_on: no_deps,
+  relates_to: ["finance.personal_ledger", "strategy.mt_collins_held_unit"],
+  status: Done { receipt: "2026-09-08: SETTLED. Split as the item requires, because the company limit raise was denied: 20,000.00 on the operator personal Citi and 19,078.06 on the entity Mercury card, total 39,078.06 against an order of 35,000.00 goods plus 1,650.00 shipping and 2,428.06 tax. The MEMBER's leg is booked in finance.personal_ledger mt_collins_owner_funded_leg as a receivable from the company; the ENTITY's leg has nowhere to be booked, because no entity ledger exists. NOTE ON THE FIGURE: this item previously recorded the invoice as 38,106.25. The amount actually settled is 39,078.06, roughly 1,000 higher, and the operator has stated the difference arose from an error on the purchasing side and is not a vendor or modeling discrepancy to investigate. Recorded so the ledger and this item agree; the cause is not pursued here. WHAT PAYMENT DID NOT DISCHARGE, and the item said so before it was paid: basis existed before payment because the equipment was acquired on credit, and the tax position turns on the PLACED-IN-SERVICE date, which is a readiness fact about the equipment. gunbai_llc mt_collins_placed_in_service still reads AcquiredNotYetInService. And the owner-funded 20,000.00 still needs its company-side entry -- that is owner-funded-purchase-protocol, which is a separate open item, not this one." },
+}
+
+data item_cpa_commencement_determination: PlanItem = PlanItem {
+  id: "cpa-commencement-determination",
+  workstream: EconomicsQa,
+  milestone: M2FirstExternal,
+  rank: 10,
+  min_calendar_days: 21,
+  execution_mode: ExternalLead,
+  exit_criterion: "A CPA determination of the date Gunbai LLC began carrying on an active trade or business, with the facts it rests on recorded. finance.gunbai_llc gates equipment cost recovery on this and refuses by default; roughly 65,000 dollars of hardware basis and the treatment of resale receipts both depend on the answer. It is the highest-value open question of the tax year and it cannot be answered by the operator alone.",
+  depends_on: no_deps,
+  relates_to: ["finance.gunbai_llc"],
+  status: NotStarted,
+}
+
+data item_tax_reserve_and_estimates: PlanItem = PlanItem {
+  id: "tax-reserve-and-estimates",
+  workstream: EconomicsQa,
+  milestone: M3YearEndGate,
+  rank: 20,
+  min_calendar_days: 10,
+  execution_mode: ExternalLead,
+  exit_criterion: "2026 liability estimated on the real disposition figures — one booked long-term gain of 37,876.72 plus a September sale whose broker report is still outstanding — against New York and New York City rates, with the prior-year safe harbour checked from the 2025 return before any estimated payment is made. Reserve segregated from operating cash so it is not spent twice, and the January 15 payment scheduled rather than remembered.",
+  depends_on: ["cpa-commencement-determination"],
+  relates_to: ["finance.personal_ledger", "finance.gunbai_llc"],
+  status: NotStarted,
+}
+
+data item_runway_ceiling_review: PlanItem = PlanItem {
+  id: "runway-ceiling-review",
+  workstream: EconomicsQa,
+  milestone: M3YearEndGate,
+  rank: 30,
+  min_calendar_days: 5,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Annual draw ceiling set against measured burn and the capital-gain bracket, and checked against committed spend including colo. The structural finding to re-test: the tax-efficient drawdown rate and the personal burn rate are close enough that colo cannot be funded from personal capital without shortening runway materially. The S1 decision should meet this number rather than discover it.",
+  depends_on: ["tax-reserve-and-estimates"],
+  relates_to: ["finance.personal_ledger", "strategy.ci_site_cost"],
+  status: NotStarted,
+}
+
+data item_llc_publication_filing: PlanItem = PlanItem {
+  id: "llc-publication-filing",
+  workstream: SecurityCompliance,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 14,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Certificate of Publication filed with the New York Department of State, both newspaper affidavits annexed, and the DOS receipt captured. Publication itself is complete and the filing package was MAILED on 2026-09-05, which starts DOS processing and does not end this item: mailed is not filed, and the exit is the DOS receipt in hand. Until filed, the LLC's authority to maintain an action in New York courts is suspended — dormant while nobody owes anything, live the moment a customer contract exists.",
+  depends_on: no_deps,
+  relates_to: ["finance.gunbai_llc"],
+  status: InProgress { note: "2026-09-05: Certificate of Publication package with both affidavits MAILED to NY DOS. Awaiting the DOS filing receipt, which is the exit - a mailed package is evidence of an attempt, not of a filing." },
+}
+
+data item_ny_llc_transparency_act: PlanItem = PlanItem {
+  id: "ny-llc-transparency-act",
+  workstream: SecurityCompliance,
+  milestone: M3YearEndGate,
+  rank: 10,
+  min_calendar_days: 5,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Beneficial ownership disclosed to the New York Department of State under the LLC Transparency Act, on the transition deadline understood to fall on 2027-01-01 for entities formed before 2026-01-01. Confirm the operative deadline against the Department's own guidance rather than this row. The narrowed federal FinCEN regime does NOT discharge it — concluding that beneficial ownership does not apply is exactly how the state filing gets missed.",
+  depends_on: no_deps,
+  relates_to: ["finance.gunbai_llc"],
+  status: NotStarted,
+}
+
+data item_gdpr_posture: PlanItem = PlanItem {
+  id: "gdpr-posture",
+  workstream: SecurityCompliance,
+  milestone: M2FirstExternal,
+  rank: 20,
+  min_calendar_days: 14,
+  execution_mode: ExternalLead,
+  exit_criterion: "Territorial scope decided against Article 3 rather than against billing country - establishment in the Union, offering goods or services to data subjects in the Union, and monitoring their behaviour each trigger it independently, so an entirely US-billed customer base does not by itself settle the question. Then: controller and processor roles named per processing activity, data map of what the CI path touches, lawful basis, retention and deletion covering build artefacts and logs, a DPA offered rather than requested, sub-processor list, and a Chapter V transfer mechanism where personal data leaves the Union. Binds on the first in-scope data subject, not at the year-end gate. Declining in-scope customers for now is an admissible answer and must be recorded as one, since silence reads as acceptance.",
+  depends_on: ["m2-applicability-model"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// CLOUD CAPACITY (operator, 2026-09-04). Two questions the plan did not carry. First, whether
+// rented cloud capacity has a role at all — burst overflow above owned fleet capacity, x86_64
+// build targets the aarch64 fleet cannot serve natively, or a control plane that must not share
+// a failure domain with the machines it schedules. Second, and the operator's own framing:
+// capacity is NOT available on demand at the sizes being planned. Provider quotas are granted
+// per account, per region and per machine family, start small on a new account, and are raised
+// by REVIEWED REQUEST with a lead time measured in days — sometimes with a spend history or a
+// support tier as a precondition. A burst path whose quota is discovered at the moment of burst
+// is not a burst path; it is an outage with a plan attached. The quota is therefore a lead-time
+// item that must be started before it is needed, exactly like the colo contract.
+// ---------------------------------------------------------------------------------------------
+
+data item_cloud_overflow_role: PlanItem = PlanItem {
+  id: "cloud-overflow-role",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 10,
+  min_calendar_days: 5,
+  execution_mode: AgentParallel,
+  exit_criterion: "A decision on what, if anything, rented cloud capacity is FOR, with the honest cost comparison behind it: burst overflow above owned capacity, x86_64 targets the aarch64 fleet cannot serve natively, a control plane held outside the fleet's failure domain, or nothing. Owned hardware is the cost advantage the entire product rests on, so every cloud hour is margin spent — an unpriced overflow path quietly inverts the pitch. Answering 'none of these' is admissible and closes the two items below.",
+  depends_on: no_deps,
+  relates_to: ["strategy.ci_spill_policy", "strategy.serving_capacity"],
+  status: NotStarted,
+}
+
+data item_cloud_quota_baseline: PlanItem = PlanItem {
+  id: "cloud-quota-baseline",
+  workstream: Hardware,
+  milestone: M2FirstExternal,
+  rank: 50,
+  min_calendar_days: 14,
+  execution_mode: ExternalLead,
+  exit_criterion: "For each provider actually in scope — Hetzner, GCP, and any third — the CURRENT granted quota recorded per region and machine family as an observed number rather than a published maximum, alongside the request path, the reviewed lead time, and any spend-history or support-tier precondition. Then the increase requested for whatever cloud-overflow-role concluded, and the granted result recorded. New accounts start low and raises are reviewed, so this is a lead-time item: it must be started before the capacity is wanted, not when it is.",
+  depends_on: ["cloud-overflow-role"],
+  relates_to: ["strategy.ci_spill_policy"],
+  status: NotStarted,
+}
+
+data item_control_plane_siting: PlanItem = PlanItem {
+  id: "control-plane-siting",
+  workstream: Hardware,
+  milestone: M2bPrivateCohort,
+  rank: 30,
+  min_calendar_days: 7,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Scheduler, API, billing and status surfaces sited so that they do not share power, network or physical access with the fleet they control. Under a residential soft launch this is the sharpest exposure: one tripped circuit takes down both the machines and the ability to say why. Names where the control plane runs and what customers observe when the fleet is unreachable but the control plane is not.",
+  depends_on: ["cloud-overflow-role"],
+  relates_to: ["strategy.ci_site_fleet", "strategy.home_hosting"],
+  status: NotStarted,
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// NETWORK AND LOCAL STORAGE (operator, 2026-09-04). Established this day: the Mt Collins carry two
+// onboard 1 GbE ports plus a 1 GbE BMC port, and the OCP NIC 3.0 slots are EMPTY - so the fleet is
+// 1 GbE per node unless cards are bought and 20 chassis opened. 10 gigabit is a purchase, not a
+// cable.
+//
+// That makes the cache load-bearing rather than optional. strategy.ci_storage_tiering plans 2 GB
+// restored per job at 2 vCPU and 5 minutes over 2100 sellable vCPU at 30 percent utilisation:
+// 16.8 Gbps of fleet restore traffic average, 50.4 at the declared 3x peak, which across 20 nodes
+// is 0.84 Gbps average and 2.52 Gbps PEAK PER NODE if every restore crosses the wire - already
+// beyond a single 1 GbE link. The model carries the escape as an axis rather than an assumption:
+// ServingLocality's HotServedLocallyWithOriginMiss takes a local hit rate.
+//
+// The move that dissolves the constraint rather than mitigating it is a local drive, because it
+// takes the layer cache, package cache and runner images off the wire entirely and leaves 1 GbE
+// carrying what it is actually good for - clone, pull-on-miss, artifact upload. A local cache is
+// also compatible with netboot's real purpose: the OS image still arrives over the network and
+// the drive holds only ephemeral state, so a node stays reimageable from any other.
+// ---------------------------------------------------------------------------------------------
+
+data item_fleet_network_baseline: PlanItem = PlanItem {
+  id: "fleet-network-baseline",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 10,
+  min_calendar_days: 7,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "REWORKED 2026-09-10 (operator): THE PORT-SPEED DECISION COMES FIRST AND THE SWITCH FOLLOWS FROM IT, which is the reverse of how this item was written. The previous criterion assumed 1GbE bonding and derived a 60-port two-switch layout from it; bonding two 1G links raises aggregate throughput across concurrent restores and does NOTHING for a single job fetch, so it never fixed the axis that matters. A single 10G port per node fixes both and the operator prices used 10G cards at roughly 30 dollars, which is a rounding error against a 1,953.90 delivered node. THE OCCUPANCY QUESTION IS SETTLED AND THE ANSWER IS EMPTY (operator, 2026-09-10, by direct inspection; strategy.mt_collins_held_unit mt_collins_ocp_slot_occupancy = OcpSlotEmpty). The platform has an OCP 3.0 mezzanine slot and NO onboard 10GbE, and no card is fitted - so today these nodes have a 1G path and nothing else. TWENTY CARDS AT ROUGHLY 30 DOLLARS IS ABOUT 600 FOR THE FLEET, 1.5 per cent of ONE node delivered at 1,953.90, and the operator has ruled for 10G cards over bonding on simplicity: no LACP support required in the switch, no bond configuration on the host, and it fixes single-restore latency, which bonding structurally cannot. That earlier 2026-09-06 BMC sensor reading is superseded rather than deleted - it correctly declined to read four OCP-named sensors as occupancy, and its lspci discriminator remains the route for any unit nobody has opened. PURCHASE IS BUNDLED WITH THE RAM, NOT RUN AHEAD OF IT (operator, 2026-09-10). Two reasons, and the second is the one that would have cost money. COMPATIBILITY IS UNRESEARCHED: an OCP 3.0 slot admits cards, not every card - form factor, keying, the mezzanine generation the board actually negotiates, firmware the platform will accept, and whether a card sold as OCP 3.0 SFF fits this chassis at all are open questions, and twenty of the wrong card is twenty wrong cards. AND ONE ORDER IS CHEAPER THAN TWO: memory-bom-decision is already a fleet-scale purchase for the same twenty units on the same delivery, so the NIC rides with it - one shipment, one intake, one receiving event to reconcile against. This item therefore does NOT gate on buying anything; it gates on the DECISION being derivable, and the decision is now derivable because occupancy is settled. THEN the switching, sized to that decision: port count and speed per node, data and management on separate VLANs, and a BMC path that does not share a failure domain with the data path. The two-switch conclusion may still hold on port count alone - 20 data plus 20 BMC is 40 - but it must be DERIVED from the chosen per-node port shape rather than inherited from the bonded-1G assumption that is now withdrawn. THE EDGE THIS BUNDLING NEEDS POINTS THE OTHER WAY, AND THE FIRST VERSION OF THIS ROW GOT IT BACKWARDS (corrected 2026-09-10). It declared depends_on memory-bom-decision and then argued, in this paragraph, that the arrangement produced a scheduling inversion the plan could not flag: this item's latest safe start is 2026-10-08 and memory-bom-decision's is 2026-10-13, so a dependency's deadline fell after its dependent's. That reasoning was correct about the DATES and wrong about the DIRECTION, and the rank invariant said so - dep_rank_ok requires a dependency to carry a strictly smaller rank, memory-bom-decision is 40 against this item's 10, and plan_graph_sound went FALSE. The inversion was not a limitation of latest_start_day; it was the signature of an edge running uphill. THE CORRECT RELATION IS THE ONE THIS ROW ALREADY ARGUES TWO SENTENCES EARLIER: this item does NOT gate on buying anything, it gates on the DECISION being derivable, and it is the ORDER that cannot be placed until the decision exists. So memory-bom-decision depends on this item, not the reverse, and 10 < 40 satisfies the rank rule with the ranks unchanged. The dates then agree instead of inverting - the decision at 2026-10-08 precedes the order at 2026-10-13 - which is what a correctly oriented edge looks like. THE OBSERVATION ABOUT latest_start_day SURVIVES ON ITS OWN and is kept because it is true and independent: it is computed per item as anchor minus duration and never reads depends_on, so it cannot detect a dependency whose deadline falls after its dependent's. That defect stands, unwitnessed, between fabric-m0 and storage-provider-accounts; it simply was not this row's problem. THE RECEIPT IS UNCHANGED AND IS THE POINT: measured link utilisation under a real job mix, because a switch that was bought is not a network that was characterised.",
+  depends_on: no_deps,
+  relates_to: ["strategy.compute_fabric_model", "strategy.ci_storage_tiering"],
+  status: NotStarted,
+}
+
+data item_node_local_cache_drive: PlanItem = PlanItem {
+  id: "node-local-cache-drive",
+  workstream: Hardware,
+  milestone: M1bInternalS0Proof,
+  rank: 20,
+  min_calendar_days: 10,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "REFRAMED 2026-09-10 (operator): DURABILITY AND SERVING COME FROM THE FABRIC; LOCAL SSD IS A CONSTRAINT-BALANCING QUESTION, NOT A DESIGN COMMITMENT. The launch does not depend on this purchase and the design must not either -- the fleet relies primarily on fabric storage, and the chassis takes M.2 later, so RETROFIT IS PRESERVED BY CONSTRUCTION and there is no deadline pressure to decide early. What changes the answer is evidence that does not exist yet: the per-node port speed settled by fleet-network-baseline (a 10G link and a 1G link imply different cache values for the same hit rate), and measured restore behaviour from real jobs rather than a projected full-rack workload. So this item is DEPENDENT rather than scheduled, and its honest state until those land is undecided-with-a-reason. The endurance arithmetic below stays as the SELECTION axis for the day a purchase is made; it is not an argument that one should be. ORIGINAL CRITERION FOLLOWS. WHETHER local storage is bought at all, decided on evidence rather than on a projected full-rack workload - this item is NOT an instruction to populate the M.2. The launch is a bounded design-partner rollout on the machines available, and compute-node drives are not required to serve it; compute_fabric_model already selects RamRoot with local NVMe as disposable scratch only, and its diskless_promotion_gate governs the question. If drives are bought the layer cache, package cache and runner images are local I/O rather than wire traffic. Endurance is the selection axis and it is DERIVED, not a preference: at 2.1 GB/s of fleet restore over 21 nodes each node writes 8.64 TB/day into cache at a zero hit rate, 1.73 TB/day at eighty percent - which on a 2 TB drive is 4.32 and 0.86 drive-writes per day against roughly 1 DWPD for a used enterprise M.2 and roughly 0.3 for consumer TLC. Consumer drives are therefore ruled out by arithmetic rather than by taste, and even enterprise parts only survive if the hit rate is high, which makes drive endurance a SECOND consumer of the cache-hit-floor measurement rather than an independent choice. Swap deserves an explicit decision rather than a default - with 256 GB per node swapping a CI job is a performance failure, not a safety net. The front 2.5 inch bays are a later option and need the backplane established first, since configurations differ between SATA and U.2. PRICE THE ALTERNATIVES AGAINST EACH OTHER BEFORE COMMITTING: this fleet-wide drive purchase is comparable to or larger than the 20-card 10 gigabit retrofit it is preferred over, so the case for it is architectural - it removes the traffic rather than widening the pipe, and it is the same drive the cache would need anyway - and not that it is cheaper. A cost claim in either direction must be re-derived from quotes rather than carried from this row.",
+  depends_on: ["fleet-network-baseline"],
+  relates_to: ["strategy.ci_storage_tiering", "strategy.ci_node_build", "strategy.compute_fabric_model"],
+  status: NotStarted,
+}
+
+data item_cache_hit_floor: PlanItem = PlanItem {
+  id: "cache-hit-floor",
+  workstream: OpsMachineHealth,
+  milestone: M2bPrivateCohort,
+  rank: 30,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "The REQUIRED local cache hit rate derived from the link, and the ACHIEVABLE rate measured against the isolation posture actually shipped - two different numbers whose gap decides whether the 1 GbE fleet works. THE PERCENTAGES BELONG TO ONE WORKLOAD ENVELOPE AND ARE NOT INHERENT TO RUNNING CI ON 1 GbE: at 315 concurrent jobs across twenty workers the peak demands roughly 64 percent local hits on one port and 29 percent bonded, but a bounded design-partner concurrency fits 1 GbE with NO cache benefit at all - four workers at twenty concurrent jobs is about 0.8 Gbps per worker at the modelled peak. So the launch answer is measured bounded concurrency, and the cache floor is what governs GROWTH beyond it rather than what makes the fleet work at all. Distributing jobs across idle workers spreads concurrent transfers and does NOT shorten any single transfer - a 2 GB restore has a serialization floor near 18 seconds at 0.9 Gbps however many workers are idle - and it does not enlarge a shared uplink or cache-server link. The threat is that multi-tenant isolation forces ephemeral per-job runners, destroying the cache every job and driving the achievable rate toward zero. Diskless is not the same as cacheless and a populated M.2 changes the answer again, so this measurement is what closes the network question rather than any projection. Both percentages rest on planning constants and a 20-node assumption and are superseded by the measurement, never cited beside it.",
+  depends_on: ["netboot-gap-analysis", "fleet-network-baseline", "node-local-cache-drive"],
+  relates_to: ["strategy.ci_storage_tiering", "strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+
+data item_cache_tier_fabric: PlanItem = PlanItem {
+  id: "cache-tier-fabric",
+  workstream: StorageFabric,
+  milestone: M2bPrivateCohort,
+  rank: 40,
+  min_calendar_days: 21,
+  execution_mode: AgentParallel,
+  exit_criterion: "The three-tier content-addressed cache designed and its boundaries settled, because both hard parts are hard to retrofit. Tier one is a digest-keyed read-only store in node RAM surviving across ephemeral per-job guests - which is what makes the node hit rate achievable without giving any compute node a drive. Tier two is an S3-compatible store on the redundant infrastructure pair, taking every node miss so nothing reaches the internet on a job path, and absorbing artifact writes locally. Tier three is the durable origin bucket, written through from tier two and read only on a rack miss or cold start. One protocol at tiers two and three so a node image is indifferent to which it is talking to. TWO BOUNDARIES MUST BE SETTLED FIRST. Tenancy: public base layers may be shared globally because a digest is a digest, but a digest proves which bytes arrived and NOT who was entitled to them, so private layers and build outputs stay tenant-scoped and the node-RAM tier only ever holds the shared population - and an untrusted job must never populate a store a privileged job later trusts. Eviction: LRU by digest under a size cap is adequate, but a job must never observe a partially written object, so writes land whole under a temporary key and rename. S3 IS THE ORIGIN AND NOT THE HOT PATH: 16.8 Gbps of average fan-in is roughly 180 TB per day, which at metered egress is economically impossible and at zero-egress providers still crosses a site uplink that is smaller than the demand - so a tier-two miss rate near one is a business failure and not merely slow.",
+  depends_on: ["fabric-m0", "cache-hit-floor"],
+  relates_to: ["strategy.compute_fabric_model", "strategy.ci_storage_tiering", "strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+
+data item_economics_regrounding: PlanItem = PlanItem {
+  id: "economics-regrounding",
+  workstream: EconomicsQa,
+  milestone: M2FirstExternal,
+  rank: 60,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "strategy.ci_runner_economics, strategy.ci_spill_policy and strategy.ci_pricing_page RESOLVE AND EXECUTE again. All three import extdeps.ci_compute_pricing, which is not on public main, so the pricing model is currently unrunnable - it is readable as source and computes nothing, which is the worst state for a model to be in because its constants still look authoritative. private_witness_workflow already carries this as a reason-locked KnownRed naming the exact resolver diagnostic, so the standing is declared rather than discovered; what is missing is the work. The named remedy is to re-ground the three modules onto extdeps/ci_runner, extdeps/pricing and extdeps/cloud, which the row states is a rewrite rather than a repair, and public PR 8950 is refused as a restoration path because it was closed as a stale fork duplicating eight authorities that landed after it branched. DONE MEANS the KnownRed row retires because the witness passes, not because the row was edited.",
+  depends_on: no_deps,
+  relates_to: ["strategy.ci_runner_economics", "strategy.ci_spill_policy", "strategy.ci_pricing_page"],
+  status: NotStarted,
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Bringing a second person onto the project
+// ---------------------------------------------------------------------------------------------
+//
+// A CANDIDATE CONTRIBUTOR APPROACHED THE OPERATOR ON 2026-09-10 and the engagement is intended:
+// paid, part-time, bounded term, for someone seeking their first software engineering role. These
+// five items are NOT about that person. They are the obligations a SECOND PARTICIPANT creates, and
+// they would be owed for anyone.
+//
+// THE OPERATOR'S OWN FRAMING IS THE REASON THEY ARE PLAN ITEMS RATHER THAN A CHECKLIST: the systems
+// gaps this exposes are worth the engagement cost on their own. Every one of these obligations is a
+// place where the project currently depends on one person's memory, and paying someone is what
+// forces the memory into a system. That is a resilience purchase, and it is severable from whether
+// any particular contributor works out.
+//
+// A NEW WORKSTREAM WAS ADDED FOR THEM. The seven existing workstreams are all things the operator
+// DOES; none is a home for who does it. Forcing these under SecurityCompliance or EconomicsQa would
+// put access control and payroll in the same box as customer compliance and pricing, which is the
+// §3 fork this plan keeps out of the item rows. PeopleAndProcess is the eighth, and it is the one
+// whose whole purpose is to REDUCE the single-operator dependency the plan's own analyst correction
+// names -- seven workstreams are not seven parallel lanes for one person, and the answer to that is
+// either fewer workstreams or more people.
+
+data item_contributor_engagement_terms: PlanItem = PlanItem {
+  id: "contributor-engagement-terms",
+  workstream: PeopleAndProcess,
+  milestone: M1InternalVertical,
+  rank: 10,
+  min_calendar_days: 5,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "One written engagement before any work is performed, carrying: scope, hourly rate, a WEEKLY HOURS CAP, a fixed term with a review date, confidentiality, and an explicit IP assignment. CLASSIFICATION IS PART OF THE EXIT, not an afterthought: an unpaid or nominally-paid internship at a for-profit is governed by a legal test this engagement would not pass, so the engagement is a CONTRACTOR one at an hourly rate, and the classification is stated in the document rather than implied by how payment happens. THE IP TERM NEEDS ACTUAL THOUGHT AND IS THE ONE MOST LIKELY TO BE SKIPPED: contributions to the public repository are made under its license, while anything touching the private overlay, the strategy corpus or customer material is not, and a single assignment clause that does not distinguish them either over-claims the open-source contributions or under-claims the private ones. THE BINDING CONSTRAINT IS NOT THIS MILESTONE: it is the contributor's first working day, whenever that is agreed. latest_start_day here is computed from the anchor like every other item and will therefore UNDERSTATE the urgency - read the start date, not the derived date.",
+  depends_on: no_deps,
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_contributor_access_provisioning: PlanItem = PlanItem {
+  id: "contributor-access-provisioning",
+  workstream: PeopleAndProcess,
+  milestone: M1InternalVertical,
+  rank: 20,
+  min_calendar_days: 2,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "A second principal exists in the access model, and what they may reach is DECLARED rather than defaulted. Public repository: contributor access. PRIVATE OVERLAY: NO ACCESS, and this is the one that must be checked rather than assumed - gunbc-private carries strategy, pricing, personal and entity finance, and the operator's own bank and card records, none of which an engagement of this kind should reach. Fleet hosts, BMC credentials, cloud secrets and the fleet secrets project: no access. THE OFFBOARDING PATH IS PART OF THIS ITEM AND NOT A LATER ONE, because access granted with no modeled revocation is a permanent grant that nobody wrote down: what is revoked, by whom, and how it is verified revoked. Joins gunbc.fleet_posix_accounts and the org-actions credential model, which already carry the vocabulary for who may perform what.",
+  depends_on: ["contributor-engagement-terms"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_contributor_payment_path: PlanItem = PlanItem {
+  id: "contributor-payment-path",
+  workstream: PeopleAndProcess,
+  milestone: M1InternalVertical,
+  rank: 30,
+  min_calendar_days: 3,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "An invoice-to-payment-to-record path that runs monthly without being reinvented: how hours are reported, how the invoice arrives, which account pays, and where the expense lands in the company's books. THIS ITEM IS WHERE THE MISSING ENTITY LEDGER STOPS BEING DEFERRABLE. finance.gunbai_llc entity_ledger_absent already records that no entity-side double-entry carrier exists, and a one-off equipment purchase can sit in that gap for a while; a RECURRING obligation to a second person cannot, because every month adds an entry with nowhere to go and the gap compounds instead of waiting. Sizing, so the runway consequence is legible rather than discovered: 10 hours a week at a modest rate is roughly 1,000 a month and 13,000 a year; 20 hours is double that. strategy.year_end_plan runway-ceiling-review already records that the tax-efficient drawdown rate and personal burn are close enough that colo cannot be funded from personal capital without shortening runway materially, so this is not a rounding error against that number and the hours cap is the lever.",
+  depends_on: ["contributor-engagement-terms"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data item_contributor_onboarding_path: PlanItem = PlanItem {
+  id: "contributor-onboarding-path",
+  workstream: PeopleAndProcess,
+  milestone: M1bInternalS0Proof,
+  rank: 40,
+  min_calendar_days: 10,
+  execution_mode: AgentParallel,
+  exit_criterion: "A NEW ENGINEER CAN CLONE, BUILD, RUN THE WITNESSES AND LAND ONE REVIEWED CHANGE WITHOUT THE OPERATOR IN THE LOOP. That is the whole exit and it is deliberately measured by an outcome rather than by the existence of a document. THIS IS THE ITEM WORTH THE MONEY EVEN IF NOBODY IS HIRED: it is the bus-factor test, and today the project would fail it. The known obstacles are not guesses - they were each observed in the last day. DESIGN.md is loaded in full every session and is not a first-day document. The .dag substrate is unlike anything a new engineer has used. A local gunbc build is required before anything runs, and an OLD locally-installed gunbc silently parses things CI refuses, which is how a lane shipped a break to main. The private overlay composes through an extra source root whose rules were undiscovered until they broke CI for two days. Every one of those is a thing the operator currently knows and nothing else does. VALIDATION IS BY EXECUTION, not by review: someone who has not seen the repository follows the path and either reaches a merged change or names where it stopped.",
+  depends_on: no_deps,
+  relates_to: ["strategy.gunbc_strategy"],
+  status: NotStarted,
+}
+
+data item_contractor_tax_reporting: PlanItem = PlanItem {
+  id: "contractor-tax-reporting",
+  workstream: PeopleAndProcess,
+  milestone: M4JanuaryLaunch,
+  rank: 50,
+  min_calendar_days: 3,
+  execution_mode: OperatorExclusive,
+  exit_criterion: "Form 1099-NEC issued to the contractor and filed, IF total 2026 payments reach the reporting threshold. Requires a W-9 collected AT ENGAGEMENT rather than chased in January, which is why this item's real first action belongs to contributor-engagement-terms and not to the milestone this row sits under. THE DEADLINE IS OUTSIDE THIS PLAN'S HORIZON AND THE ROW SAYS SO RATHER THAN PRETENDING OTHERWISE: 1099-NEC is due 2027-01-31, which is day 155 on the plan epoch, TWENTY-FOUR DAYS PAST M4JanuaryLaunch at day 131. This plan has no anchor beyond M4, so the item is filed at the last one and its derived dates are WRONG IN THE SAFE DIRECTION - earlier than the true obligation. That gap is a finding about the plan rather than about the filing: a plan whose horizon ends before its own obligations do will silently drop everything past the edge, and this is the first item to fall off it.",
+  depends_on: ["contributor-payment-path"],
+  relates_to: ["strategy.compliance_posture"],
+  status: NotStarted,
+}
+
+data year_end_plan_items: List<PlanItem> = [
+  item_contributor_engagement_terms,
+  item_contributor_access_provisioning,
+  item_contributor_payment_path,
+  item_contributor_onboarding_path,
+  item_contractor_tax_reporting,
+  item_buyer_agent_pipeline,
+  item_storage_provider_accounts,
+  item_economics_regrounding,
+  item_cache_tier_fabric,
+  item_fleet_network_baseline,
+  item_node_local_cache_drive,
+  item_cache_hit_floor,
+  item_cloud_overflow_role,
+  item_cloud_quota_baseline,
+  item_control_plane_siting,
+  item_colo_shortlist,
+  item_colo_vendor_selection,
+  item_home_soft_launch_readiness,
+  item_siting_decision,
+  item_netboot_gap_analysis,
+  item_node_burnin_protocol,
+  item_scheduler_capacity_weights,
+  item_owner_funded_purchase_protocol,
+  item_mt_collins_invoice_payment,
+  item_cpa_commencement_determination,
+  item_tax_reserve_and_estimates,
+  item_runway_ceiling_review,
+  item_llc_publication_filing,
+  item_ny_llc_transparency_act,
+  item_gdpr_posture,
+  item_workload_benchmark_suite,
+  item_fleet_capacity_floor,
+  item_memory_bom_decision,
+  item_customer_workload_profile,
+  item_competitive_price_benchmark,
+  item_hw_first_host, item_boot_minimum, item_fabric_m0, item_runner_canary,
+  item_cohort_qualified, item_app_install_rehearsal, item_dogfood_started,
+  item_hw_4_population, item_public_workload_census, item_incumbent_head_to_head,
+  item_wholesale_argument_grounding, item_wholesale_supply_channel, item_dogfood_window,
+  item_tenant_boundary_minimum, item_customer_authorizations,
+  item_counsel_market_census, item_m2_launch_intent, item_m2_contract_standard,
+  item_provider_route_census, item_m2_applicability_model, item_m2_admission_spine,
+  item_provider_route_admission, item_m2_control_bindings, item_provider_enablement_budget,
+  item_m2_customer_projections, item_m2_legal_review_ready, item_m2_legal_issue_spot,
+  item_m2_contract_deviation_review, item_m2_compliance_admission,
+  item_billing_receipts, item_failure_billing, item_machine_identity_secrets,
+  item_support_abuse, item_docs_dry_run, item_soc2_baseline, item_soc2_window,
+  item_runner_lifecycle, item_first_external,
+  item_customer_portal, item_paid_minimum, item_netboot, item_demo_cohort,
+  item_s0_receipts, item_colo_rfq, item_acquisition_instrumented, item_machine_health,
+  item_lot_decision, item_billing_ux, item_marketing_min, item_tenant_shared_fleet,
+  item_storage_recovery_drill, item_commercial_demand, item_tax_insurance,
+  item_spares_control_plane, item_package_upstream, item_year_end_gate,
+]
+
+// The exact s1-gate conjunction, as identities - a count alone would still pass if a
+// required dependency were swapped for an unrelated one while the count held.
+data s1_gate_required_deps: List<NonEmptyStr> = [
+  "s0-receipts", "colo-rfq", "soc2-window", "acquisition-instrumented",
+  "machine-health-model", "lot-decision", "marketing-min", "billing-ux",
+  "commercial-demand-standing", "tenant-shared-fleet-suite", "storage-recovery-rewarm-drill",
+  "tax-insurance-scope", "spares-control-plane-readiness", "package-upstream-admission",
+]
+
+// ---------------------------------------------------------------------------------------------
+// Structural checks the witness executes.
+// ---------------------------------------------------------------------------------------------
+
+fn find_item(id: NonEmptyStr) -> List<PlanItem> {
+  filter(year_end_plan_items, i => i.id == id)
+}
+
+fn dep_resolves(id: NonEmptyStr) -> Bool {
+  count(find_item(id: id)) == 1
+}
+
+fn item_deps_resolve(i: PlanItem) -> Bool {
+  fold(i.depends_on, init: true, f: fn(acc, d) { acc && dep_resolves(id: d) })
+}
+
+fn dep_milestone_order_ok(i: PlanItem) -> Bool {
+  fold(i.depends_on, init: true, f: fn(acc, d) {
+    acc && fold(find_item(id: d), init: true, f: fn(a2, dep) {
+      a2 && milestone_order(m: dep.milestone) <= milestone_order(m: i.milestone)
+    })
+  })
+}
+
+// ACYCLICITY BY CONSTRUCTION: every dependency's declared rank is strictly smaller than
+// the dependent's, and no cycle admits strictly decreasing ranks - the same-milestone
+// two-cycle the previous witness permitted is now unwritable without also failing this.
+fn dep_rank_ok(i: PlanItem) -> Bool {
+  fold(i.depends_on, init: true, f: fn(acc, d) {
+    acc && fold(find_item(id: d), init: true, f: fn(a2, dep) {
+      a2 && dep.rank < i.rank
+    })
+  })
+}
+
+fn plan_graph_sound() -> Bool {
+  fold(year_end_plan_items, init: true, f: fn(acc, i) {
+    acc && item_deps_resolve(i: i) && dep_milestone_order_ok(i: i) && dep_rank_ok(i: i)
+  })
+}
+
+fn contains_id(ids: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+  count(filter(ids, x => x == id)) == 1
+}
+
+fn gate_conjunction_exact() -> Bool {
+  fold(find_item(id: "s1-gate"), init: false, f: fn(acc, g) {
+    count(g.depends_on) == count(s1_gate_required_deps)
+      && fold(s1_gate_required_deps, init: true, f: fn(a2, r) { a2 && contains_id(ids: g.depends_on, id: r) })
+  })
+}
+
+fn item_is_done(i: PlanItem) -> Bool {
+  match i.status {
+    Done { receipt } => true,
+    NotStarted => false,
+    InProgress { note } => false,
+    DeclaredBehind { reason } => false,
+  }
+}
+
+fn item_not_started(i: PlanItem) -> Bool {
+  match i.status {
+    NotStarted => true,
+    Done { receipt } => false,
+    InProgress { note } => false,
+    DeclaredBehind { reason } => false,
+  }
+}
+
+// COMPLETION COHERENCE: a Done item whose dependency is not Done is a lie the previous
+// model accepted; now it reds the witness. (Typed receipt identities in place of the
+// receipt string remain declared follow-up debt - the string proves someone typed text.)
+fn deps_all_done(i: PlanItem) -> Bool {
+  fold(i.depends_on, init: true, f: fn(acc, d) {
+    acc && fold(find_item(id: d), init: true, f: fn(a2, dep) { a2 && item_is_done(i: dep) })
+  })
+}
+
+fn done_implies_deps_done() -> Bool {
+  fold(year_end_plan_items, init: true, f: fn(acc, i) {
+    acc && (!item_is_done(i: i) || deps_all_done(i: i))
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// TRACKING, in plan-epoch days (2026-08-29 = day 0). LATE: anchor passed without Done.
+// AT RISK: latest safe start (anchor_day - min_calendar_days) has passed and the item is
+// UNFINISHED -- not merely unstarted. InProgress past that day is still amber: starting
+// an item must not extinguish the only signal that means act today. Late remains the
+// stronger colour once the anchor itself has passed.
+// ---------------------------------------------------------------------------------------------
+
+fn latest_start_day(i: PlanItem) -> Int {
+  milestone_anchor_day(m: i.milestone) - i.min_calendar_days
+}
+
+fn item_late_at_day(i: PlanItem, today_day: Int) -> Bool {
+  milestone_anchor_day(m: i.milestone) < today_day && !item_is_done(i: i)
+}
+
+fn item_at_risk_at_day(i: PlanItem, today_day: Int) -> Bool {
+  !item_late_at_day(i: i, today_day: today_day)
+    && latest_start_day(i: i) < today_day
+    && !item_is_done(i: i)
+}
+
+fn items_late_at_day(today_day: Int) -> List<PlanItem> {
+  filter(year_end_plan_items, i => item_late_at_day(i: i, today_day: today_day))
+}
+
+fn items_at_risk_at_day(today_day: Int) -> List<PlanItem> {
+  filter(year_end_plan_items, i => item_at_risk_at_day(i: i, today_day: today_day))
+}
+
+fn on_track_at_day(today_day: Int) -> Bool {
+  count(items_late_at_day(today_day: today_day)) == 0 && count(items_at_risk_at_day(today_day: today_day)) == 0
+}
+
+data requirement_coalescence_note: NonEmptyStr = "COALESCENCE MAP - where every standing requirement family lives, so this plan is the ONE staging surface: the compliance register's DesignConstraintNow rows land through m2-applicability-model, m2-control-bindings, customer-authorizations, soc2-baseline and tax-insurance-scope; the external review's before-first-customer list lands through tenant-boundary-minimum, fabric-m0's durable-commit gate, boot-minimum, machine-identity-secrets-lifecycle, the m2-launch-intent through m2-compliance-admission chain, whose centre is the provider-route permit, and support-abuse; its before-S1 list lands through colo-rfq, s0-receipts, machine-health-model, tenant-shared-fleet-suite, storage-recovery-rewarm-drill, package-upstream-admission, spares-control-plane-readiness and the s1-gate conjunction; the storage M0-M3 sequence enters as fabric-m0 with M1+ stages deliberately post-gate; the acquisition authority's outbound-scale preconditions bind acquisition-instrumented; the fragility/lot analysis lands through lot-decision (immediate execution); the product surface lands through customer-portal (cut scope), docs-dry-run, paid-minimum, billing-ux and support-abuse. A requirement discovered later is added HERE as an item with a milestone, or explicitly recorded as post-gate - never tracked in a side list."
+
+data plan_scaling_note: NonEmptyStr = "Why the M3 items exist at demo scale (operator 2026-08-29): the business can scale exponentially for a stretch, so every lever must carry EXECUTABLE TERMS before it is needed - the PreparedLever grain (quoted price, quote expiry, activation lead days, admitted capacity, prerequisites, deposit, cancellation terms, supplier), and for software/security levers an executed drill in place of a price. Price alone is not sufficient. The demo is deliberately small; the levers are deliberately not - and by each anchor the plan establishes the smallest executed fact that safely authorizes the next irreversible step."

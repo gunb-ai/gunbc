@@ -1,0 +1,1145 @@
+module strategy.gunbc_strategy
+
+import std.nat { Nat }
+import strategy.strategy_model {
+  Vision, StrategicOutcome, Capability, ExperienceTarget, Hypothesis, Constraint, Experiment,
+  Realizes, RoadmapBinding, MarketSegment, VisibilityAudience,
+  StrategicReason, DeliversCapability, ServesOutcome, TestsHypothesis, RequiredByDecision, ServesVision,
+  RoadmapLaneBinding, UnboundLaneAcknowledged,
+  CapabilityEvidence, RoadmapAccepted, CapabilityDirectlyObserved, ObservedCapability,
+  EngagementKind, WedgeDesignPartner, TechnicalValidator, Engagement,
+  TransitionReceipt, StepReceipt, StopReceipt,
+  DecisionAlternative, DecisionReceipt, DecisionState, Open, Selected, SupersededBy, RefusedDecision,
+  StrategicDecision,
+  ProductClaim,
+  JourneyStage, JourneyTransitionRule,
+  EvidenceAnchor, EraClose, EraClosed, EraOpen, VentureEra, TimelineEvent,
+  SubstrateKind, RustCompiler, DagCompiler,
+  HostSubstrate, SelfNativeRust, RustSeedInterpreter, HostedByGeneration,
+  GenerationFate, GenerationRetired, GenerationDeleted, GenerationAlive,
+  CompilerGeneration, SuccessionEdge,
+  ProjectionHorizon, HorizonNow, HorizonNext, HorizonLater, ProjectedStep,
+  CadenceWindow, DailyWindow, WeeklyWindow, MonthlyWindow, QuarterlyWindow, YearlyWindow,
+  TangentReading,
+}
+import strategy.strategy_model {
+  StrategicContract, ObligationAcceptanceKind, ByExecutionReceipt, ByObservationReceipt, ByOperatorJudgment,
+  StrategicObligation, DecompositionCoverage, PartialCoverage, CompleteCoverage, ProgramDecomposition,
+  ContributionKind, DischargesObligation, PreservesAcceptedState, BoundedExploration, MeasurementForDecision, ClosesPrerequisite,
+  WorkContribution, ContractAmendment, ObligationPrerequisite,
+  ObservedOutcome, ObservedLanded, ObservedInFlight, ObservedWithdrawn, ObservationReceipt,
+}
+import v2.compiler.self_host.frontier { compiler_frontier_roster, CompilerModuleFrontierRow }
+import gunbc.econ.acquisition { AcquisitionScenario, AcquisitionStageStep, ConversionRate }
+import std.measure { MoneyOnce, money_amount_micro }
+import std.currency { Usd }
+
+data gunbc_strategy_note: String = "The instantiated strategy graph (operator directive 2026-08-01). This carrier holds only facts: instances of the kernel concepts and their typed relations. All status is derived by kernel functions and asserted only in witnesses; nothing here stores a stage, verdict, or claim status."
+
+data visions: List<Vision> = [
+  Vision {
+    id: "programming-as-live-causal-world",
+    statement: "Software development is the act of navigating and changing a live causal world; the graph is the world, code is one exact projection, the compiler is the physics, humans and agents act through the same typed operations.",
+  },
+]
+
+data outcomes: List<StrategicOutcome> = [
+  StrategicOutcome {
+    id: "developer-operates-one-coherent-world",
+    statement: "A developer understands and changes a project through one coherent world rather than files plus command rituals.",
+    beneficiary: "developer and team operating multiple coding agents",
+  },
+]
+
+data capabilities: List<Capability> = [
+  Capability {
+    id: "source-integration-landing-dashboard",
+    statement: "One submitted change is carried through result finding, permission checks, committing, independent read-back, and compatibility projection, surfaced as Landed, one concrete choice, or a plain refusal.",
+  },
+  Capability {
+    id: "audience-scoped-node-disclosure",
+    statement: "Disclosure of a code region is granted per audience over facets (existence, location, extent, interface, churn, content, behavior) with reveal leases and receipts; plaintext is absent before authorization.",
+  },
+  Capability {
+    id: "sealed-execution",
+    statement: "An execution authority runs operations against sealed inputs under an output policy (observation, emission, effects, declassification constrained) and returns a constrained receipt.",
+  },
+  Capability {
+    id: "substrate-self-hosting",
+    statement: "The .dag substrate is the authority and the Rust seed shrinks toward zero: namespace resolution, P-derive, shell-to-intent, and the v1 exit lanes all deliver this one capability.",
+  },
+  Capability {
+    id: "substrate-operational-autonomy",
+    statement: "The substrate provisions, observes, places, and costs its own operation: fleet subsumption, hermetic toolchain, CI observation/placement/cost lanes deliver this.",
+  },
+  Capability {
+    id: "guarantee-ladder-safety",
+    statement: "Modeled error classes climb the DESIGN 4b guarantee ladder toward structural impossibility with honest rungs and executing evidence; the differentiating safety story.",
+  },
+]
+
+data experience_targets: List<ExperienceTarget> = [
+  ExperienceTarget {
+    id: "wipe-to-reveal-protected-code",
+    exposes_capability_id: "audience-scoped-node-disclosure",
+    gesture: "wipe the concealment surface over a protected code region",
+    perceived_result: "progressively revealed code, precisely navigable and selectable",
+    invariants: [
+      "PlaintextAbsentBeforeAuthorization",
+      "GestureDoesNotConferAuthority",
+      "UndisclosedFacetsRemainAbsent",
+      "RevealProducesInspectableReceipt",
+    ],
+  },
+]
+
+data hypotheses: List<Hypothesis> = [
+  Hypothesis {
+    id: "visually-legible-privacy-is-shareable",
+    causal_claim: "A visually legible privacy interaction (authorized wipe-to-reveal) causes qualified developers to voluntarily share the product, producing referral events.",
+  },
+  Hypothesis {
+    id: "landing-and-sealed-execution-create-compute-demand",
+    causal_claim: "Landing validation and sealed execution produce billable compute demand attached to visible causal constraints rather than subscription tiers.",
+  },
+  Hypothesis {
+    id: "one-authority-derives-hardware-and-software",
+    causal_claim: "Because .dag preserves types, exact widths, bounds, effects, cost, and placement across layers, one semantic authority can derive hardware realization (spatial pipeline / CGRA fabric / scalar-effect partition), software fallback, drivers, verification, and deployment as projections with proved correspondence — removing per-instruction control overhead in static pure regions and the cost of maintaining five parallel representations.",
+  },
+]
+
+data experiments: List<Experiment> = [
+  Experiment {
+    id: "qualified-design-partner-privacy-demo",
+    tests_hypothesis_id: "visually-legible-privacy-is-shareable",
+    intervention: "Show the real authorized wipe-to-reveal interaction to a bounded set of qualified developers; observe demo completion, access requests, follow-up meetings, voluntary sharing, referred qualified viewers.",
+    stop_predicate: "bounded cohort exhausted, or no voluntary sharing after the declared cohort size, or trust-boundary rejection dominates causes",
+  },
+  Experiment {
+    id: "dag-machine-measurement-program",
+    tests_hypothesis_id: "one-authority-derives-hardware-and-software",
+    intervention: "Five slices from the dag-machine architecture directive: (1) model the graph-machine contract (GraphImage/Launch/Completion, four execution classes Transform/Select/State/Effect, lowering from the six behaviors proved where it holds with typed refusals where not); (2) cycle-accurate simulator of a configurable PE array; (3) three realizations of ONE nontrivial pure kernel — sequential host baseline, simulated fabric, XLS IR to Verilog; (4) FPGA measurements incl. graph-load amortization at 1, 10, and 1M invocations; (5) soft CGRA mesh mapping several .dag graphs without resynthesis.",
+    stop_predicate: "curiosity-priced: never displaces priority-directive lanes and runs in operator personal time; program stops if the three-realization comparison shows no energy or initiation-interval advantage on the matched kernel, or if FPGA receipts show graph-load amortization never breaks even at realistic invocation counts",
+  },
+]
+
+data dag_machine_experiment_note: String = "Recorded per operator request 2026-08-01 (dag-machine architecture directive, docs/strategy/2026-08-01-dag-machine-architecture-directive.md): explicitly a personal-curiosity lane — 'not a realistic project, curious for personal reasons' — wanting Verilog/SPICE emission and measured efficiency math. Priced OUTSIDE the priority-assessment sequence; the four-question test defers it, and the hypothesis it tests doubles as the honest frame for the section-12 business readings (better targeting of existing hardware, co-design platform, specialized compute tier, custom silicon last). The efficiency envelope anchor: on an OoO core, per-instruction control energy is on the order of tens of pJ while a 32-bit add is on the order of 0.1 pJ (Horowitz, ISSCC 2014 keynote figures) — the removable overhead in static pure regions is the gap between those two numbers, bounded below by memory and communication energy, which do not vanish."
+
+data constraints: List<Constraint> = [
+  Constraint { id: "ui-never-claims-state-without-receipt", forbids: "Any visible domain claim without exactly one structural source and an inspectable provenance path." },
+  Constraint { id: "no-plaintext-before-authorized-disclosure", forbids: "Delivering protected plaintext to a client (payload, index, accessibility text, page source, CSS-hidden) before disclosure authorization." },
+  Constraint { id: "no-unmodeled-publication", forbids: "Publication of content by machinery with no modeled operation; automatic pushes are the live specimen class." },
+  Constraint { id: "public-claims-require-evidence", forbids: "Marketing a claim whose required capabilities lack observed evidence; unsupported claims are Unsupported, never aspirationally public." },
+  Constraint { id: "default-private-strategy", forbids: "New strategy content defaulting public; publishing is the explicit act (opt-in-public ruling 2026-08-01)." },
+  Constraint { id: "standards-before-invention", forbids: "Minting an internal model where a citable external standard or real upstream exists; the extdeps citation IS the grounding (operator ruling 2026-08-01, applied to auth/identity/disclosure and to sales/marketing alike)." },
+]
+
+data realizes_rows: List<Realizes> = [
+  Realizes { capability_id: "source-integration-landing-dashboard", outcome_id: "developer-operates-one-coherent-world" },
+  Realizes { capability_id: "audience-scoped-node-disclosure", outcome_id: "developer-operates-one-coherent-world" },
+]
+
+data roadmap_bindings: List<RoadmapBinding> = [
+  RoadmapBinding { roadmap_node_id: "2-scm-p0-landing-spine", delivers_capability_id: "source-integration-landing-dashboard" },
+]
+
+data market_segments: List<MarketSegment> = [
+  MarketSegment {
+    id: "teams-operating-multiple-coding-agents",
+    description: "Agent-heavy teams with concurrent same-repo proposals, measurable replay/CI/judgment cost, and a receipt-literate champion.",
+  },
+]
+
+data visibility_audiences: List<VisibilityAudience> = [
+  VisibilityAudience {
+    id: "design-partner-alpha-participants",
+    description: "The bounded set of partner individuals granted visibility into alpha strategy facts; distinct in type and meaning from any market segment.",
+  },
+]
+
+data decisions: List<StrategicDecision> = [
+  StrategicDecision {
+    question_id: "first-world",
+    question: "Which project is the first world the landing dashboard renders?",
+    alternatives: [
+      DecisionAlternative { id: "gunbc-dogfood", statement: "gunbc itself: missions are roadmap nodes, actors are sessions, receipts are the live PR and witness stream." },
+      DecisionAlternative { id: "synthetic-demonstration", statement: "A synthetic demo repository authored for presentation." },
+    ],
+    criteria: ["TruthfulLiveReceipts", "ImmediateDogfoodValue", "MinimalNewSubstrate"],
+    state: Selected {
+      choice_id: "gunbc-dogfood",
+      receipt: DecisionReceipt {
+        authority: "operator",
+        decided_on: "2026-08-01",
+        rationale: "Truthful live receipts and immediate dogfood value; mission identity binds roadmap nodes; actor projection may initially be thin.",
+      },
+    },
+  },
+  StrategicDecision {
+    question_id: "dashboard-host-surface",
+    question: "Which surface hosts the phase-1 landing dashboard?",
+    alternatives: [
+      DecisionAlternative { id: "gunbc-served-dashboard-lane", statement: "The gunbc-served dashboard lane: routes and dispatch already modeled, site register supplies the visual law." },
+      DecisionAlternative { id: "site-register-stack", statement: "The gunb.ai site register stack." },
+      DecisionAlternative { id: "standalone-surface", statement: "A standalone new surface." },
+    ],
+    criteria: ["MinimalNewSubstrate", "ReceiptFidelity", "IterationSpeed"],
+    state: Selected {
+      choice_id: "gunbc-served-dashboard-lane",
+      receipt: DecisionReceipt {
+        authority: "operator",
+        decided_on: "2026-08-01",
+        rationale: "Operator: focus on the srv1 dashboard and how it evolves. The landing dashboard is the gunbc-served dashboard lane's evolution, not a new surface; routes and dispatch are already modeled there and the site register supplies the visual law.",
+      },
+    },
+  },
+  StrategicDecision {
+    question_id: "roadmap-visibility",
+    question: "Does the gunbc roadmap stay public or move to the private root?",
+    alternatives: [
+      DecisionAlternative { id: "keep-public-for-now", statement: "ROADMAP.md and roadmap_authority.dag stay in the public repo; strategy references roadmap node ids one-way." },
+      DecisionAlternative { id: "move-private", statement: "The roadmap moves to the private root and the public repo carries a projection." },
+    ],
+    criteria: ["ConsumerContinuity", "PublicationMonotonicity", "EventualPrivacyParity"],
+    state: Selected {
+      choice_id: "keep-public-for-now",
+      receipt: DecisionReceipt {
+        authority: "operator",
+        decided_on: "2026-08-01",
+        rationale: "Many live consumers (sessions, dispatch, CI, dashboard) depend on the public roadmap today. Instinct is private, but continuity wins for now; revisit when generated projections (visibility-grants P-D) can serve consumers from a private authority.",
+      },
+    },
+  },
+  StrategicDecision {
+    question_id: "actor-model-scope",
+    question: "How are actors modeled in the phase-1 dashboard?",
+    alternatives: [
+      DecisionAlternative { id: "thin-projection", statement: "Project existing session, work-item, and PR facts as actors; no new carrier." },
+      DecisionAlternative { id: "modeled-actor-carrier", statement: "Land a modeled Actor carrier (identity, capabilities, assigned intents, attempts, context, compute allocation) first." },
+    ],
+    criteria: ["MinimalNewSubstrate", "LegibilityOfAgentWork"],
+    state: Selected {
+      choice_id: "thin-projection",
+      receipt: DecisionReceipt {
+        authority: "operator",
+        decided_on: "2026-08-01",
+        rationale: "Priority-assessment directive: derive actors from session/work-item/attempt/process/provider-instance/branch/PR facts; a canonical Actor carrier lands only when the first interface exposes a fact existing structures cannot derive. Avoids modeling the people on screen before building the screen.",
+      },
+    },
+  },
+  StrategicDecision {
+    question_id: "licensing-model",
+    question: "Under which license model does the public gunbc corpus ship?",
+    alternatives: [
+      DecisionAlternative { id: "fully-open-source", statement: "Whole public corpus under an OSI-approved license; the hosted platform and enterprise surface carry any commercial boundary." },
+      DecisionAlternative { id: "open-core", statement: "Open substrate/compiler core; proprietary product surfaces (landing dashboard, disclosure, sealed execution)." },
+      DecisionAlternative { id: "source-available", statement: "Source visible under a non-OSI license restricting competing use; with a change date each version auto-converts to an OSI license (FSL/BUSL shape) - the operator's early-versions-become-free instinct, formalized." },
+      DecisionAlternative { id: "dual-license", statement: "Copyleft public license plus commercial license for closed embedding, with a watertight compiler-output exception." },
+      DecisionAlternative { id: "revenue-threshold-commercial", statement: "Game-engine shape: free below a revenue threshold, commercial above - highest adoption-tax risk for a language." },
+      DecisionAlternative { id: "graduated-contribution-hybrid", statement: "The 2026-08-02 routed shape: permanently-free spec layer (MIT/Apache), BSL-like public-source implementation with delayed per-release conversion, and a graduated capped group fee - free below 100M consolidated prior-year gross revenue, declining marginal basis-point brackets (1 / 0.5 / 0.25 bp), 1M annual cap, unconditional output exception, contractor-on-behalf-of use included, no telemetry; fee function executable in strategy.licensing_fee_model." },
+    ],
+    criteria: ["AdoptionFriction", "PublicPrivateBoundaryFit", "FutureMonetization", "CommunityTrust", "OutputOwnershipUnambiguous", "SoleAuthorshipVerifiedWithCounsel", "SwitchCostGrowsWithAdoption"],
+    state: Open,
+  },
+  StrategicDecision {
+    question_id: "lang-ecmascript-authority",
+    question: "Is ECMAScript the runtime-semantic authority beneath the TypeScript target, or a deliberately separate target model?",
+    alternatives: [
+      DecisionAlternative { id: "ecmascript-as-base", statement: "ECMAScript is the semantic base; the TypeScript target projects onto it and duplicate JavaScript semantics dissolve." },
+      DecisionAlternative { id: "deliberately-separate", statement: "The two targets stay separate with an explicit boundary statement; duplication is declared and bounded." },
+    ],
+    criteria: ["SingleSemanticAuthority", "NoDuplicateJsSemantics", "MigrationCost"],
+    state: Open,
+  },
+  StrategicDecision {
+    question_id: "lang-cpp-profile",
+    question: "Which C++ profile does the project commit to: bounded system-kernel C++ or a general-purpose C++ target?",
+    alternatives: [
+      DecisionAlternative { id: "bounded-system-kernel", statement: "Bounded system/ABI and numerical-kernel C++ serving the accelerator and systems goals; explicitly not labeled full support." },
+      DecisionAlternative { id: "general-purpose-target", statement: "A general-purpose C++ target including templates, exceptions, ownership, and multi-file linkage - a much larger separately-scoped program." },
+    ],
+    criteria: ["AcceleratorNeedsFirst", "HonestScopeNaming", "TemplateAbiCost"],
+    state: Open,
+  },
+  StrategicDecision {
+    question_id: "lang-tsprogram-terminal-role",
+    question: "What is the terminal role of the TsProgram AST: retained as a confined realization carrier, or dissolved into the shared target-model fold?",
+    alternatives: [
+      DecisionAlternative { id: "retained-confined", statement: "TsProgram remains an internal confined TypeScript realization AST behind the containment wall." },
+      DecisionAlternative { id: "dissolved-into-target-model", statement: "TsProgram dissolves into the common target-model and grammar emission machinery." },
+    ],
+    criteria: ["DecideOnlyAfterRealConsumers", "SingleEmissionAuthority"],
+    state: Open,
+  },
+]
+
+data licensing_decision_note: String = "ACTIVATED 2026-08-02: the operator raised the model question directly (game-engine-style free/commercial split; is-it-too-late) - captured with verified repo facts and four registered alternatives in docs/strategy/2026-08-02-licensing-model-question.md; the licensing-model decision row above is Open and operator-owned; it is NOT too late (MIT is irrevocable only for already-distributed snapshots, zero external human contributors, switch cost grows with adoption). Originally opened per the priority-assessment directive (2026-08-01): licensing is a bounded research pass culminating in ONE decision with criteria and consequences, never a general license-reasoning framework before the product boundary is known. Research grounding when picked up: SPDX identifiers and OSI license texts as cited extdeps rows. Ranked Medium; the operator owns the decision."
+
+data product_claims: List<ProductClaim> = [
+  ProductClaim {
+    id: "claim-reveal-without-predelivery",
+    proposition: "Reveal private code without delivering it before authorization.",
+    segment_id: "teams-operating-multiple-coding-agents",
+    requires_capability_ids: ["audience-scoped-node-disclosure"],
+  },
+  ProductClaim {
+    id: "claim-agents-validate-sealed-code",
+    proposition: "Agents can validate against code they cannot read.",
+    segment_id: "teams-operating-multiple-coding-agents",
+    requires_capability_ids: ["sealed-execution", "audience-scoped-node-disclosure"],
+  },
+]
+
+data observed_capabilities: List<ObservedCapability> = [
+  ObservedCapability {
+    capability_id: "source-integration-landing-dashboard",
+    evidence: RoadmapAccepted { roadmap_node_id: "2-scm-p0-landing-spine" },
+  },
+]
+
+fn observed_capability_id_list() -> List<String> {
+  fold(observed_capabilities, init: [], f: fn(acc, o) { concat(acc, [o.capability_id]) })
+}
+
+data observed_capability_note: String = "source-integration-landing-dashboard carries RoadmapAccepted evidence: the P0 acceptance receipt merged to main 2026-08-01 (PR 7542, operator merge as the acceptance act); the witness checks this node id against the PUBLIC accepted_roadmap_node_ids() so acceptance evidence cannot be asserted here ahead of the authority. Scenario-executed contract, not a real-target transition (P3 write transport absent by design). Disclosure and sealed execution remain design-only. Capability observation is evidence of existence, never of adoption; AdoptionEvidence has no roadmap arm by construction."
+
+data design_partner_stages: List<JourneyStage> = [
+  JourneyStage { id: "identified", order: 0 },
+  JourneyStage { id: "qualified", order: 1 },
+  JourneyStage { id: "problem-confirmed", order: 2 },
+  JourneyStage { id: "shadow-connected", order: 3 },
+  JourneyStage { id: "comparison-observed", order: 4 },
+  JourneyStage { id: "champion-present", order: 5 },
+  JourneyStage { id: "commercially-committed", order: 6 },
+]
+
+data design_partner_rules: List<JourneyTransitionRule> = [
+  JourneyTransitionRule { from_id: "identified", to_id: "qualified", required_receipt_kind: "QualifiedPartnerReceipt" },
+  JourneyTransitionRule { from_id: "qualified", to_id: "problem-confirmed", required_receipt_kind: "ProblemInterviewReceipt" },
+  JourneyTransitionRule { from_id: "problem-confirmed", to_id: "shadow-connected", required_receipt_kind: "ShadowInstallationReceipt" },
+  JourneyTransitionRule { from_id: "shadow-connected", to_id: "comparison-observed", required_receipt_kind: "ComparisonRunReceipt" },
+  JourneyTransitionRule { from_id: "comparison-observed", to_id: "champion-present", required_receipt_kind: "ChampionCommitmentReceipt" },
+  JourneyTransitionRule { from_id: "champion-present", to_id: "commercially-committed", required_receipt_kind: "CommercialCommitmentReceipt" },
+]
+
+data lane_bindings: List<RoadmapLaneBinding> = [
+  RoadmapLaneBinding { lane_owner: "source-intent", reason: DeliversCapability { capability_id: "source-integration-landing-dashboard" } },
+  RoadmapLaneBinding { lane_owner: "self-host", reason: DeliversCapability { capability_id: "substrate-self-hosting" } },
+  RoadmapLaneBinding { lane_owner: "namespace", reason: DeliversCapability { capability_id: "substrate-self-hosting" } },
+  RoadmapLaneBinding { lane_owner: "shell", reason: DeliversCapability { capability_id: "substrate-self-hosting" } },
+  RoadmapLaneBinding { lane_owner: "compiler-guarantee", reason: DeliversCapability { capability_id: "guarantee-ladder-safety" } },
+  RoadmapLaneBinding { lane_owner: "fleet", reason: DeliversCapability { capability_id: "substrate-operational-autonomy" } },
+  RoadmapLaneBinding { lane_owner: "toolchain", reason: DeliversCapability { capability_id: "substrate-operational-autonomy" } },
+  RoadmapLaneBinding { lane_owner: "ci-observation", reason: DeliversCapability { capability_id: "substrate-operational-autonomy" } },
+  RoadmapLaneBinding { lane_owner: "ci-placement", reason: DeliversCapability { capability_id: "substrate-operational-autonomy" } },
+  RoadmapLaneBinding { lane_owner: "ci-cost", reason: DeliversCapability { capability_id: "substrate-operational-autonomy" } },
+  RoadmapLaneBinding { lane_owner: "deduction", reason: DeliversCapability { capability_id: "substrate-operational-autonomy" } },
+  RoadmapLaneBinding { lane_owner: "roadmap-runtime", reason: ServesOutcome { outcome_id: "developer-operates-one-coherent-world" } },
+  RoadmapLaneBinding { lane_owner: "operator", reason: ServesVision { vision_id: "programming-as-live-causal-world" } },
+]
+
+data unbound_lanes_acknowledged: List<UnboundLaneAcknowledged> = [
+  UnboundLaneAcknowledged {
+    lane_owner: "",
+    reason: "Some declared roadmap nodes carry an empty owner string; they predate lane assignment.",
+    trigger: "dissolve-on: every roadmap node carries a nonempty owner, or the empty-owner nodes are accepted or superseded",
+  },
+]
+
+data engagements: List<Engagement> = [
+  Engagement { id: "eng-000", kind: WedgeDesignPartner },
+  Engagement { id: "eng-001", kind: TechnicalValidator },
+  Engagement { id: "eng-002", kind: TechnicalValidator },
+]
+
+data eng000_journey_receipts: List<TransitionReceipt> = [
+  StepReceipt {
+    from_id: "identified",
+    to_id: "qualified",
+    receipt_kind: "QualifiedPartnerReceipt",
+    evidence: "eng-000 is gunbc itself: agent-heavy (concurrent sessions proposing against one repo), measurable replay/CI/judgment cost, receipt-literate champion = operator. Operator session 2026-08-01.",
+  },
+  StepReceipt {
+    from_id: "qualified",
+    to_id: "problem-confirmed",
+    receipt_kind: "ProblemInterviewReceipt",
+    evidence: "Operator statement 2026-08-01: completely bottlenecked on CI/merge conflicts. The problem interview is first-person.",
+  },
+]
+
+data eng000_journey_note: String = "The first traveler on the design-partner journey is the project itself (consistent with the first-world = gunbc-dogfood decision). Stage is DERIVED from these receipts by the kernel fold, never stored. Next transition, problem-confirmed -> shadow-connected, requires a ShadowInstallationReceipt - which is exactly the phase-1 landing dashboard observing gunbc; the product milestone and the journey receipt are the same event."
+
+data baseline_acquisition_scenario: AcquisitionScenario = AcquisitionScenario {
+  entry_stage_label: "click",
+  entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 3000000), currency: Usd },
+  steps: [
+    AcquisitionStageStep { stage_label: "signup", assumed_rate: ConversionRate { num: 1, denom: 20 } },
+    AcquisitionStageStep { stage_label: "activated", assumed_rate: ConversionRate { num: 2, denom: 5 } },
+  ],
+}
+
+data baseline_acquisition_provenance: String = "baseline-paid-2026-08-01: declared assumptions, operator session 2026-08-01; not citations, not observations. Cold paid acquisition is measurement spend only until a self-serve wedge exists. Scenario carrier re-grounded on public gunbc.econ.acquisition after PR 7557 merged; provenance lives beside the instantiation per that module's mechanism note."
+
+data tangent_readings: List<TangentReading> = [
+  TangentReading {
+    window: YearlyWindow,
+    read_on: "2026-08-02",
+    direction: "Authority moves down the stack: 2025 orchestrated agents over a task DAG; 2026 owns the language/compiler substrate and every other concern (CI, fleet, site, economics, strategy itself) becomes a projection of it. The venture is the same system re-founded one layer deeper.",
+    magnitude_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "pivot receipts: the-gunbai spec 2026-01-21 -> gunbc 2026-01-27; ctrl rebuilt on the substrate 2026-03-14; two Rust generations retired 2026-03-27 / 2026-06-16", note: "yearly tangent vs the 2025 platform direction" },
+    projects_onto: ServesVision { vision_id: "programming-as-live-causal-world" },
+  },
+  TangentReading {
+    window: QuarterlyWindow,
+    read_on: "2026-08-02",
+    direction: "From building the compiler to making its progress honest and cutting production over: producer-provenance ratchets replace feel-good counters, the blocker census is being re-measured, v1 exit splits into four finish lines, business/econ facts land as cited rows, strategy goes private and typed.",
+    magnitude_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "Q3-2026 receipts: emitter_producer_provenance baselines (0/0/6), #7627 census wall, four finish lines in roadmap authority, #6961+ econ corpus, gunbc-private 2026-08-01", note: "quarter still open" },
+    projects_onto: DeliversCapability { capability_id: "substrate-self-hosting" },
+  },
+  TangentReading {
+    window: MonthlyWindow,
+    read_on: "2026-08-02",
+    direction: "Honesty infrastructure landed and immediately fired: the frontier vocabulary correction exposed six-at-the-door as 0-produced/6-quarantined, the five-minute CI contract was re-anchored to the no-redundancy invariant, and iteration economics were measured (3% green rate, 45-min green path).",
+    magnitude_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "Jul-Aug receipts: calm-badger-682 provenance ruling 2026-07-29, #7654 acceptance staged, #7664 re-anchor, CI run-distribution measurement 2026-08-02", note: "" },
+    projects_onto: DeliversCapability { capability_id: "substrate-self-hosting" },
+  },
+  TangentReading {
+    window: WeeklyWindow,
+    read_on: "2026-08-02",
+    direction: "Strategy became a typed private graph and the venture got a measured, witnessed timeline: kernel + instantiation + witnesses, four-generation lineage with evidence, self-host distance measured then audit-corrected with retractions recorded in place.",
+    magnitude_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc-private", reference: "strategy kernel 2026-08-01; venture_timeline carriers + witnesses 2026-08-02; history/forward-path audit captured and verified 2026-08-02", note: "" },
+    projects_onto: ServesVision { vision_id: "programming-as-live-causal-world" },
+  },
+  TangentReading {
+    window: DailyWindow,
+    read_on: "2026-08-02",
+    direction: "Recollection to measurement to correction in one day: timeline banked, self-host distance measured, external audit verified against the tree, inflated claims retracted with receipts, contract re-anchor PR through two approvals - rung honesty applied to the project's self-description.",
+    magnitude_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc-private", reference: "commits e66147d..047ea0e (timeline, lineage, measurements, ruling, audit capture); public PR #7664 at 2 approvals", note: "" },
+    projects_onto: DeliversCapability { capability_id: "guarantee-ladder-safety" },
+  },
+]
+
+data venture_timeline_provenance: String = "All dates below measured from git history on 2026-08-02 (commit-graph mirrors of the five gunb-ai repos, GitHub API path probes, and the local gunbc clone), session loyal-ant-382; method and full narrative in docs/strategy/2026-08-02-project-timeline-recollection.md. Operator recollection corrected where evidence differed (gunb.ai seed is 2025-06, not 2025-11; sustained work IS 2025-11). Approximate dates say so in their evidence note. Reference strings name a commit subject, PR number, or measurement recipe - the citable identity, per the cite-the-symbol discipline."
+
+data venture_eras: List<VentureEra> = [
+  VentureEra {
+    id: "era-seed-prototype",
+    title: "gunb.ai seed prototype",
+    summary: "Four-day burst: agent TUI, orchestrator with per-task budgets, a DAG rendered in a frontend; then ~4 months dormant with one 3-commit Bazel flicker in October.",
+    started_on: "2025-06-19",
+    start_evidence: EvidenceAnchor { repo: "gunb-ai/gunb.ai", reference: "root commit 2025-06-19 Initial commit", note: "12 commits 2025-06; 'crappy DAG working in frontend' 2025-06-22" },
+    close: EraClosed {
+      on: "2025-06-22",
+      evidence: EvidenceAnchor { repo: "gunb-ai/gunb.ai", reference: "monthly histogram: 0 commits Jul-Sep 2025, 3 commits Oct", note: "dormancy measured, not recalled" },
+    },
+  },
+  VentureEra {
+    id: "era-platform-push",
+    title: "gunb.ai platform push",
+    summary: "Sustained agent-orchestration platform work: temporal workflows, grading rubrics, bazel-diff impacted-target CI, coverage gates, review automation, worktrees, devcontainers. 818 commits, ~850 PRs.",
+    started_on: "2025-11-01",
+    start_evidence: EvidenceAnchor { repo: "gunb-ai/gunb.ai", reference: "PR #4 Feature/temporal init 2025-11-01", note: "monthly histogram: 217 Nov, 428 Dec, 173 Jan" },
+    close: EraClosed {
+      on: "2026-01-22",
+      evidence: EvidenceAnchor { repo: "gunb-ai/gunb.ai", reference: "last platform commits 2026-01-22 incl. 'Document DAG-based systems architecture overview'", note: "repo's last act 2026-05-12 was donating runner pools to gunbc CI" },
+    },
+  },
+  VentureEra {
+    id: "era-pivot-bridge",
+    title: "the-gunbai pivot bridge",
+    summary: "The experiment of the DAG treatment for data structures alone; the realization it works for behavior (computation) as well; gunbc followed within the week (operator account 2026-08-02, matching the commit trail).",
+    started_on: "2026-01-21",
+    start_evidence: EvidenceAnchor { repo: "gunb-ai/the-gunbai", reference: "commit 2026-01-22 'Gunbai Causal Kernel & Compiler Specification' draft v0.3", note: "74 commits in one week; gistgen executing DAGs" },
+    close: EraClosed {
+      on: "2026-01-27",
+      evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "gunbc repo created 2026-01-27", note: "the bridge closes where the compiler era opens" },
+    },
+  },
+  VentureEra {
+    id: "era-substrate",
+    title: "gunbc substrate era",
+    summary: "The compiler project itself: four generations, two Rust-to-dag succession cycles, self-hosting from roadmap to verified seed fixed point, the Jun 16 renumbering/consolidation.",
+    started_on: "2026-01-27",
+    start_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "root commits 2026-01-27", note: "'Home of the Daglang compiler'" },
+    close: EraOpen,
+  },
+  VentureEra {
+    id: "era-fleet",
+    title: "fleet orchestration era",
+    summary: "The orchestration function reborn on the new substrate: ctrl control plane, session tree, dispatch, physical fleet subsumption (srv1-srv4).",
+    started_on: "2026-03-14",
+    start_evidence: EvidenceAnchor { repo: "gunb-ai/ctrl", reference: "root commit 2026-03-14 'Add OpenClaw control plane for gunbc'", note: "6,186 commits; heavy Mar-Jun, maintenance since Jul" },
+    close: EraOpen,
+  },
+  VentureEra {
+    id: "era-business",
+    title: "business modeling era",
+    summary: "Economics and strategy as cited substrate facts: SEC 10-K corpus, vendor pricing, acquisition mechanism, private strategy overlay.",
+    started_on: "2026-07-21",
+    start_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #6961 extdeps/sec merged 2026-07-21", note: "GitLab FY2026 rows verified live to the dollar" },
+    close: EraOpen,
+  },
+]
+
+data timeline_events: List<TimelineEvent> = [
+  TimelineEvent {
+    id: "ev-bazel-impacted-targets",
+    era_id: "era-platform-push",
+    occurred_on: "2025-12-19",
+    statement: "Change-scoped CI (bazel-diff impacted targets) is the platform's core mechanism - the affected-set conviction predates gunbc by eight months.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunb.ai", reference: "PR #417 'use -o flag for get-impacted-targets output'", note: "one of a dense Dec-2025 bazel-diff series" },
+  },
+  TimelineEvent {
+    id: "ev-gunbc-born",
+    era_id: "era-substrate",
+    occurred_on: "2026-01-27",
+    statement: "gunbc repo born; generation 1 (Rust) begins.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "repo createdAt 2026-01-27T23:04:32Z", note: "GitHub API" },
+  },
+  TimelineEvent {
+    id: "ev-dag-corpus-root",
+    era_id: "era-substrate",
+    occurred_on: "2026-02-25",
+    statement: "The dag/ corpus root lands; generation 2 design begins.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "commits API: path=dag absent before 2026-02-20; first gen-2 design commit 2026-02-28", note: "date approximate within Feb 20-28" },
+  },
+  TimelineEvent {
+    id: "ev-selfhost-roadmap",
+    era_id: "era-substrate",
+    occurred_on: "2026-03-11",
+    statement: "Self-hosting declared as the goal: 4-phase plan from model cleanup to fixed point, two weeks into generation 2's life.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #138 'Add v2 self-hosting roadmap'", note: "" },
+  },
+  TimelineEvent {
+    id: "ev-gen1-retired",
+    era_id: "era-substrate",
+    occurred_on: "2026-03-27",
+    statement: "Generation 1 deleted; the .dag substrate (with its Rust seed) becomes the only compiler authority.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "commit 2026-03-27 'Delete src/v1/ - v1 compiler fully retired'", note: "" },
+  },
+  TimelineEvent {
+    id: "ev-homomorphism-design",
+    era_id: "era-substrate",
+    occurred_on: "2026-05-20",
+    statement: "Generation 4 architecture: homomorphism-first, emit = serialize_target compose translate; same day regen_stage0 lands mirroring generation 3's regen_bootstrap - the fixed-point mechanism crosses from the Rust line to the dag line.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #3437 + PR #3471, both 2026-05-20", note: "" },
+  },
+  TimelineEvent {
+    id: "ev-seed-fixed-point",
+    era_id: "era-substrate",
+    occurred_on: "2026-05-24",
+    statement: "regen_stage0 --verify GREEN: the Rust seed regenerates from .dag authority and verifies. First closed self-host loop, 117 days after repo birth.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #3477 'v2 stage0 substrate-fill - Set/BTreeSet migration to make regen_stage0 --verify GREEN'", note: "" },
+  },
+  TimelineEvent {
+    id: "ev-renumbering-day",
+    era_id: "era-substrate",
+    occurred_on: "2026-06-16",
+    statement: "The consolidation day, one coordinated act: v3 deleted with its one load-bearing role migrated; generations renamed v2 to v1 and v4 to v2; the ~30k-line doc corpus bankrupted into the single serialized DESIGN.md.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #5025 + PR #5028 + PR #5027, all 2026-06-16", note: "frontend and the-gunbai frozen Jun 16-17; gunbos/gunbhub created Jun 14" },
+  },
+  TimelineEvent {
+    id: "ev-srv4-subsumed",
+    era_id: "era-fleet",
+    occurred_on: "2026-07-22",
+    statement: "srv4 installed and subsumed through the modeled BMC virtual-media path; every remaining hand-run step typed as a modeling gap.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7027", note: "5 runners live" },
+  },
+  TimelineEvent {
+    id: "ev-private-overlay",
+    era_id: "era-business",
+    occurred_on: "2026-08-01",
+    statement: "gunbc-private overlay born: strategy goes placement-private, 27 capture commits on day one, strategy kernel replaces prose as canonical form.",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc-private", reference: "repo createdAt 2026-08-01T02:15:20Z; commit 'Seed private overlay'", note: "opt-in-public ruling same day" },
+  },
+]
+
+data compiler_generations: List<CompilerGeneration> = [
+  CompilerGeneration {
+    ordinal: 1,
+    name_at_birth: "v1",
+    substrate: RustCompiler,
+    host: SelfNativeRust,
+    born_on: "2026-01-27",
+    born_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "repo root commits 2026-01-27", note: "src/v1 was its home" },
+    fate: GenerationRetired {
+      on: "2026-03-27",
+      evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "commit 'Delete src/v1/ - v1 compiler fully retired'", note: "" },
+    },
+  },
+  CompilerGeneration {
+    ordinal: 2,
+    name_at_birth: "v2",
+    substrate: DagCompiler,
+    host: RustSeedInterpreter,
+    born_on: "2026-02-25",
+    born_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "first gen-2 design commit 2026-02-28; dag/ root ~Feb 20-28; src/v2 born early Mar", note: "date approximate" },
+    fate: GenerationAlive { current_name: "v1", role: "the substrate/floor line: interpreter seed + v1 dag modules; ships the gunbc CLI" },
+  },
+  CompilerGeneration {
+    ordinal: 3,
+    name_at_birth: "v3",
+    substrate: RustCompiler,
+    host: SelfNativeRust,
+    born_on: "2026-03-30",
+    born_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "first v3-tagged commits 2026-03-30, three days after gen 1's deletion", note: "src/v3 present in the 2026-05-01 tree" },
+    fate: GenerationDeleted {
+      on: "2026-06-16",
+      evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #5025 'Delete v3; migrate its one load-bearing role (method-template producer) into v2'", note: "" },
+      migrated_role: "method-template producer",
+    },
+  },
+  CompilerGeneration {
+    ordinal: 4,
+    name_at_birth: "v4",
+    substrate: DagCompiler,
+    host: HostedByGeneration { ordinal: 2 },
+    born_on: "2026-05-15",
+    born_evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #3147 'v4: structural scaffold + R3+R4 audit migration'", note: "architecture design PR #3437 followed May 20" },
+    fate: GenerationAlive { current_name: "v2", role: "the active self-host line: emits its own sources under the behavioral-equivalence bar" },
+  },
+]
+
+data succession_edges: List<SuccessionEdge> = [
+  SuccessionEdge {
+    from_ordinal: 1,
+    to_ordinal: 2,
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "commit 2026-03-27 'Delete src/v1/ - v1 compiler fully retired'", note: "gen 2 already the working compiler at deletion" },
+  },
+  SuccessionEdge {
+    from_ordinal: 3,
+    to_ordinal: 4,
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #5025, 2026-06-16", note: "renumbering PR #5028 same day gave gen 4 the freed name" },
+  },
+]
+
+data projected_steps: List<ProjectedStep> = [
+  ProjectedStep {
+    id: "proj-complete-landing-workflow",
+    horizon: HorizonNow,
+    statement: "The complete landing workflow on the served dashboard: edit, submit, Landed / one concrete choice / plain refusal, observing gunbc itself as the first world.",
+    advances: DeliversCapability { capability_id: "source-integration-landing-dashboard" },
+    begins_when: "in flight: P0 acceptance receipt merged 2026-08-01 (PR 7542); next receipt is the phase-1 dashboard rendering the gunbc world",
+  },
+  ProjectedStep {
+    id: "proj-first-producer-qualified-module",
+    horizon: HorizonNow,
+    statement: "The first compiler module produced by v2's own emitter under the strict provenance bar: the direct Rust-output door closes (serialize, write, compile, receipt with no old-generator reachability) and one already-oracled quarantined module flips with positive and planted-negative checks executing. Strict position at authoring: 0/27 produced, 0 green, 6 quarantined, 27/27 seed-retained. The deep modules (04_infer, 06_translate, 05_emit*) are the nonlinear tail behind namespace/P-derive binding, not the first step.",
+    advances: DeliversCapability { capability_id: "substrate-self-hosting" },
+    begins_when: "producer-provenance acceptance lands (roadmap acceptance receipt PR, operator act) and the direct Rust-output door + the corrected blocker census (Lane E remeasurement) close; the Rc wrap-decision predicate is NOT a gate — it landed Jul 2026 (audit correction 2026-08-02, replacing this row's earlier stale trigger)",
+  },
+  ProjectedStep {
+    id: "proj-five-minute-ci",
+    horizon: HorizonNext,
+    statement: "Every required CI operation performs the bare minimum computation needed to serve it: an ordinary edit's verdict costs its touched closure's delta, no semantic fact recomputed whose inputs did not change; five minutes is the distress ceiling, not the contract (operator ruling 2026-08-02).",
+    advances: DeliversCapability { capability_id: "substrate-operational-autonomy" },
+    begins_when: "native witness cutover + materialization substrate conjunction holds (staged expectations A/B/C in the five-minute-ci-gate design; 5:00 is the Stage C checkpoint bound only)",
+  },
+  ProjectedStep {
+    id: "proj-first-external-partner-demo",
+    horizon: HorizonNext,
+    statement: "The authorized wipe-to-reveal privacy interaction shown to a bounded cohort of qualified external developers, producing journey receipts beyond eng-000.",
+    advances: TestsHypothesis { hypothesis_id: "visually-legible-privacy-is-shareable" },
+    begins_when: "audience-scoped-node-disclosure carries observed evidence and the sole-modeled-publisher wall holds (no plaintext before authorization)",
+  },
+  ProjectedStep {
+    id: "proj-compute-through-compiler",
+    horizon: HorizonLater,
+    statement: "Compute sold through the compiler: landing validation and sealed execution billed against visible causal constraints rather than subscription tiers.",
+    advances: TestsHypothesis { hypothesis_id: "landing-and-sealed-execution-create-compute-demand" },
+    begins_when: "a wedge partner journey reaches comparison-observed with a champion present",
+  },
+  ProjectedStep {
+    id: "proj-hardware-projection",
+    horizon: HorizonLater,
+    statement: "One semantic authority derives hardware realization beside software: the dag-machine measurement program's three-realization comparison, curiosity-priced.",
+    advances: TestsHypothesis { hypothesis_id: "one-authority-derives-hardware-and-software" },
+    begins_when: "operator personal time only; continues only while the matched-kernel comparison shows an energy or initiation-interval advantage",
+  },
+]
+
+data program_pilot_note: String = "Pilot of the program decomposition and discharge graph (audit 2026-08-02, docs/strategy/2026-08-02-program-decomposition-audit.md): the bare-minimum-computation contract as first specimen. The contract was adopted 2026-08-01 under operator dispatch K with the five-minute wall-clock wording and amended 2026-08-02 by operator ruling (verbatim in docs/strategy/2026-08-02-ci-bare-minimum-computation-ruling.md; public carriers re-anchored in gunb-ai/gunbc#7664); the amendment row retains the previous criteria, and the stale-binding witness derives its specimen digest from them. Bindings carry the criteria-digest LITERAL each was read against - re-pasting it per row is the mechanism, not sloppiness: amending the contract mismatches every un-reread row individually, and a shared constant would let one lockstep edit hide the re-read. Three obligations are deliberately unbound today (exact affected closure, semantic input identity, pre-index lookup: the first is live machinery predating this graph and needs its own binding pass with real work refs; the others are genuinely open) so the derived program view shows true open surface. PR states enter only as dated ObservationReceipt rows; nothing here says is-open or is-merged in the present tense. The four audit test claims this instantiation must keep false: 7599 claiming cross-invocation materialization, 7534 claiming pre-index lookup, 7522 claiming native witness execution, and any completion claim while the decomposition is Partial."
+
+data program_contracts: List<StrategicContract> = [
+  StrategicContract {
+    id: "contract-bare-minimum-computation",
+    statement: "Every required operation performs the bare minimum computation needed to serve it; redundant computation is a defect, and wall-clock outcomes fall out of the realization and materialization goals rather than defining the contract.",
+    acceptance_criteria: [
+      "every required operation computes only facts its inputs require",
+      "no semantic fact is recomputed while its inputs are unchanged",
+      "wall-clock follows from realization and materialization, never defines the contract",
+      "five minutes is an operational distress threshold, not the success criterion",
+    ],
+    constraint_ids: [],
+    adoption: DecisionReceipt {
+      authority: "operator",
+      decided_on: "2026-08-01",
+      rationale: "Operator dispatch K registered the central CI program boundary; adopted with the five-minute wall-clock wording, amended the next day - see contract_amendments am-2026-08-02-bare-minimum-reanchor.",
+    },
+  },
+  StrategicContract {
+    id: "contract-v2-self-host-fixed-point",
+    statement: "v2 emits its own compiler sources as the cleanest principled realization, proven by execution: the seed shrinks across a typed frontier until production routes through the self-emitted result; behavioral equivalence is the bar, byte identity explicitly is not.",
+    acceptance_criteria: [
+      "every compiler module is either self-emitted green-by-execution or a declared seed-retained row with reason and trigger",
+      "self-emitted means produced by v2's own emitter with no old-generator reachability and behavioral equivalence on a discriminating corpus",
+      "the emitter reproduces itself through two generations before the remaining stages are claimed",
+      "the fixed point is behavioral equivalence, never byte identity",
+    ],
+    constraint_ids: [],
+    adoption: DecisionReceipt {
+      authority: "operator",
+      decided_on: "2026-03-11",
+      rationale: "GOAL INTRODUCTION evidence only: PR #138 (titled gunbc v2, no body, merged 2026-03-11) marks the lineage origin and establishes none of today's bar. The criteria on this row are the CURRENT bar - behavioral equivalence per DESIGN 7, strict producer-provenance per calm-badger-682 2026-07-29, boundary recut per the 2026-08-02 review - not the March 11 plan (review Finding 7).",
+    },
+  },
+  StrategicContract {
+    id: "contract-v2-production-cutover",
+    statement: "Production compilation and every required CI operation route through v2-produced compiler output, with fallback to the old generator absent or explicitly refused.",
+    acceptance_criteria: [
+      "the production build routes through v2-produced compiler output",
+      "every required CI operation routes through v2-produced output",
+      "fallback to the old generator is absent or explicitly refused, never silent",
+    ],
+    constraint_ids: [],
+    adoption: DecisionReceipt {
+      authority: "operator",
+      decided_on: "2026-08-02",
+      rationale: "Minted by the boundary recut (review Finding 3) so cutover cannot overload the fixed-point terminal; mirrors the public roadmap ordering (v1-emitter-fixed-point then v1-ci-floor-cutover). Carries no decomposition yet - completion honestly refuses DecompositionMissing. Old-generator retirement is a further downstream contract, unminted until work binds to it.",
+    },
+  },
+  StrategicContract {
+    id: "contract-language-medium-support",
+    statement: "Every language or medium the project claims to support is complete for an explicit support profile; every incomplete target carries an exact typed frontier and disposition; new product or experimental needs promote profiles and capabilities deliberately, and nothing remains mostly-supported without being measurable.",
+    acceptance_criteria: [
+      "every registered target declares its support profiles and priority in one typed registry, never status prose",
+      "a target is complete for a profile only when required capabilities equal executed-proven capabilities and unclassified residue is zero, derived never authored",
+      "target-language vocabulary is confined to realization boundaries, with the live-tree containment receipt executing in CI and every exception a declared row with a dissolution trigger",
+      "every executable target's support claim is an executed toolchain-and-behavior receipt with a discriminating planted defect, never emitted text alone",
+    ],
+    constraint_ids: [],
+    adoption: DecisionReceipt {
+      authority: "operator",
+      decided_on: "2026-08-02",
+      rationale: "Operator-routed language-support review (docs/strategy/2026-08-02-language-support-completion-review.md), fitted by this session on the operator's draft-the-work instruction; wording follows the review's strategic correction - profile-completeness with an exact frontier, never unbounded full support - and stays amendable through ContractAmendment. Scope: Rust compiler-bootstrap is governed by contract-v2-self-host-fixed-point and contract-v2-production-cutover, referenced never duplicated; P2/P3 targets enter through registry rows under criterion 1, not per-target obligations.",
+    },
+  },
+]
+
+data contract_amendments: List<ContractAmendment> = [
+  ContractAmendment {
+    id: "am-2026-08-02-bare-minimum-reanchor",
+    subject_contract: "contract-bare-minimum-computation",
+    previous_criteria: [
+      "an ordinary source edit reaches a required CI verdict in five minutes",
+      "no semantic fact is recomputed whose inputs did not change",
+    ],
+    summary: "Re-anchor from the wall-clock five-minute contract to the bare-minimum-computation invariant; five minutes demoted to the operational distress threshold (Stage C checkpoint bound only).",
+    receipt: DecisionReceipt {
+      authority: "operator",
+      decided_on: "2026-08-02",
+      rationale: "Operator: the five-minute product contract was a mistake - the vision was bare minimum computation on every required operation, no redundant computation; five minutes is a distress signal to scope against the realization/materialization goals.",
+    },
+    evidence: "docs/strategy/2026-08-02-ci-bare-minimum-computation-ruling.md (verbatim ruling); public re-anchor PR gunb-ai/gunbc#7664",
+  },
+  ContractAmendment {
+    id: "am-2026-08-02-fixed-point-boundary",
+    subject_contract: "contract-v2-self-host-fixed-point",
+    previous_criteria: [
+      "every compiler module is either self-emitted green-by-execution or a declared seed-retained row with reason and trigger",
+      "self-emitted means produced by v2's own emitter with no old-generator reachability and behavioral equivalence on a discriminating corpus",
+      "production compilation routes through the self-emitted result",
+      "the fixed point is behavioral equivalence, never byte identity",
+    ],
+    summary: "Boundary recut (review Finding 3): production cutover is downstream of the fixed point, not part of it - the cutover criterion moved to contract-v2-production-cutover and the fixed-point criteria gained the two-generation emitter clause. This amendment mechanically staled both existing self-host bindings until re-read against the new digest - the designed invalidation, exercised.",
+    receipt: DecisionReceipt {
+      authority: "operator",
+      decided_on: "2026-08-02",
+      rationale: "Operator-routed discharge-graph review decisions table: production cutover not part of compiler fixed point; old-generator deletion belongs to a separate downstream retirement contract.",
+    },
+    evidence: "docs/strategy/2026-08-02-discharge-graph-review.md",
+  },
+]
+
+data program_obligations: List<StrategicObligation> = [
+  StrategicObligation {
+    id: "obl-exact-affected-closure",
+    parent_contract: "contract-bare-minimum-computation",
+    subject: "change selection",
+    required_conclusion: "a change's required work is its exact affected closure, with selection fail-closed",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-semantic-input-identity",
+    parent_contract: "contract-bare-minimum-computation",
+    subject: "fact identity",
+    required_conclusion: "every semantic fact carries exact content-addressed input identity so unchanged is decidable",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-cross-invocation-reuse",
+    parent_contract: "contract-bare-minimum-computation",
+    subject: "materialization reuse",
+    required_conclusion: "an unchanged resolved graph or verdict is served from verified materialization across process invocations, never recomputed",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-native-witness-execution",
+    parent_contract: "contract-bare-minimum-computation",
+    subject: "witness execution",
+    required_conclusion: "realizable selected witnesses execute natively without interpreter overhead",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-pre-index-lookup",
+    parent_contract: "contract-bare-minimum-computation",
+    subject: "index construction",
+    required_conclusion: "materialized identity is consulted before corpus-scale index construction",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-no-duplicate-stage-work",
+    parent_contract: "contract-bare-minimum-computation",
+    subject: "within-request work",
+    required_conclusion: "no stage work is duplicated inside one request; per-entry assembly shares what entries have in common",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-counted-fallback",
+    parent_contract: "contract-bare-minimum-computation",
+    subject: "fallback census",
+    required_conclusion: "every interpreted or recomputed fallback on a required path is counted and driven toward zero",
+    acceptance_kind: ByObservationReceipt,
+  },
+  StrategicObligation {
+    id: "obl-direct-rust-output-door",
+    parent_contract: "contract-v2-self-host-fixed-point",
+    subject: "emitter output path",
+    required_conclusion: "v2 serializes, writes, and compiles its Rust output directly, with no old-generator reachability on the acceptance path",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-first-module-behavioral-replacement",
+    parent_contract: "contract-v2-self-host-fixed-point",
+    subject: "first module flip",
+    required_conclusion: "one already-oracled quarantined module flips to self-emitted with positive and planted-negative checks executing",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-emitter-bootstrap-generations",
+    parent_contract: "contract-v2-self-host-fixed-point",
+    subject: "emitter bootstrap",
+    required_conclusion: "the emitter emits itself through two generations with equivalence receipts",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-remaining-stages-self-emit",
+    parent_contract: "contract-v2-self-host-fixed-point",
+    subject: "remaining stages",
+    required_conclusion: "the remaining compiler stages self-emit under the frontier's typed rows, each green-by-execution or declared seed-retained",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-production-cutover-selfhost",
+    parent_contract: "contract-v2-production-cutover",
+    subject: "production routing",
+    required_conclusion: "production compilation routes through the self-emitted modules",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-translate-instantiation-wrap-decision",
+    parent_contract: "contract-v2-self-host-fixed-point",
+    subject: "v2-translate ownership boundary",
+    required_conclusion: "instantiation-shaped wires route through the structural wrap decision; the reopened wrap_decision_predicate migration trigger is closed",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-frontier-classifier-totality",
+    parent_contract: "contract-v2-self-host-fixed-point",
+    subject: "frontier census machinery",
+    required_conclusion: "the blocker census classifies with upstream-semantic stage vocabulary behind a receipt-totality wall, so a corrected candidate census is trustworthy",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-lang-support-registry",
+    parent_contract: "contract-language-medium-support",
+    subject: "target registry",
+    required_conclusion: "every registered target carries typed profile, priority, capability, and disposition rows in one registry extending the existing frontier carrier, with its prose tables superseded",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-lang-residue-census",
+    parent_contract: "contract-language-medium-support",
+    subject: "target-vocabulary residue",
+    required_conclusion: "every target-AST import outside realization edges, embedded target-source string, and structure-bearing lexeme leaf is enumerated at path-and-declaration identity, never as a count",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-lang-no-new-debt-gate",
+    parent_contract: "contract-language-medium-support",
+    subject: "containment wall",
+    required_conclusion: "the live-tree containment receipt executes on a scheduled CI lane, the exception roster carries every live leak as a declared row with a dissolution trigger, and a new leak refuses",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-lang-execution-receipt",
+    parent_contract: "contract-language-medium-support",
+    subject: "toolchain receipts",
+    required_conclusion: "every executable target's support claim routes through one common receipt shape: emit, toolchain accept, execute, behavior-compare against a language-neutral oracle, planted-defect discriminate",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-lang-status-projection",
+    parent_contract: "contract-language-medium-support",
+    subject: "support status view",
+    required_conclusion: "support status derives from the registry, census, and receipts, with no hand-authored percentage or status prose anywhere",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-ts-product-browser-profile",
+    parent_contract: "contract-language-medium-support",
+    subject: "typescript product profile",
+    required_conclusion: "the product browser client is authored as language-independent behavior and emitted through the production TypeScript target, with zero product-layer target-AST authorship outside declared realization edges",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-web-product-medium-profile",
+    parent_contract: "contract-language-medium-support",
+    subject: "web medium profile",
+    required_conclusion: "one typed product view authority projects server HTML, client updates, and optional JSX from the same structured markup facts, with browser-executed receipts",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-spice-simulation-profile",
+    parent_contract: "contract-language-medium-support",
+    subject: "spice circuit profile",
+    required_conclusion: "the emitted netlist executes under a pinned ngspice runtime with typed observations and a differential witness against an analytical expectation, where a changed component changes the observed curve",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-verilog-hardware-profile",
+    parent_contract: "contract-language-medium-support",
+    subject: "verilog hardware profile",
+    required_conclusion: "structure-bearing lexeme strings decompose into typed expression and procedural carriers, and emitted output executes under a simulator with a behavioral assertion",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-python-general-source-profile",
+    parent_contract: "contract-language-medium-support",
+    subject: "python general profile",
+    required_conclusion: "the python profile gap derives from the capability registry, required families close with toolchain-executed receipts, and one real product specimen replaces arithmetic fixtures",
+    acceptance_kind: ByExecutionReceipt,
+  },
+  StrategicObligation {
+    id: "obl-c-accelerator-kernel-profile",
+    parent_contract: "contract-language-medium-support",
+    subject: "c and accelerator profile",
+    required_conclusion: "bounded C system-kernel support and the accelerator seam land with executed receipts in order - CPU fused-kernel oracle, then PTX validation, then CUDA execution - refusing outside the declared numerical contract",
+    acceptance_kind: ByExecutionReceipt,
+  },
+]
+
+data obligation_prerequisites: List<ObligationPrerequisite> = [
+  ObligationPrerequisite { blocker_obligation: "obl-translate-instantiation-wrap-decision", blocked_obligation: "obl-remaining-stages-self-emit" },
+  ObligationPrerequisite { blocker_obligation: "obl-frontier-classifier-totality", blocked_obligation: "obl-first-module-behavioral-replacement" },
+  ObligationPrerequisite { blocker_obligation: "obl-lang-support-registry", blocked_obligation: "obl-lang-status-projection" },
+  ObligationPrerequisite { blocker_obligation: "obl-lang-residue-census", blocked_obligation: "obl-lang-no-new-debt-gate" },
+  ObligationPrerequisite { blocker_obligation: "obl-lang-no-new-debt-gate", blocked_obligation: "obl-ts-product-browser-profile" },
+]
+
+data corrected_census_subject: String = "gunb-ai/gunbc self-host corrected candidate census (second-pass 27-row roster rewrite)"
+
+fn selfhost_module_obligation_ids() -> List<String> {
+  fold(compiler_frontier_roster, init: [], f: fn(acc, r) {
+    let mp = r.module_path
+    concat(acc, ["obl-module-{mp}"])
+  })
+}
+
+data program_decompositions: List<ProgramDecomposition> = [
+  ProgramDecomposition {
+    id: "dec-bare-minimum-2026-08-02",
+    parent_contract: "contract-bare-minimum-computation",
+    parent_criteria_digest: "criteria|every required operation computes only facts its inputs require|no semantic fact is recomputed while its inputs are unchanged|wall-clock follows from realization and materialization, never defines the contract|five minutes is an operational distress threshold, not the success criterion",
+    child_obligation_ids: [
+      "obl-exact-affected-closure",
+      "obl-semantic-input-identity",
+      "obl-cross-invocation-reuse",
+      "obl-native-witness-execution",
+      "obl-pre-index-lookup",
+      "obl-no-duplicate-stage-work",
+      "obl-counted-fallback",
+    ],
+    composition_rule: "conjunction over the required-operation path: the contract is served when every child holds for every required operation class; children are independent mechanisms over one materialization substrate",
+    coverage: PartialCoverage {
+      open_note: "adopted PARTIAL by operator decision (review 2026-08-02): the universal contract stays permanently open - bounded programs discharge local obligations beneath it, and no finite initiative list completes it without a complete population of required operation paths (discovery, scheduling, regen unexamined); CompleteCoverage requires an operator-authorized coverage rule over such a population, whose derivation then establishes completeness",
+    },
+  },
+  ProgramDecomposition {
+    id: "dec-v2-selfhost-2026-08-02",
+    parent_contract: "contract-v2-self-host-fixed-point",
+    parent_criteria_digest: "criteria|every compiler module is either self-emitted green-by-execution or a declared seed-retained row with reason and trigger|self-emitted means produced by v2's own emitter with no old-generator reachability and behavioral equivalence on a discriminating corpus|the emitter reproduces itself through two generations before the remaining stages are claimed|the fixed point is behavioral equivalence, never byte identity",
+    child_obligation_ids: [
+      "obl-direct-rust-output-door",
+      "obl-first-module-behavioral-replacement",
+      "obl-emitter-bootstrap-generations",
+      "obl-remaining-stages-self-emit",
+      "obl-translate-instantiation-wrap-decision",
+      "obl-frontier-classifier-totality",
+    ],
+    composition_rule: "ordered chain: the door enables the first module, the first module oracles the bootstrap, the bootstrap enables the remaining stages; module coverage derives from the public compiler_frontier_roster denominator",
+    coverage: PartialCoverage {
+      open_note: "sequencing is registered but completeness is not derivable yet: module coverage must derive from the public 27-row frontier denominator (selfhost_module_obligation_ids), the bootstrap/host-kernel membership question is open, and old-generator deletion belongs to a downstream retirement contract, never this one; CompleteCoverage requires an operator-authorized coverage rule whose derivation then establishes completeness (review Finding 5)",
+    },
+  },
+  ProgramDecomposition {
+    id: "dec-language-support-2026-08-02",
+    parent_contract: "contract-language-medium-support",
+    parent_criteria_digest: "criteria|every registered target declares its support profiles and priority in one typed registry, never status prose|a target is complete for a profile only when required capabilities equal executed-proven capabilities and unclassified residue is zero, derived never authored|target-language vocabulary is confined to realization boundaries, with the live-tree containment receipt executing in CI and every exception a declared row with a dissolution trigger|every executable target's support claim is an executed toolchain-and-behavior receipt with a discriminating planted defect, never emitted text alone",
+    child_obligation_ids: [
+      "obl-lang-support-registry",
+      "obl-lang-residue-census",
+      "obl-lang-no-new-debt-gate",
+      "obl-lang-execution-receipt",
+      "obl-lang-status-projection",
+      "obl-ts-product-browser-profile",
+      "obl-web-product-medium-profile",
+      "obl-spice-simulation-profile",
+      "obl-verilog-hardware-profile",
+      "obl-python-general-source-profile",
+      "obl-c-accelerator-kernel-profile",
+    ],
+    composition_rule: "shared denominator first, then per-target profile closures: registry, census, gate, receipt shape, and projection are target-generic mechanisms every profile closure consumes; per-target obligations close their declared profiles against that denominator",
+    coverage: PartialCoverage {
+      open_note: "P0 product profiles (typescript, web) and P1 experimental profiles (spice, verilog, python, c-accelerator) are enumerated; Rust bootstrap is deliberately absent - governed by the two self-host contracts, referenced never duplicated; P2/P3 targets (go, llvm-ir, wasm, lean, java, kotlin, swift, sql, machine-code, english, ecmascript, structured media) enter through registry rows under criterion 1, so CompleteCoverage additionally requires the registry to enumerate them with explicit profile-or-parked dispositions; grounding receipt: the live containment witness executed FAIL 2026-08-02 with three unexempted importers (roadmap_component, design/theme_transition, effect_plan_bash_materialize) while excluded from CI discovery and the falsifier - the gate obligation's exact starting state (capture doc 2026-08-02-language-support-completion-review.md)",
+    },
+  },
+]
+
+data work_contributions: List<WorkContribution> = [
+  WorkContribution {
+    id: "wc-7599-native-witness-bundle",
+    work_ref: "gunb-ai/gunbc#7599",
+    obligation_id: "obl-native-witness-execution",
+    kind: DischargesObligation,
+    maximum_conclusion: "selected logic witnesses execute as one native process at small scale (25/25 executing slice); production cutover, majority migration, and the timing ratio remain open",
+    parent_criteria_digest: "criteria|every required operation computes only facts its inputs require|no semantic fact is recomputed while its inputs are unchanged|wall-clock follows from realization and materialization, never defines the contract|five minutes is an operational distress threshold, not the success criterion",
+  },
+  WorkContribution {
+    id: "wc-7534-cross-process-materialization",
+    work_ref: "gunb-ai/gunbc#7534",
+    obligation_id: "obl-cross-invocation-reuse",
+    kind: DischargesObligation,
+    maximum_conclusion: "exact-tree resolved graphs are served from verified cross-process materialization on the landed path; pre-index lookup is NOT claimed by this work, and no default CI savings are credited until ordinary invocations consume it",
+    parent_criteria_digest: "criteria|every required operation computes only facts its inputs require|no semantic fact is recomputed while its inputs are unchanged|wall-clock follows from realization and materialization, never defines the contract|five minutes is an operational distress threshold, not the success criterion",
+  },
+  WorkContribution {
+    id: "wc-7522-ordered-admission-stages",
+    work_ref: "gunb-ai/gunbc#7522",
+    obligation_id: "obl-cross-invocation-reuse",
+    kind: DischargesObligation,
+    maximum_conclusion: "merge admission reuses the ordered PR-stage verdicts instead of recomputing them; native witness execution is NOT claimed by this work",
+    parent_criteria_digest: "criteria|every required operation computes only facts its inputs require|no semantic fact is recomputed while its inputs are unchanged|wall-clock follows from realization and materialization, never defines the contract|five minutes is an operational distress threshold, not the success criterion",
+  },
+  WorkContribution {
+    id: "wc-7628-per-entry-assembly",
+    work_ref: "gunb-ai/gunbc#7628",
+    obligation_id: "obl-no-duplicate-stage-work",
+    kind: DischargesObligation,
+    maximum_conclusion: "the union probe is closed by measurement (zero repeated typecheck misses) and per-entry assembly is decomposed; cross-invocation reuse is NOT claimed by this work",
+    parent_criteria_digest: "criteria|every required operation computes only facts its inputs require|no semantic fact is recomputed while its inputs are unchanged|wall-clock follows from realization and materialization, never defines the contract|five minutes is an operational distress threshold, not the success criterion",
+  },
+  WorkContribution {
+    id: "wc-7264-wrap-decision-prereq",
+    work_ref: "gunb-ai/gunbc#7264",
+    obligation_id: "obl-translate-instantiation-wrap-decision",
+    kind: DischargesObligation,
+    maximum_conclusion: "repairs the v2-translate instantiation-wire ownership boundary and closes the reopened wrap_decision_predicate migration trigger; the parent remaining-stages obligation stays open - unblocking is derived, never claimed",
+    parent_criteria_digest: "criteria|every compiler module is either self-emitted green-by-execution or a declared seed-retained row with reason and trigger|self-emitted means produced by v2's own emitter with no old-generator reachability and behavioral equivalence on a discriminating corpus|the emitter reproduces itself through two generations before the remaining stages are claimed|the fixed point is behavioral equivalence, never byte identity",
+  },
+  WorkContribution {
+    id: "wc-7627-lane-e-census",
+    work_ref: "gunb-ai/gunbc#7627",
+    obligation_id: "obl-frontier-classifier-totality",
+    kind: DischargesObligation,
+    maximum_conclusion: "lands the upstream-semantic blocker vocabulary and receipt-totality wall that make a corrected candidate census trustworthy; the census itself has not run - measurement machinery, not measurement (review Finding 2)",
+    parent_criteria_digest: "criteria|every compiler module is either self-emitted green-by-execution or a declared seed-retained row with reason and trigger|self-emitted means produced by v2's own emitter with no old-generator reachability and behavioral equivalence on a discriminating corpus|the emitter reproduces itself through two generations before the remaining stages are claimed|the fixed point is behavioral equivalence, never byte identity",
+  },
+]
+
+data work_observations: List<ObservationReceipt> = [
+  ObservationReceipt {
+    id: "ob-7599-merged",
+    subject: "gunb-ai/gunbc#7599",
+    observed_on: "2026-08-02",
+    subject_revision: "merge commit 1ebff27f1e",
+    outcome: ObservedLanded,
+    result: "merged to main 2026-08-02T14:14:47Z",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7599 mergedAt 2026-08-02T14:14:47Z, merge 1ebff27f1e", note: "gh pr view, session loyal-ant-382" },
+  },
+  ObservationReceipt {
+    id: "ob-7534-merged",
+    subject: "gunb-ai/gunbc#7534",
+    observed_on: "2026-08-02",
+    subject_revision: "merge commit bc586b5abe",
+    outcome: ObservedLanded,
+    result: "merged to main 2026-08-02T14:15:11Z",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7534 mergedAt 2026-08-02T14:15:11Z, merge bc586b5abe", note: "gh pr view, session loyal-ant-382" },
+  },
+  ObservationReceipt {
+    id: "ob-7628-merged",
+    subject: "gunb-ai/gunbc#7628",
+    observed_on: "2026-08-02",
+    subject_revision: "merge commit c47a128aac",
+    outcome: ObservedLanded,
+    result: "merged to main 2026-08-02T15:50:12Z",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7628 mergedAt 2026-08-02T15:50:12Z, merge c47a128aac", note: "gh pr view, session loyal-ant-382" },
+  },
+  ObservationReceipt {
+    id: "ob-7522-open-draft",
+    subject: "gunb-ai/gunbc#7522",
+    observed_on: "2026-08-02",
+    subject_revision: "head 2778125eae",
+    outcome: ObservedInFlight,
+    result: "open draft, not merged",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7522 state OPEN draft=true at head 2778125eae", note: "gh pr view, session loyal-ant-382" },
+  },
+  ObservationReceipt {
+    id: "ob-7264-merged",
+    subject: "gunb-ai/gunbc#7264",
+    observed_on: "2026-08-02",
+    subject_revision: "merge commit a05897dd41",
+    outcome: ObservedLanded,
+    result: "merged 2026-07-26T12:54:21Z: wrap_decision_predicate Instantiation-wire caller-bypass fix (v2-translate correctness)",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7264 mergedAt 2026-07-26T12:54:21Z, merge a05897dd41", note: "gh pr view, session loyal-ant-382" },
+  },
+  ObservationReceipt {
+    id: "ob-7627-merged",
+    subject: "gunb-ai/gunbc#7627",
+    observed_on: "2026-08-02",
+    subject_revision: "merge commit 7f178d8e25",
+    outcome: ObservedLanded,
+    result: "merged 2026-08-02T13:43:43Z: Lane E self-host probe upstream-semantic stage vocabulary + receipt-totality wall",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7627 mergedAt 2026-08-02T13:43:43Z, merge 7f178d8e25", note: "gh pr view, session loyal-ant-382" },
+  },
+  ObservationReceipt {
+    id: "ob-selfhost-frontier-2026-08-02",
+    subject: "gunb-ai/gunbc emitter_producer_provenance frontier",
+    observed_on: "2026-08-02",
+    subject_revision: "branch head 659271e486 (includes main 6a082ae27d)",
+    outcome: ObservedInFlight,
+    result: "produced=0 green=0 quarantined=6, 27/27 seed-retained",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "src/v2/compiler/self_host/emitter_producer_provenance.dag emitter_produced_baseline, seed_emitter_behavioral_green_baseline, seed_emitter_behavioral_quarantine_baseline", note: "grep verified in tree, session loyal-ant-382" },
+  },
+  ObservationReceipt {
+    id: "ob-7664-merged",
+    subject: "gunb-ai/gunbc#7664",
+    observed_on: "2026-08-02",
+    subject_revision: "merge commit 30710a9083",
+    outcome: ObservedLanded,
+    result: "merged 2026-08-02T19:40:10Z: public carriers re-anchored (bare-minimum contract, five minutes = distress ceiling). Closed the semantic contradiction, NOT the dual-representation class - main still carries present-tense 7599-in-flight prose in five_minute_ci_gate_program_note",
+    evidence: EvidenceAnchor { repo: "gunb-ai/gunbc", reference: "PR #7664 merge 30710a9083b9dec690f9661f885b666b2b3928d0; five_minute_ci_gate_program_note on main", note: "gh pr view + grep, session loyal-ant-382" },
+  },
+]
+
+data selfhost_pilot_note: String = "Second pilot (audit 2026-08-02), RECUT the same evening per the discharge-graph review (docs/strategy/2026-08-02-discharge-graph-review.md). Current shape: contract-v2-self-host-fixed-point carries the fixed-point chain only - production cutover split to contract-v2-production-cutover, old-generator deletion a future downstream retirement contract. gunb-ai/gunbc#7264 DISCHARGES the narrower obl-translate-instantiation-wrap-decision, a declared ObligationPrerequisite of remaining-stages: the parent unblocking is DERIVED by strategy_blockers_discharged while the parent stays open - unblocked-not-advanced as a derivation rather than an authored kind (Finding 1; ClosesPrerequisite retained only for non-obligation prerequisites, zero uses). gunb-ai/gunbc#7627 DISCHARGES obl-frontier-classifier-totality (measurement machinery); the corrected candidate census is a deliberately absent observation (corrected_census_subject), so strategy_measurement_readiness derives MeasurementAbsent and first-module selection is NOT READY - the former Open decision row was deleted, and the recorded rule is: derive the first eligible candidate from the frontier tractability sweep order once the census observation lands, escalating to the operator only on genuine incomparability (Findings 2, 6). The remaining-stages denominator derives from the PUBLIC v2.compiler.self_host.frontier compiler_frontier_roster via selfhost_module_obligation_ids (27 modules, 0 discharged) - a generic remaining-stages contribution cannot move the count (Finding 4). Near-miss controls witnessed: 7599, 7664, and 7605 all carry zero self-host bindings (Finding 8). Dissolve-on for the private/public seam: when a public ProgramContract digest surface exists, the private bare-minimum binding reds on public criteria drift (review, authority-direction section)."
+

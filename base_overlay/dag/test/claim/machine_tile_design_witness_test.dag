@@ -1,0 +1,245 @@
+module test.claim.machine_tile_design_witness
+
+import std.nat { Nat }
+import std.types { Int }
+import extdeps.climbing_holds.types { hold_catalog_clearance_envelope_is_spendable, hold_local_frame_is_ready }
+import strategy.machine_tile_projection {
+  GripProfileConstruction, GripProfileReady, GripProfileRefused,
+  construct_grip_profile, selected_grip_profile, grip_profile_is_constructible,
+  grip_edge_flat_mm, panel_thickness_mm, roundover_radius_mm,
+  extent_anchors_to_live_edge, common_extents,
+}
+import strategy.machine_tile_design {
+  TileEdge, Grip, DatumStep, CableRun, BranchCircuit,
+  CleatAffordance, SeatedReveal, LeadInChamfer, WitnessMark, LowerLocatorPin, BottomBumper,
+  grips, datum_chain, cable_runs, branch_circuits,
+  selected_cleat_affordances, selected_tile_edges, scenario_declared_connector_count,
+  rev_a_power_budget, required_cleat_affordances,
+  minimum_datum_web_mm, tile_overall_width_mm, tile_overall_height_mm,
+  boundary_crossing_run_count, on_tile_dc_run_count, dc_run_population_is_resolved, per_board_budget_mw,
+  per_tile_current_ma, line_drop_per_mille,
+  scenario_a_face_air, scenario_b_rear_air, scenario_c_rear_liquid,
+  scenario_fans_on_tile, scenario_total_wall_projection_mm, scenario_boundary_crossings,
+  scenario_fluid_crossings, selected_scenario_id, scenarios,
+  grip_is_lift_load, grip_is_integrated,
+  hold_is_qualified_for_lift, selected_hold_may_render_silhouette,
+  MachineTileGripIncomplete, MachineTileGripReady,
+  machine_tile_grip_integration, machine_tile_grip_obligation_count, selected_hold,
+  edge_is_straight_datum, edge_is_live, edge_carries_grip,
+  selection_carries_affordance, datum_declared, datum_offset, grip_to_board_web_mm,
+  continuous_capacity_w, total_continuous_capacity_w, total_tiles_served,
+}
+
+data machine_tile_witness_note: String = "Seven witnesses against strategy.machine_tile_design, one per reviewed defect plus one for the root cause. Each is written so that it would have gone RED on the document that was reviewed on 2026-08-10 - a witness that only passes on the fixed version and never had a failing form is decoration, not evidence. What these do NOT witness, stated so the green is not over-read: no claim here touches a cut tile, a weighed lift, a measured temperature, or a purchased supply. They witness that the DESIGN agrees with itself."
+
+data root_cause_witness_note: String = "THE ROOT CAUSE. The reviewed document declared a three-connector removal ritual in its opening paragraph and, later on the same page, placed the supply in a floor plinth - which requires 24-pin ATX plus two 8-pin EPS to cross the tile boundary. Both statements were prose, so neither could contradict the other. Here they are the same number reached two ways: the connector list on the selection, and the count of cable runs that actually cross the boundary. They cannot drift apart without this witness reddening. The contract_b_variant row makes the rejected fork MEASURABLE at five, so the difference between the two contracts is a computed fact rather than an assertion."
+
+test fn witness_interface_contract_is_single_and_three() -> Bool {
+  scenario_declared_connector_count(s: scenario_a_face_air) == 3
+    && boundary_crossing_run_count() == 3
+    && scenario_declared_connector_count(s: scenario_a_face_air) == boundary_crossing_run_count()
+    && scenario_boundary_crossings(s: scenario_a_face_air) == boundary_crossing_run_count()
+}
+
+data external_contract_survives_note: String = "The EXTERNAL contract survives the withdrawal intact, and that is worth stating rather than assuming. Contract A's three boundary crossings are mains, data and BMC - none of them a board DC input - so withdrawing the on-tile DC harness does not change what a person unplugs. What it changes is everything INSIDE the tile, which is exactly the region the false inventory described."
+
+data cable_witness_note: String = "Defect: the cabling is left out. Under Contract A the DC harness did not vanish, it stopped crossing the boundary. This note previously said the check was that all THREE power runs exist and sit in the saddle; that count came from the withdrawn ALTRAD8UD inventory and is gone with it. What survives and is still checked: any run routed in the saddle must not cross the boundary, so a revision that quietly moved a supply off-tile still reds before it reaches a drawing."
+
+data dc_harness_witness_retraction: String = "RETRACTED AND REPLACED. This witness asserted on_tile_dc_run_count() == 3 and count(cable_runs) == 6, and both numbers came from the ALTRAD8UD reading of one 24-pin plus two 8-pin EPS. That reading is false: the board has no 24-pin socket, it carries three 8-pin ATX12V inputs, and how many must be POPULATED is unresolved. So the witness was green on a harness that cannot be drawn, and it was the interface-contract arithmetic - not the prose - that inherited the falsehood. The replacement asserts the standing rather than a count: while the population is unresolved there is no on-tile DC harness to check, and any future edit that authors one without closing the extdeps obligation reds here."
+
+test fn witness_dc_population_is_unresolved_not_invented() -> Bool {
+  !dc_run_population_is_resolved()
+    && on_tile_dc_run_count() == 0
+    && all(cable_runs, r => if r.routed_in_saddle { !r.crosses_tile_boundary } else { true })
+    && all(cable_runs, r => r.length_mm > 0)
+}
+
+data datum_witness_note: String = "Defect: the T-nut is not aligned with anything. Every feature named in the drawing must resolve to exactly one declared datum step, and the web of solid wood left between the grip cut and the board keep-out must survive the minimum. The web check is the one that has teeth: it is the arithmetic that decides whether a deeper grip is allowed, and on the reviewed document neither number existed."
+
+test fn witness_every_feature_is_datumed() -> Bool {
+  datum_declared(id: "d-cleat-bearing")
+    && datum_declared(id: "d-cleat-zone")
+    && datum_declared(id: "d-board-top")
+    && datum_declared(id: "d-board-left")
+    && datum_declared(id: "d-grip-height")
+    && datum_declared(id: "d-grip-depth")
+    && datum_declared(id: "d-foot")
+    && datum_declared(id: "d-saddle")
+    && count(datum_chain) == 8
+    && all(datum_chain, d => d.offset_mm > 0)
+}
+
+test fn witness_grip_to_board_web_survives_minimum() -> Bool {
+  grip_to_board_web_mm() >= minimum_datum_web_mm
+    && datum_offset(id: "d-board-left") > datum_offset(id: "d-grip-depth")
+    && datum_offset(id: "d-saddle") < tile_overall_width_mm
+    && datum_offset(id: "d-board-top") < tile_overall_height_mm
+}
+
+data grip_witness_note: String = "RETRACTED AND REPLACED. The previous witness, witness_lift_grips_are_integrated_and_never_feet, asserted that every lift-carrying grip is CUT INTO the tile edge and that a bolted hold is admitted only in the colour role because it carries nothing and therefore needs no datum. That second clause was the retracted reasoning written as a law, and the law then held the design in place: with the witness green, restoring the operator's requested climbing hold would have RED-ed the suite, so the bad inference had acquired enforcement. It was committed without the suite being run, so it sat red rather than blocking the change - which is the only reason this was caught at all. What survives from the original defect is the first clause: the resin grips were acting as feet, so the part hands trust was also the part the tile is dragged on. That is a real finding and it is re-asserted below."
+
+data grip_witness_replacement_note: String = "The replacement asserts the TRUE claim, which is the inverse of the old one on realization and identical on contact. A lift-carrying grip is a BOLTED HOLD, and it has a datum - the hold's own frame, origin at the bolt axis where it pierces the mounting face. The integrated edge grips remain in the model as comparison candidates in the colour role, so the suite still discriminates: if a future edit quietly promotes a routed grip back to carrying the lift, the realization clause reds."
+
+test fn witness_lift_holds_are_bolted_and_never_feet() -> Bool {
+  all(grips, g => if grip_is_lift_load(g: g) { !grip_is_integrated(g: g) } else { true })
+    && all(grips, g => if grip_is_lift_load(g: g) { !g.contacts_bench_at_rest } else { true })
+    && count(filter(grips, g => grip_is_lift_load(g: g))) == 2
+    && count(filter(grips, g => !grip_is_lift_load(g: g))) == 2
+    && all(grips, g => if !grip_is_lift_load(g: g) { grip_is_integrated(g: g) } else { true })
+}
+
+data hold_qualification_witness_note: String = "The hold is the SELECTED lift interface and is NOT yet qualified to carry a person's tile, and both halves must stay true at once. This is the pairing the earlier reasoning collapsed: it treated 'not yet qualified' and 'not drawable' as reasons to remove the part, when they are reasons to gate it. A vendor's climbing-wall standing does not transfer - loading direction, cycle count, panel stock, edge distance and failure consequence all differ - so selection and qualification are separate facts and the model states them separately."
+
+test fn witness_selected_hold_is_gated_not_deleted() -> Bool {
+  count(filter(grips, g => grip_is_lift_load(g: g))) == 2
+    && !hold_is_qualified_for_lift()
+    && !selected_hold_may_render_silhouette()
+}
+
+data cleat_witness_note: String = "Defect: the cleat is fine as long as it is very obvious when you have mounted it. Legibility is not a property a drawing can assert about itself, so it is decomposed into five affordances that either exist on the selection or do not. A future revision that simplifies back to a plain cleat loses the affordances and reds here rather than quietly shipping a tile that hangs by feel."
+
+test fn witness_cleat_seating_is_legible() -> Bool {
+  all(required_cleat_affordances, a => selection_carries_affordance(a: a))
+    && count(selected_cleat_affordances) == 5
+}
+
+data shape_witness_note: String = "Defect: make the boards not uniform, and let the grips complement the shape. The rule that makes that safe rather than unbuildable: both horizontal edges are straight datums, both vertical edges carry a grip, and exactly one edge is live. An irregular edge that is also a datum would make every dimension on the tile unmeasurable, which is the failure mode this check exists to refuse."
+
+test fn witness_shape_is_irregular_only_where_nothing_is_measured() -> Bool {
+  count(selected_tile_edges) == 4
+    && count(filter(selected_tile_edges, e => edge_is_straight_datum(e: e))) == 2
+    && count(filter(selected_tile_edges, e => edge_is_live(e: e))) == 1
+    && count(filter(selected_tile_edges, e => edge_carries_grip(e: e))) == 2
+    && all(selected_tile_edges, e => if edge_is_live(e: e) { !edge_is_straight_datum(e: e) } else { true })
+}
+
+data power_witness_note: String = "Defect: find an appropriate supply, and state the wattage for the whole build. Four numbers that must agree - the budget is the product, the ceiling carries a quarter of margin, the supply lands its peak near the middle of its efficiency curve rather than on its shoulder, and the branch circuits carry the ceiling with the 80 percent continuous rule applied. The circuit check is what turns a supply choice into a wall that can actually be plugged in."
+
+test fn witness_power_budget_closes() -> Bool {
+  rev_a_power_budget.total_budget_w == rev_a_power_budget.board_count * rev_a_power_budget.per_board_budget_w
+    && rev_a_power_budget.planning_ceiling_w == rev_a_power_budget.total_budget_w * 5 / 4
+    && rev_a_power_budget.per_tile_psu_rated_w * 100 >= rev_a_power_budget.per_tile_peak_w * 175
+    && rev_a_power_budget.per_tile_psu_rated_w * 100 <= rev_a_power_budget.per_tile_peak_w * 250
+}
+
+test fn witness_branch_circuits_carry_the_ceiling() -> Bool {
+  total_continuous_capacity_w() >= rev_a_power_budget.planning_ceiling_w
+    && total_tiles_served() == rev_a_power_budget.board_count
+    && count(branch_circuits) == 2
+    && all(branch_circuits, c =>
+         continuous_capacity_w(c: c) >= c.tiles_served * rev_a_power_budget.per_board_budget_w)
+}
+
+data distribution_witness_note: String = "OPERATOR DIRECTION 2026-08-11 - one large supply, one line per board, standard interface generated locally. The claim that decides the distribution voltage is not an opinion, it is a voltage drop, so it is computed here rather than argued. 350 W per tile over 10 m of 14 AWG conductor: at 48 V the drop is about 12 parts per thousand and at 12 V about 201. A revision that quietly proposed a 12 V bus on ordinary flex would red here before anyone drew it."
+
+test fn witness_48v_distribution_beats_12v_on_conductor() -> Bool {
+  per_tile_current_ma(watts_mw: per_board_budget_mw, volts: 48) < 8000
+    && per_tile_current_ma(watts_mw: per_board_budget_mw, volts: 12) > 25000
+    && line_drop_per_mille(watts_mw: per_board_budget_mw, volts: 48) <= 30
+    && line_drop_per_mille(watts_mw: per_board_budget_mw, volts: 12) >= 150
+}
+
+data ritual_witness_note: String = "The property worth protecting when the supply leaves the tile is NOT the number three - it is that the declared connector list and the actual crossings agree, and that no crossing is a fat energised DC connector undone by hand. Candidate C keeps three because 48 V at 7.3 A is ordinary two-core flex. Candidate D goes to five because a coolant loop genuinely adds two couplings, and the model states that rather than hiding it - a design may cost more connectors, it may not misreport them."
+
+test fn witness_rejected_rear_fixed_fork_stays_measurable() -> Bool {
+  let fixed = MachineTileScenario {
+    id: "synthetic-rear-fixed",
+    label: "rejected fork - supply fixed to the support",
+    external_connectors: [Atx24Pin, Eps8PinA, Eps8PinB, DataEthernet, BmcEthernet],
+    board: AsrockAltrad8udSingleSocket,
+    power_placement: TileRearAttached,
+    rear_standing: RearFixedToSupport,
+    cooling: DualAirTower,
+    active_data_ports: 1,
+    tile_count: 6,
+    wall_to_backboard_face_mm: 45,
+    rear_service_depth_mm: 126,
+    carrier_thickness_mm: 18,
+    tile_plane_to_front_tip_mm: 138,
+    psu_fans_on_tile: 1,
+    cooler_fans_on_tile: 2,
+    auxiliary_fans_on_tile: 0,
+    mass_estimate_dg: 800,
+    note: "Constructed here, not stored as a row, so the fork is measured without a second configuration vocabulary.",
+  }
+  scenario_boundary_crossings(s: fixed) == 5
+    && scenario_declared_connector_count(s: fixed) == 5
+    && scenario_boundary_crossings(s: scenario_a_face_air) == 3
+}
+
+data scenario_witness_note: String = "REPLACES witness_each_candidate_strictly_reduces_the_tile, which asserted fans_on_tile 0 and depth 50 mm for the liquid candidate while the SAME module carried notes retracting both. That contradiction shipped green, because a witness and a retraction note are different kinds of statement and nothing forced them to meet. These replacements read the scenario layer, which is now the single authority for both quantities - so a future retraction that leaves a number standing has nowhere to hide."
+
+test fn witness_depth_is_derived_and_liquid_is_not_shallow() -> Bool {
+  let a = scenario_total_wall_projection_mm(s: scenario_a_face_air)
+  let b = scenario_total_wall_projection_mm(s: scenario_b_rear_air)
+  let c = scenario_total_wall_projection_mm(s: scenario_c_rear_liquid)
+  scenario_c_rear_liquid.tile_plane_to_front_tip_mm < scenario_a_face_air.tile_plane_to_front_tip_mm
+    && b > a
+    && b > c
+    && c > a
+    && c < a + 10
+}
+
+data fan_witness_note: String = "The retraction, enforced instead of narrated. No scenario may claim zero fans on the tile: a rear-attached supply keeps its own fan, and cold plates cool processors only - memory, regulators, network interfaces and the boot device still need moving air, with no thermal observation for a bare vertical board without any. A revision that reintroduces a zero reds here."
+
+test fn witness_no_scenario_claims_zero_fans() -> Bool {
+  all(scenarios, s => scenario_fans_on_tile(s: s) > 0)
+    && scenario_fans_on_tile(s: scenario_a_face_air) == 3
+    && scenario_fans_on_tile(s: scenario_c_rear_liquid) == 2
+}
+
+data preset_crossing_witness_note: String = "Crossings are derived from the power placement, the active data port count and the cooling realisation - never stored. Presets A and B agree at three because moving the supply behind the carrier does not change what crosses the boundary; C reaches five because a coolant loop genuinely adds two couplings and the model reports them."
+
+test fn witness_preset_crossings_derive_correctly() -> Bool {
+  scenario_boundary_crossings(s: scenario_a_face_air) == 3
+    && scenario_boundary_crossings(s: scenario_b_rear_air) == 3
+    && scenario_boundary_crossings(s: scenario_c_rear_liquid) == 5
+    && scenario_fluid_crossings(s: scenario_c_rear_liquid) == 2
+    && selected_scenario_id == scenario_a_face_air.id
+}
+
+
+data grip_geometry_witness_note: String = "The witness that would have caught the error this carrier shipped. R12 roundovers on both faces of an 18 mm panel are geometrically impossible - the two arris cuts overlap - and the renderer computed 18 minus 24 in Nat arithmetic, which cannot represent the answer and therefore produced a number instead of a refusal. The refused case is checked directly rather than only the selected one, so the law has a demonstrated failing form and is not decoration."
+
+test fn witness_impossible_grip_roundovers_refuse() -> Bool {
+  let impossible = construct_grip_profile(panel_mm: 18, front_mm: 12, rear_mm: 12)
+  let refused = match impossible {
+    GripProfileReady { edge_flat_mm, note } => false,
+    GripProfileRefused { panel_thickness_mm, front_radius_mm, rear_radius_mm, note } => true,
+  }
+  refused
+    && grip_profile_is_constructible()
+    && roundover_radius_mm * 2 == panel_thickness_mm
+    && grip_edge_flat_mm() == 0
+}
+
+data live_edge_witness_note: String = "The shape rule held since Rev A, now enforced against the projection rather than stated in prose: nothing is dimensioned from the live edge. RightLiveDatum exists so a renderer can NAME that edge when drawing the outline, and any extent anchoring to it is a defect."
+
+test fn witness_no_extent_anchors_to_the_live_edge() -> Bool {
+  all(common_extents(), e => !extent_anchors_to_live_edge(e: e))
+}
+
+data grip_integration_witness_note: String = "The FIRST CONSUMER witness. Until now the hold existed as an extdeps row nothing imported, which is the substrate-without-consumer shape this project freezes: good external facts plus good witnesses is still not an integrated design. These assert that the machine-tile carrier actually reads the external row and reaches a typed result from it."
+
+test fn witness_grip_integration_is_incomplete_not_ready() -> Bool {
+  match machine_tile_grip_integration() {
+    MachineTileGripIncomplete { missing } => count(missing) > 0,
+    MachineTileGripReady { receipt } => false,
+  }
+}
+
+data grip_obligation_derivation_note: String = "Six obligations, each DERIVED from a field of the imported extdeps row rather than listed here: thread unread, mounting face unread, shape artifact absent, material unread, manufacturer SKU unread, and the proof-load receipt this carrier owns because no catalog can settle it. The count is asserted exactly so that a hand-added or hand-removed obligation reds - the list must shorten because a fact landed upstream, never because someone edited a note."
+
+test fn witness_grip_obligations_are_derived_and_complete() -> Bool {
+  machine_tile_grip_obligation_count() == 6
+    && !selected_hold_may_render_silhouette()
+    && !hold_is_qualified_for_lift()
+}
+
+data grip_gating_witness_note: String = "The lift role is gated on THREE independent things and must refuse while any is open: a locatable mounting axis, admissible clearance, and a proof-load receipt. Clearance is currently admissible - the relayed page reading is spendable - so this witness would pass vacuously if it only checked clearance. It refuses on the other two, which is the discriminating half."
+
+test fn witness_lift_qualification_refuses_on_axis_and_proof_load() -> Bool {
+  !hold_is_qualified_for_lift()
+    && hold_catalog_clearance_envelope_is_spendable(row: selected_hold)
+    && !hold_local_frame_is_ready(row: selected_hold)
+}

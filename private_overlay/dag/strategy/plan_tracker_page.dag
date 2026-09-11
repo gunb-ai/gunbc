@@ -1,0 +1,445 @@
+module strategy.plan_tracker_page
+
+import std.types { Int, String, List, Bool }
+import std.markup { Fragment, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import strategy.year_end_plan {
+  PlanItem, PlanMilestone, PlanWorkstream, ExecutionMode, PlanItemStatus,
+  M1InternalVertical, M1bInternalS0Proof, M2FirstExternal, M2bPrivateCohort, M3YearEndGate,
+  M4JanuaryLaunch,
+  Hardware, StorageFabric, RunnerSoftware, SecurityCompliance, AcquisitionMarketing,
+  OpsMachineHealth, EconomicsQa, PeopleAndProcess,
+  OperatorExclusive, AgentParallel, ExternalLead, CalendarObservation,
+  NotStarted, InProgress, Done, DeclaredBehind,
+  year_end_plan_items, milestone_anchor_day, milestone_anchor_date, milestone_order,
+  latest_start_day, item_at_risk_at_day, item_late_at_day, item_is_done, item_not_started,
+  items_at_risk_at_day, items_late_at_day, find_item,
+}
+
+// WHAT I NEED BY WHEN. One page over strategy.year_end_plan, drawn from the plan graph rather
+// than maintained beside it - a tracker kept by hand is a second authority for the same dates and
+// drifts from the plan the first time an item moves. Every date on this page DERIVES: the anchor
+// from the milestone, the latest safe start from the anchor minus the item's floor duration.
+//
+// The calendar below is the one piece of arithmetic the plan did not already carry. The plan
+// speaks in day offsets from its epoch and names only the five anchor dates; a reader needs
+// "when do I have to start", which is a date, not an offset. Rather than transcribe a table of
+// dates - which would rot the moment an anchor moved - day_to_iso computes it, and it is checked
+// against the five anchor dates the plan already declares independently. Those five agreements
+// are what make the other fifty-seven derived dates trustworthy.
+
+data epoch_iso: String = "2026-08-29"
+data day_aug_end: Int = 2
+data day_sep_end: Int = 32
+data day_oct_end: Int = 63
+data day_nov_end: Int = 93
+data day_dec_end: Int = 124
+
+fn pad2(v: Int) -> String {
+  if v >= 10 { to_string(v) } else { join(["0", to_string(v)], "") }
+}
+
+fn iso(y: Int, m: Int, d: Int) -> String {
+  join([to_string(y), "-", pad2(v: m), "-", pad2(v: d)], "")
+}
+
+fn day_to_iso(day: Int) -> String {
+  if day < 0 {
+    "before-epoch"
+  } else {
+    if day <= day_aug_end {
+      iso(y: 2026, m: 8, d: 29 + day)
+    } else {
+      if day <= day_sep_end {
+        iso(y: 2026, m: 9, d: day - day_aug_end)
+      } else {
+        if day <= day_oct_end {
+          iso(y: 2026, m: 10, d: day - day_sep_end)
+        } else {
+          if day <= day_nov_end {
+            iso(y: 2026, m: 11, d: day - day_oct_end)
+          } else {
+            if day <= day_dec_end {
+              iso(y: 2026, m: 12, d: day - day_nov_end)
+            } else {
+              iso(y: 2027, m: 1, d: day - day_dec_end)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn calendar_agrees_with_anchors() -> Bool {
+  day_to_iso(day: milestone_anchor_day(m: M1InternalVertical)) == milestone_anchor_date(m: M1InternalVertical)
+    && day_to_iso(day: milestone_anchor_day(m: M1bInternalS0Proof)) == milestone_anchor_date(m: M1bInternalS0Proof)
+    && day_to_iso(day: milestone_anchor_day(m: M2FirstExternal)) == milestone_anchor_date(m: M2FirstExternal)
+    && day_to_iso(day: milestone_anchor_day(m: M2bPrivateCohort)) == milestone_anchor_date(m: M2bPrivateCohort)
+    && day_to_iso(day: milestone_anchor_day(m: M3YearEndGate)) == milestone_anchor_date(m: M3YearEndGate)
+    && day_to_iso(day: milestone_anchor_day(m: M4JanuaryLaunch)) == milestone_anchor_date(m: M4JanuaryLaunch)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Labels. The page names variants; the plan owns them.
+// ---------------------------------------------------------------------------------------------
+
+fn workstream_label(w: PlanWorkstream) -> String {
+  match w {
+    Hardware => "Hardware and infrastructure"
+    StorageFabric => "Storage fabric"
+    RunnerSoftware => "Runner software"
+    SecurityCompliance => "Security and compliance"
+    AcquisitionMarketing => "Customer acquisition"
+    OpsMachineHealth => "Operations and machine health"
+    EconomicsQa => "Money and economics"
+    PeopleAndProcess => "People and process"
+  }
+}
+
+fn workstream_slug(w: PlanWorkstream) -> String {
+  match w {
+    Hardware => "hardware"
+    StorageFabric => "storage"
+    RunnerSoftware => "runner"
+    SecurityCompliance => "compliance"
+    AcquisitionMarketing => "acquisition"
+    OpsMachineHealth => "ops"
+    EconomicsQa => "money"
+    PeopleAndProcess => "people"
+  }
+}
+
+fn milestone_label(m: PlanMilestone) -> String {
+  match m {
+    M1InternalVertical => "M1 internal vertical"
+    M1bInternalS0Proof => "M1b internal S0 proof"
+    M2FirstExternal => "M2 first external"
+    M2bPrivateCohort => "M2b private cohort"
+    M3YearEndGate => "M3 year-end gate"
+    M4JanuaryLaunch => "M4 January launch"
+  }
+}
+
+fn mode_label(e: ExecutionMode) -> String {
+  match e {
+    OperatorExclusive => "you, exclusively"
+    AgentParallel => "agent, parallel"
+    ExternalLead => "external lead time"
+    CalendarObservation => "calendar only"
+  }
+}
+
+fn status_label(s: PlanItemStatus) -> String {
+  match s {
+    NotStarted => "not started"
+    InProgress { note: n } => join(["in progress - ", n], "")
+    Done { receipt: r } => join(["done - ", r], "")
+    DeclaredBehind { reason: r } => join(["behind - ", r], "")
+  }
+}
+
+// AT RISK is the only colour that means act now: the item's latest safe start has passed and it
+// has not begun. LATE means its anchor has passed undone. Everything else is simply upcoming, and
+// an upcoming item with a near start date is the thing this page exists to surface early.
+fn urgency_class(i: PlanItem, today: Int) -> String {
+  if item_late_at_day(i: i, today_day: today) {
+    "late"
+  } else {
+    if item_at_risk_at_day(i: i, today_day: today) {
+      "risk"
+    } else {
+      if item_is_done(i: i) { "done" } else { "ahead" }
+    }
+  }
+}
+
+fn days_until_start(i: PlanItem, today: Int) -> Int {
+  latest_start_day(i: i) - today
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rendering helpers.
+// ---------------------------------------------------------------------------------------------
+
+fn tk_th(text: String) -> Fragment { el(tag: "th", children: [txt(s: text)]) }
+fn tk_td(text: String) -> Fragment { el(tag: "td", children: [txt(s: text)]) }
+fn tk_td_cls(cls: String, text: String) -> Fragment { el_class(tag: "td", cls: cls, children: [txt(s: text)]) }
+fn tk_para(text: String) -> Fragment { el(tag: "p", children: [txt(s: text)]) }
+fn tk_note(text: String) -> Fragment { el_class(tag: "p", cls: "note", children: [txt(s: text)]) }
+fn tk_h2(text: String) -> Fragment { el(tag: "h2", children: [txt(s: text)]) }
+fn tk_h3(text: String) -> Fragment { el(tag: "h3", children: [txt(s: text)]) }
+
+fn tk_head_row(cells: List<String>) -> Fragment {
+  el(tag: "thead", children: [el(tag: "tr", children: map(cells, c => tk_th(text: c)))])
+}
+
+fn tk_scroll(t: Fragment) -> Fragment {
+  el_class(tag: "div", cls: "scroll", children: [t])
+}
+
+fn svg_rect(x: Int, y: Int, w: Int, h: Int, cls: String) -> Fragment {
+  el_attrs(tag: "rect", attributes: [
+    attr(name: "x", value: to_string(x)), attr(name: "y", value: to_string(y)),
+    attr(name: "width", value: to_string(w)), attr(name: "height", value: to_string(h)),
+    attr(name: "class", value: cls),
+  ], children: [])
+}
+
+fn svg_line(x1: Int, y1: Int, x2: Int, y2: Int, cls: String) -> Fragment {
+  el_attrs(tag: "line", attributes: [
+    attr(name: "x1", value: to_string(x1)), attr(name: "y1", value: to_string(y1)),
+    attr(name: "x2", value: to_string(x2)), attr(name: "y2", value: to_string(y2)),
+    attr(name: "class", value: cls),
+  ], children: [])
+}
+
+fn svg_text(x: Int, y: Int, cls: String, content: String) -> Fragment {
+  el_attrs(tag: "text", attributes: [
+    attr(name: "x", value: to_string(x)), attr(name: "y", value: to_string(y)),
+    attr(name: "class", value: cls),
+  ], children: [txt(s: content)])
+}
+
+fn svg_figure(w: Int, h: Int, label: String, children: List<Fragment>) -> Fragment {
+  el_class(tag: "div", cls: "scroll", children: [
+    el_attrs(tag: "svg", attributes: [
+      attr(name: "viewBox", value: join(["0 0 ", to_string(w), " ", to_string(h)], "")),
+      attr(name: "role", value: "img"),
+      attr(name: "class", value: "diagram"),
+      attr(name: "aria-label", value: label),
+    ], children: children),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DEPENDENCY DRAWING. Position is DERIVED, never authored: the column is the item's
+// milestone order and the row is how many items in that same milestone sort before it by
+// (rank, id). That total order is what makes the layout stable - two items can share a rank,
+// so rank alone would stack them on top of each other and silently hide an edge.
+//
+// Edges are drawn from the real depends_on lists through find_item, so an edge exists on this
+// page exactly when it exists in the graph. A drawing maintained beside the graph would be a
+// second authority for the same relation and would go stale on the first re-rank; this one
+// cannot, because there is nothing to update.
+// ---------------------------------------------------------------------------------------------
+
+data col_px: Int = 250
+data col_left_px: Int = 30
+data row_px: Int = 26
+data row_top_px: Int = 64
+data node_w_px: Int = 196
+data node_h_px: Int = 18
+
+fn milestone_items(m: PlanMilestone) -> List<PlanItem> {
+  filter(year_end_plan_items, i => milestone_order(m: i.milestone) == milestone_order(m: m))
+}
+
+fn sorts_before(j: PlanItem, i: PlanItem) -> Bool {
+  j.rank < i.rank || (j.rank == i.rank && j.id < i.id)
+}
+
+fn item_row(i: PlanItem) -> Int {
+  count(filter(milestone_items(m: i.milestone), j => sorts_before(j: j, i: i)))
+}
+
+fn item_x(i: PlanItem) -> Int {
+  col_left_px + (milestone_order(m: i.milestone) - 1) * col_px
+}
+
+fn item_y(i: PlanItem) -> Int {
+  row_top_px + item_row(i: i) * row_px
+}
+
+fn max_rows() -> Int {
+  fold(year_end_plan_items, init: 0, f: (acc, i) => if item_row(i: i) > acc { item_row(i: i) } else { acc })
+}
+
+fn graph_height() -> Int {
+  row_top_px + (max_rows() + 2) * row_px
+}
+
+fn graph_width() -> Int {
+  col_left_px + 5 * col_px
+}
+
+fn dep_edges_for(i: PlanItem) -> List<Fragment> {
+  fold(i.depends_on, init: [], f: (acc, d) => concat(acc, map(find_item(id: d), p =>
+    svg_line(x1: item_x(i: p) + node_w_px, y1: item_y(i: p) + node_h_px / 2,
+             x2: item_x(i: i), y2: item_y(i: i) + node_h_px / 2, cls: "dep"))))
+}
+
+fn all_dep_edges() -> List<Fragment> {
+  fold(year_end_plan_items, init: [], f: (acc, i) => concat(acc, dep_edges_for(i: i)))
+}
+
+fn graph_node(i: PlanItem, today: Int) -> Fragment {
+  el(tag: "g", children: [
+    svg_rect(x: item_x(i: i), y: item_y(i: i), w: node_w_px, h: node_h_px,
+             cls: join(["pnode ", urgency_class(i: i, today: today)], "")),
+    svg_text(x: item_x(i: i) + 5, y: item_y(i: i) + 13, cls: "plabel", content: i.id),
+  ])
+}
+
+fn milestone_headers() -> List<Fragment> {
+  map(all_milestones(), m => el(tag: "g", children: [
+    svg_text(x: col_left_px + (milestone_order(m: m) - 1) * col_px, y: 22, cls: "phead",
+             content: milestone_label(m: m)),
+    svg_text(x: col_left_px + (milestone_order(m: m) - 1) * col_px, y: 40, cls: "pdate",
+             content: milestone_anchor_date(m: m)),
+  ]))
+}
+
+fn all_milestones() -> List<PlanMilestone> {
+  [M1InternalVertical, M1bInternalS0Proof, M2FirstExternal, M2bPrivateCohort, M3YearEndGate, M4JanuaryLaunch]
+}
+
+fn dependency_diagram(today: Int) -> Fragment {
+  svg_figure(w: graph_width(), h: graph_height(),
+    label: "Year-end plan dependency graph, columns are milestones and edges are declared dependencies",
+    children: concat(milestone_headers(),
+      concat(all_dep_edges(),
+             map(year_end_plan_items, i => graph_node(i: i, today: today)))))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE TABLES. One per workstream, because the operator reads this by the kind of work rather
+// than by the graph, and every row states the two dates that matter: when it is due and the
+// last day it can start and still make that date.
+// ---------------------------------------------------------------------------------------------
+
+fn blocks_of(i: PlanItem) -> List<PlanItem> {
+  filter(year_end_plan_items, j => any(j.depends_on, d => d == i.id))
+}
+
+fn item_row_cells(i: PlanItem, today: Int) -> Fragment {
+  el_class(tag: "tr", cls: urgency_class(i: i, today: today), children: [
+    tk_td(text: i.id),
+    tk_td(text: milestone_anchor_date(m: i.milestone)),
+    tk_td_cls(cls: "start", text: day_to_iso(day: latest_start_day(i: i))),
+    tk_td(text: to_string(days_until_start(i: i, today: today))),
+    tk_td(text: to_string(i.min_calendar_days)),
+    tk_td(text: mode_label(e: i.execution_mode)),
+    tk_td(text: if count(i.depends_on) == 0 { "-" } else { join(i.depends_on, ", ") }),
+    tk_td(text: if count(blocks_of(i: i)) == 0 { "-" } else { join(map(blocks_of(i: i), b => b.id), ", ") }),
+    tk_td_cls(cls: "dim", text: join(i.relates_to, ", ")),
+    tk_td(text: status_label(s: i.status)),
+  ])
+}
+
+fn workstream_table(w: PlanWorkstream, today: Int) -> Fragment {
+  let rows = filter(year_end_plan_items, i => workstream_slug(w: i.workstream) == workstream_slug(w: w))
+  el(tag: "div", children: [
+    tk_h3(text: join([workstream_label(w: w), " - ", to_string(count(rows)), " items"], "")),
+    tk_scroll(t: el(tag: "table", children: [
+      tk_head_row(cells: ["item", "due", "start by", "days to start", "floor days", "who", "needs", "blocks", "modelled in", "status"]),
+      el(tag: "tbody", children: map(sort_by(rows, fn(i) { latest_start_day(i: i) }), i => item_row_cells(i: i, today: today))),
+    ])),
+  ])
+}
+
+fn all_workstreams() -> List<PlanWorkstream> {
+  [Hardware, EconomicsQa, RunnerSoftware, StorageFabric, OpsMachineHealth, AcquisitionMarketing, SecurityCompliance, PeopleAndProcess]
+}
+
+// ---------------------------------------------------------------------------------------------
+// AS-OF. Urgency is the one thing on this page that is not time-invariant: the dates derive and
+// never rot, but "at risk" is a statement about today. Rather than let the page imply a currency
+// it cannot have, the as-of day is declared, rendered as a date beside every count, and named as
+// the thing to change on regeneration. A tracker that silently colours itself against a stale day
+// is worse than one that shows its date, because the green is what gets believed.
+// ---------------------------------------------------------------------------------------------
+
+data as_of_day: Int = 10
+
+fn standing_banner(today: Int) -> Fragment {
+  let late = count(items_late_at_day(today_day: today))
+  let risk = count(items_at_risk_at_day(today_day: today))
+  let started = count(filter(year_end_plan_items, i => !item_not_started(i: i)))
+  el_class(tag: "div", cls: if late > 0 { "banner late" } else { if risk > 0 { "banner risk" } else { "banner ok" } }, children: [
+    txt(s: join([
+      "As of ", day_to_iso(day: today), " (plan day ", to_string(today), "): ",
+      to_string(count(year_end_plan_items)), " items, ",
+      to_string(started), " started, ",
+      to_string(risk), " past their latest safe start, ",
+      to_string(late), " past their milestone.",
+    ], "")),
+  ])
+}
+
+fn next_starts(today: Int, horizon: Int) -> List<PlanItem> {
+  filter(year_end_plan_items, i => item_not_started(i: i)
+    && latest_start_day(i: i) >= today
+    && latest_start_day(i: i) <= today + horizon)
+}
+
+fn upcoming_table(today: Int, horizon: Int) -> Fragment {
+  let rows = sort_by(next_starts(today: today, horizon: horizon), fn(i) { latest_start_day(i: i) })
+  tk_scroll(t: el(tag: "table", children: [
+    tk_head_row(cells: ["start by", "days", "item", "who", "why it takes that long"]),
+    el(tag: "tbody", children: map(rows, i => el(tag: "tr", children: [
+      tk_td_cls(cls: "start", text: day_to_iso(day: latest_start_day(i: i))),
+      tk_td(text: to_string(days_until_start(i: i, today: today))),
+      tk_td(text: i.id),
+      tk_td(text: mode_label(e: i.execution_mode)),
+      tk_td_cls(cls: "dim", text: join([to_string(i.min_calendar_days), " day floor, due ", milestone_anchor_date(m: i.milestone)], "")),
+    ]))),
+  ]))
+}
+
+fn tracker_body() -> Fragment {
+  el_attrs(tag: "div", attributes: [attr(name: "data-generated-by", value: "strategy.plan_tracker_page")], children: [
+    el(tag: "style", children: [txt(s: tracker_css)]),
+    el_class(tag: "div", cls: "wrap", children: concat([
+      el(tag: "h1", children: [txt(s: "What I need, by when")]),
+      tk_para(text: tracker_thesis),
+      standing_banner(today: as_of_day),
+
+      tk_h2(text: "The next things that have to start"),
+      tk_para(text: "Ordered by the last day the item can begin and still meet its milestone. That date is the anchor minus the item's floor duration, so an external-lead item with a long floor demands attention months before the thing it produces is due."),
+      upcoming_table(today: as_of_day, horizon: 45),
+
+      tk_h2(text: "The graph"),
+      tk_para(text: "Columns are milestones, left to right in anchor order. A line runs from a dependency to the item that needs it. Position and edges both derive from the plan, so this drawing cannot disagree with the graph it draws."),
+      dependency_diagram(today: as_of_day),
+      tk_note(text: legend_note),
+
+      tk_h2(text: "By kind of work"),
+      tk_para(text: "Seven workstreams, but not seven lanes - hardware handling, legal review, commercial decisions and incident ownership converge on one person, so an honest week runs one exclusive build item alongside several external queues."),
+    ],
+    concat(map(all_workstreams(), w => workstream_table(w: w, today: as_of_day)), [
+      tk_note(text: derivation_note),
+      el(tag: "footer", children: [txt(s: "generated by strategy.plan_tracker_page from strategy.year_end_plan - no date on this page is authored")]),
+    ]))),
+  ])
+}
+
+fn missing_tracker_markers(html: String) -> List<String> {
+  filter(["What I need, by when", "The graph", "By kind of work", "data-generated-by"],
+         m => !string_contains(s: html, pattern: m))
+}
+
+fn guard_tracker(html: String) -> String {
+  let missing = missing_tracker_markers(html: html)
+  if count(missing) == 0 {
+    html
+  } else {
+    join(["REFUSED: generated tracker omits required sections: ", join(missing, ", ")], "")
+  }
+}
+
+fn render_tracker_body() -> String {
+  match try_serialize_html_source(node: tracker_body()) {
+    EmitOk { html: h } => guard_tracker(html: h)
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+  }
+}
+
+data tracker_thesis: String = "Every date here is computed from strategy.year_end_plan. The milestone anchor fixes when an item is due; the item's own floor duration fixes the last day it can start. Nothing on this page is typed in by hand, which is the point: a tracker kept beside the plan becomes a second authority for the same dates and disagrees with it within a week."
+
+data legend_note: String = "Red is past its milestone. Amber is past its latest safe start and not begun - the only colour that means act today. Grey is done. Everything else is upcoming."
+
+data derivation_note: String = "Start-by dates derive as milestone anchor minus floor duration and assume the item runs alone. Where several exclusive items share a start window the real constraint is tighter than any single row shows, because the plan models one operator and not seven parallel lanes."
+
+data tracker_css: String = "*\{box-sizing:border-box\}body\{margin:0\}.wrap\{max-width:1180px;margin:0 auto;padding:2rem 1.2rem;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1b1b1b;background:#fbfaf7\}h1\{font-size:1.9rem;margin:0 0 .6rem;letter-spacing:-.02em\}h2\{font-size:1.25rem;margin:2.4rem 0 .5rem;padding-top:1rem;border-top:1px solid #e2ded4\}h3\{font-size:.98rem;margin:1.6rem 0 .4rem;color:#3d3a33\}p\{margin:0 0 .9rem;font-size:.93rem;line-height:1.55;color:#4a463d\}p.note\{font-size:.83rem;color:#78736a;font-style:italic\}.banner\{padding:.7rem .95rem;border-radius:4px;font-size:.9rem;font-weight:600;margin:.6rem 0 1.4rem;border:1px solid\}.banner.ok\{background:#eef6ee;border-color:#bcd8bc;color:#2c5c2c\}.banner.risk\{background:#fdf4e3;border-color:#e3cd9a;color:#7a5a12\}.banner.late\{background:#fbeceb;border-color:#e0b3ae;color:#8a2f26\}.scroll\{overflow-x:auto;margin:0 0 1.2rem\}table\{border-collapse:collapse;width:100%;font-size:.82rem\}th\{text-align:left;padding:.45rem .6rem;border-bottom:2px solid #d8d3c8;font-weight:600;white-space:nowrap;color:#3d3a33\}td\{padding:.4rem .6rem;border-bottom:1px solid #ece8df;vertical-align:top\}td.dim\{color:#8d887e;font-family:ui-monospace,Menlo,monospace;font-size:.75rem\}td.start\{font-family:ui-monospace,Menlo,monospace;white-space:nowrap\}tr.risk td\{background:#fdf7ea\}tr.late td\{background:#fbeeed\}tr.done td\{color:#9a958b\}svg.diagram\{width:100%;height:auto;display:block;margin:1rem 0\}svg.diagram rect.pnode\{stroke:#b9b3a6;stroke-width:1;fill:#fff\}svg.diagram rect.pnode.risk\{fill:#fbeacd;stroke:#d9b877\}svg.diagram rect.pnode.late\{fill:#f6d5d1;stroke:#cf9089\}svg.diagram rect.pnode.done\{fill:#e8e5de\}svg.diagram line.dep\{stroke:#a8a294;stroke-width:1;stroke-opacity:.65\}svg.diagram text.plabel\{font-family:ui-monospace,Menlo,monospace;font-size:9.5px;fill:#33302a\}svg.diagram text.phead\{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:700;fill:#33302a\}svg.diagram text.pdate\{font-family:ui-monospace,Menlo,monospace;font-size:10px;fill:#8d887e\}footer\{margin-top:2.4rem;padding-top:1rem;border-top:1px solid #e2ded4;font-size:.78rem;color:#9a958b\}"

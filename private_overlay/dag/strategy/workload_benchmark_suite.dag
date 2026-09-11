@@ -1,0 +1,1164 @@
+module strategy.workload_benchmark_suite
+
+import std.types { Int, List, NonEmptyStr, Bool }
+import strategy.ci_acquisition {
+  SpendStanding, PublicStandardFree, PaidRunnerObserved, CustomerBillObserved, SpendUnknown,
+  OpportunityStanding, NoCommercialSignal,
+  ReplayAdmission, ReplayAdmitted, ReplayRefusedLicense, ReplayRefusedSafety,
+  ReplayRefusedArchitecture, ReplayRefusedSecrets, ReplayRefusedWorkload,
+  ContactProvenance, GitHubDerivedContact,
+  OutreachAdmission, OutreachAdmitted, OutreachRefused, outreach_admission,
+  MigrationPrAuthorization,
+}
+
+// THE PUBLIC WORKLOAD CENSUS (year_end_plan item public-workload-census).
+//
+// THE SUBJECT IS A JOB, NOT A REPOSITORY. Compatibility is job-scoped: an Arm image-publishing
+// job proves nothing about whether a repository's build and tests run natively on Arm, and two
+// jobs in one workflow file can disagree about architecture, provider, cache and correctness.
+// Every row below therefore names workflow path, job key, matrix selector and source revision.
+//
+// WHAT THIS MODULE IS FOR. It selects the workloads that incumbent-head-to-head will measure,
+// and it makes five promotions unwritable. Each promotion is a place where a cheap observation
+// could be read as an expensive fact, and each is refused by a SEPARATE carrier rather than by
+// one qualified Boolean, because a single field forces the reader to guess which of five
+// different questions a `true` answered:
+//   1. an x64 label may not become Arm evidence          -> DeclaredArchitecture, by SUFFIX
+//   2. a skipped or failed test may not become a baseline -> ObservedExecution / BaselineAdmission
+//   3. an unobserved cache may not become warm            -> CacheObservation / CacheCondition
+//   4. provider use may not become verified spend         -> ci_acquisition.SpendStanding
+//   5. a benchmark may not authorize trial or outreach    -> TrialAuthorization / OutreachAdmission
+//
+// NOTHING NEW IS COINED WHERE ci_acquisition ALREADY OWNS THE CONCEPT. Spend provenance, replay
+// admission, commercial standing, outreach admission and the migration authorization are that
+// module's facts; this census produces rows that inhabit them. Promotions 4 and 5 are therefore
+// discharged by an authority that already refuses, not by a second one that agrees with it.
+
+// -------------------------------------------------------------------------------------
+// THE ONE SEALED CARRIER, AND WHY THE VERDICTS ARE DERIVED RATHER THAN AUTHORED.
+//
+// Every refusal below is computed by a total function over authored evidence. That makes the five
+// promotions DETECTED - and detection is DESIGN 4b rung 2, because the invalid state stays
+// writable: nothing in a derivation stops a later author from writing the verdict directly and
+// never calling it. That is exactly 5's tell, a check satisfiable by editing the declaration
+// while the realization still lies.
+//
+// CensusVerdict is the wall. Its constructor is confined to this module, so the only way any other
+// module can hold a verdict is to have run the derivation that produced it. The forbidden state
+// stops being a thing a witness catches and becomes a thing that does not compile, which is rung 4:
+// the invalid program has no representation.
+//
+// ONE CARRIER, NOT SIX SEALED VERDICTS. "Derived here, not authored elsewhere" is a single concept;
+// minting a separate sealed wrapper per verdict would be that concept re-invented six times, which
+// 2 counts as a failed decomposition rather than a stronger wall.
+//
+// IT IS THE CARRIER THAT IS SEALED, NOT THE READING, AND THAT IS DELIBERATE. sole_constructor is
+// enforced against RECORD LITERALS, so writing it on a variant type is accepted by the parser and
+// checked by nothing - a decoration that would be cited as coverage. Measured on this branch: with
+// the six sums marked sole_constructor, a foreign module forging every one of them resolved
+// cleanly. The record carrier is the form that actually refuses, proved by
+// test.probe.workload_census_verdict_construction_probe.
+//
+// THE EVIDENCE TYPES ARE DELIBERATELY LEFT OPEN. ObservedExecution, CacheObservation,
+// CacheMechanism, ProviderDeclaration and ExternalEffect are what a census SAW, and a census must
+// be able to write down what it saw. Sealing evidence would move authorship, not remove it. What
+// may not be authored is the verdict.
+// -------------------------------------------------------------------------------------
+
+type CensusVerdict<Reading> sole_constructor {
+  reading: Reading
+}
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 1. ARCHITECTURE IS READ FROM AN ARCHITECTURE SEGMENT OF THE LABEL, AND A LABEL
+// WITHOUT ONE IS EVIDENCE OF THE OPPOSITE OF WHAT WE WANT.
+//
+// A provider that offers both architectures selects between them inside one label family:
+// ubicloud-standard-2 is x64 and ubicloud-standard-2-arm is the dedicated Arm core;
+// depot-ubuntu-24.04-16 is x64 and depot-ubuntu-24.04-arm-16 is Arm. So "the repo uses
+// Ubicloud" or "the repo uses Depot" is not an Arm fact at all, and a census that recorded
+// only the provider would have promoted every x64 job in these repositories into evidence.
+//
+// The label is split on "-" and an "arm" or "arm64" SEGMENT is what decides it, rather than a
+// substring search: "-arm" appears in the middle of depot-ubuntu-24.04-arm-16 and at the end of
+// ubuntu-24.04-arm, so a suffix test alone would miss the first, and a bare substring test would
+// answer yes to any future label that merely spells the three letters somewhere.
+// -------------------------------------------------------------------------------------
+
+fn label_declares_arm(label: NonEmptyStr) -> Bool {
+  let segments = label.split("-")
+  segments.contains("arm") || segments.contains("arm64")
+}
+
+type DeclaredArchitecture
+  = ArmDeclared { label: NonEmptyStr }
+  | X64Declared { label: NonEmptyStr }
+
+fn declared_architecture(label: NonEmptyStr) -> CensusVerdict<DeclaredArchitecture> {
+  if label_declares_arm(label: label) {
+    CensusVerdict { reading: ArmDeclared { label: label } }
+  } else {
+    CensusVerdict { reading: X64Declared { label: label } }
+  }
+}
+
+fn architecture_is_arm(a: CensusVerdict<DeclaredArchitecture>) -> Bool {
+  match a.reading {
+    ArmDeclared { label } => true,
+    X64Declared { label } => false,
+  }
+}
+
+// THE PROVIDER IS A SECOND, INDEPENDENT FACT, AND THE YAML DOES NOT ALWAYS DECIDE IT.
+// PowerDNS selects its runner with an expression over a repository variable, so the workflow
+// establishes an Arm PATH while leaving the provider to whatever the variable was on the day.
+// That is why declared and observed providers are separate fields: only the run resolves it.
+type ProviderDeclaration
+  = ProviderDeclaredUbicloud { label: NonEmptyStr }
+  | ProviderDeclaredDepot { label: NonEmptyStr }
+  | ProviderDeclaredGitHubHosted { label: NonEmptyStr }
+  | ProviderSelectedByExpression { expression: NonEmptyStr, alternatives: List<NonEmptyStr> }
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 2. A SKIPPED OR FAILED TEST IS NOT A BASELINE, AND NEITHER IS A GREEN JOB THAT
+// RAN NO TEST. A fast failure is not a speed win, and a build that moves a binary is not a
+// correctness check however its step is named.
+// -------------------------------------------------------------------------------------
+
+type ObservedExecution
+  = NoRunObserved { obligation: NonEmptyStr }
+  | RunObservedFailed { run_id: NonEmptyStr, job_id: NonEmptyStr, cause: NonEmptyStr }
+  | RunObservedCancelled { run_id: NonEmptyStr, job_id: NonEmptyStr }
+  | RunObservedSucceededWithoutTests {
+      run_id: NonEmptyStr
+      job_id: NonEmptyStr
+      head_sha: NonEmptyStr
+      observed_label: NonEmptyStr
+      note: NonEmptyStr
+    }
+  | RunObservedSucceededWithTests {
+      run_id: NonEmptyStr
+      job_id: NonEmptyStr
+      head_sha: NonEmptyStr
+      observed_label: NonEmptyStr
+      test_step: NonEmptyStr
+    }
+
+type BaselineAdmission
+  = BaselineAdmitted {
+      run_id: NonEmptyStr
+      job_id: NonEmptyStr
+      head_sha: NonEmptyStr
+      test_step: NonEmptyStr
+      observed_label: NonEmptyStr
+    }
+  | BaselineRefused { cause: NonEmptyStr }
+
+// The only constructor of BaselineAdmitted. Success is necessary and not sufficient: the arm
+// that succeeded without executing a test is refused with its own cause, so the census can
+// count WHY a candidate has no baseline rather than reporting an undifferentiated absence.
+fn baseline_admission(o: ObservedExecution) -> CensusVerdict<BaselineAdmission> {
+  match o {
+    RunObservedSucceededWithTests { run_id, job_id, head_sha, observed_label, test_step } =>
+      CensusVerdict { reading: BaselineAdmitted {
+        run_id: run_id, job_id: job_id, head_sha: head_sha,
+        test_step: test_step, observed_label: observed_label,
+      } },
+    RunObservedSucceededWithoutTests { run_id, job_id, head_sha, observed_label, note } =>
+      CensusVerdict { reading: BaselineRefused { cause: join(["job ", job_id, " succeeded but executed no correctness check: ", note], "") } },
+    RunObservedFailed { run_id, job_id, cause } =>
+      CensusVerdict { reading: BaselineRefused { cause: join(["job ", job_id, " failed: ", cause, " - a failed job is not a baseline"], "") } },
+    RunObservedCancelled { run_id, job_id } =>
+      CensusVerdict { reading: BaselineRefused { cause: join(["job ", job_id, " was cancelled; a truncated run has no verdict"], "") } },
+    NoRunObserved { obligation } =>
+      CensusVerdict { reading: BaselineRefused { cause: join(["no run observed: ", obligation], "") } },
+  }
+}
+
+fn baseline_is_admitted(b: CensusVerdict<BaselineAdmission>) -> Bool {
+  match b.reading {
+    BaselineAdmitted { run_id, job_id, head_sha, test_step, observed_label } => true,
+    BaselineRefused { cause } => false,
+  }
+}
+
+// The observed runner label is where promotion 1 and promotion 2 join: a baseline is Arm
+// evidence only if the label the RUN reports is Arm-suffixed. The declared label is what the
+// YAML asked for; the observed label is what answered.
+data no_observed_label: NonEmptyStr = "(no runner label observed)"
+
+fn observed_label(o: ObservedExecution) -> NonEmptyStr {
+  match o {
+    RunObservedSucceededWithTests { run_id, job_id, head_sha, observed_label, test_step } => observed_label,
+    RunObservedSucceededWithoutTests { run_id, job_id, head_sha, observed_label, note } => observed_label,
+    RunObservedFailed { run_id, job_id, cause } => no_observed_label,
+    RunObservedCancelled { run_id, job_id } => no_observed_label,
+    NoRunObserved { obligation } => no_observed_label,
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 3. AN UNOBSERVED CACHE IS NOT A WARM ONE - AND A FRESH WORKER IS NOT A COLD CACHE.
+// The incumbent starts a fresh VM per job AND restores a remote cache by default, so the two
+// familiar conditions are three: logical cold is CONFIRMED MISSES, remote-warm-on-a-fresh-
+// worker is the condition that actually exercises an ephemeral-worker design, and neither is
+// established by reading a workflow file. Every row in this census carries CacheUnobserved,
+// because this census read YAML and run metadata and did not read a single cache log line.
+// -------------------------------------------------------------------------------------
+
+type CacheObservation
+  = CacheUnobserved { obligation: NonEmptyStr }
+  | CacheMissConfirmed { evidence: NonEmptyStr }
+  | CacheHitConfirmed { evidence: NonEmptyStr }
+
+type CacheMechanism {
+  name: NonEmptyStr
+  layer: NonEmptyStr
+  observation: CacheObservation
+}
+
+type CacheCondition
+  = LogicalCold { evidence: NonEmptyStr }
+  | RemoteWarmOnFreshWorker { evidence: NonEmptyStr }
+  | CacheConditionUnestablished { cause: NonEmptyStr }
+
+fn cache_condition(m: CacheMechanism) -> CensusVerdict<CacheCondition> {
+  match m.observation {
+    CacheHitConfirmed { evidence } => CensusVerdict { reading: RemoteWarmOnFreshWorker { evidence: evidence } },
+    CacheMissConfirmed { evidence } => CensusVerdict { reading: LogicalCold { evidence: evidence } },
+    CacheUnobserved { obligation } => CensusVerdict { reading: CacheConditionUnestablished {
+      cause: join([m.name, " (", m.layer, ") was declared in the workflow and never observed: ", obligation], ""),
+    } },
+  }
+}
+
+fn cache_condition_is_warm(c: CensusVerdict<CacheCondition>) -> Bool {
+  match c.reading {
+    RemoteWarmOnFreshWorker { evidence } => true,
+    LogicalCold { evidence } => false,
+    CacheConditionUnestablished { cause } => false,
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// EXTERNAL EFFECTS AND WHY A REPLAY IS DERIVED. Registry pushes, cloud role assumption and
+// third-party coverage uploads must come out of BOTH realizations, which makes the measured
+// thing a build/test replay DERIVED from the workflow and not an execution of the published
+// pipeline. Saying so is not pedantry: a removed push is removed WORK, and a comparison that
+// silently drops it from one side is measuring two different workloads.
+//
+// An artifact upload back into the same run is NOT a third-party mutation, so it is retained -
+// and it is then a TIMED STAGE, because the exit criterion decomposes required upload as its
+// own stage rather than folding it into build.
+// -------------------------------------------------------------------------------------
+
+type ExternalEffectKind
+  = RegistryPush { registry: NonEmptyStr }
+  | CloudRoleAssumption { role: NonEmptyStr }
+  | CoverageUpload { service: NonEmptyStr }
+  | WorkflowArtifactUpload { artifact: NonEmptyStr }
+
+type EffectDisposition
+  = RemovedFromBothRealizations { cause: NonEmptyStr }
+  | RetainedAndTimed { cause: NonEmptyStr }
+
+type ExternalEffect {
+  kind: ExternalEffectKind
+  step: NonEmptyStr
+  disposition: EffectDisposition
+}
+
+fn effect_requires_removal(k: ExternalEffectKind) -> Bool {
+  match k {
+    RegistryPush { registry } => true,
+    CloudRoleAssumption { role } => true,
+    CoverageUpload { service } => true,
+    WorkflowArtifactUpload { artifact } => false,
+  }
+}
+
+fn effect_is_removed(e: ExternalEffect) -> Bool {
+  match e.disposition {
+    RemovedFromBothRealizations { cause } => true,
+    RetainedAndTimed { cause } => false,
+  }
+}
+
+// The row-level obligation: every effect that mutates something outside the run carries a
+// removal disposition. A row that names a registry push and retains it fails this.
+fn effect_disposition_is_sound(e: ExternalEffect) -> Bool {
+  effect_requires_removal(k: e.kind) == effect_is_removed(e: e)
+}
+
+type ReplayDerivation
+  = DerivedBuildTestReplay { removed_effects: Int }
+  | PipelineExecutedAsPublished
+
+fn replay_derivation(effects: List<ExternalEffect>) -> CensusVerdict<ReplayDerivation> {
+  let removed = count(filter(effects, e => effect_is_removed(e: e)))
+  if removed == 0 {
+    CensusVerdict { reading: PipelineExecutedAsPublished }
+  } else {
+    CensusVerdict { reading: DerivedBuildTestReplay { removed_effects: removed } }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 5. NOTHING IN A CENSUS OR A BENCHMARK AUTHORIZES A TRIAL OR AN APPROACH.
+//
+// TrialAuthorizedByOperator CONTAINS a ci_acquisition.MigrationPrAuthorization, and this module
+// constructs no such value anywhere: the authorizing arm is unreachable from a benchmark
+// outcome by construction, not by a check that a later edit could satisfy. The function below
+// is total over benchmark outcomes and every arm refuses, INCLUDING the favorable one - which
+// is the arm that would otherwise be argued into an exception.
+// -------------------------------------------------------------------------------------
+
+type BenchmarkOutcome
+  = BenchmarkNotRun
+  | BenchmarkFavorable { receipt: NonEmptyStr }
+  | BenchmarkUnfavorable { receipt: NonEmptyStr }
+  | BenchmarkIncomplete { cause: NonEmptyStr }
+
+type TrialAuthorization
+  = TrialUnauthorized { cause: NonEmptyStr }
+  | TrialAuthorizedByOperator { authorization: MigrationPrAuthorization }
+
+data trial_refusal_note: NonEmptyStr = "a measurement is not a mandate: a trial or a migration PR exists only downstream of an explicit repository-scoped operator authorization (ci_acquisition.MigrationPrAuthorization), which no benchmark outcome constructs"
+
+fn trial_authorization_from_benchmark(o: BenchmarkOutcome) -> CensusVerdict<TrialAuthorization> {
+  match o {
+    BenchmarkFavorable { receipt } => CensusVerdict { reading: TrialUnauthorized {
+      cause: join(["favorable benchmark ", receipt, ": ", trial_refusal_note], ""),
+    } },
+    BenchmarkUnfavorable { receipt } => CensusVerdict { reading: TrialUnauthorized {
+      cause: join(["unfavorable benchmark ", receipt, ": ", trial_refusal_note], ""),
+    } },
+    BenchmarkIncomplete { cause } => CensusVerdict { reading: TrialUnauthorized {
+      cause: join(["incomplete benchmark (", cause, "): ", trial_refusal_note], ""),
+    } },
+    BenchmarkNotRun => CensusVerdict { reading: TrialUnauthorized {
+      cause: join(["no benchmark run: ", trial_refusal_note], ""),
+    } },
+  }
+}
+
+fn trial_is_authorized(t: CensusVerdict<TrialAuthorization>) -> Bool {
+  match t.reading {
+    TrialAuthorizedByOperator { authorization } => true,
+    TrialUnauthorized { cause } => false,
+  }
+}
+
+// HOW THESE CANDIDATES WERE FOUND IS THE FACT THAT DECIDES OUTREACH. They were found by reading
+// public workflow files on GitHub, which is exactly ci_acquisition.GitHubDerivedContact, and that
+// module's outreach_admission refuses that provenance unconditionally. The census does not need
+// its own outreach rule; it needs to hand the existing one the truth about its own provenance.
+data census_provenance: ContactProvenance = GitHubDerivedContact {
+  how_obtained: "public code search and read-only inspection of GitHub-hosted workflow files and public run history",
+}
+
+fn census_outreach_admission() -> OutreachAdmission {
+  outreach_admission(
+    provenance: census_provenance,
+    jurisdiction: "US corporate subscriber",
+    suppression_checked: "not applicable - no contact record was collected by this census",
+    human_authorization: "none sought; this census is selection work only")
+}
+
+// -------------------------------------------------------------------------------------
+// THE READING THE HEAD-TO-HEAD MUST NOT GET WRONG. Ubicloud's Arm runners are Ampere Altra
+// Q80-30, the same processor family this fleet holds, so a gap measured against them is a
+// SERVICE-PATH gap - cache, network, scheduling, setup - and not a silicon verdict. Stated as
+// a derivation rather than a sentence so that changing the premise changes the reading.
+// -------------------------------------------------------------------------------------
+
+type ProcessorFamilyRelation
+  = SameProcessorFamily { our_part: NonEmptyStr, incumbent_part: NonEmptyStr, source: NonEmptyStr }
+  | DifferentProcessorFamily { our_part: NonEmptyStr, incumbent_part: NonEmptyStr, source: NonEmptyStr }
+  | ProcessorFamilyUnknown { obligation: NonEmptyStr }
+
+type GapReading
+  = ServicePathReading { note: NonEmptyStr }
+  | SiliconReading { note: NonEmptyStr }
+  | GapReadingUnavailable { cause: NonEmptyStr }
+
+fn gap_reading(r: ProcessorFamilyRelation) -> CensusVerdict<GapReading> {
+  match r {
+    SameProcessorFamily { our_part, incumbent_part, source } => CensusVerdict { reading: ServicePathReading {
+      note: join(["both sides run ", our_part, " / ", incumbent_part, " (", source,
+        "), so any gap is cache, network, scheduling or setup overhead and may not be reported as a hardware verdict"], ""),
+    } },
+    DifferentProcessorFamily { our_part, incumbent_part, source } => CensusVerdict { reading: SiliconReading {
+      note: join([our_part, " against ", incumbent_part, " (", source,
+        "): silicon is confounded with the service path and the two must be separated before either is reported"], ""),
+    } },
+    ProcessorFamilyUnknown { obligation } => CensusVerdict { reading: GapReadingUnavailable {
+      cause: join(["the incumbent's processor is unobserved: ", obligation], ""),
+    } },
+  }
+}
+
+data ubicloud_arm_family_relation: ProcessorFamilyRelation = SameProcessorFamily {
+  our_part: "Ampere Altra (Mt. Collins fleet)",
+  incumbent_part: "Ampere Altra Q80-30 (Ubicloud Arm runners)",
+  source: "Ubicloud published runner specification, carried in year_end_plan item incumbent-head-to-head",
+}
+
+// -------------------------------------------------------------------------------------
+// THE CANDIDATE ROW. Five separate standings, never one qualified Boolean: what the provider
+// DECLARES, what a run OBSERVED, whether replay is ADMITTED, what commercial signal exists,
+// and what a trial is authorized to do. A candidate can be Arm-declared, observed-green,
+// replay-refused, commercially silent and trial-unauthorized all at once, and that combination
+// has to be readable without collapsing it.
+// -------------------------------------------------------------------------------------
+
+type CandidateSelection
+  = SelectedWorkload { rank: Int, complementarity: NonEmptyStr }
+  | ShortlistedNotSelected { reason: NonEmptyStr }
+  | CandidateRejected { reason: NonEmptyStr }
+  | CandidateUnresolved { obligation: NonEmptyStr }
+
+type WorkloadCandidate {
+  repository: NonEmptyStr
+  license_spdx: NonEmptyStr
+  inspected_workflow_revision: NonEmptyStr
+  workflow_path: NonEmptyStr
+  job_key: NonEmptyStr
+  job_display_name: NonEmptyStr
+  matrix_selector: NonEmptyStr
+  declared_label: NonEmptyStr
+  declared_provider: ProviderDeclaration
+  observed: ObservedExecution
+  workload_commands: List<NonEmptyStr>
+  resource_requirements: NonEmptyStr
+  caches: List<CacheMechanism>
+  external_effects: List<ExternalEffect>
+  replay: ReplayAdmission
+  spend: SpendStanding
+  commercial: OpportunityStanding
+  trial: CensusVerdict<TrialAuthorization>
+  selection: CandidateSelection
+}
+
+fn candidate_declared_architecture(c: WorkloadCandidate) -> CensusVerdict<DeclaredArchitecture> {
+  declared_architecture(label: c.declared_label)
+}
+
+fn candidate_baseline(c: WorkloadCandidate) -> CensusVerdict<BaselineAdmission> {
+  baseline_admission(o: c.observed)
+}
+
+fn candidate_is_selected(c: WorkloadCandidate) -> Bool {
+  match c.selection {
+    SelectedWorkload { rank, complementarity } => true,
+    ShortlistedNotSelected { reason } => false,
+    CandidateRejected { reason } => false,
+    CandidateUnresolved { obligation } => false,
+  }
+}
+
+fn candidate_replay_is_admitted(c: WorkloadCandidate) -> Bool {
+  match c.replay {
+    ReplayAdmitted { sandbox_profile } => true,
+    ReplayRefusedLicense { cause } => false,
+    ReplayRefusedSafety { cause } => false,
+    ReplayRefusedArchitecture { cause } => false,
+    ReplayRefusedSecrets { cause } => false,
+    ReplayRefusedWorkload { cause } => false,
+  }
+}
+
+data replay_sandbox_note: NonEmptyStr = "ci_acquisition.replay_sandbox_profile, with the workflow's external mutations removed from BOTH realizations"
+
+data cache_read_obligation: NonEmptyStr = "this census read workflow YAML and run/job metadata only; no cache log line was read, so hit or miss is unobserved and the head-to-head must establish it in our own account"
+
+// -------------------------------------------------------------------------------------
+// SELECTED WORKLOAD 1 - Biome. A Rust workspace test job with a KNOWN-SUCCESSFUL Arm baseline,
+// no external mutation of any kind, and one command. It is the cleanest thing in the census.
+//
+// TWO CORRECTIONS THE ROW CARRIES. First, the most recent CI-on-main run at inspection time
+// FAILED, so "Biome is green on Arm" would have been false on the day; the baseline is the
+// named earlier commit, not HEAD. Second, Biome's Arm runners are DEPOT, not Ubicloud - the
+// screening brief for this census assumed Ubicloud, and only OpenObserve below is actually
+// observed on it. That does not disqualify anything, because both sides of the head-to-head
+// run in OUR account, but a row that recorded "Ubicloud" here would have been fiction.
+// -------------------------------------------------------------------------------------
+
+data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_workflow_revision: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  job_key: "test",
+  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
+  matrix_selector: "os=depot-ubuntu-24.04-arm-16",
+  declared_label: "depot-ubuntu-24.04-arm-16",
+  declared_provider: ProviderDeclaredDepot { label: "depot-ubuntu-24.04-arm-16" },
+  observed: RunObservedSucceededWithTests {
+    run_id: "33892992396",
+    job_id: "101088906536",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    observed_label: "depot-ubuntu-24.04-arm-16",
+    test_step: "Run tests on depot-ubuntu-24.04-arm-16 (success, 2026-09-04T16:04:06Z to 2026-09-04T16:08:12Z)",
+  },
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: "16-vCPU class Arm runner; Rust toolchain via moonrepo/setup-rust; no service containers, no database, no privileged capability",
+  caches: [
+    CacheMechanism {
+      name: "moonrepo/setup-rust (cache-base: main)",
+      layer: "cargo registry and compiler outputs",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+  ],
+  external_effects: [],
+  replay: ReplayAdmitted { sandbox_profile: replay_sandbox_note },
+  spend: SpendUnknown {
+    obligation: "a third-party runner label establishes provider USE, not spend; Depot's billing for this account is not public and no bill was observed",
+  },
+  commercial: NoCommercialSignal,
+  trial: trial_authorization_from_benchmark(o: BenchmarkNotRun),
+  selection: SelectedWorkload {
+    rank: 1,
+    complementarity: "managed Rust workspace test: real correctness signal, single command, zero external mutation, so the replay is the published job rather than a derivation of it",
+  },
+}
+
+// -------------------------------------------------------------------------------------
+// SELECTED WORKLOAD 2 - PowerDNS dnsdist. Native C++ under sanitizers, meson/ninja, ccache and
+// a build container: a materially different cost shape from a cargo workspace, which is the
+// whole reason to carry a second workload.
+//
+// THE PROVIDER WAS DECIDED BY THE RUN, NOT THE YAML. runs-on is an expression choosing
+// ubicloud-standard-4-arm-ubuntu-2404 when a repository variable is set and ubuntu-24.04-arm
+// otherwise. Both alternatives are Arm-suffixed, so the ARCHITECTURE is established by the
+// workflow; the PROVIDER is not. The observed job reports ubuntu-24.04-arm - GitHub-hosted, not
+// Ubicloud - so this repository is not evidence of incumbent spend of any kind.
+// -------------------------------------------------------------------------------------
+
+data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
+  repository: "PowerDNS/pdns",
+  license_spdx: "GPL-2.0",
+  inspected_workflow_revision: "0f2df8380e89bb066e947a5818f6267016847d98",
+  workflow_path: ".github/workflows/build-and-test-all.yml",
+  job_key: "build-dnsdist",
+  job_display_name: "build dnsdist (asan+ubsan, full, -arm)",
+  matrix_selector: "sanitizers=asan+ubsan, features=full, architecture_suffix=-arm",
+  declared_label: "ubuntu-24.04-arm",
+  declared_provider: ProviderSelectedByExpression {
+    expression: "( vars.REPOSITORY_USE_UBICLOUD == '1' ) && format('ubicloud-standard-4{0}-ubuntu-2404', matrix.architecture_suffix) || format('ubuntu-24.04{0}', matrix.architecture_suffix)",
+    alternatives: ["ubicloud-standard-4-arm-ubuntu-2404", "ubuntu-24.04-arm"],
+  },
+  observed: RunObservedSucceededWithTests {
+    run_id: "33860869079",
+    job_id: "100984779675",
+    head_sha: "0f2df8380e89bb066e947a5818f6267016847d98",
+    observed_label: "ubuntu-24.04-arm",
+    test_step: "inv ci-dnsdist-run-unit-tests (success; job 2026-09-04T09:57:28Z to 2026-09-04T10:07:09Z)",
+  },
+  workload_commands: [
+    "inv install-dnsdist-build-deps",
+    "inv install-clang",
+    "inv ci-install-rust",
+    "inv ci-build-and-install-quiche",
+    "inv ci-dnsdist-configure full",
+    "inv ci-dnsdist-run-ninja",
+    "inv ci-dnsdist-run-unit-tests",
+  ],
+  resource_requirements: "4-vCPU class Arm runner inside a maintainer-published build container, --sysctl net.ipv6.conf.all.disable_ipv6=0, asan+ubsan instrumented build, recursive submodules",
+  caches: [
+    CacheMechanism {
+      name: "./.github/actions/cache (cache-key-base dnsdist-full-asan+ubsan-meson-arm-ccache)",
+      layer: "ccache compiler outputs",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+  ],
+  external_effects: [
+    ExternalEffect {
+      kind: CoverageUpload { service: "Coveralls" },
+      step: "Coveralls Parallel dnsdist unit",
+      disposition: RemovedFromBothRealizations {
+        cause: "a third-party coverage upload mutates an external service and its latency is that service's, not the runner's",
+      },
+    },
+    ExternalEffect {
+      kind: WorkflowArtifactUpload { artifact: "pdns-recursor / dnsdist binaries" },
+      step: "Store the binaries",
+      disposition: RetainedAndTimed {
+        cause: "an artifact upload inside our own run is required work, so it is kept and timed as its own stage rather than folded into build",
+      },
+    },
+  ],
+  replay: ReplayAdmitted { sandbox_profile: replay_sandbox_note },
+  spend: PublicStandardFree {
+    note: "the observed run used GitHub-hosted ubuntu-24.04-arm on a public repository; no paid-runner label and no bill observed",
+  },
+  commercial: NoCommercialSignal,
+  trial: trial_authorization_from_benchmark(o: BenchmarkNotRun),
+  selection: SelectedWorkload {
+    rank: 2,
+    complementarity: "native C++ with sanitizers, meson/ninja and ccache in a container - a different compiler, a different cache layer and a different I/O shape from the Rust workspace, which is what keeps the head-to-head from measuring cargo twice",
+  },
+}
+
+// -------------------------------------------------------------------------------------
+// SELECTED WORKLOAD 3 - OpenObserve. The ONLY job in this census observed executing on a
+// Ubicloud Arm runner, which is the incumbent this program is compared against. It is selected
+// for that reason and it is selected as a BUILD-PERFORMANCE workload only.
+//
+// ITS STEP IS NAMED "Build and run binary" AND IT DOES NOT RUN THE BINARY. The step compiles
+// with cargo and then mkdir/mv the output; nothing executes and nothing is asserted. The
+// observed job is therefore RunObservedSucceededWithoutTests and baseline_admission REFUSES it.
+// A step name is not evidence, and this row is the census's own worked example of promotion 2.
+// -------------------------------------------------------------------------------------
+
+data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
+  repository: "openobserve/openobserve",
+  license_spdx: "AGPL-3.0",
+  inspected_workflow_revision: "c651f43f29c864478f5107612622a5e20492ea39",
+  workflow_path: ".github/workflows/build-pr-image.yml",
+  job_key: "build_pr_image_arm64",
+  job_display_name: "build_pr_image_arm64",
+  matrix_selector: "no matrix - single job, workflow_dispatch only",
+  declared_label: "ubicloud-standard-16-arm",
+  declared_provider: ProviderDeclaredUbicloud { label: "ubicloud-standard-16-arm" },
+  observed: RunObservedSucceededWithoutTests {
+    run_id: "33495218702",
+    job_id: "99815950414",
+    head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+    observed_label: "ubicloud-standard-16-arm",
+    note: "the step named 'Build and run binary' runs cargo build, then mkdir and mv; no test binary is executed and no assertion is made, so the green is a compile result",
+  },
+  workload_commands: [
+    "cargo build --features mimalloc --profile release-profiling --target aarch64-unknown-linux-gnu",
+  ],
+  resource_requirements: "16-vCPU Ubicloud Arm runner; nightly-2026-05-20 toolchain; protoc; a frontend-dist artifact from an upstream job",
+  caches: [
+    CacheMechanism {
+      name: "Swatinem/rust-cache (shared-key openobserve-arm64, save-if branch == main)",
+      layer: "cargo registry and compiler outputs",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+    CacheMechanism {
+      name: "docker buildx type=gha (scope arm64)",
+      layer: "container image layers",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+  ],
+  external_effects: [
+    ExternalEffect {
+      kind: CloudRoleAssumption { role: "arn:aws:iam::058694856476:role/GitHubActionsRole" },
+      step: "Configure AWS Credentials",
+      disposition: RemovedFromBothRealizations {
+        cause: "assuming a third party's cloud role is neither possible nor permissible for us, and the credential exchange is not runner work",
+      },
+    },
+    ExternalEffect {
+      kind: RegistryPush { registry: "public.ecr.aws/zinclabs/openobserve-dev" },
+      step: "Build and push",
+      disposition: RemovedFromBothRealizations {
+        cause: "publishing an image to a third party's registry mutates their namespace and its duration is upload bandwidth, not compute",
+      },
+    },
+    ExternalEffect {
+      kind: RegistryPush { registry: "ghcr.io/openobserve/openobserve-dev" },
+      step: "Build and push",
+      disposition: RemovedFromBothRealizations {
+        cause: "same mutation to a second registry; removed from both realizations so the comparison measures the build",
+      },
+    },
+  ],
+  replay: ReplayAdmitted { sandbox_profile: replay_sandbox_note },
+  spend: SpendUnknown {
+    obligation: "Ubicloud grants free monthly minutes, so an observed Ubicloud run establishes USE and not spend; only a customer-authorized bill grades a savings claim (ci_acquisition.savings_claim_grade)",
+  },
+  commercial: NoCommercialSignal,
+  trial: trial_authorization_from_benchmark(o: BenchmarkNotRun),
+  selection: SelectedWorkload {
+    rank: 3,
+    complementarity: "the only observed Ubicloud-Arm job in the census, and a large cold-ish Rust compile; admitted as a BUILD-PERFORMANCE workload with no correctness signal, so it may report build time and may never report a pass",
+  },
+}
+
+// -------------------------------------------------------------------------------------
+// SHORTLISTED, NOT SELECTED - Activepieces. It has a genuine successful Arm job, and it is the
+// only service-shaped workload seen. Three things keep it out of the selected three.
+//
+// Its license resolves to "Other" (a dual open-source / commercial-enterprise arrangement), so
+// off-platform execution rights are not established and replay is REFUSED pending a reading -
+// public visibility is not a licence. Its most recent Arm observation is over a month old. And
+// its SANDBOX_PROCESS matrix leg exercises a prebuilt isolate binary under privileged
+// filesystem isolation that the project deliberately keeps out of CI; the declared entry is the
+// code-only leg, and enabling privileged host access to make more of it pass would be changing
+// the workload to improve the number.
+// -------------------------------------------------------------------------------------
+
+data candidate_activepieces_smoke_arm: WorkloadCandidate = WorkloadCandidate {
+  repository: "activepieces/activepieces",
+  license_spdx: "NOASSERTION (GitHub reports license 'Other')",
+  inspected_workflow_revision: "e281f65f5f2cfa7a37d98ed4f572e9769f8f6f68",
+  workflow_path: ".github/workflows/smoke-test.yml",
+  job_key: "smoke-test",
+  job_display_name: "smoke-test (depot-ubuntu-24.04-arm, arm64, SANDBOX_CODE_ONLY)",
+  matrix_selector: "runner=depot-ubuntu-24.04-arm, arch=arm64, executionMode=SANDBOX_CODE_ONLY",
+  declared_label: "depot-ubuntu-24.04-arm",
+  declared_provider: ProviderDeclaredDepot { label: "depot-ubuntu-24.04-arm" },
+  observed: RunObservedSucceededWithTests {
+    run_id: "30761740564",
+    job_id: "91533411054",
+    head_sha: "7285899f54233b26b9a1cef06663270bd22de1e3",
+    observed_label: "depot-ubuntu-24.04-arm",
+    test_step: "smoke test over a started stack (success; job 2026-08-02T18:42:51Z to 2026-08-02T18:56:56Z)",
+  },
+  workload_commands: [
+    "docker build -t activepieces-benchmark:local .",
+    "docker compose -f benchmark/docker-compose.yml up -d",
+    "benchmark/setup.sh",
+  ],
+  resource_requirements: "Arm runner with a working Docker daemon and compose stack; AP_EXECUTION_MODE=SANDBOX_CODE_ONLY, AP_WORKER_CONCURRENCY=1; the SANDBOX_PROCESS leg additionally needs privileged filesystem isolation the project keeps out of CI",
+  caches: [],
+  external_effects: [],
+  replay: ReplayRefusedLicense {
+    cause: "GitHub reports the license as 'Other' (a dual open-source / commercial-enterprise arrangement); off-platform execution rights are not established from a public repository alone, and a licence reading is owed before any replay",
+  },
+  spend: SpendUnknown {
+    obligation: "Depot runner labels establish provider use; no bill observed",
+  },
+  commercial: NoCommercialSignal,
+  trial: trial_authorization_from_benchmark(o: BenchmarkNotRun),
+  selection: ShortlistedNotSelected {
+    reason: "replay refused on an unresolved licence; most recent Arm observation is 2026-08-02, over a month before this census; and the leg that would exercise its distinctive isolation path is deliberately absent from CI, so admitting it would mean changing the workload rather than measuring it",
+  },
+}
+
+// -------------------------------------------------------------------------------------
+// REJECTED, AND HONEST ABOUT THE GRADE OF THE EVIDENCE. These two were screened out by earlier
+// work and were NOT re-derived here, so the rows say so rather than presenting an inherited
+// judgment as an observation of this census. They stay visible because a census that drops what
+// it rejected reports full coverage over a subset.
+// -------------------------------------------------------------------------------------
+
+data candidate_paradedb: WorkloadCandidate = WorkloadCandidate {
+  repository: "paradedb/paradedb",
+  license_spdx: "not resolved by this census",
+  inspected_workflow_revision: "not inspected by this census",
+  workflow_path: "not inspected by this census",
+  job_key: "none",
+  job_display_name: "none",
+  matrix_selector: "none",
+  declared_label: "none",
+  declared_provider: ProviderSelectedByExpression { expression: "none - not inspected", alternatives: [] },
+  observed: NoRunObserved {
+    obligation: "carried from prior screening as not a promising Arm target; no job was inspected here, so this row is a screening disposition and not an observation",
+  },
+  workload_commands: [],
+  resource_requirements: "unknown - not inspected",
+  caches: [],
+  external_effects: [],
+  replay: ReplayRefusedWorkload { cause: "no job identified, so there is nothing to admit" },
+  spend: SpendUnknown { obligation: "not inspected" },
+  commercial: NoCommercialSignal,
+  trial: trial_authorization_from_benchmark(o: BenchmarkNotRun),
+  selection: CandidateRejected {
+    reason: "screened out before this census as not a promising Arm target; reopening it needs contrary evidence, which this census did not look for and did not find",
+  },
+}
+
+data candidate_pydantic_ai: WorkloadCandidate = WorkloadCandidate {
+  repository: "pydantic/pydantic-ai",
+  license_spdx: "not resolved by this census",
+  inspected_workflow_revision: "not inspected by this census",
+  workflow_path: "not inspected by this census",
+  job_key: "none",
+  job_display_name: "none",
+  matrix_selector: "none",
+  declared_label: "none",
+  declared_provider: ProviderSelectedByExpression { expression: "none - not inspected", alternatives: [] },
+  observed: NoRunObserved {
+    obligation: "carried from prior screening as not a promising Arm target; no job was inspected here, so this row is a screening disposition and not an observation",
+  },
+  workload_commands: [],
+  resource_requirements: "unknown - not inspected",
+  caches: [],
+  external_effects: [],
+  replay: ReplayRefusedWorkload { cause: "no job identified, so there is nothing to admit" },
+  spend: SpendUnknown { obligation: "not inspected" },
+  commercial: NoCommercialSignal,
+  trial: trial_authorization_from_benchmark(o: BenchmarkNotRun),
+  selection: CandidateRejected {
+    reason: "screened out before this census as not a promising Arm target; reopening it needs contrary evidence, which this census did not look for and did not find",
+  },
+}
+
+data workload_census: List<WorkloadCandidate> = [
+  candidate_biome_test,
+  candidate_pdns_dnsdist_arm,
+  candidate_openobserve_arm_build,
+  candidate_activepieces_smoke_arm,
+  candidate_paradedb,
+  candidate_pydantic_ai,
+]
+
+fn selected_workloads() -> List<WorkloadCandidate> {
+  filter(workload_census, c => candidate_is_selected(c: c))
+}
+
+// THE ADMITTED SET IS NARROWER THAN THE SELECTED SET, AND THAT IS THE POINT. A workload is
+// admitted for a CORRECTNESS comparison only if it has a real baseline; OpenObserve is selected
+// and not admitted, so the head-to-head may time it and may not report it as a pass.
+fn correctness_admitted_workloads() -> List<WorkloadCandidate> {
+  filter(selected_workloads(), c => baseline_is_admitted(b: candidate_baseline(c: c)))
+}
+
+data census_scope_note: NonEmptyStr = "read-only inspection of public workflow files and public run metadata. No maintainer was contacted, no repository was scraped beyond its workflow directory, no outreach list was produced, and no pull request was opened against any inspected repository. Nothing here qualifies a customer or authorizes an approach."
+
+// =====================================================================================
+// THE THIRD-PARTY CI SPEND SCREEN.
+//
+// A SEPARATE QUESTION FROM SELECTION, AND IT DOES NOT QUALIFY ANYONE. This tells the operator
+// which of these repositories has a real CI bill. A benchmark target is not a lead, and a bill is
+// not a lead either: census_outreach_admission still refuses, and nothing below changes that.
+//
+// WHY A CEILING RATHER THAN A PLAN. Determining anyone's actual plan needs an account we do not
+// have and a question we may not ask. The screen instead takes the most generous free allowance
+// the repository could conceivably hold and asks whether measured consumption EXCEEDS it.
+// Consumption above the ceiling proves spend whatever the tier. Consumption below it proves
+// NOTHING - and "nothing" is not "no spend", which is why the refusing arm carries a cause rather
+// than a zero.
+//
+// THE ASYMMETRY IS WHAT MAKES THE SCREEN SOUND, and it fixes the order of the derivation. Sampling
+// error in a run-mix estimate is overwhelmingly DOWNWARD: a sample that misses a repository's rare
+// heavy workflow under-counts minutes, and no amount of missed heavy work can manufacture an
+// above-ceiling reading. So a proof of spend survives an incomplete sample, while a below-ceiling
+// reading does not - it must first be asked whether the sample could see the workload at all.
+// A too-short window is the one error that goes the other way: a burst extrapolated to a month
+// inflates, so the window test runs BEFORE the ceiling test and can only refuse.
+// =====================================================================================
+
+// INSTRUMENT DEFECT 1, CLOSED BY CONSTRUCTION: actions/runs total_count IS NOT A COUNT. Measured
+// on this branch: biomejs/biome and openobserve/openobserve both report exactly 40000 unfiltered -
+// a cap wearing the shape of a total - and openobserve's created-FILTERED count came back 77132,
+// LARGER than its unfiltered one. A filtered population larger than the unfiltered one is
+// incoherent. There is deliberately NO FIELD here for a reported total: the population size is
+// runs COUNTED over a recorded window, and the wrong number has nowhere to be written down.
+//
+// INSTRUMENT DEFECT 2, CLOSED BY REFUSAL: a monthly rate extrapolated from a short window is a
+// burst, not a rate. The window is a required field so that the extrapolation always carries the
+// evidence a reader needs to distrust it, and a window under the declared minimum refuses.
+type SamplingWindow {
+  start: NonEmptyStr
+  end: NonEmptyStr
+  hours: Int
+}
+
+data minimum_extrapolation_window_hours: Int = 24
+
+data window_minimum_basis: NonEmptyStr = "a repository's CI load is diurnal and weekly; a monthly rate taken from a few hours is dominated by whatever happened in those hours. Measured while building this screen: a single recent 100-run page put biomejs/biome at 20,908 runs per month over a 3.44-hour span, against 7,149 over the 51-hour window carried below - the short window inflated the rate roughly threefold."
+
+type RunRateSample {
+  runs_counted: Int
+  window: SamplingWindow
+  runs_per_month: Int
+}
+
+fn window_is_long_enough(w: SamplingWindow) -> Bool {
+  w.hours >= minimum_extrapolation_window_hours
+}
+
+// INSTRUMENT DEFECT 3, CLOSED BY NAMING: WALL-CLOCK JOB DURATION IS NOT BILLED MINUTES. Rounding,
+// per-job minimums and per-provider metering rules all differ, so nothing here may be read as an
+// invoice - there is no cost field, no rate and no currency in this section, and the proving arm
+// asserts THAT a bill exists, never how large it is.
+//
+// The screen is still valid despite that gap, and the reason is directional: every billing rule of
+// this kind rounds UP - a minimum charge or a rounded interval can only make billed minutes exceed
+// wall-clock minutes, never fall below them. So wall-clock consumption above the ceiling implies
+// billed consumption above the ceiling. The inequality survives the imprecision in the one
+// direction the screen uses.
+type LabelConsumption {
+  label: NonEmptyStr
+  minutes_per_run_thousandths: Int
+}
+
+// INSTRUMENT DEFECT 4, FOUND BY EXECUTION: some jobs report completed_at BEFORE started_at. In the
+// three samples below they are 9, 17 and 21 jobs. A negative duration is not a fast job, it is not
+// a measurement at all, and summing it silently subtracts real minutes from a repository's bill.
+// They are excluded from the sums and COUNTED here, because an excluded observation that nobody
+// counts is indistinguishable from one that never existed.
+type ConsumptionSample {
+  repository: NonEmptyStr
+  provider: NonEmptyStr
+  rate: RunRateSample
+  provider_labels: List<LabelConsumption>
+  jobs_sampled_from_runs: Int
+  incoherent_job_durations: Int
+  workflows_observed: List<NonEmptyStr>
+  census_workflow_path: NonEmptyStr
+}
+
+// ONLY THE PAYING PROVIDER'S LABELS COUNT TOWARD THE PAYING PROVIDER'S BILL, and this is where the
+// screen would most easily lie. PowerDNS burns roughly 282,000 minutes a month on ubuntu-24.04 -
+// five times the ceiling - and every one of those minutes is GitHub-hosted and free on a public
+// repository. Attributing them to Ubicloud would have produced a confident, enormous, entirely
+// fictional bill. Provider attribution is read from the label prefix, the same way architecture is
+// read from an architecture segment.
+fn label_provider(label: NonEmptyStr) -> ProviderDeclaration {
+  if label.starts_with("depot-") {
+    ProviderDeclaredDepot { label: label }
+  } else if label.starts_with("ubicloud-") {
+    ProviderDeclaredUbicloud { label: label }
+  } else {
+    ProviderDeclaredGitHubHosted { label: label }
+  }
+}
+
+fn provider_name(p: ProviderDeclaration) -> NonEmptyStr {
+  match p {
+    ProviderDeclaredDepot { label } => "depot",
+    ProviderDeclaredUbicloud { label } => "ubicloud",
+    ProviderDeclaredGitHubHosted { label } => "github-hosted",
+    ProviderSelectedByExpression { expression, alternatives } => "unresolved",
+  }
+}
+
+fn label_is_billed_by(label: NonEmptyStr, provider: NonEmptyStr) -> Bool {
+  provider_name(p: label_provider(label: label)) == provider
+}
+
+fn sample_minutes_per_month(s: ConsumptionSample) -> Int {
+  let attributed = filter(s.provider_labels, l => label_is_billed_by(label: l.label, provider: s.provider))
+  let thousandths = fold(attributed, init: 0, f: (acc, l) => acc + l.minutes_per_run_thousandths)
+  s.rate.runs_per_month * thousandths / 1000
+}
+
+fn sample_covers_census_workload(s: ConsumptionSample) -> Bool {
+  count(filter(s.workflows_observed, w => w == s.census_workflow_path)) > 0
+}
+
+// THE CEILING IS AN INPUT WITH A CITED BASIS AND A STANDING, NOT A CONSTANT. A provider whose free
+// tier cannot be bounded from public sources cannot have its consumption proved to be spend at any
+// volume, and saying so is the whole difference between a screen and a guess.
+type FreeAllowanceStanding
+  = AllowanceBoundedBy { minutes_per_month: Int, basis: NonEmptyStr }
+  | AllowanceUnresolved { obligation: NonEmptyStr }
+
+type ProviderAllowance {
+  provider: NonEmptyStr
+  standing: FreeAllowanceStanding
+}
+
+data depot_allowance: ProviderAllowance = ProviderAllowance {
+  provider: "depot",
+  standing: AllowanceBoundedBy {
+    minutes_per_month: 50000,
+    basis: "Depot publishes metered per-second runner pricing with a 7-day trial and no unmetered open-source grant was found on its own pricing or documentation pages. 50,000 minutes per month is the largest monthly included-minutes allowance published by any provider in this census (GitHub Enterprise Cloud) and is used here as a deliberately over-generous bound: it is roughly two orders of magnitude beyond a 7-day trial, so exceeding it proves a bill under any plan Depot is known to offer.",
+  },
+}
+
+data ubicloud_allowance: ProviderAllowance = ProviderAllowance {
+  provider: "ubicloud",
+  standing: AllowanceUnresolved {
+    obligation: "two mutually inconsistent readings of Ubicloud's free tier for PUBLIC repositories were seen and neither was confirmed against Ubicloud's own pricing page: a metered monthly free allowance in the low thousands of minutes, and an open-source plan carrying unmetered public-repository runners. If the second reading is right, no volume of Ubicloud consumption on a public repository can ever prove spend, and a bounded ceiling would be a fabricated authority. Resolve by reading the vendor's own published plan terms.",
+  },
+}
+
+// THE VERDICT. Three arms, and the third is not optional: openobserve needs it today.
+type SpendScreen
+  = SpendProvenAboveCeiling {
+      provider: NonEmptyStr
+      observed_minutes_per_month: Int
+      ceiling_minutes_per_month: Int
+      note: NonEmptyStr
+    }
+  | SpendUnprovenBelowCeiling {
+      provider: NonEmptyStr
+      observed_minutes_per_month: Int
+      cause: NonEmptyStr
+    }
+  | SampleUnrepresentative { cause: NonEmptyStr }
+
+data below_ceiling_note: NonEmptyStr = "below the ceiling the screen is silent, and silence is not evidence of absence: this repository may be paying under any tier the ceiling generously covers. The only thing established is that public data cannot prove a bill."
+
+// THE ORDER OF THESE ARMS IS THE ARGUMENT, not a style choice. The window test precedes everything
+// because a short window is the one error that INFLATES. The ceiling test precedes the coverage
+// test because sampling error runs downward, so a proof survives an incomplete sample while a
+// below-ceiling reading does not. And an unresolved allowance can only ever PREVENT a proof - it
+// never creates one - so it gates the proving arm rather than forming an arm of its own.
+fn spend_screen(s: ConsumptionSample, a: ProviderAllowance) -> CensusVerdict<SpendScreen> {
+  let observed = sample_minutes_per_month(s: s)
+  if window_is_long_enough(w: s.rate.window) == false {
+    CensusVerdict { reading: SampleUnrepresentative {
+      cause: join([s.repository, ": the rate was extrapolated from a ", s.rate.window.start, " to ", s.rate.window.end,
+        " window shorter than the declared minimum, and a burst read as a month inflates. ", window_minimum_basis], ""),
+    } }
+  } else {
+    match a.standing {
+      AllowanceBoundedBy { minutes_per_month, basis } =>
+        if observed > minutes_per_month {
+          CensusVerdict { reading: SpendProvenAboveCeiling {
+            provider: s.provider,
+            observed_minutes_per_month: observed,
+            ceiling_minutes_per_month: minutes_per_month,
+            note: join(["wall-clock runner minutes on ", s.provider,
+              "-billed labels exceed the most generous conceivable free allowance, so some amount is billed. Billing rules round UP, so the inequality survives the wall-clock approximation. The AMOUNT is not established here and no rate is applied. Ceiling basis: ", basis], ""),
+          } }
+        } else if sample_covers_census_workload(s: s) == false {
+          CensusVerdict { reading: SampleUnrepresentative {
+            cause: join([s.repository, ": below the ceiling, and the sample never observed ", s.census_workflow_path,
+              " - the workflow carrying the job this census selected. Sampling error runs downward, so a below-ceiling reading from a sample that could not see the repository's heavy workload establishes nothing at all, not even a lower bound worth reporting."], ""),
+          } }
+        } else {
+          CensusVerdict { reading: SpendUnprovenBelowCeiling {
+            provider: s.provider, observed_minutes_per_month: observed, cause: below_ceiling_note,
+          } }
+        },
+      AllowanceUnresolved { obligation } =>
+        if sample_covers_census_workload(s: s) == false {
+          CensusVerdict { reading: SampleUnrepresentative {
+            cause: join([s.repository, ": the sample never observed ", s.census_workflow_path,
+              ", the workflow carrying the selected job, AND ", s.provider, "'s free allowance is unbounded from public sources (", obligation, ")"], ""),
+          } }
+        } else {
+          CensusVerdict { reading: SpendUnprovenBelowCeiling {
+            provider: s.provider, observed_minutes_per_month: observed,
+            cause: join([s.provider, "'s free allowance could not be bounded, so no consumption at any volume proves a bill: ", obligation], ""),
+          } }
+        },
+    }
+  }
+}
+
+fn spend_is_proven(v: CensusVerdict<SpendScreen>) -> Bool {
+  match v.reading {
+    SpendProvenAboveCeiling { provider, observed_minutes_per_month, ceiling_minutes_per_month, note } => true,
+    SpendUnprovenBelowCeiling { provider, observed_minutes_per_month, cause } => false,
+    SampleUnrepresentative { cause } => false,
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE SAMPLES. Measured 2026-09-05 by counting runs over a recorded window and summing job
+// durations per runner label across runs drawn at an even stride through that window - not from
+// the recent end, which is what made an earlier pass at openobserve report 0.04 minutes per run.
+// Re-derive with: 500 runs over five pages of repos/{owner}/{repo}/actions/runs, then
+// repos/{owner}/{repo}/actions/runs/{id}/jobs for every sixteenth run.
+// -------------------------------------------------------------------------------------
+
+data sample_biome: ConsumptionSample = ConsumptionSample {
+  repository: "biomejs/biome",
+  provider: "depot",
+  rate: RunRateSample {
+    runs_counted: 500,
+    window: SamplingWindow { start: "2026-09-03T16:46:46Z", end: "2026-09-05T19:52:38Z", hours: 51 },
+    runs_per_month: 7149,
+  },
+  provider_labels: [
+    LabelConsumption { label: "depot-ubuntu-24.04-arm-16", minutes_per_run_thousandths: 33482 },
+    LabelConsumption { label: "depot-windows-2022", minutes_per_run_thousandths: 393 },
+    LabelConsumption { label: "depot-ubuntu-24.04-arm", minutes_per_run_thousandths: 246 },
+    LabelConsumption { label: "depot-windows-2022-16", minutes_per_run_thousandths: 214 },
+    LabelConsumption { label: "depot-ubuntu-24.04-arm-small", minutes_per_run_thousandths: 69 },
+    LabelConsumption { label: "ubuntu-latest", minutes_per_run_thousandths: 66 },
+  ],
+  jobs_sampled_from_runs: 30,
+  incoherent_job_durations: 9,
+  workflows_observed: [
+    ".github/workflows/actions_linter.yml",
+    ".github/workflows/autofix.yml",
+    ".github/workflows/benchmark.yml",
+    ".github/workflows/label-issue.yaml",
+    ".github/workflows/labels.yml",
+    ".github/workflows/lint_rule_docs.yml",
+    ".github/workflows/pull_request.yml",
+    ".github/workflows/pull_request_markdown.yml",
+    ".github/workflows/pull_request_node.yml",
+    ".github/workflows/pull_request_title_lint.yaml",
+  ],
+  census_workflow_path: ".github/workflows/main.yml",
+}
+
+data sample_pdns: ConsumptionSample = ConsumptionSample {
+  repository: "PowerDNS/pdns",
+  provider: "ubicloud",
+  rate: RunRateSample {
+    runs_counted: 500,
+    window: SamplingWindow { start: "2026-09-01T09:29:00Z", end: "2026-09-05T05:03:06Z", hours: 91 },
+    runs_per_month: 3989,
+  },
+  provider_labels: [
+    LabelConsumption { label: "ubicloud-standard-8-ubuntu-2404", minutes_per_run_thousandths: 1624 },
+    LabelConsumption { label: "ubuntu-24.04", minutes_per_run_thousandths: 70649 },
+    LabelConsumption { label: "ubuntu-24.04-arm", minutes_per_run_thousandths: 26045 },
+    LabelConsumption { label: "ubuntu-22.04", minutes_per_run_thousandths: 10328 },
+    LabelConsumption { label: "ubuntu-latest", minutes_per_run_thousandths: 514 },
+  ],
+  jobs_sampled_from_runs: 30,
+  incoherent_job_durations: 17,
+  workflows_observed: [
+    ".github/workflows/build-and-test-all.yml",
+    ".github/workflows/build-packages-daily-master.yml",
+    ".github/workflows/build-packages-daily-releases.yml",
+    ".github/workflows/builder-dispatch.yml",
+    ".github/workflows/codeql-analysis.yml",
+    ".github/workflows/documentation.yml",
+    ".github/workflows/formatting.yml",
+    ".github/workflows/spelling3.yml",
+    ".github/workflows/verify-pinned-python-packages.yml",
+  ],
+  census_workflow_path: ".github/workflows/build-and-test-all.yml",
+}
+
+data sample_openobserve: ConsumptionSample = ConsumptionSample {
+  repository: "openobserve/openobserve",
+  provider: "ubicloud",
+  rate: RunRateSample {
+    runs_counted: 500,
+    window: SamplingWindow { start: "2026-09-04T14:02:32Z", end: "2026-09-05T19:47:25Z", hours: 29 },
+    runs_per_month: 12279,
+  },
+  provider_labels: [
+    LabelConsumption { label: "ubicloud-standard-8", minutes_per_run_thousandths: 181 },
+    LabelConsumption { label: "ubicloud-standard-4", minutes_per_run_thousandths: 0 },
+    LabelConsumption { label: "ubuntu-latest", minutes_per_run_thousandths: 143 },
+  ],
+  jobs_sampled_from_runs: 30,
+  incoherent_job_durations: 21,
+  workflows_observed: [
+    ".github/workflows/ai-code-review.yml",
+    ".github/workflows/api-testing.yml",
+    ".github/workflows/ci-gate.yml",
+    ".github/workflows/db-schema-version-check.yml",
+    ".github/workflows/db-testing.yml",
+    ".github/workflows/dependabot-auto-merge.yml",
+    ".github/workflows/dispatch-event-enterprise.yml",
+    ".github/workflows/docgen-caller.yml",
+    ".github/workflows/e2e-council-caller.yml",
+    ".github/workflows/ent-e2e-gate.yml",
+    ".github/workflows/feat-design-checker.yml",
+    ".github/workflows/merge-queue-auto-requeue.yml",
+    ".github/workflows/pr-title-checker.yml",
+    ".github/workflows/stuck-run-reaper.yml",
+    ".github/workflows/verify-translations.yml",
+  ],
+  census_workflow_path: ".github/workflows/build-pr-image.yml",
+}
+
+type ScreenedRepository {
+  sample: ConsumptionSample
+  allowance: ProviderAllowance
+}
+
+data spend_screen_population: List<ScreenedRepository> = [
+  ScreenedRepository { sample: sample_biome, allowance: depot_allowance },
+  ScreenedRepository { sample: sample_pdns, allowance: ubicloud_allowance },
+  ScreenedRepository { sample: sample_openobserve, allowance: ubicloud_allowance },
+]
+
+fn screened_verdict(r: ScreenedRepository) -> CensusVerdict<SpendScreen> {
+  spend_screen(s: r.sample, a: r.allowance)
+}
+
+// The ranked output the operator asked for is a FILTER, not a score: the repositories whose CI
+// bill is established. Everything else is silent, and silence is recorded as silence.
+fn repositories_with_proven_spend() -> List<ScreenedRepository> {
+  filter(spend_screen_population, r => spend_is_proven(v: screened_verdict(r: r)))
+}

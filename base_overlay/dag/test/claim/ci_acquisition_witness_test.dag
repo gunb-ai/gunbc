@@ -1,0 +1,82 @@
+module test.claim.ci_acquisition_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.ci_acquisition {
+  SpendStanding, PublicStandardFree, PaidRunnerObserved, CustomerBillObserved, SpendUnknown,
+  SavingsClaimGrade, SavingsEstimated, SavingsVerified, savings_claim_grade,
+  ContactProvenance, InboundRequest, Referral, IndependentLicensedSource,
+  ExplicitAnalysisRequest, GitHubDerivedContact,
+  OutreachAdmission, OutreachAdmitted, OutreachRefused, outreach_admission,
+  outbound_scale_preconditions,
+}
+
+// The acquisition instrument's discriminating controls: the two no-constructor
+// guarantees of the 2026-08-29 operator ruling, held as executable claims.
+
+fn admission_is_refused(a: OutreachAdmission) -> Bool {
+  match a {
+    OutreachRefused { cause } => true,
+    OutreachAdmitted { provenance_note, jurisdiction, suppression_checked, human_authorization } => false,
+  }
+}
+
+fn try_admission(p: ContactProvenance) -> OutreachAdmission {
+  outreach_admission(
+    provenance: p,
+    jurisdiction: "US corporate subscriber",
+    suppression_checked: "no suppression match on file",
+    human_authorization: "operator-approved during initial program")
+}
+
+// GUARANTEE 1. A GitHub-derived contact is refused outreach REGARDLESS of every other
+// input being in order, while each admissible provenance admits under the same inputs.
+test fn witness_github_derived_contact_never_admits() -> Bool {
+  let refused = admission_is_refused(a: try_admission(p: GitHubDerivedContact { how_obtained: "email scraped from commit metadata" }))
+  let inbound_ok = admission_is_refused(a: try_admission(p: InboundRequest { record: "audit request via site form" })) == false
+  let referral_ok = admission_is_refused(a: try_admission(p: Referral { record: "introduced by existing customer" })) == false
+  let licensed_ok = admission_is_refused(a: try_admission(p: IndependentLicensedSource { source_terms: "B2B contact source whose terms permit sales use" })) == false
+  let explicit_ok = admission_is_refused(a: try_admission(p: ExplicitAnalysisRequest { channel: "GitHub App install requesting analysis" })) == false
+  refused && inbound_ok && referral_ok && licensed_ok && explicit_ok
+}
+
+fn grade_is_verified(g: SavingsClaimGrade) -> Bool {
+  match g {
+    SavingsVerified { bill_authorization } => true,
+    SavingsEstimated { assumptions } => false,
+  }
+}
+
+// PRODUCER PROVENANCE. Only an observed, customer-authorized bill grades a savings
+// claim as verified; every other spend standing yields an estimate with assumptions.
+test fn witness_only_a_customer_bill_verifies_savings() -> Bool {
+  let a: NonEmptyStr = "list-rate assumptions, cold/warm separated"
+  let bill = grade_is_verified(g: savings_claim_grade(s: CustomerBillObserved { authorization: "customer-authorized usage export" }, assumptions: a))
+  let free_est = grade_is_verified(g: savings_claim_grade(s: PublicStandardFree { note: "standard hosted runners free in public repos" }, assumptions: a)) == false
+  let paid_est = grade_is_verified(g: savings_claim_grade(s: PaidRunnerObserved { basis: "larger-runner label in workflow" }, assumptions: a)) == false
+  let unknown_est = grade_is_verified(g: savings_claim_grade(s: SpendUnknown { obligation: "no billing signal observed" }, assumptions: a)) == false
+  bill && free_est && paid_est && unknown_est
+}
+
+// The outbound scale gate is carried in full - six named preconditions.
+test fn witness_outbound_scale_gate_is_carried() -> Bool {
+  count(outbound_scale_preconditions) == 6
+}
+
+fn acq_flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn acquisition_witness_report() -> NonEmptyStr {
+  join([
+    "github_derived_never_admits=", acq_flag(b: witness_github_derived_contact_never_admits()),
+    " only_bill_verifies=", acq_flag(b: witness_only_a_customer_bill_verifies_savings()),
+    " scale_gate_carried=", acq_flag(b: witness_outbound_scale_gate_is_carried()),
+  ], "")
+}
+
+fn acquisition_witness_main() -> ProcessExit {
+  let report = acquisition_witness_report()
+  let all_pass = witness_github_derived_contact_never_admits()
+    && witness_only_a_customer_bill_verifies_savings()
+    && witness_outbound_scale_gate_is_carried()
+  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
+}

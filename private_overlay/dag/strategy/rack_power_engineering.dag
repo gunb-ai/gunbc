@@ -1,0 +1,114 @@
+module strategy.rack_power_engineering
+
+import std.types { Int, List, NonEmptyStr, Bool }
+
+// RACK-GRAIN POWER AND SPACE ENGINEERING (operator 2026-08-30: "i don't really know
+// anything about managing real space - hence why i head for colo - power/space is more
+// pressing"). This module is the missing layer between the fleet and any room: the
+// existing site modules answer MAY WE OPERATE HERE (site_requirements) and WHAT DOES IT
+// COST (makeshift_datacenter, ci_site_cost); this one answers WHAT DOES OUR FLEET
+// PHYSICALLY DEMAND - circuits, kilowatts, heat, rack positions - in the vocabulary a
+// colo contract or an electrician actually uses. Heading for colo is the CORRECT read
+// of the dependency ladder (space/power/cooling stays a rented, priced rung); this
+// module is what lets us BUY that rung competently instead of trustingly.
+
+// ---------------------------------------------------------------------------------------------
+// Circuits: the unit colo power is sold in. A circuit is voltage x amperage x phase, and
+// the NEC continuous-load rule caps draw at 80 percent of breaker rating - the single
+// most load-bearing constant in this file: a "30A circuit" is a 24A circuit for us.
+// ---------------------------------------------------------------------------------------------
+
+type CircuitPhase
+  = SinglePhase
+  | ThreePhase
+
+type CircuitShape {
+  label: NonEmptyStr
+  voltage: Int
+  amps: Int
+  phase: CircuitPhase
+}
+
+data nec_continuous_derate_permille: Int = 800
+
+// sqrt(3) as permille for three-phase apparent power (208V phase-to-phase systems).
+data sqrt3_permille: Int = 1732
+
+fn circuit_usable_watts(c: CircuitShape) -> Int {
+  match c.phase {
+    SinglePhase => c.voltage * c.amps * nec_continuous_derate_permille / 1000,
+    ThreePhase => c.voltage * c.amps * sqrt3_permille / 1000 * nec_continuous_derate_permille / 1000,
+  }
+}
+
+// The circuit menu a US colo actually quotes.
+data circuit_120_20: CircuitShape = CircuitShape { label: "120V/20A single-phase (household-class; useless for us beyond 2 nodes)", voltage: 120, amps: 20, phase: SinglePhase }
+data circuit_208_30_1p: CircuitShape = CircuitShape { label: "208V/30A single-phase (the standard colo half-rack feed)", voltage: 208, amps: 30, phase: SinglePhase }
+data circuit_208_30_3p: CircuitShape = CircuitShape { label: "208V/30A three-phase (the standard high-density rack feed)", voltage: 208, amps: 30, phase: ThreePhase }
+data circuit_208_60_3p: CircuitShape = CircuitShape { label: "208V/60A three-phase (dense rack; needs the colo to offer it)", voltage: 208, amps: 60, phase: ThreePhase }
+
+data circuit_menu: List<CircuitShape> = [circuit_120_20, circuit_208_30_1p, circuit_208_30_3p, circuit_208_60_3p]
+
+// ---------------------------------------------------------------------------------------------
+// The fleet's demand, derived from the same planning grain ci_node_build uses.
+// ---------------------------------------------------------------------------------------------
+
+data collins_node_planning_watts: Int = 650
+data collins_planning_watts_note: NonEmptyStr = "Planning wall draw per Mt. Collins 1U under load: 2 x Q80-30 (~420W) + 16 DIMMs (~64W) + fans and PSU loss. Same grain as ci_node_build planning_node_watts for the loose build; replaced by a measured receipt when hw-first-host runs a metered burn-in (the s0-receipts item already owes measured wall power). Idle is far lower - but circuits are sized to load, not to hope."
+
+data collins_fleet_nodes: Int = 21
+
+fn fleet_demand_watts() -> Int {
+  collins_fleet_nodes * collins_node_planning_watts
+}
+
+// Heat: every watt in is a watt of heat out. BTU/hr = W x 3.412 (permille carrier).
+data btu_per_watt_permille: Int = 3412
+
+fn fleet_heat_btu_hr() -> Int {
+  fleet_demand_watts() * btu_per_watt_permille / 1000
+}
+
+fn nodes_per_circuit(c: CircuitShape) -> Int {
+  circuit_usable_watts(c: c) / collins_node_planning_watts
+}
+
+// Rack math: how many rack positions the fleet needs at a given per-rack power budget.
+// Colo standard density is ~5kW/rack; "high density" 10-17kW needs the 3-phase feeds.
+// Space is almost never the constraint - 21 nodes is 21U, half of one 42U rack - POWER
+// decides the rack count, which is the single most counterintuitive fact for a newcomer.
+fn racks_at_density(rack_budget_watts: Int) -> Int {
+  let d = fleet_demand_watts()
+  if d % rack_budget_watts == 0 { d / rack_budget_watts } else { d / rack_budget_watts + 1 }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The competence boundary: what colo delivers vs what stays OURS in a colo. Heading for
+// colo outsources the hard, licensed, capital-heavy layer - it does not outsource rack
+// engineering, and believing it does is the classic first-colo mistake.
+// ---------------------------------------------------------------------------------------------
+
+type InfraDuty {
+  duty: NonEmptyStr
+  colo_delivers: Bool
+  note: NonEmptyStr
+}
+
+data duty_utility_service: InfraDuty = InfraDuty { duty: "utility service, transformers, switchgear, generators, UPS", colo_delivers: true, note: "the capital-heavy licensed layer; exactly what we are renting" }
+data duty_cooling: InfraDuty = InfraDuty { duty: "cooling plant and room airflow", colo_delivers: true, note: "but OUR duty is airflow discipline inside the cabinet: front-to-back orientation, blanking panels in empty U, no recirculation - a colo cools the aisle, not a badly packed cabinet" }
+data duty_circuits: InfraDuty = InfraDuty { duty: "power circuits to the cabinet (A+B feeds)", colo_delivers: true, note: "we CHOOSE the circuit shapes and pay per circuit or per kW; A+B means two independent feeds - redundancy exists only if each node's two PSUs land on DIFFERENT feeds and each feed alone carries the full load (at most 50 percent loaded in normal operation). The held unit's PSU2 'AC lost' observation is this fact in miniature: one cord = unarmed redundancy" }
+data duty_pdus: InfraDuty = InfraDuty { duty: "in-cabinet PDUs", colo_delivers: false, note: "ours to buy: metered-per-outlet PDUs are the cheap observability that catches a failing PSU before it is an outage; one A-side and one B-side PDU per cabinet - and they are asset-registry rows like everything else" }
+data duty_racking: InfraDuty = InfraDuty { duty: "racking, rails, cabling, labeling", colo_delivers: false, note: "ours; the intake workflow extends to a racking checklist - cable discipline is what makes remote hands executable" }
+data duty_remote_hands: InfraDuty = InfraDuty { duty: "physical interventions after move-in", colo_delivers: true, note: "billed per 15 minutes against OUR runbooks - a remote-hands tech executes instructions, so every physical procedure we own must be written as one (the BMC-first fleet design exists to make these rare)" }
+data duty_capacity_planning: InfraDuty = InfraDuty { duty: "power/space capacity planning and growth reservations", colo_delivers: false, note: "ours: the RFQ's expansion-rights line exists because the adjacent cabinet is not guaranteed to be available when node 22 arrives" }
+
+data infra_duties: List<InfraDuty> = [
+  duty_utility_service, duty_cooling, duty_circuits, duty_pdus,
+  duty_racking, duty_remote_hands, duty_capacity_planning,
+]
+
+fn our_duties() -> List<InfraDuty> {
+  filter(infra_duties, d => d.colo_delivers == false)
+}
+
+data own_space_delta_note: NonEmptyStr = "WHAT OWN SPACE ADDS (the ladder rung colo defers, listed so the take-trigger stays honest): utility service application and possible transformer/service upgrade, switchgear and panel work by licensed electricians, UPS + generator + transfer switch + fuel contracts, fire suppression appropriate to an electrical room, EPO and inspection regimes, HVAC sized to the IT load (about 1 ton per 3.5kW) with failure alarms, physical security, and 24/7 response with no remote-hands to call. The 91-E-21st survey (site_requirements) already measures the REGULATORY half of this list; this note is the OPERATIONAL half. The rung's take-trigger in strategy.dependency_ladder stands: taken on RFQ-vs-owned evidence at scale, not on curiosity."

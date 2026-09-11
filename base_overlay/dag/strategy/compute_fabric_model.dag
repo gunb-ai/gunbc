@@ -1,0 +1,1096 @@
+module strategy.compute_fabric_model
+
+import std.nat { Nat }
+import std.bool { Bool }
+import strategy.strategy_model { EvidenceAnchor }
+
+data compute_fabric_model_note: String = "Distributed-physical-compute-fabric kernel seed, v6 (physical aggregation -> derivation+fabrication -> carrier+dependency -> service-boundary -> contamination/access/storage -> maintenance-locality/network-burden directives, all docs/strategy/2026-08-10-*). Shape-search before minting: extdeps.chassis/extdeps.power own hardware catalog rows; strategy.site_model owns the site-admission/business layer; the spatial foundation is a SEPARATE pending model per the spatial-world-kernel directive scope ruling. This file introduces only the fabric-domain relations no existing authority owns: physical functions and per-consumer demands, candidate realizations with exact demand discharge, the carrier/support split, the power and storage service decompositions, the physical dependency ledger, compute assemblies, service domains, site compute admission, fabrication/printed-part discipline, comparison axes, and witness obligations. SEED-FORM DEBTS, recorded not silent: (1) no witness carrier - the ten first-witness obligations plus twelve power and eight storage acceptance controls are recorded, not discharged; (2) every realization row is hypothesis-grade until fixture receipts land; (3) public-repo authority references (asrock_altrad8ud_1l2t_catalog, altra_max_m12830_catalog, dynatron_w1_catalog, fleet_intent) are review-asserted and pending pin-verification - this session holds only the private overlay; (4) seasonal/diverted heat rejection remains a missing shape; (5) external readings (UL printed-part variability, HDT bands, ASHRAE contamination, EPA MERV, NIST physical-security families, SIA OSDP, OCP ORv3, ASRock direct-12V) pending pin-verification per the extdeps discipline; (6) the twelve contamination and access demand rows have exact consumers but NO admitted realizations yet - they are IncompletePhysicalDesign until candidates and dependency edges land; (7) three StorageDemand/StorageBinding pairs are now instantiated (boot, scratch, artifact) with their NetworkServiceDemands; the remaining E8 matrix rows (caches, runner images, tenant-private, logs) are the authoring queue; (8) no OperatorInterventionProfile or LocalScratchServiceability row is instantiated yet - each realization owes one before comparison; (9) every numeric note in the network demands is ILLUSTRATIVE ARITHMETIC or explicitly unmeasured, never an observation."
+
+data derivation_stance_note: String = "OPERATOR RULING (2026-08-10; aggregation-directive annotation A0, ratified twice since): boundaries are DERIVED, never subtracted. We begin with the actual requirements of the selected software, hardware, people, and site; physical things enter the design only when a requirement derives them. A chassis-shaped boundary may appear if several demands resolve most efficiently at that one boundary. The default is NO UNEARNED MATTER - and (carrier+dependency directive) NO UNEARNED RELATIONSHIP: a custom bracket, interface, connector, coolant branch, rail, control path, or site penetration must justify not just its material existence but the maintenance obligation it creates. Pipeline: selected software and operational plan -> exact physical demands -> external physics/standards/product facts -> explicit safety/habitability/business ceilings -> candidate realizations -> admitted physical design -> generated BOM and build instructions -> as-built observations. The BOM is the output, never where reasoning begins."
+
+data explanatory_ownership_note: String = "DOCTRINE (derivation+fabrication directive, adopted): physical ownership means EXPLANATORY ownership, not fabrication ownership. Every physical artifact must be traceable to an active requirement, an externally grounded constraint, or an explicitly budgeted human/aesthetic objective. Every item requires a traceable reason; NOT every item requires an original design - a commodity PSU may be the derived answer; an aluminum extrusion may be the cheapest grounded load path; a standard bolt is consumed as a standardized atom, never re-proved per assembly - the extdeps discipline applied to matter. CommodityPurchase, AdditiveManufacture, SheetFabrication, Machining, and Reuse are PEER realizations: no method privileged, cheapest admissible wins across all funded axes. Additive corollary: PRINT THE BESPOKE INTERFACE, NOT THE IRREDUCIBLE SAFETY BOUNDARY - promotion into load/heat/fire/electrical/fluid-critical roles only by test or appropriate authority."
+
+data dependency_law_note: String = "LAW (carrier+dependency directive, adopted): a realization does not merely discharge demands - it also CREATES dependencies. Selection compares the discharged demands against the dependencies introduced over the full expected lifetime. A chassis, rack, cassette, CDU, custom shroud, printed jig, special connector, and wall anchor each create different dependency populations; every custom physical relationship is a dependency we must inventory, maintain, reproduce, qualify, and eventually retire or migrate. Custom-dependency ADMISSION RULE - admitted only when at least one holds: (1) no commodity realization satisfies the active demand; (2) it removes more lifecycle dependency burden than it creates; (3) it creates a measured improvement on a funded axis large enough to justify its maintenance; (4) it is a bounded experiment with an explicit retirement decision. A one-off is fine when consciously one-off; it must never invisibly become fleet architecture."
+
+data no_inherited_boundary_law: String = "No two service domains are assumed equal merely because a rack normally makes them equal, and no sharing boundary is inherited from the 19-inch rack, the vendor chassis, or any market convention unless a measured requirement justifies it. Coincidence of boundaries is chosen on receipts or it is a defect. Corollary: alignment between physical service domains and software drain domains is deliberate in both directions - deliberately aligned, or deliberately not aligned, never accidental."
+
+data spatial_obligations_note: String = "Relations OWED TO the pending spatial-world kernel, consumed (not minted) here: MountedTo (assembly, surface, pose, attachment, load), RequiresClearance, PhysicalRoute (power/network/air/fluid/drain), PotentialFlow (airflow/heat/fluid-leak/smoke), and SpatialVolumeContainsAssembly / AssemblyMountedToSurface, of which rack residence is one specialization. This carrier binds assemblies to demands, carriers, supports, realizations, domains, and dependency edges only."
+
+type PhysicalFunction
+  = StructuralSupport
+  | ComponentRetention
+  | AirflowGuidance
+  | HeatPickup
+  | HeatTransport
+  | HeatRejection
+  | MainsTouchProtection
+  | LowVoltageTouchProtection
+  | FluidContainment
+  | LeakRouting
+  | ElectromagneticContainment
+  | FireDetection
+  | FirePropagationResistance
+  | DustControl
+  | AmbientClimate
+  | PhysicalAccessControl
+  | ServiceAccess
+  | VisualIntegration
+  | EmergencyDisconnect
+  | WorkloadRecovery
+
+data physical_function_note: String = "Functions are NEEDS, not parts. The aggregation directive's minimum-local-boundary table is the requirement inventory these arms carry; the null hypothesis for every function is no local boundary. VisualIntegration is first-class, not decoration: a named consumer and budget (section 0 habitability increment ~$3-8k/site). Cork and similar finishes are admitted realizations of VisualIntegration / information surfaces and REFUSED as StructuralSupport or load path - the structural layer remains metal."
+
+type BoundaryScope
+  = AssemblyLocal
+  | CarrierLocal
+  | BranchLevel
+  | DomainLevel
+  | RoomLevel
+  | BuildingLevel
+  | OutdoorLevel
+
+data boundary_scope_note: String = "CarrierLocal renamed from CassetteLocal (carrier+dependency directive): a cassette is a realization, not a fundamental scope - a tray, panel, chassis, cassette, or tank can all provide a carrier-local boundary."
+
+type PhysicalFunctionDemand {
+  id: String
+  consumer_id: String
+  function: PhysicalFunction
+  operating_condition: String
+  required_outcome: String
+  source: EvidenceAnchor
+}
+
+data physical_function_demand_note: String = "Each selected consumer EMITS exact requirement instances - the layer that prevents replacing the vendor-chassis monolith with a hand-authored package monolith. A demand with no consumer is not a demand. STANDING GAP, recorded per the carrier+dependency review: only two seed demands exist (Jade airflow, site visual integration); no instantiated demands yet for structural support, component retention, service access, mains/low-voltage touch protection, emergency disconnect, grounding, leak routing, or physical access control - therefore every drawn artifact in the concept sheets is a CANDIDATE, not an earned part, until its exact demand and ceiling rows land."
+
+type FabricationMethod
+  = CommodityPurchase
+  | AdditiveManufacture
+  | SheetFabrication
+  | Machining
+  | Reuse
+
+type CandidateRealization {
+  id: String
+  description: String
+  method: FabricationMethod
+  evidence: EvidenceAnchor
+}
+
+type CandidateDemandDischarge {
+  id: String
+  candidate_id: String
+  demand_id: String
+  expected_outcome: String
+  evidence: EvidenceAnchor
+}
+
+data candidate_discharge_note: String = "Discharge claims are EXACT: one candidate x one demand x expected outcome x evidence. The earlier satisfies_functions: List<PhysicalFunction> is retired - a generic 'satisfies StructuralSupport' crossed over every structural demand is the physical analogue of the IAM cross-product overgranting defect. A candidate may discharge several demands; each discharge is its own row."
+
+type AssemblyCarrierRealization
+  = VendorChassis
+  | FlatMetalCarrier
+  | OpenTrayCarrier
+  | ExtrusionCarrier
+  | ImmersionCarrier
+
+type CarrierSupportRealization
+  = FreestandingServiceFrame
+  | FurnitureSupport
+  | BuildingAttachedRail
+  | ConventionalRackFrame
+  | BenchSupport
+  | SuspendedSupport
+
+data carrier_support_split_note: String = "Two decisions, never fused (supersedes the retired MountingRealization enum): what directly carries the board (AssemblyCarrierRealization) and what carries that carrier in the room (CarrierSupportRealization). The same carrier moves lab bench -> freestanding frame -> leased storefront -> purchased building wall without redesigning the compute assembly; support swap never changes assembly or logical-host identity (witness obligation 5). PRIMARY support for the first prototype: FreestandingServiceFrame - floor base/leveling feet, vertical metal uprights, standard horizontal carrier rails, at most a light anti-tip restraint; the building wall carries ZERO normal equipment load. BuildingAttachedRail remains a peer candidate selected only where a site requirement derives it (witness obligation 6: a leased-site policy refusing structural wall alteration removes it). COMMON CARRIER INTERFACE, rev 0, deliberately boring: board-specific hole pattern -> board-family metal adapter plate -> common carrier edge; two upper hooks/captured tabs + one captive lower latch/thumbscrew + handle + manually accessible power/network/BMC connectors; operator sequence drain -> power off -> unplug -> release latch -> lift. REFUSED in rev 0 as convenience dependencies: blind-mate power/network, automatic fluid connectors, custom backplanes, motorized latches, complex sliding rails, a unique frame per board, a board-sized printed structural tray. Bespoke beauty lives in fascia, labels, status lighting, printed airflow pieces, guides, handles, finishes."
+
+type HeatPickupRealization
+  = PassiveHeatsink
+  | ForcedAirHeatsink
+  | DirectToChipColdPlate
+  | ImmersionPickup
+
+type HeatTransportRealization
+  = LocalAir
+  | SharedAirPlenum
+  | LiquidBranch
+  | ImmersionFluidLoop
+
+type HeatRejectionRealization
+  = RoomAir
+  | OutdoorDryCooler
+  | MechanicalCooling
+  | SpaceHeatReuse
+  | HeatRejectionUnresolved
+
+type AcDcConversionRealization
+  = PerAssemblyAtxSupply
+  | SharedRectifierShelf
+  | NativeVendorPowerShelf
+
+type DistributionVoltage
+  = Distribution12V
+  | Distribution48V
+
+type BoardPowerAdaptation
+  = DirectBoard12V
+  | Local48To12Converter
+  | NativeVendorPdb
+  | AtxMultiRailDelivery
+
+type BranchConnectionRealization
+  = ManualKeyedCable
+  | CoveredTerminalBranch
+  | BlindMateBusbarContact
+
+type PowerSupplyMultiplicity
+  = OneSelectedSupply
+  | RedundantSupplies
+  | MultipleSuppliesRequiredByNativeAssembly
+
+type PowerBranch {
+  id: String
+  consumer_assembly_id: String
+  source_domain_id: String
+  voltage: DistributionVoltage
+  maximum_continuous_current_note: String
+  admitted_peak_current_note: String
+  allowed_voltage_drop_note: String
+  branch_protection_note: String
+  disconnect_note: String
+  connector_note: String
+  inrush_policy_note: String
+  current_observation_note: String
+  temperature_observation_note: String
+}
+
+type PowerServiceCandidate {
+  id: String
+  conversion: AcDcConversionRealization
+  distribution: DistributionVoltage
+  board_adaptation: BoardPowerAdaptation
+  connection: BranchConnectionRealization
+  note: String
+  status: RealizationStatus
+}
+
+data power_decomposition_note: String = "Power decomposition v2 (service-boundary directive; supersedes the v3 PowerInputRealization whose SharedDcBus arm collapsed four independent decisions): AC/DC conversion x distribution voltage x board adaptation x branch connection, with supply multiplicity a separate policy. The formulation is ONE LOGICAL POWER SERVICE realized by a modular rectifier shelf and exact protected branches - never 'one giant PSU'; the shelf sits in the freestanding frame's service base, never on the building wall. Shelf-and-protected-manual-cables FIRST: a busbar, sliding contact, blind-mate tolerance stack, contact wipe, arc-safe insertion, connector float, or hot-plug behavior is invented only when ordinary protected cables produce a MEASURED maintenance, clutter, voltage-drop, or reliability problem (the rev-0 blind-mate refusal survives: ManualKeyedCable on all current candidates). Redundancy is a separate policy decision, not implied by sharing. A Jade arriving with two CRPS modules while the plan runs one is a Jade-realization property, never architecture; the air reference carries no dormant redundant-power dependency. Shared12V vs Shared48V is structural neither-wins: 12V = high distribution current, no per-node conversion, short-domain preference (even four 350-450W nodes ~117-150A at 12V before margin - a serious distribution system); 48V = 16x lower resistive loss, but one BOARD-FAMILY-QUALIFIED DC/DC module per 12V board with its own continuous/transient/thermal/regulation/inrush/fault/availability/connector obligations - converter cost is a market-search hypothesis, never a design premise."
+
+data power_contract_standing_note: String = "Electrical-contract standing ladder (service-boundary directive): Direct12VSupported - OBSERVED from the official ASRock Rack product authority (asrockrack.com product page, review-verified 2026-08-10; extdeps pinning owed). Direct12VInterfaceComplete - UNRESOLVED pending official manual/design facts as extdeps rows: input count and pinout, allowable range, peak and transient current, ripple, startup/inrush, standby/BMC behavior, grounding, connector temperature rise, required sequencing, fault response. Shared12VReady - UNRESOLVED pending design + prototype receipts. 'The bus just delivers clean 12V' is RETRACTED as too strong; the product page proves the mode exists, not the contract."
+
+data power_safety_note: String = "SAFETY STANDING (retraction, service-boundary directive): the session claim 'below 60V DC is SELV - safe-to-touch' is RETRACTED. Low voltage is not low energy: a 12/48V system carries fault energy sufficient to melt tools, ignite insulation, damage connectors, burn, and collapse the power domain (OCP 48V contacts are rated to hundreds of amps). The correct claim: moving mains AC into one listed rectifier enclosure MAY reduce the number of mains-voltage boundaries; the downstream DC system still requires qualified protection, covering, bonding, branch isolation, and fault-energy analysis. SELV is an earned classification under the applicable authority, never an assumed admission receipt. Battery correction: a battery service is NEVER a passive wire on the bus - it carries its own dependency population (chemistry, battery management, charge control, disconnect, overcurrent protection, thermal monitoring, state-of-charge observation, end-of-life replacement, fault containment) and enters only as its own service with a full ledger."
+
+data power_prototype_ladder_note: String = "Prototype ladder (replaces the session's preselected '3-6 nodes on 12V'): P0 one ALTRAD8UD on an ordinary listed ATX PSU; P1 one ALTRAD8UD on the official direct-12V path; P2 TWO nodes on one shared 12V rectifier domain; P3 expand only after branch-fault, voltage-drop, inrush, thermal, noise, and efficiency receipts; P4 compare 48V distribution only when 12V distribution burden is OBSERVED, not predicted. Comparison axes vs the per-node ATX baseline: efficiency, acoustic effect, branch fault isolation, voltage regulation, inrush behavior, connector/conductor temperature, maintenance actions, dependency count, reproduction time, domain blast radius, build and operating cost. The successful result is not 'shared power won' - it is one exact receipt showing which service boundary is simplest for this node count, wire length, workload, and site. Mining-style PSU breakout boards are lab candidates at most until qualified; shared-rectifier efficiency advantage is measured, not assumed. 'Shared bus = one software drain domain' is an excellent TESTABLE candidate, not a universal law (acceptance control 4 tests it)."
+
+data power_service_candidates: List<PowerServiceCandidate> = [
+  PowerServiceCandidate {
+    id: "cand-power-shared12",
+    conversion: SharedRectifierShelf,
+    distribution: Distribution12V,
+    board_adaptation: DirectBoard12V,
+    connection: ManualKeyedCable,
+    note: "P1/P2 candidate: listed/modular rectifier shelf in the frame service base -> covered fused distribution block -> one manually disconnectable protected branch per carrier -> board direct-12V input. Emits NO converter dependency (acceptance control 9).",
+    status: HypothesisGrade { note: "gated on Direct12VInterfaceComplete + P1/P2 receipts" },
+  },
+  PowerServiceCandidate {
+    id: "cand-power-shared48",
+    conversion: SharedRectifierShelf,
+    distribution: Distribution48V,
+    board_adaptation: Local48To12Converter,
+    connection: ManualKeyedCable,
+    note: "P4 candidate: larger practical domain, 16x lower distribution loss; emits exactly one board-family-qualified 48->12 converter dependency per attached 12V board (acceptance control 10) - conversion loss and heat land at each carrier. Compared only when 12V burden is observed.",
+    status: HypothesisGrade { note: "deliberately unprototyped until P4; converter qualification is the gating dependency" },
+  },
+]
+
+type ComputeAssembly {
+  id: String
+  role_note: String
+  motherboard: String
+  processors: String
+  memory: String
+  storage_interfaces: String
+  network_interfaces: String
+  management_controller: String
+  required_native_interconnects: List<String>
+  evidence: EvidenceAnchor
+}
+
+type DataStanding
+  = Authoritative
+  | Reconstructible
+  | Disposable
+
+type AccessSemantics
+  = Block
+  | Filesystem
+  | Object
+  | ContentAddressedObject
+
+type StoragePlacement
+  = LocalDevice
+  | MemoryBacked
+  | SiteSharedService
+  | UpstreamProvider
+
+type Mutability
+  = ImmutableContent
+  | AppendOnly
+  | Mutable
+
+type DurabilityRequirement
+  = MayVanishWithJob
+  | MayVanishWithNode
+  | MustSurviveSite
+  | MustSurviveProviderOrSite
+
+type IsolationRequirement
+  = PublicShared
+  | TenantPrivate
+  | JobPrivate
+
+type RecoveryBehavior
+  = Refetch
+  | Recompute
+  | Restore
+  | UnacceptableLoss
+
+type StorageAccessObservation {
+  id: String
+  sequential_vs_random_note: String
+  operation_size_note: String
+  read_write_ratio_note: String
+  serial_critical_path_depth_note: String
+  working_set_note: String
+  evidence: EvidenceAnchor
+}
+
+type StoragePerformanceRequirement {
+  id: String
+  max_dependent_operation_latency_note: String
+  min_sustained_bandwidth_note: String
+  min_iops_note: String
+  max_queueing_note: String
+}
+
+type StorageDemand {
+  id: String
+  consumer_id: String
+  role_label: String
+  standing: DataStanding
+  access: AccessSemantics
+  mutability: Mutability
+  durability: DurabilityRequirement
+  isolation: IsolationRequirement
+  access_pattern_id: String
+  performance_id: String
+  source: EvidenceAnchor
+}
+
+type ReplicaPolicy
+  = NoLocalReplica
+  | LocalHotReplicaByObservedReuse
+  | LocalFullReplica
+
+type TrafficPriority
+  = ControlPlaneReserved
+  | DrainAndRecovery
+  | CustomerJobTraffic
+  | BulkMaterialization
+  | BestEffort
+
+type NetworkFailureBehavior
+  = RunningConsumersUnaffected
+  | NewOrRecoveringConsumersBlocked
+  | ActiveWorkStallsOrFails
+  | BufferAndRetry
+
+type NetworkServiceDemand {
+  id: String
+  consumer_id: String
+  source_service_id: String
+  destination_service_id: String
+  average_bytes_per_second_note: String
+  p95_bytes_per_second_note: String
+  maximum_burst_bytes_note: String
+  burst_completion_window_note: String
+  operations_per_second_note: String
+  dependent_round_trips_note: String
+  maximum_round_trip_latency_note: String
+  availability_window_note: String
+  failure_behavior: NetworkFailureBehavior
+  traffic_priority: TrafficPriority
+}
+
+data network_burden_note: String = "NETWORK BURDEN IS FIRST-CLASS (maintenance-locality directive; the operator's caveat that offload silently moves requirements onto the network). Every StorageBinding MUST emit a NetworkServiceDemand. Model TWO distinct traffic populations, because monthly bytes lie: (1) cold-start/materialization - ColdBytesPerPeriod = consumer_starts x bytes_per_materialization x remote_miss_fraction, with the herd envelope RequiredBootBandwidth = simultaneous_consumers x image_bytes / admitted_boot_window; (2) steady state = read_bytes_rate + write_bytes_rate + protocol_overhead + metadata_operation_rate. Worked example (illustrative): 20 nodes x 2GB image x 4 boots/month = 160 GB/month ~ 0.5 Mbps average - invisible; the SAME bytes recovered inside a 2-minute window after a site-wide power event = 20 x 2GB / 120s ~ 333 MB/s ~ 2.7 Gbps. Same population, completely different network requirement - so every demand carries average, p95, maximum synchronized burst, AND required completion window. CONSERVATION LAW: sum(admitted steady traffic) + admitted concurrent burst envelope + control-plane reserve + customer-job network reserve <= OBSERVED USABLE fabric capacity (never NIC nameplate, and measured under the selected protocol and concurrency). Model at least three bottlenecks separately - HostEdgeCapacity, SharedFabricCapacity, StorageProviderCapacity: a 100 GbE uplink does not help if nodes connect at 10 GbE, the storage server has 25 GbE, the pool sustains 8 GB/s, or protocol CPU saturates first. Traffic classes follow: a site-wide reboot must never crowd out control-plane/BMC traffic or the egress required to drain jobs."
+
+type RepairBatchability
+  = MustRepairImmediately
+  | DeferrableToScheduledVisit
+  | BatchableAcrossDevices
+
+type OperatorInterventionProfile {
+  id: String
+  realization_id: String
+  expected_hands_on_minutes_per_year_note: String
+  expected_emergency_visits_per_year_note: String
+  expected_scheduled_visits_per_year_note: String
+  replacement_procedure_count_note: String
+  unique_procedure_count_note: String
+  median_recovery_minutes_note: String
+  p95_recovery_minutes_note: String
+  batchability: RepairBatchability
+  remote_recovery_fraction_note: String
+  consumers_affected_during_repair_note: String
+  sites_visited_and_travel_note: String
+  special_tools_note: String
+}
+
+data maintenance_locality_note: String = "MAINTENANCE LOCALITY IS FIRST-CLASS (maintenance-locality directive; the operator's strongest offload argument). Every local/shared realization MUST emit an OperatorInterventionProfile. ExpectedLocalMaintenanceHours = device_population x annual_failure_probability x (diagnosis + drain + physical access + replacement + reinstall/restore + validation minutes) + per-node upgrade work + configuration-drift incidents. ExpectedSharedMaintenanceHours = pool_device_population x AFR x pool_replacement_minutes + storage-service upgrade hours + monitoring/scrub hours + shared incident hours. But minutes UNDER-DESCRIBE the difference: emergency fraction, deferability, batchability, sites that must be visited, travel time, special tools, unique procedures, and consumers affected during repair all count. The decisive contrast: 'replace three failed/aged drives during one planned visit next week' versus 'find the machine, drain it now, remove the carrier, replace the M.2, reinstall it, verify its identity' - that difference in urgency and batchability may be worth more than the raw replacement minutes. Honesty guard: centralization does NOT eliminate drive maintenance; it relocates and amortizes it, and adds a storage service to operate plus a shared blast radius."
+
+type BootRuntimePlacement
+  = RamRoot
+  | LocalEphemeralRoot
+  | RemoteMountedRoot
+
+type BootRetainedCache
+  = NoCache
+  | SiteCache
+  | NodeCache
+
+type BootImageAuthority {
+  id: String
+  artifact_note: String
+  version_note: String
+  content_hash_note: String
+}
+
+type BootMaterialization {
+  id: String
+  delivery_note: String
+  runtime_placement: BootRuntimePlacement
+  retained_cache: BootRetainedCache
+}
+
+type BootAvailabilityRequirement {
+  id: String
+  maximum_boot_time_note: String
+  maximum_simultaneous_boots_note: String
+  may_running_nodes_depend_on_service: Bool
+  recovery_path_note: String
+}
+
+data boot_decomposition_note: String = "BOOT DECOMPOSED (maintenance-locality directive; richer than the session's flat NoLocalReplica). Authority x materialization x availability requirement. The load-bearing field is may_running_nodes_depend_on_service: setting it FALSE ('running_node_continues_when_boot_service_unavailable = true') naturally admits RAM-root and full local caching while REFUSING an always-live remote root for the ordinary compute fleet. Candidate materializations: NetworkToRamNoNodeCache, NetworkToRamWithSiteCache, NetworkToLocalEphemeralRoot, SanBootPersistentRoot, NfsMountedRoot. Why RAM-root over NFS root: a root fully materialized into RAM limits the network dependency to the BOOT WINDOW, whereas NFS root keeps the network on the node's continuous execution path - losing the server hangs a RUNNING node. External analogues (readings, pin-verification owed): Warewulf provisions a shared OS image over the network into node memory explicitly to end per-node installation and version drift; Cisco UCS SAN boot lets a service profile move to different hardware and appear as the same server (logical host identity != motherboard != boot drive != carrier - the 'node becomes a slot' property); Azure ephemeral OS disks pair an upstream image authority WITH a local ephemeral runtime image, including a full-local-cache mode that removes steady-state remote reads - the two ideas are not opposites; Kubernetes accounts local ephemeral storage as scheduled capacity applications must tolerate losing with the node; NVMe-oF makes remote scratch legitimate but moves the bar from cheap central disks to a low-latency high-bandwidth fabric that may cost more than the local NVMe population it replaces at current scale."
+
+type LocalScratchServiceability {
+  id: String
+  realization_note: String
+  no_authoritative_state: Bool
+  replacement_requires_no_reinstall: Bool
+  replacement_requires_no_board_removal: Bool
+  tool_count_note: String
+  maximum_hands_on_minutes_note: String
+  hot_swap_required: Bool
+  spare_on_site: Bool
+}
+
+data scratch_serviceability_note: String = "THE REPAIR PATH IS PART OF STORAGE DESIGN, NOT AN AFTERTHOUGHT (maintenance-locality directive). Keeping local scratch does not require accepting a buried M.2 repair path. Realizations to compare: onboard M.2, PCIe NVMe card, front-access U.2/U.3, EDSFF carrier, and a SMALL FRAME-LOCAL SCRATCH SHELF where several boards consume independently allocated namespaces from one physically accessible unit - a shared dependency, but site-local low latency with concentrated repair; compared against direct-attached NVMe, never assumed. The cheapest device is not the cheapest lifecycle realization if replacing it requires disassembling the compute carrier. Local NVMe standing, in all cases: disposable, schedulable capacity, NO completed-job authority, replace-and-reboot recovery (blank-device swap, no install, no restore), physically serviceable where practical - reclassified from a ComputeAssembly property to a selected scratch service binding."
+
+type BootScratchCandidate {
+  id: String
+  label: String
+  boot_placement: BootRuntimePlacement
+  scratch_placement: StoragePlacement
+  note: String
+  status: RealizationStatus
+}
+
+data boot_scratch_candidates: List<BootScratchCandidate> = [
+  BootScratchCandidate {
+    id: "cand-A-local-boot-local-scratch",
+    label: "A - fully local traditional node (CONTROL)",
+    boot_placement: LocalEphemeralRoot,
+    scratch_placement: LocalDevice,
+    note: "Local boot drive, local OS, local scratch. Minimal network requirement, strongest local independence; costs per-node installations, version drift, boot-device repair, and per-node identity. Retained as the conventional control against which the others must prove they buy something real.",
+    status: HypothesisGrade { note: "control arm" },
+  },
+  BootScratchCandidate {
+    id: "cand-B-netboot-ram-local-scratch",
+    label: "B - network boot to RAM + local NVMe scratch (EXPECTED INITIAL WINNER)",
+    boot_placement: RamRoot,
+    scratch_placement: LocalDevice,
+    note: "Content-addressed OS authority upstream -> network materialization at boot -> RAM-root runtime; local NVMe as disposable scratch ONLY. Buys: no per-node OS installation, no OS drive, no version drift, running nodes independent of the boot service, fast private scratch, and NVMe failure requiring no restore or reinstall. Costs: boot-service dependency during startup, boot-herd network burst, RAM consumed by the root image, and a local scratch device still eventually needing physical replacement. Recorded as the HYPOTHESIS most likely to preserve both goals (centralized image authority with near-zero node-specific administration, plus private low-latency scratch) - NOT a stored verdict.",
+    status: HypothesisGrade { note: "preferred initial candidate pending measurement" },
+  },
+  BootScratchCandidate {
+    id: "cand-C-netboot-ram-tmpfs-scratch",
+    label: "C - network boot to RAM + tmpfs scratch",
+    boot_placement: RamRoot,
+    scratch_placement: MemoryBacked,
+    note: "Genuinely diskless node: no local drive repairs, fastest low-latency scratch. Costs sellable RAM (at 1:3 packing on 512GB, RAM is the vCPU-binding constraint per compute-infrastructure section 7 - every GB to tmpfs is capacity not sold), scratch vanishes on reset, and memory pressure becomes a workload-admission constraint. Admitted as a SCHEDULER-SELECTED realization for small jobs or abundant-RAM periods; must NOT become the universal node design while RAM is the packing constraint. Consistent with the schedulable-memory thesis: scratch placement is a scheduling variable, not a fixed hardware fact.",
+    status: HypothesisGrade { note: "scheduler-selectable, not a universal design" },
+  },
+  BootScratchCandidate {
+    id: "cand-D-netboot-remote-scratch",
+    label: "D - network boot + remote scratch",
+    boot_placement: RamRoot,
+    scratch_placement: SiteSharedService,
+    note: "Scratch over NVMe-oF / network filesystem / block service. Buys: no local drives, all repair and capacity work concentrated in one storage service. Costs: fabric latency, shared throughput, storage-service operations, larger blast radius, continuous network dependence. May win later with 25/100 GbE, a measured workload, and enough node population that maintenance concentration justifies the fabric - not obviously the cheapest initial realization.",
+    status: HypothesisGrade { note: "instrumented future candidate; gated on the diskless promotion gate" },
+  },
+]
+
+data diskless_promotion_gate: String = "PROMOTION GATE (maintenance-locality directive): remove the local NVMe only when MEASURED operator time saved by centralized repair exceeds the network/fabric cost, the lost sellable RAM or scratch performance, and the added shared-failure burden. Eight controls owed as witnesses: (1) boot authority has ONE content hash regardless of node count; (2) running RAM-root nodes survive loss of the boot service; (3) boot-service loss blocks only new/recovering nodes; (4) a herd restart cannot exceed the admitted network envelope; (5) local scratch loss loses no completed artifact; (6) removing local scratch adds the EXACT remote-scratch network demand; (7) adding a local cache lowers upstream bytes but does NOT create a second semantic authority; (8) replacing any physical node requires no node-specific reinstall or data restoration."
+
+type StorageBinding {
+  id: String
+  demand_id: String
+  provider_id: String
+  placement: StoragePlacement
+  local_replication: ReplicaPolicy
+  network_path_note: String
+  failure_domain_note: String
+  recovery: RecoveryBehavior
+  evidence: EvidenceAnchor
+}
+
+data storage_service_note: String = "Storage unbundled and RESTRUCTURED into orthogonal facts (service-boundary directive, then contamination-access-storage directive section 7). ComputeAssembly.local_storage was the inherited-bundle defect this thread removes, reproduced in our own v3; the v4 replacement then reproduced it at type level - a flat StorageRealization enum (LocalEphemeralNvme | RemoteDurableObject | SiteSharedFilesystem | LocalContentAddressedCache | ...) fuses independent decisions and grows combinatorially. Now: mutually exclusive meanings are coproducts (a binding has exactly ONE DataStanding), orthogonal decisions are products - DataStanding x AccessSemantics x StoragePlacement x Mutability x Durability x Isolation x observed access pattern x performance requirement, composed by StorageDemand and bound by StorageBinding. role_label is a human-readable workload role (boot image, job scratch, artifact, ...), never the authority - the orthogonal facts decide placement. Hot and cold are OBSERVED RATES, not permanent semantic types: today's hot cache is tomorrow's unused object. Governing shape, preserved: MOVE STORAGE AUTHORITY UPSTREAM; RETAIN LOCAL STORAGE ONLY WHERE LOCALITY ITSELF DISCHARGES A PERFORMANCE, ISOLATION, OR RECOVERY REQUIREMENT - more precise than either 'all storage remote' or 'every server owns its disks'. The local NVMe is a scratch appliance attached to a compute assembly; destroying it must never destroy the semantic result of a completed job."
+
+data storage_placement_arithmetic_note: String = "SCREENING MODEL (contamination-access-storage directive section 3; CORRECTS the session's 'total operations x latency difference', which is an UPPER BOUND holding only when every operation serializes on the critical path): dT ~ N_serial x (L_remote - L_local) + B_read x (1/R_remote_read - 1/R_local_read) + B_write x (1/R_remote_write - 1/R_local_write) + d_queueing + d_protocol_cpu + d_synchronization, where N_serial counts causally dependent, non-overlapped, non-cached round trips; B is bytes on the critical path; R is REALIZED throughput, never link nameplate; queueing includes cross-node interference; protocol CPU includes filesystem, encryption, checksumming, and client/server work. At a 250us increment: 5,000 serial misses ~1.25s, 100,000 ~25s, 1,000,000 ~250s - so the session's ~300s figure was a plausible worst case, not a consequence of counting a million filesystem operations. Page cache, metadata caching, read-ahead, batching, async writes, and parallel compilation reduce seriality; synchronous metadata chains and lock-heavy flows restore it. BANDWIDTH: aggregate local ~ sum of each active node's usable device bandwidth; aggregate shared <= min(fabric, server interfaces, media, storage software, per-client limits) - a 10Gb/s link is 1.25 GB/s theoretical before overhead, so replacing many local devices with one network path trades N independent queues for one contended queue: right for low-duty durable traffic, potentially very wrong for parallel scratch. COST is multi-axis, never one offload score: local lifecycle = nodes x (device amortization + expected replacement + power + spares + operator replacement work); shared/upstream lifecycle = capacity-time + operations + transferred bytes + network capacity + provider/cluster operations + required replication + shared-failure-domain cost. Benefit (durability/recovery, dedup, deleted per-node dependency burden, easier node replacement) is weighed against burden (critical-path latency, contention, shared blast radius, provider/control-plane dependency, request/transfer cost, tenant isolation complexity). Capacity is cheap; DURABLE, HIGH-PERFORMANCE, SHARED storage is not - the session conflated device price with service cost."
+
+data storage_tendency_note: String = "DEMOTED CLAIM (contamination-access-storage directive section 4): the session's 'temperature anti-correlates with authority' is NOT a law - counterexamples include an actively written database, a write-ahead log, a live message queue, a frequently updated source-of-truth index, and a low-traffic but disposable cached image. The honest form, scoped to the selected CI SKU: most extremely hot filesystem activity is job-local and reconstructible, while most outputs that must survive are transferred only a few times. That tendency is enough to justify the architecture; it must never be quoted as a universal principle. Also demoted: 'scratch and caches are local, always' (site-shared caches with local hot replicas are a real candidate, replication decided by observed reuse) and 'artifact upload is literally one operation' (rhetorical overclaim)."
+
+data storage_experiment_note: String = "PLACEMENT EXPERIMENT (supersedes generic filesystem-operation reasoning; contamination-access-storage directive section 6). Same clean build, same hardware, three arms: local NVMe / tmpfs lower-bound control / candidate network filesystem or block service. Observe: end-to-end wall time, CPU utilization, bytes read+written, metadata operation population, serial filesystem wait, p50/p95/p99 operation latency, network bytes, network saturation, storage-server queue depth, cross-node interference, result correctness. Differential controls: (1) one build alone; (2) multiple builds on separate local devices; (3) multiple builds sharing the remote service; (4) warm vs cold cache; (5) metadata-heavy incremental build; (6) large sequential artifact upload; (7) storage-service interruption and node loss. Expected shape of the answer, NOT assumed: remote artifact path passes; remote scratch path passes or refuses; shared cache passes only up to an observed concurrency."
+
+data semantic_authority_note: String = "SHARPENED FRAMING (maintenance-locality directive; corrects the session's 'dual authority' wording): prefer ONE SEMANTIC AUTHORITY WITH MULTIPLE LOCALITY REALIZATIONS - two writable authorities imply reconciliation. Upstream owns canonical image, artifact, durable state, and cache identity; the local realization (RAM-loaded image, disposable scratch, cached object, temporary write layer) exists ONLY because locality discharges a requirement - latency, bandwidth, continued operation during a network interruption, or fault isolation - and otherwise disappears. Generalized law: CENTRALIZE SEMANTIC AUTHORITY AND REPETITIVE MAINTENANCE; LOCALIZE ONLY THE PHYSICAL REALIZATION REQUIRED FOR PERFORMANCE, ISOLATION, OR DISCONNECTED CONTINUITY. Concern -> upstream authority / local realization: OS -> signed versioned image / RAM-root or ephemeral local root; scratch -> none beyond the job contract / NVMe or tmpfs; cache -> content identity + origin / site or node replica; artifacts -> durable object authority / bounded upload buffer; configuration -> fleet profile / boot-time rendered config; secrets -> secret authority / short-lived token; access control -> identity + policy / locally cached door decision; monitoring -> durable event history / local bounded buffer; DNS+content -> origin authority / cache; power -> rectifier/domain authority / protected local branch + conversion."
+
+data offload_displacement_law: String = "OPERATOR CAVEAT, RULED AS LAW (maintenance-locality directive): a design is NOT simpler because it has fewer disks - it is simpler only when the maintenance it removes is worth the network and shared-service obligations it creates. Offload is a DEPENDENCY DISPLACEMENT, never a deletion: per-node device + per-node replacement + per-node imaging/state drift + low-latency private bandwidth becomes network-path dependency + shared-provider dependency + centralized drive replacement + shared protection/redundancy + easier capacity growth + possible shared contention. Both sides stay in the ledger, and the model must ask: what human maintenance and repeated authority are removed, and what network load and shared-service operations are introduced? Network boot very likely passes this test for the operating system; fully remote scratch might or might not - the model must make that difference impossible to hand-wave. OffloadBenefit rows: operator hours removed, emergency interventions removed, node identity removed, rebuild steps removed, capacity scaling simplified, replacement batchability gained. OffloadBurden rows: network average, network peak, boot-storm requirement, shared-service operations, shared-failure blast radius, storage-fabric capex, network power, latency and contention. Do NOT collapse these into dollars too early - 'requires an emergency trip at 2 a.m.' is a qualitative operating constraint, not a line item."
+
+data vocabulary_debt_note: String = "VOCABULARY DEBT RULE (operator coproduct concern, ruled in the contamination-access-storage directive section 7). The rule is NOT 'an enum arm may never precede a consumer' - shape search requires vocabulary before the first instance. The rule IS: an uninstantiated arm has NO OPERATIONAL AUTHORITY, generates no artifact and no dependency, and carries a dissolution trigger if continued absence indicates speculative vocabulary. Composition discipline alongside it: mutually exclusive meanings are coproducts; orthogonal decisions are products, never a fused enum (the retired StorageRealization is the worked example). Together these keep shape search possible without letting the type universe become an unreviewed roadmap. Standing debt: most PhysicalFunction arms remain uninstantiated - see seed_demands for the ones that now have exact consumers."
+
+type RealizationStatus
+  = HypothesisGrade { note: String }
+  | Prototyped { evidence: EvidenceAnchor }
+  | MeasuredAdmitted { evidence: EvidenceAnchor }
+  | Retired { cause: String }
+  | NotSelectedStudy { note: String }
+
+type AssemblyRealization {
+  id: String
+  assembly_id: String
+  carrier: AssemblyCarrierRealization
+  support: CarrierSupportRealization
+  heat_pickup: HeatPickupRealization
+  heat_transport: HeatTransportRealization
+  heat_rejection: HeatRejectionRealization
+  power_conversion: AcDcConversionRealization
+  power_adaptation: BoardPowerAdaptation
+  supply_multiplicity: PowerSupplyMultiplicity
+  note: String
+  status: RealizationStatus
+}
+
+type ComputeServiceDomain {
+  id: String
+  assembly_ids: List<String>
+  power_domain_id: String
+  cooling_domain_id: String
+  network_domain_id: String
+  management_domain_id: String
+  fire_zone_id: String
+  security_zone_id: String
+  maintenance_domain_id: String
+  drain_domain_id: String
+  alignment_note: String
+}
+
+type PhysicalDependencyKind
+  = CommodityStandardDependency
+  | VendorSpecificDependency
+  | VintageSpecificDependency
+  | SiteSpecificDependency
+  | CustomFabricationDependency
+  | CustomToolingDependency
+  | CustomControlSoftwareDependency
+  | ConsumableDependency
+  | LicensedTradeDependency
+  | RegulatoryApprovalDependency
+
+type PhysicalDependencyEdge {
+  id: String
+  consumer: String
+  provider: String
+  interface_note: String
+  created_by_realization_id: String
+  justified_by_demand_ids: List<String>
+  kind: PhysicalDependencyKind
+  scope: BoundaryScope
+  replacement_candidate_ids: List<String>
+  evidence: List<EvidenceAnchor>
+}
+
+data physical_dependency_edge_note: String = "A dependency is recorded PER EXACT RELATIONSHIP, never as a generic product note. Every custom dependency must answer: what creates it, what consumes it, who can reproduce it, what files/tools/materials reproduce it, how long reproduction takes, what breaks if it disappears, what alternative replaces it, how we remove it, what remains damaged or site-coupled afterward, and when it dissolves."
+
+type DependencyLifecycle {
+  id: String
+  dependency_id: String
+  introduced_by: String
+  selected_at: String
+  expected_service_life: String
+  inspection_interval: String
+  spare_policy: String
+  reproduction_time: String
+  replacement_time: String
+  retirement_trigger: String
+}
+
+type ReversibilityPlan {
+  id: String
+  dependency_id: String
+  shutdown_scope: String
+  removal_steps: String
+  replacement_realization: String
+  site_restoration_steps: String
+  residual_site_change: String
+  maximum_recovery_time: String
+  evidence: EvidenceAnchor
+}
+
+type CustomPhysicalDependencySpec {
+  id: String
+  identity: String
+  demanded_by_demand_ids: List<String>
+  interface_contract: String
+  source_geometry: String
+  required_tolerances: String
+  source_files: String
+  generated_manufacturing_files: String
+  material_and_process: String
+  required_tools: String
+  qualification_procedure: String
+  acceptance_receipts: String
+  failure_modes: String
+  inspection_and_replacement: String
+  spare_count: Nat
+  reproduce_time: String
+  alternatives: String
+  migration_plan: String
+  dissolution_trigger: String
+}
+
+data custom_dependency_spec_note: String = "A custom object without this complete packet is a prototype artifact, not an operational dependency."
+
+data dependency_budget_note: String = "Dependency budgets are multi-dimensional, never collapsed to money: custom_dependency_count, single_source_dependency_count, vintage_specific_dependency_count, site_specific_dependency_count; custom_tools_required, distinct_material_processes, distinct_connector_families, distinct_coolant_or_fluid_families; hours_to_reproduce, hours_to_replace, hours_to_move_site, hours_to_restore_leasehold; spare_items_required, documentation_burden, qualification_tests_required; assemblies_lost_when_dependency_fails. A design answers in this vocabulary: 'the custom carrier uses one board-specific adapter plate and one board-specific airflow shroud; every other interface is common' - stronger than 'this is reversible'."
+
+type PhysicalDesignRefusal
+  = UnjustifiedPhysicalArtifact {
+      artifact: String
+      note: String
+    }
+  | IncompletePhysicalDesign {
+      demand_id: String
+      missing_realization_note: String
+    }
+  | DependencyPopulationIncomplete {
+      realization_id: String
+      note: String
+    }
+  | CustomDependencyWithoutExitPath {
+      dependency_id: String
+    }
+  | SiteCouplingWithoutSiteRequirement {
+      dependency_id: String
+    }
+  | CustomInterfaceWithoutQualification {
+      dependency_id: String
+    }
+  | DependencyBurdenExceedsAdmission {
+      realization_id: String
+      note: String
+    }
+
+type UnresolvedPhysicalDemand {
+  id: String
+  demand_id: String
+  missing_evidence: String
+}
+
+type PrintedPartRealization {
+  id: String
+  geometry_ref: String
+  printer_process: String
+  material_identity: String
+  print_orientation: String
+  wall_and_infill_spec: String
+  inserts_and_fasteners: String
+  operating_temperature_range: String
+  load_case: String
+  required_fire_standing: String
+  inspection_interval: String
+  replacement_trigger: String
+  evidence: EvidenceAnchor
+}
+
+data printed_part_note: String = "'Printed in PETG' is not a sufficient engineering description: ratings and behavior attach to the validated MATERIAL + PROCESS (+ printer), never the polymer name (UL printed-vs-molded variability - external reading, pin-verification pending). Screening ladder: PLA 50-60C mockups/jigs only; PETG 70-90C cool-zone fixtures; ASA/PC/engineering blends 90-115C warm zones; validated flame-rated material/process near electrical or ignition sources. NOT-PRINTED-FIRST (promotion bar, not prohibition): primary structural attachment, main load plate, cooler clamping hardware, mains enclosures, PSU shells, fire barriers, EMI planes, pressurized manifolds, cold plates, permanent fittings, anything whose failure drops liquid onto lower assemblies, creep-critical brackets. A printed part in any such role is also a CustomFabricationDependency edge with a full CustomPhysicalDependencySpec."
+
+data fabrication_capacity_note: String = "Printer admission under demand-before-capacity: ONE enclosed ~250-300mm-class machine; priority order enclosure, repeatability, ASA/PC/nylon capability, nozzle/hotend, bed, dry handling, filtration, volume LAST. Long ducts are gasketed/interlocking modules; large flat structural pieces go to laser-cut/CNC sheet, extrusion, or outsourced fabrication. >=350mm admitted only on repeated evidence (doesn't fit; segmentation causes a real defect; outsourcing becomes recurring cost/lead-time; same large part repeats across sites)."
+
+type SiteComputeAdmission {
+  id: String
+  site_id: String
+  maximum_continuous_it_power_watts: Nat
+  maximum_heat_rejection_watts: Nat
+  acoustic_budget_note: String
+  structural_load_note: String
+  admitted_service_domains_note: String
+  maintenance_burden_note: String
+  failure_blast_radius_note: String
+  evidence: List<EvidenceAnchor>
+}
+
+data site_compute_admission_note: String = "SiteComputeAdmission replaces 'rack cap' as the governing site quantity; rack count is display arithmetic derived from the physical design. NO admission row exists yet for site-91-e21st-bayonne: budgets derive from survey receipts still open, and jurisdictional Phase A items outrank them; storing budgets ahead of receipts is the stored-verdict defect site_model already corrected once."
+
+type ComparisonAxis
+  = SustainedPerformance
+  | PowerDraw
+  | ThermalMargin
+  | AcousticByZone
+  | SpatialFootprint
+  | MaterialUse
+  | MaintenanceAccess
+  | FailureDomainSize
+  | Safety
+  | BuildAndOperatingCost
+  | HabitabilityAcceptance
+  | Reversibility
+  | HeatUtility
+  | DependencyBurden
+  | MaintenanceLocality
+  | NetworkBurden
+
+data comparison_axes_note: String = "Every candidate realization is compared against the conventional rack CONTROL over one measured workload across all axes. DependencyBurden added (carrier+dependency directive): the discharged demands are weighed against the dependency population introduced, over full expected lifetime. HabitabilityAcceptance keeps the P11 split: measured rows witnessable; comfortable-to-think-in is operator sign-off. Acceptance criterion: a typed comparison showing what each boundary buys, what it costs, what can fail together, and which claims remain hypotheses."
+
+data altrad8ud_reference_assembly: ComputeAssembly = ComputeAssembly {
+  id: "asm-altrad8ud-reference",
+  role_note: "REFERENCE ASSEMBLY - the conventional, documented normal case. Purpose: prove the generic carrier/service-frame architecture is genuinely simple when hardware presents normal interfaces. Public gunbc already models this board and uses it for srv1-srv4 (fleet_intent, paired with Altra Max M128-30; srv1 hostname fixture altrad8ud-1l2t-1) - consume those authorities by reference, never duplicate them as prose.",
+  motherboard: "ASRock Rack ALTRAD8UD-1L2T - consume public authority asrock_altrad8ud_1l2t_catalog (deep micro-ATX 9.6x10.5in, single LGA4926, 8x DDR4 DIMM, onboard BMC/IPMI, PCIe 4.0, dual 10GbE)",
+  processors: "1x Ampere Altra Max M128-30 - consume public authority altra_max_m12830_catalog",
+  memory: "8x DDR4-3200 RDIMM (all channels populated per bandwidth-before-capacity policy)",
+  storage_interfaces: "M.2 + PCIe 4.0 NVMe-capable slots (capabilities only - placement per demand is composed from orthogonal facts and bound via StorageBinding, storage_service_note)",
+  network_interfaces: "onboard dual 10GbE",
+  management_controller: "onboard BMC/IPMI - consume existing public BMC identity and fan-behavior observations",
+  required_native_interconnects: [
+    "none beyond standard interfaces - ATX PSU or supported 12V DC input, ordinary connectors; this absence is the point of the reference assembly",
+  ],
+  evidence: EvidenceAnchor { repo: "gunbc", reference: "asrock_altrad8ud_1l2t_catalog + altra_max_m12830_catalog + dynatron_w1_catalog + fleet_intent", note: "Review-asserted public extdeps authorities (carrier+dependency directive, 2026-08-10); pin-verification against gunb-ai/gunbc pending from this private-overlay session. Dynatron W1 (2U active/passive LGA4926, explicitly supporting this board) is the catalog-supported cooler row. Session hypothesis to verify, not a claim: the owned NH-D9 AMP-4926 pair is LGA4926 - if Noctua's compatibility list admits this board (orientation/clearance on the deep micro-ATX layout), the pair covers two reference nodes; W1 is the fallback." },
+}
+
+data mt_jade_stress_assembly: ComputeAssembly = ComputeAssembly {
+  id: "asm-mt-jade-pilot-1",
+  role_note: "STRESS ASSEMBLY - the proprietary liquidation-vintage case. Purpose: prove the architecture can absorb a strange vintage without making that vintage's quirks universal. Its PDB/CRPS/fan-presence facts are properties of THIS assembly's realizations, never of the generic system (power_split_note).",
+  motherboard: "Wiwynn Mt. Jade dual-socket Ampere Altra board (proprietary 2U outline, non-ATX hole pattern - geometry to be measured, captured via printed jig)",
+  processors: "2x Ampere Altra 80-core (LGA4926)",
+  memory: "16x DDR4-3200 RDIMM channels (2 sockets x 8 channels)",
+  storage_interfaces: "NVMe-capable (interfaces verified at arrival; placement per demand composed and bound via StorageBinding, storage_service_note)",
+  network_interfaces: "onboard + OCP mezzanine (verify at arrival)",
+  management_controller: "AMI MegaRAC BMC (Aptio, project OACOI 1.08.20211002); Redfish surface to be probed at Stage 0",
+  required_native_interconnects: [
+    "power distribution board (PDB) - proprietary; travels with the board (VintageSpecificDependency)",
+    "CRPS PSUs + control wiring into the PDB - relocated intact, never recreated; physically two supplies, operating plan may select one (MultipleSuppliesRequiredByNativeAssembly is a Jade property)",
+    "fan-wall PWM/presence wiring - BMC expects it; modified realizations spoof or reconfigure, never surprise it",
+  ],
+  evidence: EvidenceAnchor { repo: "external", reference: "pilot-order-2026-08-09", note: "One unit ordered 2026-08-09, ~$3-4k, ETA ~30 days; ~75 dB full-load report indicts the fan realization, not the board or power system." },
+}
+
+data seed_demands: List<PhysicalFunctionDemand> = [
+  PhysicalFunctionDemand {
+    id: "dem-jade-airflow-compile",
+    consumer_id: "asm-mt-jade-pilot-1",
+    function: AirflowGuidance,
+    operating_condition: "sustained compile-class load (fixture reference workload: cargo build of gunbc + cold-control run)",
+    required_outcome: "CPU and memory within admitted temperatures without the stock fan-wall acoustic realization",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-physical-aggregation-directive.md", note: "fixture Stage 1/2 question" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-site-visual-integration",
+    consumer_id: "site-habitability-axis",
+    function: VisualIntegration,
+    operating_condition: "continuous occupancy of the compute-hosting space by working people",
+    required_outcome: "assemblies read as deliberate instruments, not exposed lab debris; coherent physical language per site",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-09-compute-infrastructure-strategy.md", note: "section 0 habitability axis, funded increment ~$3-8k/site" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-open-compute-contamination-control",
+    consumer_id: "zone-open-compute",
+    function: DustControl,
+    operating_condition: "continuous operation of open or minimally enclosed compute assemblies",
+    required_outcome: "no routine assembly-internal cleaning during the admitted service interval (state 24 or 36 months - a bounded horizon, never an unbounded 'never'); contamination does not cause an inadmissible increase in component temperature, fan power, pressure drop, connector failure, or corrosion",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "operator requirement; ASHRAE treats particulate AND gaseous contamination as reliability risks - a visually clean room can still have a corrosion problem" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-compute-zone-infiltration-control",
+    consumer_id: "zone-open-compute",
+    function: DustControl,
+    operating_condition: "compute zone adjoining ordinary workspace, kitchenette, street door, and any workshop or receiving activity",
+    required_outcome: "uncontrolled infiltration does not enter the compute airflow path; cooking, cardboard unpacking, sanding, deliveries, and street-door traffic stay outside it. Topology preference: public/ordinary workspace -> controlled service boundary -> cleaner compute zone; the occupied office is NOT made a cleanroom and people still work alongside and see the machines",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "candidate: filtered supply + slight positive pressure vs uncontrolled areas + controlled return + sealed cable/pipe penetrations" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-filter-condition-observation",
+    consumer_id: "zone-open-compute",
+    function: DustControl,
+    operating_condition: "filtration in service between replacement intervals",
+    required_outcome: "filter loading is observed before it defeats cooling (differential pressure or scheduled condition inspection); filter selection is bounded by the actual air handler's tolerance for pressure drop - a higher-efficiency filter is NOT automatically better, and MERV rating is a realization fact, never the acceptance criterion",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "EPA: MERV 13 or as high as the system can accommodate; select against the real air handler via an HVAC design/commissioning receipt" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-contamination-serviceability",
+    consumer_id: "zone-open-compute",
+    function: DustControl,
+    operating_condition: "buildout and post-construction periods, plus routine fouling trend observation",
+    required_outcome: "construction dust is isolated (compute sealed or offline until post-construction cleaning - buildout dust is unlike operating dust); representative inspection plus thermal trend confirms heatsinks are actually clean, since clean-looking air does not prove clean heatsinks; gaseous-corrosion testing is triggered where site evidence warrants",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "acceptance is outcome-based: FilterInstallationReady, RoomPressureReady, ParticleTrendObserved, ThermalFoulingTrendObserved, NoRoutineAssemblyCleaningReceipt" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-compute-zone-entry-authorization",
+    consumer_id: "zone-compute-service",
+    function: PhysicalAccessControl,
+    operating_condition: "storefront-sized site with PublicOrHostedZone, StaffZone, and ComputeServiceZone (the first two may combine operationally; the compute zone stays separately controllable)",
+    required_outcome: "only active authorized identities enter the compute zone; keycard is the preferred realization but 'keycard lock' is a bundle - identity/credential, authorization policy, reader, local controller, lock/strike, door sensor, request-to-exit, egress behavior, controller power, audit stream, visitor handling, and mechanical override are separate concerns",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "shape: derived access demand x explicit access policy x observed door state -> admitted actuation; NIST physical-security families decompose the same way" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-credential-revocation",
+    consumer_id: "zone-compute-service",
+    function: PhysicalAccessControl,
+    operating_condition: "lost card, departing employee, or ended contractor window",
+    required_outcome: "the credential is denied within the declared revocation time; credential authority is upstream, decision cache is local",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "revocation and audit are the reasons electronic access beats ordinary keys; the landlord master key bypassing the electronic record is a named residual" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-access-local-continuity",
+    consumer_id: "zone-compute-service",
+    function: PhysicalAccessControl,
+    operating_condition: "WAN or cloud-control-plane outage",
+    required_outcome: "ordinary admitted entry continues; a cloud subscription is NEVER the sole source of unlock authority; a controller outage must not lock the operator out",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "prefer a local controller that survives internet loss; OSDP-capable supervised reader wiring is a reasonable selection preference, not a mandate" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-access-audit-and-door-state",
+    consumer_id: "zone-compute-service",
+    function: PhysicalAccessControl,
+    operating_condition: "continuous operation, including contractor and visitor windows",
+    required_outcome: "successful, refused, forced-open, and held-open events remain durable (local buffering with upstream durable replication); the system distinguishes closed, held open, and forced open; visitors receive temporary bounded access or remain escorted",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "do not overfit to theft: unauthorized entry to a customer-code execution zone, device connection to the management network, a propped door, and unaudited contractor entry are the live risks" },
+  },
+  PhysicalFunctionDemand {
+    id: "dem-free-egress",
+    consumer_id: "zone-compute-service",
+    function: PhysicalAccessControl,
+    operating_condition: "loss of software, credential service, or ordinary power",
+    required_outcome: "occupants are never trapped; authorized emergency/manual access exists without becoming the routine path. Fail-safe vs fail-secure is DERIVED PER DOOR from egress rules, fire-system integration, and the site authority - never a global enum default",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "access-control installation and egress acceptance remain trade/authority receipts (LicensedTradeDependency + RegulatoryApprovalDependency)" },
+  },
+]
+
+data candidate_realizations: List<CandidateRealization> = [
+  CandidateRealization {
+    id: "cand-freestanding-service-frame",
+    description: "Freestanding service frame: floor base/leveling feet, vertical metal uprights, standard horizontal carrier rails, optional light anti-tip restraint, rear/overhead cable raceways, optional information facade. Cross between tool wall, retail display furniture, lab instrument frame, and a very shallow low-density rack whose dimensional conventions we control. Building wall carries zero equipment load.",
+    method: CommodityPurchase,
+    evidence: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-carrier-and-dependency-directive.md", note: "primary support candidate; one reusable design" },
+  },
+  CandidateRealization {
+    id: "cand-common-carrier-edge",
+    description: "Common removable-carrier interface: two upper hooks/captured tabs + one captive lower latch + handle; manual power/network/BMC disconnects. One reusable design shared by every board family.",
+    method: SheetFabrication,
+    evidence: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-carrier-and-dependency-directive.md", note: "the boring standard interface; all bespoke work collapses into the board-family adapter plate behind it" },
+  },
+  CandidateRealization {
+    id: "cand-altrad8ud-carrier-plate",
+    description: "ALTRAD8UD board-family adapter: one flat metal plate, board standoffs on the published micro-ATX-deep hole pattern, common carrier edge, normal PSU support, normal CPU cooler, optional printed airflow guide.",
+    method: SheetFabrication,
+    evidence: EvidenceAnchor { repo: "gunbc", reference: "asrock_altrad8ud_1l2t_catalog", note: "hole pattern from published mechanical documentation; one board-family dependency" },
+  },
+  CandidateRealization {
+    id: "cand-jade-carrier-plate",
+    description: "Jade vintage adapter: same outer carrier interface, board-hole adapter from measured geometry (printed jig capture), native PDB/CRPS support, Jade-specific airflow realization.",
+    method: SheetFabrication,
+    evidence: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-carrier-and-dependency-directive.md", note: "one vintage-specific dependency, consciously bounded" },
+  },
+]
+
+data seed_dependency_edges: List<PhysicalDependencyEdge> = [
+  PhysicalDependencyEdge {
+    id: "dep-altrad8ud-plate-on-carrier-edge",
+    consumer: "cand-altrad8ud-carrier-plate",
+    provider: "cand-common-carrier-edge",
+    interface_note: "common frame hook geometry + latch position + handle envelope",
+    created_by_realization_id: "cand-altrad8ud-carrier-plate",
+    justified_by_demand_ids: [],
+    kind: CustomFabricationDependency,
+    scope: CarrierLocal,
+    replacement_candidate_ids: [],
+    evidence: [ EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-carrier-and-dependency-directive.md", note: "SEED EXAMPLE, hypothesis-grade: one reusable custom interface shared fleet-wide; justified_by_demand_ids empty because the structural-support demand rows are not yet instantiated - this edge is itself refused for selection until they are (DependencyPopulationIncomplete guard)" } ],
+  },
+  PhysicalDependencyEdge {
+    id: "dep-jade-plate-on-measured-holes",
+    consumer: "cand-jade-carrier-plate",
+    provider: "asm-mt-jade-pilot-1",
+    interface_note: "measured Jade board hole pattern + component keep-outs (printed-jig capture at arrival)",
+    created_by_realization_id: "cand-jade-carrier-plate",
+    justified_by_demand_ids: [],
+    kind: VintageSpecificDependency,
+    scope: CarrierLocal,
+    replacement_candidate_ids: [],
+    evidence: [ EvidenceAnchor { repo: "external", reference: "pilot-order-2026-08-09", note: "SEED EXAMPLE, hypothesis-grade; dissolves when the Jade vintage retires" } ],
+  },
+  PhysicalDependencyEdge {
+    id: "dep-jade-board-on-native-pdb",
+    consumer: "asm-mt-jade-pilot-1",
+    provider: "jade-native-pdb-crps-system",
+    interface_note: "proprietary PDB power + control wiring + fan-presence expectations",
+    created_by_realization_id: "cand-jade-carrier-plate",
+    justified_by_demand_ids: [],
+    kind: VendorSpecificDependency,
+    scope: AssemblyLocal,
+    replacement_candidate_ids: [],
+    evidence: [ EvidenceAnchor { repo: "external", reference: "pilot-order-2026-08-09", note: "SEED EXAMPLE: the dependency the stress assembly exists to isolate - it must never appear on any non-Jade realization (witness obligation 1)" } ],
+  },
+]
+
+data seed_storage_demands: List<StorageDemand> = [
+  StorageDemand {
+    id: "sto-dem-host-boot-image",
+    consumer_id: "asm-altrad8ud-reference",
+    role_label: "host boot image",
+    standing: Reconstructible,
+    access: ContentAddressedObject,
+    mutability: ImmutableContent,
+    durability: MayVanishWithNode,
+    isolation: PublicShared,
+    access_pattern_id: "sto-pat-boot-materialization",
+    performance_id: "sto-perf-boot-window",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-maintenance-locality-and-network-burden-directive.md", note: "candidate B: content-addressed image authority upstream, materialized at boot; the node holds no OS authority - reimage means reboot" },
+  },
+  StorageDemand {
+    id: "sto-dem-job-scratch",
+    consumer_id: "workload-compile-and-job-layer",
+    role_label: "job scratch + writable layer",
+    standing: Disposable,
+    access: Filesystem,
+    mutability: Mutable,
+    durability: MayVanishWithJob,
+    isolation: JobPrivate,
+    access_pattern_id: "sto-pat-compile-metadata-heavy",
+    performance_id: "sto-perf-scratch-critical-path",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "the demand whose locality must be EARNED by measurement (storage_experiment_note), not assumed; local NVMe by default, tmpfs scheduler-selectable" },
+  },
+  StorageDemand {
+    id: "sto-dem-customer-artifact",
+    consumer_id: "workload-job-output-and-receipts",
+    role_label: "customer artifacts, billing receipts, operator logs",
+    standing: Authoritative,
+    access: Object,
+    mutability: AppendOnly,
+    durability: MustSurviveProviderOrSite,
+    isolation: TenantPrivate,
+    access_pattern_id: "sto-pat-sequential-low-op-count",
+    performance_id: "sto-perf-artifact-tolerant",
+    source: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-service-boundary-directive.md", note: "the unambiguous upstream case: authoritative, few critical-path operations, must survive node and site" },
+  },
+]
+
+data seed_storage_bindings: List<StorageBinding> = [
+  StorageBinding {
+    id: "sto-bind-boot-upstream-ramroot",
+    demand_id: "sto-dem-host-boot-image",
+    provider_id: "svc-site-boot-materialization",
+    placement: UpstreamProvider,
+    local_replication: NoLocalReplica,
+    network_path_note: "site boot/materialization service over the site fabric; emits net-dem-boot-materialization - low average, high synchronized burst",
+    failure_domain_note: "boot service loss blocks only NEW or RECOVERING nodes; running RAM-root nodes are unaffected (may_running_nodes_depend_on_service = false)",
+    recovery: Refetch,
+    evidence: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-maintenance-locality-and-network-burden-directive.md", note: "HYPOTHESIS-GRADE: board network-boot surface (UEFI HTTP vs PXE, arm64 boot chain), BMC virtual-media fallback, and a measured herd-boot window are all unverified" },
+  },
+  StorageBinding {
+    id: "sto-bind-scratch-local-nvme",
+    demand_id: "sto-dem-job-scratch",
+    provider_id: "node-local-scratch-device",
+    placement: LocalDevice,
+    local_replication: NoLocalReplica,
+    network_path_note: "none - locality is the point; emits NO network demand, which is the row candidate D would replace with an exact remote-scratch demand (control 6)",
+    failure_domain_note: "device loss drains ONE node and loses no completed-job semantics; replacement is blank-device swap + reboot, no install or restore",
+    recovery: Recompute,
+    evidence: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-contamination-access-and-storage-directive.md", note: "HYPOTHESIS-GRADE: placement is settled by the three-arm experiment (local NVMe / tmpfs control / candidate remote), not by this row" },
+  },
+  StorageBinding {
+    id: "sto-bind-artifact-upstream-object",
+    demand_id: "sto-dem-customer-artifact",
+    provider_id: "svc-upstream-object-storage",
+    placement: UpstreamProvider,
+    local_replication: NoLocalReplica,
+    network_path_note: "site egress to object storage; emits net-dem-artifact-upload - sequential, latency-tolerant, required before job receipt completes",
+    failure_domain_note: "provider or path loss -> bounded local buffer, then a first-class admission failure; never silent loss",
+    recovery: Restore,
+    evidence: EvidenceAnchor { repo: "gunbc-private", reference: "docs/strategy/2026-08-10-service-boundary-directive.md", note: "purchased, not built: DIY durable means 3x replication, scrubbing, geographic separation, and a heavy CustomControlSoftwareDependency - crossover is far beyond current scale" },
+  },
+]
+
+data seed_network_demands: List<NetworkServiceDemand> = [
+  NetworkServiceDemand {
+    id: "net-dem-boot-materialization",
+    consumer_id: "sto-bind-boot-upstream-ramroot",
+    source_service_id: "svc-site-boot-materialization",
+    destination_service_id: "compute-carriers",
+    average_bytes_per_second_note: "very low - illustrative: 20 nodes x 2GB x 4 boots/month = 160 GB/month ~ 0.5 Mbps",
+    p95_bytes_per_second_note: "low outside recovery events; unmeasured",
+    maximum_burst_bytes_note: "simultaneous_consumers x image_bytes - illustrative 20 x 2GB = 40 GB synchronized",
+    burst_completion_window_note: "admitted recovery window; at 120s the requirement is ~333 MB/s ~ 2.7 Gbps - the number monthly bytes hides",
+    operations_per_second_note: "low; bulk sequential transfer",
+    dependent_round_trips_note: "few - materialization is not on any steady execution path",
+    maximum_round_trip_latency_note: "moderate tolerance; bounded by the boot-window requirement",
+    availability_window_note: "required ONLY for new or recovering nodes",
+    failure_behavior: NewOrRecoveringConsumersBlocked,
+    traffic_priority: BulkMaterialization,
+  },
+  NetworkServiceDemand {
+    id: "net-dem-artifact-upload",
+    consumer_id: "sto-bind-artifact-upstream-object",
+    source_service_id: "compute-carriers",
+    destination_service_id: "svc-upstream-object-storage",
+    average_bytes_per_second_note: "low to moderate, workload-dependent; unmeasured",
+    p95_bytes_per_second_note: "unmeasured",
+    maximum_burst_bytes_note: "sequential per job completion",
+    burst_completion_window_note: "before job receipt completes",
+    operations_per_second_note: "low - few critical-path operations per artifact",
+    dependent_round_trips_note: "few",
+    maximum_round_trip_latency_note: "tolerant",
+    availability_window_note: "required before a job receipt can complete",
+    failure_behavior: BufferAndRetry,
+    traffic_priority: CustomerJobTraffic,
+  },
+  NetworkServiceDemand {
+    id: "net-dem-remote-scratch-counterfactual",
+    consumer_id: "cand-D-netboot-remote-scratch",
+    source_service_id: "svc-remote-scratch-fabric",
+    destination_service_id: "compute-carriers",
+    average_bytes_per_second_note: "workload-dependent, potentially HIGH - the exact demand that candidate D adds and candidate B does not have (control 6)",
+    p95_bytes_per_second_note: "high; unmeasured",
+    maximum_burst_bytes_note: "high, concurrent across jobs",
+    burst_completion_window_note: "continuous, not a window",
+    operations_per_second_note: "high - metadata-heavy compile access patterns",
+    dependent_round_trips_note: "HIGH and on the critical path - the N_serial term that decides candidate D",
+    maximum_round_trip_latency_note: "tight; this is the latency-sensitive case",
+    availability_window_note: "required CONTINUOUSLY while jobs run",
+    failure_behavior: ActiveWorkStallsOrFails,
+    traffic_priority: CustomerJobTraffic,
+  },
+]
+
+data upstream_decomposition_note: String = "GENERALIZED PRINCIPLE (contamination-access-storage directive section 8): UPSTREAM THE AUTHORITY; DISTRIBUTE THE REALIZATIONS THAT LATENCY, SAFETY, FAULT ISOLATION, OR DISCONNECTION REQUIRE. The test every upstream move must pass: moving something upstream should REMOVE REPEATED AUTHORITY AND MAINTENANCE - not merely move every physical operation farther away. Dust passes (one maintained filtration boundary replaces N server-cleaning obligations). Durable storage passes (one authority survives disposable nodes). Compile scratch FAILS (its authority can disappear, but its locality may still be the cheapest way to satisfy the selected workload) - that asymmetry is why storage was never offloadable as one thing. Standing candidate lanes, each owed its own demand rows: dust (room filtration+envelope upstream / component airflow path + inspection local); physical access (identity, grants, revocation, audit upstream / lock actuation + safe egress local); storage (durable data identity upstream / hot disposable replica or scratch local); power (AC/DC conversion + monitoring upstream / branch protection, connector, board conversion local); cooling (bulk transport + rejection upstream / silicon heat pickup + residual board airflow local); network identity (gateway/address authority upstream / physical last-mile local); boot+firmware (versioned image authority upstream / local bootable recovery copy); monitoring (central event history upstream / local sensors + bounded buffering); time (site/fleet time authority upstream / local oscillator during disconnection); secrets (central semantic authority upstream / short-lived local realization); spares (shared inventory authority upstream / minimal site recovery kit); fire detection (room/zone alarm authority upstream / local source detection where risk requires it)."
+
+data contamination_dependency_note: String = "Dependencies INTRODUCED by upstreaming contamination control (both sides of the ledger, per the dependency law): filter bank, replacement filter media supply, filter dimensions, filter-access clearance, air-handler capacity compatibility, differential-pressure observation, door and penetration sealing, cleaning protocol, filter replacement labor, sealed-envelope integrity. Upstreaming does NOT delete maintenance - it converts N server-cleaning obligations into one room-filter-and-envelope obligation. Probably an excellent trade; the ledger shows both sides. Each becomes an exact PhysicalDependencyEdge with lifecycle and exit plan when the realization is selected."
+
+data access_dependency_note: String = "Dependencies INTRODUCED by electronic access control: access controller, reader family, credential family, lock hardware, door contact, request-to-exit hardware, power supply/battery, credential administration, event-store integration, installer (LicensedTradeDependency), fire/egress approval (RegulatoryApprovalDependency), mechanical-key policy. Likely still beats ordinary keyed access because revocation and audit are valuable - but it is NOT dependency-free. Selection preferences: commodity replaceable hardware over a proprietary building-wide dependency; locally operable over cloud-dependent. Storage-side dependencies for the upstream path: provider, network path, credential, object namespace, retention policy, request/transfer economics, local replica policy, restore/readback mechanism."
+
+data jade_realization_ladder: List<AssemblyRealization> = [
+  AssemblyRealization {
+    id: "real-jade-stock",
+    assembly_id: "asm-mt-jade-pilot-1",
+    carrier: VendorChassis,
+    support: BenchSupport,
+    heat_pickup: PassiveHeatsink,
+    heat_transport: LocalAir,
+    heat_rejection: RoomAir,
+    power_conversion: NativeVendorPowerShelf,
+    power_adaptation: NativeVendorPdb,
+    supply_multiplicity: MultipleSuppliesRequiredByNativeAssembly,
+    note: "Stage 0 CONTROL - vendor chassis as pressure duct, stock fan wall. Measure per fixture protocol before any modification.",
+    status: HypothesisGrade { note: "unmeasured until arrival; all downstream stages compare against this row" },
+  },
+  AssemblyRealization {
+    id: "real-jade-remote-air",
+    assembly_id: "asm-mt-jade-pilot-1",
+    carrier: VendorChassis,
+    support: BenchSupport,
+    heat_pickup: PassiveHeatsink,
+    heat_transport: SharedAirPlenum,
+    heat_rejection: RoomAir,
+    power_conversion: NativeVendorPowerShelf,
+    power_adaptation: NativeVendorPdb,
+    supply_multiplicity: MultipleSuppliesRequiredByNativeAssembly,
+    note: "Stage 1 - retained chassis as duct, fan wall bypassed, remote blower via printed transition duct. Decisive cheap question: do stock heatsinks cool at full load with a larger, remote pressure source? Cautions: BMC fan-presence behavior; CRPS PSU fans are an independent acoustic source - measure per-source spectrum.",
+    status: HypothesisGrade { note: "pending Stage 0 baseline" },
+  },
+  AssemblyRealization {
+    id: "real-jade-carrier-shared-air",
+    assembly_id: "asm-mt-jade-pilot-1",
+    carrier: FlatMetalCarrier,
+    support: FreestandingServiceFrame,
+    heat_pickup: PassiveHeatsink,
+    heat_transport: SharedAirPlenum,
+    heat_rejection: RoomAir,
+    power_conversion: NativeVendorPowerShelf,
+    power_adaptation: NativeVendorPdb,
+    supply_multiplicity: MultipleSuppliesRequiredByNativeAssembly,
+    note: "Stage 2, plenum variant - board + PDB + native PSUs relocated intact onto the Jade vintage adapter plate behind the common carrier edge, on the freestanding frame. Backplate via printed drilling jig.",
+    status: HypothesisGrade { note: "pending Stage 1 receipts" },
+  },
+  AssemblyRealization {
+    id: "real-jade-carrier-d9-local-air",
+    assembly_id: "asm-mt-jade-pilot-1",
+    carrier: FlatMetalCarrier,
+    support: FreestandingServiceFrame,
+    heat_pickup: ForcedAirHeatsink,
+    heat_transport: LocalAir,
+    heat_rejection: RoomAir,
+    power_conversion: NativeVendorPowerShelf,
+    power_adaptation: NativeVendorPdb,
+    supply_multiplicity: MultipleSuppliesRequiredByNativeAssembly,
+    note: "Stage 2, owned-parts variant - 2x Noctua NH-D9 AMP-4926 4U (owned, discontinued, exactly one dual-socket assembly's worth OR two single-socket reference nodes if board compatibility verifies) replace stock heatsinks on the open carrier. Supply-depth fact priced on Cost/Reversibility/DependencyBurden, never a selector.",
+    status: HypothesisGrade { note: "buildable on arrival; compare against real-jade-remote-air on the same workload" },
+  },
+  AssemblyRealization {
+    id: "real-jade-liquid-study",
+    assembly_id: "asm-mt-jade-pilot-1",
+    carrier: FlatMetalCarrier,
+    support: FreestandingServiceFrame,
+    heat_pickup: DirectToChipColdPlate,
+    heat_transport: LiquidBranch,
+    heat_rejection: HeatRejectionUnresolved,
+    power_conversion: NativeVendorPowerShelf,
+    power_adaptation: NativeVendorPdb,
+    supply_multiplicity: MultipleSuppliesRequiredByNativeAssembly,
+    note: "HEAT ROUTING STUDY - cold plates + branch + manifold + CDU + diverter (summer OutdoorDryCooler / winter SpaceHeatReuse) + residual slow air wash. Full dependency population drawn honestly on its own sheet: cold plates (LGA4926 nonexistence gating), QDs, branch valves, leak sensors, drain, coolant family, CDU, wall penetration, floor-load mass. Promotion inequality: measured air realization x site heat-use opportunity x acoustic/energy benefit > loop complexity + maintenance + failure burden. The selected air design carries ZERO of these dependencies (witness obligations 3-4).",
+    status: NotSelectedStudy { note: "kept available, deliberately unselected; promotes only through the recorded inequality on receipts" },
+  },
+]
+
+data altrad8ud_realization: AssemblyRealization = AssemblyRealization {
+  id: "real-altrad8ud-frame-air",
+  assembly_id: "asm-altrad8ud-reference",
+  carrier: FlatMetalCarrier,
+  support: FreestandingServiceFrame,
+  heat_pickup: ForcedAirHeatsink,
+  heat_transport: LocalAir,
+  heat_rejection: RoomAir,
+  power_conversion: PerAssemblyAtxSupply,
+  power_adaptation: AtxMultiRailDelivery,
+  supply_multiplicity: OneSelectedSupply,
+  note: "PRIMARY MINIMAL DESIGN - one board, one ATX PSU, one supported air cooler (Dynatron W1 catalog row; owned D9 AMP pair if board compatibility verifies), one flat removable carrier on the common edge, ordinary manual plugs, optional printed DIMM/VRM shroud only when measurement derives it. No wall load, no fluid, no PDB assumption, no redundant-supply dependency. Proves the generic architecture is simple when hardware presents normal interfaces.",
+  status: HypothesisGrade { note: "candidate architecture - its structural/retention/touch-protection demand rows are not yet instantiated; drawn parts are candidates until they are" },
+}
+
+data first_witness_obligations: String = "Ten first witnesses, recorded pending the witness carrier (no row below is discharged): (1) selecting ALTRAD8UD air creates no Jade PDB/CRPS dependency; (2) selecting Jade creates its exact PDB/control dependencies; (3) selecting air creates no fluid, CDU, QD, drain, or coolant dependency; (4) removing the last liquid consumer retires the liquid dependency population; (5) moving a carrier between supports (frame/wall/bench/rack) does not change compute-assembly or logical-host identity; (6) a leased-site policy refusing structural wall alteration removes BuildingAttachedRail from candidates; (7) every custom dependency has an exit path and reproduction receipt; (8) every selected artifact traces to at least one exact demand; (9) every selected demand has an admitted realization or remains explicitly unresolved; (10) a decorative facade can be removed without changing cooling, power, or host identity."
+
+data service_pattern_note: String = "GENERIC SERVICE PATTERN (service-boundary directive section 10) - the unifying shape every service lane takes, the physical mirror of the repo's modeling discipline: SelectedConsumer -> ExactServiceDemand -> ExplicitPolicyAndSafetyCeiling -> CandidateProvider -> ExactBinding -> RuntimeObservation -> RetirementWhenLastConsumerDisappears. Instantiated: power (assembly -> watts/current/input-contract demand -> rectifier/distribution/branch binding), storage (job/host -> scratch/cache/durable/block/object demand -> provider binding), cooling (component/zone -> pickup/transport/rejection demand -> thermal service binding), networking (workload -> bandwidth/reachability/isolation demand -> path binding), mounting (assembly -> support/retention/clearance demand -> carrier/support binding). Ledger corollary: centralization deletes repeated dependencies but introduces shared-provider, network-path, and blast-radius dependencies - both sides go in the ledger. GOVERNING PRINCIPLE: move authority and replaceable service contracts upstream to the broadest justified boundary; keep only latency-critical state, fault isolation, safety mechanisms, and irreducible physical interfaces local. TERMINATION CONDITION (not 'everything is centralized'): every dependency lives at the broadest boundary that reduces total lifecycle burden without violating latency, safety, fault isolation, reversibility, or the selected software plan."
+
+data power_acceptance_controls: String = "Twelve power acceptance controls before promoting shared power (witness obligations, none discharged): (1) selecting one direct-12V ALTRAD8UD emits exactly one protected branch; (2) removing the node removes that branch demand; (3) a branch short/overload isolates the branch without losing healthy branches; (4) bus undervoltage produces a typed drain for exactly the associated power domain; (5) one node's inrush cannot reset its neighbors; (6) connector and conductor temperatures stay within admitted limits at sustained peak; (7) board voltage stays inside the pinned input contract under steady load and transients; (8) shared-rectifier efficiency and acoustic receipts beat or fail to beat the per-node ATX baseline honestly; (9) the 12V design emits no 48->12 converter dependency; (10) the 48V design emits exactly one qualified converter dependency per attached 12V board; (11) no unselected board receives a power tap through a board/domain cross product; (12) loss of the last consumer retires the shared branch or domain per policy."
+
+data storage_acceptance_controls: String = "Eight storage acceptance controls (witness obligations, none discharged): (1) a job with scratch demand receives ephemeral storage but no durable volume; (2) a job with artifact output emits an exact durable-object demand; (3) removing the last durable consumer removes the corresponding grant/binding; (4) node loss destroys no authoritative state; (5) shared-storage loss drains only workloads whose selected plan requires it; (6) cache loss causes recomputation or refetch, never data loss; (7) network saturation is a first-class storage-admission failure; (8) local NVMe failure reduces capacity or drains one node, never corrupts a global authority."
+
+data first_frame_architecture_note: String = "FIRST-FRAME TARGET (service-boundary directive section 11): upstream durable object/log authority; site cache/image authority; freestanding compute-service frame containing shared rectifier shelf -> covered branch distribution -> protected manual 12V branches to ALTRAD8UD carriers, plus network switch; each carrier: board + memory + CPU + BMC, local disposable NVMe scratch/cache, no authoritative customer data, ordinary manual power/network disconnects. One mains conversion service, one network fabric, upstream durable storage, local disposable scratch, removable carriers, independently modeled cooling; no wall load, no liquid, no blind-mate, no custom backplane. Meaningfully more decomposed than a conventional server, and still buildable."
+
+data target_architecture_note: String = "TARGET (carrier+dependency directive, verbatim intent): one common service frame; one common removable-carrier interface; one thin board-family adapter per physical board family; optional board-specific airflow geometry only when measurements derive it; zero liquid dependencies until heat routing earns them. The concept is a physical dependency-injection system: board-specific adapter -> common removable carrier -> selectable room support -> selectable service realizations. Acceptance: ALTRAD8UD installs/removes through the simple common interface; Jade uses the same outer interface with its quirks isolated in one vintage adapter; the frame leaves a leased site with minimal restoration; every custom relationship is countable and has an exit; the air realization contains no dormant liquid or redundant-power dependency; support swap preserves logical-host and assembly identity."
+
+data mt_jade_fixture_protocol: String = "Decomposition fixture protocol (extends the compute-infrastructure section 5 arrival checklist - its rows become Stage 0). Stage 0 stock baseline under identical workloads: wall power, throughput, CPU temps, memory/VRM temps where observable, fan RPM, sound level AND spectrum per source, inlet/exhaust temps, throttling, airflow/pressure where practical. Stage 1 externalized acoustic source (remote blower, chassis retained). Stage 2 open carrier with native electrical preserved (plenum variant; owned-D9 variant). Stage 3 direct-liquid feasibility characterization only as study input. Print-first queue: (1) hole/drilling jigs, (2) transition ducts, (3) air-wash shrouds, (4) sensor/cable fixtures, (5) carrier-interface mock-up on a metal primary plane, (6) visual/status components. REFERENCE-FIRST AMENDMENT (carrier+dependency directive): the ALTRAD8UD reference build proves the common frame + carrier interface with normal hardware; the Jade then stress-tests the same interface with proprietary hardware. No vintage selection before receipts; nothing here authorizes purchases, leases, or buildout - section 6 gates unchanged."

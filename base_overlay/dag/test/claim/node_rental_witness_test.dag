@@ -1,0 +1,100 @@
+module test.claim.node_rental_witness
+
+import std.types { Bool, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.node_rental {
+  market_rows, hetzner_row, oci_row, gcp_row, gcp_spot_row,
+  admissible_as_competitive_floor, competitive_floor_count, market_row_count,
+  region_is_known, supply_is_known, supply_is_purchasable, not_orderable_reading_count,
+  hetzner_cax_supply_readings,
+  hetzner_supply_closing_experiments, supply_closing_experiment_count,
+  wholesale_argument_needs_quantity_enquiry,
+  hetzner_wholesale_quantity_enquiry, hetzner_verified_account_cax_order,
+  hetzner_cax_order_outside_hel1_nbg1, hetzner_public_sku_availability_history,
+  principal_is_operator,
+}
+import strategy.wholesale_buyer {
+  wholesale_inquiries, wholesale_argument, wholesale_argument_is_ungrounded,
+  term_quote_count, inquiry_has_term_quote, end_customer_rate_is_not_our_wholesale_bid,
+  hetzner_may_not_be_cited_as_reseller_cost_floor, blacksmith_catalog_is_cited,
+  blacksmith_authority_is_cited, our_slice_cost_micro,
+  ubicloud_inquiry, blacksmith_inquiry,
+  console_reading_is_scoped_not_orderable,
+  evidence_census_is_not_a_market_claim,
+  hetzner_reseller_quantity, reseller_quantity_is_quoted,
+}
+
+fn census_is_four_rows_and_zero_floors() -> Bool {
+  market_row_count() == 4
+    && count(market_rows) == 4
+    && competitive_floor_count() == 0
+    && admissible_as_competitive_floor(r: hetzner_row) == false
+    && admissible_as_competitive_floor(r: oci_row) == false
+    && admissible_as_competitive_floor(r: gcp_row) == false
+    && admissible_as_competitive_floor(r: gcp_spot_row) == false
+}
+
+fn closing_experiments_name_principal_and_quantity_first() -> Bool {
+  supply_closing_experiment_count() == 4
+    && count(hetzner_supply_closing_experiments) == 4
+    && wholesale_argument_needs_quantity_enquiry()
+    && hetzner_wholesale_quantity_enquiry.question == "Can Hetzner supply a RESELLER with QUANTITY under a term commitment?"
+    && principal_is_operator(p: hetzner_wholesale_quantity_enquiry.principal)
+    && principal_is_operator(p: hetzner_verified_account_cax_order.principal)
+    && principal_is_operator(p: hetzner_cax_order_outside_hel1_nbg1.principal)
+    && principal_is_operator(p: hetzner_public_sku_availability_history.principal) == false
+    && reseller_quantity_is_quoted(s: hetzner_reseller_quantity) == false
+}
+
+fn hetzner_scoped_not_orderable_from_three_readings() -> Bool {
+  region_is_known(r: hetzner_row.region)
+    && supply_is_known(s: hetzner_row.supply)
+    && supply_is_purchasable(s: hetzner_row.supply) == false
+    && not_orderable_reading_count(s: hetzner_row.supply) == 3
+    && count(hetzner_cax_supply_readings) == 3
+    && console_reading_is_scoped_not_orderable(r: hetzner_row)
+    && hetzner_may_not_be_cited_as_reseller_cost_floor()
+    && closing_experiments_name_principal_and_quantity_first()
+}
+
+fn oci_and_gcp_remain_unobserved() -> Bool {
+  region_is_known(r: oci_row.region) == false
+    && supply_is_known(s: oci_row.supply) == false
+    && region_is_known(r: gcp_row.region) == false
+    && supply_is_known(s: gcp_row.supply) == false
+    && region_is_known(r: gcp_spot_row.region) == false
+    && supply_is_known(s: gcp_spot_row.supply) == false
+}
+
+fn buyer_side_is_not_a_retail_row() -> Bool {
+  count(wholesale_inquiries) == 2
+    && term_quote_count() == 0
+    && inquiry_has_term_quote(i: ubicloud_inquiry) == false
+    && inquiry_has_term_quote(i: blacksmith_inquiry) == false
+    && end_customer_rate_is_not_our_wholesale_bid(i: ubicloud_inquiry)
+    && end_customer_rate_is_not_our_wholesale_bid(i: blacksmith_inquiry)
+    && blacksmith_catalog_is_cited()
+    && blacksmith_authority_is_cited()
+}
+
+fn argument_survives_as_ungrounded_not_as_a_fake_win() -> Bool {
+  wholesale_argument_is_ungrounded(a: wholesale_argument())
+    && our_slice_cost_micro() != 0
+    && evidence_census_is_not_a_market_claim() != ""
+}
+
+fn node_rental_witness_all() -> Bool {
+  census_is_four_rows_and_zero_floors()
+    && hetzner_scoped_not_orderable_from_three_readings()
+    && oci_and_gcp_remain_unobserved()
+    && buyer_side_is_not_a_retail_row()
+    && argument_survives_as_ungrounded_not_as_a_fake_win()
+}
+
+fn node_rental_witness_main() -> ProcessExit {
+  if node_rental_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "node_rental_witness_all returned false" }
+  }
+}

@@ -1,0 +1,15 @@
+module extdeps.utility.pseg
+
+import std.types { NonEmptyStr }
+import extdeps.utility.types { ElectricUtility, UtilityGovernance, InvestorOwned }
+
+// Public Service Electric & Gas - NJ's largest distribution utility; serves the
+// urban corridor including Hudson County (Jersey City).
+
+data pseg: ElectricUtility = ElectricUtility {
+  name: "Public Service Electric & Gas (PSE&G)",
+  governance: InvestorOwned { holding_company: "Public Service Enterprise Group" },
+  regulator: "NJ Board of Public Utilities",
+  retail_supply_choice: true,
+  new_service_channel: "PSE&G new business / commercial service group; will-serve and load-study requests",
+}

@@ -1,0 +1,474 @@
+module strategy.pricing_decomposition
+
+import std.types { Int, Bool, NonEmptyStr, List }
+
+// OPERATOR RULING 2026-08-30: THE SUBSCRIPTION IS A BUNDLE OF THREE SEPARABLE
+// FINANCIAL PRODUCTS, AND THE COMPLAINT WAS NEVER ABOUT ANY ONE OF THEM - it was
+// about the BUNDLING, which obscures which product the customer is buying and at
+// what price. None of the three is evil; each is genuinely helpful in some cases
+// and extractive in others, and the only way to tell which is to price them
+// separately. This deepens (does not replace) the standing no-free-tier ruling
+// (ci_runner_economics no_free_tier_note): no unpriced usage in either direction -
+// the customer never consumes unpriced minutes, and (analyst-corrected form,
+// same day) NO REVENUE WITHOUT A RECEIPT FOR THE BILLED PRODUCT ACTUALLY DELIVERED
+// - where the delivered product may be executed minutes, ACTIVE rate protection,
+// HELD capacity, or standing support. The naive "no revenue for minutes never
+// consumed" would outlaw honest availability and protection products.
+//
+// The industry context the ruling names: sellers of compute currently ship a
+// CONFUSED HYBRID - a seat subscription plus metered "additional usage" (the
+// Anthropic shape the operator cited). The decomposition explains that shape as
+// prepaid-block + rate-lock + breakage fused into one line item; our move is to
+// sell the same functions UNBUNDLED.
+
+// ---- the governing rule above every product choice ----
+
+// OPERATOR, same day, on top of all of it: TRANSPARENCY AND PURE VALUE CREATION.
+// Whatever instruments we sell, the relationship errs toward creating value, never
+// toward the financial-engineering posture of "find out how to slowly, consistently
+// extract value from this product." The test for any proposed pricing feature:
+// does its revenue grow with the customer's USE and success, or with their
+// INATTENTION? Revenue that grows with inattention is refused regardless of how
+// standard it is in the industry.
+data value_creation_ruling: NonEmptyStr = "GOVERNING RULING 2026-08-30: every pricing product must be transparent and value-creating - revenue may scale with use delivered, never with customer inattention. Billing an inactive relationship is the abusive shape (the operator's words: a crappy/abusive relationship); the concrete standing example is the INACTIVITY DEAD-MAN SWITCH below. This ruling outranks any individual product design: an instrument that passes its own pricing discipline but monetizes inattention is still refused."
+
+// The dead-man switch, typed. Symmetric to asset_lifecycle: an asset without a
+// living intent draws liquidation pressure; a recurring-billing relationship
+// without living USE draws an automatic pause. In both cases the system acts on
+// the absence-of-life signal itself - the customer is never required to remember
+// to stop paying us.
+type InactivityPolicy {
+  quiet_window_days: Int
+  pause_is_automatic: Bool
+  customer_action_required_to_pause: Bool
+  resume: NonEmptyStr
+}
+
+data inactivity_dead_man: InactivityPolicy = InactivityPolicy {
+  quiet_window_days: 90,
+  pause_is_automatic: true,
+  customer_action_required_to_pause: false,
+  resume: "first login or first job submission resumes the relationship exactly where it paused - no penalty, no re-signup, no lost balance; the pause notice itself tells the customer what they still hold",
+}
+
+// Analyst-amended eligibility: the pause applies ONLY to indefinite cancellable
+// services with no fixed-term protection, held capacity, or retained-data
+// obligation outstanding - pausing an active cap would either breach the contract
+// or mint free optionality (a cancelled cap resumes only via a new forward-start
+// quote), and metered execution already bills zero when idle. Activity is defined
+// STRUCTURALLY: machine-triggered CI execution is customer activity even when no
+// human has logged in for 90 days.
+data inactivity_pause_eligibility: NonEmptyStr = "InactivityPauseEligible = IndefiniteCancellableService AND NoFixedTermProtectionOutstanding AND NoHeldCapacityOutstanding AND NoRetainedDataObligationOutstanding; activity includes machine-triggered execution"
+
+// ---- the three functions a subscription bundles ----
+
+type FunctionVerdict
+  = SoldExplicitly { as_product: NonEmptyStr }
+  | RefusedAsRevenue { why: NonEmptyStr }
+
+type SubscriptionFunction {
+  id: NonEmptyStr
+  what_it_does: NonEmptyStr
+  who_it_helps: NonEmptyStr
+  where_it_extracts: NonEmptyStr
+  verdict: FunctionVerdict
+}
+
+data fn_rate_smoothing: SubscriptionFunction = SubscriptionFunction {
+  id: "rate_smoothing",
+  what_it_does: "hides market-rate movement behind a flat posted price - the MSRP function; the provider absorbs volatility and charges a premium for it",
+  who_it_helps: "small customers for whom checking a token/minute market rate daily is a real attention cost - the operator's do-you-want-to-check-the-market-rate-every-day point; stability is what lets small fish play and produce",
+  where_it_extracts: "when the premium is invisible: the customer cannot see what stability costs, so they cannot decline it, and arbitrage opportunities are hidden from exactly the customers who could use them",
+  verdict: SoldExplicitly { as_product: "a RATE LOCK: metering stays the base product at a posted per-ISA rate; a customer may buy N months of locked rate at a visible stability premium over the posted rate - the MSRP tax as an opt-in line item instead of a smuggled one" },
+}
+
+data fn_breakage: SubscriptionFunction = SubscriptionFunction {
+  id: "breakage_capture",
+  what_it_does: "books revenue on prepaid capacity the customer forgets to use or cancel - the gym-membership function",
+  who_it_helps: "the provider's revenue line only; occasionally the customer, as a crude commitment device",
+  where_it_extracts: "always, structurally: the revenue is proportional to customer forgetfulness, so product incentives invert - the provider profits from the customer NOT using the product",
+  verdict: RefusedAsRevenue { why: "no revenue without a delivery receipt: an expired unused execution balance has no receipt and cannot become revenue. Prepaid balances roll over or refund; a genuine commitment need is sold as a CAPACITY RESERVATION whose fee is earned by a held-capacity receipt (capacity actually withheld and available), never as expiring credits" },
+}
+
+data fn_ongoingness: SubscriptionFunction = SubscriptionFunction {
+  id: "ongoingness_hedge",
+  what_it_does: "carries inflation, input-cost drift and the going-concern relationship - auto-renewal plus quiet price increases",
+  who_it_helps: "both sides when honest: the customer keeps continuity without re-procurement, the provider keeps a demand baseline to plan supply against (our supply-beneath-demand law needs exactly that baseline)",
+  where_it_extracts: "when repricing is quiet and asymmetric: increases land silently on renewal while the effort to leave is priced in - forgetfulness monetized again, one level up",
+  verdict: SoldExplicitly { as_product: "INDEXED REPRICING ON A DECLARED CADENCE: the posted rate may move on a stated schedule with notice, tied to the named cost drivers (power, hardware frontier), and the rate-lock product is precisely the customer's hedge against it - the two products price each other" },
+}
+
+data subscription_functions: List<SubscriptionFunction> = [
+  fn_rate_smoothing, fn_breakage, fn_ongoingness,
+]
+
+fn breakage_refused() -> Bool {
+  match fn_breakage.verdict {
+    SoldExplicitly { as_product } => false,
+    RefusedAsRevenue { why } => true,
+  }
+}
+
+// ---- the midline: what sits between MSRP subscription and pure pay-as-you-go ----
+
+// The operator's question: approximate the midline between an MSRP subscription and
+// market-rate metering. The answer the decomposition forces: the midline is NOT a
+// blended price point - it is METERING PLUS THE UNBUNDLED STABILITY PRODUCT. The
+// posted rate is flat per ISA class (the simplicity product survives), repriced on
+// the declared cadence; the lock is the only subscription-like object, and its
+// premium is the entire, visible MSRP tax.
+data midline_ruling: NonEmptyStr = "MIDLINE RULING 2026-08-30 (v2, analyst-amended): base product is metered pay-as-you-go at a flat posted per-ISA-class rate (not live market rate - repriced on a declared cadence with notice, so nobody checks a ticker). The posted epoch itself already carries a small stability product (rate fixed for the epoch, through notice, and for every admitted job); the optional product EXTENDS that horizon as a bounded RATE CAP with a positively-priced gross protection component. Capacity availability, payment timing, demand information, scheduling flexibility, service assurance and support are separately typed products or credits; net discounts arise only from independently evidenced customer-provided value, never as a negative protection premium. No expiring credits, no breakage revenue, no seat, no automatic renewal. Subject grain is the execution-compatibility class (posture v3), of which ISA is one coordinate - never a parallel ISA-only classification. This is deliberately the DECOMPOSED form of the industry's confused seat-plus-additional-usage hybrid: same three functions, each priced where the customer can see it. Declared-not-live like the per-ISA sentence in architecture_posture_ruling: the numbers land when the KnownRed pricing closure (extdeps.ci_compute_pricing) lands, and the pricing page consumes this decomposition then."
+
+// ---- the stability product, corrected: a bounded RATE CAP, not a lock ----
+
+// Analyst ruling (same day): one RateLock constructor conflated an option, a
+// forward, and a reservation. First product is the CAP only: the customer keeps
+// downward price moves and is protected above the cap - a fixed lock would quietly
+// convert favorable repricing into provider upside. FixedRateCommitment is declared
+// but unoffered: it needs a bilateral quantity obligation whose shortfall charge
+// survives the receipts law, which take-or-pay does not.
+type PriceStabilityProduct
+  = RateCap { term_note: NonEmptyStr, covered_volume_note: NonEmptyStr }
+  | FixedRateCommitment { unoffered_reason: NonEmptyStr }
+
+data stability_offering: PriceStabilityProduct = RateCap {
+  term_note: "bounded term; explicit renewal only - protection never silently becomes a recurring product",
+  covered_volume_note: "bounded covered volume per price epoch, mandatory - unbounded protected usage is refused (adverse selection: usage rises exactly when rates rise)",
+}
+
+fn effective_rate_micro(posted_micro: Int, cap_micro: Int) -> Int {
+  if posted_micro < cap_micro { posted_micro } else { cap_micro }
+}
+
+// ---- the closed invoice algebra (every line item earns its receipt) ----
+
+type ConstructorStanding
+  = AdmittedCharge { receipt: NonEmptyStr }
+  | AdmittedCredit { receipt: NonEmptyStr }
+  | RefusedConstructor { why: NonEmptyStr }
+
+type InvoiceConstructor {
+  id: NonEmptyStr
+  standing: ConstructorStanding
+}
+
+data ic_metered_execution: InvoiceConstructor = InvoiceConstructor { id: "MeteredExecutionCharge", standing: AdmittedCharge { receipt: "delivered-execution receipt" } }
+data ic_rate_protection: InvoiceConstructor = InvoiceConstructor { id: "RateProtectionCharge", standing: AdmittedCharge { receipt: "active-coverage receipt (gross fee positive under nondegenerate exposure; degenerate exposure returns RateProtectionRedundant, never an arbitrary fee)" } }
+data ic_capacity: InvoiceConstructor = InvoiceConstructor { id: "CapacityAvailabilityCharge", standing: AdmittedCharge { receipt: "held-capacity receipt - the capacity was actually withheld and available; a double-sold reservation has no receipt" } }
+data ic_support: InvoiceConstructor = InvoiceConstructor { id: "HumanSupportCharge", standing: AdmittedCharge { receipt: "support standing or incident receipt - decomposed NOW, before it returns as a Pro/Enterprise plan tier" } }
+data ic_payment_terms: InvoiceConstructor = InvoiceConstructor { id: "PaymentTermsAdjustment", standing: AdmittedCredit { receipt: "financing receipt: an annual-upfront discount is the present value of working capital and credit risk the customer transferred, never a rate-protection discount" } }
+data ic_planning_credit: InvoiceConstructor = InvoiceConstructor { id: "DemandPlanningCredit", standing: AdmittedCredit { receipt: "realized planning value receipt - the customer sold us forecast certainty; credited ex post on consumed units, independent of the capacity fee (anti-double-recovery: reservation fee and metered charge may not recover the same fixed cost)" } }
+data ic_flexibility_credit: InvoiceConstructor = InvoiceConstructor { id: "SchedulingFlexibilityCredit", standing: AdmittedCredit { receipt: "accepted-flexibility receipt on actual execution (delay, preemption, completion window)" } }
+data ic_failure_refund: InvoiceConstructor = InvoiceConstructor { id: "ServiceFailureRefund", standing: AdmittedCredit { receipt: "failed-service-obligation receipt - remedy is cash or current-invoice reduction, NEVER an expiring future-use credit (that re-creates breakage)" } }
+
+data ic_generic_subscription: InvoiceConstructor = InvoiceConstructor { id: "GenericSubscriptionCharge", standing: RefusedConstructor { why: "the bundle itself - decomposes or refuses" } }
+data ic_seat: InvoiceConstructor = InvoiceConstructor { id: "SeatCharge", standing: RefusedConstructor { why: "a lapse-supported annuity in consumer clothes" } }
+data ic_expired_credit: InvoiceConstructor = InvoiceConstructor { id: "ExpiredExecutionCreditRevenue", standing: RefusedConstructor { why: "no delivery receipt exists for an expired unused balance" } }
+data ic_unused_no_receipt: InvoiceConstructor = InvoiceConstructor { id: "UnusedExecutionChargeWithoutAvailabilityReceipt", standing: RefusedConstructor { why: "minimum-spend/take-or-pay revenue on unused commitment with no held capacity" } }
+data ic_reservation_unheld: InvoiceConstructor = InvoiceConstructor { id: "CapacityReservationChargeWithoutHeldCapacity", standing: RefusedConstructor { why: "billing for availability that was never withheld" } }
+data ic_negative_protection: InvoiceConstructor = InvoiceConstructor { id: "NegativeRateProtectionCharge", standing: RefusedConstructor { why: "a discount may only be an evidenced customer-provided value (financing/planning/flexibility credit), never a negative hedge premium" } }
+data ic_auto_renewal: InvoiceConstructor = InvoiceConstructor { id: "AutomaticRenewalCharge", standing: RefusedConstructor { why: "a protection or support term expires; renewal is explicit and term-specific" } }
+
+data invoice_constructors: List<InvoiceConstructor> = [
+  ic_metered_execution, ic_rate_protection, ic_capacity, ic_support,
+  ic_payment_terms, ic_planning_credit, ic_flexibility_credit, ic_failure_refund,
+  ic_generic_subscription, ic_seat, ic_expired_credit, ic_unused_no_receipt,
+  ic_reservation_unheld, ic_negative_protection, ic_auto_renewal,
+]
+
+// ---- moral-hazard walls: cadence and cap share a PARENT, never price each other ----
+
+// Analyst correction: "the two products price each other" was a reflexive loop
+// (shorter cadence -> more lock demand -> revenue -> incentive to shorten cadence).
+// Correct structure: cadence and protection quotes are CO-DERIVED from one cost-
+// exposure and pricing-policy authority; the cadence sets the standard protection
+// horizon, the cap prices exposure beyond it, and these edges are forbidden:
+data moral_hazard_walls: List<NonEmptyStr> = [
+  "RiskSaleAdmission: every new cap, guaranteed-hours commitment or capacity reservation consumes a post-transaction solvency projection and is Admitted, ReducedTermOrVolume, or RefusedInsufficientReserve - without this consumer, reserves-are-required is green prose while the firm keeps issuing risk underreserved",
+  "LockTakeup must never feed BaseRate",
+  "LockRevenue must never feed BaseRate",
+  "LockConversionRate must never feed Cadence",
+  "LockRenewalRate must never feed Cadence",
+  "CustomerLockDemand must never feed RepricingTrigger",
+]
+
+// ---- the regime boundary: cadence is not a knob that becomes a ticker ----
+
+// Analyst correction to the market-rate refusal shape: at some cadence the product
+// CHANGES IDENTITY, so the two regimes are distinct constructors, not one dial.
+// A job admitted under a posted epoch is never repriced mid-run. The operator's
+// personal market appetite is served first by an INTERNAL SHADOW INDEX (observed
+// marginal minute cost / spill-avoidance value / scarcity value) testing the
+// posted tariff - never exposed as the customer price authority - and later,
+// possibly, by an opt-in preemptible product with a real scarcity authority.
+type PriceRegime
+  = PostedEpochTariff { note: NonEmptyStr }
+  | OptInPreemptibleMarket { admission_wall: NonEmptyStr }
+
+data live_regime: PriceRegime = PostedEpochTariff {
+  note: "declared minimum epoch, prospective notice, machine-readable current and announced rates, billing terms immutable for an admitted job",
+}
+
+data future_market_regime: PriceRegime = OptInPreemptibleMarket {
+  admission_wall: "admissible only with: an actual scarcity/marginal-capacity authority (a fast operator-set number on a small fleet is discretionary volatility with a ticker renderer, not a market), a declared clearing rule, a customer max price, retry-safe/idempotent jobs, accepted preemption semantics, and no silent migration from the posted tariff",
+}
+
+// ---- the market-instrument mapping (operator: financial products wearing
+// consumer-product clothes - study the existing art) ----
+
+type InstrumentMapping {
+  consumer_shape: NonEmptyStr
+  instrument: NonEmptyStr
+  transfer: NonEmptyStr
+}
+
+data map_subscription: InstrumentMapping = InstrumentMapping {
+  consumer_shape: "the classic all-you-can-eat subscription seat",
+  instrument: "a lapse-supported annuity: priced assuming a fraction of holders forget or fail to use it - actuarial practice treats lapse-supported pricing as unsound precisely because the seller profits from the buyer's failure",
+  transfer: "the actuarial verdict IS our breakage verdict: revenue without a delivery receipt is refused, so the seat cannot exist here in its classic form",
+}
+
+data map_rate_cap: InstrumentMapping = InstrumentMapping {
+  consumer_shape: "our price-stability product (the RateCap)",
+  instrument: "a cap - an option, not a forward: the customer holds the right to a maximum rate with no obligation, keeps downward moves, and a churning customer always held the walk-away option anyway",
+  transfer: "option discipline transfers: the priced object is the UNHEDGED counterfactual posted-rate exposure over a BOUNDED covered volume; the sign law attaches to the GROSS protection charge (positive under nondegenerate exposure, RateProtectionRedundant when degenerate), never to the customer's net rate - credits may net below posted honestly",
+}
+
+data map_reservation: InstrumentMapping = InstrumentMapping {
+  consumer_shape: "prepay/commit discounts (reserved instances, savings plans, annual billing)",
+  instrument: "several orthogonal instruments fused: prepayment is customer-extended financing, commitment is a demand forward the customer sells, and capacity assurance is a separate availability product the big clouds explicitly do NOT bundle into commitment discounts",
+  transfer: "each strand gets its own typed line item (PaymentTermsAdjustment, DemandPlanningCredit, CapacityAvailabilityCharge) with its own receipt; a single lumped discount is where extraction and double-recovery hide",
+}
+
+data map_indexed_reprice: InstrumentMapping = InstrumentMapping {
+  consumer_shape: "our posted rate with declared repricing cadence",
+  instrument: "a floating-rate note with a published index and reset schedule",
+  transfer: "floaters demand a NAMED index: resets cite the cost drivers weighted by ACTUAL exposure (a sunk liquidation fleet does not become volatile because new-hardware prices move; provider-created inefficiency is never an eligible repricing driver) - discretionary resets are how quiet asymmetric increases smuggle back in",
+}
+
+data instrument_mappings: List<InstrumentMapping> = [
+  map_subscription, map_rate_cap, map_reservation, map_indexed_reprice,
+]
+
+// ---- the firm as risk intermediary (operator, same day: this positions the
+// business in a very specific way) ----
+
+// The consequence of everything above: WE SELL STABILITY ON EVERY INTERFACE, so
+// the firm is the residual risk-holder - an underwriter, whether it admits it or
+// not. Customers get posted epochs and rate caps against market swings; employees
+// get a fixed/hourly wage against the same swings; and the dead-man switch means
+// revenue PAUSES in a downturn by design while wage obligations stand. A business
+// shaped like this survives only if it is run like the underwriter it is: the
+// tail loads priced into every stability product (the RiskCapitalCarry term of the
+// cap fee) and a revenue-volatility buffer for the wage book are RESERVES, not
+// profit. The consistency law: no interface may quietly RE-EXPORT the risk we
+// were paid to absorb - surprise repricing re-exports it to customers, gig-style
+// variable pay re-exports it to employees, and stretching supplier payment terms
+// in a downturn re-exports it to suppliers. Absorb it or price it; never smuggle
+// it back.
+
+type RiskCounterparty = CustomerSide | EmployeeSide | FirmItself
+
+type RiskInterface {
+  counterparty: RiskCounterparty
+  we_absorb: NonEmptyStr
+  they_receive: NonEmptyStr
+  it_requires: NonEmptyStr
+}
+
+data risk_customers: RiskInterface = RiskInterface {
+  counterparty: CustomerSide,
+  we_absorb: "input-cost and market swings over the epoch and any cap term",
+  they_receive: "posted epoch tariff, bounded rate caps, immutable admitted-job pricing",
+  it_requires: "the cost-exposure authority, tail loads held as risk capital, and the moral-hazard walls - stability sold must never be clawed back by discretionary repricing",
+}
+
+data risk_employees: RiskInterface = RiskInterface {
+  counterparty: EmployeeSide,
+  we_absorb: "demand and revenue swings - including the pauses our own dead-man switch creates by design",
+  they_receive: "a fixed/hourly rate - honestly named: HOURLY-RATE STABILITY, which is income stability only when paired with guaranteed paid hours and cancellation pay; the claim must name its actual extent (analyst: rate stability alone can still export risk through cut hours and cancelled shifts)",
+  it_requires: "a revenue-volatility buffer sized against the wage book, honest headcount capacity planning (hire against sustained demand, the same law as fleet expansion), and the refusal of gig-style risk re-export",
+}
+
+data risk_firm: RiskInterface = RiskInterface {
+  counterparty: FirmItself,
+  we_absorb: "the residual: what neither interface may carry lands on the balance sheet",
+  they_receive: "the spread between stability sold and stability bought - the underwriting margin, earned only while reserves stand",
+  it_requires: "reserves as a STOCK distinct from price flows, attributed to the product that creates the risk (cap tail loads live in the RateProtectionCharge, never smeared into the universal base margin where uncapped customers silently fund capped ones), unencumbered (one reserve asset never pledged to two simultaneous stress obligations), with contribution reduced or reclassified once the target is funded - and the supply-beneath-demand law as the structural hedge",
+}
+
+data risk_interfaces: List<RiskInterface> = [risk_customers, risk_employees, risk_firm]
+
+// ---- the three pricing layers (operator, same day: the true model is always
+// loyal; products may lag it only as declared, bounded subsidy) ----
+
+// The operator's answer to modern price-increase obfuscation: separate WHAT IT
+// COSTS from WHAT WE CHARGE from HOW IT IS PACKAGED, and keep the bottom layer
+// loyal at all times. A price increase then has nowhere to hide - it is either a
+// cost-model movement (visible in layer 1), a margin decision (visible in layer
+// 2), or a packaging change (visible in layer 3), each with its own author.
+type PricingLayer {
+  layer: NonEmptyStr
+  loyalty: NonEmptyStr
+}
+
+data layer_true_cost: PricingLayer = PricingLayer {
+  layer: "1. the true cost model: everything a delivered unit costs US, own costs included (power, hardware amortization, spill, labor, reserves)",
+  loyalty: "ALWAYS ACCURATE AND LOYAL - never bent to justify a price, never lagged to flatter a product; this is the KnownRed closure's job and the reason it must land as the sole base producer",
+}
+
+data layer_posted_rate: PricingLayer = PricingLayer {
+  layer: "2. the posted rate: true cost plus the declared margin (which carries the underwriting reserves)",
+  loyalty: "derived from layer 1 by a versioned policy - the margin is a visible decision, not a residual",
+}
+
+data layer_products: PricingLayer = PricingLayer {
+  layer: "3. commercial products packaging the rate: metered, caps, reservations - and, admissibly, even a flat all-you-can-eat offer as a PACKAGING of the rate",
+  loyalty: "products may deviate from layer 2 only as DECLARED SUBSIDY (below) - a product is a renderer of the rate plus a financed gap, never a second price authority",
+}
+
+data pricing_layers: List<PricingLayer> = [layer_true_cost, layer_posted_rate, layer_products]
+
+// The alpha threshold, analyst-amended to the correct HORIZON: the sign law
+// binds EX-ANTE QUOTE ALPHA (quoted revenue minus risk-adjusted expected
+// obligation cost minus allocated risk-capital carry) - a quote below zero
+// requires a declared budgeted subsidy. NEGATIVE REALIZED ALPHA IS A DIFFERENT
+// OBJECT: a correctly priced cap losing money during a cost spike is the risk we
+// were PAID to absorb (risk realization), not a subsidy; the silent-drift wall
+// applies to unexplained or unauthorized negative economics, never every realized
+// loss. Layer 1 must cost the obligation actually sold (protection loss + admin +
+// capital carry for a cap; held-capacity + readiness for a reservation) - alpha
+// against execution cost alone would make every financial service look like pure
+// margin. Grain: per execution-compatibility class, product, quote cohort and
+// horizon - an aggregate alpha can hide a permanently loss-making class.
+fn product_alpha_permille(realized_rate_micro: Int, true_rate_micro: Int) -> Int {
+  (realized_rate_micro - true_rate_micro) * 1000 / true_rate_micro
+}
+
+// The wall: below the declared threshold, a product survives only under a
+// declared subsidy. Silent drift is the refused arm.
+fn below_threshold_needs_declaration(alpha_permille: Int, threshold_permille: Int, subsidy_declared: Bool) -> Bool {
+  alpha_permille >= threshold_permille || subsidy_declared
+}
+
+// ---- the three OFFERED tiers and the switch-option walls (operator, same day:
+// offer all three layers; the game is switching) ----
+
+// The operator's preferred market: every layer is purchasable. The indexed tier
+// is cheapest ex ante because the customer carries the volatility and the
+// cost-modeling burden themselves; the fixed tier pays the visible tax because we
+// carry it (the annuity). Switching between tiers is NOT prevented - it is the
+// product working, customers sorting themselves by risk appetite - PROVIDED the
+// four options a switcher could capture are priced. Gaming exists exactly where a
+// switch captures an unpriced option, and nowhere else.
+type OfferedTier {
+  id: NonEmptyStr
+  who_carries_volatility: NonEmptyStr
+  price_shape: NonEmptyStr
+}
+
+data tier_indexed: OfferedTier = OfferedTier {
+  id: "indexed_pass_through",
+  who_carries_volatility: "the customer - they manage cost modeling, supply and demand on their side",
+  price_shape: "a PUBLIC-INDEX-LINKED tariff (analyst distinction: published external indices, weights, lags and formula version - the customer carries the named market volatility while we retain the basis risk between index and true internal cost; NOT a window onto layer 1, which stays the internal sole authority; only provider-exogenous drivers pass through, never our inefficiency or avoidable outages) - the LOWEST EXPLICIT STABILITY CHARGE, not a promise of lowest realized total",
+}
+
+data tier_posted: OfferedTier = OfferedTier {
+  id: "posted_epoch",
+  who_carries_volatility: "shared: we hold the rate within the epoch, the customer re-exposes at each reset",
+  price_shape: "the default: posted per-class rate, fixed for the epoch, prospective notice",
+}
+
+data tier_protected: OfferedTier = OfferedTier {
+  id: "fixed_term_rate_cap",
+  who_carries_volatility: "us - the underwriting book, reserved accordingly",
+  price_shape: "posted rate plus the gross protection charge for a bounded fixed term (renamed from capped-annuity per analyst: annuity implies the quiet ongoingness explicit-only renewal refuses): the guarantee, its tax visible",
+}
+
+data offered_tiers: List<OfferedTier> = [tier_indexed, tier_posted, tier_protected]
+
+// The four switch options, each with its wall. All four walls already exist in
+// this module or the analyst ruling - this table binds them to the gaming vector
+// they close, so a future product change that weakens one names what it reopens.
+type SwitchOption {
+  vector: NonEmptyStr
+  wall: NonEmptyStr
+}
+
+data switch_timing: SwitchOption = SwitchOption {
+  vector: "buy the cap after the rate movement is known; drop it when rates fall (fire insurance while the house burns)",
+  wall: "forward-start, information-inclusive quotes: a protection quote issued after a known or ANNOUNCED cost movement must include it (the no-stale-quote-arbitrage wall) - you can always buy a cap, never yesterday's cap",
+}
+
+data switch_volume: SwitchOption = SwitchOption {
+  vector: "shift heavy usage under the cap exactly when spot exceeds it",
+  wall: "bounded covered volume per epoch; usage above the envelope bills at posted",
+}
+
+data switch_term: SwitchOption = SwitchOption {
+  vector: "exit mid-term when the guarantee moves against you, re-enter fresh",
+  wall: "the coverage fee is earned continuously as active-coverage receipts; cancellation is bounded by documented unrecovered cost - never punitive, never zero: a costlessly abandonable annuity was not an annuity",
+}
+
+data switch_authority: SwitchOption = SwitchOption {
+  vector: "arbitrage a stale price between tiers",
+  wall: "impossible by construction: every tier derives from the same layer-1 authority and policy version - there is no second authority to trade against",
+}
+
+data switch_options: List<SwitchOption> = [
+  switch_timing, switch_volume, switch_term, switch_authority,
+]
+
+// ---- the quality floor and the opaque envelope (operator, same day: the
+// quantization concern and fleet heterogeneity are one contract question) ----
+
+// The motivating instance (operator): a vendor sells "Opus" on a flat plan but may
+// quantize it under capacity pressure - conflating the oversubscription POLICY
+// (fine, every utility oversubscribes) with what is DELIVERED during it (the
+// thing the name silently stops meaning). The API price implies 100 percent; no
+// visibility is offered. The refused arm has a name: CONSTANT NAME OVER SILENTLY
+// VARIABLE QUALITY. We refuse it not by promising uniformity, but by contracting
+// a FLOOR and declaring the envelope above it deliberately ours.
+//
+// The same construction answers fleet heterogeneity: if customers anchor on
+// accidental uniformity, the second machine class looks "weird". So the envelope
+// is made honestly WIDE from day one - memory clock and rank deliberately
+// diversified across the fleet - and the dimensions inside the envelope are
+// deliberately OPAQUE: the user must never manage memory rank; that is too many
+// SKUs and exactly the attention cost we exist to absorb. Accountability without
+// hamfisting: the floor is measured and refunded, the envelope is published as
+// statistics, and luck above the floor is never billed.
+
+type QualityDimension
+  = GuaranteedFloor { what: NonEmptyStr, remedy: NonEmptyStr }
+  | OpaqueOurs { what: NonEmptyStr, why_hidden: NonEmptyStr }
+  | DisclosedPolicy { what: NonEmptyStr, disclosure: NonEmptyStr }
+
+data q_floor: QualityDimension = GuaranteedFloor {
+  what: "the unit itself is FLOOR-REFERENCED: one unit-minute is priced at the floor machine's measured throughput on the reference workload, so a slower-memory node delivers fewer billable units, never slower units at full price",
+  remedy: "delivery below floor is a ServiceFailureRefund line item (cash or invoice reduction) AND an operational standing change - node quarantine, calibration invalidation, requalification - so the firm cannot repeatedly purchase permission to degrade by issuing refunds; the quality claim has a billing consequence, which is what makes it a contract instead of marketing",
+}
+
+data q_opaque: QualityDimension = OpaqueOurs {
+  what: "memory clock rate, rank, DIMM population, vendor, microarchitecture within the execution-compatibility class - the whole envelope above the floor",
+  why_hidden: "deliberately: these are OUR dimensions to manage - exposing them is SKU explosion and exactly the attention cost the product absorbs. Analyst amendment: the contract carries NO-UNIFORM-HARDWARE-ENTITLEMENT rather than mandating manufactured heterogeneity - natural liquidation-fleet variety already de-anchors expectations, and buying operationally worse mix solely to educate customers adds calibration/spares/firmware cost with no contract benefit. Opacity is per CONTRACT, not universal: a dimension irrelevant to one customer may be contract-relevant to another (compliance, reproducibility) and is then disclosed or that customer declined",
+}
+
+data q_oversub: QualityDimension = DisclosedPolicy {
+  what: "oversubscription and behavior under capacity pressure",
+  disclosure: "the two conflated things separated: the oversubscription POLICY is published (whether and when), and degradation UNDER it is impossible below the floor by the refund-plus-quarantine arm - pressure may slow delivery of units within a declared completion envelope, it may never quietly thin what a unit is; enforcement, not just disclosure: commercial admission requires the projected service envelope to hold, and the InternalScavenger class is preempted BEFORE it consumes the headroom that defines the commercial floor",
+}
+
+data quality_dimensions: List<QualityDimension> = [q_floor, q_opaque, q_oversub]
+
+// The floor wall, executable: delivered throughput as permille of the floor
+// reference. At or above 1000 the contract is met (faster is unbilled luck);
+// below 1000 the refund arm fires - silent sub-floor delivery is the quantization
+// move and has no admissible arm.
+fn floor_met(delivered_permille_of_floor: Int) -> Bool {
+  delivered_permille_of_floor >= 1000
+}
+
+// ---- accuracy of meaning (operator, same day: the premise under all of it) ----
+
+data accuracy_of_meaning_ruling: NonEmptyStr = "PREMISE RULING 2026-08-30: ACCURACY OF MEANING is the design doctrine's one-name-one-meaning law applied to product names, and it binds every .dag layer including the commercial one. A name that simultaneously means full-strength and quantized-x8 is a fork of one term into two meanings, and it prices like every fork: substantial short-to-medium-term revenue, deferred cost paid by someone else - here as user distrust, frustration and errors, the textbook externality - and it is the exact inversion of the risk-intermediary identity: silently degrading under a premium name EXTERNALIZES the risk we are paid to absorb. Two honest arms exist and only two: (1) OPAQUE-BECAUSE-IRRELEVANT - a dimension may be hidden only when we genuinely believe it does not reach the delivered product, and the quality floor is that belief made falsifiable (if the dimension mattered, the floor catches it and the refund arm fires); (2) NAMED DEGRADATION - a materially different delivery is its own advertised product with its own name and price (the operator's example: last-generation ARM servers, super cheap - expectations aligned with service), never a quiet mode of the premium name. There is no third arm."

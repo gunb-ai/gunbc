@@ -1,0 +1,323 @@
+module test.claim.ci_build_frontier_witness
+
+import std.types { Bool, List, NonEmptyStr, Int, String }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import strategy.ci_build_frontier {
+  node_missing_inputs, axis_upfront_cash_id, axis_capex_per_unit_id, axis_sellable_units_id,
+  axis_stranded_cores_id,
+  MemoryPriceScenario, memory_price_scenarios, scenario_band_low, scenario_band_high,
+  MemoryBandStanding, FrontierAtEveryScenario, DominatedAtEveryScenario, ScenarioSensitive,
+  BandStandingUnestablished, band_standing, band_standing_in_field, standing_in_field_at,
+  standing_at, node_entry_at, funded_axes, surviving_candidates, is_dominated,
+}
+import strategy.ci_node_build {
+  NodeBuildCandidate, node_build_candidates,
+  candidate_q64_32, candidate_q80_32, candidate_q64_16,
+  memory_price_coefficient, planning_capex_at_32gib_price_micro,
+  NodePlatform, LooseBoardBuild, BoardFacts, SupplyDepth, DepthAvailableUncounted,
+  supermicro_r12spd_facts, asrock_board_facts, altra_q64_lot, dimm_32gib_lot,
+  MemoryLotObservation, MarketRateObservation, DomesticRoute, UsedUntested,
+  SupplyStanding, SupplyUnread, supply_depth_obligation,
+}
+import std.pareto { AxisGap, ParetoStanding, ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused }
+
+// THIS WITNESS EXISTS BECAUSE THE ONLY THING THAT EVER EXERCISED THIS MODULE WAS A QUARANTINED ONE.
+// ci_economics_witness is KnownRed for a missing extdep, and a KnownRed row accepts ANY nonzero
+// exit, so it cannot tell one failure from another. Under that cover this module sat un-migrated
+// against a deleted std.pareto API and nothing said so. Stale-pass detection does not detect cause
+// drift, and a module whose only witness is quarantined has no witness.
+
+// CONTROL 1 - THE SHARED PARAMETER IS SHARED. The whole reason the memory band is a scenario and
+// not a per-candidate interval is that ONE price moves every build at once. This control establishes
+// that structurally rather than by re-testing the two authored endpoints: 2xQ64 and 2xQ80 buy the
+// same number of banded modules, so the shared price moves both costs by the same amount and a
+// strict ordering at one price is a strict ordering at every price. Testing 80 and 120 alone would
+// prove nothing about 95; equal coefficients prove all of them.
+//
+// It goes RED if the projector ever stops sharing the parameter - evaluating the two candidates at
+// different scenario prices, or altering one candidate's coefficient - which is exactly the defect
+// that marginal per-candidate intervals would have reintroduced.
+fn coefficients_are_equal() -> Bool {
+  memory_price_coefficient(c: candidate_q64_32) == memory_price_coefficient(c: candidate_q80_32)
+}
+
+fn q80_cheaper_at(scenario: MemoryPriceScenario) -> Bool {
+  let p = scenario.dimm_32gib_unit_price_micro
+  planning_capex_at_32gib_price_micro(c: candidate_q80_32, unit_price_micro: p)
+    < planning_capex_at_32gib_price_micro(c: candidate_q64_32, unit_price_micro: p)
+}
+
+test fn witness_equal_coefficient_pair_is_price_invariant() -> Bool {
+  coefficients_are_equal()
+    && q80_cheaper_at(scenario: scenario_band_low)
+    && q80_cheaper_at(scenario: scenario_band_high)
+}
+
+// CONTROL 2 - AN UNBANDED CANDIDATE DOES NOT MOVE WITH THE PARAMETER. The 16-GiB build carries no
+// declared band, so its coefficient is zero and its capex is identical in every scenario. This is
+// the positive control for the asymmetry: if a future edit widened every candidate uniformly - the
+// blanket move this design rejects - this goes red.
+test fn witness_an_unbanded_candidate_is_scenario_invariant() -> Bool {
+  memory_price_coefficient(c: candidate_q64_16) == 0
+    && planning_capex_at_32gib_price_micro(c: candidate_q64_16, unit_price_micro: scenario_band_low.dimm_32gib_unit_price_micro)
+       == planning_capex_at_32gib_price_micro(c: candidate_q64_16, unit_price_micro: scenario_band_high.dimm_32gib_unit_price_micro)
+}
+
+// CONTROL 3 - THE AGGREGATE IS NOT A BOOLEAN. Every candidate must land in exactly one arm, and a
+// candidate is dropped ONLY when dominated in every declared scenario. A ScenarioSensitive or
+// Unestablished candidate surviving is the whole point: it is the answer the deleted Bool could not
+// express.
+fn arm_is_survivable(c: NodeBuildCandidate) -> Bool {
+  match band_standing(c: c) {
+    DominatedAtEveryScenario { receipts } => false
+    FrontierAtEveryScenario { receipts } => true
+    ScenarioSensitive { frontier_at, dominated_at } => true
+    BandStandingUnestablished { receipts } => true
+  }
+}
+
+test fn witness_survival_is_exactly_not_dominated_everywhere() -> Bool {
+  all(node_build_candidates, c => arm_is_survivable(c: c) == (is_dominated(c: c) == false))
+}
+
+// CONTROL 4 - A SCENARIO-SENSITIVE CANDIDATE CARRIES ITS RECEIPTS. Whichever arm a candidate lands
+// in, the sensitive arm must name BOTH sides; an arm that reported sensitivity without saying where
+// would be the state loss again, one level further out.
+fn sensitive_arm_is_witnessed(c: NodeBuildCandidate) -> Bool {
+  match band_standing(c: c) {
+    ScenarioSensitive { frontier_at, dominated_at } => count(frontier_at) > 0 && count(dominated_at) > 0
+    FrontierAtEveryScenario { receipts } => count(receipts) == count(memory_price_scenarios)
+    DominatedAtEveryScenario { receipts } => count(receipts) == count(memory_price_scenarios)
+    BandStandingUnestablished { receipts } => count(receipts) == count(memory_price_scenarios)
+  }
+}
+
+test fn witness_every_arm_carries_its_scenarios() -> Bool {
+  all(node_build_candidates, c => sensitive_arm_is_witnessed(c: c))
+}
+
+test fn witness_the_field_is_declared_and_nonempty() -> Bool {
+  count(memory_price_scenarios) == 2 && count(funded_axes) == 7 && count(node_build_candidates) > 0
+}
+
+// CONTROL 6 - ScenarioSensitive IS POSITIVELY CONSTRUCTED THROUGH THE PRODUCTION SEAM, and the
+// reviewer was right that without this the arm was a decoration. Control 4 only checks the arm's
+// SHAPE if some candidate reaches it, and measurement says none does: sweeping every ordered pair of
+// live candidates through band_standing_in_field yields zero sensitive outcomes. An arm no input can
+// reach carries no information, and it would have been cited as coverage.
+//
+// Why no live pair reaches it, which is itself the finding: the one real pair whose dominance flips
+// across the band is the Supermicro 16x32 build against the ASRock 8x32 build - different DIMM
+// counts, so different coefficients under the shared price - and the Supermicro board declares
+// UNPROVEN SUPPLY DEPTH. entry_standing correctly refuses to let a candidate with a declared gap
+// dominate anyone, so the flip never becomes a standing. The sensitivity is real and it is masked by
+// an unrelated, honestly-declared obligation.
+//
+// So the fixture stipulates exactly that one obligation discharged and changes nothing else. This is
+// §4b's sanctioned case: the state is unrepresentable in the accepted corpus but perfectly
+// representable as source handed to the compiler, and the fixture describes a real future - the day
+// that board's depth is counted - rather than an invented world. The rows are labelled "fixture" and
+// are never observations.
+data supermicro_depth_discharged: BoardFacts = BoardFacts {
+  label: supermicro_r12spd_facts.label,
+  socket: supermicro_r12spd_facts.socket,
+  route: supermicro_r12spd_facts.route,
+  socket_count: supermicro_r12spd_facts.socket_count,
+  dimm_slots: supermicro_r12spd_facts.dimm_slots,
+  max_data_rate_mts: supermicro_r12spd_facts.max_data_rate_mts,
+  altra_max_support: supermicro_r12spd_facts.altra_max_support,
+  board_price_micro: supermicro_r12spd_facts.board_price_micro,
+  price_note: supermicro_r12spd_facts.price_note,
+  depth: DepthAvailableUncounted { note: "FIXTURE ONLY: the scarce-depth obligation stipulated discharged so the flip this pair really carries can reach a standing. Never an observation." },
+  planning_node_watts: supermicro_r12spd_facts.planning_node_watts,
+  observed_on: supermicro_r12spd_facts.observed_on,
+  rate_history: supermicro_r12spd_facts.rate_history,
+}
+
+data wide_board_probe: NodeBuildCandidate = NodeBuildCandidate {
+  label: "fixture 1x [Supermicro R12SPD-A depth-discharged, 1xQ64, 16x32 GiB]",
+  node_count: 1,
+  platform: LooseBoardBuild { board: supermicro_depth_discharged, processor: altra_q64_lot },
+  memory: dimm_32gib_lot,
+}
+
+data narrow_board_probe: NodeBuildCandidate = NodeBuildCandidate {
+  label: "fixture 1x [ASRock ALTRAD8UD-1L2T, 1xQ64, 8x32 GiB]",
+  node_count: 1,
+  platform: LooseBoardBuild { board: asrock_board_facts, processor: altra_q64_lot },
+  memory: dimm_32gib_lot,
+}
+
+data sensitive_probe_field: List<NodeBuildCandidate> = [wide_board_probe, narrow_board_probe]
+
+fn is_sensitive_with_both_sides(b: MemoryBandStanding) -> Bool {
+  match b {
+    ScenarioSensitive { frontier_at, dominated_at } => count(frontier_at) > 0 && count(dominated_at) > 0
+    FrontierAtEveryScenario { receipts } => false
+    DominatedAtEveryScenario { receipts } => false
+    BandStandingUnestablished { receipts } => false
+  }
+}
+
+test fn witness_scenario_sensitive_is_reachable_and_names_both_sides() -> Bool {
+  is_sensitive_with_both_sides(b: band_standing_in_field(c: wide_board_probe, field: sensitive_probe_field))
+    && is_sensitive_with_both_sides(b: band_standing_in_field(c: narrow_board_probe, field: sensitive_probe_field))
+}
+
+// The discriminating half, and the reason control 6 is not just "the arm exists". The sensitivity
+// must be CAUSED BY THE PRICE: the same candidate in the same field must land differently at the two
+// scenarios. If the projector ever stopped applying the scenario - a constant price, a dropped
+// coefficient - both standings would agree and this goes red while the arm check above could still
+// pass on a stale receipt list.
+fn standing_tag(c: NodeBuildCandidate, scenario: MemoryPriceScenario) -> NonEmptyStr {
+  match standing_in_field_at(c: c, field: sensitive_probe_field, scenario: scenario) {
+    ProvisionallyNonDominated { sensitivities } => "front"
+    DominatedBy { dominators } => "dominated"
+    NotComputable { missing } => "notcomputable"
+    PendingEvidence { undecided } => "pending"
+    SelectionRefused { cause } => "refused"
+  }
+}
+
+test fn witness_the_price_is_what_moves_the_standing() -> Bool {
+  standing_tag(c: narrow_board_probe, scenario: scenario_band_low)
+    != standing_tag(c: narrow_board_probe, scenario: scenario_band_high)
+}
+
+// CONTROL 8 - A MIXED PRICE ASSIGNMENT HAS NO CONSTRUCTOR, and that is why there is no test for it.
+// The reviewer asked for a shared-versus-mixed comparison. Building one would mean projecting two
+// candidates of one field at two different prices, and after this cut the seam does not admit it:
+// THE GUARANTEE IS ABOUT THE CANONICAL PATH, NOT THE WHOLE MODULE, and the earlier wording here
+// overclaimed. node_entries_in_field takes ONE scenario and folds it over the whole field, so along
+// THAT path a per-candidate price is not an argument anything can pass. That is the true and
+// sufficient claim. It is not global impossibility: node_entry_at remains exported, and a caller who
+// imports it can project two entries at two different prices by hand. Review 5091375040 was right to
+// separate these, and the distinction matters because §4b(4) is a claim about CONSTRUCTORS - saying
+// a state is unwritable while an exported projector writes it is exactly the rung inflation the
+// ladder's meta-obligations forbid, and it would have been cited as coverage.
+//
+// So no check is written here for the canonical path, where the state genuinely has no constructor,
+// and none is written for the lower-level projectors either, where the state is reachable but is not
+// this module's claim to make. What remains executable is that the shared parameter really is shared
+// - control 1, the equal-coefficient invariance - and that the price moves the answer at all, above.
+fn flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn build_frontier_witness_report() -> NonEmptyStr {
+  join([
+    "price_invariant=", flag(b: witness_equal_coefficient_pair_is_price_invariant()),
+    " unbanded_invariant=", flag(b: witness_an_unbanded_candidate_is_scenario_invariant()),
+    " survival_matches_arms=", flag(b: witness_survival_is_exactly_not_dominated_everywhere()),
+    " arms_carry_scenarios=", flag(b: witness_every_arm_carries_its_scenarios()),
+    " field_declared=", flag(b: witness_the_field_is_declared_and_nonempty()),
+    " sensitive_reachable=", flag(b: witness_scenario_sensitive_is_reachable_and_names_both_sides()),
+    " price_moves_standing=", flag(b: witness_the_price_is_what_moves_the_standing()),
+    " gap_axes=", flag(b: witness_every_gap_names_the_axis_it_declares()),
+  ], "")
+}
+
+
+// THE AXIS IS THE NEW LOAD-BEARING FACT, SO IT IS ASSERTED DIRECTLY RATHER THAN THROUGH A STANDING.
+// A standing arm cannot witness an axis assignment: every node entry already carries all seven
+// readings, and std.pareto refuses a candidate carrying ANY gap, so moving both capex gaps to
+// another FUNDED axis leaves the standing at NotComputable and every existing control green.
+// Identity is compared with declaration_ref_eq rather than by spelling decl_name.
+fn gaps_on_axis(gs: List<AxisGap>, ax: DeclarationRef) -> Int {
+  count(filter(gs, g => declaration_ref_eq(a: g.axis, b: ax)))
+}
+
+// AN UNPRICED COMPONENT DECLARES AN ABSENCE ON BOTH CAPEX AXES AND ON NEITHER OF THE OTHERS. The
+// negative half is the discriminating half: without it, moving a capex gap onto sellable units or
+// stranded cores would leave every standing exactly where it was.
+//
+// This runs over the WHOLE declared field rather than one hand-picked row, so a candidate that
+// acquires an unpriced component later is covered without editing this control. Candidates whose
+// inputs are complete carry no capex gap at all, which is the other direction of the same claim.
+fn capex_gaps_are_exactly_the_two_capex_axes(c: NodeBuildCandidate) -> Bool {
+  let gs = node_missing_inputs(c: c)
+  let capex = gaps_on_axis(gs: gs, ax: axis_upfront_cash_id) + gaps_on_axis(gs: gs, ax: axis_capex_per_unit_id)
+  gaps_on_axis(gs: gs, ax: axis_upfront_cash_id) == gaps_on_axis(gs: gs, ax: axis_capex_per_unit_id)
+    && gaps_on_axis(gs: gs, ax: axis_stranded_cores_id) == 0
+    && (capex == 0 || capex == 2)
+}
+
+// THE DOMAIN IS EMPTY IN THE ACCEPTED CORPUS, SO THE FIXTURE IS NOT OPTIONAL.
+//
+// I first wrote this control over node_build_candidates alone, and a mutation moving a capex gap to
+// the stranded-cores axis SURVIVED it. The reason is that no lot anywhere in the corpus declares
+// SupplyUnread -- every candidate has complete planning inputs, so the capex-gap branch of
+// node_missing_inputs never executes and the control was vacuously true on an empty domain. A
+// predicate that quantifies over a set with no members reads as coverage and carries none.
+//
+// This is exactly the case section 4b sanctions a fixture for: the state is unrepresentable in the
+// ACCEPTED corpus but perfectly representable as source handed to the compiler, so declining the
+// fixture would leave the branch permanently unexecuted while its assignment was cited as checked.
+// The lot below is stipulated, never an observation, and its label says so.
+data unpriced_dimm_lot: MemoryLotObservation = MemoryLotObservation {
+  label: "STIPULATED unpriced 32 GiB",
+  part_description: "fixture: a memory lot whose supply has not been read",
+  capacity_gib: 32,
+  route: DomesticRoute { note: "fixture" },
+  depth: DepthAvailableUncounted { note: "fixture" },
+  data_rate_mt_s: 2666,
+  organization: "2Rx4",
+  condition: UsedUntested { obligation: "fixture" },
+  unit_price_micro: 110000000,
+  supply: SupplyUnread { obligation: "fixture: this lot carries no rate at all, so a capex cannot be computed from it" },
+  seller: "fixture",
+  observed_on: "2026-09-03",
+  rate_history: [],
+}
+
+data unpriced_probe: NodeBuildCandidate = NodeBuildCandidate {
+  label: "STIPULATED fixture 1x [ASRock ALTRAD8UD-1L2T, 1xQ64, unpriced memory]",
+  node_count: 1,
+  platform: LooseBoardBuild { board: asrock_board_facts, processor: altra_q64_lot },
+  memory: unpriced_dimm_lot,
+}
+
+// THE DEPTH ASSIGNMENT NEEDS ITS OWN FIXTURE, because the unpriced probe says nothing about it.
+// supermicro_r12spd_facts already declares DepthScarce, so no new record has to be authored --
+// this candidate reaches the supply-depth branch on a board the corpus already carries, and its
+// supplies are assumed, so the capex branch stays silent and the two assignments are witnessed
+// apart rather than as one blur.
+data scarce_depth_probe: NodeBuildCandidate = NodeBuildCandidate {
+  label: "STIPULATED fixture 1x [Supermicro R12SPD-A, depth scarce, 1xQ64, 8x32 GiB]",
+  node_count: 1,
+  platform: LooseBoardBuild { board: supermicro_r12spd_facts, processor: altra_q64_lot },
+  memory: dimm_32gib_lot,
+}
+
+// EXACT POPULATIONS, NOT MERELY PRESENCE. count == 2 and count == 1 are the halves that were
+// missing: asserting the expected refs are present never rejects an extra one standing beside them,
+// so a stray gap on maintenance, failure-domain or fleet-watts would have survived.
+//
+// The depth obligation is read back off supply_depth_obligation rather than restated here, so the
+// pairing is asserted against the value that produced it.
+test fn witness_every_gap_names_the_axis_it_declares() -> Bool {
+  let probe_gaps = node_missing_inputs(c: unpriced_probe)
+  let depth_gaps = node_missing_inputs(c: scarce_depth_probe)
+  let depth_notes = supply_depth_obligation(c: scarce_depth_probe)
+  all(node_build_candidates, c => capex_gaps_are_exactly_the_two_capex_axes(c: c))
+    && count(probe_gaps) == 2
+    && gaps_on_axis(gs: probe_gaps, ax: axis_upfront_cash_id) == 1
+    && gaps_on_axis(gs: probe_gaps, ax: axis_capex_per_unit_id) == 1
+    && count(depth_notes) == 1
+    && count(depth_gaps) == count(depth_notes)
+    && all(depth_notes, n => count(filter(depth_gaps, g => g.cause == n
+         && declaration_ref_eq(a: g.axis, b: axis_sellable_units_id))) == 1)
+    && gaps_on_axis(gs: depth_gaps, ax: axis_sellable_units_id) == 1
+}
+
+fn build_frontier_witness_main() -> ProcessExit {
+  let all_pass = witness_equal_coefficient_pair_is_price_invariant()
+    && witness_an_unbanded_candidate_is_scenario_invariant()
+    && witness_survival_is_exactly_not_dominated_everywhere()
+    && witness_every_arm_carries_its_scenarios()
+    && witness_the_field_is_declared_and_nonempty()
+    && witness_scenario_sensitive_is_reachable_and_names_both_sides()
+    && witness_the_price_is_what_moves_the_standing()
+    && witness_every_gap_names_the_axis_it_declares()
+  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: build_frontier_witness_report() } }
+}

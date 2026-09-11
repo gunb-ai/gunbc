@@ -1,0 +1,105 @@
+module test.probe.workload_census_verdict_construction_probe
+
+// THIS MODULE MUST NOT RESOLVE, and every line of it is a promotion the census exists to forbid.
+//
+// The witness in test.claim.workload_benchmark_suite_witness proves that the DERIVATIONS refuse:
+// given a green job that ran no test, baseline_admission returns a refusal. What it cannot prove
+// is that a later author must go through those derivations at all. If the verdict types are freely
+// constructible, the five forbidden promotions are merely DETECTED - guarded by a mechanism that
+// has to stay enrolled and has to be reached - which is DESIGN 4b rung 2, and it is exactly 5's
+// tell: a check satisfiable by editing the declaration while the realization still lies.
+//
+// sole_constructor on the six DERIVED verdicts closes that. The evidence has to be source the
+// compiler REFUSES, because after the seal the forgery has no representation in an accepted
+// program: there is no value for a witness to inspect. Each forgery below is written as the most
+// tempting version of itself - an x64 label declared Arm, a build-only green declared a baseline,
+// an unread cache declared warm, a benchmark declaring its own mandate.
+//
+// THE INPUT TYPES ARE DELIBERATELY NOT SEALED and this probe does not test them. ObservedExecution,
+// CacheMechanism, CacheObservation, ProviderDeclaration and ExternalEffect are AUTHORED EVIDENCE:
+// a census must be able to write down what it saw, including things it would rather not have seen.
+// Sealing evidence would only move the authorship, not remove it. What may not be authored is the
+// VERDICT - and the five mutation controls in the witness remain enrolled precisely because they
+// falsify the evidence rather than forge the verdict, so they still compile and still go red.
+//
+// IT IS NOT A KNOWN RED. A known red is debt whose row retires on repair. This is evidence, and it
+// retires only if the walls are deliberately removed - at which point the walls go with it.
+
+import std.types { NonEmptyStr, Int, List }
+import strategy.ci_acquisition { MigrationPrAuthorization }
+import strategy.workload_benchmark_suite {
+  CensusVerdict,
+  DeclaredArchitecture, ArmDeclared,
+  BaselineAdmission, BaselineAdmitted,
+  CacheCondition, RemoteWarmOnFreshWorker,
+  TrialAuthorization, TrialAuthorizedByOperator,
+  ReplayDerivation, PipelineExecutedAsPublished,
+  GapReading, ServicePathReading,
+  SpendScreen, SpendProvenAboveCeiling,
+}
+
+// PROMOTION 1. An unsuffixed Ubicloud label is the x64 machine; declaring it Arm is the single
+// cheapest way to turn this whole census into fiction.
+fn forged_arm_declaration() -> CensusVerdict<DeclaredArchitecture> {
+  CensusVerdict { reading: ArmDeclared { label: "ubicloud-standard-16" } }
+}
+
+// PROMOTION 2. OpenObserve's green Arm job, minted as a baseline by naming the step that compiles
+// and moves a binary as though it had asserted something.
+fn forged_baseline() -> CensusVerdict<BaselineAdmission> {
+  CensusVerdict { reading: BaselineAdmitted {
+    run_id: "33495218702",
+    job_id: "99815950414",
+    head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+    test_step: "Build and run binary",
+    observed_label: "ubicloud-standard-16-arm",
+  } }
+}
+
+// PROMOTION 3. A cache nobody read, declared warm because the workflow file mentions one.
+fn forged_warm_cache() -> CensusVerdict<CacheCondition> {
+  CensusVerdict { reading: RemoteWarmOnFreshWorker { evidence: "the workflow declares Swatinem/rust-cache, so it must have hit" } }
+}
+
+// PROMOTION 5. A benchmark writing its own authorization. The authorization record itself belongs
+// to ci_acquisition and is not sealed there, which is the point: sealing the VERDICT is what stops
+// it, not sealing every field the verdict happens to carry.
+fn forged_trial_authorization() -> CensusVerdict<TrialAuthorization> {
+  CensusVerdict { reading: TrialAuthorizedByOperator {
+    authorization: MigrationPrAuthorization {
+      authorizing_actor: "the benchmark result",
+      repository: "openobserve/openobserve",
+      allowed_files: [".github/workflows/build-pr-image.yml"],
+      target_branch: "main",
+      trial_budget_vcpu_minutes: 1000,
+      expiration: "none",
+    },
+  } }
+}
+
+// A replay that removed a registry push and a cloud role, then reported itself as the published
+// pipeline - the claim that makes a derived measurement sound like the customer's real job.
+fn forged_faithful_replay() -> CensusVerdict<ReplayDerivation> {
+  CensusVerdict { reading: PipelineExecutedAsPublished }
+}
+
+// A service-path reading minted without ever establishing that the processors match, which is how
+// a hardware verdict gets published while wearing the words that were supposed to prevent one.
+fn forged_service_path_reading() -> CensusVerdict<GapReading> {
+  CensusVerdict { reading: ServicePathReading { note: "assumed matched silicon" } }
+}
+
+// A CI bill asserted without a measurement behind it - the spend screen's own promotion, and the
+// reason the screen's verdict rides the same carrier as the census's.
+fn forged_spend_proof() -> CensusVerdict<SpendScreen> {
+  CensusVerdict { reading: SpendProvenAboveCeiling {
+    provider: "ubicloud",
+    observed_minutes_per_month: 250000,
+    ceiling_minutes_per_month: 50000,
+    note: "they look busy",
+  } }
+}
+
+fn probe_main() -> CensusVerdict<DeclaredArchitecture> {
+  forged_arm_declaration()
+}

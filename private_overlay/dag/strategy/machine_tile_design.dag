@@ -1,0 +1,1019 @@
+module strategy.machine_tile_design
+
+import std.nat { Nat }
+import std.types { Int }
+import std.types { NonEmptyStr }
+import std.spatial_knowledge {
+  SpatialKnowledge, SpatialMeasured, SpatialEstimated, SpatialHypothesis, SpatialUnknown,
+}
+import strategy.strategy_model { EvidenceAnchor }
+import std.types { List }
+import extdeps.climbing_holds.types {
+  ClimbingHoldCatalogRow,
+  ShapeArtifactHeld, ShapeArtifactAbsent,
+  ImperialUncThread, MetricCoarseThread, FastenerThreadUnread,
+  SingleFlatMountingFace, ContouredMountingFace, HoldMountingFaceUnread,
+  PolyurethaneResin, PolyesterResin, Fiberglass, MachinedRockComposite,
+  Plywood, Hardwood, HoldMaterialUnread,
+  ProductSkuObserved, ProductSkuUnread,
+  hold_local_frame_is_ready, hold_catalog_clearance_envelope_is_spendable,
+}
+import extdeps.climbing_holds.atomik { atomik_xl_arrow_down_climb_jug }
+import extdeps.boards.gigabyte {
+  asrock_altrad8ud_1l2t_physical_profile,
+  asrock_altrad8ud_required_input_population,
+  PowerInputPopulationSpecified, PowerInputPopulationUnresolved,
+}
+
+type TileGeometryKnowledge = SpatialKnowledge<Nat, String, String, String, String>
+
+data tile_geometry_standing_note: String = "SPATIAL-1 CONSUMED 2026-08-11 after review. Every dimension in this carrier was called drawing intent in prose and carried as a plain Nat, which made a hypothesis structurally indistinguishable from a measurement - and the generated page duly drew hypotheses as solid filled bars with a footer saying nothing was measured. A footer is not epistemic safety. Tile geometry now enters as SpatialHypothesis, and the renderer reads it through project_spatial_rendering, so the arm it matches IS the standing and it cannot draw a hypothesis as a measurement without matching an arm that says so. When a tile is finally cut and measured, the same value arrives as SpatialMeasured and the drawing changes appearance without the renderer changing at all. That is the property worth having."
+
+fn tile_drawing_intent(v: Nat) -> TileGeometryKnowledge {
+  SpatialHypothesis { value: v, purpose: "machine tile drawing intent - no tile cut, nothing measured" }
+}
+
+fn scenario_depth_layers(s: MachineTileScenario) -> List<TileGeometryKnowledge> {
+  [
+    tile_drawing_intent(v: s.wall_to_backboard_face_mm),
+    tile_drawing_intent(v: backboard_thickness_mm),
+    tile_drawing_intent(v: s.rear_service_depth_mm),
+    tile_drawing_intent(v: s.carrier_thickness_mm),
+    tile_drawing_intent(v: s.tile_plane_to_front_tip_mm),
+  ]
+}
+
+data machine_tile_design_note: String = "Rev A of the wall-mounted machine tile, authored as a program because the prose/drawing form had begun to contradict itself. Provenance: operator review 2026-08-10 raising six defects against the tile concept document (grip section unreadable, T-nut aligned to nothing, cleat seating not visually obvious, PSU model and whole-build wattage unstated, per-board cable interface and routing absent, resin grips doubling as bench feet), plus the routed root-cause synthesis of the same date. This carrier is the AUTHORITY for the tile's interface contract, datum chain, cable inventory, and power budget; the rendered concept document projects from it and never restates a number it does not carry. SCOPE: one tile and the wall it hangs on. It does NOT own site admission (strategy.site_model), the fabric-wide physical derivation (strategy.compute_fabric_model), or any hardware catalog row (extdeps.* in the public tree) - it consumes those authorities' shapes by reference and mints nothing they already name. SEED DEBTS, recorded not silent: (1) every dimension is a DRAWING INTENT, not a cut part - no tile has been made and no measurement exists; (2) the PSU is specified as a class with a loading target, not a purchased model with a receipt; (3) WITHDRAWN AND REPLACED: this debt previously read 'the ALTRAD8UD-1L2T power-header inventory (one 24-pin plus two 8-pin EPS12V) is read from the vendor page and is pending pin-verification'. Both halves were false. The board has no 24-pin socket - it carries three 8-pin ATX12V inputs and a 4-pin Micro-Fit signal connector - and no vendor page was ever read: every outbound fetch from this environment is refused by egress policy. The debt is now that the REQUIRED POPULATION of those three inputs is unresolved in extdeps, so no on-tile DC harness may be counted or drawn; (4) the lift mass is estimated by component, never weighed; (5) no thermal observation exists for a board mounted vertically on a panel - the vertical orientation is asserted to help the tower cooler, not measured."
+
+data revision_supersession_note: String = "SUPERSESSION, stated rather than performed silently: the immediately preceding concept document placed each tile's power supply in a 300 x 300 mm floor-level service plinth and routed 24-pin ATX plus two 8-pin EPS runs up the wall to the board. That placement is RETRACTED by this carrier. It was reached from a hazard intuition (keep every mains connection at ankle height) and not from the derivation, and it fails three doctrines already ratified in strategy.compute_fabric_model: it creates a custom cable harness per tile with no commodity equivalent (no unearned relationship), it moves the DC boundary outward from the supply's own sealed enclosure to a wall-spanning run at tens of amps with no zero crossing to extinguish an arc (minimum local boundary), and it doubles the disconnect ritual from three connectors to five or six while making two of them energized DC (service access). The plinth SURVIVES as a real object with a smaller job: it carries the branch-circuit receptacles and the network switch, which have to be somewhere, and it is the drop point for every tile cord. It no longer carries a power supply."
+
+data root_cause_note: String = "ROOT CAUSE of all six reviewed defects, recorded once: the document was carrying TWO incompatible tile-interface contracts and switching between them without saying so. Contract A puts the supply on the tile, so the tile presents three external connectors (mains inlet, data, BMC) and the removal ritual is unplug-three-and-lift. Contract B puts the supply off the tile, so the tile presents data, BMC, front panel plus however many DC inputs the board requires - a count this carrier can no longer state, because the board's required 12 V input population is unresolved. Every downstream defect is a symptom of the unresolved fork: the cable interface could not be drawn because it was two different interfaces; the wattage could not be stated because the supply had no fixed home; the grip could not be datumed because a bolted-through hold on a flat panel face has no natural datum - the load path is a fastener through a sheet, related to no edge; the grip fell into service as a bench foot because nothing else was declared to carry the tile at rest; the cleat was not legible because nothing had been asked to make it so; and the tile stayed rectangular because no feature had earned a shape. Rev A selects Contract A and makes every other element subordinate to it."
+
+type MountBase
+  = FreestandingBackboard
+  | DirectWallTiles
+  | FurnitureIntegrated
+
+data mount_base_note: String = "FreestandingBackboard: a plywood field on its own feet, leaned and anchored to the wall, with the cleats cut into the field. Selected because the site is LEASED (strategy.site_survey_91_e21st, no lease signed) - DirectWallTiles puts a structural fastener pattern into someone else's 1911 masonry and creates a make-good obligation at exit, which is a dependency the derivation never asked for. The backboard also lets the whole wall of machines be built, wired, and thermally observed before the lease decision, which the site kernel's evidence-before-commitment posture wants."
+
+type MountInterface
+  = FrenchCleatPlain
+  | CleatWithLowerLocators
+  | ZClipHardware
+
+data mount_interface_note: String = "A plain French cleat is one 45-degree rip and is correct on load. It is WRONG on legibility, which is the reviewed defect: a plain cleat is seated and unseated by feel, and a tile that is 90 percent seated looks identical to one that is fully seated. CleatWithLowerLocators keeps the single saw cut and adds the affordances enumerated in cleat_affordances - the seating state becomes readable at arm's length."
+
+type CleatAffordance
+  = SeatedReveal
+  | LeadInChamfer
+  | WitnessMark
+  | LowerLocatorPin
+  | BottomBumper
+
+data cleat_affordance_note: String = "CORRECTION 2026-08-11, operator review: the earlier form of SeatedReveal derived the 6 mm shadow line FROM the cleat mate, which is geometrically incoherent - a French cleat seats by sliding down its own 45-degree plane, and down that plane is also inward, so a tile cannot sit 6 mm lower than its cleat without also sitting 6 mm deeper into the backboard, which it cannot. The reveal is therefore made independent of the mate. SeatedReveal: a 6 mm groove routed the full length of the backboard, its LOWER edge on the seated tile's top-edge line. Seated, the groove reads as a continuous dark line above every tile; a tile that is not home rides UP the bevel and covers its own length of groove, so the line goes MISSING at that position rather than merely changing width. LeadInChamfer: a 3 mm chamfer on both mating bevel arrises so the last 10 mm happens by gravity rather than by fitting. WitnessMark: a painted 8 mm stripe on the backboard below the cleat, covered by the tile only when seated. LowerLocatorPin: two 8 mm dowels on the backboard entering 10 mm counterbored holes in the tile's lower rail - they carry no load, they stop the tile swinging and they force square seating. BottomBumper: two 25 mm premium rubber pads at the tile's lower rail, thickness matching the cleat band exactly so the tile hangs parallel to the backboard instead of leaning on its bottom edge."
+
+type TileShape
+  = RectangularTile
+  | AsymmetricLiveEdge
+
+type EdgeTreatment
+  = StraightDatum
+  | GripCut
+  | LiveEdgeGripCut
+
+type TileEdge {
+  name: String
+  treatment: EdgeTreatment
+  note: String
+}
+
+data tile_edge_note: String = "The shape rule that makes an irregular tile safe to build: EVERY DATUM EDGE IS STRAIGHT, exactly one edge is expressive. The top edge is the cleat datum and the bottom edge is the service datum; both are machine-straight because every dimension in datum_chain is measured from one of them. The two vertical edges carry the lift grips, and the right-hand one is the live edge - the grip cut is placed to follow the natural waney line rather than fight it, which is what makes the irregularity read as intended rather than as a mistake. An irregular tile with an irregular datum is not a design, it is an unmeasurable object."
+
+type GripRole
+  = LiftLoad
+  | ColourIdentification
+
+type GripRealization
+  = IntegratedEdgeGrip
+  | BoltedResinHold
+  | BoltedWoodenHold
+
+type Grip {
+  id: String
+  role: GripRole
+  realization: GripRealization
+  edge: String
+  contacts_bench_at_rest: Bool
+  note: String
+}
+
+data grip_reasoning_retraction_note: String = "RETRACTED 2026-08-11. This carrier reasoned that a hold bolted through an 18 mm panel FACE has no natural datum, because its load path runs through a fastener into a sheet and relates to no edge - and concluded from that that lift load must move into a routed edge grip. THE INFERENCE DOES NOT HOLD. A bolt-on climbing hold supplies its own local frame: origin at the primary bolt axis where it meets the mounting face, z along the outward face normal, x toward the anti-rotation fixing. Its position on the tile is then an ordinary offset from the same straight datums the board keep-out uses. The T-nut was aligned to something perfectly concrete - the hold's primary fixation axis - and the real failure was that this carrier had never modelled the hold's mounting interface at all. I diagnosed a modelling gap of my own and blamed the concept for it, then presented the substitution as a derivation. That is the derivation doctrine run backwards: a part was SUBTRACTED because it could not be drawn, which is exactly what this project exists not to do. It also overrode an explicit operator request for climbing holds, demoting them to colour. IntegratedEdgeGrip survives as a comparison candidate; it is no longer the selected lift realization."
+
+data hold_qualification_note: String = "A climbing hold may be SELECTED as the primary lift handle and still not be QUALIFIED for it. EN 12572-3 covers holds on artificial climbing structures; a machine tile differs in loading direction, carrying cycle, panel stock, edge distance and failure consequence, so vendor standing does not transfer. What must be qualified is the whole load path - hand, hold body, centre bolt, anti-rotation fixing, T-nut or backing, panel, carrier, cleat - on a fixture using the exact selected parts. Until that receipt exists the page must say PRIMARY LIFT USE - QUALIFICATION PENDING rather than implying the hold is proven."
+
+data grip_note: String = "The reviewed defect - the T-nut is not aligned with anything - has a cause, not a drafting fix. A hold bolted through an 18 mm plywood FACE takes its load path through a fastener into a sheet; that load path is related to no edge of the tile, so there is no datum for the T-nut to be dimensioned from, and any position drawn for it is arbitrary. The resolution is to split the two jobs the holds were doing. LIFT LOAD moves into the tile edge itself (IntegratedEdgeGrip), where the datum IS the edge and the load path is continuous wood; no insert, no fastener, nothing to loosen. COLOUR AND IDENTIFICATION stay with bolted resin climbing holds, which are cheap, abundant, and available in every colour - and which are now free to be placed anywhere, because they carry nothing. This is the derivation answer, not a compromise: the climbing hold survives for the reason the operator actually wanted it (colour variety at commodity cost) and is relieved of the job it was bad at."
+
+type BenchRest
+  = GripActsAsFoot
+  | SeparateHiddenFeet
+  | NoRest
+
+data bench_rest_note: String = "A grip that is also the bench foot is a wear surface: it is the part the tile is set down on, dragged across, and pivoted about, and it is also the part hands trust. SeparateHiddenFeet gives the tile four 12 mm PREMIUM RUBBER pads at the lower rail and the lower third of the vertical edges, so the tile stands on rubber whether it is laid face-up or leaned on edge, and the grips never touch a bench. Rubber rather than cork on operator direction 2026-08-11, and it is the better material on the merits: cork takes a permanent set under a point load and crumbles at a cut edge, where a moulded rubber foot recovers, grips a bench instead of sliding on it, and damps the buzz a running board puts into a panel."
+
+type PowerArchitecture
+  = LocalPsuPerTile
+  | RemotePsuPerTile
+  | SharedLowVoltageBusbar
+
+type ExternalConnector
+  = AcPowerInlet
+  | DataEthernet
+  | BmcEthernet
+  | Atx24Pin
+  | Eps8PinA
+  | Eps8PinB
+  | FrontPanelHeader
+  | DcInput48V
+  | CoolantSupply
+  | CoolantReturn
+
+data external_connector_note: String = "EXTERNAL means it crosses the tile boundary and must be undone before a tile comes off the wall. The count of these IS the removal ritual, and it is the number the whole concept was sold on. Atx24Pin, Eps8PinA, Eps8PinB and FrontPanelHeader are declared here so the Contract B variant can be constructed and measured by witness - they are the arms Rev A must NOT reach."
+
+type CableEndpoint
+  = TilePsuModularPanel
+  | TilePsuMainsInlet
+  | BoardAtx24Header
+  | BoardEps8HeaderA
+  | BoardEps8HeaderB
+  | BoardIoDataPort
+  | BoardIoBmcPort
+  | PlinthBranchReceptacle
+  | PlinthSwitchPort
+
+type Conductor
+  = MainsAc
+  | LowVoltageDc
+  | TwistedPairData
+
+type CableRun {
+  id: String
+  from: CableEndpoint
+  to: CableEndpoint
+  conductor: Conductor
+  crosses_tile_boundary: Bool
+  routed_in_saddle: Bool
+  length_mm: Nat
+  note: String
+}
+
+data cable_run_note: String = "The reviewed defect - the cabling is left out, each board needs two 8-pins or whatever the handbook says - answered as an inventory rather than a sentence. Under Contract A the ATX and EPS runs still exist; they simply never leave the tile, which is why they stopped being drawn and why that omission was invisible. The ServiceSaddle is the part that makes them a design instead of a bundle: a 30 mm routed channel down the tile face, covered by a removable oak strip on two thumbscrews, carrying every DC run from the supply's modular panel to the board headers. Lifting the strip exposes the whole harness; nothing is cable-tied to anything."
+
+type DatumEdge
+  = TopCleatDatum
+  | BottomServiceDatum
+  | LeftSquareDatum
+
+type DatumStep {
+  id: String
+  from_datum: DatumEdge
+  feature: String
+  offset_mm: Nat
+  note: String
+}
+
+data datum_chain_note: String = "Every feature on the tile is dimensioned from one of three straight edges, and no feature is dimensioned from another feature. That is the whole discipline, and it is what the reviewed grip section lacked: a chain that stops at a datum cannot drift, a chain that stops at another part accumulates every error upstream of it. The live edge is deliberately NOT a datum - nothing is measured from it, which is exactly why it is free to be irregular."
+
+type PowerBudget {
+  board_count: Nat
+  per_board_budget_w: Nat
+  total_budget_w: Nat
+  planning_ceiling_w: Nat
+  per_tile_peak_w: Nat
+  per_tile_psu_rated_w: Nat
+  note: String
+}
+
+type BranchCircuit {
+  id: String
+  volts: Nat
+  amps: Nat
+  tiles_served: Nat
+}
+
+data power_budget_note: String = "Per-board budget is built from parts, not guessed: Altra Max M128-30 at 183 W rated TDP, eight DDR4 registered DIMMs at roughly 5 W each, baseboard plus BMC plus two 10 GbE PHYs at roughly 40 W, cooler fans under 10 W, one boot NVMe at 8 W - about 280 W in steady service. 350 W is the per-board BUDGET, carrying headroom for a heavier DIMM population and for the transient the regulators pull before the cooler responds. The supply is then sized so that peak lands near the middle of its efficiency curve rather than at its shoulder, which is why a 650 W unit is the answer for a 350 W tile and not oversizing."
+
+type TileDesignRefusal
+  = InterfaceContractSplit { declared_external: Nat, observed_crossings: Nat }
+  | UndatumedFeature { feature: String }
+  | GripCarriesBenchLoad { grip_id: String }
+  | CleatSeatingNotLegible { missing_affordance: String }
+  | DatumWebTooThin { measured_mm: Nat, minimum_mm: Nat }
+  | PsuLoadingOutsideBand { rated_w: Nat, peak_w: Nat }
+  | BranchCircuitUndersized { capacity_w: Nat, ceiling_w: Nat }
+
+data refusal_note: String = "Refusal arms are the shape of the six reviewed defects, so that the defect class cannot recur silently in a later revision. InterfaceContractSplit is the parent of the other five - it is the one that was actually true of the reviewed document."
+
+data design_selection_collapse_note: String = "COLLAPSED 2026-08-11 after review. DesignSelection and its four rows (rev_a_selection, contract_b_variant, contract_c_48v_air, contract_d_48v_liquid) were a SECOND configuration vocabulary standing beside MachineTileScenario. Two configuration systems for one design is the same class of fault as two interface contracts in one document - the fault this carrier was created to end - and it survived a full recut because both halves were internally consistent. MachineTileScenario is now the only configuration authority. What varied by preset (external_connectors) moved onto it; what did not vary (mount base, mount interface, tile shape, bench rest, cleat affordances, tile edges) became module facts, because a field identical across every row is a design fact and duplicating it invites the divergence the collapse exists to prevent. The rejected remote-supply fork is no longer a parallel row: RearFixedToSupport already models it, and scenario_boundary_crossings adds its 24-pin and two EPS crossings, so the fork stays MEASURABLE without a second vocabulary to hold it."
+
+data tile_overall_width_mm: Nat = 640
+
+data tile_overall_height_mm: Nat = 500
+
+data tile_thickness_mm: Nat = 18
+
+data tile_cable_void_mm: Nat = 45
+
+data cleat_band_mm: Nat = 25
+
+data cleat_band_note: String = "The cleat is ripped from 25 mm stock, not from the tile's own 18 mm, and the two halves interlock inside ONE 25 mm band - so the seated tile's back face stands exactly 25 mm off the backboard, and the lower bumper is 25 mm for the same reason. Two consequences worth stating because the earlier drawing got both wrong. First, the 45 mm cable void is between the BACKBOARD and the wall, not between the tile and the backboard; nothing about the bumper sets it. Second, the mating plane rises as it comes away from the backboard, never toward it: sliding down that plane is also sliding inward, which is the entire reason a French cleat pulls a tile tight instead of levering it off. Drawn the other way it looks similar and falls off the wall. 25 mm of stock gives 25 mm of vertical mate at 45 degrees, which is what carries the 8 kg."
+
+data minimum_datum_web_mm: Nat = 25
+
+data lift_mass_estimate_kg: Nat = 8
+
+data dimension_note: String = "640 x 500 x 18 mm birch ply, and the width is arithmetic rather than taste. Across: 60 mm left margin (of which the grip cut takes 32) + 244 mm board + 33 mm web + 30 mm service saddle + 33 mm web + 150 mm supply + 90 mm right margin (of which the grip cut takes 32) = 640. Down: 90 mm cleat zone + 58 mm exhaust clearance + 267 mm board + 85 mm cord drop and service datum = 500. The board is mounted with its rear I/O edge facing DOWN, so both cords leave at the service datum and neither crosses a grip. Estimated lift mass about 8 kg: 3.9 kg of ply, 1.9 kg supply, 1.3 kg board and memory, 0.6 kg cooler, 0.5 kg cabling, feet, saddle and holds - a two-handed lift for one person, which is the number the grip geometry is designed against, and an estimate by component that has never been weighed."
+
+
+
+data grips: List<Grip> = [
+  Grip {
+    id: "grip-left-candidate",
+    role: ColourIdentification,
+    realization: IntegratedEdgeGrip,
+    edge: "left",
+    contacts_bench_at_rest: false,
+    note: "32 mm deep, 110 mm tall, routed with a 12 mm roundover on both faces so the edge that takes the hand is a cylinder, not a corner. Load path is continuous 18 mm ply back into the field - no insert, no fastener, nothing to check on a service visit.",
+  },
+  Grip {
+    id: "grip-right-candidate",
+    role: ColourIdentification,
+    realization: IntegratedEdgeGrip,
+    edge: "right",
+    contacts_bench_at_rest: false,
+    note: "Same section, positioned to follow the live edge. Its exact position varies tile to tile because the live edge does; its HEIGHT above the service datum does not vary, so both hands are always level.",
+  },
+  Grip {
+    id: "hold-lift-left",
+    role: LiftLoad,
+    realization: BoltedResinHold,
+    edge: "tile-face",
+    contacts_bench_at_rest: false,
+    note: "RESTORED as the selected lift interface after the reasoning above was retracted. One exact climbing-hold SKU used at both hand positions, colour varying by power domain but geometry and mounting identical - every additional hold geometry is another extdeps row, another scan, another replacement SKU and another proof-load qualification. The part is modeled in extdeps.climbing_holds.atomik, which owns its identity, material, fixation interface and local frame; this carrier owns only role, pose and relation to the tile. Shape is UNKNOWN until a vendor STEP/STL arrives or a sample is scanned, so nothing may render a silhouette for it.",
+  },
+  Grip {
+    id: "hold-lift-right",
+    role: LiftLoad,
+    realization: BoltedResinHold,
+    edge: "tile-face",
+    contacts_bench_at_rest: false,
+    note: "The second hand position. Same SKU, same mounting, mirrored about the tile centreline so both holds sit at one height above the service datum and the tile lifts level. Its fixing DOES need a datum, and it has one: the hold's own frame places the bolt axis, and the drill point is that axis projected through the panel.",
+  },
+]
+
+// Two sentences were deleted from the note above and are recorded here because deleting them
+// silently would hide a contradiction this carrier shipped. They read: "It carries no lift load,
+// so its fixing needs no datum", and a proposal to move the hold off the tile onto the backboard
+// to carry colour only. Both are artefacts of the retracted reasoning, and the first directly
+// contradicted the role: LiftLoad standing three lines above it. A declaration that argues against
+// its own field is worse than either version alone, because whichever a reader believes, the model
+// agreed with them.
+data hold_note_contradiction_retraction: String = "The lift hold's note previously asserted it carries no lift load while its role field said LiftLoad. The note was the stale half; the role is correct. A bolt-on hold's fixing has a datum - the hold's own frame - which is precisely the point the earlier retraction established."
+
+data datum_chain: List<DatumStep> = [
+  DatumStep {
+    id: "d-cleat-bearing",
+    from_datum: TopCleatDatum,
+    feature: "cleat bearing line where the 45-degree mate meets the tile cleat back face",
+    offset_mm: 25,
+    note: "The 45-degree rip meets the back face 22 mm down from the top edge. Everything about the cleat is this one number and the rip angle.",
+  },
+  DatumStep {
+    id: "d-cleat-zone",
+    from_datum: TopCleatDatum,
+    feature: "bottom of the cleat zone - nothing may be mounted above this line",
+    offset_mm: 90,
+    note: "Keeps fasteners, saddle and board clear of the material the cleat load passes through.",
+  },
+  DatumStep {
+    id: "d-board-top",
+    from_datum: TopCleatDatum,
+    feature: "board keep-out top edge",
+    offset_mm: 148,
+    note: "58 mm below the cleat zone, which is the clearance the supply's exhaust needs to leave the tile sideways before it reaches the board.",
+  },
+  DatumStep {
+    id: "d-board-left",
+    from_datum: LeftSquareDatum,
+    feature: "board keep-out left edge",
+    offset_mm: 60,
+    note: "The number the web check is run against: 60 mm from the square left edge, of which the grip cut takes 32 mm.",
+  },
+  DatumStep {
+    id: "d-grip-height",
+    from_datum: BottomServiceDatum,
+    feature: "grip cut centreline, both vertical edges",
+    offset_mm: 180,
+    note: "Set from the SERVICE datum, not the cleat datum, so that both hands sit at a fixed height above the surface the tile is set down on - the position that matters during a lift.",
+  },
+  DatumStep {
+    id: "d-grip-depth",
+    from_datum: LeftSquareDatum,
+    feature: "grip cut depth into the edge",
+    offset_mm: 32,
+    note: "Four fingers to the second knuckle. Deeper starts eating the board keep-out web; shallower stops being a grip and becomes a scallop.",
+  },
+  DatumStep {
+    id: "d-foot",
+    from_datum: BottomServiceDatum,
+    feature: "rubber foot centreline",
+    offset_mm: 24,
+    note: "Feet are on the service datum because that is the edge the tile is stood on.",
+  },
+  DatumStep {
+    id: "d-saddle",
+    from_datum: LeftSquareDatum,
+    feature: "service saddle channel centreline",
+    offset_mm: 352,
+    note: "The DC harness runs down the right of the board, between the board keep-out and the live edge, where the tile is at its widest and the live edge is at its least predictable - the saddle cover is straight-cut and simply stops short of the waney line.",
+  },
+]
+
+data cable_runs: List<CableRun> = [
+  CableRun {
+    id: "run-mains",
+    from: TilePsuMainsInlet,
+    to: PlinthBranchReceptacle,
+    conductor: MainsAc,
+    crosses_tile_boundary: true,
+    routed_in_saddle: false,
+    length_mm: 1800,
+    note: "The only mains on the tile, and it exists only inside the supply's own sealed enclosure and this cord. Standard C13 to a plinth receptacle; the cord drops straight down the face of the backboard.",
+  },
+  CableRun {
+    id: "run-data",
+    from: BoardIoDataPort,
+    to: PlinthSwitchPort,
+    conductor: TwistedPairData,
+    crosses_tile_boundary: true,
+    routed_in_saddle: false,
+    length_mm: 2000,
+    note: "One of the board's two onboard 10 GbE ports, plugged directly into the board's own I/O edge - which faces down, so the cord drops without crossing a grip.",
+  },
+  CableRun {
+    id: "run-bmc",
+    from: BoardIoBmcPort,
+    to: PlinthSwitchPort,
+    conductor: TwistedPairData,
+    crosses_tile_boundary: true,
+    routed_in_saddle: false,
+    length_mm: 2000,
+    note: "Dedicated BMC port. Separate from data on purpose: the reason a tile can be power-cycled and reinstalled without anyone walking to the wall.",
+  },
+]
+
+data rev_a_power_budget: PowerBudget = PowerBudget {
+  board_count: 6,
+  per_board_budget_w: 350,
+  total_budget_w: 2100,
+  planning_ceiling_w: 2625,
+  per_tile_peak_w: 350,
+  per_tile_psu_rated_w: 650,
+  note: "650 W, 80 PLUS Gold or better, fully modular, standard ATX form factor. Fully modular is a requirement and not a preference here: the saddle carries exactly three cables because the unused ones were never attached. Expected wall draw for six tiles in ordinary service is 1.6 to 1.9 kW, against a 2.1 kW budget and a 2.6 kW planning ceiling.",
+}
+
+data branch_circuits: List<BranchCircuit> = [
+  BranchCircuit { id: "circ-a", volts: 120, amps: 20, tiles_served: 3 },
+  BranchCircuit { id: "circ-b", volts: 120, amps: 20, tiles_served: 3 },
+]
+
+data branch_circuit_note: String = "Two 120 V 20 A circuits, three tiles each. Each gives 2400 VA nameplate and 1920 W continuous at the 80 percent rule, against 1050 W of budgeted tiles - so a circuit carries its three tiles with a whole tile of margin, and losing one circuit costs half the wall rather than all of it. One 240 V 20 A circuit would also cover the ceiling on paper and is refused: it puts all six tiles behind one breaker."
+
+fn continuous_capacity_w(c: BranchCircuit) -> Nat {
+  c.volts * c.amps * 8 / 10
+}
+
+fn total_continuous_capacity_w() -> Nat {
+  fold(branch_circuits, init: 0, f: fn(acc, c) { acc + continuous_capacity_w(c: c) })
+}
+
+fn total_tiles_served() -> Nat {
+  fold(branch_circuits, init: 0, f: fn(acc, c) { acc + c.tiles_served })
+}
+
+fn connector_is_external_to_tile(c: ExternalConnector) -> Bool {
+  match c {
+    AcPowerInlet => true,
+    DataEthernet => true,
+    BmcEthernet => true,
+    Atx24Pin => true,
+    Eps8PinA => true,
+    Eps8PinB => true,
+    FrontPanelHeader => true,
+    DcInput48V => true,
+    CoolantSupply => true,
+    CoolantReturn => true,
+  }
+}
+
+// DC RUN POPULATION, withdrawn and replaced by a standing.
+//
+// This carrier authored three on-tile DC runs -- run-atx24, run-eps-a, run-eps-b -- from the
+// reading that the ALTRAD8UD-1L2T carries one 24-pin main and two 8-pin EPS12V inputs. That
+// reading is FALSE. The board exposes three 8-pin ATX12V inputs plus a 4-pin Micro-Fit signal
+// connector; there is no 24-pin socket on it, and ATX-supply operation goes through a bundled
+// 24-pin-to-4-pin converter. run-eps-a's note went further and asserted a design decision on top
+// of the falsehood -- "the ALTRAD8UD carries two, and both are populated" -- which was reasoning
+// from an inventory that does not exist.
+//
+// The correction cannot simply renumber the runs. HOW MANY of the three 8-pin inputs must be
+// populated for a given processor and workload is UNRESOLVED in the public authority, and drawing
+// a specific number here would repeat the original mistake exactly: a plausible count rendered as
+// a fact. So the DC population is a standing, not a list, and it refuses until extdeps closes it.
+//
+// The count is load-bearing downstream: boundary_crossing_run_count and on_tile_dc_run_count feed
+// the interface-contract witness, so a withdrawn inventory reaches the connector arithmetic and
+// not merely the prose.
+type DcRunPopulationStanding
+  = DcRunPopulationResolved { run_count: Int, receipt: String }
+  | DcRunPopulationUnresolved { obligation: String, available_inputs: Int }
+
+fn selected_dc_run_population() -> DcRunPopulationStanding {
+  match asrock_altrad8ud_required_input_population {
+    PowerInputPopulationSpecified { required_inputs } =>
+      DcRunPopulationResolved {
+        run_count: required_inputs,
+        receipt: "derived from extdeps.boards.gigabyte required-input population",
+      },
+    PowerInputPopulationUnresolved { available_inputs } =>
+      DcRunPopulationUnresolved {
+        obligation: "Read the vendor statement or measure a fixture: how many of the board's three 8-pin ATX12V inputs must be populated for an Altra Max M128-30 under all-core load. Until then no on-tile DC harness may be drawn or counted.",
+        available_inputs: available_inputs,
+      },
+  }
+}
+
+fn dc_run_population_is_resolved() -> Bool {
+  match selected_dc_run_population() {
+    DcRunPopulationResolved { run_count: _, receipt: _ } => true,
+    DcRunPopulationUnresolved { obligation: _, available_inputs: _ } => false,
+  }
+}
+
+data dc_population_withdrawal_note: String = "The three authored on-tile DC runs are withdrawn. Their replacement is a derived standing that is currently Unresolved, so the on-tile harness has no count. The board's 4-pin Micro-Fit signal connector and its bundled 24-pin-to-4-pin converter are part of the same unread interface and are not modelled as runs either."
+
+fn boundary_crossing_run_count() -> Int {
+  count(filter(cable_runs, r => r.crosses_tile_boundary))
+}
+
+fn on_tile_dc_run_count() -> Int {
+  count(filter(cable_runs, r => r.routed_in_saddle))
+}
+
+fn grip_is_lift_load(g: Grip) -> Bool {
+  match g.role {
+    LiftLoad => true,
+    ColourIdentification => false,
+  }
+}
+
+fn grip_is_integrated(g: Grip) -> Bool {
+  match g.realization {
+    IntegratedEdgeGrip => true,
+    BoltedResinHold => false,
+    BoltedWoodenHold => false,
+  }
+}
+
+fn edge_is_straight_datum(e: TileEdge) -> Bool {
+  match e.treatment {
+    StraightDatum => true,
+    GripCut => false,
+    LiveEdgeGripCut => false,
+  }
+}
+
+fn edge_is_live(e: TileEdge) -> Bool {
+  match e.treatment {
+    StraightDatum => false,
+    GripCut => false,
+    LiveEdgeGripCut => true,
+  }
+}
+
+fn edge_carries_grip(e: TileEdge) -> Bool {
+  match e.treatment {
+    StraightDatum => false,
+    GripCut => true,
+    LiveEdgeGripCut => true,
+  }
+}
+
+fn affordance_matches(a: CleatAffordance, b: CleatAffordance) -> Bool {
+  match a {
+    SeatedReveal => match b { SeatedReveal => true, LeadInChamfer => false, WitnessMark => false, LowerLocatorPin => false, BottomBumper => false },
+    LeadInChamfer => match b { SeatedReveal => false, LeadInChamfer => true, WitnessMark => false, LowerLocatorPin => false, BottomBumper => false },
+    WitnessMark => match b { SeatedReveal => false, LeadInChamfer => false, WitnessMark => true, LowerLocatorPin => false, BottomBumper => false },
+    LowerLocatorPin => match b { SeatedReveal => false, LeadInChamfer => false, WitnessMark => false, LowerLocatorPin => true, BottomBumper => false },
+    BottomBumper => match b { SeatedReveal => false, LeadInChamfer => false, WitnessMark => false, LowerLocatorPin => false, BottomBumper => true },
+  }
+}
+
+fn selection_carries_affordance(a: CleatAffordance) -> Bool {
+  any(selected_cleat_affordances, x => affordance_matches(a: x, b: a))
+}
+
+fn datum_offset(id: String) -> Nat {
+  fold(datum_chain, init: 0, f: fn(acc, d) { if d.id == id { acc + d.offset_mm } else { acc } })
+}
+
+fn datum_declared(id: String) -> Bool {
+  count(filter(datum_chain, d => d.id == id)) == 1
+}
+
+fn grip_to_board_web_mm() -> Nat {
+  datum_offset(id: "d-board-left") - datum_offset(id: "d-grip-depth")
+}
+
+data required_cleat_affordances: List<CleatAffordance> = [
+  SeatedReveal,
+  LeadInChamfer,
+  WitnessMark,
+  LowerLocatorPin,
+  BottomBumper,
+]
+
+data witness_obligations_note: String = "Seven obligations, discharged in test.claim.machine_tile_design_witness. They are chosen so that each of the six reviewed defects has a claim that would have gone red on the reviewed document, plus one for the root cause itself. What they do NOT check, stated so it is not mistaken for coverage: no claim here observes a real tile, a real weight, a real temperature, or a real purchased supply. Every one is a check that the DESIGN is self-consistent - which is precisely the failure the review found, and precisely the failure a drawing cannot catch on its own."
+
+
+data power_reconsideration_note: String = "OPERATOR DIRECTION 2026-08-11: the supply on the tile is refused on appearance - a wall of machines should not read as a wall of power supplies - with the proposal to run ONE large supply, ONE line to each board, and generate the standard board interface locally. That proposal defeats my own retraction of Contract B and I record the concession rather than defending the earlier ruling: what I objected to was never SUPPLY OFF THE TILE as a category, it was ATX AND EPS OVER DISTANCE - a custom-length harness carrying tens of amps at 12 V across a wall. Distributing at a higher voltage on one small cable and converting at the board removes that objection entirely, because the objection was about conductor size and connector energy, not about where the rectifier sits. I generalised from a real defect to a category and that was wrong."
+
+type DistributionVoltage
+  = DistributionMainsAc
+  | Distribution12V
+  | Distribution48V
+
+data distribution_voltage_note: String = "The choice is settled by conductor size, and it is not close. Per tile at the 350 W budget: 7.3 A at 48 V, 29.2 A at 12 V. Over a 5 m run (10 m of conductor) in 14 AWG the drop is about 0.6 V at 48 V - 13 parts per thousand, invisible - and about 2.4 V at 12 V, 201 parts per thousand, which is not a cable but a failure. Holding 12 V under 3 percent over that distance needs roughly 4 AWG per tile: a battery cable, six of them, terminated by hand. THAT is the custom harness the Contract B retraction was actually about. At 48 V the same job is ordinary two-core flex."
+
+type BulkSupplyPlacement
+  = OnTile
+  | ServicePlinth
+  | BackRoom
+
+data bulk_supply_placement_note: String = "BackRoom is the placement the operator direction is really asking for, and it buys more than tidiness. Six consumer supplies mean six fans in the occupied room; one rectifier shelf means two or three fans behind a wall, and rectifier fans are the loud kind, so moving them is worth more than silencing them would be. The floor plan already has a back room directly behind Wall A. ServicePlinth is the fallback where no back room exists. OnTile is Rev A, retained as the comparison baseline and as the honest answer when a single tile has to work standalone on a bench."
+
+type PerTileConversion
+  = NoConversion
+  | NativeBoard12VInput
+  | Dc48ToDc12Brick
+  | Dc48ToAtxModule
+
+data per_tile_conversion_note: String = "Two candidate paths and one open fact between them. If the ALTRAD8UD-1L2T's native 12 V DC input is real and sufficient (SEED DEBT 3 - vendor page reading, pin-verification not done), the tile carries one 48-to-12 V brick and NOTHING else: no ATX interface is synthesised because the board never wanted one. If it is not, the tile carries a DC-ATX module producing the board's own 12 V input population locally, which is exactly the operator's phrasing - give each board the standard interface FROM THERE. The exact connector set that module must present is unresolved for the same reason the on-tile harness is: extdeps has not established how many of the board's three 8-pin inputs must be populated. The first is strictly simpler; the second is the fallback that still works. Deciding between them is one datasheet read, and it is the single highest-value verification in this design. SOURCING RISK, stated not buried: an isolated 48-to-12 V converter at 350 W is a standard telecom quarter-brick class and I expect it to be commodity, but no part number, price, or footprint here is quoted from a real listing, and my last attempt to price a converter in this session was an overclaim that had to be withdrawn. Treat every converter figure as a market-search hypothesis until a quote lands."
+
+type CoolingRealization
+  = AirTowerCooler
+  | AirBlowerCooler
+  | LiquidColdPlateLoop
+
+type FluidConnection
+  = PermanentFitting
+  | ManualQuickDisconnect
+  | BlindMateCoupling
+
+data cooling_realization_note: String = "OPERATOR DIRECTION 2026-08-11: LGA4926 water blocks exist (Alphacool), so liquid is admitted as a candidate on cost and safety grounds. What liquid earns here, stated as it was established earlier in this work: it is NOT a noise argument - an open tower cooler at 700 rpm is already quiet - it is a HEAT ROUTING argument. 2.1 kW landing in a 750 sf office is a load the mini-split has to remove; a loop can take it out of the building to a dry cooler, or into space heat in winter. The tile-level effects are large and separate: the block is roughly 30 mm tall against the NH-D9 tower's 130 mm, so tile depth off the backboard falls from about 140 mm to about 50 mm, and with the supply also gone the tile carries ZERO fans. ManualQuickDisconnect is the part that makes liquid compatible with a tile on a cleat at all - without non-drip couplings a tile cannot leave the wall in five steps. BlindMateCoupling on the cleat is the tempting version and is REFUSED for now: seating misalignment on a blind fluid coupling is a leak over a live board, which is a custom dependency whose failure mode is the worst one available."
+
+data liquid_dependency_note: String = "The dependency population liquid creates, inventoried rather than waved at, because this is exactly the no-unearned-relationship test. It adds: cold plates, tubing, two couplings per tile, a manifold, a pump, a reservoir, coolant with a biocide schedule, a heat rejection device, leak detection, an annual service interval, and a pump failure mode that takes ALL boards on the loop at once rather than one. Pump redundancy is therefore not optional - two pumps in parallel is the standard answer and is assumed here. Against that it removes: twelve cooler fans, 90 mm of tile depth, and the whole question of how to get 2.1 kW out of an occupied room. The operator condition - safely and cheaply - is the right test, and it is not yet met by evidence: no quote exists for couplings, which are the expensive part, and no leak-containment design has been drawn."
+
+data tile_envelope_supersession_note: String = "DELETED 2026-08-11, and the deletion is the point. This module previously carried a TileEnvelope row list asserting fans_on_tile 0 and depth_off_backboard_mm 50 for the liquid candidate, together with envelope_fans and envelope_depth_mm readers and a GREEN witness pinning both numbers. It also carried zero_fan_claim_retraction_note and depth_envelope_note retracting exactly those two claims. Both were true of the module at once: a witness asserting a number and a note retracting it, shipped in the same commit. That is the third instance of the defect class this carrier exists to prevent - an authority split surviving because the two halves were different KINDS of statement and nothing forced them to meet. A retraction that leaves its witness standing is not a retraction. The scenario layer is now the sole authority for fans and depth: scenario_fans_on_tile sums the three fan roles a scenario actually declares, and scenario_total_wall_projection_mm derives from the four depth quantities rather than from one stored number."
+
+
+
+data per_board_budget_mw: Nat = 350000
+
+fn per_tile_current_ma(watts_mw: Nat, volts: Nat) -> Nat {
+  watts_mw / volts
+}
+
+data conductor_14awg_micro_ohm_per_m: Nat = 8286
+
+data run_length_conductor_m: Nat = 10
+
+fn line_drop_mv(watts_mw: Nat, volts: Nat) -> Nat {
+  per_tile_current_ma(watts_mw: watts_mw, volts: volts) * conductor_14awg_micro_ohm_per_m * run_length_conductor_m / 1000000
+}
+
+fn line_drop_per_mille(watts_mw: Nat, volts: Nat) -> Nat {
+  line_drop_mv(watts_mw: watts_mw, volts: volts) * 1000 / (volts * 1000)
+}
+
+data architecture_comparison_note: String = "RECOMMENDATION, with the condition attached rather than buried. Candidate C is the right answer to the operator direction and I would select it the moment ONE fact lands: whether the board's native 12 V input is real. It hides the supply, keeps the removal ritual at three connectors, shrinks the tile by 150 mm of width and 1.7 kg, and moves the loudest fans out of the room - and it does NOT save money or watts, which should be said plainly. Two conversion stages at roughly 94 percent each land near 88 percent against a single Gold supply's roughly 90 percent at half load, so efficiency is a wash or slightly worse, and a rectifier shelf plus six converters plausibly costs more than six consumer supplies. Candidate D is the version worth wanting and the one that stops the wall reading as equipment at all - zero fans, 50 mm deep - but it is the one whose dependency ledger is unpaid: no coupling quote, no leak-containment design, and a pump whose failure takes every board on the loop. Rev A stays SELECTED until those verifications land, because selecting on hypothesis-grade part availability is the exact error this carrier exists to prevent."
+
+
+data scenario_recut_note: String = "RECUT 2026-08-11 after a routed review, operator-approved. The review's structural finding is accepted and it is the same defect class this carrier was created to kill: one hard-coded rev_a_selection with alternatives appended as static prose is EXACTLY the shape that let the original document claim three connectors while drawing five. The instance was patched and the class reproduced. From here one selected_scenario drives every derived physical quantity, and a configuration-sensitive number that is not derived from a scenario is a defect. SCOPE HELD, against the review's proposal: the resolver derives PHYSICAL quantities only. The review asked it to also derive BOM, capital cost, monthly operating model and utilisation break-even; that is the site and business layer, which machine_tile_design_note already disclaims and which strategy.site_model owns, and folding CI pricing into a tile-geometry carrier is the one-generic-node failure the strategy kernel directive exists to prevent. This carrier emits physical facts and a capacity shape; the business carrier consumes them."
+
+type BoardProfile
+  = AsrockAltrad8udSingleSocket
+  | GigabyteMp72Hb0DualSocket
+
+data board_profile_note: String = "AsrockAltrad8udSingleSocket is SELECTED: 244 x 267 mm, one LGA4926, 8 DIMMs, two 10 GbE plus BMC, a power interface this carrier no longer restates because extdeps.boards.gigabyte owns it and an earlier restatement here was false - and, decisively, hardware the operator already owns alongside two NH-D9 AMP-4926 coolers. GigabyteMp72Hb0DualSocket is a CANDIDATE only. CORRECTION: this sentence claimed the specification was independently verified against the vendor page and resellers. It was not. Every outbound fetch is refused by egress policy, so the figures came from a routed review - a real source, and not a first-party read. The reading is: dual LGA4926, 250 W per processor, E-ATX 305 x 330 mm, 16 DIMMs to DDR4-3200, two 10 GbE, one 24-pin and two 8-pin ATX12V, M.2 plus SATA, four PCIe slots. Those facts hold. What does NOT hold is any claim to ownership, price, or condition: domestic quotes near USD 1445 with four-to-six week lead times were reported in the review and are not verified here, and no board has been held. The architectural attraction is real and should be stated without overselling it - three dual-socket tiles for six sockets removes three whole baseboard, supply, BMC, boot device and mounting boundaries, but board AREA falls only about 23 percent, CPU cooling is unchanged at six, DIMM count is unchanged at 48, and one tile failure takes a third of the fleet rather than a sixth."
+
+data mp72_procurement_refusal_note: String = "PROCUREMENT STANDING, and a CORRECTION to the review that raised it. The review refused a marketplace listing on the ground that its photograph showed a proprietary MT JADE SYSTEM BOARD silkscreen rather than the documented Gigabyte part. The operator then supplied the listing and its image, and read directly the image does not support that: the silkscreen reads GIGABYTE MP72-HB0 DDR4 beside the regulatory marks, and the board shows two LGA4926 sockets with white retention frames, sixteen DIMM slots in four banks, four PCIe slots, two SlimSAS ports, one M.2 socket, and a rear panel carrying VGA, USB, two RJ45 and a management port - consistent with the vendor profile on every countable field. THE REFUSAL AS STATED DOES NOT HOLD, and it is recorded here because it was routed as a reason not to buy. The real caveat is duller and still binding: the image is a watermarked reseller stock photograph, so it establishes what the listing DEPICTS and never what a particular unit IS. Standing is ListingObserved, which is not enough to enter a fleet carrier. The full gate, landed-cost standing and vendor profile live in extdeps.boards.gigabyte, which this module now genuinely IMPORTS -- an earlier version of this sentence claimed consumption while the carrier had no import of that module at all, and then restated the connector inventory in the same breath. The connector counts have been removed from this note for the same reason: a carrier that says it restates nothing must not restate."
+
+type PowerPlacement
+  = TileFace
+  | TileRearAttached
+  | SharedRectifierStudy
+
+type RearPowerStanding
+  = RearAttachedToTile
+  | RearFixedToSupport
+
+data rear_power_standing_note: String = "There is no generic behind-the-board value, and the review is right that the phrase hides two incompatible designs. RearAttachedToTile: the supply is fixed to the carrier and leaves the wall with it, so the whole machine stays one removable object, all high-current DC stays internal, and the boundary is unchanged - this is preset B. RearFixedToSupport: the supply stays on the backboard, which recreates the remote-PSU interface already refused, puts 24-pin and both EPS across the service boundary, and must report those crossings honestly rather than inheriting B's count. Any row that fails to say which one it is is refused as RearPowerOwnershipAmbiguous."
+
+type ScenarioCooling
+  = DualAirTower
+  | ColdPlateLiquid
+
+type MemoryPopulation {
+  dimm_count: Nat
+  capacity_per_dimm_gib: Nat
+  data_rate_mt_s: Nat
+}
+
+type MachineTileScenario {
+  id: String
+  label: String
+  external_connectors: List<ExternalConnector>
+  board: BoardProfile
+  power_placement: PowerPlacement
+  rear_standing: RearPowerStanding
+  cooling: ScenarioCooling
+  active_data_ports: Nat
+  tile_count: Nat
+  wall_to_backboard_face_mm: Nat
+  rear_service_depth_mm: Nat
+  carrier_thickness_mm: Nat
+  tile_plane_to_front_tip_mm: Nat
+  psu_fans_on_tile: Nat
+  cooler_fans_on_tile: Nat
+  auxiliary_fans_on_tile: Nat
+  mass_estimate_dg: Nat
+  note: String
+}
+
+data active_data_ports_note: String = "An INPUT, not a constant, and the review is right that this was a silent assumption. The baseboard carries two 10 GbE ports plus a dedicated management port. The three-connector removal ritual is true only when one data port is active; with both, an air-cooled tile crosses at four. Treating the second port as either always present or nonexistent are both misreports."
+
+data depth_envelope_note: String = "DEFECT CORRECTED. The previous carrier held ONE depth_off_backboard_mm and the rendered page labelled it depth off the WALL - so 140 mm, which is tile-plane to cooler tip, was published as though it were the finished wall projection. It is not, and the difference is not small: adding the 45 mm service void, the 18 mm backboard, the cleat or rear-service band and the 18 mm carrier puts preset A near 244 mm. Four quantities are now carried separately and the total is derived, never stored. The consequence worth stating loudly, because the old number hid it: preset C is NOT a shallow wall. Cold plates take the front projection from about 138 mm to about 38 mm, but a rear-attached supply puts that depth straight back behind the carrier, so C lands within a few millimetres of A. Only removing the local supply entirely - the deferred shared-rectifier study - produces a genuinely thin assembly. Liquid alone does not buy the appearance it looks like it buys."
+
+data zero_fan_claim_retraction_note: String = "RETRACTED: the previous carrier asserted fans_on_tile 0 for the liquid candidate. That was an overclaim on two counts. It silently assumed the supply had also left the tile, which is true only under the shared-rectifier study and not under preset C; and cold plates cool processors only - sixteen DIMM positions, the regulators, the network interfaces and the boot device still need moving air, and no thermal observation exists for a bare vertical board without any. Preset C therefore carries its supply fan plus one auxiliary low-speed fan, and that auxiliary count is a REQUIREMENT, not a measurement: the real number is unknown until a board is run."
+
+data memory_8x32: MemoryPopulation = MemoryPopulation {
+  dimm_count: 8,
+  capacity_per_dimm_gib: 32,
+  data_rate_mt_s: 3200,
+}
+
+data scenario_a_face_air: MachineTileScenario = MachineTileScenario {
+  id: "altra-face-psu-air",
+  label: "A - supply on the room face, air",
+  external_connectors: [AcPowerInlet, DataEthernet, BmcEthernet],
+  board: AsrockAltrad8udSingleSocket,
+  power_placement: TileFace,
+  rear_standing: RearAttachedToTile,
+  cooling: DualAirTower,
+  active_data_ports: 1,
+  tile_count: 6,
+  wall_to_backboard_face_mm: 45,
+  rear_service_depth_mm: 25,
+  carrier_thickness_mm: 18,
+  tile_plane_to_front_tip_mm: 138,
+  psu_fans_on_tile: 1,
+  cooler_fans_on_tile: 2,
+  auxiliary_fans_on_tile: 0,
+  mass_estimate_dg: 800,
+  note: "SELECTED. Rear depth is the 25 mm cleat band only. Front projection is the NH-D9 tower plus standoff. The supply is visible and the object reads as deliberate mechanism; it is also the only preset where a tile is a complete standalone machine that runs on any socket at a bench.",
+}
+
+data scenario_b_rear_air: MachineTileScenario = MachineTileScenario {
+  id: "altra-rear-psu-air",
+  label: "B - supply behind the carrier, air",
+  external_connectors: [AcPowerInlet, DataEthernet, BmcEthernet],
+  board: AsrockAltrad8udSingleSocket,
+  power_placement: TileRearAttached,
+  rear_standing: RearAttachedToTile,
+  cooling: DualAirTower,
+  active_data_ports: 1,
+  tile_count: 6,
+  wall_to_backboard_face_mm: 45,
+  rear_service_depth_mm: 126,
+  carrier_thickness_mm: 18,
+  tile_plane_to_front_tip_mm: 138,
+  psu_fans_on_tile: 1,
+  cooler_fans_on_tile: 2,
+  auxiliary_fans_on_tile: 0,
+  mass_estimate_dg: 800,
+  note: "The direct answer to hide the supply, and it costs almost no new dependency: the same supply, the same three internal runs, the same boundary, moved 150 mm backwards. The cleat band must grow from 25 mm to about 126 mm to clear the supply body plus intake and service allowance, which makes this the DEEPEST total assembly of the three. Clean front face, furniture-depth object.",
+}
+
+data scenario_c_rear_liquid: MachineTileScenario = MachineTileScenario {
+  id: "altra-rear-psu-liquid",
+  label: "C - supply behind the carrier, cold plates",
+  external_connectors: [AcPowerInlet, DataEthernet, BmcEthernet, CoolantSupply, CoolantReturn],
+  board: AsrockAltrad8udSingleSocket,
+  power_placement: TileRearAttached,
+  rear_standing: RearAttachedToTile,
+  cooling: ColdPlateLiquid,
+  active_data_ports: 1,
+  tile_count: 6,
+  wall_to_backboard_face_mm: 45,
+  rear_service_depth_mm: 126,
+  carrier_thickness_mm: 18,
+  tile_plane_to_front_tip_mm: 38,
+  psu_fans_on_tile: 1,
+  cooler_fans_on_tile: 0,
+  auxiliary_fans_on_tile: 1,
+  mass_estimate_dg: 750,
+  note: "Electrical routing identical to B; fluid adds a supply and return pair on manual non-drip couplings, an internal split to the plate, and leak observation. Front projection collapses to the cold plate - and the total barely moves, because the rear depth is unchanged. This is the finding the single old depth number was hiding.",
+}
+
+data invariant_selection_note: String = "COLLAPSE 2026-08-11: DesignSelection carried mount_base, mount_interface, tile_shape and bench_rest, and every row set them identically. A field that does not vary across the population is not a scenario field - it is a design fact, and duplicating it three times invited exactly the divergence the collapse exists to end. They are module-level below; only what actually varies by preset lives on a scenario."
+
+data selected_mount_base: MountBase = FreestandingBackboard
+
+data selected_mount_interface: MountInterface = CleatWithLowerLocators
+
+data selected_tile_shape: TileShape = AsymmetricLiveEdge
+
+data selected_bench_rest: BenchRest = SeparateHiddenFeet
+
+data selected_cleat_affordances: List<CleatAffordance> = [
+  SeatedReveal,
+  LeadInChamfer,
+  WitnessMark,
+  LowerLocatorPin,
+  BottomBumper,
+]
+
+data selected_tile_edges: List<TileEdge> = [
+    TileEdge {
+      name: "top",
+      treatment: StraightDatum,
+      note: "Cleat datum. Machine-straight; carries the 45-degree rip on its back face and the seated-reveal shadow line on its front.",
+    },
+    TileEdge {
+      name: "bottom",
+      treatment: StraightDatum,
+      note: "Service datum. Machine-straight; carries the locator counterbores, the rubber bumpers, and the drop point for both cords.",
+    },
+    TileEdge {
+      name: "left",
+      treatment: GripCut,
+      note: "Square vertical edge with a 32 mm deep, 110 mm tall incut hand grip centred 180 mm above the service datum.",
+    },
+    TileEdge {
+      name: "right",
+      treatment: LiveEdgeGripCut,
+      note: "The one expressive edge - waney, sanded, oiled, no two tiles alike. Its grip cut is placed where the natural line already bulges inward, so the irregularity reads as the reason for the grip rather than as an error.",
+    },
+]
+
+data scenarios: List<MachineTileScenario> = [
+  scenario_a_face_air,
+  scenario_b_rear_air,
+  scenario_c_rear_liquid,
+]
+
+data selected_scenario_id: String = "altra-face-psu-air"
+
+data deferred_study_note: String = "The shared 48 V rectifier study is DEMOTED out of the preset set on operator direction, and the review's reason is right: it should not compete with the first build merely because it already has a drawing. The types, the voltage-drop arithmetic and contract_c_48v_air survive as Study S. Its one genuine claim over presets A to C is now sharper rather than weaker - it is the ONLY path to a thin wall assembly, because it is the only one that removes the supply from the carrier entirely."
+
+data backboard_thickness_mm: Nat = 18
+
+data backboard_thickness_note: String = "NAMED 2026-08-11 after review. This 18 mm was previously a bare literal inside the projection sum AND again inside the page renderer, so a physically meaningful thickness lived in two places, in neither of which it could be found by searching for a backboard. A number that describes matter is a model fact; only page margins may be literals."
+
+fn scenario_total_wall_projection_mm(s: MachineTileScenario) -> Nat {
+  s.wall_to_backboard_face_mm + backboard_thickness_mm + s.rear_service_depth_mm + s.carrier_thickness_mm + s.tile_plane_to_front_tip_mm
+}
+
+type ScenarioSelection
+  = ScenarioSelected { scenario: MachineTileScenario }
+  | ScenarioSelectionMissing { id: String }
+  | ScenarioSelectionAmbiguous { id: String, matches: Nat }
+
+data scenario_selection_note: String = "Selection is a zero/one/many RESULT, not a string comparison. The previous form asked each row whether its id equalled selected_scenario_id, so a typo rendered a page with no selected badge and a duplicated id rendered several - both silently, and both looking like a design with no selection rather than a broken carrier. A page that cannot say which configuration it is showing has no business rendering."
+
+fn resolve_selected_scenario() -> ScenarioSelection {
+  let matches = filter(scenarios, s => s.id == selected_scenario_id)
+  let found = count(matches)
+  if found == 1 {
+    fold(matches, init: ScenarioSelectionMissing { id: selected_scenario_id },
+         f: fn(acc, s) { ScenarioSelected { scenario: s } })
+  } else {
+    if found == 0 {
+      ScenarioSelectionMissing { id: selected_scenario_id }
+    } else {
+      ScenarioSelectionAmbiguous { id: selected_scenario_id, matches: found }
+    }
+  }
+}
+
+fn scenario_selection_resolves() -> Bool {
+  match resolve_selected_scenario() {
+    ScenarioSelected { scenario } => true,
+    ScenarioSelectionMissing { id } => false,
+    ScenarioSelectionAmbiguous { id, matches } => false,
+  }
+}
+
+fn scenario_fans_on_tile(s: MachineTileScenario) -> Nat {
+  s.psu_fans_on_tile + s.cooler_fans_on_tile + s.auxiliary_fans_on_tile
+}
+
+fn scenario_fluid_crossings(s: MachineTileScenario) -> Nat {
+  match s.cooling {
+    DualAirTower => 0,
+    ColdPlateLiquid => 2,
+  }
+}
+
+fn scenario_rear_standing_crossings(s: MachineTileScenario) -> Nat {
+  match s.rear_standing {
+    RearAttachedToTile => 1,
+    RearFixedToSupport => 3,
+  }
+}
+
+data rear_standing_replaces_mains_note: String = "CORRECTED 2026-08-11, caught by witness_rejected_rear_fixed_fork_stays_measurable going RED on its first execution. The first form ADDED three crossings to the mains connection, giving a rear-fixed supply six. That is wrong on the physics: when the supply sits on the support rather than the carrier, the tile does not receive mains AT ALL - it receives 24-pin and two EPS instead. The power crossings REPLACE each other, they do not accumulate. Derived said six while the declared connector list said five, and the disagreement is exactly what this witness class exists to surface. The error was mine and the machinery found it before the page did."
+
+data rear_fixed_crossing_note: String = "This is where the rejected remote-supply fork stays MEASURABLE without a second configuration vocabulary to hold it. A supply fixed to the support rather than the carrier puts the 24-pin and both EPS across the service boundary, so it adds three crossings to the one mains connection - reaching five with a single data port, exactly what the deleted contract_b_variant row asserted by hand. The fork is now a consequence of a standing rather than a parallel object."
+
+fn scenario_power_crossings(s: MachineTileScenario) -> Nat {
+  match s.power_placement {
+    TileFace => 1,
+    TileRearAttached => scenario_rear_standing_crossings(s: s),
+    SharedRectifierStudy => 1,
+  }
+}
+
+fn scenario_declared_connector_count(s: MachineTileScenario) -> Int {
+  count(filter(s.external_connectors, c => connector_is_external_to_tile(c: c)))
+}
+
+fn scenario_boundary_crossings(s: MachineTileScenario) -> Nat {
+  scenario_power_crossings(s: s) + s.active_data_ports + 1 + scenario_fluid_crossings(s: s)
+}
+
+fn scenario_by_id(id: String) -> Nat {
+  count(filter(scenarios, s => s.id == id))
+}
+
+data crossing_derivation_note: String = "Crossings are DERIVED, never stored: one power connection, plus however many data ports are active, plus one management port, plus two fluid couplings when the scenario is liquid. Preset A at one active data port gives three, which is the ritual the concept was sold on. The same preset at two active ports gives four, and it should - the second 10 GbE port is real. Preset C gives five at one port and six at two. RearFixedToSupport is deliberately NOT reachable from these presets: it would add the 24-pin and both EPS to this sum, which is why it is a separate refused standing rather than a variation of B."
+
+
+// THE SELECTED PART, imported rather than described.
+//
+// This carrier previously hand-authored HoldShapeStanding and HoldUseStanding: two coproducts
+// restating, in prose, facts that belong to the part. That arrangement was a second authority for
+// the hold, and it is exactly how the original defect happened — with no external row to consult,
+// the carrier reasoned about the hold from its own description of it and concluded the part had no
+// datum. A part cannot supply a frame to a module that only has an opinion about the part.
+//
+// extdeps.climbing_holds.atomik now owns identity, material, fixation interface, source readings
+// and shape evidence. This module owns role, pose, and relation to the tile, and DERIVES every
+// standing below from the imported row. The derivation direction matters: when the extdeps row
+// gains a thread, the corresponding obligation here disappears on its own. Nothing has to be
+// remembered, and the two cannot drift.
+data selected_hold: ClimbingHoldCatalogRow = atomik_xl_arrow_down_climb_jug
+
+fn selected_hold_may_render_silhouette() -> Bool {
+  match selected_hold.shape {
+    ShapeArtifactHeld { format: _, artifact_hash: _, units_note: _, frame_alignment_note: _ } => true,
+    ShapeArtifactAbsent { obligation: _ } => false,
+  }
+}
+
+// Proof load stays a CARRIER fact, and is the one standing not derived from the row. No catalog
+// can settle it: a vendor's climbing-wall standing is evidence about a different load direction,
+// cycle count, panel stock, edge distance and failure consequence. The tile's use has to earn its
+// own receipt against the exact assembly, and no fixture has been built.
+data lift_proof_load_receipt_held: Bool = false
+
+// PLACEMENT CLEARANCE, which this carrier cannot supply and must not fake. The renamed
+// hold_catalog_clearance_envelope_is_spendable was still being consumed here after it was pulled
+// out of the extdeps lift gate -- the same lie, one module further downstream, and it survived the
+// rename because renaming a function does not find its callers. The private consumer is where it
+// was finally caught, which is the argument for a consumer sitting close to its authority.
+//
+// A resolved layout is the only thing that can answer this, and there is no resolved layout: the
+// hold clearance envelopes intersect the board, the cooler and, in preset A, the power supply.
+// So the standing is Unresolved and it names what would close it.
+type ScenePlacementStanding
+  = ScenePlacementResolved { scene_id: String, receipt: String }
+  | ScenePlacementUnresolved { obligations: List<String> }
+  | ScenePlacementRefused { conflicts: List<String> }
+
+data selected_scene_placement: ScenePlacementStanding = ScenePlacementUnresolved {
+  obligations: [
+    "Resolve a physical scene with conservative placed bodies for carrier, board, cooler, PSU, saddle, cleat and both hold clearance volumes.",
+    "Declare relation policy: cooler-processor AllowedContact, bolt-panel FastenerPenetrates, hold-board / hold-cooler / hold-PSU RequiredDisjointness.",
+    "Known conflicts that any resolution must confront: left hold clearance intersects board and cooler; right hold clearance intersects the power supply in preset A.",
+    "No free region on the current 640 mm face admits a 166 x 191 mm hold, so the resolution must change the layout or the hold, not the coordinates.",
+  ],
+}
+
+fn scene_placement_is_resolved() -> Bool {
+  match selected_scene_placement {
+    ScenePlacementResolved { scene_id: _, receipt: _ } => true,
+    ScenePlacementUnresolved { obligations: _ } => false,
+    ScenePlacementRefused { conflicts: _ } => false,
+  }
+}
+
+fn hold_is_qualified_for_lift() -> Bool {
+  lift_proof_load_receipt_held
+    && hold_local_frame_is_ready(row: selected_hold)
+    && scene_placement_is_resolved()
+}
+
+// The typed incomplete result. Each arm names a document or an act that closes it, and each is
+// DERIVED from the imported row rather than listed by hand — so this list shortens only when a
+// real fact lands in extdeps, never because someone edited a note here.
+type MachineTileGripObligation
+  = SelectedHardwareThread
+  | MountingFaceConfirmation
+  | ExactShapeArtifact
+  | HoldMaterialStatement
+  | ManufacturerSkuCode
+  | LiftProofLoadReceipt
+
+fn grip_obligation_thread() -> List<MachineTileGripObligation> {
+  match selected_hold.fixation.primary_bolt_thread {
+    ImperialUncThread { designation: _ } => [],
+    MetricCoarseThread { designation: _ } => [],
+    FastenerThreadUnread { obligation: _ } => [SelectedHardwareThread],
+  }
+}
+
+fn grip_obligation_face() -> List<MachineTileGripObligation> {
+  match selected_hold.fixation.mounting_face {
+    SingleFlatMountingFace => [],
+    ContouredMountingFace { obligation: _ } => [MountingFaceConfirmation],
+    HoldMountingFaceUnread { obligation: _ } => [MountingFaceConfirmation],
+  }
+}
+
+fn grip_obligation_shape() -> List<MachineTileGripObligation> {
+  if selected_hold_may_render_silhouette() { [] } else { [ExactShapeArtifact] }
+}
+
+fn grip_obligation_material() -> List<MachineTileGripObligation> {
+  match selected_hold.material {
+    HoldMaterialUnread { obligation: _ } => [HoldMaterialStatement],
+    PolyurethaneResin => [],
+    PolyesterResin => [],
+    Fiberglass => [],
+    MachinedRockComposite => [],
+    Plywood => [],
+    Hardwood => [],
+  }
+}
+
+fn grip_obligation_sku() -> List<MachineTileGripObligation> {
+  match selected_hold.naming.manufacturer_sku {
+    ProductSkuObserved { value: _, authority: _ } => [],
+    ProductSkuUnread { obligation: _ } => [ManufacturerSkuCode],
+  }
+}
+
+fn grip_obligation_proof_load() -> List<MachineTileGripObligation> {
+  if lift_proof_load_receipt_held { [] } else { [LiftProofLoadReceipt] }
+}
+
+fn machine_tile_grip_obligations() -> List<MachineTileGripObligation> {
+  grip_obligation_thread()
+    .concat(grip_obligation_face())
+    .concat(grip_obligation_shape())
+    .concat(grip_obligation_material())
+    .concat(grip_obligation_sku())
+    .concat(grip_obligation_proof_load())
+}
+
+type MachineTileGripIntegration
+  = MachineTileGripIncomplete { missing: List<MachineTileGripObligation> }
+  | MachineTileGripReady { receipt: String }
+
+// A useful first result is NOT Ready, and saying so is the point. The previous carrier had no
+// integration result at all: the hold was either drawn as a square or deleted, and both readings
+// looked finished. An explicit Incomplete carrying its own reasons is a better artifact than
+// either, because it is the only one of the three that can be closed.
+fn machine_tile_grip_integration() -> MachineTileGripIntegration {
+  let missing = machine_tile_grip_obligations()
+  if count(missing) == 0 {
+    MachineTileGripReady { receipt: "every grip obligation closed" }
+  } else {
+    MachineTileGripIncomplete { missing: missing }
+  }
+}
+
+fn machine_tile_grip_obligation_count() -> Int {
+  count(machine_tile_grip_obligations())
+}

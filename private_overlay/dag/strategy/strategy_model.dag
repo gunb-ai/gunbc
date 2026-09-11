@@ -1,0 +1,639 @@
+module strategy.strategy_model
+
+import std.nat { Nat }
+
+data strategy_model_note: String = "Strategy kernel (operator directive 2026-08-01, docs/strategy/2026-08-01-strategy-kernel-directive.md). Small set of strong typed concepts, never one generic kind-tagged node. Instantiation lives in strategy.gunbc_strategy; witnesses in test.claim.strategy_witness. Supersedes the flat StrategyNode carrier, deleted in the same change."
+
+data strategy_model_controls_note: String = "Controls coverage, slice 1 of the directive's twelve. BY CONSTRUCTION: 2 - AdoptionEvidence has no roadmap arm, a roadmap merge cannot inhabit adoption evidence; 3 - forecast/observation distinctness is grounded on the public gunbc.econ.acquisition AcquisitionCostForecast carrier (structurally distinct from every observation carrier, per its distinctness note; the private duplicate types were dissolved into that authority 2026-08-01); 5 - journey stage is derived by folding receipts, no stored stage field exists anywhere; market segment vs visibility audience are distinct types. BY DERIVATION WITH WITNESSES: 1 - claim and target status derive from evidence, never stored; 9 - work authorization against a non-Selected decision refuses typed; 12 - experiment continuation against a fired stop receipt refuses. DEFERRED WITH TRIGGERS: 4 needs the claim-evidence kinds to distinguish demo from control receipts, lands with the disclosure carrier; 6 needs cohort and window carriers, lands with first real measurements; 7 and 8 are coverage queries landing when roadmap bindings exceed one row; 10 lands with the publication-grant wall; 11 lands with the first referral observation shape."
+
+type Vision {
+  id: String
+  statement: String
+}
+
+type StrategicOutcome {
+  id: String
+  statement: String
+  beneficiary: String
+}
+
+type Capability {
+  id: String
+  statement: String
+}
+
+type ExperienceTarget {
+  id: String
+  exposes_capability_id: String
+  gesture: String
+  perceived_result: String
+  invariants: List<String>
+}
+
+type Hypothesis {
+  id: String
+  causal_claim: String
+}
+
+type Constraint {
+  id: String
+  forbids: String
+}
+
+type Experiment {
+  id: String
+  tests_hypothesis_id: String
+  intervention: String
+  stop_predicate: String
+}
+
+type Realizes {
+  capability_id: String
+  outcome_id: String
+}
+
+type RoadmapBinding {
+  roadmap_node_id: String
+  delivers_capability_id: String
+}
+
+type StrategicReason
+  = DeliversCapability { capability_id: String }
+  | ServesOutcome { outcome_id: String }
+  | TestsHypothesis { hypothesis_id: String }
+  | RequiredByDecision { question_id: String }
+  | ServesVision { vision_id: String }
+
+type RoadmapLaneBinding {
+  lane_owner: String
+  reason: StrategicReason
+}
+
+type UnboundLaneAcknowledged {
+  lane_owner: String
+  reason: String
+  trigger: String
+}
+
+data roadmap_relationship_note: String = "One-way authority relationship (directive): the public roadmap identifies the work the strategy requires; the strategy consumes roadmap acceptance receipts and never hand-authors roadmap status; the roadmap never references the private strategy (publication monotonicity). Lane bindings attach a StrategicReason to each public roadmap lane (the RoadmapNode.owner field); node-grain RoadmapBinding rows attach specific deliveries. The lane-coverage witness imports the PUBLIC gunbc.roadmap_authority under composed roots, so a new public lane without a strategic reason reds the private witness - control 7 executing at lane grain, with UnboundLaneAcknowledged as the typed, triggered debt row, never silence. Roadmap visibility itself is a modeled decision (roadmap-visibility), currently keep-public-for-now by operator receipt."
+
+type MarketSegment {
+  id: String
+  description: String
+}
+
+type VisibilityAudience {
+  id: String
+  description: String
+}
+
+type DecisionAlternative {
+  id: String
+  statement: String
+}
+
+type DecisionReceipt {
+  authority: String
+  decided_on: String
+  rationale: String
+}
+
+type DecisionState
+  = Open
+  | Selected { choice_id: String, receipt: DecisionReceipt }
+  | SupersededBy { question_id: String }
+  | RefusedDecision { reason: String }
+
+type StrategicDecision {
+  question_id: String
+  question: String
+  alternatives: List<DecisionAlternative>
+  criteria: List<String>
+  state: DecisionState
+}
+
+type AuthorizationVerdict
+  = Authorized
+  | AuthorizationRefused { cause: AuthorizationRefusalCause }
+
+type AuthorizationRefusalCause
+  = DecisionNotFound
+  | DecisionNotSelected
+  | DecisionSuperseded
+
+fn authorize_work(question_id: String, decisions: List<StrategicDecision>) -> AuthorizationVerdict {
+  fold(decisions, init: AuthorizationRefused { cause: DecisionNotFound }, f: fn(acc, d) {
+    if d.question_id == question_id {
+      match d.state {
+        Selected { choice_id, receipt } => Authorized
+        SupersededBy { question_id } => AuthorizationRefused { cause: DecisionSuperseded }
+        Open => AuthorizationRefused { cause: DecisionNotSelected }
+        RefusedDecision { reason } => AuthorizationRefused { cause: DecisionNotSelected }
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+type CapabilityEvidence
+  = RoadmapAccepted { roadmap_node_id: String }
+  | CapabilityDirectlyObserved { receipt: String }
+
+type ObservedCapability {
+  capability_id: String
+  evidence: CapabilityEvidence
+}
+
+type EngagementKind
+  = WedgeDesignPartner
+  | TechnicalValidator
+
+type Engagement {
+  id: String
+  kind: EngagementKind
+}
+
+data engagement_note: String = "Engagement ids are OPAQUE in the graph (directive: the aggregate strategy refers to an opaque identity); names, personal context, and commercial terms live only in the narrower disclosure subtree docs/engagements/. A TechnicalValidator is not a wedge customer: its journey model is per-kind and deliberately unauthored until needed - running a validator through the sales-pipeline stages would mint dishonest receipts."
+
+type AdoptionEvidence
+  = JourneyTransitionObserved { journey_id: String, receipt: String }
+  | UsageObserved { receipt: String }
+
+type ProductClaim {
+  id: String
+  proposition: String
+  segment_id: String
+  requires_capability_ids: List<String>
+}
+
+type ClaimStatus
+  = ClaimSupported
+  | ClaimUnsupported { missing_capability_ids: List<String> }
+
+fn id_in_list(id: String, ids: List<String>) -> Bool {
+  fold(ids, init: false, f: fn(acc, x) { acc || x == id })
+}
+
+fn claim_status(claim: ProductClaim, observed_capability_ids: List<String>) -> ClaimStatus {
+  let missing = fold(claim.requires_capability_ids, init: [], f: fn(acc, c) {
+    if id_in_list(id: c, ids: observed_capability_ids) { acc } else { concat(acc, [c]) }
+  })
+  if count(missing) == 0 { ClaimSupported } else { ClaimUnsupported { missing_capability_ids: missing } }
+}
+
+type JourneyStage {
+  id: String
+  order: Nat
+}
+
+type JourneyTransitionRule {
+  from_id: String
+  to_id: String
+  required_receipt_kind: String
+}
+
+type StopCause
+  = ProblemNotMaterial
+  | TrustBoundaryRejected
+  | InstallationCostTooHigh
+  | ImprovementNotObserved
+  | EconomicCaseAbsent
+  | TimingMismatch
+  | OtherLocatedCause { note: String }
+
+type TransitionReceipt
+  = StepReceipt { from_id: String, to_id: String, receipt_kind: String, evidence: String }
+  | StopReceipt { cause: StopCause, evidence: String }
+
+type JourneyRefusalCause
+  = ReceiptAfterStop
+  | ReceiptFromNoncurrentStage
+  | TransitionNotDeclaredOrKindMismatch
+
+type StageProgress
+  = ProgressAt { stage_id: String }
+  | ProgressStopped { cause: StopCause }
+  | ProgressRefused { cause: JourneyRefusalCause }
+
+fn rule_admits(rules: List<JourneyTransitionRule>, from_id: String, to_id: String, receipt_kind: String) -> Bool {
+  fold(rules, init: false, f: fn(acc, r) {
+    acc || (r.from_id == from_id && r.to_id == to_id && r.required_receipt_kind == receipt_kind)
+  })
+}
+
+fn apply_transition_receipt(rules: List<JourneyTransitionRule>, progress: StageProgress, r: TransitionReceipt) -> StageProgress {
+  match progress {
+    ProgressRefused { cause } => ProgressRefused { cause }
+    ProgressStopped { cause } => ProgressRefused { cause: ReceiptAfterStop }
+    ProgressAt { stage_id } =>
+      match r {
+        StopReceipt { cause, evidence } => ProgressStopped { cause }
+        StepReceipt { from_id, to_id, receipt_kind, evidence } =>
+          if !(from_id == stage_id) {
+            ProgressRefused { cause: ReceiptFromNoncurrentStage }
+          } else {
+            if rule_admits(rules: rules, from_id: from_id, to_id: to_id, receipt_kind: receipt_kind) {
+              ProgressAt { stage_id: to_id }
+            } else {
+              ProgressRefused { cause: TransitionNotDeclaredOrKindMismatch }
+            }
+          }
+      }
+  }
+}
+
+fn derive_stage(rules: List<JourneyTransitionRule>, initial_stage_id: String, receipts: List<TransitionReceipt>) -> StageProgress {
+  fold(receipts, init: ProgressAt { stage_id: initial_stage_id }, f: fn(acc, r) {
+    apply_transition_receipt(rules: rules, progress: acc, r: r)
+  })
+}
+
+type ExperimentContinuation
+  = ExperimentMayContinue
+  | ExperimentMustStop { cause: StopCause }
+
+fn experiment_continuation(stop_receipts: List<TransitionReceipt>) -> ExperimentContinuation {
+  fold(stop_receipts, init: ExperimentMayContinue, f: fn(acc, r) {
+    match r {
+      StopReceipt { cause, evidence } => ExperimentMustStop { cause }
+      StepReceipt { from_id, to_id, receipt_kind, evidence } => acc
+    }
+  })
+}
+
+data venture_timeline_note: String = "Venture timeline kernel (operator request 2026-08-02, session loyal-ant-382): the story of where we came from, what we are dealing with now, and where we might be headed, as typed facts. PAST: VentureEra spans and TimelineEvent rows, every date carried with an EvidenceAnchor (a git-citable receipt, never recollection alone). PRESENT: derived, never stored - open eras via era_is_open, living compiler generations via generation_is_alive; there is no stored current-phase field. FUTURE: ProjectedStep rows carry an ordered horizon and a begins_when trigger CONDITION - a projected step never carries a fabricated calendar date - and each step advances a StrategicReason, so projections point at the same capability/hypothesis/vision authorities the lane bindings use rather than minting a parallel goal vocabulary. Compiler lineage: CompilerGeneration rows with birth/fate evidence and SuccessionEdge rows whose Rust-to-dag shape is asserted by witness, capturing the two seed-shrinks-toward-zero succession cycles at whole-compiler grain. Dates are ISO-8601 strings matching DecisionReceipt.decided_on; provenance prose lives in docs/strategy/2026-08-02-project-timeline-recollection.md, which this kernel supersedes as authority per the README discipline."
+
+type EvidenceAnchor {
+  repo: String
+  reference: String
+  note: String
+}
+
+type EraClose
+  = EraClosed { on: String, evidence: EvidenceAnchor }
+  | EraOpen
+
+type VentureEra {
+  id: String
+  title: String
+  summary: String
+  started_on: String
+  start_evidence: EvidenceAnchor
+  close: EraClose
+}
+
+fn era_is_open(e: VentureEra) -> Bool {
+  match e.close {
+    EraOpen => true
+    EraClosed { on, evidence } => false
+  }
+}
+
+type TimelineEvent {
+  id: String
+  era_id: String
+  occurred_on: String
+  statement: String
+  evidence: EvidenceAnchor
+}
+
+type SubstrateKind
+  = RustCompiler
+  | DagCompiler
+
+type HostSubstrate
+  = SelfNativeRust
+  | RustSeedInterpreter
+  | HostedByGeneration { ordinal: Nat }
+
+type GenerationFate
+  = GenerationRetired { on: String, evidence: EvidenceAnchor }
+  | GenerationDeleted { on: String, evidence: EvidenceAnchor, migrated_role: String }
+  | GenerationAlive { current_name: String, role: String }
+
+type CompilerGeneration {
+  ordinal: Nat
+  name_at_birth: String
+  substrate: SubstrateKind
+  host: HostSubstrate
+  born_on: String
+  born_evidence: EvidenceAnchor
+  fate: GenerationFate
+}
+
+fn generation_is_alive(g: CompilerGeneration) -> Bool {
+  match g.fate {
+    GenerationAlive { current_name, role } => true
+    GenerationRetired { on, evidence } => false
+    GenerationDeleted { on, evidence, migrated_role } => false
+  }
+}
+
+type SuccessionEdge {
+  from_ordinal: Nat
+  to_ordinal: Nat
+  evidence: EvidenceAnchor
+}
+
+type ProjectionHorizon
+  = HorizonNow
+  | HorizonNext
+  | HorizonLater
+
+type ProjectedStep {
+  id: String
+  horizon: ProjectionHorizon
+  statement: String
+  advances: StrategicReason
+  begins_when: String
+}
+
+data cadence_tangent_demotion_note: String = "DEMOTED same day (reflection audit, captured 2026-08-02): an authored TangentReading is NOT an authority - its only mechanical check is that the referenced reason exists; it cannot establish fair prose, caused movement, counter motion, sufficiency, match-to-prior-focus, or that work is not an indefinite enabling chain. The rows below stay as retrospective SEED observations (marked, dated), and the replacement shape is planned-versus-observed reconciliation: (1) strategy revision in force at window start, (2) ex-ante declared focus, (3) observed state transition at window end - with the tangent regenerated as a narrative PROJECTION over those, never authored. Pilot: docs/strategy/2026-08-02-seven-day-evidence-packet.md. Dissolve-on: the generated projection replaces authored readings; TangentReading then becomes the projection's output type or is deleted."
+
+data cadence_tangent_note: String = "Layered reflection (operator request 2026-08-02): read the ONE venture timeline at five smoothing windows - the tangent at scale tau. A TangentReading is a dated OBSERVATION of the direction of movement inside one window, with receipts for what actually moved (magnitude_evidence) and a projects_onto edge into the same StrategicReason authority the lane bindings use - so alignment is not prose, it is a resolvable join: a reading whose reason does not resolve is orphan movement (moving where no declared goal points), witnessed exactly like lane bindings. The dual failure the layers must catch: (1) ORPHAN MOVEMENT - a short-window tangent projecting onto nothing declared; (2) STARVED AXIS - a declared long-horizon objective whose short-window tangents are zero across many windows (the 0/27 producer counter sitting still for months is the live specimen; the audit's reforecast triggers are starved-axis alarms). Direction alignment is NOT magnitude sufficiency - a window can point exactly at the goal and move nothing - so the refinement path is CounterObservation rows (dated counter values with evidence; tangents DERIVED by differencing, never stored) once the weekly counter vocabulary stabilizes on the audit's section-8 set. Readings accumulate; per-(window,date) unique."
+
+type CadenceWindow
+  = DailyWindow
+  | WeeklyWindow
+  | MonthlyWindow
+  | QuarterlyWindow
+  | YearlyWindow
+
+type TangentReading {
+  window: CadenceWindow
+  read_on: String
+  direction: String
+  magnitude_evidence: EvidenceAnchor
+  projects_onto: StrategicReason
+}
+
+data acquisition_grounding_note: String = "The acquisition funnel mechanism was dissolved into its public authority on 2026-08-01 after PR 7557 merged: gunbc.econ.acquisition owns the generic N-stage scenario, exact-fraction ConversionRate (std.algebra FieldOfFractions at Nat), MoneyOnce entry cost, typed per-stage refusals, and the AcquisitionCostForecast carrier whose structural forecast-vs-observation distinctness the kernel controls now cite. The private duplicates (Forecast, Observation, ConversionRate, AcquisitionScenario, ScenarioInput, ForecastRefusalCause, CacForecastResult, forecast_cost_per_activated) were deleted in favor of importing the authority; the private graph keeps only its INSTANTIATIONS (declared scenarios with their provenance) in strategy.gunbc_strategy."
+
+data program_contract_note: String = "Program decomposition and discharge graph (operator-endorsed audit 2026-08-02, docs/strategy/2026-08-02-program-decomposition-audit.md). The relation the reflection thread was missing: which exact obligation of which exact contract does a piece of work discharge, and why do the children jointly suffice for the parent. StrategicContract is a durable authority whose criteria are amendable only through a ContractAmendment carrying the operator DecisionReceipt - the ruling AUTHORIZES the amendment, the amended contract is the authority, the verbatim conversation stays opaque provenance in docs/strategy (this supersedes the StrategyRevision-carrier-as-spine proposal). StrategicObligation rows project what remains to be proven; ProgramDecomposition states whether the children are jointly sufficient (CompleteCoverage requires its own DecisionReceipt, PartialCoverage names what is unproven); WorkContribution binds ONE work ref to ONE exact obligation with the maximum conclusion it may claim. Invalidation is by construction, not grep: strategy_criteria_digest derives the digest from criteria content (the digest IS the joined criteria text, never a field authored beside it), every binding and decomposition carries the digest LITERAL it was read against, so amending the contract mechanically mismatches every un-reread downstream row (ContributionStale). External state enters only as dated ObservationReceipt rows with a typed ObservedOutcome and a subject revision; no present-tense copy is stored, and a landed PR is not roadmap acceptance - discharge derivation requires ObservedLanded on a fresh discharging binding, and contract completion additionally requires the decomposition itself Complete. Deferred with the audit: FocusSelection and scheduling edge kinds (selection is not refinement; a week without an ex-ante focus renders as cadence-comparison-unavailable, never a repo-wide red), and retroactive backfill under three distinct historical claim kinds (DecisionMadeAtTheTime, RetrospectivelyAttributedContribution, CurrentInterpretationOfPastPeriod)."
+
+type StrategicContract {
+  id: String
+  statement: String
+  acceptance_criteria: List<String>
+  constraint_ids: List<String>
+  adoption: DecisionReceipt
+}
+
+type ObligationAcceptanceKind
+  = ByExecutionReceipt
+  | ByObservationReceipt
+  | ByOperatorJudgment
+
+type StrategicObligation {
+  id: String
+  parent_contract: String
+  subject: String
+  required_conclusion: String
+  acceptance_kind: ObligationAcceptanceKind
+}
+
+type DecompositionCoverage
+  = PartialCoverage { open_note: String }
+  | CompleteCoverage { receipt: DecisionReceipt }
+
+type ProgramDecomposition {
+  id: String
+  parent_contract: String
+  parent_criteria_digest: String
+  child_obligation_ids: List<String>
+  composition_rule: String
+  coverage: DecompositionCoverage
+}
+
+type ContributionKind
+  = DischargesObligation
+  | PreservesAcceptedState
+  | BoundedExploration { bound: String }
+  | MeasurementForDecision { decision_question_id: String }
+  | ClosesPrerequisite
+
+type WorkContribution {
+  id: String
+  work_ref: String
+  obligation_id: String
+  kind: ContributionKind
+  maximum_conclusion: String
+  parent_criteria_digest: String
+}
+
+type ContractAmendment {
+  id: String
+  subject_contract: String
+  previous_criteria: List<String>
+  summary: String
+  receipt: DecisionReceipt
+  evidence: String
+}
+
+type ObservedOutcome
+  = ObservedLanded
+  | ObservedInFlight
+  | ObservedWithdrawn
+
+type ObservationReceipt {
+  id: String
+  subject: String
+  observed_on: String
+  subject_revision: String
+  outcome: ObservedOutcome
+  result: String
+  evidence: EvidenceAnchor
+}
+
+fn strategy_criteria_digest(criteria: List<String>) -> String {
+  fold(criteria, init: "criteria", f: fn(acc, c) { "{acc}|{c}" })
+}
+
+fn strategy_contract_digest(c: StrategicContract) -> String {
+  strategy_criteria_digest(criteria: c.acceptance_criteria)
+}
+
+type ContributionStatus
+  = ContributionStale { bound_digest: String, current_digest: String }
+  | ContributionUnobserved
+  | ContributionObserved { outcome: ObservedOutcome, observed_on: String }
+
+fn strategy_contribution_status(b: WorkContribution, contract: StrategicContract, observations: List<ObservationReceipt>) -> ContributionStatus {
+  let current = strategy_contract_digest(c: contract)
+  if !(b.parent_criteria_digest == current) {
+    ContributionStale { bound_digest: b.parent_criteria_digest, current_digest: current }
+  } else {
+    fold(observations, init: ContributionUnobserved, f: fn(acc, o) {
+      if o.subject == b.work_ref { ContributionObserved { outcome: o.outcome, observed_on: o.observed_on } } else { acc }
+    })
+  }
+}
+
+fn strategy_binding_is_discharging(b: WorkContribution) -> Bool {
+  match b.kind {
+    DischargesObligation => true
+    PreservesAcceptedState => false
+    BoundedExploration { bound } => false
+    MeasurementForDecision { decision_question_id } => false
+    ClosesPrerequisite => false
+  }
+}
+
+fn strategy_obligation_bound_fresh(obligation_id: String, current_digest: String, bindings: List<WorkContribution>) -> Bool {
+  fold(bindings, init: false, f: fn(acc, b) {
+    acc || (b.obligation_id == obligation_id && strategy_binding_is_discharging(b: b) && b.parent_criteria_digest == current_digest)
+  })
+}
+
+fn strategy_observed_landed(work_ref: String, observations: List<ObservationReceipt>) -> Bool {
+  fold(observations, init: false, f: fn(acc, o) {
+    acc || (o.subject == work_ref && match o.outcome { ObservedLanded => true  ObservedInFlight => false  ObservedWithdrawn => false })
+  })
+}
+
+fn strategy_obligation_discharge_observed(obligation_id: String, current_digest: String, bindings: List<WorkContribution>, observations: List<ObservationReceipt>) -> Bool {
+  fold(bindings, init: false, f: fn(acc, b) {
+    acc
+      || (b.obligation_id == obligation_id
+            && strategy_binding_is_discharging(b: b)
+            && b.parent_criteria_digest == current_digest
+            && strategy_observed_landed(work_ref: b.work_ref, observations: observations))
+  })
+}
+
+type ObligationSearch
+  = NoObligationFound
+  | FoundObligation { obligation_id: String }
+
+fn strategy_first_unbound_child(contract_id: String, current_digest: String, decompositions: List<ProgramDecomposition>, bindings: List<WorkContribution>) -> ObligationSearch {
+  fold(decompositions, init: NoObligationFound, f: fn(acc, d) {
+    if d.parent_contract == contract_id {
+      fold(d.child_obligation_ids, init: acc, f: fn(a2, oid) {
+        match a2 {
+          FoundObligation { obligation_id } => a2
+          NoObligationFound =>
+            if strategy_obligation_bound_fresh(obligation_id: oid, current_digest: current_digest, bindings: bindings) {
+              NoObligationFound
+            } else {
+              FoundObligation { obligation_id: oid }
+            }
+        }
+      })
+    } else {
+      acc
+    }
+  })
+}
+
+fn strategy_first_undischarged_child(contract_id: String, current_digest: String, decompositions: List<ProgramDecomposition>, bindings: List<WorkContribution>, observations: List<ObservationReceipt>) -> ObligationSearch {
+  fold(decompositions, init: NoObligationFound, f: fn(acc, d) {
+    if d.parent_contract == contract_id {
+      fold(d.child_obligation_ids, init: acc, f: fn(a2, oid) {
+        match a2 {
+          FoundObligation { obligation_id } => a2
+          NoObligationFound =>
+            if strategy_obligation_discharge_observed(obligation_id: oid, current_digest: current_digest, bindings: bindings, observations: observations) {
+              NoObligationFound
+            } else {
+              FoundObligation { obligation_id: oid }
+            }
+        }
+      })
+    } else {
+      acc
+    }
+  })
+}
+
+type ContractCompletionRefusalCause
+  = DecompositionMissing
+  | DecompositionNotSingular
+  | DecompositionStale
+  | DecompositionPartial
+  | ObligationUnbound { obligation_id: String }
+  | ObligationUndischarged { obligation_id: String }
+
+type ContractCompletion
+  = ContractComplete
+  | ContractCompletionRefused { cause: ContractCompletionRefusalCause }
+
+fn strategy_contract_completion(contract: StrategicContract, decompositions: List<ProgramDecomposition>, bindings: List<WorkContribution>, observations: List<ObservationReceipt>) -> ContractCompletion {
+  let current = strategy_contract_digest(c: contract)
+  let dec_count = fold(decompositions, init: 0, f: fn(acc, d) { if d.parent_contract == contract.id { acc + 1 } else { acc } })
+  if dec_count == 0 {
+    ContractCompletionRefused { cause: DecompositionMissing }
+  } else {
+    if !(dec_count == 1) {
+      ContractCompletionRefused { cause: DecompositionNotSingular }
+    } else {
+      let stale = fold(decompositions, init: false, f: fn(acc, d) {
+        acc || (d.parent_contract == contract.id && !(d.parent_criteria_digest == current))
+      })
+      if stale {
+        ContractCompletionRefused { cause: DecompositionStale }
+      } else {
+        let partial = fold(decompositions, init: false, f: fn(acc, d) {
+          acc || (d.parent_contract == contract.id && match d.coverage { PartialCoverage { open_note } => true  CompleteCoverage { receipt } => false })
+        })
+        if partial {
+          ContractCompletionRefused { cause: DecompositionPartial }
+        } else {
+          match strategy_first_unbound_child(contract_id: contract.id, current_digest: current, decompositions: decompositions, bindings: bindings) {
+            FoundObligation { obligation_id } => ContractCompletionRefused { cause: ObligationUnbound { obligation_id: obligation_id } }
+            NoObligationFound =>
+              match strategy_first_undischarged_child(contract_id: contract.id, current_digest: current, decompositions: decompositions, bindings: bindings, observations: observations) {
+                FoundObligation { obligation_id } => ContractCompletionRefused { cause: ObligationUndischarged { obligation_id: obligation_id } }
+                NoObligationFound => ContractComplete
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+data contribution_kind_discipline_note: String = "Recut per the discharge-graph review (operator-routed 2026-08-02, docs/strategy/2026-08-02-discharge-graph-review.md). Three rules. (1) A work prerequisite is modeled as its own narrower OBLIGATION plus an ObligationPrerequisite edge, and the parent-unblocking effect is DERIVED (strategy_blockers_discharged) - never authored as a contribution kind; ClosesPrerequisite is retained only for prerequisites that are not work obligations (an operator decision, an external release, a dated observation, an approval), and it has zero uses in the facts today. (2) A ContributionKind belongs to one contribution EDGE, never to a PR globally - one PR may carry several independently evidenced rows. (3) CompleteCoverage is not an operator verdict: the operator authorizes the contract boundary and the coverage RULE; completeness must then be DERIVED from a declared population (first instance: the self-host module denominator derived from the public compiler_frontier_roster). The four-step measurement ladder is derivable, never conflated: machinery exists != measurement happened != measurement supports a choice != choice was made; MeasurementReadiness carries the middle distinction, and a selection derives from the declared rule when the measurement exists, escalating to the operator only on genuine incomparability."
+
+type ObligationPrerequisite {
+  blocker_obligation: String
+  blocked_obligation: String
+}
+
+fn strategy_blocker_count(obligation_id: String, prerequisites: List<ObligationPrerequisite>) -> Nat {
+  fold(prerequisites, init: 0, f: fn(acc, p) { if p.blocked_obligation == obligation_id { acc + 1 } else { acc } })
+}
+
+fn strategy_blockers_discharged(obligation_id: String, current_digest: String, prerequisites: List<ObligationPrerequisite>, bindings: List<WorkContribution>, observations: List<ObservationReceipt>) -> Bool {
+  fold(prerequisites, init: true, f: fn(acc, p) {
+    acc
+      && (!(p.blocked_obligation == obligation_id)
+            || strategy_obligation_discharge_observed(obligation_id: p.blocker_obligation, current_digest: current_digest, bindings: bindings, observations: observations))
+  })
+}
+
+type MeasurementReadiness
+  = MeasurementAbsent { missing: String }
+  | MeasurementPresent { observation_id: String }
+
+fn strategy_measurement_readiness(subject: String, observations: List<ObservationReceipt>) -> MeasurementReadiness {
+  fold(observations, init: MeasurementAbsent { missing: subject }, f: fn(acc, o) {
+    if o.subject == subject { MeasurementPresent { observation_id: o.id } } else { acc }
+  })
+}
+
+fn strategy_program_view(contract: StrategicContract, obligations: List<StrategicObligation>, bindings: List<WorkContribution>) -> List<String> {
+  let current = strategy_contract_digest(c: contract)
+  fold(obligations, init: [], f: fn(acc, o) {
+    if o.parent_contract == contract.id {
+      let oid = o.id
+      if strategy_obligation_bound_fresh(obligation_id: oid, current_digest: current, bindings: bindings) {
+        concat(acc, ["{oid} BOUND"])
+      } else {
+        concat(acc, ["{oid} OPEN"])
+      }
+    } else {
+      acc
+    }
+  })
+}

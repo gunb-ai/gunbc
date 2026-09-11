@@ -1,0 +1,247 @@
+module strategy.makeshift_datacenter
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import std.measure { money_per_month_micros, money_per_kilowatt_hour_micros, money_per_sqft_year_micros }
+import std.interval { degenerate_interval }
+import std.pareto {
+  AxisGoal, LowerIsBetter, HigherIsBetter,
+  SelectionAxis, AxisReading, AxisGap, ParetoEntry, ParetoStanding,
+  ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence,
+  entry_standing,
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.realestate.nj_industrial {
+  AnnualRentPerSqftMicro, nj_industrial_market_snapshot, belleville_specimen,
+  readyspaces_smallbay_note, lease_shape_obligation,
+}
+import extdeps.energy.nj_electricity {
+  RetailElectricityRate, nj_commercial_rate, tariff_structure_obligation,
+}
+import extdeps.colo.interserver { interserver_quarter_rack_plan }
+
+// PROVENANCE: operator directive 2026-08-18 - "i wanted to price industrial bays through NJ?
+// COLO space seems relatively expensive for what you get? we could just make our own
+// makeshift datacenter and get access to more power? but would need to maintain the space
+// ourselves." This module is the build-versus-rent arm of the colocation selection: a small
+// leased industrial bay run as a self-operated machine room, priced from the cited market
+// rows against the cited colo tiers, with the self-operation costs the operator named
+// carried as typed missing evidence rather than silently priced at zero.
+
+// ---------------------------------------------------------------------------------------------
+// THE PLANNING ARCHETYPE. One small bay, sized so the fleet's noise and heat live in a space
+// we control. Sqft and the market-floor rent are declared planning inputs; everything derived
+// from them says so.
+// ---------------------------------------------------------------------------------------------
+
+type BayArchetype {
+  label: NonEmptyStr
+  square_feet: Nat
+  annual_rent_per_sqft_micro: Nat
+  rent_basis: NonEmptyStr
+}
+
+data small_bay: BayArchetype = BayArchetype {
+  label: "2,000 sqft small industrial bay at the statewide market-floor rate",
+  square_feet: 2000,
+  annual_rent_per_sqft_micro: money_per_sqft_year_micros(q: nj_industrial_market_snapshot.asking_rent),
+  rent_basis: "extdeps.realestate.nj_industrial nj_industrial_market_snapshot - a statewide FLOOR for the northern corridor; small-bay product runs above it and is the tightest segment",
+}
+
+data whole_building: BayArchetype = BayArchetype {
+  label: "9,200 sqft whole-building specimen (Belleville listing)",
+  square_feet: 9200,
+  annual_rent_per_sqft_micro: 14350000,
+  rent_basis: "extdeps.realestate.nj_industrial belleville_specimen - an actual asking rent, 11,000 USD a month",
+}
+
+fn bay_monthly_rent_micro(b: BayArchetype) -> Int {
+  b.square_feet * b.annual_rent_per_sqft_micro / 12
+}
+
+// Electricity for a continuous IT load at the cited commercial class average. 720 hours a
+// month; the tariff-structure obligation says why this bounds rather than prices the bill.
+fn electricity_monthly_micro(it_watts: Int) -> Int {
+  it_watts * 720 * money_per_kilowatt_hour_micros(q: nj_commercial_rate.rate) / 1000
+}
+
+// A flat connectivity allowance for business dedicated internet at the bay - a declared
+// planning assumption, not a citation; the RFQ list below carries the quote obligation.
+data connectivity_allowance_micro: Int = 300000000
+data connectivity_allowance_note: NonEmptyStr = "300 USD a month planning allowance for business dedicated internet at a bay - an assumption pending carrier quotes (Verizon Business, Optimum/Lightpath, Crown Castle all serve the corridor). A colo placement includes the cross-connect fabric a bay has to buy retail; this allowance is the single biggest quality gap after power redundancy, because a bay gets one carrier unless two are trenched."
+
+fn bay_all_in_monthly_micro(b: BayArchetype, it_watts: Int) -> Int {
+  bay_monthly_rent_micro(b: b) + electricity_monthly_micro(it_watts: it_watts) + connectivity_allowance_micro
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE COMPARISON THE OPERATOR ASKED FOR: per-kW-month, bay versus published colo.
+// ---------------------------------------------------------------------------------------------
+
+// The only published small-footprint colo power price in the census: the InterServer quarter
+// tier, 705 USD for a 1,500 W allocation.
+fn colo_published_per_kw_month_micro() -> Int {
+  money_per_month_micros(q: interserver_quarter_rack_plan.monthly) * 1000 / 1500
+}
+
+fn bay_per_kw_month_micro(b: BayArchetype, it_watts: Int) -> Int {
+  bay_all_in_monthly_micro(b: b, it_watts: it_watts) * 1000 / it_watts
+}
+
+// The crossover: the smallest IT load, scanned at 500 W grain to 20 kW, where the small-bay
+// planning cost per kW drops below the published colo rate. Fail-closed: if no scanned load
+// crosses, the answer is the typed NoCrossoverInScan arm, never a fabricated large number.
+type CrossoverFinding
+  = CrossoverAtWatts { it_watts: Int }
+  | NoCrossoverInScan { ceiling_watts: Int }
+
+data scan_loads: List<Int> = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 12000, 14000, 16000, 18000, 20000]
+
+fn crossover_step(acc: CrossoverFinding, w: Int) -> CrossoverFinding {
+  match acc {
+    CrossoverAtWatts { it_watts } => acc,
+    NoCrossoverInScan { ceiling_watts } => {
+      if bay_per_kw_month_micro(b: small_bay, it_watts: w) < colo_published_per_kw_month_micro() {
+        CrossoverAtWatts { it_watts: w }
+      } else { NoCrossoverInScan { ceiling_watts: ceiling_watts } }
+    },
+  }
+}
+
+fn small_bay_crossover() -> CrossoverFinding {
+  fold(scan_loads, init: NoCrossoverInScan { ceiling_watts: 20000 }, f: fn(acc, w) { crossover_step(acc: acc, w: w) })
+}
+
+data crossover_note: NonEmptyStr = "What the crossover means and does not mean. Below it, the published colo tier is cheaper per kW AND includes what the bay would have to build or forgo - conditioned space, security, staffed access, carrier fabric, and the operator's own maintenance hours. Above it, the bay's fixed rent amortizes over enough load that the raw occupancy-plus-energy cost undercuts published colo pricing - and published colo pricing itself stops at 2,500 W, so the at-scale colo comparator is the full-cabinet RFQ, not a published number. The crossover therefore prices the operator's intuition (a bay buys cheaper POWER ACCESS at scale) while the missing-evidence rows price its cost (the bay buys UNPRICED obligations: build-out, labor, single-feed risk)."
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE BAY DOES NOT BUY - each a named, unpriced axis. None is treated as zero; the
+// Pareto entries below carry them as missing inputs so a bay can never dominate a colo tier
+// on the funded axes alone.
+// ---------------------------------------------------------------------------------------------
+
+data makeshift_sensitivities: List<NonEmptyStr> = [
+  "maintenance labor: the operator's own framing - we maintain the space ourselves - is an unpriced recurring cost in hours, and it is the axis colo's monthly premium buys down",
+  "power access per listing: no listing read publishes amps, voltage, or phase; a bay's real power ceiling is a per-listing electrical fact plus a possible service-upgrade project with utility lead time",
+  "build-out capex: cooling (roughly one ton per kW of IT load), a subpanel and circuits, racks, fire-code compliance, and physical security are one-time costs on the bay side only",
+  "availability: a bay is one utility feed with no generator, no UPS, and no SLA; colo tiers carry N+1 claims - matching that in a bay is a capex project, and NOT matching it prices downtime into the product",
+  "demand charges: the cited class-average rate flattens a tariff whose demand component prices monthly peak - direction favorable for a flat continuous load, magnitude unread",
+  "NNN adders: taxes, insurance, and CAM commonly add 3 to 5 USD per sqft-year over the quoted rent and are a per-listing fact",
+  "landlord consent and zoning: continuous-load compute in a light-industrial bay needs explicit landlord and possibly municipal signoff - a gating fact no listing states",
+  "lease term: bays lease in years; the colo tiers in the census are month-to-month - the reversibility gap is real option value at launch",
+  "small-bay scarcity: sub-5-percent vacancy in the target segment means the market-floor rate is optimistic for an actual signable bay",
+]
+
+data co_warehousing_refusal: NonEmptyStr = "ReadySpaces-style co-warehousing bays (see extdeps.realestate.nj_industrial readyspaces_smallbay_note) are REFUSED as compute hosts: shared space without tenant-controlled 24/7 power or cooling density, at a 2x-plus rent premium over raw industrial. They price the market's flexibility ceiling, not a machine room."
+
+// ---------------------------------------------------------------------------------------------
+// PARETO ENTRIES: the two bay archetypes enter the same selection posture as the quote-only
+// colo candidates - visible, priced where cited, and Incomparable until the named evidence
+// (a toured listing's power service, NNN adders, landlord consent) exists.
+// ---------------------------------------------------------------------------------------------
+
+// AXIS IDENTITY IS STRUCTURAL, NOT A DISPLAY STRING. std.pareto moved SelectionAxis and
+// AxisReading onto DeclarationRef, which is the same cite-the-symbol move DESIGN section 3 makes
+// for prose: a string axis name is a second naming scheme for something the namespace already
+// names, and two readings agreeing by spelling rather than by identity is exactly the silent
+// mis-join the spine exists to refuse. The rows below cite themselves, so a renamed axis breaks
+// loudly at resolve instead of quietly failing to match.
+data makeshift_cost_axis_id: DeclarationRef = decl_ref(module_path: "strategy.makeshift_datacenter", decl_name: "makeshift_cost_axis_id")
+data makeshift_power_axis_id: DeclarationRef = decl_ref(module_path: "strategy.makeshift_datacenter", decl_name: "makeshift_power_axis_id")
+
+data makeshift_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: makeshift_cost_axis_id, goal: LowerIsBetter },
+  SelectionAxis { identity: makeshift_power_axis_id, goal: HigherIsBetter },
+]
+
+// EACH GAP NAMES THE AXIS IT EXCUSES, AND THIS BAY IS SHORT ON BOTH. The four sentences were
+// already about two different things -- one is an unread electrical service, three are unpriced or
+// ungrounded money -- and the flat list erased that. The last one even said "the cost axis carries
+// no reading for this bay" in prose while the carrier had no field to say it in.
+//
+// The split is load-bearing rather than cosmetic, but not for the reason it might first suggest:
+// std.pareto refuses a candidate carrying any gap at all, so a bay short only on rent does NOT
+// become comparable on power. What the split buys is that the electrical obligation can no longer
+// stand in for the money one. Each absent reading must be declared by a gap naming its own axis, or
+// std.pareto reports the axis as having neither a reading nor a gap that names it.
+// THE CAUSES ARE NAMED so the pairing of each cause to its axis can be asserted by identity rather
+// than by a witness duplicating these sentences as literals. A duplicated literal is a second copy
+// of the same fact, and the two drift.
+data bay_power_gap_cause: NonEmptyStr = "power access unread: tour listings and read the electrical service - amps, voltage, phase, panel headroom - before any standing is computable"
+
+data bay_landlord_gap_cause: NonEmptyStr = "NNN adders and landlord consent for continuous-load compute unquoted for any specific bay"
+
+data bay_buildout_gap_cause: NonEmptyStr = "build-out capex and maintenance labor unpriced (see makeshift_sensitivities)"
+
+data bay_all_in_gap_cause: NonEmptyStr = "all-in monthly cost has no grounded region: it sums a statewide small-bay rent FLOOR rather than this bay's rent, electricity at a commercial CLASS AVERAGE under a tariff structure nobody has read, and a flat 300-dollar connectivity ALLOWANCE no carrier has quoted. None of the three carries bounds, so no interval can be derived and the cost axis carries no reading for this bay"
+
+fn bay_missing_inputs(b: BayArchetype) -> List<AxisGap> {
+  [
+    AxisGap { axis: makeshift_power_axis_id, cause: bay_power_gap_cause },
+    AxisGap { axis: makeshift_cost_axis_id, cause: bay_landlord_gap_cause },
+    AxisGap { axis: makeshift_cost_axis_id, cause: bay_buildout_gap_cause },
+    AxisGap { axis: makeshift_cost_axis_id, cause: bay_all_in_gap_cause },
+  ]
+}
+
+// THE BAY CARRIES NO COST READING, AND THE THREE INPUTS ARE WHY. bay_all_in_monthly_micro is a real
+// planning number and it stays - the per-kW-month comparison below is what this module was asked for
+// - but it is not EVIDENCE, and a degenerate interval claims that it is: [x,x] says the true all-in
+// cost IS x. It is a statewide rent FLOOR rather than this bay's rent, electricity at a commercial
+// CLASS AVERAGE under a tariff structure nobody has read, and a flat connectivity ALLOWANCE nobody
+// has quoted. A width would have to be invented for all three, so the honest state is absence.
+//
+// The old scalar carrier could not express the difference between a planning number and a
+// measurement, which is exactly why this line cannot be carried across unchanged: interval_micro
+// CAN express it, so continuing to write the point here would be a new and stronger false claim
+// made by this diff rather than a legacy one it inherited.
+//
+// The bay was already NotComputable on three unread inputs, so removing the reading costs no
+// standing that ever existed - it removes a claim that was never earned.
+data no_bay_readings: List<AxisReading> = []
+
+fn bay_entry(b: BayArchetype, it_watts: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: decl_ref(module_path: "strategy.makeshift_datacenter", decl_name: b.label),
+    display_label: b.label,
+    readings: no_bay_readings,
+    missing_inputs: bay_missing_inputs(b: b),
+  }
+}
+
+// The published colo comparator entry at the same load, complete on both axes: cost is the
+// tier price, ceiling is the tier's allocation.
+fn colo_quarter_entry() -> ParetoEntry {
+  ParetoEntry {
+    identity: decl_ref(module_path: "strategy.makeshift_datacenter", decl_name: "colo_quarter_entry"),
+    display_label: "interserver-quarter",
+    readings: [
+      AxisReading { axis: makeshift_cost_axis_id, interval_micro: degenerate_interval(point: money_per_month_micros(q: interserver_quarter_rack_plan.monthly)) },
+      AxisReading { axis: makeshift_power_axis_id, interval_micro: degenerate_interval(point: 1500) },
+    ],
+    missing_inputs: [],
+  }
+}
+
+data no_makeshift_entries: List<ParetoEntry> = []
+
+fn makeshift_field(it_watts: Int) -> List<ParetoEntry> {
+  [colo_quarter_entry(), bay_entry(b: small_bay, it_watts: it_watts), bay_entry(b: whole_building, it_watts: it_watts)]
+}
+
+fn bay_standing(b: BayArchetype, it_watts: Int) -> ParetoStanding {
+  entry_standing(subject: bay_entry(b: b, it_watts: it_watts), field: makeshift_field(it_watts: it_watts), axes: makeshift_axes, sensitivities: makeshift_sensitivities)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SCOUTING LIST: what to actually go price, in the operator's own next step.
+// ---------------------------------------------------------------------------------------------
+
+data bay_scouting_asks: List<NonEmptyStr> = [
+  "for each candidate bay: electrical service (amps, volts, phase), panel headroom, and whether a 200A-plus three-phase upgrade is feasible and on whose meter",
+  "lease type and full occupancy cost: base rent, NNN adders (taxes, insurance, CAM), term, and any consent needed for 24/7 unattended equipment",
+  "carrier availability at the address: dedicated internet quotes from at least two of Verizon Business, Optimum/Lightpath, Crown Castle; trenching cost if only one serves the building",
+  "HVAC as-is: existing tonnage, condition, and the landlord's position on tenant-installed mini-splits venting requirements",
+  "insurance: a quote for contents plus liability covering unattended continuous-load electronics",
+  "the honest colo comparator at the same scale: the 30A-at-208V full-cabinet RFQ already in strategy.colo_market - a bay decision made before that quote returns is made against a guess",
+]

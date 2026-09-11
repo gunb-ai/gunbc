@@ -1,0 +1,247 @@
+module strategy.ci_runner_economics
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import extdeps.ci_compute_pricing {
+  ComputeOfferObservation, ci_compute_offers, offer_unit_price,
+  UnitPriceUsd, UnitPriceForeign,
+}
+import strategy.ci_spill_policy {
+  JobRequirement, SpillSelection, SpillRouteSelected, SpillRouteRefused,
+  cheapest_admissible, spill_job_shapes, portable_standard_job,
+}
+import strategy.ci_node_build {
+  NodeBuildCandidate, node_build_candidates, selected_build,
+  capacity_receipt, SellableCapacityReceipt, sellable_units,
+  planning_capex_micro, capex_amortization_per_month_micro, node_watts, power_is_measured,
+  landed_capex, LandedCapexResolved, LandedCapexIncomplete,
+}
+import strategy.ci_site_cost {
+  rent_and_common_area, selected_dia, standing_is_resolved,
+  allocate_site, site_cost_per_node_micro, admitted_node_count,
+  dia_planning_micro_per_month, dia_sensitivity_micro_per_month,
+  unpriced_site_lines, unresolved_site_lines, UnpricedCostLine,
+}
+
+// What we charge for CI minutes, and what is actually left after the node and the room are paid for.
+//
+// The unit throughout is one compute unit-minute: one CPU entitlement plus the memory
+// strategy.ci_sellable_unit ci_sellable_unit declares (three decimal GB) for one minute.
+// Prices are micro-dollars, so $0.00125 is 1250.
+//
+// NOTHING HERE MAY BE CALLED A MARGIN. Every figure below is a contribution after a NARROW set of
+// modelled costs, and the set is narrow in ways that are named rather than implied: no support, no
+// abuse response, no payment processing, no storage or cache, no insurance, no switching, no spares,
+// no control plane, no operator time. The type system carries that distinction so a reader cannot
+// mistake one for the other.
+
+data retail_per_unit_minute_micro: Int = 1250
+data volume_per_unit_minute_micro: Int = 1000
+
+// No percentage is written into this note. Every comparison it gestures at is computed in the
+// market table from the offer rows, so there is no second copy of an arithmetic result to drift.
+data pricing_position_note: NonEmptyStr = "Retail undercuts every hosted CI runner in the market table except Ubicloud, and sits well above the raw Arm capacity we would spill to. That gap is the product premium: integration, isolation, cache, logs, billing and somebody answering the phone. Ubicloud is not matched on purpose - their rate is very low and chasing it is a race we would win by going broke. Volume gives up a fifth of the price for commitment."
+
+// WHERE WE SIT, computed rather than written down. A comparison stated in prose is a second copy of
+// an arithmetic result, and the second copy is the one that goes stale.
+type RetailComparison
+  = RetailUnder { permille: Int }
+  | RetailOver { permille: Int }
+  | RetailLevel
+  | RetailNotComparable { reason: NonEmptyStr }
+
+fn retail_vs(theirs_micro: Int) -> RetailComparison {
+  if theirs_micro <= 0 {
+    RetailNotComparable {
+      reason: "a non-positive rate is a missing reading, not a free one, and dividing by it would manufacture a comparison",
+    }
+  } else if theirs_micro > retail_per_unit_minute_micro {
+    RetailUnder { permille: (theirs_micro - retail_per_unit_minute_micro) * 1000 / theirs_micro }
+  } else if theirs_micro < retail_per_unit_minute_micro {
+    RetailOver { permille: (retail_per_unit_minute_micro - theirs_micro) * 1000 / theirs_micro }
+  } else {
+    RetailLevel
+  }
+}
+
+fn offer_retail_comparison(o: ComputeOfferObservation) -> RetailComparison {
+  match offer_unit_price(o: o) {
+    UnitPriceUsd { micro } => retail_vs(theirs_micro: micro),
+    UnitPriceForeign { micro, currency, obligation } => RetailNotComparable { reason: obligation },
+  }
+}
+
+// The shape ladder is pure multiplication - a 64-unit shape is 64 times a 1-unit shape - so there is
+// no per-shape pricing table to drift.
+data offered_unit_counts: List<Int> = [2, 4, 8, 16, 32, 64, 128]
+
+fn retail_price_micro(units: Int) -> Int { units * retail_per_unit_minute_micro }
+fn volume_price_micro(units: Int) -> Int { units * volume_per_unit_minute_micro }
+
+// ---------------------------------------------------------------------------------------------
+// SPILL SPREAD. This is compute cost against price, and NOTHING else. It is not gross margin: it
+// excludes traffic overage, storage, image distribution, cache fill, control plane, payment
+// processing, support and abuse. Calling it margin was the error this naming exists to prevent.
+// ---------------------------------------------------------------------------------------------
+
+type SpillSpread
+  = SpreadPositive { permille: Int, route: NonEmptyStr }
+  | SpreadNegative { shortfall_micro: Int, route: NonEmptyStr }
+  | SpreadUnavailable { obligation: NonEmptyStr }
+
+fn spill_spread(price_micro: Int, s: SpillSelection) -> SpillSpread {
+  match s {
+    SpillRouteRefused { job, considered, obligation } => SpreadUnavailable { obligation: obligation },
+    SpillRouteSelected { identity, product, per_unit_minute_micro, considered } =>
+      if per_unit_minute_micro >= price_micro {
+        SpreadNegative { shortfall_micro: per_unit_minute_micro - price_micro, route: product }
+      } else {
+        SpreadPositive {
+          permille: (price_micro - per_unit_minute_micro) * 1000 / price_micro,
+          route: product,
+        }
+      },
+  }
+}
+
+fn retail_spread_for(j: JobRequirement) -> SpillSpread {
+  spill_spread(price_micro: retail_per_unit_minute_micro, s: cheapest_admissible(j: j))
+}
+
+fn volume_spread_for(j: JobRequirement) -> SpillSpread {
+  spill_spread(price_micro: volume_per_unit_minute_micro, s: cheapest_admissible(j: j))
+}
+
+data spread_naming_note: NonEmptyStr = "This is a COMPUTE-ONLY SPILL SPREAD, not a gross margin. It compares the price of a minute against the cost of renting the compute for that minute and nothing else. Traffic overage, object storage, cache fill, image distribution, control-plane cost, payment processing, support and abuse response are all absent. A spread of seventy percent is not seventy percent of anything a bank would recognise."
+
+// ---------------------------------------------------------------------------------------------
+// UNIT ECONOMICS on owned capacity. Revenue is derived from a capacity RECEIPT, not from a nominal
+// constant: the previous model carried 128 units while its own standing said capacity was
+// unresolved, which is how a ceiling gets quoted as a forecast.
+// ---------------------------------------------------------------------------------------------
+
+data minutes_per_hour: Int = 60
+data hours_per_month: Int = 730
+
+fn node_revenue_per_hour_micro(b: NodeBuildCandidate, price_micro: Int) -> Int {
+  sellable_units(c: b) * price_micro * minutes_per_hour
+}
+
+fn node_revenue_per_month_micro(b: NodeBuildCandidate, price_micro: Int, utilization_permille: Int) -> Int {
+  node_revenue_per_hour_micro(b: b, price_micro: price_micro) * hours_per_month * utilization_permille / 1000
+}
+
+fn modelled_cost_per_month_micro(b: NodeBuildCandidate, dia_micro: Int) -> Int {
+  let site = site_cost_per_node_micro(a: allocate_site(
+    admitted_nodes: admitted_node_count,
+    dia_micro: dia_micro,
+    node_watts: node_watts(),
+  ))
+  capex_amortization_per_month_micro(c: b) + site * b.node_count
+}
+
+// Utilization at which a node's revenue equals its modelled cost. This is a floor on the real
+// break-even, never the real one, because the modelled cost is a subset of the cost.
+fn break_even_permille(b: NodeBuildCandidate, price_micro: Int, dia_micro: Int) -> Int {
+  let full_month = node_revenue_per_hour_micro(b: b, price_micro: price_micro) * hours_per_month
+  if full_month <= 0 {
+    1000
+  } else {
+    modelled_cost_per_month_micro(b: b, dia_micro: dia_micro) * 1000 / full_month
+  }
+}
+
+type ContributionReading
+  = ContributionPositive { permille: Int, revenue_micro: Int, cost_micro: Int }
+  | ContributionNegative { permille: Int, revenue_micro: Int, cost_micro: Int }
+
+fn contribution(b: NodeBuildCandidate, price_micro: Int, utilization_permille: Int, dia_micro: Int) -> ContributionReading {
+  let revenue = node_revenue_per_month_micro(b: b, price_micro: price_micro, utilization_permille: utilization_permille)
+  let cost = modelled_cost_per_month_micro(b: b, dia_micro: dia_micro)
+  if revenue > cost {
+    ContributionPositive { permille: (revenue - cost) * 1000 / revenue, revenue_micro: revenue, cost_micro: cost }
+  } else {
+    ContributionNegative {
+      permille: if revenue > 0 { (cost - revenue) * 1000 / revenue } else { 1000 },
+      revenue_micro: revenue,
+      cost_micro: cost,
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE GATE ON THE WORD "MARGIN". ActualMargin is reachable only when every load-bearing input has
+// resolved. None has, so every reading this module produces today is a sensitivity.
+// ---------------------------------------------------------------------------------------------
+
+fn capex_is_landed(b: NodeBuildCandidate) -> Bool {
+  match landed_capex(c: b) {
+    LandedCapexResolved { usd_micro, receipt } => true,
+    LandedCapexIncomplete { known_subtotal_micro, missing, obligation } => false,
+  }
+}
+
+fn unresolved_margin_inputs(b: NodeBuildCandidate) -> List<NonEmptyStr> {
+  let capex = if capex_is_landed(b: b) { [] } else {
+    ["landed capex: cooling, PSU, scratch, carrier, cables and assessed duty are unpriced, and the duty figure is a reserve rather than a tariff"]
+  }
+  let power = if power_is_measured() { [] } else {
+    ["node power: draw is assumed, not metered, and it drives both electricity and cooling"]
+  }
+  concat(capex, concat(power, concat(unresolved_site_lines(), [
+    "sellable capacity: host and maintenance reserves are planning figures, not the fleet carrier's measured reserve",
+    "every unpriced business cost below: none of them is in the number",
+  ])))
+}
+
+type MarginStanding
+  = ActualMargin { permille: Int, receipt: NonEmptyStr }
+  | MarginSensitivity {
+      contribution_permille: Int
+      low_permille: Int
+      high_permille: Int
+      unresolved_inputs: List<NonEmptyStr>
+      unpriced: List<UnpricedCostLine>
+      caveat: NonEmptyStr
+    }
+
+fn contribution_permille_of(c: ContributionReading) -> Int {
+  match c {
+    ContributionPositive { permille, revenue_micro, cost_micro } => permille,
+    ContributionNegative { permille, revenue_micro, cost_micro } => 0 - permille,
+  }
+}
+
+// The range is taken across the transit ladder, which is the largest single unresolved line. It is
+// a sensitivity band, not a confidence interval: nothing here is a distribution.
+fn margin_standing(b: NodeBuildCandidate, price_micro: Int, utilization_permille: Int) -> MarginStanding {
+  let mid = contribution_permille_of(c: contribution(b: b, price_micro: price_micro, utilization_permille: utilization_permille, dia_micro: dia_planning_micro_per_month))
+  let cheap = contribution_permille_of(c: contribution(b: b, price_micro: price_micro, utilization_permille: utilization_permille, dia_micro: 1000000000))
+  let dear = contribution_permille_of(c: contribution(b: b, price_micro: price_micro, utilization_permille: utilization_permille, dia_micro: 3000000000))
+  let unresolved = unresolved_margin_inputs(b: b)
+  if count(unresolved) == 0 {
+    ActualMargin { permille: mid, receipt: "every load-bearing cost resolved" }
+  } else {
+    MarginSensitivity {
+      contribution_permille: mid,
+      low_permille: dear,
+      high_permille: cheap,
+      unresolved_inputs: unresolved,
+      unpriced: unpriced_site_lines,
+      caveat: "Contribution after capex amortization, allocated rent, allocated transit and electricity with an assumed cooling multiplier. Nothing else is in it. This is not a margin and must not be quoted as one.",
+    }
+  }
+}
+
+fn margin_is_actual(m: MarginStanding) -> Bool {
+  match m {
+    ActualMargin { permille, receipt } => true,
+    MarginSensitivity { contribution_permille, low_permille, high_permille, unresolved_inputs, unpriced, caveat } => false,
+  }
+}
+
+data selected_utilization_permille: Int = 300
+
+data utilization_note: NonEmptyStr = "Thirty percent utilization is an assumption with no demand evidence behind it. It is the number the whole model is most sensitive to and the only one that cannot be fixed by reading a document: it needs customers. The break-even column is the honest version of the same question - it says how little demand the build needs rather than how much it might get."
+
+data no_free_tier_note: NonEmptyStr = "No permanent free tier. It would attract mining, abuse and throwaway accounts, and would spend operator attention before producing trustworthy demand. Design-partner credit stays explicit, finite and separately budgeted rather than becoming a product entitlement."

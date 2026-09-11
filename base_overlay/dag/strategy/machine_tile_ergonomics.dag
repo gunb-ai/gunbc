@@ -1,0 +1,253 @@
+module strategy.machine_tile_ergonomics
+
+import std.nat { Nat }
+import std.types { Int, String, List }
+import std.spatial_knowledge {
+  SpatialKnowledge, SpatialMeasured, SpatialEstimated, SpatialHypothesis, SpatialUnknown,
+}
+import std.measure { millimeter_count }
+import strategy.machine_tile_design { tile_overall_width_mm, selected_hold }
+
+// Tile width and the hold envelope are READ from their authorities, never restated. An earlier
+// version of this module typed 640, 18, 77 and 166 as its own declarations, which meant the claim
+// that the span "falls out of the tile width" was false - it fell out of a second handwritten 640.
+fn selected_hold_projection_mm() -> Nat {
+  millimeter_count(m: selected_hold.clearance_envelope.projection_mm)
+}
+
+// THE HUMAN INTERFACE, entered as a DEMAND rather than discovered as leftover space.
+//
+// The tile packed a board, cooler, saddle and supply into 640 mm and then looked for somewhere to
+// put two hands. That ordering is what produced a layout with no free region large enough for a
+// hold: the hands were the last constraint consulted, so they were the one that could not be met.
+// This module exists so the grip zones are reserved BEFORE the electronics are placed, which is
+// the only ordering in which a carried object can be designed.
+//
+// PROVENANCE, stated first because it is the weakest part of this module and the part most likely
+// to be spent wrongly. The operator cannot measure themselves right now and asked for a stand-in
+// derived from a nominal stature of five feet ten inches. That is a legitimate request and this is
+// a legitimate answer, but it is a HYPOTHESIS about one unmeasured person, built from population
+// ratios I hold as general knowledge and cannot cite: no anthropometric standard was read, because
+// every outbound fetch from this environment is refused. It is weaker than the routed vendor
+// readings elsewhere in this design, which at least passed through a person who saw a document.
+//
+// So every figure below is a band, never a point, and the standing refuses to let any of it reach
+// a fabrication decision. What it MAY do is size a reservation and reject a layout that is
+// obviously wrong - and it already does the second, which is the whole reason it earns its place.
+
+type OperatorStatureStanding
+  = OperatorStatureMeasured { receipt: String }
+  | OperatorStatureStandIn { nominal_height_mm: Nat, obligation: String }
+
+data selected_operator_stature: OperatorStatureStanding = OperatorStatureStandIn {
+  nominal_height_mm: 1778,
+  obligation: "SUPERSEDED for span purposes by an operator-reported band; retained only because grip HEIGHT is still unreported and stature is the only thing standing in for it.",
+}
+
+// OPERATOR-REPORTED, and it beat the derivation. The operator gave a comfortable two-hand carry
+// span of roughly 20 to 30 inches: 508 to 762 mm.
+//
+// The stand-in derived from stature said 391 to 553 mm. The reported band starts 117 mm wider than
+// that and ends 209 mm wider - they overlap only across a 45 mm sliver at 508-553. The population
+// ratios were not merely imprecise, they were BIASED NARROW, and a layout sized from them would
+// have placed the hands close enough to be uncomfortable while passing an ergonomic check that
+// said the span was fine. That is what a hypothesis dressed as a constraint does.
+//
+// This is an ESTIMATE from the person concerned, not an instrument reading, and the round numbers
+// say so. It is nonetheless far stronger than the derivation it replaces: it comes from the body
+// that will carry the tile rather than from a ratio I could not cite.
+type CarrySpanStanding
+  = CarrySpanMeasured { low_mm: Nat, high_mm: Nat, receipt: String }
+  | CarrySpanOperatorReported { low_mm: Nat, high_mm: Nat, note: String }
+  | CarrySpanDerivedFromStature { low_mm: Nat, high_mm: Nat, obligation: String }
+
+data selected_carry_span: CarrySpanStanding = CarrySpanOperatorReported {
+  low_mm: 508,
+  high_mm: 762,
+  note: "Operator-reported comfortable two-hand carry span, roughly 20 to 30 inches, given as an estimate rather than a tape measurement. Supersedes the stature-derived 391-553 mm band, which was biased narrow.",
+}
+
+data derivation_was_narrow_note: String = "The stature derivation produced 391-553 mm against an operator-reported 508-762 mm. It was wrong in the direction that matters: too narrow at both ends, so a layout built from it would have put the hands closer together than the operator finds comfortable AND would have reported that span as admissible. A hypothesis that refuses too little is worse than one that refuses too much, and this one refused too little at the top of its range."
+
+data stature_conversion_note: String = "Five feet ten inches is 70 inches exactly, and 70 x 25.4 = 1778 mm exactly. That single number is the only EXACT arithmetic in this module; everything derived from it multiplies by a population ratio and immediately stops being exact."
+
+// The ratios. Each is a population approximation held as general knowledge, not a reading, and
+// each is expressed as an integer permille so the arithmetic below stays exact even though the
+// INPUT is not. Exact arithmetic on an approximate input produces an approximate result - stating
+// that plainly matters more than the precision of the multiplication.
+//
+// Biacromial (shoulder) breadth runs near 22-24 percent of stature across adult populations. A
+// two-handed carry of a flat panel puts the hands at roughly shoulder width at the narrow end,
+// and up to about a third wider before the shoulders start to abduct uncomfortably under load.
+data shoulder_breadth_permille_of_stature_low: Nat = 220
+data shoulder_breadth_permille_of_stature_high: Nat = 240
+data comfortable_span_widening_permille: Nat = 1300
+
+data ratio_provenance_note: String = "The shoulder-breadth band and the widening factor are ASSISTANT GENERAL KNOWLEDGE. No anthropometric standard, no ISO or ANSI table, and no textbook was read - outbound fetches are refused in this environment. They are recorded as numbers so the derivation is checkable and falsifiable, NOT because they are sourced. A reader who has a real table should overwrite these two declarations first; nothing else in the module needs to change."
+
+fn shoulder_breadth_low_mm() -> Nat {
+  match selected_operator_stature {
+    OperatorStatureMeasured { receipt } => 0,
+    OperatorStatureStandIn { nominal_height_mm, obligation } =>
+      nominal_height_mm * shoulder_breadth_permille_of_stature_low / 1000,
+  }
+}
+
+fn shoulder_breadth_high_mm() -> Nat {
+  match selected_operator_stature {
+    OperatorStatureMeasured { receipt } => 0,
+    OperatorStatureStandIn { nominal_height_mm, obligation } =>
+      nominal_height_mm * shoulder_breadth_permille_of_stature_high / 1000,
+  }
+}
+
+// The band a grip pair must land inside: hands no closer than the narrow shoulder estimate, no
+// wider than the wide estimate opened up by the comfort factor.
+fn comfortable_span_low_mm() -> Nat {
+  match selected_carry_span {
+    CarrySpanMeasured { low_mm, high_mm, receipt } => low_mm,
+    CarrySpanOperatorReported { low_mm, high_mm, note } => low_mm,
+    CarrySpanDerivedFromStature { low_mm, high_mm, obligation } => low_mm,
+  }
+}
+
+fn comfortable_span_high_mm() -> Nat {
+  match selected_carry_span {
+    CarrySpanMeasured { low_mm, high_mm, receipt } => high_mm,
+    CarrySpanOperatorReported { low_mm, high_mm, note } => high_mm,
+    CarrySpanDerivedFromStature { low_mm, high_mm, obligation } => high_mm,
+  }
+}
+
+// The stature derivation is KEPT, unconsumed by the span band, as the falsified prediction it is.
+// Deleting it would erase the evidence that a population ratio missed a real body by 200 mm.
+fn stature_derived_span_low_mm() -> Nat { shoulder_breadth_low_mm() }
+fn stature_derived_span_high_mm() -> Nat {
+  shoulder_breadth_high_mm() * comfortable_span_widening_permille / 1000
+}
+
+data span_band_note: String = "The comfortable two-hand carry span band is 508-762 mm, operator-reported. The stature derivation that preceded it gave 391-553 mm and is retained beside it as a falsified prediction rather than deleted: it missed the real body by 117 mm at the bottom and 209 mm at the top, and that miss is more informative than the ratio was."
+
+type SpanVerdict
+  = SpanWithinBand { span_mm: Nat }
+  | SpanTooNarrow { span_mm: Nat, band_low_mm: Nat }
+  | SpanTooWide { span_mm: Nat, band_high_mm: Nat }
+
+fn evaluate_grip_span(span_mm: Nat) -> SpanVerdict {
+  if span_mm < comfortable_span_low_mm() {
+    SpanTooNarrow { span_mm: span_mm, band_low_mm: comfortable_span_low_mm() }
+  } else if span_mm > comfortable_span_high_mm() {
+    SpanTooWide { span_mm: span_mm, band_high_mm: comfortable_span_high_mm() }
+  } else {
+    SpanWithinBand { span_mm: span_mm }
+  }
+}
+
+fn span_is_admissible(span_mm: Nat) -> Bool {
+  match evaluate_grip_span(span_mm: span_mm) {
+    SpanWithinBand { span_mm } => true,
+    SpanTooNarrow { span_mm, band_low_mm } => false,
+    SpanTooWide { span_mm, band_high_mm } => false,
+  }
+}
+
+// THE FINDING THIS MODULE ALREADY PRODUCED, and the reason a hypothesis-grade stand-in was worth
+// building rather than waiting for a measurement.
+//
+// The withdrawn hold placement put the two hold centres at 179 mm and 461 mm from the tile's left
+// edge: a span of 282 mm. That is roughly 109 mm INSIDE the narrow end of the band - the hands
+// would have been about a hundred millimetres closer together than shoulder width while carrying
+// a heavy panel, which loads the wrists and makes the tile want to rotate between the hands.
+//
+// So the placement was wrong twice over, for independent reasons. It intersected the board, the
+// cooler and the supply, which is the geometric fault already recorded. And it was ergonomically
+// too narrow, which no collision kernel would ever have caught, because nothing was intersecting -
+// the hands were simply in the wrong place for a person. A layout search that only avoided
+// collisions would have happily produced this same span again.
+data withdrawn_placement_span_mm: Nat = 282
+
+fn withdrawn_placement_span_verdict() -> SpanVerdict {
+  evaluate_grip_span(span_mm: withdrawn_placement_span_mm)
+}
+
+data withdrawn_placement_finding_note: String = "The withdrawn hold placement spanned 282 mm centre to centre, against an operator-reported comfortable band of 508-762 mm. It was too narrow by 226 mm - more than twice the shortfall the stature derivation predicted. This is a SEPARATE fault from the collisions: geometry would have admitted it once the parts stopped overlapping, because no rule said where a pair of hands belongs. Reserving the grip zones first is what prevents the search from rediscovering it."
+
+// WHAT THIS MODULE MAY AND MAY NOT DECIDE.
+//
+// It may size a reservation and reject a span. It may not authorize one: a span inside the band is
+// not thereby comfortable, because comfort also depends on grip height, wrist angle, the actual
+// grasp region of the chosen hold, the assembly mass, where the centre of mass sits relative to
+// the grip line, the upward motion needed to unseat the cleat, and the outward motion to clear the
+// support. None of those is modelled here and the assembly has never been weighed.
+//
+// The asymmetry is deliberate and is the same one the rest of this design uses: a hypothesis is
+// strong enough to REFUSE and too weak to ADMIT.
+data ergonomic_scope_note: String = "A span inside the band is not an admission. Grip height, wrist angle, the hold's real grasp region, assembly mass, centre-of-mass relative to the grip line, and the cleat-unseating trajectory are all unmodelled, and the tile has never been weighed. This module can reject a layout and cannot approve one."
+
+data ergonomic_obligations: List<String> = [
+  "Measure the operator's comfortable two-hand carry span against a scrap panel; retires the stand-in.",
+  "Measure comfortable grip height while carrying, not while standing at rest.",
+  "Establish the selected hold's grasp region relative to its bolt axis; the span above is centre to centre and a grasp point is not a bolt centre.",
+  "Weigh the assembled tile and locate its centre of mass before claiming the grip line is balanced.",
+  "Model the upward-then-outward cleat removal path as a swept volume, and check hand and forearm clearance along it.",
+  "Replace the two population ratios with a cited anthropometric source.",
+]
+
+// SIDE MOUNTING - a candidate, not a verdict.
+//
+// Operator suggestion: put the grips on the sides rather than the face. The face is full of board,
+// cooler, supply and saddle; the perimeter is not. It also stops the span being a number anyone
+// picks, because it falls out of the tile's own width.
+//
+// RETRACTED, and this is the part worth reading. An earlier version of this block declared
+// hold_mounting_face_width_mm = 166 and concluded the 18 mm panel edge was 148 mm too narrow to
+// seat a hold. That refusal was fabricated. 166 mm is the hold's conservative CLEARANCE ENVELOPE
+// width, whose own declaration says "clearance only; never dimension from it" - and I dimensioned
+// from it inside the hour, to produce a confident structural conclusion that then argued for
+// inventing a side rail. The hold's actual seating footprint is unread; a sculpted jug may have a
+// far smaller rear contact patch than its silhouette, or a contoured one. The honest answer is
+// that nobody knows yet.
+//
+// Also retracted: the sentence "a hold needs a flat about as wide as itself." That appeared only
+// in this file, derived from nothing.
+data side_mount_retraction_note: String = "The claimed 148 mm mounting-face shortfall is withdrawn. It came from treating the hold's clearance envelope width as its seating footprint, against the explicit instruction on that value. The seating footprint is unread, so side mounting is neither admitted nor refused."
+
+// Two realizations, cheapest first. The earlier version jumped straight to a structural side rail
+// without checking whether the ordinary face mounting already works with the body overhanging the
+// edge - which keeps the familiar bolt-through-panel relationship and adds no new part.
+type HoldSideRealization
+  = FaceMountedPerimeterOverhang { note: String }
+  | PerpendicularSideCheek { note: String, new_structure: String }
+
+data side_realization_candidates: List<HoldSideRealization> = [
+  FaceMountedPerimeterOverhang {
+    note: "Bolt through the ordinary broad panel face, axis near the left or right edge, so most of the hold body and the hand zone overhang the perimeter. Keeps the face-mounted bolt and T-nut exactly as modelled and adds no part. Whether it works depends on the unread seating footprint and on how much overhang the panel edge tolerates.",
+  },
+  PerpendicularSideCheek {
+    note: "Thicken the edge into a cheek deep enough to bolt a hold against, perpendicular to the face.",
+    new_structure: "Only if the overhang candidate refuses. It adds a structural part, an attachment, depth, a fabrication step and its own proof-load population - none of which is earned while the simpler candidate is untested.",
+  },
+]
+
+// SEPARATIONS, not hand spans. These are geometry of the tile and the envelope; where a hand
+// actually lands is the hold's grasp region, which is unread. The earlier version called these
+// spans and compared them to the operator band, which was comparing two different quantities.
+fn mounting_plane_separation_mm() -> Nat { tile_overall_width_mm }
+
+fn outer_envelope_separation_mm() -> Nat {
+  tile_overall_width_mm + selected_hold_projection_mm() * 2
+}
+
+type GraspSpanStanding
+  = GraspSpanResolved { span_mm: Nat, receipt: String }
+  | GraspSpanIncomplete { mounting_plane_mm: Nat, outer_envelope_mm: Nat, obligation: String }
+
+fn side_mounted_grasp_span() -> GraspSpanStanding {
+  GraspSpanIncomplete {
+    mounting_plane_mm: mounting_plane_separation_mm(),
+    outer_envelope_mm: outer_envelope_separation_mm(),
+    obligation: "Establish the selected hold's grasp region relative to its mounting axis. The hand lands somewhere between the mounting plane and the outer envelope, and the operator band cannot be checked until it is known which.",
+  }
+}
+
+data side_mount_standing_note: String = "Side mounting is promising and unresolved. The tile's edge separation and the outer envelope separation bracket where a hand could land, and the operator band sits inside that bracket - so the idea is not ruled out by span. It is not ruled in either, because the grasp region and the seating footprint are both unread."

@@ -1,0 +1,135 @@
+module test.claim.asset_lifecycle_witness
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.asset_lifecycle {
+  AssetClassFacts, TrackingGrade, SerialTracked, CountTracked, UntrackedConsumable,
+  derived_tracking, asset_classes, asset_server, asset_nvme, asset_dimm, asset_screws,
+  SanitizationEvidence, NotDataBearing, CryptoEraseReceipt, PhysicalDestructionReceipt,
+  ExitChannel, ResoldWorking, WrittenOffLost, RecycledEwaste,
+  ExitOutcome, ExitAdmitted, ExitRefusedUnsanitized, ExitRefusedEvidenceMismatch,
+  admit_exit, AssetLedger, ledger_conserves, ledger_recovery_micro,
+  DispositionStanding, IntentLiving, ReviewLapsed, PressureToLiquidate,
+  disposition_standing, AssetIntent, DeployIntent, NoLivingIntent,
+  asset_registry, registry_ids_resolve, HoldingRow, hold_q80_lot,
+}
+
+// THE DISCRIMINATING CLAIMS. (1) Tracking derives, never declared: the data-bearing NVMe
+// is SerialTracked though its value alone would also qualify - and the mutation surface
+// is the derivation rule, not the row; the DIMM sits above the serial floor; the screw is
+// untracked. (2) The sanitization wall: a data-bearing exit with NotDataBearing evidence
+// REFUSES, a screw with a crypto-erase receipt refuses as evidence mismatch (a fabricated
+// receipt is as much a defect as a missing one). (3) Conservation: a ledger whose exits
+// do not account for the acquired-minus-held difference reds. (4) Intent is the license
+// to stay: no living intent derives standing liquidation pressure, a lapsed review date
+// forces a re-ruling (the 62-CPU lot lapses at its declared 2026-09-15 review), and a
+// living intent holds. (5) Every registry holding joins an asset class by identity.
+
+fn is_serial(g: TrackingGrade) -> Bool {
+  match g {
+    SerialTracked => true,
+    CountTracked { reorder_floor_units } => false,
+    UntrackedConsumable => false,
+  }
+}
+
+fn is_untracked(g: TrackingGrade) -> Bool {
+  match g {
+    UntrackedConsumable => true,
+    SerialTracked => false,
+    CountTracked { reorder_floor_units } => false,
+  }
+}
+
+fn refused_unsanitized(o: ExitOutcome) -> Bool {
+  match o {
+    ExitRefusedUnsanitized { asset_id } => true,
+    ExitAdmitted { asset_id, channel } => false,
+    ExitRefusedEvidenceMismatch { asset_id } => false,
+  }
+}
+
+fn refused_mismatch(o: ExitOutcome) -> Bool {
+  match o {
+    ExitRefusedEvidenceMismatch { asset_id } => true,
+    ExitAdmitted { asset_id, channel } => false,
+    ExitRefusedUnsanitized { asset_id } => false,
+  }
+}
+
+fn admitted(o: ExitOutcome) -> Bool {
+  match o {
+    ExitAdmitted { asset_id, channel } => true,
+    ExitRefusedUnsanitized { asset_id } => false,
+    ExitRefusedEvidenceMismatch { asset_id } => false,
+  }
+}
+
+fn pressured(s: DispositionStanding) -> Bool {
+  match s {
+    PressureToLiquidate => true,
+    IntentLiving { review_by } => false,
+    ReviewLapsed { review_by } => false,
+  }
+}
+
+fn lapsed(s: DispositionStanding) -> Bool {
+  match s {
+    ReviewLapsed { review_by } => true,
+    PressureToLiquidate => false,
+    IntentLiving { review_by } => false,
+  }
+}
+
+fn living(s: DispositionStanding) -> Bool {
+  match s {
+    IntentLiving { review_by } => true,
+    ReviewLapsed { review_by } => false,
+    PressureToLiquidate => false,
+  }
+}
+
+// Probe ledger: 62 acquired, 59 held, 3 typed exits - conserves; recovery sums only the
+// channels that carry proceeds.
+data probe_ledger: AssetLedger = AssetLedger {
+  asset_id: "ddr4-32g-rdimm",
+  acquired_units: 62,
+  held_units: 59,
+  exited: [
+    ResoldWorking { channel: "probe:marketplace", proceeds_micro: 45000000 },
+    WrittenOffLost { investigation_note: "probe: one stick unaccounted after srv3 rework; searched, written off" },
+    RecycledEwaste { downstream: "probe: certified e-waste stream" },
+  ],
+}
+
+data probe_ledger_shrunk: AssetLedger = AssetLedger {
+  asset_id: "ddr4-32g-rdimm",
+  acquired_units: 62,
+  held_units: 59,
+  exited: [
+    ResoldWorking { channel: "probe:marketplace", proceeds_micro: 45000000 },
+  ],
+}
+
+fn asset_lifecycle_witness_main() -> ProcessExit {
+  let derivation = is_serial(g: derived_tracking(f: asset_nvme))
+    && is_serial(g: derived_tracking(f: asset_dimm))
+    && is_untracked(g: derived_tracking(f: asset_screws))
+    && count(asset_classes) == 8
+  let sanitization_wall = refused_unsanitized(o: admit_exit(f: asset_nvme, channel: ResoldWorking { channel: "probe", proceeds_micro: 150000000 }, evidence: NotDataBearing))
+    && admitted(o: admit_exit(f: asset_nvme, channel: ResoldWorking { channel: "probe", proceeds_micro: 150000000 }, evidence: CryptoEraseReceipt { method: "nvme format --ses=1, read-verify", verified_at: "2026-08-30" }))
+    && refused_mismatch(o: admit_exit(f: asset_screws, channel: RecycledEwaste { downstream: "probe" }, evidence: CryptoEraseReceipt { method: "fabricated", verified_at: "2026-08-30" }))
+  let conservation = ledger_conserves(l: probe_ledger)
+    && !ledger_conserves(l: probe_ledger_shrunk)
+    && ledger_recovery_micro(l: probe_ledger) == 45000000
+  let intent_pressure = pressured(s: disposition_standing(i: NoLivingIntent, today: "2026-08-30"))
+    && living(s: disposition_standing(i: hold_q80_lot.intent, today: "2026-08-30"))
+    && lapsed(s: disposition_standing(i: hold_q80_lot.intent, today: "2026-09-16"))
+  let registry_sound = registry_ids_resolve() && count(asset_registry) == 6
+    && fold(asset_registry, init: true, f: fn(acc, h) { acc && h.units > 0 })
+  if derivation && sanitization_wall && conservation && intent_pressure && registry_sound {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

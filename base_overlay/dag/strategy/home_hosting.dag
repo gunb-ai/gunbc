@@ -1,0 +1,108 @@
+module strategy.home_hosting
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import std.measure { money_per_month_micros, money_per_kilowatt_hour_micros }
+import extdeps.energy.nj_electricity { nj_residential_rate, tariff_structure_obligation }
+import extdeps.colo.interserver { interserver_quarter_rack_plan }
+import strategy.ci_node_build { node_watts }
+import strategy.makeshift_datacenter { bay_all_in_monthly_micro, small_bay }
+
+// PROVENANCE: operator directives 2026-08-18 - "couldn't i just do this at my home/apartment
+// at the same time?" and, on the follow-up: about 10 circuits at home, several 30 A; noise
+// is not a problem; 4U chassis acceptable; capacity target roughly one full rack or two half
+// racks (~10 nodes); the space is free, so home hosting costs only power. Those are
+// OPERATOR-OBSERVED facts about one specific residence, entered as data with this module as
+// their citation; what has NOT been observed is typed below and gates the capacity claim.
+
+// ---------------------------------------------------------------------------------------------
+// THE OBSERVED FACTS, and the one that is missing. A 30 A residential circuit is 120 V or
+// 240 V, and which one changes the ceiling by exactly 2x - so the panel reading is the load-
+// bearing missing observation, and capacity is derived UNDER EACH HYPOTHESIS rather than by
+// picking one.
+// ---------------------------------------------------------------------------------------------
+
+type HomeCircuitFacts {
+  total_circuits: Nat
+  dedicated_30a_plan: Nat
+  facts_note: NonEmptyStr
+}
+
+data home_circuits: HomeCircuitFacts = HomeCircuitFacts {
+  total_circuits: 10,
+  dedicated_30a_plan: 2,
+  facts_note: "Ten circuits observed by the operator, several rated 30 A; the plan conservatively dedicates two 30 A circuits to compute. Whether those circuits are 120 V or 240 V (typical residential 30 A circuits are 240 V dryer/range/EV circuits, but not always) is UNOBSERVED - read the panel and the receptacle before any purchase sized to the 240 V answer.",
+}
+
+data home_verification_obligations: List<NonEmptyStr> = [
+  "panel reading: voltage and breaker rating of each circuit to be dedicated, total service amperage (100 A vs 200 A), and spare capacity after household loads",
+  "continuous-load wiring: NEC continuous derating applies at home too - 30 A breaker means 24 A continuous - and receptacle/wire gauge must match the plan, possibly with an electrician's signoff",
+  "cooling: sustained kW of heat needs a mini-split or window unit sized to the load and somewhere to reject it; summer performance is the test",
+  "residential service terms: upload behavior, static addressing (or a WireGuard tunnel to a cheap VPS), and the ISP's server-hosting posture",
+  "availability posture: one utility feed, no generator, breaker trips while away are downtime - acceptable for burn-in and design partners with expectations set, not for paid SLA traffic",
+  "insurance and lease/ownership consent for continuous unattended load",
+]
+
+// NEC 80% continuous derating, both voltage hypotheses.
+fn usable_watts_per_circuit(volts: Nat) -> Nat { 30 * volts * 800 / 1000 }
+
+fn home_usable_watts(volts: Nat) -> Nat {
+  home_circuits.dedicated_30a_plan * usable_watts_per_circuit(volts: volts)
+}
+
+fn home_node_ceiling(volts: Nat) -> Nat {
+  home_usable_watts(volts: volts) / node_watts()
+}
+
+data capacity_reading_note: NonEmptyStr = "Under the 120 V hypothesis two dedicated 30 A circuits carry 5,760 W usable - eight dual-socket nodes at the 650 W planning average; a third circuit reaches 8,640 W and thirteen nodes. Under the 240 V hypothesis the same two circuits carry 11,520 W - seventeen nodes, and the ten-node target fits with headroom. So the operator's ten-node intuition is TRUE under 240 V with two circuits, true under 120 V with three, and the panel reading decides which world this is."
+
+// ---------------------------------------------------------------------------------------------
+// COST. Space is free by declaration; the marginal costs are electricity at the residential
+// all-in rate, a cooling factor, and connectivity.
+// ---------------------------------------------------------------------------------------------
+
+data cooling_overhead_permille: Int = 300
+data home_connectivity_allowance_micro: Int = 120000000
+data home_cost_basis_note: NonEmptyStr = "Electricity at the cited residential all-in rate (0.27 USD per kWh - notably ABOVE the commercial 0.161 a leased bay pays, the one axis where home is structurally worse); a 30 percent cooling overhead planning factor for the AC that rejects the heat; and a 120 USD residential-gigabit allowance (symmetric fiber serves the corridor; a business-class line with a static block is a separate quote). Rent is zero by the operator's declaration that the space is free."
+
+fn home_electricity_monthly_micro(it_watts: Int) -> Int {
+  it_watts * 720 * money_per_kilowatt_hour_micros(q: nj_residential_rate.rate) / 1000
+}
+
+fn home_all_in_monthly_micro(it_watts: Int) -> Int {
+  home_electricity_monthly_micro(it_watts: it_watts) * (1000 + cooling_overhead_permille) / 1000
+    + home_connectivity_allowance_micro
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE THREE-WAY PLACEMENT READ at the two loads that matter: today's pilot-scale fleet and
+// the ten-node target. Derived, never stored.
+// ---------------------------------------------------------------------------------------------
+
+type PlacementCostRow {
+  placement: NonEmptyStr
+  monthly_micro: Int
+  caveat: NonEmptyStr
+}
+
+fn placement_costs_at(it_watts: Int) -> List<PlacementCostRow> {
+  [
+    PlacementCostRow {
+      placement: "home (free space, residential power)",
+      monthly_micro: home_all_in_monthly_micro(it_watts: it_watts),
+      caveat: "gated on the panel reading and the availability posture; not sellable as SLA capacity",
+    },
+    PlacementCostRow {
+      placement: "published colo per-kW rate (InterServer quarter basis)",
+      monthly_micro: money_per_month_micros(q: interserver_quarter_rack_plan.monthly) * it_watts / 1500,
+      caveat: "published tiers stop at 2,500 W - above that this row is an extrapolation standing in for the full-cab RFQ",
+    },
+    PlacementCostRow {
+      placement: "2,000 sqft industrial bay (strategy.makeshift_datacenter)",
+      monthly_micro: bay_all_in_monthly_micro(b: small_bay, it_watts: it_watts),
+      caveat: "carries the bay's own unpriced obligations - build-out, labor, single feed",
+    },
+  ]
+}
+
+data placement_read_note: NonEmptyStr = "At every load a home with free space and verified circuits is the cash-minimal placement, because rent dominates the bay and bundled services dominate colo - the residential kWh premium (0.27 vs 0.161) never overcomes a zero rent inside the home's circuit ceiling. What home does NOT buy is exactly the availability and terms-of-service posture in the obligations list, which is why the derived sequencing is: burn-in and design partners at home, paid SLA capacity in colo, and the bay only past the makeshift crossover with the scouting receipts in hand."

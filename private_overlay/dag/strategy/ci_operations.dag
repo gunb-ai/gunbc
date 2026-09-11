@@ -1,0 +1,365 @@
+module strategy.ci_operations
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+
+// WHO DOES THE WORK, AND WHEN DOES THAT STOP BEING ONE PERSON.
+//
+// "The operator handles support and repairs" is not a cost of zero. It is a cost of one person's
+// month, and the only question that matters is how many nodes fit inside it. This module turns that
+// sentence into a number and finds the node count where the number runs out.
+//
+// It also separates the two things that get collapsed into the word "ops", because they scale off
+// different drivers and only one of them can be sized today:
+//
+//   hardware and site work  -> scales with NODES and SITES, both known -> sizable
+//   customer support        -> scales with CUSTOMERS, unknown          -> refuses
+//
+// Every rate below is a PLANNING ESTIMATE. None has been measured, because no node has been built
+// and no customer has been served. They are stated so the shape of the answer is visible and so the
+// first month of real operation has something to falsify.
+
+type LabourEvidence
+  = LabourMeasured { receipt: NonEmptyStr }
+  | LabourEstimated { note: NonEmptyStr }
+
+fn labour_is_measured(e: LabourEvidence) -> Bool {
+  match e {
+    LabourMeasured { receipt } => true,
+    LabourEstimated { note } => false,
+  }
+}
+
+// What drives the incident count. This is the distinction that decides whether a workload can be
+// sized at all.
+type IncidentDriver
+  = PerNodeMonth
+  | PerSiteMonth
+  | PerCustomerMonth
+
+fn driver_label(d: IncidentDriver) -> NonEmptyStr {
+  match d {
+    PerNodeMonth => "per node",
+    PerSiteMonth => "per site",
+    PerCustomerMonth => "per customer",
+  }
+}
+
+fn driver_is_sizable(d: IncidentDriver) -> Bool {
+  match d {
+    PerNodeMonth => true,
+    PerSiteMonth => true,
+    PerCustomerMonth => false,
+  }
+}
+
+// THE SOFTWARE BET, stated as a mechanism rather than a hope. Assisted triage does two separate
+// things and they must not be added together twice: it DEFLECTS some incidents entirely, and it
+// SHORTENS the ones it cannot deflect. Both are hypotheses.
+type TriageAutomation
+  = TriageManual { note: NonEmptyStr }
+  | TriageAssisted { deflection_permille: Int, obligation: NonEmptyStr }
+  | TriageAutonomous { receipt: NonEmptyStr }
+
+fn deflection_of(t: TriageAutomation) -> Int {
+  match t {
+    TriageManual { note } => 0,
+    TriageAssisted { deflection_permille, obligation } => deflection_permille,
+    TriageAutonomous { receipt } => 1000,
+  }
+}
+
+fn automation_label(t: TriageAutomation) -> NonEmptyStr {
+  match t {
+    TriageManual { note } => "manual",
+    TriageAssisted { deflection_permille, obligation } => "assisted",
+    TriageAutonomous { receipt } => "autonomous",
+  }
+}
+
+type IncidentClass {
+  name: NonEmptyStr
+  driver: IncidentDriver
+  rate_permille_per_driver_month: Int
+  unassisted_minutes: Int
+  assisted_minutes: Int
+  automation: TriageAutomation
+  evidence: LabourEvidence
+  note: NonEmptyStr
+}
+
+data planning_estimate: LabourEvidence = LabourEstimated {
+  note: "Planning estimate. No node has been built and no customer served, so nothing here is measured.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// NODE-DRIVEN WORK. Sizable, because the node count is a decision rather than a hope.
+// ---------------------------------------------------------------------------------------------
+
+data incident_component_fault: IncidentClass = IncidentClass {
+  name: "Component fault (DIMM, disk, PSU, fan)",
+  driver: PerNodeMonth,
+  rate_permille_per_driver_month: 40,
+  unassisted_minutes: 180,
+  assisted_minutes: 90,
+  automation: TriageAssisted {
+    deflection_permille: 0,
+    obligation: "Nothing deflects a dead DIMM: somebody opens the case. Assistance can only shorten identification and ordering, which is why the assisted figure is half rather than a tenth. The rate is the weakest number in this table because the hardware is used and its failure curve is unknown.",
+  },
+  evidence: planning_estimate,
+  note: "Used hardware, unknown failure curve. A hot spare in each site converts this from an outage into a scheduled swap and is unpriced.",
+}
+
+data incident_node_unresponsive: IncidentClass = IncidentClass {
+  name: "Node unresponsive or needing drain and reboot",
+  driver: PerNodeMonth,
+  rate_permille_per_driver_month: 150,
+  unassisted_minutes: 45,
+  assisted_minutes: 10,
+  automation: TriageAssisted {
+    deflection_permille: 600,
+    obligation: "The claim is that most of these are diagnosable and recoverable without a human: drain, power-cycle through the BMC, re-provision from the network, confirm health, and only escalate what does not come back. Build that loop, then measure what fraction it closes; sixty percent is a target, not a finding.",
+  },
+  evidence: planning_estimate,
+  note: "This is the class the reconstructible-node design exists to eliminate, and the one where assisted triage should pay for itself first.",
+}
+
+data incident_firmware_boot: IncidentClass = IncidentClass {
+  name: "Firmware, BMC or boot fault",
+  driver: PerNodeMonth,
+  rate_permille_per_driver_month: 50,
+  unassisted_minutes: 90,
+  assisted_minutes: 30,
+  automation: TriageAssisted {
+    deflection_permille: 300,
+    obligation: "Firmware level, boot order and virtual-media state are all readable and settable over the BMC, so a share of these should close without a human. Which share is unmeasured.",
+  },
+  evidence: planning_estimate,
+  note: "Second-hand boards arrive at unknown firmware levels, so this rate is highest during intake and should fall once a fleet is converged.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// SITE-DRIVEN WORK. Sizable, and it is the line a distributed fleet multiplies.
+// ---------------------------------------------------------------------------------------------
+
+data incident_site_event: IncidentClass = IncidentClass {
+  name: "Site event (power, transit, access, environment)",
+  driver: PerSiteMonth,
+  rate_permille_per_driver_month: 500,
+  unassisted_minutes: 120,
+  assisted_minutes: 60,
+  automation: TriageAssisted {
+    deflection_permille: 200,
+    obligation: "Monitoring can classify and escalate a site event without a human, but it cannot reset a breaker. Deflection here means correctly deciding no visit is needed.",
+  },
+  evidence: planning_estimate,
+  note: "A small retail space has no on-site staff, no redundant transit and no generator. Every one of those absences shows up in this class.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// CUSTOMER-DRIVEN WORK. NOT sizable, and saying so is the point.
+// ---------------------------------------------------------------------------------------------
+
+data incident_support_ticket: IncidentClass = IncidentClass {
+  name: "Customer support ticket",
+  driver: PerCustomerMonth,
+  rate_permille_per_driver_month: 800,
+  unassisted_minutes: 25,
+  assisted_minutes: 8,
+  automation: TriageAssisted {
+    deflection_permille: 700,
+    obligation: "Most CI tickets are a failing build, a cache miss, a quota or a bill, and all four are answerable from data the platform already holds. This is the strongest case for assisted support and it has no measurement behind it.",
+  },
+  evidence: planning_estimate,
+  note: "Scales with customers, not nodes. Nothing in this model knows how many customers there are.",
+}
+
+data incident_abuse: IncidentClass = IncidentClass {
+  name: "Abuse, mining or fraud",
+  driver: PerCustomerMonth,
+  rate_permille_per_driver_month: 50,
+  unassisted_minutes: 60,
+  assisted_minutes: 20,
+  automation: TriageAssisted {
+    deflection_permille: 500,
+    obligation: "Detection can be automatic; the eviction decision and the chargeback that follows it are not. This is the class that grows fastest with success and it is the reason there is no free tier.",
+  },
+  evidence: planning_estimate,
+  note: "Scales with customers and with how easy signup is.",
+}
+
+data incident_classes: List<IncidentClass> = [
+  incident_component_fault,
+  incident_node_unresponsive,
+  incident_firmware_boot,
+  incident_site_event,
+  incident_support_ticket,
+  incident_abuse,
+]
+
+fn sizable_classes() -> List<IncidentClass> {
+  filter(incident_classes, c => driver_is_sizable(d: c.driver))
+}
+
+fn unsizable_classes() -> List<IncidentClass> {
+  filter(incident_classes, c => driver_is_sizable(d: c.driver) == false)
+}
+
+// ---------------------------------------------------------------------------------------------
+// MINUTES. Rates are permille of an incident per driver-month, so a rate of 40 against 20 nodes is
+// 0.8 incidents a month, carried as 800 milli-incidents to avoid truncating to zero.
+// ---------------------------------------------------------------------------------------------
+
+fn milli_incidents(c: IncidentClass, nodes: Int, sites: Int) -> Int {
+  match c.driver {
+    PerNodeMonth => c.rate_permille_per_driver_month * nodes,
+    PerSiteMonth => c.rate_permille_per_driver_month * sites,
+    PerCustomerMonth => 0,
+  }
+}
+
+fn unassisted_minutes_for(c: IncidentClass, nodes: Int, sites: Int) -> Int {
+  milli_incidents(c: c, nodes: nodes, sites: sites) * c.unassisted_minutes / 1000
+}
+
+// Deflected incidents cost nothing; the rest cost the assisted duration. Both halves of the bet are
+// applied exactly once.
+fn assisted_minutes_for(c: IncidentClass, nodes: Int, sites: Int) -> Int {
+  let surviving = milli_incidents(c: c, nodes: nodes, sites: sites) * (1000 - deflection_of(t: c.automation)) / 1000
+  surviving * c.assisted_minutes / 1000
+}
+
+fn total_unassisted_minutes(nodes: Int, sites: Int) -> Int {
+  fold(sizable_classes(), init: 0, f: fn(acc, c) { acc + unassisted_minutes_for(c: c, nodes: nodes, sites: sites) })
+}
+
+fn total_assisted_minutes(nodes: Int, sites: Int) -> Int {
+  fold(sizable_classes(), init: 0, f: fn(acc, c) { acc + assisted_minutes_for(c: c, nodes: nodes, sites: sites) })
+}
+
+// ---------------------------------------------------------------------------------------------
+// TRAVEL. The line a distributed fleet pays and a single site does not. A component fault in a
+// retail space three states away is not ninety minutes of work, it is a day.
+// ---------------------------------------------------------------------------------------------
+
+type HandsStanding
+  = OperatorOnSite { note: NonEmptyStr }
+  | TravelRequired { minutes_per_visit: Int, note: NonEmptyStr }
+  | RemoteHandsContracted { usd_micro_per_visit: Int, obligation: NonEmptyStr }
+
+data selected_hands: HandsStanding = TravelRequired {
+  minutes_per_visit: 240,
+  note: "Four hours door to door for a site within driving range, assumed. A genuinely national footprint is a flight and an overnight, and this figure does not describe that. Batching non-urgent swaps into one trip is the obvious mitigation and it is not modelled, so this line is pessimistic for a well-run fleet and optimistic for a distant one.",
+}
+
+fn travel_minutes_per_visit() -> Int {
+  match selected_hands {
+    OperatorOnSite { note } => 0,
+    TravelRequired { minutes_per_visit, note } => minutes_per_visit,
+    RemoteHandsContracted { usd_micro_per_visit, obligation } => 0,
+  }
+}
+
+// Visits are driven by the classes that cannot be closed remotely: a component fault always needs
+// hands, and the share of site events that assistance could not deflect does too.
+fn visit_milli_events(nodes: Int, sites: Int) -> Int {
+  let faults = milli_incidents(c: incident_component_fault, nodes: nodes, sites: sites)
+  let site_events = milli_incidents(c: incident_site_event, nodes: nodes, sites: sites)
+  let surviving_site = site_events * (1000 - deflection_of(t: incident_site_event.automation)) / 1000
+  faults + surviving_site
+}
+
+fn travel_minutes(nodes: Int, sites: Int) -> Int {
+  visit_milli_events(nodes: nodes, sites: sites) * travel_minutes_per_visit() / 1000
+}
+
+data travel_note: NonEmptyStr = "Travel is charged per event needing hands, with no batching. That is deliberately unfavourable: a real operator defers a non-urgent DIMM swap to the next trip, and a site with a hot spare defers it further. Batching and spares are the two mitigations, both unpriced, and together they are probably worth more than any hardware saving in this model."
+
+// ---------------------------------------------------------------------------------------------
+// THE CEILING. One person, one month.
+// ---------------------------------------------------------------------------------------------
+
+data working_minutes_per_month: Int = 9600
+
+data working_month_note: NonEmptyStr = "One hundred and sixty hours is a full working month spent entirely on operations. An operator who is also writing the software, selling the product and answering customers has far less than that, so the ceilings below are upper bounds on a number that is already an upper bound."
+
+fn operator_minutes(nodes: Int, sites: Int, assisted: Bool) -> Int {
+  let work = if assisted { total_assisted_minutes(nodes: nodes, sites: sites) } else { total_unassisted_minutes(nodes: nodes, sites: sites) }
+  work + travel_minutes(nodes: nodes, sites: sites)
+}
+
+fn operator_load_permille(nodes: Int, sites: Int, assisted: Bool) -> Int {
+  operator_minutes(nodes: nodes, sites: sites, assisted: assisted) * 1000 / working_minutes_per_month
+}
+
+// Minutes attributable to one node, at a fixed nodes-per-site density. Used to derive the ceiling
+// without searching, and it is exact because every rate here is linear in its driver.
+fn minutes_per_node(nodes_per_site: Int, assisted: Bool) -> Int {
+  let block = operator_minutes(nodes: nodes_per_site, sites: 1, assisted: assisted)
+  block * 1000 / nodes_per_site
+}
+
+fn node_ceiling(nodes_per_site: Int, assisted: Bool) -> Int {
+  let per_node = minutes_per_node(nodes_per_site: nodes_per_site, assisted: assisted)
+  if per_node <= 0 { 0 } else { working_minutes_per_month * 1000 / per_node }
+}
+
+// THE RESULT THAT DECIDES THE OPERATING MODEL, and it is derived rather than claimed: hardware and
+// site work do not saturate one operator anywhere near the fleet sizes under discussion. The binding
+// constraint is the work that scales with customers, and that work cannot be sized at all.
+type OperatorCapacityStanding
+  = OperatorCapacitySized { node_ceiling: Int, receipt: NonEmptyStr }
+  | OperatorCapacityPartial { sizable_node_ceiling: Int, unsizable: List<NonEmptyStr>, obligation: NonEmptyStr }
+
+fn unsizable_obligations() -> List<NonEmptyStr> {
+  map(unsizable_classes(), c => c.name)
+}
+
+fn operator_capacity(nodes_per_site: Int, assisted: Bool) -> OperatorCapacityStanding {
+  OperatorCapacityPartial {
+    sizable_node_ceiling: node_ceiling(nodes_per_site: nodes_per_site, assisted: assisted),
+    unsizable: unsizable_obligations(),
+    obligation: "This ceiling counts hardware, firmware and site work only. Customer support and abuse response scale with customers, no customer count exists, and they are the classes most likely to bind first. A ceiling that ignores them is a statement about machines, not about a business.",
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE COST OF UNPAID TIME. Founder labour is free in cash and expensive in every other sense, and a
+// margin computed against zero labour is a margin computed against a fiction.
+// ---------------------------------------------------------------------------------------------
+
+type OperatorTimeStanding
+  = UnpaidFounderTime { imputed_usd_micro_per_hour: Int, note: NonEmptyStr }
+  | PaidStaff { usd_micro_per_hour: Int, receipt: NonEmptyStr }
+
+data selected_operator_time: OperatorTimeStanding = UnpaidFounderTime {
+  imputed_usd_micro_per_hour: 75000000,
+  note: "Imputed at 75 dollars an hour. No cash leaves the business, which is exactly why it has to appear somewhere: unpaid founder time is the cheapest capital available and the first thing that runs out. The rate is a placeholder for opportunity cost, not a salary.",
+}
+
+fn imputed_hourly_micro() -> Int {
+  match selected_operator_time {
+    UnpaidFounderTime { imputed_usd_micro_per_hour, note } => imputed_usd_micro_per_hour,
+    PaidStaff { usd_micro_per_hour, receipt } => usd_micro_per_hour,
+  }
+}
+
+fn imputed_labour_cost_micro(nodes: Int, sites: Int, assisted: Bool) -> Int {
+  operator_minutes(nodes: nodes, sites: sites, assisted: assisted) * imputed_hourly_micro() / 60
+}
+
+fn imputed_labour_per_node_micro(nodes: Int, sites: Int, assisted: Bool) -> Int {
+  if nodes <= 0 { 0 } else { imputed_labour_cost_micro(nodes: nodes, sites: sites, assisted: assisted) / nodes }
+}
+
+data labour_visibility_note: NonEmptyStr = "The contribution figures elsewhere on this page do not include this cost. That is a modelling choice and it is the wrong one to leave silent: at low node counts the imputed labour per node is a material share of the modelled cost, and it is the line that a second person or a support contract turns into real money."
+
+// ---------------------------------------------------------------------------------------------
+// THE BET, stated so it can be wrong.
+// ---------------------------------------------------------------------------------------------
+
+data assisted_triage_thesis: NonEmptyStr = "The plan is to build diagnose-and-triage as software from the first node rather than bolting it on after hiring. Two things have to be true for that to pay: a large share of incidents must be closable from data the platform already holds, and the residue must be genuinely shorter to handle when a human does arrive. The deflection figures above encode both claims per class, and every one of them is a target with an obligation attached rather than a finding."
+
+data assisted_triage_falsification: NonEmptyStr = "The cheapest way to find out is to instrument the manual path first. Every incident on the first node gets a timestamp, a class, a resolution and a note on whether the platform already held the data needed to close it. One month of that replaces this entire table with measurements, and it is worth more than any further refinement of the estimates."
+
+data operating_model_note: NonEmptyStr = "Building the triage loop before the fleet exists is the unusual half of this plan and the defensible half. Operational advantage compounds with node count and cannot be bought, unlike a hardware purchasing advantage - but only if the software is written while the fleet is small enough that its absence is survivable."

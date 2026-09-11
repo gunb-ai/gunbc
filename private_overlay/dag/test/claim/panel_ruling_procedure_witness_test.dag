@@ -1,0 +1,227 @@
+module test.claim.panel_ruling_procedure_witness
+
+import std.types { NonEmptyStr, List, Int, String }
+import std.logic { Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
+import strategy.panel_ruling_procedure {
+  PanelRulingRequest, PanelProcedure, panel_procedure, PanelVote, VoteFor, VoteAgainst, VoteAbstain,
+  PanelRulingStanding, PanelSupportsNomination, PanelRejectsNomination,
+  PanelAwaitingQuorum, PanelRulingRefused, PanelRollRepeatsJurors, RepeatedJuror,
+  run_panel, outcome_of_ruling, ruling_detail_key, assess_by_panel, PanelRuling,
+}
+import strategy.workflow_stage_gate {
+  SelectionAssessmentOutcome, ProcedureSupportsSelection, ProcedureRejectsSelection,
+  ProcedurePending, ProcedureRefused,
+}
+
+// THE PROCEDURE'S ARMS ARE WITNESSED WHERE THEY ARE REACHABLE.
+//
+// One of them is NOT reachable through the workflow at all, and that is a structural fact rather
+// than a gap: the workflow requires the nomination to be a declared candidate and the assessed
+// population to match the gate's declared population exactly, so the nominee is necessarily among
+// the considered. PanelRulingRefused can therefore only be produced by asking the procedure
+// directly. A control placed on the workflow path could not discriminate it -- the population
+// check fires first and reports a different fault -- which is what a weaker version of this
+// witness did before it was moved here.
+
+fn ref_of(name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef { module_path: "test.claim.panel_ruling_procedure_witness", decl_name: name, field: WholeDeclaration }
+}
+
+data nominee: DeclarationRef = ref_of(name: "nominee")
+data rival: DeclarationRef = ref_of(name: "rival")
+
+fn request(votes: List<PanelVote>, considered: List<DeclarationRef>) -> PanelRulingRequest {
+  PanelRulingRequest {
+    self_ref: ref_of(name: "ruling"), nominated: nominee,
+    considered: considered, votes: votes,
+  }
+}
+
+fn standing_key(s: PanelRulingStanding) -> String {
+  match s {
+    PanelSupportsNomination { carried_by } => "supports",
+    PanelRejectsNomination { against } => "rejects",
+    PanelAwaitingQuorum { present, required } => "awaiting",
+    PanelRulingRefused { cause } => "refused",
+    PanelRollRepeatsJurors { repeated } => "repeats_jurors",
+  }
+}
+
+fn outcome_key(o: SelectionAssessmentOutcome) -> String {
+  match o {
+    ProcedureSupportsSelection => "supports",
+    ProcedureRejectsSelection => "rejects",
+    ProcedurePending => "pending",
+    ProcedureRefused => "refused",
+  }
+}
+
+data three_for: List<PanelVote> = [
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteFor { juror: ref_of(name: "j2") },
+  VoteFor { juror: ref_of(name: "j3") },
+]
+
+data two_for_one_abstain: List<PanelVote> = [
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteFor { juror: ref_of(name: "j2") },
+  VoteAbstain { juror: ref_of(name: "j3") },
+]
+
+data two_against: List<PanelVote> = [
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteAgainst { juror: ref_of(name: "j2"), because: "sited too far" },
+  VoteAgainst { juror: ref_of(name: "j3"), because: "cost" },
+]
+
+// A NOMINATION THE PANEL NEVER CONSIDERED IS A REFUSAL, NOT A REJECTION. The panel cannot speak to
+// a candidate absent from the field it was given, and reporting silence as a verdict against the
+// candidate would be a fabricated answer.
+fn an_unconsidered_nomination_refuses() -> Bool {
+  standing_key(s: run_panel(r: request(votes: three_for, considered: [rival]), quorum: 3)) == "refused"
+    && standing_key(s: run_panel(r: request(votes: three_for, considered: [nominee, rival]), quorum: 3)) == "supports"
+}
+
+// A TIE DOES NOT CARRY. An abstention is not a vote in favour, so a panel split evenly has not
+// carried the nomination.
+fn every_panel_arm_is_reached() -> Bool {
+  standing_key(s: run_panel(r: request(votes: three_for, considered: [nominee, rival]), quorum: 3)) == "supports"
+    && standing_key(s: run_panel(r: request(votes: two_against, considered: [nominee, rival]), quorum: 3)) == "rejects"
+    && standing_key(s: run_panel(r: request(votes: [VoteFor { juror: ref_of(name: "j1") }], considered: [nominee, rival]), quorum: 3)) == "awaiting"
+    && standing_key(s: run_panel(r: request(votes: three_for, considered: [rival]), quorum: 3)) == "refused"
+}
+
+// THE PROJECTION IS TOTAL AND LOSSY: four native arms onto four outcomes, with the tallies left on
+// the panel's side rather than copied into the generic carrier.
+fn the_panel_projection_is_total() -> Bool {
+  outcome_key(o: outcome_of_ruling(s: PanelSupportsNomination { carried_by: 3 })) == "supports"
+    && outcome_key(o: outcome_of_ruling(s: PanelRejectsNomination { against: 2 })) == "rejects"
+    && outcome_key(o: outcome_of_ruling(s: PanelAwaitingQuorum { present: 1, required: 3 })) == "pending"
+    && outcome_key(o: outcome_of_ruling(s: PanelRulingRefused { cause: "not considered" })) == "refused"
+}
+
+
+// ONE JUROR TWICE IS NOT A PANEL, AND EVERY COUNT USED TO ASSUME IT WAS. Quorum was count(votes) and
+// the tallies counted BALLOTS, so j1 voting three times carried a three-juror quorum alone and moved
+// the tally by three. The stuffed roll below is exactly the ballot COUNT of the honest three_for
+// roll, so a control asserting only "supports" could not tell them apart.
+data stuffed_roll: List<PanelVote> = [
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteFor { juror: ref_of(name: "j1") },
+]
+
+// AND A JUROR ON BOTH SIDES IS NOT A CLOSE VOTE. It is a roll that does not describe a panel, so it
+// refuses rather than netting out to one vote against.
+data two_faced_roll: List<PanelVote> = [
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteAgainst { juror: ref_of(name: "j1"), because: "reconsidered" },
+  VoteFor { juror: ref_of(name: "j2") },
+]
+
+// TWO SEPARATELY REPEATED JURORS, AND THE PERMUTATION OF THE SAME ROLL. The previous arm named
+// whichever repeated juror the vote rows happened to list first, so these two rolls -- identical as
+// panels -- diagnosed differently. Asserting the pair EQUAL is what makes order-as-policy red.
+data two_repeaters: List<PanelVote> = [
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteAgainst { juror: ref_of(name: "j2"), because: "no" },
+  VoteAgainst { juror: ref_of(name: "j2"), because: "still no" },
+]
+
+data two_repeaters_permuted: List<PanelVote> = [
+  VoteAgainst { juror: ref_of(name: "j2"), because: "no" },
+  VoteAgainst { juror: ref_of(name: "j2"), because: "still no" },
+  VoteFor { juror: ref_of(name: "j1") },
+  VoteFor { juror: ref_of(name: "j1") },
+]
+
+// The honest roll of the SAME ballot count still carries, so this is not "every roll refuses"; a
+// stuffed roll is REFUSED rather than rejected or pending, because it must not project as a ruling
+// at all; and the roll is read before the nomination, because a roll that is not a roll answers
+// neither question.
+fn a_repeated_juror_refuses_the_roll() -> Bool {
+  let stuffed = run_panel(r: request(votes: stuffed_roll, considered: [nominee, rival]), quorum: 3)
+  let two_faced = run_panel(r: request(votes: two_faced_roll, considered: [nominee, rival]), quorum: 3)
+  let honest = run_panel(r: request(votes: three_for, considered: [nominee, rival]), quorum: 3)
+  standing_key(s: stuffed) == "repeats_jurors"
+    && standing_key(s: two_faced) == "repeats_jurors"
+    && standing_key(s: honest) == "supports"
+    && outcome_key(o: outcome_of_ruling(s: stuffed)) == "refused"
+    && standing_key(s: run_panel(r: request(votes: stuffed_roll, considered: [rival]), quorum: 3)) == "repeats_jurors"
+}
+
+// THE EXACT BALLOT COUNTS, WHICH NOTHING ASSERTED BEFORE. The old payload was authored, projected
+// nowhere and read by nobody, so mutating three ballots to ninety-nine stayed green.
+//
+// The expected counts come from the fixtures: stuffed_roll is j1 three times, two_faced_roll is j1
+// twice.
+fn the_ballot_counts_are_evidenced() -> Bool {
+  let stuffed = run_panel(r: request(votes: stuffed_roll, considered: [nominee, rival]), quorum: 3)
+  let two_faced = run_panel(r: request(votes: two_faced_roll, considered: [nominee, rival]), quorum: 3)
+  ruling_detail_key(s: stuffed) == "repeats_jurors:1:3;"
+    && ruling_detail_key(s: two_faced) == "repeats_jurors:1:2;"
+}
+
+// A DIAGNOSIS THAT SURVIVES A PERMUTATION OF ITS OWN INPUT.
+fn both_repeated_jurors_are_retained() -> Bool {
+  let a = run_panel(r: request(votes: two_repeaters, considered: [nominee, rival]), quorum: 3)
+  let b = run_panel(r: request(votes: two_repeaters_permuted, considered: [nominee, rival]), quorum: 3)
+  ruling_detail_key(s: a) == "repeats_jurors:2:2;2;"
+    && ruling_detail_key(s: b) == ruling_detail_key(s: a)
+}
+
+// AN EMPTY PANEL MUST NOT REJECT A NOMINATION. At quorum 0 the awaiting guard is count(votes) < 0,
+// which no roll satisfies, so an empty roll reached the tally and 0 >= 0 returned a rejection: a
+// panel that never met, rejecting. The quorum is declared configuration, so this refuses rather
+// than being clamped -- clamping would answer for a policy nobody declared.
+//
+// The positive-quorum path is untouched, so this is not "every quorum refuses".
+fn a_non_positive_quorum_is_not_a_panel_policy() -> Bool {
+  standing_key(s: run_panel(r: request(votes: [], considered: [nominee, rival]), quorum: 0)) == "refused"
+    && standing_key(s: run_panel(r: request(votes: three_for, considered: [nominee, rival]), quorum: 0)) == "refused"
+    && standing_key(s: run_panel(r: request(votes: [], considered: [nominee, rival]), quorum: 0 - 1)) == "refused"
+    && standing_key(s: run_panel(r: request(votes: three_for, considered: [nominee, rival]), quorum: 3)) == "supports"
+    && standing_key(s: run_panel(r: request(votes: [], considered: [nominee, rival]), quorum: 1)) == "awaiting"
+}
+
+// THE SAME QUESTION FOR THE PANEL: what does keeping the ruling buy that the outcome does not say.
+// A nomination carried by three jurors and one carried by two are the same OUTCOME and not the same
+// ruling, and before retention the tally was destroyed at the adapter boundary along with it.
+//
+// IT READS THE RETAINED FIELD THROUGH THE ADAPTER, and the first version of this control did not.
+// It called run_panel directly, which is the function the adapter calls -- so it re-derived the
+// standing beside PanelRuling instead of reading the one the adapter kept, and the retained field
+// stayed unconsumed. A mutation replacing the adapter's computed standing with a constant left this
+// green. That is the exact "carried but nothing reads it" defect the retention was supposed to
+// close, reproduced in the control written to prove it closed.
+fn ruling_for(votes: List<PanelVote>) -> PanelRuling {
+  assess_by_panel(
+    gate: ref_of(name: "gate"),
+    procedure: panel_procedure(identity: ref_of(name: "procedure"), quorum: 3),
+    request: request(votes: votes, considered: [nominee, rival]))
+}
+
+fn the_retained_ruling_outlives_the_projection() -> Bool {
+  let by_three = ruling_for(votes: three_for)
+  let by_two = ruling_for(votes: two_for_one_abstain)
+  outcome_key(o: by_three.assessment.outcome) == outcome_key(o: by_two.assessment.outcome)
+    && ruling_detail_key(s: by_three.standing) != ruling_detail_key(s: by_two.standing)
+    && ruling_detail_key(s: by_three.standing) == "supports_by:3"
+    && ruling_detail_key(s: by_two.standing) == "supports_by:2"
+}
+
+fn panel_ruling_procedure_witness_main() -> ProcessExit {
+  if an_unconsidered_nomination_refuses() && every_panel_arm_is_reached() && the_panel_projection_is_total()
+    && a_repeated_juror_refuses_the_roll()
+    && the_ballot_counts_are_evidenced()
+    && both_repeated_jurors_are_retained()
+    && a_non_positive_quorum_is_not_a_panel_policy()
+    && the_retained_ruling_outlives_the_projection() {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

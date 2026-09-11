@@ -1,0 +1,80 @@
+module strategy.site_model
+
+import std.nat { Nat }
+import std.measure { Millimeter }
+import strategy.strategy_model { EvidenceAnchor }
+
+data site_model_note: String = "Physical-site kernel seed (operator direction 2026-08-10; gap named in docs/strategy/2026-08-10-uniform-strategy-principles.md section 3 repair 1: strategy_model carries no physical-domain concepts). Shape-search performed before minting (authorization-directive worker instruction): std.measure owns magnitudes (Millimeter reused here, as extdeps.chassis already does); extdeps.chassis/extdeps.power own hardware catalog rows; strategy_model owns EvidenceAnchor and the decision kernel; no existing site/facility/room carrier found in std, extdeps, or strategy. This file therefore introduces only the domain relations no external authority owns: candidate sites, room observations with typed unmeasured dimensions, survey obligations, and per-axis assessments that project into the strategy decision kernel when a lease decision opens. SEED-FORM DEBTS, recorded not silent: (1) no witness carrier yet - site_witness_test is an obligation before any assessment is quoted as a fact; (2) the strategy directive's three-carrier rule predates this file - whether site rows fold into strategy_model/gunbc_strategy or stand as a sibling model is an open operator decision; (3) AxisAssessment stores an evaluation observation, not a derived status - promotion must derive verdicts from observations via kernel functions, never quote stored findings as status."
+
+data site_model_scope_note: String = "SCOPE RULING (external review reconciliation, 2026-08-10, captured in docs/strategy/2026-08-10-spatial-world-kernel-directive.md): this carrier is the SITE-ADMISSION / BUSINESS layer only. It is not, and must not grow into, the spatial foundation - RoomDimensions is an axis-aligned box that cannot carry footprints, openings, adjacency, objects, or uncertainty, and observed_function is a prose blob conflating use, identity, contents, fixtures, and occupancy. The physical-world kernel (continuous metric geometry, topology, placed objects, zones, routes, observed/proposed/as-built states, design variants, SpatialKnowledge epistemics) is a SEPARATE model, specified in the directive doc, to land before another location or layout is modeled. Further decomposition owed at promotion: SiteCandidate currently conflates PhysicalSiteIdentity, ListingObservation, and LeaseOffer - facts with different lifetimes (a listing expires; the building does not). AxisFinding's Satisfied/Unsatisfied arms are TRANSITIONAL: verdicts must become derivations over stored observations + requirements + decision policy (witness control: an axis verdict is never authored directly)."
+
+data site_model_admission_note: String = "Axes mirror the siting authority (docs/strategy/2026-08-09-compute-infrastructure-strategy.md section 6): a site is a realization selected against typed requirements, admitted or refused per axis with evidence, never ranked by a single scalar. Unevaluated is a first-class arm - absence of an observation is not evidence of absence (spatial-presence directive law, applied to buildings). Habitability carries the split from uniform-principles P11: measured dBA/temperature/circuit rows are witnessable; comfortable-to-think-in is an operator sign-off class (OperatorExperienceAcceptance analogue), never a Boolean witness."
+
+type SiteCandidate {
+  id: String
+  address: String
+  listing: EvidenceAnchor
+  year_built: Nat
+  stories: Nat
+  building_square_feet: Nat
+  unit_square_feet: Nat
+  unit_location: String
+  monthly_base_rent_micro_usd: Nat
+  rent_basis_note: String
+}
+
+type RoomDimensions
+  = MeasuredRoom {
+      width: Millimeter
+      depth: Millimeter
+      ceiling_height: Millimeter
+      evidence: EvidenceAnchor
+    }
+  | UnmeasuredRoom {
+      pending_survey_item_id: String
+    }
+
+type RoomObservation {
+  id: String
+  site_id: String
+  observed_function: String
+  dimensions: RoomDimensions
+  evidence: EvidenceAnchor
+}
+
+type SurveyObligation {
+  id: String
+  site_id: String
+  question: String
+  method: String
+  gates_axis: SiteAxis
+}
+
+type SiteAxis
+  = ContinuousPower
+  | CoolingHeatRejection
+  | NetworkCapacityAndRepair
+  | PublicNetworkIdentity
+  | InsuranceCoverage
+  | ZoningPermittedUse
+  | FireElectricalCompliance
+  | PhysicalAccess
+  | CustomerContractualRequirements
+  | OperatorBurden
+  | WorkshopReceivingUtility
+  | TotalAndIncrementalCost
+  | FailureContainmentAndDrain
+  | Habitability
+
+type AxisFinding
+  = Satisfied { rationale: String }
+  | Unsatisfied { cause: String }
+  | Unevaluated { pending_survey_item_id: String }
+
+type SiteAxisAssessment {
+  id: String
+  site_id: String
+  axis: SiteAxis
+  finding: AxisFinding
+  evidence: List<EvidenceAnchor>
+}

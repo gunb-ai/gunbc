@@ -1,0 +1,1134 @@
+module strategy.ci_node_build
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat, nat_min }
+import strategy.ci_sellable_unit { units_by_memory_gib, required_memory_gib_ceiling_for_units, physical_memory_gib_required }
+import std.measure { megatransfers_per_second_count }
+import extdeps.boards.gigabyte {
+  gigabyte_mp72_hb0_physical_profile,
+  gigabyte_mp72_hb0_landed_cost_standing_note,
+}
+import extdeps.ocp.mt_jade.platform { mt_jade_motherboard_mechanical }
+import extdeps.ampere.mt_collins_product_brief.platform { mt_collins_platform_mechanical }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_mechanical, asrock_altrad8ud_channel_note }
+import extdeps.boards.supermicro { supermicro_r12spd_a_mechanical }
+import extdeps.cpu.types { CpuSocket, cpu_socket_eq }
+import extdeps.cpu.ampere { ampere_lga4926_socket }
+
+// WHAT A NODE COSTS TO BUILD, and how many sellable units that build actually yields.
+//
+// RETRACTION, and it is the whole point of this module's current shape. An earlier version of this
+// work implied that more memory and more cores were better, and the 64-GiB population came out
+// ahead on capex per unit. That conclusion was drawn against an ASSUMED memory price curve. The
+// operator's actual marketplace observations invert it: 64-GiB RDIMMs are presently at a price
+// cliff, not on a curve, and the cheapest balanced point is a SMALLER processor with mid-density
+// memory.
+//
+// The lesson generalizes past this build. The hardware advantage is not "buy the most cores". It is
+// finding the cheapest balanced point between the CPU liquidation curve, the DIMM density curve and
+// the product's actual CPU-to-RAM ratio. Those three move independently and the answer moves with
+// them, so the model carries the observations and derives the answer rather than carrying the
+// answer.
+//
+// TWO LAYERS, and keeping them apart is what makes this model usable.
+//
+//   Planning market rate  -> supports Pareto analysis, capex estimates, margins and break-even
+//   Procurement receipt   -> required only before a purchase or build authorization
+//
+// Everything in this module is the FIRST layer. It answers "assuming these parts stay available near
+// these prices, which architecture is economically preferable" - not "can this one seller furnish
+// sixteen modules today". The second question is a real gate and it lives at the bottom of the file,
+// where it blocks a purchase and nothing else.
+//
+// Requiring receipt-grade evidence to ask which configuration looks sensible makes the model brittle
+// and answers nothing. Every planning figure carries the grade of evidence behind it instead.
+
+// What kind of evidence a figure rests on. The page renders this beside every number, so a planning
+// estimate can never be mistaken for a receipt.
+type EvidenceGrade
+  = PlanningEstimate { note: NonEmptyStr }
+  | ObservedMarketRate { note: NonEmptyStr }
+  | QuotedExpense { note: NonEmptyStr }
+  | PurchaseReceipt { note: NonEmptyStr }
+  | MeasuredOperatingCost { note: NonEmptyStr }
+
+fn evidence_grade_label(g: EvidenceGrade) -> NonEmptyStr {
+  match g {
+    PlanningEstimate { note } => "planning estimate",
+    ObservedMarketRate { note } => "market rate",
+    QuotedExpense { note } => "quoted",
+    PurchaseReceipt { note } => "receipt",
+    MeasuredOperatingCost { note } => "measured",
+  }
+}
+
+fn grade_is_receipt(g: EvidenceGrade) -> Bool {
+  match g {
+    PurchaseReceipt { note } => true,
+    MeasuredOperatingCost { note } => true,
+    PlanningEstimate { note } => false,
+    ObservedMarketRate { note } => false,
+    QuotedExpense { note } => false,
+  }
+}
+
+type ProductCondition
+  = NewSealed { note: NonEmptyStr }
+  | UsedTested { note: NonEmptyStr }
+  | UsedUntested { obligation: NonEmptyStr }
+  | ConditionUnread { obligation: NonEmptyStr }
+
+fn condition_label(c: ProductCondition) -> NonEmptyStr {
+  match c {
+    NewSealed { note } => "new",
+    UsedTested { note } => "used, tested",
+    UsedUntested { obligation } => "used, untested",
+    ConditionUnread { obligation } => "condition unread",
+  }
+}
+
+// SUPPLY is treated as a market rate, not as a lot size. A single listing is where the number came
+// from, but the build decision is about what a part costs when you go looking for sixteen of them,
+// not about whether one seller happens to hold sixteen today. Assembling a population across several
+// used lots is ordinary purchasing; it is a logistics problem and it does not change the price.
+//
+// The assumption is still recorded, because it is an assumption: if 32-GiB modules turn out not to
+// be consistently available near this rate, the frontier moves.
+type SupplyStanding
+  = PlanningRate { grade: EvidenceGrade }
+  | SupplyUnread { obligation: NonEmptyStr }
+
+fn supply_label(q: SupplyStanding) -> NonEmptyStr {
+  match q {
+    PlanningRate { grade } => evidence_grade_label(g: grade),
+    SupplyUnread { obligation } => "no rate",
+  }
+}
+
+// A candidate is COMPUTABLE when every one of its inputs has a planning rate. A missing rate is not
+// a zero and not an average; it makes the candidate uncomparable and says so.
+fn supply_is_assumed(q: SupplyStanding) -> Bool {
+  match q {
+    PlanningRate { grade } => true,
+    SupplyUnread { obligation } => false,
+  }
+}
+
+data no_obligations: List<NonEmptyStr> = []
+
+// A one-element list whose element type is pinned by the parameter. A bare string literal in a list
+// infers List<String>, which will not meet a List<NonEmptyStr> return type.
+fn one_note(text: NonEmptyStr) -> List<NonEmptyStr> { [text] }
+
+// MARKET RATES MOVE, and a superseded reading is history rather than deletion (operator
+// directive 2026-08-18: "we need to model market rates somehow"). Every observation row
+// carries its CURRENT planning rate in unit_price_micro plus the dated readings it
+// superseded, so a price move is visible as a fact with a direction instead of a silent
+// edit. The three same-day receipts that forced this: Mt. Jade 2,600 -> 2,000, 64 GiB
+// DIMMs 499 -> 210, 32 GiB 100 -> 110.
+// WHERE A PART COMES FROM decides which levies apply (operator 2026-08-18: include sales
+// tax and duties where applicable - Mt. Collins has no import; NYC sales tax on everything).
+// Domestic purchases pay sales tax only; imports pay the duty reserve AND sales/use tax; an
+// unread route keeps the duty reserve conservatively until sourcing is known.
+type SupplyRoute
+  = DomesticRoute { note: NonEmptyStr }
+  | ImportRoute { note: NonEmptyStr }
+  | RouteUnread { obligation: NonEmptyStr }
+
+type MarketRateObservation {
+  price_micro: Int
+  observed_on: NonEmptyStr
+  source_note: NonEmptyStr
+}
+
+data no_rate_history: List<MarketRateObservation> = []
+
+type MemoryLotObservation {
+  label: NonEmptyStr
+  part_description: NonEmptyStr
+  capacity_gib: Nat
+  route: SupplyRoute
+  depth: SupplyDepth
+  data_rate_mt_s: Nat
+  organization: NonEmptyStr
+  condition: ProductCondition
+  unit_price_micro: Int
+  supply: SupplyStanding
+  seller: NonEmptyStr
+  observed_on: NonEmptyStr
+  rate_history: List<MarketRateObservation>
+}
+
+// The compatibility-bearing family axis: Altra and Altra Max share the socket, but a
+// board's Max support can be conditional on firmware - a fact the candidate generator
+// consumes rather than a note a buyer has to remember.
+type ProcessorFamily = AltraFamily | AltraMaxFamily
+
+type ProcessorLotObservation {
+  label: NonEmptyStr
+  sku: NonEmptyStr
+  family: ProcessorFamily
+  socket: CpuSocket
+  route: SupplyRoute
+  depth: SupplyDepth
+  physical_cores: Nat
+  condition: ProductCondition
+  unit_price_micro: Int
+  supply: SupplyStanding
+  observed_on: NonEmptyStr
+  rate_history: List<MarketRateObservation>
+}
+
+// A WHOLE-SYSTEM LOT: a complete or near-complete server observed at one price, processors
+// included, versus the loose-parts path above. Operator direction 2026-08-18: the Mt. Jade and
+// Mt. Collins supply enters the frontier at the operator-quoted prices, so the candidate shape
+// must carry either a loose board build or a system lot without forking the comparison.
+type SystemLotObservation {
+  label: NonEmptyStr
+  system_description: NonEmptyStr
+  included_processor_sku: NonEmptyStr
+  included_core_count_total: Nat
+  route: SupplyRoute
+  depth: SupplyDepth
+  planned_dimm_population: Nat
+  max_data_rate_mt_s: Nat
+  condition: ProductCondition
+  unit_price_micro: Int
+  supply: SupplyStanding
+  seller: NonEmptyStr
+  observed_on: NonEmptyStr
+  rate_history: List<MarketRateObservation>
+}
+
+// The platform is the axis that decides which parts a candidate still has to buy. A loose
+// board build buys board, duty reserve, processors and the finishing BOM; a system lot has
+// processors, chassis, power and cooling in its one price and still buys memory, scratch and
+// rails. Collapsing these into one price field is how a lot would be credited nothing for
+// the chassis it includes, so the platform is a sum, not a note.
+type NodePlatform
+  = LooseBoardBuild { board: BoardFacts, processor: ProcessorLotObservation }
+  | WholeSystemLot { lot: SystemLotObservation }
+
+// ---------------------------------------------------------------------------------------------
+// THE MEMORY PRICE CURVE, as observed. This is the fact that decides the build.
+// ---------------------------------------------------------------------------------------------
+
+data dimm_16gib_lot: MemoryLotObservation = MemoryLotObservation {
+  label: "16 GiB",
+  part_description: "16 GiB DDR4 ECC RDIMM, used",
+  capacity_gib: 16,
+  route: DomesticRoute { note: "domestic used-market commodity part" },
+  depth: DepthAvailableUncounted { note: "commodity part, assumed sourceable" },
+  data_rate_mt_s: 2400,
+  organization: "organization unread",
+  condition: UsedUntested { obligation: "Condition, rank organization and exact part number were not recorded with this price." },
+  unit_price_micro: 50000000,
+  supply: PlanningRate { grade: ObservedMarketRate { note: "Planning rate for used 16-GiB ECC RDIMMs. Commodity part." } },
+  seller: "marketplace, seller unrecorded",
+  observed_on: "2026-08-18",
+  rate_history: [MarketRateObservation { price_micro: 70000000, observed_on: "2026-08-12", source_note: "prior marketplace reading" }],
+}
+
+data dimm_32gib_lot: MemoryLotObservation = MemoryLotObservation {
+  label: "32 GiB",
+  part_description: "Kingston 32 GiB DDR4 RDIMM 2Rx4 PC4-2666V ECC",
+  capacity_gib: 32,
+  route: DomesticRoute { note: "domestic used-market commodity part" },
+  depth: DepthAvailableUncounted { note: "commodity part, assumed sourceable" },
+  data_rate_mt_s: 2666,
+  organization: "2Rx4",
+  condition: UsedUntested { obligation: "Listed as used. No test report, no return standing and no per-module serial recorded." },
+  unit_price_micro: 110000000,
+  supply: PlanningRate { grade: ObservedMarketRate { note: "Planning baseline for compatible used 32-GiB DDR4 ECC RDIMMs, assumed consistently sourceable. A listing at 120 dollars sits inside the sensitivity band; the band, not that listing, is what the frontier is tested against." } },
+  seller: "marketplace seller, 291 feedback, 99.5 percent positive",
+  observed_on: "2026-08-18",
+  rate_history: [MarketRateObservation { price_micro: 100000000, observed_on: "2026-08-12", source_note: "prior marketplace reading; operator re-quote 2026-08-18 at about 110" }],
+}
+
+data dimm_64gib_lot: MemoryLotObservation = MemoryLotObservation {
+  label: "64 GiB",
+  part_description: "Micron 64 GiB DDR4-3200 ECC RDIMM, pre-owned, single module",
+  capacity_gib: 64,
+  route: DomesticRoute { note: "domestic used-market part per the operator quote" },
+  depth: DepthAvailableUncounted { note: "operator quote; volume depth is the named supply-durability sensitivity" },
+  data_rate_mt_s: 3200,
+  organization: "organization unread",
+  condition: UsedUntested { obligation: "Pre-owned single-module listing; no test report or return standing recorded." },
+  unit_price_micro: 210000000,
+  supply: PlanningRate { grade: ObservedMarketRate { note: "Operator-quoted 2026-08-18 at about 210 per module - a 58 percent collapse from the 499 single-listing reading six days earlier, which is what flipped the split-versus-dense answer. The move itself is why supply durability at volume stays a named sensitivity." } },
+  seller: "marketplace, seller unrecorded",
+  observed_on: "2026-08-18",
+  rate_history: [MarketRateObservation { price_micro: 499000000, observed_on: "2026-08-12", source_note: "single pre-owned listing; superseded by the operator's 2026-08-18 quote at about 210" }],
+}
+
+data memory_lots: List<MemoryLotObservation> = [dimm_16gib_lot, dimm_32gib_lot, dimm_64gib_lot]
+
+// The band the frontier is tested against. A baseline with no band is a number pretending to be a
+// fact; a band says how wrong it can be before the answer changes.
+data dimm_32gib_low_micro: Int = 80000000
+data dimm_32gib_high_micro: Int = 120000000
+
+data memory_band_note: NonEmptyStr = "The 32-GiB planning baseline is 110 dollars a module with a sensitivity band of 80 to 120. The frontier is checked at both ends rather than at the baseline alone, because a build recommendation that only survives at one price is not a recommendation."
+
+fn memory_price_per_gib_micro(m: MemoryLotObservation) -> Int {
+  m.unit_price_micro / m.capacity_gib
+}
+
+// THE CLIFF, derived rather than described. 32-GiB modules are cheaper per gibibyte than 16-GiB
+// modules; 64-GiB modules are roughly twice the price per gibibyte of either. That is not a curve
+// with a smooth optimum, it is a step, and stepping over it costs more than four 32-GiB modules for
+// twice the memory of one.
+fn memory_cliff_holds() -> Bool {
+  memory_price_per_gib_micro(m: dimm_32gib_lot) < memory_price_per_gib_micro(m: dimm_16gib_lot)
+    && memory_price_per_gib_micro(m: dimm_64gib_lot) > memory_price_per_gib_micro(m: dimm_32gib_lot) * 2
+}
+
+data memory_curve_note: NonEmptyStr = "After the 2026-08-18 re-quotes the curve is nearly flat per gibibyte: 3.13 dollars per GiB at 16, 3.44 at 32, 3.28 at 64 - the 64-GiB price cliff that used to drive the density decision is gone (499 -> 210, see the rate history), which is exactly what put the dense and mid-density builds back on the frontier. The prices are observations, not constants; the frontier is re-derived when they move."
+
+// ---------------------------------------------------------------------------------------------
+// THE PROCESSOR LIQUIDATION CURVE.
+// ---------------------------------------------------------------------------------------------
+
+data altra_q64_lot: ProcessorLotObservation = ProcessorLotObservation {
+  label: "Q64",
+  sku: "Ampere Altra Q64-30",
+  family: AltraFamily,
+  socket: ampere_lga4926_socket,
+  route: DomesticRoute { note: "domestic marketplace listings" },
+  depth: DepthAvailableUncounted { note: "two listings observed; no count" },
+  physical_cores: 64,
+  condition: UsedUntested { obligation: "Pre-owned listing. Exact stepping, board revision support, BIOS level, condition and return standing all unread." },
+  unit_price_micro: 140000000,
+  supply: PlanningRate { grade: ObservedMarketRate { note: "Two listings observed at this price; taken as the planning rate for used Q64-30 parts." } },
+  observed_on: "2026-08-12",
+  rate_history: no_rate_history,
+}
+
+data altra_q80_lot: ProcessorLotObservation = ProcessorLotObservation {
+  label: "Q80",
+  sku: "Ampere Altra 80-core",
+  family: AltraFamily,
+  socket: ampere_lga4926_socket,
+  route: DomesticRoute { note: "domestic marketplace supply" },
+  depth: DepthObserved { units: 62, note: "PURCHASED 2026-08-18: all sixty-two units bought - this is owned inventory, not a listing. 31 dual-socket nodes' worth plus near-free spares." },
+  physical_cores: 80,
+  condition: ConditionUnread { obligation: "Condition standing not recorded with the purchase; used-market parts. Power-on/burn-in receipts on arrival replace this." },
+  unit_price_micro: 70370000,
+  supply: PlanningRate { grade: PurchaseReceipt { note: "PURCHASED 2026-08-18: 62 units for 4,750 USD ALL-IN INCLUDING SALES TAX. The unit_price_micro is the derived PRE-TAX equivalent (4,750 / 1.08875 / 62 = 70.37) so the planning-capex assembly, which applies NYC sales tax to every hardware line, reproduces the actual paid total (62 x 70.37 x 1.08875 = 4,750) rather than taxing an already-taxed figure twice." } },
+  observed_on: "2026-08-18",
+  rate_history: [MarketRateObservation { price_micro: 95000000, observed_on: "2026-08-18", source_note: "same-day pre-purchase quote at 95 per unit; the executed purchase landed at 70.37 pre-tax equivalent (4,750 all-in for the lot)" }, MarketRateObservation { price_micro: 200000000, observed_on: "2026-08-12", source_note: "prior planning estimate, no listing seen; superseded by the observed 62-unit supply" }],
+}
+
+data altra_q128_lot: ProcessorLotObservation = ProcessorLotObservation {
+  label: "Q128",
+  sku: "Ampere Altra Max 128-core",
+  family: AltraMaxFamily,
+  socket: ampere_lga4926_socket,
+  route: DomesticRoute { note: "domestic used-market part" },
+  depth: DepthAvailableUncounted { note: "market rate observed; no count" },
+  physical_cores: 128,
+  condition: ConditionUnread { obligation: "Condition standing not recorded with the rate; used-market part." },
+  unit_price_micro: 450000000,
+  supply: PlanningRate { grade: ObservedMarketRate { note: "Operator's planning rate for used 128-core parts." } },
+  observed_on: "2026-08-12",
+  rate_history: no_rate_history,
+}
+
+data processor_market_note: NonEmptyStr = "Cores are cheap and unevenly priced: 140 dollars for the 64-core part, 95 for the 80-core (the 2026-08-18 re-quote, with sixty-two units of observed depth), 450 for the 128-core. Per core that puts the Q80 at barely more than a dollar a core - the cheapest cores in the table - while the Max part carries roughly a 3x per-core premium plus the MP72 firmware-support condition. Memory remains the binding resource for the standard shape."
+
+// ---------------------------------------------------------------------------------------------
+// THE BOARD. Read from the existing carrier rather than restated: 2 sockets, 16 DIMM slots.
+// ---------------------------------------------------------------------------------------------
+
+fn board_socket_count() -> Nat { gigabyte_mp72_hb0_physical_profile.socket_count }
+fn board_dimm_slots() -> Nat { gigabyte_mp72_hb0_physical_profile.dimm_slots }
+// A board is a fact bundle the candidate generator crosses with processors and memory:
+// geometry from the cited public profile, an observed market price, an Altra Max support
+// standing, and a planning draw. Adding a board is adding ONE row here.
+type AltraMaxSupport
+  = MaxSupportedObserved { basis: NonEmptyStr }
+  | MaxConditionalOnFirmware { obligation: NonEmptyStr }
+
+// Depth is the fact that separates a price from a fleet: a rate with one findable unit can
+// seed a pilot but cannot reorganize the build plan. A scarce board's candidates land
+// NotComputable in the frontier (visible, priced, not comparable, and NOT
+// allowed to dominate buyable candidates) until sourcing is proven.
+type SupplyDepth
+  = DepthObserved { units: Nat, note: NonEmptyStr }
+  | DepthAvailableUncounted { note: NonEmptyStr }
+  | DepthScarce { obligation: NonEmptyStr }
+
+type BoardFacts {
+  label: NonEmptyStr
+  socket: CpuSocket
+  route: SupplyRoute
+  socket_count: Nat
+  dimm_slots: Nat
+  max_data_rate_mts: Nat
+  altra_max_support: AltraMaxSupport
+  board_price_micro: Int
+  price_note: NonEmptyStr
+  depth: SupplyDepth
+  planning_node_watts: Nat
+  observed_on: NonEmptyStr
+  rate_history: List<MarketRateObservation>
+}
+
+data mp72_board_facts: BoardFacts = BoardFacts {
+  label: "Gigabyte MP72-HB0",
+  socket: ampere_lga4926_socket,
+  route: RouteUnread { obligation: "sourcing route unrecorded for the observed MP72 supply; the duty reserve stays applied until it is known domestic" },
+  socket_count: 2,
+  dimm_slots: 16,
+  max_data_rate_mts: 3200,
+  altra_max_support: MaxConditionalOnFirmware { obligation: "Altra Max (Q128) runs on MP72-HB0 only on sufficiently new BIOS/CPLD; a used board with old firmware may not POST with Max parts until flashed, possibly needing an Altra chip on hand to flash with. Ask the seller for the shipped BIOS/CPLD version or prefer listings stating Altra Max support." },
+  board_price_micro: 800000000,
+  price_note: "observed marketplace rate for used MP72-HB0 boards, geometry cited via the gigabyte profile row",
+  depth: DepthObserved { units: 30, note: "operator observation 2026-08-18: about thirty MP72 boards obtainable - fleet-scale depth" },
+  planning_node_watts: 650,
+  observed_on: "2026-08-12",
+  rate_history: no_rate_history,
+}
+
+data asrock_board_facts: BoardFacts = BoardFacts {
+  label: "ASRock ALTRAD8UD-1L2T",
+  socket: asrock_altrad8ud_1l2t_mechanical.socket,
+  route: ImportRoute { note: "Alibaba listing - an import; duty reserve and use tax both apply" },
+  socket_count: 1,
+  dimm_slots: 8,
+  max_data_rate_mts: 3200,
+  altra_max_support: MaxSupportedObserved { basis: "vendor product page lists Ampere Altra / Altra Max support for ALTRAD8UD-1L2T" },
+  board_price_micro: 1100000000,
+  price_note: "ASRock Rack ALTRAD8UD-1L2T observed around 1,100 USD on Alibaba (operator observation, 2026-08-18). AMBIGUITY CARRIED: board-only versus board-plus-processor bundle was not recorded - priced as BOARD-ONLY plus a separately priced processor, the conservative direction; a bundle only gets cheaper. Alibaba grey-market condition, duty and freight ride the same duty reserve and universal purchase obligations.",
+  depth: DepthAvailableUncounted { note: "operator states the board is obtainable (Alibaba); no count observed" },
+  planning_node_watts: 350,
+  observed_on: "2026-08-18",
+  rate_history: no_rate_history,
+}
+
+data supermicro_r12spd_facts: BoardFacts = BoardFacts {
+  label: "Supermicro R12SPD-A",
+  socket: supermicro_r12spd_a_mechanical.socket,
+  route: RouteUnread { obligation: "sourcing route unknown along with the depth; duty reserve stays applied" },
+  socket_count: supermicro_r12spd_a_mechanical.processor_socket_count,
+  dimm_slots: supermicro_r12spd_a_mechanical.dimm_slots_total,
+  max_data_rate_mts: 3200,
+  altra_max_support: MaxSupportedObserved { basis: "vendor product page lists Ampere Altra and Altra Max up to 250 W for R12SPD-A (extdeps.boards.supermicro)" },
+  board_price_micro: 500000000,
+  price_note: "Operator observation 2026-08-18: R12SPD-A around 500 USD. SINGLE socket despite the dual-sounding name (the pairing misread is recorded on the public row) - two processors means two boards. PROPRIETARY MegaDC form factor: chassis compatibility is a purchase obligation, not an assumption.",
+  depth: DepthScarce { obligation: "operator 2026-08-18: hard to find - depth unproven, possibly a one-off listing. Until a countable supply exists this board's candidates are priced but not comparable; a purchase plan sized to it is a plan sized to a rumor." },
+  planning_node_watts: 350,
+  observed_on: "2026-08-18",
+  rate_history: no_rate_history,
+}
+
+data known_boards: List<BoardFacts> = [mp72_board_facts, asrock_board_facts, supermicro_r12spd_facts]
+
+fn duty_for(price_micro: Int, route: SupplyRoute) -> Int {
+  match route {
+    DomesticRoute { note } => 0,
+    ImportRoute { note } => price_micro * duty_reserve_permille / 1000,
+    RouteUnread { obligation } => price_micro * duty_reserve_permille / 1000,
+  }
+}
+
+fn board_with_duty_for(b: BoardFacts) -> Int {
+  b.board_price_micro + duty_for(price_micro: b.board_price_micro, route: b.route)
+}
+
+data sales_tax_per_100k: Int = 8875
+
+data sales_tax_note: NonEmptyStr = "NYC combined sales/use tax at 8.875 percent, applied to EVERY hardware purchase line (operator directive 2026-08-18) - domestic purchases pay it at sale, imports as use tax. It is applied at the planning-capex assembly so every candidate carries it uniformly; the rate is a declared planning fact, and a New Jersey delivery address would change it, which is a placement-coupled question noted rather than modeled."
+
+fn with_sales_tax(price_micro: Int) -> Int {
+  price_micro + price_micro * sales_tax_per_100k / 100000
+}
+
+type CpuBoardCompatibility
+  = CompatibleObserved
+  | CompatibleConditional { obligation: NonEmptyStr }
+
+fn board_cpu_compatibility(b: BoardFacts, p: ProcessorLotObservation) -> CpuBoardCompatibility {
+  match p.family {
+    AltraFamily => CompatibleObserved,
+    AltraMaxFamily => match b.altra_max_support {
+      MaxSupportedObserved { basis } => CompatibleObserved,
+      MaxConditionalOnFirmware { obligation } => CompatibleConditional { obligation: obligation },
+    },
+  }
+}
+
+fn board_max_data_rate_mt_s() -> Nat { megatransfers_per_second_count(r: gigabyte_mp72_hb0_physical_profile.max_data_rate) }
+
+data board_price_micro: Int = 800000000
+
+// The 30 percent import figure is a RESERVE, not a tariff. A duty rate belongs to a confirmed
+// classification for a specific part on a specific commercial invoice, and none of those exists.
+data duty_reserve_permille: Int = 300
+
+data duty_reserve_note: NonEmptyStr = "The 30 percent import figure is a duty-reserve hypothesis, not an observed tariff. It is a planning reserve against duty, freight and brokerage on a Chinese-origin board. A confirmed classification, a commercial invoice and a broker quote replace it; until then no candidate here may report a landed cost."
+
+fn board_with_duty_micro() -> Int {
+  board_price_micro + board_price_micro * duty_reserve_permille / 1000
+}
+
+// ---------------------------------------------------------------------------------------------
+// CANDIDATES. A candidate is a board population times a processor lot times a memory lot, and a
+// node count - because two smaller nodes is a real alternative to one dense node and has to be
+// comparable on the same axes.
+// ---------------------------------------------------------------------------------------------
+
+type NodeBuildCandidate {
+  label: NonEmptyStr
+  node_count: Nat
+  platform: NodePlatform
+  memory: MemoryLotObservation
+}
+
+data nat_zero: Nat = 0
+
+fn cores_per_node(c: NodeBuildCandidate) -> Nat {
+  match c.platform {
+    LooseBoardBuild { board, processor } => board.socket_count * processor.physical_cores,
+    WholeSystemLot { lot } => lot.included_core_count_total,
+  }
+}
+
+// How many DIMMs the candidate actually buys and installs. The loose build fills every slot
+// on the board; a system lot follows the section-4 bandwidth-before-capacity policy - one
+// DIMM per memory channel - and its spec-total slot count stays in the cited platform rows
+// (32 at 2DPC for both Mt. Jade and Mt. Collins), read by the fns below so a witness can
+// hold the planned population against the specification.
+fn populated_dimm_count(c: NodeBuildCandidate) -> Nat {
+  match c.platform {
+    LooseBoardBuild { board, processor } => board.dimm_slots,
+    WholeSystemLot { lot } => lot.planned_dimm_population,
+  }
+}
+
+fn mt_jade_spec_dimm_slots() -> Int { mt_jade_motherboard_mechanical.ddr4_dimms_total }
+
+fn mt_collins_spec_dimm_slots() -> Nat { mt_collins_platform_mechanical.ddr4_dimms_total }
+
+fn memory_gib_per_node(c: NodeBuildCandidate) -> Nat {
+  populated_dimm_count(c: c) * c.memory.capacity_gib
+}
+
+fn total_cores(c: NodeBuildCandidate) -> Nat { c.node_count * cores_per_node(c: c) }
+fn total_memory_gib(c: NodeBuildCandidate) -> Nat { c.node_count * memory_gib_per_node(c: c) }
+
+// The product's ratio is strategy.ci_sellable_unit ci_sellable_unit (one core, three decimal GB),
+// converted from the binary GiB the DIMMs carry in exactly one place; whichever of cores and
+// memory runs out first is the capacity, and the other is paid for and unsellable.
+fn standard_units_per_node(c: NodeBuildCandidate) -> Nat {
+  nat_min(a: cores_per_node(c: c), b: units_by_memory_gib(gib: memory_gib_per_node(c: c)))
+}
+
+fn standard_units(c: NodeBuildCandidate) -> Nat {
+  c.node_count * standard_units_per_node(c: c)
+}
+
+fn stranded_cores(c: NodeBuildCandidate) -> Nat {
+  let by_memory = units_by_memory_gib(gib: memory_gib_per_node(c: c))
+  let per_node = if cores_per_node(c: c) > by_memory { cores_per_node(c: c) - by_memory } else { nat_zero }
+  c.node_count * per_node
+}
+
+fn unused_standard_memory_gib(c: NodeBuildCandidate) -> Nat {
+  let used = required_memory_gib_ceiling_for_units(units: standard_units_per_node(c: c))
+  let per_node = if memory_gib_per_node(c: c) > used { memory_gib_per_node(c: c) - used } else { nat_zero }
+  c.node_count * per_node
+}
+
+// ---------------------------------------------------------------------------------------------
+// CAPACITY RECEIPT. Reserves are subtracted per node, so a two-node candidate pays them twice.
+// ---------------------------------------------------------------------------------------------
+
+data host_reserved_cores: Nat = 4
+data host_reserved_memory_gib: Nat = 16
+data maintenance_reserve_units: Nat = 4
+data admission_headroom_units: Nat = 4
+
+data reserve_basis_note: NonEmptyStr = "Host reserve, maintenance reserve and admission headroom are planning figures, not measurements, and they are charged per node - so two smaller nodes pay them twice. The fleet carrier knows the real host reserve for srv1 through srv4 and this module does not yet read it. They are stated so revenue is computed after a subtraction rather than before one."
+
+type SellableCapacityReceipt {
+  physical_cores: Nat
+  memory_gib: Nat
+  memory_bound_units: Nat
+  standard_units: Nat
+  host_reserved_cores: Nat
+  host_reserved_memory_gib: Nat
+  reserved_units: Nat
+  sellable_units: Nat
+}
+
+fn sellable_units_per_node(c: NodeBuildCandidate) -> Nat {
+  let cores_left = cores_per_node(c: c) - host_reserved_cores
+  let gib_left = memory_gib_per_node(c: c) - host_reserved_memory_gib
+  let bound = nat_min(a: cores_left, b: units_by_memory_gib(gib: gib_left))
+  bound - maintenance_reserve_units - admission_headroom_units
+}
+
+fn capacity_receipt(c: NodeBuildCandidate) -> SellableCapacityReceipt {
+  SellableCapacityReceipt {
+    physical_cores: total_cores(c: c),
+    memory_gib: total_memory_gib(c: c),
+    memory_bound_units: units_by_memory_gib(gib: total_memory_gib(c: c)),
+    standard_units: standard_units(c: c),
+    host_reserved_cores: c.node_count * host_reserved_cores,
+    host_reserved_memory_gib: c.node_count * host_reserved_memory_gib,
+    reserved_units: c.node_count * (maintenance_reserve_units + admission_headroom_units),
+    sellable_units: c.node_count * sellable_units_per_node(c: c),
+  }
+}
+
+fn sellable_units(c: NodeBuildCandidate) -> Nat {
+  capacity_receipt(c: c).sellable_units
+}
+
+// ---------------------------------------------------------------------------------------------
+// CAPEX. Known lines only. The standing refuses to call any of it a landed cost.
+// ---------------------------------------------------------------------------------------------
+
+fn known_capex_per_node_micro(c: NodeBuildCandidate) -> Int {
+  let memory = populated_dimm_count(c: c) * c.memory.unit_price_micro
+  match c.platform {
+    LooseBoardBuild { board, processor } =>
+      board_with_duty_for(b: board) + board.socket_count * processor.unit_price_micro + memory,
+    WholeSystemLot { lot } => lot.unit_price_micro + duty_for(price_micro: lot.unit_price_micro, route: lot.route) + memory,
+  }
+}
+
+fn known_capex_micro(c: NodeBuildCandidate) -> Int {
+  c.node_count * known_capex_per_node_micro(c: c)
+}
+
+fn known_capex_per_unit_micro(c: NodeBuildCandidate) -> Int {
+  let units = sellable_units(c: c)
+  if units > 0 { known_capex_micro(c: c) / units } else { 0 - 1 }
+}
+
+data missing_bom_lines: List<NonEmptyStr> = [
+  "two processor coolers per node",
+  "power supply per node",
+  "NVMe scratch per node",
+  "board carrier and chassis hardware per node",
+  "cables and I/O per node",
+  "network boot and management wiring",
+  "freight, brokerage and taxes as actually assessed",
+  "spare parts allowance",
+]
+
+type LandedCapexStanding
+  = LandedCapexResolved { usd_micro: Int, receipt: NonEmptyStr }
+  | LandedCapexIncomplete { known_subtotal_micro: Int, missing: List<NonEmptyStr>, obligation: NonEmptyStr }
+
+fn landed_capex(c: NodeBuildCandidate) -> LandedCapexStanding {
+  LandedCapexIncomplete {
+    known_subtotal_micro: known_capex_micro(c: c),
+    missing: missing_bom_lines,
+    obligation: "The subtotal covers board, duty reserve, processors and memory only, and every one of those is a marketplace listing rather than an invoice. A two-node candidate duplicates every missing line, which is exactly where the dense-versus-split comparison will move once they are priced.",
+  }
+}
+
+// A planning capex that also feeds the frontier's capex axes. The finishing allowance is per
+// node AND per platform: a loose build still buys coolers, PSU, scratch, carrier and cables,
+// while a system lot arrives with chassis, power distribution, supplies and coolers in its
+// one price and still buys scratch, rails and cables. Charging both shapes the same flat
+// figure - or comparing on bare parts subtotals - would credit the lot nothing for what its
+// price includes, which is exactly the asymmetry that made the earlier known-capex-only
+// comparison honest between loose builds and wrong across platforms.
+data finishing_allowance_per_node_micro: Int = 880000000
+
+data system_lot_finishing_allowance_micro: Int = 300000000
+
+data finishing_allowance_note: NonEmptyStr = "The loose-build finishing allowance stands in for coolers, PSU, scratch, carrier and cables at a flat 880 dollars per node; the system-lot allowance stands in for scratch, rails and cables at a flat 300 dollars because the lot price already carries chassis, power and cooling. Both are assumptions rather than quotes, they are the numbers that decide loose-versus-system and split-versus-dense, and they are the next figures worth pricing properly."
+
+fn finishing_for(c: NodeBuildCandidate) -> Int {
+  match c.platform {
+    LooseBoardBuild { board, processor } => finishing_allowance_per_node_micro,
+    WholeSystemLot { lot } => system_lot_finishing_allowance_micro,
+  }
+}
+
+fn planning_capex_micro(c: NodeBuildCandidate) -> Int {
+  with_sales_tax(price_micro: known_capex_micro(c: c) + c.node_count * finishing_for(c: c))
+}
+
+fn planning_capex_per_unit_micro(c: NodeBuildCandidate) -> Int {
+  let units = sellable_units(c: c)
+  if units > 0 { planning_capex_micro(c: c) / units } else { 0 - 1 }
+}
+
+// THE BAND WAS DECLARED AND NEVER EXECUTED. memory_band_note has said since it was written that
+// "the frontier is checked at both ends rather than at the baseline alone", but the only consumer of
+// that claim lives inside a witness that is quarantined KnownRed for an unrelated missing extdep, so
+// the sentence has never once run. What follows is the executable form of it.
+//
+// THE BAND IS A SHARED PARAMETER, NOT PER-CANDIDATE EVIDENCE WIDTH, and the distinction decides the
+// carrier. There is ONE 32-GiB market price, and in any world it applies to every candidate at once.
+// Handing each candidate its own [low, high] capex interval and comparing those intervals asks a
+// different and wrong question - it admits a world where one build buys the shared DIMM at 80 while
+// another buys it at 120 - and it converts facts that hold at EVERY price into "undecided". The
+// measured case: 2xQ80 is cheaper than 2xQ64 by a constant 151 dollars at both ends of the band, yet
+// their marginal intervals overlap. So the price is varied as a scenario over the whole field, and
+// within one scenario a capex is exact.
+fn memory_is_banded_32gib(c: NodeBuildCandidate) -> Bool {
+  c.memory.capacity_gib == 32
+}
+
+// How hard the shared price pushes this candidate: the number of banded modules the build buys. Two
+// candidates with the SAME coefficient move together under the parameter, so a strict ordering
+// between them at one price is a strict ordering at every price - which is what makes the endpoint
+// check sufficient for such a pair rather than merely suggestive.
+fn memory_price_coefficient(c: NodeBuildCandidate) -> Nat {
+  if memory_is_banded_32gib(c: c) { c.node_count * populated_dimm_count(c: c) } else { nat_zero }
+}
+
+fn capex_at_32gib_price_micro(c: NodeBuildCandidate, unit_price_micro: Int) -> Int {
+  let per_node_delta = populated_dimm_count(c: c) * (unit_price_micro - c.memory.unit_price_micro)
+  with_sales_tax(price_micro: known_capex_micro(c: c) + c.node_count * finishing_for(c: c) + c.node_count * per_node_delta)
+}
+
+// A candidate whose memory is not the banded lot does not move with the parameter at all, so its
+// capex under any scenario is its planning capex. This is not a fallback: it is the coefficient
+// being zero.
+fn planning_capex_at_32gib_price_micro(c: NodeBuildCandidate, unit_price_micro: Int) -> Int {
+  if memory_is_banded_32gib(c: c) {
+    capex_at_32gib_price_micro(c: c, unit_price_micro: unit_price_micro)
+  } else { planning_capex_micro(c: c) }
+}
+
+fn planning_capex_per_unit_at_32gib_price_micro(c: NodeBuildCandidate, unit_price_micro: Int) -> Int {
+  let units = sellable_units(c: c)
+  if units > 0 { planning_capex_at_32gib_price_micro(c: c, unit_price_micro: unit_price_micro) / units } else { 0 - 1 }
+}
+
+data capex_life_months: Int = 36
+
+fn capex_amortization_per_month_micro(c: NodeBuildCandidate) -> Int {
+  planning_capex_micro(c: c) / capex_life_months
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SECOND LAYER: the purchase gate. It blocks a purchase order, because "is this architecture
+// economically preferable" and "can I buy it this afternoon" are different questions.
+//
+// CORRECTION, AND THE CARVE-OUT IS NOT NEW BEHAVIOUR. This block used to say the gate "does not
+// feed the frontier" and never makes a candidate incomparable. That has been FALSE for as long as
+// ci_build_frontier node_missing_inputs has concatenated supply_depth_obligation into a candidate's
+// Pareto gaps, which predates the axis-scoped gap migration -- the migration only gave that gap an
+// axis, which is what finally made the contradiction legible.
+//
+// The split is between EVIDENCE and PAPERWORK, and it is stated without absolutes because the
+// absolutes are what kept going wrong here. TWO facts affect planning, and both do so because they
+// leave an axis without a grounded reading:
+//
+//   a missing rate      -- no capex can be computed, so both capex axes carry no evidence
+//   unproven depth      -- fewer units are obtainable than the plan needs, so sellable units has none
+//
+// THE TWO SETS OVERLAP WITHOUT EITHER CONTAINING THE OTHER, and that is the whole content of this
+// paragraph. Stated per fact, with no absolute over "them", because every absolute written here so
+// far has been false of one member of whatever set it quantified over:
+//
+//   missing PROCESSOR or SYSTEM-LOT rate   planning: capex axes carry no reading
+//                                          purchase authorization: CARRIED, by rate_obligation
+//   missing MEMORY rate                    planning: capex axes carry no reading
+//                                          purchase authorization: not carried
+//   unproven supply DEPTH                  planning: sellable units carries no reading
+//                                          purchase authorization: not carried, by any obligation
+//
+// So one of the three does cross, and the sentence that stood here said none of them did -- while
+// its own table, six lines below it, said rate_obligation carries the platform rate. The absolute
+// and its own counterexample were in the same block.
+//
+// Every candidate is blocked at the gate regardless, by the universal roster, and being blocked for
+// an unrelated reason is not provenance for any of the three. The other purchase obligations --
+// firmware conditions, duty reserve, return standing -- stay on the gate side and leave the frontier
+// alone.
+//
+// FOUR REVISIONS, AND THE PATTERN IS THE POINT: "depth is the ONE obligation that crosses" (false,
+// a missing rate affects planning too), "both also reach purchase authorization" (false for the
+// memory rate and for depth), "NEITHER of them reaches purchase authorization" (false for the
+// platform rate). Each was an absolute over a set whose members do not agree, and each was refuted
+// by a member the sentence had not been checked against. The table above is per fact for that
+// reason: there is no quantifier left to get wrong.
+// ---------------------------------------------------------------------------------------------
+
+type PurchaseAuthorization
+  = PurchaseAuthorized { receipt: NonEmptyStr }
+  | PurchaseBlocked { obligations: List<NonEmptyStr> }
+
+fn rate_obligation(c: NodeBuildCandidate) -> List<NonEmptyStr> {
+  match c.platform {
+    LooseBoardBuild { board, processor } =>
+      if supply_is_assumed(q: processor.supply) { no_obligations } else {
+        one_note(text: join(["processor rate: no rate is carried for ", processor.sku], ""))
+      },
+    WholeSystemLot { lot } =>
+      if supply_is_assumed(q: lot.supply) { no_obligations } else {
+        one_note(text: join(["system lot rate: no rate is carried for ", lot.label], ""))
+      },
+  }
+}
+
+fn platform_max_data_rate_mt_s(c: NodeBuildCandidate) -> Nat {
+  match c.platform {
+    LooseBoardBuild { board, processor } => board.max_data_rate_mts,
+    WholeSystemLot { lot } => lot.max_data_rate_mt_s,
+  }
+}
+
+fn memory_speed_obligation(c: NodeBuildCandidate) -> List<NonEmptyStr> {
+  if c.memory.data_rate_mt_s < platform_max_data_rate_mt_s(c: c) {
+    one_note(text: join([
+      "memory speed: these modules are ", to_string(c.memory.data_rate_mt_s),
+      " MT/s and the platform supports ", to_string(platform_max_data_rate_mt_s(c: c)),
+      ". The build does not become a ", to_string(platform_max_data_rate_mt_s(c: c)),
+      " build because the platform could take one, and whether the slower grade measurably slows a compile has not been benchmarked.",
+    ], ""))
+  } else { no_obligations }
+}
+
+data universal_purchase_obligations: List<NonEmptyStr> = [
+  "matched population: sixteen compatible modules actually in hand, from however many lots, with rank and speed matched",
+  "processor compatibility: exact stepping, board revision, BIOS and CPLD support confirmed for the specific parts",
+  "condition and returns: test report, serials and a written return standing for used parts",
+  "landed cost: tariff classification, freight and brokerage confirmed, replacing the duty reserve with an assessed figure",
+  "remaining BOM: coolers, PSU, scratch, carrier and cables quoted rather than allowed for",
+]
+
+fn purchase_authorization(c: NodeBuildCandidate) -> PurchaseAuthorization {
+  PurchaseBlocked {
+    obligations: concat(
+      rate_obligation(c: c),
+      concat(compatibility_obligation(c: c),
+        concat(memory_speed_obligation(c: c), universal_purchase_obligations))),
+  }
+}
+
+fn purchase_is_authorized(c: NodeBuildCandidate) -> Bool {
+  match purchase_authorization(c: c) {
+    PurchaseAuthorized { receipt } => true,
+    PurchaseBlocked { obligations } => false,
+  }
+}
+
+data two_layer_note: NonEmptyStr = "Nothing above is a purchase order. Every candidate is blocked at the purchase gate, and that blockage does not by itself make a candidate incomparable: the planning layer answers which architecture is economically preferable under stated assumptions, and the purchase gate answers whether a specific build can be bought. Making the first wait for the second is how a planning model becomes useless. The two layers read overlapping facts, and they read DIFFERENT subsets of them, so state the split rather than a count of what crosses. PLANNING: a missing platform or memory rate leaves both capex axes without a reading, and unproven supply depth leaves sellable units without one; ci_build_frontier declares each as a gap on the axis it starves, and planning_inputs_are_complete reads the platform rate AND the memory rate. PURCHASE AUTHORIZATION: rate_obligation carries a missing processor or system-lot rate and nothing else, so a missing MEMORY rate reaches the frontier but never the gate; supply depth reaches the gate through no obligation at all. Every candidate is blocked there regardless, by the universal roster, and being blocked for an unrelated reason is not provenance for either fact. This sentence previously read \"every candidate is fully comparable on the frontier\", and then \"TWO facts cross\": the first was contradicted by the frontier, the second by purchase_authorization, which consumes neither the depth obligation nor any memory-rate one."
+
+
+// A candidate is COMPUTABLE for planning when every input has a rate. This is about missing FACTS
+// rather than missing receipts, which is the distinction that matters here.
+//
+// It is NOT the only thing that can make a candidate uncomparable, and saying so contradicted the
+// depth carve-out stated with the purchase gate above. Unproven supply depth does it too, for the
+// same reason and by the same route: ci_build_frontier turns each into a declared gap on the axis
+// it leaves without a reading.
+fn planning_inputs_are_complete(c: NodeBuildCandidate) -> Bool {
+  match c.platform {
+    LooseBoardBuild { board, processor } =>
+      supply_is_assumed(q: processor.supply) && supply_is_assumed(q: c.memory.supply),
+    WholeSystemLot { lot } =>
+      supply_is_assumed(q: lot.supply) && supply_is_assumed(q: c.memory.supply),
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CANDIDATE GENERATOR (operator direction 2026-08-18: "those types of candidates should
+// be derived from a loose list of facts ... model all possible mobos, CPUs, RAM, their
+// compatibility, and see what is actually cheapest" - not a bunch of hardcoded rows).
+//
+// A candidate is a POINT IN THE CROSS PRODUCT boards x processors x memory x node-count
+// (plus system-lots x memory x node-count), admitted through two declared constraints:
+// the memory-to-core band below, and board-CPU compatibility. A refused combination is a
+// typed row with its cause, counted, never a silent absence - so the field the frontier
+// sees is exactly "every buildable configuration of the observed facts", and entering one
+// new fact row (a board, a CPU rate, a DIMM rate) grows the field without editing any list.
+// ---------------------------------------------------------------------------------------------
+
+// The product sells one core with three decimal GB (strategy.ci_sellable_unit). A build below 2 GiB per core is mostly stranded
+// cores; above 8 GiB per core it is mostly stranded memory. The band is a declared planning
+// constraint, not physics - widen it and the refused rows below become candidates.
+data gib_per_core_floor: Nat = 2
+data gib_per_core_ceiling: Nat = 8
+
+data node_count_options: List<Nat> = [1, 2]
+
+type CandidateAdmission
+  = CandidateAdmitted { c: NodeBuildCandidate }
+  | CandidateRefused { label: NonEmptyStr, cause: NonEmptyStr }
+
+fn loose_label(b: BoardFacts, p: ProcessorLotObservation, m: MemoryLotObservation, nc: Nat) -> NonEmptyStr {
+  join([to_string(nc), "x [", b.label, ", ", to_string(b.socket_count), "x", p.label, ", ", to_string(b.dimm_slots), "x", m.label, "]"], "")
+}
+
+fn lot_label(l: SystemLotObservation, m: MemoryLotObservation, nc: Nat) -> NonEmptyStr {
+  join([to_string(nc), "x [", l.label, ", ", to_string(l.planned_dimm_population), "x", m.label, "]"], "")
+}
+
+fn ratio_admits(cores: Nat, gib: Nat) -> Bool {
+  gib >= cores * gib_per_core_floor && gib <= cores * gib_per_core_ceiling
+}
+
+fn ratio_refusal_cause(cores: Nat, gib: Nat) -> NonEmptyStr {
+  join(["memory-to-core ratio out of band: ", to_string(gib), " GiB over ", to_string(cores),
+    " cores falls outside the declared ", to_string(gib_per_core_floor), "-",
+    to_string(gib_per_core_ceiling), " GiB-per-core band the 1-core-4-GiB product implies"], "")
+}
+
+fn build_loose(b: BoardFacts, p: ProcessorLotObservation, m: MemoryLotObservation, nc: Nat) -> NodeBuildCandidate {
+  NodeBuildCandidate {
+    label: loose_label(b: b, p: p, m: m, nc: nc),
+    node_count: nc,
+    platform: LooseBoardBuild { board: b, processor: p },
+    memory: m,
+  }
+}
+
+fn build_lot(l: SystemLotObservation, m: MemoryLotObservation, nc: Nat) -> NodeBuildCandidate {
+  NodeBuildCandidate {
+    label: lot_label(l: l, m: m, nc: nc),
+    node_count: nc,
+    platform: WholeSystemLot { lot: l },
+    memory: m,
+  }
+}
+
+fn admit_loose(b: BoardFacts, p: ProcessorLotObservation, m: MemoryLotObservation, nc: Nat) -> CandidateAdmission {
+  if cpu_socket_eq(a: b.socket, b: p.socket) {
+    admit_loose_socket_matched(b: b, p: p, m: m, nc: nc)
+  } else {
+    CandidateRefused {
+      label: loose_label(b: b, p: p, m: m, nc: nc),
+      cause: join(["socket mismatch: ", b.label, " does not carry the socket ", p.sku, " terminates in (typed cpu_socket_eq on platform owner, termination and contact count - extdeps.cpu.types authority) - the combination is not constructible, refused before any pricing"], ""),
+    }
+  }
+}
+
+fn admit_loose_socket_matched(b: BoardFacts, p: ProcessorLotObservation, m: MemoryLotObservation, nc: Nat) -> CandidateAdmission {
+  if ratio_admits(cores: b.socket_count * p.physical_cores, gib: b.dimm_slots * m.capacity_gib) {
+    CandidateAdmitted { c: build_loose(b: b, p: p, m: m, nc: nc) }
+  } else {
+    CandidateRefused {
+      label: loose_label(b: b, p: p, m: m, nc: nc),
+      cause: ratio_refusal_cause(cores: b.socket_count * p.physical_cores, gib: b.dimm_slots * m.capacity_gib),
+    }
+  }
+}
+
+fn admit_lot(l: SystemLotObservation, m: MemoryLotObservation, nc: Nat) -> CandidateAdmission {
+  if ratio_admits(cores: l.included_core_count_total, gib: l.planned_dimm_population * m.capacity_gib) {
+    CandidateAdmitted { c: build_lot(l: l, m: m, nc: nc) }
+  } else {
+    CandidateRefused {
+      label: lot_label(l: l, m: m, nc: nc),
+      cause: ratio_refusal_cause(cores: l.included_core_count_total, gib: l.planned_dimm_population * m.capacity_gib),
+    }
+  }
+}
+
+data processor_market: List<ProcessorLotObservation> = [altra_q64_lot, altra_q80_lot, altra_q128_lot]
+
+data no_admissions: List<CandidateAdmission> = []
+
+fn all_admissions() -> List<CandidateAdmission> {
+  let loose = fold(known_boards, init: no_admissions, f: fn(acc_b, b) {
+    fold(processor_market, init: acc_b, f: fn(acc_p, p) {
+      fold(memory_lots, init: acc_p, f: fn(acc_m, m) {
+        fold(node_count_options, init: acc_m, f: fn(acc_n, nc) {
+          concat(acc_n, [admit_loose(b: b, p: p, m: m, nc: nc)])
+        })
+      })
+    })
+  })
+  fold(system_lot_market, init: loose, f: fn(acc_l, l) {
+    fold(memory_lots, init: acc_l, f: fn(acc_m, m) {
+      fold(node_count_options, init: acc_m, f: fn(acc_n, nc) {
+        concat(acc_n, [admit_lot(l: l, m: m, nc: nc)])
+      })
+    })
+  })
+}
+
+data no_candidates: List<NodeBuildCandidate> = []
+
+fn admitted_candidates() -> List<NodeBuildCandidate> {
+  fold(all_admissions(), init: no_candidates, f: fn(acc, a) {
+    match a {
+      CandidateAdmitted { c } => concat(acc, [c]),
+      CandidateRefused { label, cause } => acc,
+    }
+  })
+}
+
+fn refused_combinations() -> List<CandidateAdmission> {
+  fold(all_admissions(), init: no_admissions, f: fn(acc, a) {
+    match a {
+      CandidateAdmitted { c } => acc,
+      CandidateRefused { label, cause } => concat(acc, [a]),
+    }
+  })
+}
+
+// The board-CPU compatibility standing is deliberately an OBLIGATION rather than an
+// admission filter: no observed pairing is impossible, but the MP72 x Altra Max pairing is
+// conditional on firmware, and that condition rides the purchase gate of every candidate it
+// applies to (see compatibility_obligation below).
+// NOISE IS A PLACEMENT FACT (operator 2026-08-18): the Mt. Jade / Mt. Collins system chassis
+// are dense rack servers whose fans make them machine-room equipment - they require a colo
+// or a closed machine closet. A loose board build can be finished into a quiet chassis (the
+// finishing allowance carries it), which is what makes home placement possible AT ALL for
+// those candidates. This is derived per candidate and consumed by the placement models.
+type Habitability
+  = HomeHabitableWithQuietBuild { note: NonEmptyStr }
+  | RequiresMachineRoom { note: NonEmptyStr }
+
+fn candidate_habitability(c: NodeBuildCandidate) -> Habitability {
+  match c.platform {
+    LooseBoardBuild { board, processor } => HomeHabitableWithQuietBuild {
+      note: "loose build: the finishing allowance can buy a quiet tower or sound-managed chassis; choosing a dense 1U/2U rack chassis instead forfeits this and re-classes the node as machine-room equipment",
+    },
+    WholeSystemLot { lot } => RequiresMachineRoom {
+      note: join([lot.label, ": dense rack chassis with server fans - open-room habitation refused; placement is a colo cabinet or a closed machine room, never a living space"], ""),
+    },
+  }
+}
+
+fn supply_depth_obligation(c: NodeBuildCandidate) -> List<NonEmptyStr> {
+  match c.platform {
+    LooseBoardBuild { board, processor } => match board.depth {
+      DepthObserved { units, note } =>
+        if c.node_count > units {
+          one_note(text: join(["supply depth: the plan needs ", to_string(c.node_count), " boards and only ", to_string(units), " are observed obtainable"], ""))
+        } else { no_obligations },
+      DepthAvailableUncounted { note } => no_obligations,
+      DepthScarce { obligation } => one_note(text: join(["supply depth (", board.label, "): ", obligation], "")),
+    },
+    WholeSystemLot { lot } => match lot.depth {
+      DepthObserved { units, note } =>
+        if c.node_count > units {
+          one_note(text: join(["supply depth: the plan needs ", to_string(c.node_count), " systems and only ", to_string(units), " are observed obtainable"], ""))
+        } else { no_obligations },
+      DepthAvailableUncounted { note } => no_obligations,
+      DepthScarce { obligation } => one_note(text: join(["supply depth (", lot.label, "): ", obligation], "")),
+    },
+  }
+}
+
+fn compatibility_obligation(c: NodeBuildCandidate) -> List<NonEmptyStr> {
+  match c.platform {
+    LooseBoardBuild { board, processor } => match board_cpu_compatibility(b: board, p: processor) {
+      CompatibleObserved => no_obligations,
+      CompatibleConditional { obligation } => one_note(text: obligation),
+    },
+    WholeSystemLot { lot } => no_obligations,
+  }
+}
+
+// THE WHOLE-SYSTEM SUPPLY, at the operator-quoted prices (direction 2026-08-18). Both lots
+// include their processors, so their capex line has no separate processor purchase; both
+// follow the section-4 one-DIMM-per-channel population (16 of the 32 spec slots the cited
+// platform rows carry).
+data mt_jade_system_lot: SystemLotObservation = SystemLotObservation {
+  label: "Mt. Jade 2U barebones",
+  system_description: "Wiwynn Mt. Jade 2U barebones server: dual Ampere Altra Q80-30 included, chassis, power-distribution board and CRPS supplies included, no DRAM and no NVMe. Platform geometry cited in extdeps.ocp.mt_jade.platform (32 DDR4 slots, 2 sockets).",
+  included_processor_sku: "2x Ampere Altra Q80-30",
+  included_core_count_total: 160,
+  route: DomesticRoute { note: "domestic marketplace listing; no import per the observed route" },
+  depth: DepthAvailableUncounted { note: "available around 2,000 each; no count observed" },
+  planned_dimm_population: 16,
+  max_data_rate_mt_s: 3200,
+  condition: UsedUntested { obligation: "Liquidation barebones pull: no test report, no return standing recorded. Firmware images are NDA-gated for secondhand buyers - obtain BIOS, BMC and SCP images from the seller per the pilot arrival checklist before treating the unit as reflashable." },
+  unit_price_micro: 2000000000,
+  supply: PlanningRate { grade: ObservedMarketRate { note: "Operator quote 2026-08-18: Mt. Jade 2U barebones available around 2,000 dollars each, no RAM. One pilot unit was ordered 2026-08-09 at roughly 3-4k loaded; its arrival measurements replace these planning figures." } },
+  seller: "marketplace, operator-observed",
+  observed_on: "2026-08-18",
+  rate_history: [MarketRateObservation { price_micro: 2600000000, observed_on: "2026-08-09", source_note: "prior or-best-offer marketplace reading; superseded by the operator's 2026-08-18 quote at 2,000" }],
+}
+
+data mt_collins_system_lot: SystemLotObservation = SystemLotObservation {
+  label: "Mt. Collins 1U barebones",
+  system_description: "Foxconn Mt. Collins with dual Ampere Altra Q80-30, no HDD and no RAM. The 1U-versus-2U question is RESOLVED by the held unit: both chassis variants exist as cited rows in extdeps.ampere.mt_collins_product_brief.platform, and this supply is the 1U 857mm variant (operator-measured).",
+  included_processor_sku: "2x Ampere Altra Q80-30",
+  included_core_count_total: 160,
+  route: DomesticRoute { note: "no import on this supply; observed single-unit freight was 75 dollars (first shipment); the 20-unit shipment's freight terms are pending and the per-unit figure below carries the 75 observation until assessed" },
+  depth: DepthObserved { units: 60, note: "operator 2026-08-18: sixty units observed in the US. Our purchases have consumed 21 (1 pilot + 20 ordered 2026-08-30); the remainder is a stale observation, not verified depth" },
+  planned_dimm_population: 16,
+  max_data_rate_mt_s: 3200,
+  condition: UsedUntested { obligation: "Upgraded from for-parts on the pilot receipt: unit 1 powers on and passes memtest (254 GiB at 22 GB/s), so the population is no longer priced as a repair project - but each arriving unit is still individually unproven and rides the intake workflow phases 1-5 before admission." },
+  unit_price_micro: 1775000000,
+  supply: PlanningRate { grade: PurchaseReceipt { note: "ORDERED 2026-08-30: 20 units at 1,700 dollars each, seller firm near that price; operator judged it reasonable against current market. The unit_price_micro is 1,700 plus the observed 75-dollar per-unit freight, PRE-TAX - the planning-capex assembly applies sales tax on top, which also taxes the freight component (overstating by about 7 dollars a unit, the conservative direction) until freight is assessed on the actual 20-unit shipment." } },
+  seller: "marketplace, operator-observed",
+  observed_on: "2026-08-30",
+  rate_history: [MarketRateObservation { price_micro: 1750000000, observed_on: "2026-08-18", source_note: "operator quote at 1,750; the executed 20-unit order landed at 1,700 pre-tax pre-freight" }, MarketRateObservation { price_micro: 1800000000, observed_on: "2026-08-18", source_note: "earlier same-day for-parts listing reading at 1,800" }],
+}
+
+data system_lot_market: List<SystemLotObservation> = [mt_jade_system_lot, mt_collins_system_lot]
+
+// NAMED SPECIMENS - derived through the same builders the generator uses, kept because the
+// narrative reads (split-versus-dense, the band check, the selected build) and the witness
+// pins need stable handles into the field. They are compositions of the fact rows, never
+// facts of their own; each is identical to the generated entry with the same label.
+data candidate_q64_16: NodeBuildCandidate = build_loose(b: mp72_board_facts, p: altra_q64_lot, m: dimm_16gib_lot, nc: 1)
+data candidate_q64_32: NodeBuildCandidate = build_loose(b: mp72_board_facts, p: altra_q64_lot, m: dimm_32gib_lot, nc: 1)
+data candidate_q80_32: NodeBuildCandidate = build_loose(b: mp72_board_facts, p: altra_q80_lot, m: dimm_32gib_lot, nc: 1)
+data candidate_q128_32: NodeBuildCandidate = build_loose(b: mp72_board_facts, p: altra_q128_lot, m: dimm_32gib_lot, nc: 1)
+data candidate_q128_64: NodeBuildCandidate = build_loose(b: mp72_board_facts, p: altra_q128_lot, m: dimm_64gib_lot, nc: 1)
+data candidate_two_q64_32: NodeBuildCandidate = build_loose(b: mp72_board_facts, p: altra_q64_lot, m: dimm_32gib_lot, nc: 2)
+data candidate_q80_64: NodeBuildCandidate = build_loose(b: mp72_board_facts, p: altra_q80_lot, m: dimm_64gib_lot, nc: 1)
+data candidate_asrock_q64_32: NodeBuildCandidate = build_loose(b: asrock_board_facts, p: altra_q64_lot, m: dimm_32gib_lot, nc: 1)
+data candidate_r12spd_q80_32: NodeBuildCandidate = build_loose(b: supermicro_r12spd_facts, p: altra_q80_lot, m: dimm_32gib_lot, nc: 1)
+data candidate_mt_jade_32: NodeBuildCandidate = build_lot(l: mt_jade_system_lot, m: dimm_32gib_lot, nc: 1)
+data candidate_mt_collins_32: NodeBuildCandidate = build_lot(l: mt_collins_system_lot, m: dimm_32gib_lot, nc: 1)
+
+data node_build_candidates: List<NodeBuildCandidate> = admitted_candidates()
+
+
+// The provisional launch front-runner, and provisional is load-bearing: procurement is incomplete
+// for every candidate here, so this is a modelling preference and not a purchase authorization.
+data selected_build: NodeBuildCandidate = candidate_q64_32
+
+data selection_note: NonEmptyStr = "PROVISIONAL ENGINEERING SELECTION, NOT A DERIVED BALANCE. Under the three-decimal-GB unit the Q64 pair with 512 GiB is core-bound at 128 units with 154 GiB unsold (the frontier witness measures both), so no exact-balance rationale exists for it; it is retained provisionally because it fills every slot and socket from the 32-GiB supply the market actually sells, avoids the 64-GiB price cliff, and holds the build question open pending frontier re-evaluation under the contract. Matched sixteen-module supply, memory speed and compatibility, processor support, the remaining BOM, landed cost and power are all open, so nothing here authorizes a purchase."
+
+// Failure domain: what one board taking a node out costs in capacity. A split fleet halves it and
+// pays for the second board to do so.
+fn failure_domain_units(c: NodeBuildCandidate) -> Nat {
+  sellable_units_per_node(c: c)
+}
+
+fn maintenance_population(c: NodeBuildCandidate) -> Nat { c.node_count }
+
+// The dual-socket planning draw. Per-candidate differentiation lives in candidate_node_watts,
+// which reads the board's planning figure for loose builds; both are assumptions until a clamp
+// meter replaces them (candidate_node_watts_note).
+type NodePowerStanding
+  = NodePowerMeasured { watts: Nat, receipt: NonEmptyStr }
+  | NodePowerAssumed { watts: Nat, note: NonEmptyStr }
+
+data selected_node_power: NodePowerStanding = NodePowerAssumed {
+  watts: 650,
+  note: "One assumed average draw per node under load, used for every candidate. It therefore cannot separate a 128-core node from a 64-core one, which is precisely why watts per unit is an unmeasured axis on the frontier rather than a column with numbers in it. A clamp meter on one built node replaces this, and it will move the split-versus-dense answer.",
+}
+
+fn node_watts() -> Nat {
+  match selected_node_power {
+    NodePowerMeasured { watts, receipt } => watts,
+    NodePowerAssumed { watts, note } => watts,
+  }
+}
+
+fn candidate_node_watts(c: NodeBuildCandidate) -> Nat {
+  match c.platform {
+    LooseBoardBuild { board, processor } => board.planning_node_watts,
+    WholeSystemLot { lot } => node_watts(),
+  }
+}
+
+data candidate_node_watts_note: NonEmptyStr = "The single-socket ASRock node carries a 350 W planning average against the dual-socket 650 W - an assumption in the same standing as selected_node_power, stated so the fleet-watts axis does not charge a one-socket node a two-socket draw. Both figures dissolve into clamp-meter measurements."
+
+fn power_is_measured() -> Bool {
+  match selected_node_power {
+    NodePowerMeasured { watts, receipt } => true,
+    NodePowerAssumed { watts, note } => false,
+  }
+}

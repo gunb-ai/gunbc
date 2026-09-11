@@ -1,0 +1,245 @@
+module strategy.fleet_qualification
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+
+// FLEET QUALIFICATION — what makes a node admissible to serve customer work.
+//
+// The operator is scavenging a disappearing Altra ecosystem: boards appear a few at a time,
+// CPUs and DIMMs are cheap now and will not be later. A BILL-OF-MATERIALS standard would
+// convert that supply advantage into inadmissible inventory, because it refuses a part for
+// what it IS rather than for what it DELIVERS. So the standard here is BEHAVIOURAL, and the
+// discipline that follows is one sentence:
+//
+//   SPEED IS EVIDENCE, NOT POLICY.
+//
+// A 2133 population is not refused for being 2133. It is refused only if the service it
+// produces falls below a floor that was measured rather than specified. Equally, a
+// nominally faster population that throws correctable errors is refused despite its
+// marketing number. The property the customer receives is the property that gates.
+//
+// This is DESIGN section 4b's service boundary applied to hardware procurement: a dimension
+// may remain opaque to the customer ONLY above a falsifiable quality floor carrying a named
+// consequence. Memory speed is exactly such a dimension — invisible in the product, real in
+// the delivery — so it is allowed to vary, and the floor is what makes that honest rather
+// than concealing.
+
+// ---------------------------------------------------------------------------------------------
+// Layer 1 — the census. What is physically in the machine.
+// ---------------------------------------------------------------------------------------------
+//
+// Two routes now exist to slot-identity data, and the second was discovered by executing it
+// on the held unit 2026-09-04. strategy.mobo_x_memory_census had recorded only the first and
+// treated it as the sole known route; that is no longer true, and the difference is not
+// cosmetic — one route requires staging an OS image on the BMC's remote-media share, and the
+// other is a command at a firmware prompt over the network. A census that costs five minutes
+// per node is a census that can be run on all twenty; one that costs a provisioning cycle is
+// a census that gets skipped.
+
+type MemoryCensusRoute
+  = LinuxDmidecodeAfterRemoteMediaBoot { recipe: NonEmptyStr }
+  | UefiShellSmbiosOverSol { recipe: NonEmptyStr }
+
+data uefi_shell_census_route: MemoryCensusRoute = UefiShellSmbiosOverSol {
+  recipe: "With the node at its UEFI Shell, open SOL against the BMC and issue smbiosview -t 17. Every populated and empty slot is reported with DeviceLocator, size, configured clock, manufacturer, part number and serial — the same fields dmidecode --type 17 yields, with no image staging, no netboot and no OS. Executed against the held unit 2026-09-04: 32 slots reported, 16 populated at 1DPC, 16 GiB each, DDR4-2666, mixed 1Rx4 and 2Rx8 ranks accepted by the platform.",
+}
+
+type DimmObservation {
+  slot_designation: NonEmptyStr
+  size_mib: Nat
+  configured_clock_mts: Nat
+  part_number: NonEmptyStr
+}
+
+type MemoryPopulationReceipt {
+  node_identity: NonEmptyStr
+  slots_total: Nat
+  slots_populated: Nat
+  channels_populated_per_socket: Nat
+  total_mib: Nat
+  route: MemoryCensusRoute
+}
+
+// ---------------------------------------------------------------------------------------------
+// Layer 2 — the constraints that are NOT negotiable, because they are not about performance.
+// ---------------------------------------------------------------------------------------------
+//
+// These three refuse structurally rather than by measurement, because a machine that
+// violates them does not deliver a lower number — it fails to train, or it silently loses
+// most of its bandwidth in a way no single-node benchmark makes obvious. They are the whole
+// content of "any old stick is fine": the freedom is real, and it is bounded exactly here.
+
+type PopulationRefusalCause
+  = MixedRegisteredAndLoadReduced { detail: NonEmptyStr }
+  | ChannelsNotFullyPopulated { populated: Nat, required: Nat }
+  | CapacityBelowFloor { observed_mib: Nat, floor_mib: Nat }
+
+type PopulationVerdict
+  = PopulationAccepted
+  | PopulationRefused { cause: PopulationRefusalCause }
+
+data channels_per_socket_required: Nat = 8
+
+data node_capacity_floor_mib: Nat = 262144
+
+data rdimm_lrdimm_note: NonEmptyStr = "RDIMM and LRDIMM may not be mixed in one system: the failure is a refusal to train, not a slowdown, and it is the one mixing rule with no measured middle ground. The operator holds both populations — the Samsung M386A4G40DM0-CPB 32 GiB modules are LRDIMM while everything censused in the held unit is RDIMM — so this is a live hazard rather than a theoretical one. Rank mixing is NOT in this category: 1Rx4 and 2Rx8 were observed coexisting in the held unit and training cleanly."
+
+fn population_verdict(
+  registered_and_load_reduced_mixed: Bool,
+  channels_populated: Nat,
+  total_mib: Nat,
+) -> PopulationVerdict {
+  if registered_and_load_reduced_mixed {
+    PopulationRefused { cause: MixedRegisteredAndLoadReduced { detail: rdimm_lrdimm_note } }
+  } else {
+    if channels_populated < channels_per_socket_required {
+      PopulationRefused { cause: ChannelsNotFullyPopulated { populated: channels_populated, required: channels_per_socket_required } }
+    } else {
+      if total_mib < node_capacity_floor_mib {
+        PopulationRefused { cause: CapacityBelowFloor { observed_mib: total_mib, floor_mib: node_capacity_floor_mib } }
+      } else {
+        PopulationAccepted
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Layer 3 — the measurement. This is where speed stops being a spec and becomes a number.
+// ---------------------------------------------------------------------------------------------
+//
+// The reference workload is NAMED, never transcribed. DESIGN section 6: a measurement is
+// cited by naming the producer that re-derives it, because a number copied into prose rots
+// without anyone touching either end. So this module carries the workload's identity and the
+// shape of its result; it does not carry timings, and a consumer that wants a figure runs the
+// producer.
+//
+// The workload is the repository's own release build. It is chosen because it is the closest
+// available analogue of what customers will actually run — a large parallel Rust compile,
+// memory-pressured at link — and because it is already executed in CI, so its baseline is a
+// by-product of work that happens anyway rather than a benchmark to be maintained.
+
+data reference_workload: NonEmptyStr = "cargo build --release -p v1-compiler --bin gunbc, from clean, on the node under test"
+
+type CapacityObservation
+  = CapacityMeasured { relative_throughput_per_mille: Nat, receipt: NonEmptyStr }
+  | CapacityUnmeasured { obligation: NonEmptyStr }
+
+// The floor is expressed per mille of the reference node so that it is a RATIO rather than a
+// duration: durations are the weakest evidence there is, moving with host contention, and a
+// ratio measured in one session survives a faster reference node later.
+data admission_floor_per_mille: Nat = 900
+
+data admission_floor_note: NonEmptyStr = "900 per mille of the reference node. The number is a POLICY declaration and not yet a derived one: no configuration has been measured, so it expresses the operator's stated tolerance — cost dominates, and a job finishing a few percent later is implementation noise — rather than a boundary observed to matter. It must be re-derived once the configuration matrix has run, and until then any consumer citing it is citing an intent."
+
+// The named consequence, without which DESIGN section 4b says a floor is marketing rather
+// than a contract. Below the floor a node does not serve at a discount and does not serve
+// quietly: it leaves the pool.
+data below_floor_consequence: NonEmptyStr = "A node measuring below the admission floor is withheld from the serving pool and carries a typed refusal naming its observed capacity. It is not admitted at a lower price, because a node nobody declared as a cheaper product would be delivering a materially different service under the same name — the externalized degradation DESIGN section 5 forbids. Re-qualification after a memory change is required; qualification does not travel across a hardware change."
+
+type FleetAdmission
+  = Admitted { node_identity: NonEmptyStr, relative_throughput_per_mille: Nat }
+  | AdmissionRefused { node_identity: NonEmptyStr, cause: NonEmptyStr }
+
+fn fleet_admission(
+  node_identity: NonEmptyStr,
+  population: PopulationVerdict,
+  capacity: CapacityObservation,
+) -> FleetAdmission {
+  match population {
+    PopulationRefused { cause } => AdmissionRefused { node_identity: node_identity, cause: "memory population refused before any performance measurement was considered" },
+    PopulationAccepted => match capacity {
+      CapacityUnmeasured { obligation } => AdmissionRefused { node_identity: node_identity, cause: "no capacity observation exists for this node; an unmeasured node is not an admitted node" },
+      CapacityMeasured { relative_throughput_per_mille, receipt } =>
+        if relative_throughput_per_mille >= admission_floor_per_mille {
+          Admitted { node_identity: node_identity, relative_throughput_per_mille: relative_throughput_per_mille }
+        } else {
+          AdmissionRefused { node_identity: node_identity, cause: "measured capacity below the declared admission floor" }
+        },
+    },
+  }
+}
+
+fn admission_is_admitted(a: FleetAdmission) -> Bool {
+  match a {
+    Admitted { node_identity, relative_throughput_per_mille } => true,
+    AdmissionRefused { node_identity, cause } => false,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Layer 4 — the matrix that has not been run.
+// ---------------------------------------------------------------------------------------------
+//
+// Four configurations, one variable each, on one node. The point of declaring them here
+// rather than in a plan is that the module can then state honestly that none of them has an
+// observation, which a plan cannot do.
+
+type MatrixCell {
+  id: NonEmptyStr
+  configuration: NonEmptyStr
+  question: NonEmptyStr
+  observation: CapacityObservation
+}
+
+data matrix_2666_reference: MatrixCell = MatrixCell {
+  id: "16x16GiB-2666",
+  configuration: "sixteen 16 GiB DDR4-2666 RDIMM at 1DPC, the held unit's censused configuration",
+  question: "establishes the reference denominator at 1000 per mille",
+  observation: CapacityUnmeasured { obligation: "Run the reference workload on the held unit as censused." },
+}
+
+data matrix_2133: MatrixCell = MatrixCell {
+  id: "16x16GiB-2133",
+  configuration: "sixteen 16 GiB DDR4-2133 RDIMM at 1DPC",
+  question: "does the slower part cost throughput worth its price difference — the only question that decides the BOM",
+  observation: CapacityUnmeasured { obligation: "Populate with the Micron PC4-2133 modules and re-run." },
+}
+
+data matrix_half_channels: MatrixCell = MatrixCell {
+  id: "8x16GiB-one-socket",
+  configuration: "eight 16 GiB DDR4-2666 on one socket only",
+  question: "how much does channel population dominate module speed — the answer that says whether channels_per_socket_required is load-bearing or decorative",
+  observation: CapacityUnmeasured { obligation: "Depopulate the second socket and re-run." },
+}
+
+data matrix_dense_2133: MatrixCell = MatrixCell {
+  id: "16x64GiB-2133",
+  configuration: "sixteen 64 GiB DDR4-2133 RDIMM at 1DPC, 1 TiB per node",
+  question: "does capacity beyond the floor buy anything for a compile workload, or is the dense module purely a slot-economy play",
+  observation: CapacityUnmeasured { obligation: "Populate with the Samsung 64 GiB modules and re-run." },
+}
+
+data qualification_matrix: List<MatrixCell> = [
+  matrix_2666_reference,
+  matrix_2133,
+  matrix_half_channels,
+  matrix_dense_2133,
+]
+
+fn cell_is_measured(c: MatrixCell) -> Bool {
+  match c.observation {
+    CapacityMeasured { relative_throughput_per_mille, receipt } => true,
+    CapacityUnmeasured { obligation } => false,
+  }
+}
+
+fn matrix_is_complete() -> Bool {
+  fold(qualification_matrix, init: true, f: (acc, c) => acc && cell_is_measured(c))
+}
+
+// The procurement gate. Every DIMM bought before the matrix runs forecloses the BOM decision,
+// because a machine clocks to its slowest module and two hundred modules cannot be unbought.
+type ProcurementVerdict
+  = ProcurementAdmitted
+  | ProcurementRefused { cause: NonEmptyStr }
+
+fn bulk_memory_procurement() -> ProcurementVerdict {
+  if matrix_is_complete() {
+    ProcurementAdmitted
+  } else {
+    ProcurementRefused {
+      cause: "The qualification matrix has unmeasured cells, so no BOM is derivable and bulk memory procurement is refused. Roughly 246 modules are required to populate the twenty-unit lot at 1DPC; buying them at an unmeasured speed grade decides the fleet's floor by accident. The matrix costs four reboots on one node.",
+    }
+  }
+}

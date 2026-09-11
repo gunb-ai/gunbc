@@ -1,0 +1,418 @@
+module test.claim.ci_storage_tiering_witness
+
+import std.types { Bool, List, NonEmptyStr, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.ci_storage_tiering {
+  axis_tier_latency_id, axis_tier_cost_id, cost_missing, latency_missing_in_field,
+  StorageTierCandidate, storage_tier_candidates, admitted_candidates,
+  serving_admission, ServingAdmission, ServingAdmitted, ServingAdmittedWithOriginBudget, ServingRefusedExceedsDia,
+  tier_survives, tier_rate_standing_label, tier_all_cloud_r2, tier_all_cloud_s3, tier_all_cloud_b2, tier_hybrid, tier_hybrid_diskless, tier_all_local,
+  storage_tier_axes, axes_for_field, operator_tier_policy, policy_admits_candidate,
+  LatencyEvidence, LatencyMeasured, LatencyEstimated, latency_is_measured,
+  ObjectStorageRateScenario, object_storage_rate_scenarios, object_storage_rate_low, object_storage_rate_high,
+  object_storage_rate_coefficient, tier_monthly_cost_at, TierCostReading, TierCostAt, TierCostGap,
+  TierRateStanding, TierFrontierAtEveryRate, TierDominatedAtEveryRate, TierRateSensitive,
+  TierRateStandingUnestablished, tier_rate_standing, tier_rate_standing_in_field,
+  tier_standing_in_field, tier_entry_in_field, TierCostBasis, QuotedMonthlyCost,
+  ObjectStorageDependentCost, UngroundedCost, FixedCostEvidence, FixedComputedFromQuotedRates,
+  DurableHome, DurableInCloudObjectStorage, ServingLocality, HotServedLocally,
+}
+import strategy.compliance_posture { compliance_regimes, regime_has_carrier_or_trigger, ComplianceRegime }
+import std.interval { degenerate_interval }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.pareto { SelectionAxis, AxisGap, ParetoStanding, ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused }
+
+// THE DISCRIMINATING CLAIMS. (1) Both all-cloud serving candidates are REFUSED by the
+// bandwidth admission - the wall this module exists to carry; if a planning-number edit
+// ever admits WAN serving at the modeled circuit, this witness goes red and the edit
+// answers for itself. (2) The refusal is the typed arm and not an axis artifact, and that
+// claim is STRONGER than it used to be rather than weaker. It used to rest on R2 being the
+// CHEAPEST row, so a frontier without admission would have kept it. R2's monthly figure has
+// since been declared ungrounded - it was a quoted rate times an estimated quantity, and the
+// multiplication lived in prose - so it now carries no cost reading at all and cannot be the
+// cheapest anything. What survives is the sharper statement: the row is refused BEFORE any
+// axis is consulted, which is why a candidate with no cost reading whatsoever still reaches a
+// typed refusal rather than an unfunded-axis shrug. (3) The admitted field is exactly the
+// three local-serving candidates and the hybrid rows are not dominated. (4) Every
+// compliance regime carries a carrier, trigger, or reason - no silently-assumed regime.
+
+fn admission_refuses(c: StorageTierCandidate) -> Bool {
+  match serving_admission(c: c) {
+    ServingAdmitted => false,
+    ServingAdmittedWithOriginBudget { origin_peak_gbps, dia_gbps } => false,
+    ServingRefusedExceedsDia { required_gbps_average, dia_gbps } => required_gbps_average > dia_gbps,
+  }
+}
+
+fn admission_admits(c: StorageTierCandidate) -> Bool {
+  match serving_admission(c: c) {
+    ServingAdmitted => true,
+    ServingAdmittedWithOriginBudget { origin_peak_gbps, dia_gbps } => true,
+    ServingRefusedExceedsDia { required_gbps_average, dia_gbps } => false,
+  }
+}
+
+// The hybrid rows must be admitted through the ORIGIN-BUDGET arm specifically - a plain
+// ServingAdmitted for a candidate with an origin-miss path would mean the budget check
+// silently vanished.
+fn admitted_with_budget(c: StorageTierCandidate) -> Bool {
+  match serving_admission(c: c) {
+    ServingAdmitted => false,
+    ServingAdmittedWithOriginBudget { origin_peak_gbps, dia_gbps } => origin_peak_gbps <= dia_gbps,
+    ServingRefusedExceedsDia { required_gbps_average, dia_gbps } => false,
+  }
+}
+
+// SURVIVAL IS READ FROM THE SCENARIO AGGREGATE, not from a silently-chosen endpoint - and it is
+// REASON-LOCKED, because the reason changed under this diff. The hybrid rows used to survive by
+// holding the frontier on a cost figure; their fixed components are now declared ungrounded, so
+// they survive by being UNESTABLISHED instead. Those are different facts, and a control that
+// accepted either would have gone on passing while the module quietly stopped answering. This one
+// says which it is, so the day the drive amortization is quoted and the rows go back to a real
+// frontier standing, the control fails and has to be re-read rather than silently absorbing it.
+fn not_dominated(c: StorageTierCandidate) -> Bool {
+  match tier_rate_standing(c: c) {
+    TierRateStandingUnestablished { receipts } => count(receipts) == count(object_storage_rate_scenarios)
+    TierFrontierAtEveryRate { receipts } => false
+    TierRateSensitive { frontier_at, dominated_at } => false
+    TierDominatedAtEveryRate { receipts } => false
+  }
+}
+
+// THE SHARED RATE IS SHARED. hybrid and hybrid_diskless buy the SAME zero-egress object storage, so
+// one rate moves both costs together and a strict ordering at one rate is a strict ordering at every
+// rate. Establishing that structurally - equal coefficients - is what makes the two declared rates
+// sufficient; testing 300 and 750 alone would say nothing about 500.
+//
+// It goes RED if the projector stops sharing the parameter: pricing the two rows at different
+// scenario rates, or changing one row's coefficient, which is exactly what independent per-row cost
+// intervals would have done.
+fn hybrid_pair_coefficients_are_equal() -> Bool {
+  object_storage_rate_coefficient(c: tier_hybrid) == object_storage_rate_coefficient(c: tier_hybrid_diskless)
+}
+
+// Both rows' fixed components are now declared ungrounded, so neither yields a cost figure to
+// compare. The ordering claim is therefore UNAVAILABLE rather than false: what remains checkable is
+// that both rows still sit on the SAME shared rate - equal coefficients - and that neither pretends
+// to a cost it cannot support. When either fixed component is quoted, the ordering assertion returns.
+fn cost_is_a_declared_gap(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> Bool {
+  match tier_monthly_cost_at(c: c, scenario: scenario) {
+    TierCostGap { obligation } => true
+    TierCostAt { micro } => false
+  }
+}
+
+fn shared_rate_ordering_is_invariant() -> Bool {
+  hybrid_pair_coefficients_are_equal()
+    && all(object_storage_rate_scenarios, sc => cost_is_a_declared_gap(c: tier_hybrid, scenario: sc))
+    && all(object_storage_rate_scenarios, sc => cost_is_a_declared_gap(c: tier_hybrid_diskless, scenario: sc))
+}
+
+// A published cloud row is NOT on the shared parameter - S3, R2 and B2 are separately quoted
+// providers - so its cost must not move with the rate at all. This is the positive control for the
+// asymmetry: a blanket widening would break it.
+fn cost_micro_at(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> Int {
+  match tier_monthly_cost_at(c: c, scenario: scenario) {
+    TierCostAt { micro } => micro
+    TierCostGap { obligation } => 0 - 1
+  }
+}
+
+// THIS CONTROL LOST ITS LIVE SUBJECT AND IS RE-AIMED RATHER THAN DELETED. It used to read the R2
+// row, on the reasoning that a separately-quoted provider is not on the shared parameter. That
+// reasoning still holds, but R2's monthly figure turned out to be a transcribed rate-times-estimated-
+// quantity product rather than a quote, so it is UngroundedCost now and no live row carries
+// QuotedMonthlyCost at all. An arm with no inhabitant and no control is a dead arm, so the fixture
+// below both keeps the invariance claim executing and pins the arm a real invoice will land in.
+fn quoted_row_is_rate_invariant() -> Bool {
+  object_storage_rate_coefficient(c: quoted_probe) == 0
+    && cost_micro_at(c: quoted_probe, scenario: object_storage_rate_low)
+       == cost_micro_at(c: quoted_probe, scenario: object_storage_rate_high)
+    && cost_is_a_declared_gap(c: quoted_probe, scenario: object_storage_rate_low) == false
+}
+
+// TierRateSensitive IS POSITIVELY CONSTRUCTED, and the construction had to obey a structural fact
+// the module now states: every rate-dependent row adds the SAME scenario term, so the rate shifts
+// all of them by one constant and can NEVER reorder two of them against each other. The arm is
+// reachable only across the evidence boundary - a rate-dependent row against one whose cost does not
+// move - so that is what these two fixtures are. No live pair can reach it today, because no live
+// row carries either a quote or a grounded fixed component; §4b's fixture case again.
+//
+// The numbers are chosen so the crossing is inside the declared band and nowhere near its edges:
+// dependent costs 100 + rate, quoted costs 500, so at 300 the dependent row wins and at 750 it loses.
+data quoted_probe: StorageTierCandidate = StorageTierCandidate {
+  id: "fixture-quoted-monthly",
+  description: "synthetic fixture, never an observation: a row whose provider quotes a monthly total, so its cost does not move with the shared object-storage rate",
+  serving: HotServedLocally,
+  durable: DurableInCloudObjectStorage { provider_note: "synthetic fixture" },
+  cost_basis: QuotedMonthlyCost { micro: 500000000 },
+  warm_start: LatencyMeasured { interval_ms: degenerate_interval(point: 800), receipt: "synthetic fixture, never an observation" },
+  local_durable_surfaces: 0,
+  boot_media_per_node: 0,
+}
+
+data dependent_probe: StorageTierCandidate = StorageTierCandidate {
+  id: "fixture-rate-dependent",
+  description: "synthetic fixture, never an observation: a row with a grounded fixed component that also pays the shared object-storage rate",
+  serving: HotServedLocally,
+  durable: DurableInCloudObjectStorage { provider_note: "synthetic fixture" },
+  cost_basis: ObjectStorageDependentCost {
+    candidate_fixed: FixedComputedFromQuotedRates { micro: 100000000, citation: "synthetic fixture, never an observation" },
+  },
+  warm_start: LatencyMeasured { interval_ms: degenerate_interval(point: 800), receipt: "synthetic fixture, never an observation" },
+  local_durable_surfaces: 0,
+  boot_media_per_node: 0,
+}
+
+data rate_probe_field: List<StorageTierCandidate> = [quoted_probe, dependent_probe]
+
+fn is_rate_sensitive_with_both_sides(b: TierRateStanding) -> Bool {
+  match b {
+    TierRateSensitive { frontier_at, dominated_at } => count(frontier_at) > 0 && count(dominated_at) > 0
+    TierFrontierAtEveryRate { receipts } => false
+    TierDominatedAtEveryRate { receipts } => false
+    TierRateStandingUnestablished { receipts } => false
+  }
+}
+
+fn rate_sensitivity_is_reachable() -> Bool {
+  is_rate_sensitive_with_both_sides(b: tier_rate_standing_in_field(c: quoted_probe, field: rate_probe_field))
+    && is_rate_sensitive_with_both_sides(b: tier_rate_standing_in_field(c: dependent_probe, field: rate_probe_field))
+}
+
+fn tier_standing_tag(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> NonEmptyStr {
+  match tier_standing_in_field(c: c, field: rate_probe_field, scenario: scenario) {
+    ProvisionallyNonDominated { sensitivities } => "front"
+    DominatedBy { dominators } => "dominated"
+    NotComputable { missing } => "notcomputable"
+    PendingEvidence { undecided } => "pending"
+    SelectionRefused { cause } => "refused"
+  }
+}
+
+// The discriminating half: the sensitivity must be CAUSED BY THE RATE. If the projector ever stopped
+// applying the scenario, both standings would agree and this goes red.
+fn the_rate_is_what_moves_the_standing() -> Bool {
+  tier_standing_tag(c: dependent_probe, scenario: object_storage_rate_low)
+    != tier_standing_tag(c: dependent_probe, scenario: object_storage_rate_high)
+}
+
+// A MIXED RATE HAS NO CONSTRUCTOR ON THE CANONICAL FIELD PATH, which is narrower than what this note
+// used to claim and is the whole of what is established: tier_entries_in_field applies ONE rate
+// across the whole field, so along that path a per-candidate rate is not an argument anything can
+// pass. Lower-level projectors stay exported and can be combined by hand, so this is not global
+// impossibility - the same correction as the memory scenario, from review 5091375040.
+//
+// Every admitted row lands in exactly one arm, and the sensitive arm names both sides.
+fn rate_arm_is_witnessed(c: StorageTierCandidate) -> Bool {
+  match tier_rate_standing(c: c) {
+    TierRateSensitive { frontier_at, dominated_at } => count(frontier_at) > 0 && count(dominated_at) > 0
+    TierFrontierAtEveryRate { receipts } => count(receipts) == count(object_storage_rate_scenarios)
+    TierDominatedAtEveryRate { receipts } => count(receipts) == count(object_storage_rate_scenarios)
+    TierRateStandingUnestablished { receipts } => count(receipts) == count(object_storage_rate_scenarios)
+  }
+}
+
+// THE LATENCY TRANSITION IS REAL, NOT PROMISED. A carrier whose "measured" arm can never fund its
+// axis is worse than no carrier, because it reads as coverage for a transition that cannot occur.
+// This drives the production axis-selection function with a field containing one measured row and
+// asserts the axis appears - and with the live all-estimated field and asserts it does not.
+// Its cost is QUOTED, not tier_all_local's. This fixture used to copy that row's cost basis, which
+// is an UNGROUNDED planning amortization - so the probe carried a cost gap it was never about, and
+// any control reading its missing_inputs was reading the wrong obligation. A fixture isolating one
+// axis must be clean on every other.
+data measured_probe: StorageTierCandidate = StorageTierCandidate {
+  id: "synthetic-measured-latency",
+  description: "synthetic fixture: the only row in this repo carrying a measured restore, used to prove the axis funds itself",
+  serving: tier_all_local.serving,
+  durable: tier_all_local.durable,
+  cost_basis: QuotedMonthlyCost { micro: 500000000 },
+  warm_start: LatencyMeasured {
+    interval_ms: degenerate_interval(point: 800),
+    receipt: "synthetic fixture, never an observation",
+  },
+  local_durable_surfaces: tier_all_local.local_durable_surfaces,
+  boot_media_per_node: tier_all_local.boot_media_per_node,
+}
+
+fn latency_axis_present(axes: List<SelectionAxis>) -> Bool {
+  count(filter(axes, a => a.identity.decl_name == "axis_tier_latency_id")) > 0
+}
+
+fn latency_funds_itself_on_measurement() -> Bool {
+  latency_axis_present(axes: axes_for_field(field: concat(admitted_candidates(), [measured_probe])))
+    && latency_axis_present(axes: storage_tier_axes()) == false
+    && latency_is_measured(c: measured_probe)
+    && all(admitted_candidates(), c => latency_is_measured(c: c) == false)
+}
+
+// THE LATENCY TRANSITION, END TO END THROUGH ONE FIELD. The check above proves the AXIS appears; it
+// does not prove the rest of the projection agrees with it, and those used to read two different
+// populations - axis selection took the passed field while the missing-input projection asked the
+// global roster. A fixture could therefore fund the axis and still see no gap declared for its
+// estimated peers, which is a candidate silently compared on an axis it has no reading for.
+//
+// This drives ONE explicit mixed-evidence field through the whole production path and asserts all
+// three halves: the measured row emits the reading, the estimated peer receives a LOCATED missing
+// input naming its own obligation, and the peer's final standing is NotComputable because of it.
+data latency_mixed_field: List<StorageTierCandidate> = [measured_probe, estimated_peer]
+
+data estimated_peer: StorageTierCandidate = StorageTierCandidate {
+  id: "fixture-estimated-latency-peer",
+  description: "synthetic fixture, never an observation: identical to the measured probe except that its restore time is a planning estimate",
+  serving: measured_probe.serving,
+  durable: measured_probe.durable,
+  cost_basis: QuotedMonthlyCost { micro: 500000000 },
+  warm_start: LatencyEstimated {
+    planning_ms: 800,
+    obligation: "synthetic fixture: warm-start time is a planning estimate on this row",
+  },
+  local_durable_surfaces: measured_probe.local_durable_surfaces,
+  boot_media_per_node: measured_probe.boot_media_per_node,
+}
+
+fn has_latency_reading(c: StorageTierCandidate) -> Bool {
+  count(filter(tier_entry_in_field(c: c, field: latency_mixed_field, scenario: object_storage_rate_low).readings,
+               r => r.axis.decl_name == "axis_tier_latency_id")) > 0
+}
+
+// THE GAP MUST BE THE LATENCY GAP, NOT MERELY A GAP. This asked count(missing_inputs) > 0, which is
+// the same defect review found in the KnownRed cause-lock and which I had just finished fixing
+// there: requiring the right thing to be PRESENT never rejects a WRONG thing standing in its place.
+// An edit that made the peer's cost ungrounded while the latency gap silently vanished would have
+// kept this green on an unrelated obligation.
+//
+// So it names the obligation: the peer's OWN declared latency string must be among the missing
+// inputs, read back off the fixture rather than duplicated as a literal here - a copy would let the
+// two drift and re-open the same hole one layer along.
+//
+// It deliberately does NOT also require that to be the ONLY gap. I wrote count == 1 first and it was
+// over-tight in the opposite direction: a legitimate second obligation would have turned it red, so
+// the control would have been asserting an incidental fact about today's fixture rather than the
+// claim. "The located cause is present" is the claim; "nothing else is" is not.
+fn peer_latency_obligation() -> NonEmptyStr {
+  match estimated_peer.warm_start {
+    LatencyEstimated { planning_ms, obligation } => obligation
+    LatencyMeasured { interval_ms, receipt } => "unreachable by construction: the peer fixture is estimated"
+  }
+}
+
+fn gaps_of(c: StorageTierCandidate) -> List<AxisGap> {
+  tier_entry_in_field(c: c, field: latency_mixed_field, scenario: object_storage_rate_low).missing_inputs
+}
+
+// THE GAP NOW HAS TO NAME THE LATENCY AXIS, WHICH IS WHAT THIS CONTROL ALWAYS MEANT.
+//
+// Its own comment above says "the gap must be the latency gap, not merely a gap", and before
+// gunbc#10150 the strongest available check was on the obligation STRING -- the carrier had no
+// field in which to say which axis was excused, so an obligation attached to the cost axis would
+// have satisfied it. Both halves are now asserted: the peer's own declared obligation, read back
+// off the fixture rather than duplicated as a literal, AND the axis it excuses.
+fn declares_the_latency_gap(c: StorageTierCandidate) -> Bool {
+  count(filter(gaps_of(c: c), x => x.cause == peer_latency_obligation()
+    && declaration_ref_eq(a: x.axis, b: axis_tier_latency_id))) == 1
+}
+
+fn declares_no_gap(c: StorageTierCandidate) -> Bool { count(gaps_of(c: c)) == 0 }
+
+fn peer_is_not_computable() -> Bool {
+  match tier_standing_in_field(c: estimated_peer, field: latency_mixed_field, scenario: object_storage_rate_low) {
+    NotComputable { missing } => true
+    ProvisionallyNonDominated { sensitivities } => false
+    DominatedBy { dominators } => false
+    PendingEvidence { undecided } => false
+    SelectionRefused { cause } => false
+  }
+}
+
+fn latency_is_consistent_across_one_field() -> Bool {
+  latency_axis_present(axes: axes_for_field(field: latency_mixed_field))
+    && has_latency_reading(c: measured_probe)
+    && has_latency_reading(c: estimated_peer) == false
+    && declares_the_latency_gap(c: estimated_peer)
+    && declares_no_gap(c: measured_probe)
+    && peer_is_not_computable()
+}
+
+fn all_regimes_carried() -> Bool {
+  fold(compliance_regimes, init: true, f: fn(acc, r) { acc && regime_has_carrier_or_trigger(r: r) })
+}
+
+// A RED THAT SAYS NOTHING IS BARELY A RED. This main used to return a bare ExitFailure, so a
+// failing run gave an exit code and no located cause - the reader had to bisect the conjunction by
+// hand. Every other witness in this roster reports which control failed; this one now does too.
+fn tier_flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn storage_tiering_witness_report() -> NonEmptyStr {
+  join([
+    "wan_refused=", tier_flag(b: admission_refuses(c: tier_all_cloud_s3) && admission_refuses(c: tier_all_cloud_r2) && admission_refuses(c: tier_all_cloud_b2)),
+    " local_admitted=", tier_flag(b: admitted_with_budget(c: tier_hybrid) && admitted_with_budget(c: tier_hybrid_diskless) && admission_admits(c: tier_all_local)),
+    " field_admitted_only=", tier_flag(b: count(admitted_candidates()) == 3),
+    " hybrids_survive=", tier_flag(b: not_dominated(c: tier_hybrid) && not_dominated(c: tier_hybrid_diskless)),
+    " scenarios_declared=", tier_flag(b: count(object_storage_rate_scenarios) == 2),
+    " axes_declared=", tier_flag(b: count(storage_tier_axes()) == 3 && count(filter(storage_tier_axes(), a => a.identity.decl_name == "axis_tier_latency_id")) == 0),
+    " regimes_carried=", tier_flag(b: count(compliance_regimes) == 12 && all_regimes_carried()),
+    " policy_lands_diskless=", tier_flag(b: policy_admits_candidate(policy: operator_tier_policy, c: tier_hybrid_diskless) && !policy_admits_candidate(policy: operator_tier_policy, c: tier_hybrid)),
+    " latency_transition=", tier_flag(b: latency_funds_itself_on_measurement()),
+    " latency_end_to_end=", tier_flag(b: latency_is_consistent_across_one_field()),
+    " shared_rate_ordering=", tier_flag(b: shared_rate_ordering_is_invariant()),
+    " quoted_row_invariant=", tier_flag(b: quoted_row_is_rate_invariant()),
+    " rate_arms_witnessed=", tier_flag(b: all(admitted_candidates(), c => rate_arm_is_witnessed(c: c))),
+    " rate_sensitive_reachable=", tier_flag(b: rate_sensitivity_is_reachable()),
+    " rate_moves_standing=", tier_flag(b: the_rate_is_what_moves_the_standing()),
+    " cost_gap_axes=", tier_flag(b: every_cost_gap_names_the_cost_axis()),
+  ], "")
+}
+
+// axes_declared below pins THREE funded axes, not four: latency is declared and unfunded because
+// every warm-start figure in the table is an estimate with no bounds. That count is the control on
+// the decision - funding the axis again without a measured restore turns it red.
+// THE COST MAPPING, WHICH THE LATENCY CONTROL DOES NOT COVER. cost_missing was migrated at the same
+// time and nothing consumed it, so a cost gap moved to another funded axis was distinguished by no
+// control -- the broad standing arms cannot see an assignment.
+//
+// The obligation is read back off tier_monthly_cost_at rather than restated here, so the pairing is
+// asserted against the value that produced it. The final conjunct is an inhabitance guard, and it
+// is not decoration: a control of mine in this same migration passed while its mutation survived
+// precisely because the population reaching its branch was empty.
+fn cost_gap_names_the_cost_axis(c: StorageTierCandidate) -> Bool {
+  let gs = cost_missing(c: c, scenario: object_storage_rate_low)
+  match tier_monthly_cost_at(c: c, scenario: object_storage_rate_low) {
+    TierCostAt { micro } => count(gs) == 0
+    TierCostGap { obligation } =>
+      count(gs) == 1
+        && count(filter(gs, g => g.cause == obligation && declaration_ref_eq(a: g.axis, b: axis_tier_cost_id))) == 1
+  }
+}
+
+fn every_cost_gap_names_the_cost_axis() -> Bool {
+  all(storage_tier_candidates, c => cost_gap_names_the_cost_axis(c: c))
+    && count(filter(storage_tier_candidates, c => count(cost_missing(c: c, scenario: object_storage_rate_low)) > 0)) > 0
+}
+
+// The scenario roster is guarded for the same reason the axis count is: rate_arm_is_witnessed
+// compares receipt counts AGAINST it, so an emptied roster would satisfy 0 == 0 for every row.
+fn storage_tiering_witness_main() -> ProcessExit {
+  let wan_refused = admission_refuses(c: tier_all_cloud_s3) && admission_refuses(c: tier_all_cloud_r2) && admission_refuses(c: tier_all_cloud_b2)
+  let local_admitted = admitted_with_budget(c: tier_hybrid) && admitted_with_budget(c: tier_hybrid_diskless) && admission_admits(c: tier_all_local)
+  let field_is_admitted_only = count(admitted_candidates()) == 3
+  let hybrids_survive = not_dominated(c: tier_hybrid) && not_dominated(c: tier_hybrid_diskless)
+  let scenarios_declared = count(object_storage_rate_scenarios) == 2
+  let axes_declared = count(storage_tier_axes()) == 3
+    && count(filter(storage_tier_axes(), a => a.identity.decl_name == "axis_tier_latency_id")) == 0
+  let regimes_carried = count(compliance_regimes) == 12 && all_regimes_carried()
+  let policy_lands_diskless = policy_admits_candidate(policy: operator_tier_policy, c: tier_hybrid_diskless) && !policy_admits_candidate(policy: operator_tier_policy, c: tier_hybrid)
+  let latency_transition_real = latency_funds_itself_on_measurement()
+  let shared_rate_invariant = shared_rate_ordering_is_invariant()
+    && quoted_row_is_rate_invariant()
+    && all(admitted_candidates(), c => rate_arm_is_witnessed(c: c))
+    && rate_sensitivity_is_reachable()
+    && the_rate_is_what_moves_the_standing()
+  let latency_end_to_end = latency_is_consistent_across_one_field()
+  let cost_gap_axes = every_cost_gap_names_the_cost_axis()
+  if cost_gap_axes && scenarios_declared && latency_transition_real && latency_end_to_end && shared_rate_invariant && wan_refused && local_admitted && field_is_admitted_only && hybrids_survive && axes_declared && regimes_carried && policy_lands_diskless {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: storage_tiering_witness_report() }
+  }
+}

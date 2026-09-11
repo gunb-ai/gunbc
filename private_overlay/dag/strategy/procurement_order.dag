@@ -1,0 +1,460 @@
+module strategy.procurement_order
+
+import std.types { Int, NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import strategy.year_end_plan { PlanItem, year_end_plan_items, latest_start_day, find_item }
+import strategy.fleet_decisions { fleet_decisions, is_decided }
+import strategy.rack_power_engineering { collins_fleet_nodes, collins_node_planning_watts, fleet_demand_watts }
+
+// THE PURCHASE ORDER, DERIVED. What has to be bought, how many, and by when - where every
+// quantity comes from a fleet fact and every date comes from the plan, so this is a projection
+// of decisions already made rather than a shopping list maintained beside them.
+//
+// Two things it refuses to do, both of which an ordinary purchase order does freely.
+//
+// It refuses to state a quantity it cannot derive. Several lines depend on decisions that are
+// still open - which netboot variant, whether the local cache clears its floor, colo or the
+// residence - and the honest form of those lines is QuantityBlocked naming the plan item that
+// unblocks them, not a number chosen to make the list look complete. A blocked line is
+// procurement information: it says an unmade decision is holding up an order, and it carries
+// the date by which that becomes a schedule problem.
+//
+// It refuses to total. Almost every price here is an ESTIMATE from market observation rather
+// than a quote against this order, and a single figure summed from estimates reads as a budget
+// once it is written down. So the order prices as a BAND and reports its standing: a total is
+// admitted only when every line is quoted, and until then the causes are named. DESIGN section
+// 5's fabricated-plausible-output arm is exactly the risk - the plausible thing here is a
+// confident number.
+//
+// THE QUANTITY THAT IS NOT 21. rack_power_engineering derives 21 nodes at 650 W planning draw,
+// so 13,650 W. strategy.home_hosting models a 30 A circuit, which at 240 V is 5,760 W usable
+// under the NEC continuous derate - about eight nodes. The residence therefore cannot power the
+// fleet, and any line whose quantity scales with DEPLOYED nodes rather than OWNED nodes is
+// blocked on siting-decision. Buying 21 racks' worth of anything before that fork is resolved
+// is buying for a site that may not exist.
+
+data no_awaits: List<NonEmptyStr> = []
+
+data fleet_nodes: Int = collins_fleet_nodes
+data dimm_slots_per_node: Int = 32
+data memory_channels_per_node: Int = 16
+data psu_per_node: Int = 2
+data data_ports_per_node: Int = 2
+data bmc_ports_per_node: Int = 1
+data rack_screws_per_node: Int = 4
+
+// Both populations the BOM decision chooses between, derived rather than described: one DIMM per
+// channel is the floor fleet_qualification will admit, two per channel fills every physical slot
+// and trades memory speed for capacity. Neither number is authored.
+fn dimms_at_1dpc() -> Int { fleet_nodes * memory_channels_per_node }
+fn dimms_at_2dpc() -> Int { fleet_nodes * dimm_slots_per_node }
+
+type ComponentCategory
+  = Memory
+  | Storage
+  | Networking
+  | Power
+  | Racking
+  | Instrument
+
+// A quantity is derived, blocked on a decision, or gross-of-inventory. The third arm exists
+// because netting an unmeasured inventory against a known requirement understates the order by
+// an unknown amount - the same refusal finance.personal_ledger makes about the RAM obligation.
+type QuantityStanding
+  = QuantityDerived { count: Int, basis: NonEmptyStr }
+  | QuantityBlocked { on_plan_item: NonEmptyStr, obligation: NonEmptyStr }
+  | QuantityGrossOfInventory { gross: Int, basis: NonEmptyStr, obligation: NonEmptyStr }
+
+// PriceEstimated is NOT PriceQuoted and the type refuses to let them blur. An estimate is a
+// market observation with a stated basis; a quote is a seller's offer against this order at a
+// stated validity. Only the second can settle a purchase, and a total built from the first is
+// an estimate however many lines it sums.
+type PriceStanding
+  = PriceQuoted { unit_low_micro: Nat, unit_high_micro: Nat, source: NonEmptyStr }
+  | PriceEstimated { unit_low_micro: Nat, unit_high_micro: Nat, basis: NonEmptyStr }
+  | PriceUnknown { obligation: NonEmptyStr }
+
+type LineItem {
+  key: NonEmptyStr
+  category: ComponentCategory
+  unit: NonEmptyStr
+  quantity: QuantityStanding
+  price: PriceStanding
+  lead_time_days: Int
+  needed_for: NonEmptyStr
+  awaits_decisions: List<NonEmptyStr>
+  note: NonEmptyStr
+}
+
+fn quantity_count(q: QuantityStanding) -> Int {
+  match q {
+    QuantityDerived { count, basis } => count,
+    QuantityBlocked { on_plan_item, obligation } => 0,
+    QuantityGrossOfInventory { gross, basis, obligation } => gross,
+  }
+}
+
+fn quantity_is_settled(q: QuantityStanding) -> Bool {
+  match q {
+    QuantityDerived { count, basis } => true,
+    QuantityBlocked { on_plan_item, obligation } => false,
+    QuantityGrossOfInventory { gross, basis, obligation } => false,
+  }
+}
+
+fn price_is_quoted(p: PriceStanding) -> Bool {
+  match p {
+    PriceQuoted { unit_low_micro, unit_high_micro, source } => true,
+    PriceEstimated { unit_low_micro, unit_high_micro, basis } => false,
+    PriceUnknown { obligation } => false,
+  }
+}
+
+fn price_low_micro(p: PriceStanding) -> Nat {
+  match p {
+    PriceQuoted { unit_low_micro, unit_high_micro, source } => unit_low_micro,
+    PriceEstimated { unit_low_micro, unit_high_micro, basis } => unit_low_micro,
+    PriceUnknown { obligation } => 0,
+  }
+}
+
+fn price_high_micro(p: PriceStanding) -> Nat {
+  match p {
+    PriceQuoted { unit_low_micro, unit_high_micro, source } => unit_high_micro,
+    PriceEstimated { unit_low_micro, unit_high_micro, basis } => unit_high_micro,
+    PriceUnknown { obligation } => 0,
+  }
+}
+
+// ORDER-BY DERIVES FROM THE PLAN. The item that needs the part fixes when it is needed - its
+// latest safe start - and the part's lead time fixes how much earlier it must be ordered. So a
+// long-lead part with a near milestone can already be late on the day it is first written down,
+// which is the whole reason this is computed rather than listed.
+fn needed_by_day(l: LineItem) -> Int {
+  fold(find_item(id: l.needed_for), init: 0, f: (acc, i) => latest_start_day(i: i))
+}
+
+fn order_by_day(l: LineItem) -> Int {
+  needed_by_day(l: l) - l.lead_time_days
+}
+
+fn line_extended_low_micro(l: LineItem) -> Nat {
+  quantity_count(q: l.quantity) * price_low_micro(p: l.price)
+}
+
+fn line_extended_high_micro(l: LineItem) -> Nat {
+  quantity_count(q: l.quantity) * price_high_micro(p: l.price)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE LINES. Quantities derive from fleet_nodes and the per-node counts above; nothing here is
+// a typed-in total. Prices are ESTIMATES unless a line says otherwise, and each states the basis
+// it rests on so a reader can attack it rather than inherit it.
+// ---------------------------------------------------------------------------------------------
+
+data line_dimms: LineItem = LineItem {
+  key: "dram-dimms",
+  category: Memory,
+  unit: "DIMM",
+  quantity: QuantityGrossOfInventory {
+    gross: dimms_at_1dpc(),
+    basis: "21 nodes x 16 CHANNELS at one DIMM per channel. The board carries 32 physical slots against 16 channels (8 per socket, two sockets), so this is the 1DPC quantity and NOT the slot count - populating all 32 at two DIMMs per channel is 672 modules and costs memory speed. fleet_qualification refuses a node whose channels are not fully populated, so 16 is a floor rather than a choice; whether to go beyond it to 2DPC is memory-bom-decision's, and it trades capacity against bandwidth.",
+    obligation: "No on-hand memory census receipt exists and TWO INCOMPATIBLE READINGS STAND. mt_collins_held_unit records 254 GB visible as consistent with 8 x 32 GB; a UEFI smbiosview pass read 16 x 16 GB at 1DPC. Both total roughly 256 GB, so capacity cannot discriminate them, and they disagree about whether the machine runs at half memory bandwidth and about which upgrade is even the same purchase. mobo_x_memory_census records that the BMC firmware cannot produce a per-slot inventory, so the census needs the host-side route with a node POWERED AND BOOTED - the fleet is not running today, which makes producing it a scheduled task rather than a lookup and puts it on the critical path of this order rather than beside it. Netting unmeasured inventory against this gross would understate the order by an unknown amount.",
+  },
+  price: PriceEstimated {
+    unit_low_micro: 80000000,
+    unit_high_micro: 120000000,
+    basis: "ci_node_build dimm_32gib_low_micro and dimm_32gib_high_micro, the observed 32 GiB band. The capacity per DIMM is itself open - memory-bom-decision selects it - and the 16 GiB and 64 GiB lots price differently per GB.",
+  },
+  lead_time_days: 14,
+  needed_for: "memory-bom-decision",
+  awaits_decisions: ["memory-population", "pilot-node-population"],
+  note: "The single largest line by value and the one most exposed to an unmeasured input on both sides: the capacity is undecided and the on-hand stock is uncounted.",
+}
+
+data line_nvme: LineItem = LineItem {
+  key: "m2-nvme-infrastructure-pair",
+  category: Storage,
+  unit: "M.2 NVMe drive",
+  quantity: QuantityDerived {
+    count: 4,
+    basis: "TWO per infrastructure node across a redundant PAIR - not one per fleet node. The diskless design puts the boot image and the rack cache tier on two nodes and leaves the other nineteen stateless, so a dead drive can never take a compute node down because a compute node has no drive to lose. Two drives each because those two nodes are now the single component whose loss stops the fleet restarting, and unmirrored storage there converts a drive failure into a fleet outage - exactly the failure mode the design was chosen to remove.",
+  },
+  price: PriceEstimated {
+    unit_low_micro: 160000000,
+    unit_high_micro: 240000000,
+    basis: "Used enterprise M.2 at 80-120 per TB, 2 TB, market observation 2026-09-04. Consumer parts are excluded by the write arithmetic in the note, not by preference.",
+  },
+  lead_time_days: 10,
+  needed_for: "node-local-cache-drive",
+  awaits_decisions: ["infrastructure-pair", "local-cache-drive-shape"],
+  note: "THE LINE THAT SHRANK BY A FACTOR OF FIVE, and the reason is a design change rather than a better price. Populating every node was 21 drives at 3360-5040 dollars and carried a write load of 8.64 TB per node per day at a zero hit rate - 4.32 drive-writes per day on a 2 TB part against roughly 1 DWPD for used enterprise, so the fleet-wide population was failing its own endurance arithmetic before it was bought. Concentrating the storage on a redundant infrastructure pair costs 4 drives, and the compute nodes become stateless. What it BUYS in exchange is a new single point of failure that must be engineered rather than assumed: the pair carries boot, cache and artifact upload for the whole fleet, so its redundancy is now the fleet's availability.",
+}
+
+data line_data_switch: LineItem = LineItem {
+  key: "data-switch-48p",
+  category: Networking,
+  unit: "48-port managed 1G switch",
+  quantity: QuantityDerived {
+    count: 1,
+    basis: "21 nodes x 2 bonded data ports = 42, which fits one 48-port chassis and does not leave room for the BMC ports - hence the separate switch below rather than one larger one",
+  },
+  price: PriceEstimated { unit_low_micro: 100000000, unit_high_micro: 200000000, basis: "Used enterprise 1G managed, market observation 2026-09-04" },
+  lead_time_days: 7,
+  needed_for: "fleet-network-baseline",
+  awaits_decisions: ["leaf-network-speed"],
+  note: "Must do LACP for the NIC 1 / NIC 2 bond. An unmanaged switch reduces the fleet to one data link per node and raises the required cache hit rate from roughly 29 percent to roughly 64.",
+}
+
+data line_bmc_switch: LineItem = LineItem {
+  key: "bmc-switch-24p",
+  category: Networking,
+  unit: "24-port managed 1G switch",
+  quantity: QuantityDerived {
+    count: 1,
+    basis: "21 BMC ports on their own switch and their own VLAN, separate from the data plane",
+  },
+  price: PriceEstimated { unit_low_micro: 50000000, unit_high_micro: 150000000, basis: "Used enterprise 1G managed, market observation 2026-09-04" },
+  lead_time_days: 7,
+  needed_for: "fleet-network-baseline",
+  awaits_decisions: no_awaits,
+  note: "REQUIRED UNDER EVERY SCENARIO. The BMCs need a network whether the fleet lands in colo or the residence, whether netboot is RAM-loaded or NFS-rooted, and whether or not 10 gigabit is ever bought. It is the one networking line with no open decision in front of it.",
+}
+
+data line_patch_cables: LineItem = LineItem {
+  key: "cat6-patch-cables",
+  category: Networking,
+  unit: "Cat6 patch cable",
+  quantity: QuantityDerived {
+    count: fleet_nodes * (data_ports_per_node + bmc_ports_per_node) + 10,
+    basis: "21 nodes x (2 data + 1 BMC) = 63, plus 10 spares - a cable that fails during a remote-hands visit costs a second visit",
+  },
+  price: PriceEstimated { unit_low_micro: 2000000, unit_high_micro: 4000000, basis: "Bulk short-run Cat6, market observation 2026-09-04" },
+  lead_time_days: 7,
+  needed_for: "fleet-network-baseline",
+  awaits_decisions: no_awaits,
+  note: "Length depends on rack layout and is not yet derivable; ordering before the rack is chosen risks buying the wrong run length rather than the wrong count.",
+}
+
+data line_ocp_nics: LineItem = LineItem {
+  key: "ocp3-10g-nics",
+  category: Networking,
+  unit: "OCP 3.0 dual-SFP+ NIC",
+  quantity: QuantityDerived {
+    count: 2,
+    basis: "ONE PER INFRASTRUCTURE NODE, not one per fleet node. The 16.8 Gbps of restore traffic is fan-in at the origin and is not a property of any leaf: each compute node's own share is 0.8 Gbps average and 2.4 Gbps peak, and its node-RAM cache absorbs the majority of that before it reaches the wire. The pair serving the misses is where the aggregate actually lands, and two 10 gigabit links carry it.",
+  },
+  price: PriceEstimated { unit_low_micro: 30000000, unit_high_micro: 120000000, basis: "Used ConnectX-4 Lx / X710 OCP 3.0, market observation 2026-09-04" },
+  lead_time_days: 21,
+  needed_for: "fleet-network-baseline",
+  awaits_decisions: ["infrastructure-pair"],
+  note: "A 21-card fleet retrofit at 900-2700 dollars is NOT in this order and should not be bought on any projection. It reopens only if cache-hit-floor measures a local hit rate low enough that the leaf links saturate, and the measurement is what would reopen it - never an estimate.",
+}
+
+data line_dacs: LineItem = LineItem {
+  key: "sfp-dac-cables",
+  category: Networking,
+  unit: "SFP+ DAC cable",
+  quantity: QuantityDerived {
+    count: 2,
+    basis: "One per infrastructure-node card. The Arista 7050S-52 is already owned, so the switch side of the 10 gigabit path carries no further cost at all.",
+  },
+  price: PriceEstimated { unit_low_micro: 12000000, unit_high_micro: 20000000, basis: "Used passive SFP+ DAC, market observation 2026-09-04" },
+  lead_time_days: 14,
+  needed_for: "cache-hit-floor",
+  awaits_decisions: ["infrastructure-pair"],
+  note: "No open decision on this line beyond the ones its quantity already names.",
+}
+
+data line_pdus: LineItem = LineItem {
+  key: "metered-pdus",
+  category: Power,
+  unit: "metered-per-outlet PDU",
+  quantity: QuantityBlocked {
+    on_plan_item: "siting-decision",
+    obligation: "rack_power_engineering duty_pdus makes these ours rather than the colo's, at one A-side and one B-side per cabinet - so the count follows the rack count, which follows the site. A residence at 5,760 W usable powers about eight nodes against a 13,650 W fleet, so the residence and a colo cabinet do not need the same number of anything.",
+  },
+  price: PriceEstimated { unit_low_micro: 150000000, unit_high_micro: 400000000, basis: "Used metered rack PDU, market observation 2026-09-04" },
+  lead_time_days: 21,
+  needed_for: "siting-decision",
+  awaits_decisions: ["siting"],
+  note: "Per-outlet metering is the cheap observability that catches a failing PSU before it is an outage - the held unit's PSU2 AC-lost observation is that fact in miniature.",
+}
+
+data line_power_cords: LineItem = LineItem {
+  key: "c13-c14-cords",
+  category: Power,
+  unit: "C13-C14 power cord",
+  quantity: QuantityDerived {
+    count: fleet_nodes * psu_per_node,
+    basis: "21 nodes x 2 PSUs. BOTH cords, always: rack_power_engineering duty_circuits states redundancy exists only if each node's two PSUs land on different feeds, and the held unit was observed with PSU2 unplugged - one cord is unarmed redundancy that reads as armed.",
+  },
+  price: PriceEstimated { unit_low_micro: 3000000, unit_high_micro: 6000000, basis: "Bulk C13-C14, market observation 2026-09-04" },
+  lead_time_days: 7,
+  needed_for: "fleet-network-baseline",
+  awaits_decisions: no_awaits,
+  note: "No open decision on this line beyond the ones its quantity already names.",
+}
+
+data line_rails: LineItem = LineItem {
+  key: "rails-or-shelves",
+  category: Racking,
+  unit: "rail kit or shelf",
+  quantity: QuantityBlocked {
+    on_plan_item: "siting-decision",
+    obligation: "One per DEPLOYED node, which is not one per owned node until the site can power them. Also depends on the cabinet: rail kits are rack-specific and a shelf is the fallback where the chassis has no matching kit.",
+  },
+  price: PriceEstimated { unit_low_micro: 25000000, unit_high_micro: 80000000, basis: "Used 1U rail kits, market observation 2026-09-04" },
+  lead_time_days: 21,
+  needed_for: "siting-decision",
+  awaits_decisions: ["siting"],
+  note: "Verify against the actual chassis before ordering - a rail kit that does not fit is the classic first-rack purchase and is rarely returnable.",
+}
+
+data line_cage_nuts: LineItem = LineItem {
+  key: "cage-nuts-and-screws",
+  category: Racking,
+  unit: "cage nut and screw",
+  quantity: QuantityDerived {
+    count: fleet_nodes * rack_screws_per_node + 50,
+    basis: "21 nodes x 4 mounting points plus 50 spares. Cheap, universally needed, and the thing that stops a racking session at 2am - buy generously.",
+  },
+  price: PriceEstimated { unit_low_micro: 200000, unit_high_micro: 500000, basis: "Bulk M6 cage nut kits, market observation 2026-09-04" },
+  lead_time_days: 7,
+  needed_for: "siting-decision",
+  awaits_decisions: no_awaits,
+  note: "No open decision on this line beyond the ones its quantity already names.",
+}
+
+data line_blanking_panels: LineItem = LineItem {
+  key: "blanking-panels",
+  category: Racking,
+  unit: "1U blanking panel",
+  quantity: QuantityBlocked {
+    on_plan_item: "siting-decision",
+    obligation: "Rack height minus occupied U, so it needs the cabinet. Not optional trim: rack_power_engineering duty_cooling states a colo cools the AISLE and not a badly packed cabinet, so an unblanked gap recirculates hot air into the intake and the thermal ceiling is reached earlier than the power ceiling.",
+  },
+  price: PriceEstimated { unit_low_micro: 3000000, unit_high_micro: 8000000, basis: "Used tool-less 1U blanks, market observation 2026-09-04" },
+  lead_time_days: 14,
+  needed_for: "siting-decision",
+  awaits_decisions: ["siting"],
+  note: "No open decision on this line beyond the ones its quantity already names.",
+}
+
+data line_clamp_meter: LineItem = LineItem {
+  key: "clamp-meter",
+  category: Instrument,
+  unit: "true-RMS clamp meter",
+  quantity: QuantityDerived {
+    count: 1,
+    basis: "One instrument for the fleet",
+  },
+  price: PriceEstimated { unit_low_micro: 40000000, unit_high_micro: 120000000, basis: "True-RMS clamp meter, market observation 2026-09-04" },
+  lead_time_days: 7,
+  needed_for: "node-burnin-protocol",
+  awaits_decisions: no_awaits,
+  note: "THE CHEAPEST LINE THAT UNBLOCKS THE MOST, with its limit stated. collins_node_planning_watts is 650 W of PLANNING draw and the whole 13,650 W fleet figure, the circuit sizing, the rack count and the colo quote rest on it. A clamp reads CURRENT at an instant; real power is current times voltage times power factor, and energy is that integrated over a representative workload. A server PSU is power-factor corrected - 80 PLUS requires at least 0.95 - so the clamp is close on power, but a spot reading is not energy and one node idle is not the fleet under load. The clamp settles peak per-node current for circuit sizing; the metered PDU line settles accumulated energy for the electricity cost. They are two obligations and this line discharges only the first.",
+}
+
+data line_label_printer: LineItem = LineItem {
+  key: "label-printer",
+  category: Instrument,
+  unit: "label printer and cartridges",
+  quantity: QuantityDerived { count: 1, basis: "One instrument for the fleet" },
+  price: PriceEstimated { unit_low_micro: 30000000, unit_high_micro: 90000000, basis: "Handheld industrial label printer, market observation 2026-09-04" },
+  lead_time_days: 7,
+  needed_for: "node-burnin-protocol",
+  awaits_decisions: no_awaits,
+  note: "duty_racking keeps labeling ours. A remote-hands technician executes written instructions against physical labels, so an unlabelled cabinet converts every remote intervention into a site visit.",
+}
+
+data order_lines: List<LineItem> = [
+  line_dimms, line_nvme, line_data_switch, line_bmc_switch, line_patch_cables,
+  line_ocp_nics, line_dacs, line_pdus, line_power_cords, line_rails,
+  line_cage_nuts, line_blanking_panels, line_clamp_meter, line_label_printer,
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE ORDER'S STANDING. It refuses to be a total while any line is estimated, blocked, or
+// gross-of-inventory, and it names every cause rather than reporting the first. A band computed
+// from estimates is reported AS a band with its standing attached, because the failure mode here
+// is not arithmetic - it is that a number written down once gets quoted later as a budget.
+// ---------------------------------------------------------------------------------------------
+
+fn orderable_now() -> List<LineItem> {
+  filter(order_lines, l => quantity_is_settled(q: l.quantity))
+}
+
+fn blocked_lines() -> List<LineItem> {
+  filter(order_lines, l => !quantity_is_settled(q: l.quantity))
+}
+
+fn unquoted_lines() -> List<LineItem> {
+  filter(order_lines, l => !price_is_quoted(p: l.price))
+}
+
+fn orderable_low_micro() -> Nat {
+  fold(orderable_now(), init: 0, f: (acc, l) => acc + line_extended_low_micro(l: l))
+}
+
+fn orderable_high_micro() -> Nat {
+  fold(orderable_now(), init: 0, f: (acc, l) => acc + line_extended_high_micro(l: l))
+}
+
+type OrderStanding
+  = OrderQuoted { low_micro: Nat, high_micro: Nat }
+  | OrderEstimatedOnly { low_micro: Nat, high_micro: Nat, causes: NonEmptyStr }
+
+fn order_standing() -> OrderStanding {
+  if count(unquoted_lines()) == 0 && count(blocked_lines()) == 0 {
+    OrderQuoted { low_micro: orderable_low_micro(), high_micro: orderable_high_micro() }
+  } else {
+    OrderEstimatedOnly {
+      low_micro: orderable_low_micro(),
+      high_micro: orderable_high_micro(),
+      causes: "This band covers ONLY the lines whose quantity is settled, and every unit price in it is a market estimate rather than a quote against this order. It is not a budget and may not be quoted as one. Lines whose quantity is blocked contribute ZERO to it, which means the true order is larger than the band by an amount that cannot be stated until the blocking decisions are made - and the two largest exposures, DRAM and per-node NVMe, are both among them.",
+    }
+  }
+}
+
+// The lines that need ordering soonest, and the ones whose blocking decision is closest to
+// costing schedule. A blocked line is not a line with no date - it is a line whose date belongs
+// to the DECISION rather than to the seller, which is the more useful thing to see.
+fn lines_ordered_by_urgency() -> List<LineItem> {
+  sort_by(order_lines, fn(l) { order_by_day(l: l) })
+}
+
+fn lines_due_before_day(day: Int) -> List<LineItem> {
+  filter(order_lines, l => order_by_day(l: l) < day)
+}
+
+// The unconditional lines: nothing in front of them, needed under every branch of every open
+// decision. These are the ones to buy today, and the discipline this whole module exists to
+// enforce is that everything NOT on this list waits for its decision.
+// A SETTLED QUANTITY IS NOT AN ABSENT DECISION, and conflating them is how a purchase order
+// quietly authorises the thing the plan says is still open. The earlier version of this
+// function filtered on quantity alone, which made every derived count "buy today" - including
+// the 10 gigabit cards and DACs, whose count is perfectly derivable from the infrastructure
+// pair and whose PURCHASE waits on that pair being decided. Two different facts: how many, and
+// whether at all.
+//
+// The second fact lives in strategy.fleet_decisions, so a line names the decisions it awaits
+// and is unconditional only when every one of them is Decided. That also means the register
+// and the order cannot drift: flipping a decision back to Deferred withdraws its lines from
+// the buy-today list automatically rather than by someone remembering to edit here.
+fn line_decisions_all_settled(l: LineItem) -> Bool {
+  all(l.awaits_decisions, k =>
+    any(fleet_decisions, d => d.key == k && is_decided(d: d)))
+}
+
+fn unconditional_lines() -> List<LineItem> {
+  filter(order_lines, l => quantity_is_settled(q: l.quantity) && line_decisions_all_settled(l: l))
+}
+
+fn lines_awaiting_a_decision() -> List<LineItem> {
+  filter(order_lines, l => quantity_is_settled(q: l.quantity) && !line_decisions_all_settled(l: l))
+}
+
+data procurement_thesis: NonEmptyStr = "Buy what every branch needs and nothing else. The BMC switch, the patch cables, the power cords, the cage nuts and the two instruments are required whether the fleet lands in a colo or the residence, whether netboot is RAM-loaded or NFS-rooted, and whether or not 10 gigabit is ever bought - so they carry no decision risk and should be ordered now. Every other line is waiting on a decision that is cheaper to make than to unmake, and the clamp meter is the highest-leverage item in the order because it replaces the 650 W planning assumption that the circuit sizing, the rack count and the colo quote all rest on."
+
+data inventory_refusal_note: NonEmptyStr = "No line here is netted against on-hand stock, and that is deliberate rather than an omission. The DRAM line is the case that matters: strategy.mobo_x_memory_census models the recipe for an on-hand census and no receipt has been produced, so the quantity actually held is unknown. Netting an unmeasured inventory against a known requirement understates the order by an unknown amount and produces a shortfall discovered at racking time - which is the most expensive moment to discover it. The census is a prerequisite of the order, not a reconciliation after it."

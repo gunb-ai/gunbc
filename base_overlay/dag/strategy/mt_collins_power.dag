@@ -1,0 +1,113 @@
+module strategy.mt_collins_power
+
+import std.types { Int, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.measure { watt, watt_count, milliwatt, byte_size, megatransfers_per_second }
+import extdeps.cpu.ampere { altra_q8030_catalog }
+import gunbc.memory_provisioning { mt_collins_per_socket_geometry }
+import product.node_power_envelope {
+  MemoryElectricalContext, NodeElectricalInputs, MemoryPopulationEvidence,
+  PopulationModuleUnread, altra_two_dpc_ceilings,
+  NodeDrawReading, NodeDrawDerived, NodeDrawRefused, node_draw,
+  EfficiencyRating, Platinum, Gold,
+}
+import strategy.ci_node_build { node_watts }
+
+// NODE POWER, DERIVED FROM THE BILL OF MATERIALS INSTEAD OF ASSERTED.
+//
+// ci_node_build carries NodePowerAssumed { watts: 650 } and its own note says the figure
+// "cannot separate a 128-core node from a 64-core one" and dissolves into a clamp-meter
+// reading. That number is load-bearing far beyond its evidence: it sizes every circuit in
+// rack_power_engineering, sets the fleet's 13.65 kW demand, decides how many nodes the
+// residence can power, and is the single largest priced line in strategy.cost_floor at
+// roughly 27 percent of it. One assumed integer is doing all of that work.
+//
+// gunbc.product.node_power_envelope already derives what 650 was standing in for: DC load from
+// processor TDP, memory population and board draw, then wall draw through PSU efficiency. It
+// was never wired to this fleet. So this module is a BINDING and not a new model - the
+// arithmetic belongs upstream and re-deriving it here would be the second authority the whole
+// repository is organised against.
+//
+// WHAT THE BINDING PRODUCES TODAY IS A REFUSAL, AND THAT IS THE POINT. The envelope refuses
+// when the memory population is unread, because a node whose memory draw cannot be derived does
+// not draw only its processor, and a CPU-plus-board figure is exactly what a power budget would
+// happily divide by. Our census is unresolved - two readings totalling roughly 256 GB disagree
+// about whether eight or sixteen modules are installed - so the honest output is a typed
+// refusal naming that obligation. A refusal that names the missing read is worth more than 650,
+// because 650 is not a lower bound, an upper bound, or a measurement; it is a number with no
+// producer, and the fleet's entire electrical plan currently rests on it.
+
+data mt_collins_context: MemoryElectricalContext = MemoryElectricalContext {
+  geometry: mt_collins_per_socket_geometry,
+  max_data_rate: megatransfers_per_second(count: 3200),
+  two_dpc_ceilings: altra_two_dpc_ceilings,
+}
+
+// The census as it actually stands. stick_capacity and dimm_count take the UEFI smbiosview
+// reading rather than the held-unit record's 8 x 32 hypothesis, and the obligation says why
+// choosing between them is not this module's call.
+data mt_collins_memory_evidence: MemoryPopulationEvidence = PopulationModuleUnread {
+  stick_capacity: byte_size(count: 17179869184),
+  dimm_count: 16,
+  read_obligation: "TWO INCOMPATIBLE READINGS STAND AND CAPACITY CANNOT DISCRIMINATE THEM. strategy.mt_collins_held_unit records 254 GB visible as consistent with 8 x 32 GiB; a UEFI smbiosview pass read 16 x 16 GiB at one DIMM per channel. Both total roughly 256 GB while disagreeing about whether half the sixteen memory channels are unpopulated - which is the difference between full and half memory bandwidth, and a different per-module rank and width for the power derivation. strategy.mobo_x_memory_census records that this BMC firmware cannot produce a per-slot inventory, so the host-side dmidecode route must run with a node powered and booted. The fields above carry the smbiosview reading so the obligation is concrete; they are NOT an assertion that it is the correct one.",
+}
+
+// The two caller-declared figures the envelope deliberately refuses to default. Naming them as
+// fields is the upstream module's design: a reader must supply them, so neither can hide inside
+// the arithmetic as a constant nobody chose.
+data assumed_dram_power_per_chip_milliwatt: Int = 400
+data assumed_board_idle_draw_watts: Int = 60
+
+data mt_collins_electrical: NodeElectricalInputs = NodeElectricalInputs {
+  label: "mt-collins-1u-dual-q8030",
+  sockets: 2,
+  cpu: altra_q8030_catalog,
+  context: mt_collins_context,
+  memory: mt_collins_memory_evidence,
+  dram_power_per_chip: milliwatt(count: 400),
+  board_idle_draw: watt(count: 60),
+  psu_rated_output: watt(count: 800),
+  psu_efficiency: Platinum,
+}
+
+fn mt_collins_draw() -> NodeDrawReading {
+  node_draw(inputs: mt_collins_electrical)
+}
+
+// Minus one is not a wattage and cannot be mistaken for one, which is the same device the
+// upstream witness uses. A refusal must not return a number a budget could divide by.
+fn mt_collins_wall_watts_or_refusal() -> Int {
+  match mt_collins_draw() {
+    NodeDrawDerived { dc_load, wall_draw } => watt_count(w: wall_draw),
+    NodeDrawRefused { cause } => 0 - 1,
+  }
+}
+
+fn draw_is_derived() -> Bool {
+  match mt_collins_draw() {
+    NodeDrawDerived { dc_load, wall_draw } => true,
+    NodeDrawRefused { cause } => false,
+  }
+}
+
+// The assumption this binding exists to retire, kept beside the derivation so the gap is a
+// value rather than a claim in prose. While the derivation refuses, the difference is not
+// computable and the assumption stands alone - which is the state worth being able to see.
+fn assumed_wall_watts() -> Nat {
+  node_watts()
+}
+
+type PowerStanding
+  = PowerDerived { wall_watts: Int, assumed_watts: Int }
+  | PowerAssumedOnly { assumed_watts: Int, obligation: NonEmptyStr }
+
+fn power_standing() -> PowerStanding {
+  if draw_is_derived() {
+    PowerDerived { wall_watts: mt_collins_wall_watts_or_refusal(), assumed_watts: assumed_wall_watts() }
+  } else {
+    PowerAssumedOnly {
+      assumed_watts: assumed_wall_watts(),
+      obligation: "The derivation refuses because the memory population is unread, so the fleet's electrical plan still rests on an assumed 650 W with no producer behind it. Two reads close this: the host-side per-slot memory census, and a wattmeter observation at the wall. The second is not optional even once the first lands - the envelope derives a MODELLED wall figure from TDP and declared board and DRAM draws, and TDP is a thermal design rating rather than an observed draw, so the derivation replaces an unsourced number with a sourced ESTIMATE and only a measurement closes the class. Note the direction of the current error: two Q80-30 sockets carry 161 W of rated TDP each, so 322 W of processor against a 650 W whole-node assumption leaves 328 W for memory, board, fans and conversion loss - which looks high and means the fleet demand, the circuit sizing and the largest line of the cost floor are all more likely overstated than understated.",
+    }
+  }
+}

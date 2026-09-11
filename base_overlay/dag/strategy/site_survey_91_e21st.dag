@@ -1,0 +1,145 @@
+module strategy.site_survey_91_e21st
+
+import strategy.strategy_model { EvidenceAnchor }
+import strategy.site_model {
+  SiteCandidate, RoomObservation, RoomDimensions, MeasuredRoom, UnmeasuredRoom,
+  SurveyObligation, SiteAxis, ContinuousPower, CoolingHeatRejection,
+  NetworkCapacityAndRepair, PublicNetworkIdentity, InsuranceCoverage, ZoningPermittedUse,
+  FireElectricalCompliance, PhysicalAccess, CustomerContractualRequirements, OperatorBurden,
+  WorkshopReceivingUtility, TotalAndIncrementalCost, FailureContainmentAndDrain, Habitability,
+  AxisFinding, Satisfied, Unsatisfied, Unevaluated, SiteAxisAssessment,
+}
+
+data site_survey_91_e21st_note: String = "First site test case (operator direction 2026-08-10): 91 E 21st St, Bayonne NJ 07002 - 750 SF furnished first-floor office suite in a 1911 three-story Class C building, listed on LoopNet (ID 35253254, on market since 2026-01-30, i.e. six-plus months - a negotiation fact). Facts below are LISTING AND PHOTO CLAIMS, not survey receipts; every dimension is UnmeasuredRoom pending geometry capture (floor-plan request + photo-set AI reconstruction + anchor measurements - operator ruling 2026-08-10, no LiDAR); every gating axis is Unevaluated pending its survey obligation. Purpose is dual: exercise the site kernel on a real candidate, and run the uniform-principles conformance test on our own process (captured in docs/strategy/2026-08-10-site-testcase-91-e21st.md). This carrier records NO lease decision: per the section 6 purchase gates, evaluating and modeling a site is evidence-gathering; leasing before a section 7 trigger fires would violate P8, and no such trigger has fired."
+
+data site_candidates: List<SiteCandidate> = [
+  SiteCandidate {
+    id: "site-91-e21st-bayonne",
+    address: "91 E 21st St, Bayonne, NJ 07002",
+    listing: EvidenceAnchor {
+      repo: "external",
+      reference: "loopnet-listing-35253254",
+      note: "LoopNet listing, captured 2026-08-10: 750 SF, 1st floor, $28.80/SF/YR, 1-5 yr term, full build-out, furnished, available now; building 3,933 SF, 3 stories, built 1911, typical floor 1,311 SF; 3 min walk to 22nd Street HBLR.",
+    },
+    year_built: 1911,
+    stories: 3,
+    building_square_feet: 3933,
+    unit_square_feet: 750,
+    unit_location: "first floor",
+    monthly_base_rent_micro_usd: 1800000000,
+    rent_basis_note: "750 SF x $28.80/SF/YR / 12 = $1,800/mo base; listing states rate may exclude certain utilities, building services, and property expenses - all-in estimated $2,100-2,400/mo pending expense disclosure (survey item srv-expense-stack).",
+  },
+]
+
+data room_observations: List<RoomObservation> = [
+  RoomObservation {
+    id: "room-entry",
+    site_id: "site-91-e21st-bayonne",
+    observed_function: "entry and reception - corner double door, frosted glass, transom; water cooler; wall-mounted certificates; camera at door",
+    dimensions: UnmeasuredRoom { pending_survey_item_id: "srv-geometry-capture" },
+    evidence: EvidenceAnchor { repo: "external", reference: "listing-photo-entry", note: "operator-supplied listing photo, 2026-08-10" },
+  },
+  RoomObservation {
+    id: "room-conference",
+    site_id: "site-91-e21st-bayonne",
+    observed_function: "glass-enclosed conference room - full-height glass front, six-seat table, wall-mounted display, pendant fixture; current tenant branding (Dimentman Law Group) visible",
+    dimensions: UnmeasuredRoom { pending_survey_item_id: "srv-geometry-capture" },
+    evidence: EvidenceAnchor { repo: "external", reference: "listing-photo-conference", note: "operator-supplied listing photo, 2026-08-10" },
+  },
+  RoomObservation {
+    id: "room-open-work",
+    site_id: "site-91-e21st-bayonne",
+    observed_function: "open workspace with kitchenette - four-plus desk positions, suspended linear LED fixtures, ceiling supply vent, gloss cabinets, under-counter fridge, sink, microwave; ceiling camera",
+    dimensions: UnmeasuredRoom { pending_survey_item_id: "srv-geometry-capture" },
+    evidence: EvidenceAnchor { repo: "external", reference: "listing-photo-open-work", note: "operator-supplied listing photo, 2026-08-10" },
+  },
+  RoomObservation {
+    id: "room-bathroom",
+    site_id: "site-91-e21st-bayonne",
+    observed_function: "ADA-pattern bathroom - grab bars, wall-hung sink, subway tile",
+    dimensions: UnmeasuredRoom { pending_survey_item_id: "srv-geometry-capture" },
+    evidence: EvidenceAnchor { repo: "external", reference: "listing-photo-bathroom", note: "operator-supplied listing photo, 2026-08-10" },
+  },
+  RoomObservation {
+    id: "room-private-office",
+    site_id: "site-91-e21st-bayonne",
+    observed_function: "private office area - claimed by listing text; not identified in supplied photos",
+    dimensions: UnmeasuredRoom { pending_survey_item_id: "srv-geometry-capture" },
+    evidence: EvidenceAnchor { repo: "external", reference: "loopnet-listing-35253254", note: "listing text claim only; photo evidence absent" },
+  },
+]
+
+data survey_obligations: List<SurveyObligation> = [
+  SurveyObligation { id: "srv-panel-photo", site_id: "site-91-e21st-bayonne", question: "Panel and meter: service size, phase, spare capacity, dedicated-circuit feasibility for a 3-6 kW quiet rack; whose meter carries the first floor", method: "photograph panel + meter during walkthrough; clamp meter if permitted", gates_axis: ContinuousPower },
+  SurveyObligation { id: "srv-cooling-increment", site_id: "site-91-e21st-bayonne", question: "Existing HVAC capacity and landlord consent for a dedicated mini-split (penetration + condenser placement) for the rack zone", method: "inspect air handler/condenser, ask landlord in writing", gates_axis: CoolingHeatRejection },
+  SurveyObligation { id: "srv-fiber-demarc", site_id: "site-91-e21st-bayonne", question: "Carriers serving the address, fiber demarc location, business-class availability (Fios Business / Optimum / Lightpath)", method: "carrier availability check + demarc inspection", gates_axis: NetworkCapacityAndRepair },
+  SurveyObligation { id: "srv-floor-loading", site_id: "site-91-e21st-bayonne", question: "1911 wood-frame first floor: point-load capacity where a ~400-600 kg quiet rack would stand; basement/crawlspace access to sister joists if needed", method: "inspect structure from below; engineer letter if ambiguous", gates_axis: FireElectricalCompliance },
+  SurveyObligation { id: "srv-dba-baseline", site_id: "site-91-e21st-bayonne", question: "Ambient dBA by room, day and evening; noise sensitivity of adjacent units (both directions)", method: "sound meter during walkthrough, both floors if accessible", gates_axis: Habitability },
+  SurveyObligation { id: "srv-geometry-capture", site_id: "site-91-e21st-bayonne", question: "Room geometry to layout tolerance (not instrument tolerance): estimated floor plan and heights for the SiteRealizationSpec", method: "Operator ruling 2026-08-10 (supersedes the LiDAR method): (1) request existing floor plans first - landlord/PM and Bayonne construction-permit records for the recent renovation (srv-floor-plan-request); (2) dense photo set at walkthrough covering every corner; (3) AI reconstruction from photos, scale-calibrated on in-frame constants (3x6-inch subway tile, 36/42-inch grab bars, 32-36-inch door leaves) and 2-3 tape anchor measurements; anchors upgrade decision-consumed dimensions to SpatialMeasured with tolerance. Bare-minimum metrology: precision is set by the consuming decision, never by the instrument.", gates_axis: Habitability },
+  SurveyObligation { id: "srv-floor-plan-request", site_id: "site-91-e21st-bayonne", question: "Existing floor plans: landlord/PM marketing or as-built plans; Bayonne building-department permit drawings for the renovation", method: "ask Bellagio Property Management; municipal records request. Obtained plans enter as SpatialEstimated claims (plans lie), upgraded only by spot-check anchors", gates_axis: Habitability },
+  SurveyObligation { id: "srv-lease-use-clause", site_id: "site-91-e21st-bayonne", question: "Does the office lease permit continuous-operation equipment, increased electrical draw, and a server rack; sublease/assignment terms; personal guarantee scope", method: "draft lease review with attorney", gates_axis: ZoningPermittedUse },
+  SurveyObligation { id: "srv-expense-stack", site_id: "site-91-e21st-bayonne", question: "Which utilities, building services, and property expenses sit outside the $28.80 rate; historical electric cost for the unit", method: "written expense disclosure from Bellagio Property Management", gates_axis: TotalAndIncrementalCost },
+  SurveyObligation { id: "srv-upstairs-tenancy", site_id: "site-91-e21st-bayonne", question: "Occupancy and use of floors 2-3 (office vs residential); shared systems; after-hours building access", method: "ask listing agents; observe during walkthrough", gates_axis: PhysicalAccess },
+  SurveyObligation { id: "srv-access-path", site_id: "site-91-e21st-bayonne", question: "Equipment access path: door clear widths, thresholds, turning geometry, curb and rear access, building delivery rules - the largest object that can reach the interior", method: "tape measure + photos at walkthrough", gates_axis: WorkshopReceivingUtility },
+  SurveyObligation { id: "srv-zoning-verify", site_id: "site-91-e21st-bayonne", question: "Zoning district and permitted-use table row for this parcel (office/tech-studio as-of-right?)", method: "Bayonne zoning office / published ordinance lookup", gates_axis: ZoningPermittedUse },
+  SurveyObligation { id: "srv-insurance-quote", site_id: "site-91-e21st-bayonne", question: "Commercial GL + property quote including owned equipment; landlord COI requirements", method: "broker quote against draft lease", gates_axis: InsuranceCoverage },
+  SurveyObligation { id: "srv-ordinance-track", site_id: "site-91-e21st-bayonne", question: "Bayonne data-center prohibition ordinance: final text, Planning Board action (2026-08-11), Council hearing/adoption (2026-08-12 18:00, 630 Avenue C - attendable), effective date, any amendments", method: "attend/track hearings; capture adopted text; model lifecycle transitions as distinct states; public-comment question prepared: does the ordinance exclude server rooms and computing equipment accessory and subordinate to an otherwise permitted principal use? (request an express accessory-IT exclusion pre-adoption)", gates_axis: ZoningPermittedUse },
+  SurveyObligation { id: "srv-zoning-interpretation", site_id: "site-91-e21st-bayonne", question: "Written zoning applicability determination for the TRUE operating profile (machines, continuous load, 24/7 operation, external customers, employees, expansion bounds) - is this an office with incidental equipment or a prohibited principal use", method: "zoning officer request with exact operating profile; never a friendly label", gates_axis: ZoningPermittedUse },
+  SurveyObligation { id: "srv-co-history", site_id: "site-91-e21st-bayonne", question: "Current first-floor CO + approved use; nonconformity certificate/variances/site-plan resolutions; permits open/closed; fire inspections + violations; renovation plans; building unit roster", method: "landlord document request + Bayonne OPRA", gates_axis: ZoningPermittedUse },
+  SurveyObligation { id: "srv-parcel-map", site_id: "site-91-e21st-bayonne", question: "Official tax-map parcel geometry (reported Block 456 Lot 2, 21.4 x 100 ft claim) and zoning district/overlays", method: "Bayonne tax-assessment map + zoning map lookup", gates_axis: ZoningPermittedUse },
+]
+
+data axis_assessments: List<SiteAxisAssessment> = [
+  SiteAxisAssessment {
+    id: "ax-habitability-baseline",
+    site_id: "site-91-e21st-bayonne",
+    axis: Habitability,
+    finding: Unevaluated { pending_survey_item_id: "srv-dba-baseline" },
+    evidence: [
+      EvidenceAnchor { repo: "external", reference: "listing-photo-conference", note: "Positive sub-readings observed from photos, NOT a verdict: finished interior, natural corner light, glass conference enclosure, kitchenette, ADA bathroom. Still open: noise unmeasured, thermal-behavior-under-compute unobserved, comfortable-to-think-in pending operator walkthrough sign-off. CORRECTION 2026-08-10 (external review): this row previously stored Satisfied ahead of its own open sub-readings - the exact stored-verdict defect the site_model note prohibits." },
+      EvidenceAnchor { repo: "external", reference: "listing-photo-open-work", note: "photo evidence for the finished-interior and kitchenette sub-readings" },
+    ],
+  },
+  SiteAxisAssessment {
+    id: "ax-transit-access",
+    site_id: "site-91-e21st-bayonne",
+    axis: PhysicalAccess,
+    finding: Satisfied { rationale: "3-minute walk to 22nd Street HBLR; walkable corridor - directly serves the section 0 people-are-an-output axis (hiring and community integration)." },
+    evidence: [ EvidenceAnchor { repo: "external", reference: "loopnet-listing-35253254", note: "transit table in listing" } ],
+  },
+  SiteAxisAssessment {
+    id: "ax-continuous-power",
+    site_id: "site-91-e21st-bayonne",
+    axis: ContinuousPower,
+    finding: Unevaluated { pending_survey_item_id: "srv-panel-photo" },
+    evidence: [],
+  },
+  SiteAxisAssessment {
+    id: "ax-cooling",
+    site_id: "site-91-e21st-bayonne",
+    axis: CoolingHeatRejection,
+    finding: Unevaluated { pending_survey_item_id: "srv-cooling-increment" },
+    evidence: [],
+  },
+  SiteAxisAssessment {
+    id: "ax-network",
+    site_id: "site-91-e21st-bayonne",
+    axis: NetworkCapacityAndRepair,
+    finding: Unevaluated { pending_survey_item_id: "srv-fiber-demarc" },
+    evidence: [],
+  },
+  SiteAxisAssessment {
+    id: "ax-workshop-receiving",
+    site_id: "site-91-e21st-bayonne",
+    axis: WorkshopReceivingUtility,
+    finding: Unevaluated { pending_survey_item_id: "srv-access-path" },
+    evidence: [ EvidenceAnchor { repo: "external", reference: "listing-photo-entry", note: "Photos establish only a finished street-corner office entry. Door clear widths, thresholds, turning geometry, rear/curb access, and building delivery rules are unmeasured. Working expectation, recorded as expectation not verdict: probably constrained to parcel-scale hardware (quiet towers, Sparks); probably not the liquidation-lot receiving node. CORRECTION 2026-08-10 (external review): previously stored Unsatisfied beyond what photo evidence supports - the correct state is not-established-and-probably-constrained." } ],
+  },
+  SiteAxisAssessment {
+    id: "ax-incremental-cost",
+    site_id: "site-91-e21st-bayonne",
+    axis: TotalAndIncrementalCost,
+    finding: Unevaluated { pending_survey_item_id: "srv-expense-stack" },
+    evidence: [ EvidenceAnchor { repo: "external", reference: "loopnet-listing-35253254", note: "Working arithmetic - declared assumptions, not observations: base $1,800/mo ($28.80/SF, 1.4-2.4x the expected Bayonne band); turnkey build-out credit ~$500-800/mo against our own storefront buildout budget -> band-adjusted effective ~$1,300/mo-equivalent; incremental-denominator offset $1,200-1,500/mo of furnished 2-6 person workspace -> ~$600-1,000/mo incremental for a 1-quiet-rack site vs $750-975 colo half-rack, conditional on ContinuousPower admitting. Six-plus months on market supports negotiating toward $24-26/SF. Verdict deliberately withheld until the expense stack and power admission land. CORRECTION 2026-08-10 (external review): previously stored Satisfied on assumed offsets and an undisclosed expense stack." } ],
+  },
+]

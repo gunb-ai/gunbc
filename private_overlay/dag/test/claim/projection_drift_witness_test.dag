@@ -1,0 +1,145 @@
+module test.claim.projection_drift_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
+  filesystem_read_outcome,
+}
+import strategy.private_witness_workflow {
+  ProjectedArtifact, projected_artifacts, private_repo_prefix,
+  ProjectionAgreement, ProjectionAgrees, ProjectionDrifted, projection_agreement,
+  ProjectedArtifactObservation, ProjectedArtifactObserved, ProjectedArtifactReadRefused,
+  projected_artifact_observation, projected_artifact_observation_ok,
+  projected_artifact_observation_detail,
+  witnesses_yml_path, expected_witnesses_yml,
+}
+
+// THE CONSUMER THE PROJECTIONS DID NOT HAVE. strategy.private_witness_workflow declares itself the
+// authority for the committed workflow files and computes the bytes that authority implies; this
+// witness is the thing that asks whether what is committed still equals them. Without it the
+// producers were an inert lens -- present, correct-looking, gating nothing.
+//
+// WHY THE PATHS CARRY A PARENT-CHECKOUT PREFIX. gunbc resolves its workspace from the working
+// directory, so roster invocations run inside the PUBLIC checkout. The compiler ingest of
+// private .dag files uses private_entry_prefix (the in-workspace overlay). The drift observer
+// reads the committed YAML from the private git tree one level up, via private_repo_prefix,
+// because those files are not part of the overlay copy. private_overlay is never a projection
+// source: comparing it would verify that a generated copy matches itself.
+fn committed_path(a: ProjectedArtifact) -> String {
+  join([private_repo_prefix, a.path], "")
+}
+
+fn read_committed(a: ProjectedArtifact) -> FilesystemReadOutcome {
+  let r = Filesystem.Read(path: committed_path(a: a))
+  filesystem_read_outcome(content: r.content, success: r.success, error: r.error)
+}
+
+fn observe(a: ProjectedArtifact) -> ProjectedArtifactObservation {
+  projected_artifact_observation(path: a.path, read: read_committed(a: a), expected: a.expected)
+}
+
+fn observations() -> List<ProjectedArtifactObservation> {
+  fold(projected_artifacts(), init: [], f: fn(acc, a) { concat(acc, [observe(a: a)]) })
+}
+
+// EVERY DISAGREEING ARTIFACT IS NAMED, not just the first. A run that stops at the first difference
+// makes the next one invisible until this one is fixed, which turns one regeneration into as many
+// round trips as there are drifted files.
+fn failing_detail(os: List<ProjectedArtifactObservation>) -> String {
+  fold(os, init: "", f: fn(acc, o) {
+    if projected_artifact_observation_ok(o: o) {
+      acc
+    } else {
+      join([acc, if acc == "" { "" } else { "; " }, projected_artifact_observation_detail(o: o)], "")
+    }
+  })
+}
+
+fn all_agree(os: List<ProjectedArtifactObservation>) -> Bool {
+  fold(os, init: true, f: fn(acc, o) { acc && projected_artifact_observation_ok(o: o) })
+}
+
+// THE POSITIVE CONTROL: the producer agrees with itself. This is what proves the accepting arm is
+// reachable at all, so a predicate that has silently become permanently-refusing cannot pass itself
+// off as a wall that never fires because nothing is wrong.
+fn the_producer_agrees_with_itself() -> Bool {
+  projected_artifact_observation_ok(o: projected_artifact_observation(
+    path: witnesses_yml_path,
+    read: FilesystemReadSucceeded { content: expected_witnesses_yml() },
+    expected: expected_witnesses_yml(),
+  ))
+}
+
+// THE DISCRIMINATING RED, kept enrolled rather than retired now that the wall stands (DESIGN 4b(4)).
+// Drift is authored as an argument, so the refusal is exercised on every run without perturbing a
+// committed file. A single appended byte is the smallest difference the comparison must catch; if
+// this stops refusing, the comparison has stopped discriminating and the green above is hollow.
+fn a_single_changed_byte_refuses() -> Bool {
+  projected_artifact_observation_ok(o: projected_artifact_observation(
+    path: witnesses_yml_path,
+    read: FilesystemReadSucceeded { content: join([expected_witnesses_yml(), "\n"], "") },
+    expected: expected_witnesses_yml(),
+  )) == false
+    && projected_artifact_observation_ok(o: projected_artifact_observation(
+      path: witnesses_yml_path,
+      read: FilesystemReadSucceeded { content: "" },
+      expected: expected_witnesses_yml(),
+    )) == false
+}
+
+// A READ REFUSAL IS ITS OWN ARM AND IS ASSERTED AS ONE. The fold takes the read outcome as a
+// parameter precisely so this control can reach the refusing arm with a synthetic outcome instead
+// of requiring a real filesystem failure. It asserts the ARM, not merely that the run failed: an
+// unreadable file and a drifted file both stop the line, and a check that only asked "did it stop"
+// would pass while the two causes were conflated -- which is the erasure this type exists to
+// prevent.
+fn a_read_refusal_is_not_reported_as_drift() -> Bool {
+  let refused = projected_artifact_observation(
+    path: witnesses_yml_path,
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    expected: expected_witnesses_yml(),
+  )
+  let is_refusal_arm = match refused {
+    ProjectedArtifactObserved { path, agreement } => false
+    ProjectedArtifactReadRefused { path, cause } => true
+  }
+  let drifted = projected_artifact_observation(
+    path: witnesses_yml_path,
+    read: FilesystemReadSucceeded { content: "" },
+    expected: expected_witnesses_yml(),
+  )
+  let is_observed_arm = match drifted {
+    ProjectedArtifactObserved { path, agreement } => true
+    ProjectedArtifactReadRefused { path, cause } => false
+  }
+  is_refusal_arm && is_observed_arm
+    && projected_artifact_observation_ok(o: refused) == false
+}
+
+// BOTH COMMITTED PROJECTIONS ARE IN THE POPULATION, so adding a projection to projected_artifacts
+// without committing its file stops the line rather than going unnoticed.
+fn every_projection_is_checked() -> Bool {
+  count(projected_artifacts()) == 2 && count(observations()) == 2
+}
+
+fn controls_hold() -> Bool {
+  the_producer_agrees_with_itself()
+    && a_single_changed_byte_refuses()
+    && a_read_refusal_is_not_reported_as_drift()
+    && every_projection_is_checked()
+}
+
+fn projection_drift_witness_main() -> ProcessExit {
+  let os = observations()
+  if all_agree(os: os) {
+    if controls_hold() {
+      ExitSuccess
+    } else {
+      exit_failure(reason: "projection drift controls failed: the comparison no longer discriminates")
+    }
+  } else {
+    exit_failure(reason: failing_detail(os: os))
+  }
+}

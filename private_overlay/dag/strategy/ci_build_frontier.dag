@@ -1,0 +1,410 @@
+module strategy.ci_build_frontier
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.interval { degenerate_interval }
+import std.pareto {
+  AxisGoal, LowerIsBetter, HigherIsBetter,
+  SelectionAxis, AxisReading, AxisGap, ParetoEntry, ParetoStanding,
+  ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused,
+  entry_standing,
+}
+import strategy.ci_node_build {
+  NodeBuildCandidate, node_build_candidates, selected_build,
+  candidate_q64_32, candidate_q80_32, candidate_q128_64, candidate_two_q64_32,
+  planning_capex_micro, planning_capex_per_unit_micro, populated_dimm_count,
+  planning_capex_at_32gib_price_micro, planning_capex_per_unit_at_32gib_price_micro,
+  memory_is_banded_32gib, memory_price_coefficient,
+  dimm_32gib_low_micro, dimm_32gib_high_micro,
+  sellable_units, standard_units,
+  stranded_cores, unused_standard_memory_gib, failure_domain_units, maintenance_population,
+  planning_inputs_are_complete, supply_depth_obligation, node_watts, candidate_node_watts, dimm_32gib_low_micro, dimm_32gib_high_micro,
+}
+
+// CHOOSING A BUILD IS A PARETO PROBLEM, not a ranking.
+//
+// There is no single number to maximize. Upfront cash, capex per sellable unit, capacity, stranded
+// resources, failure-domain size and the number of machines to maintain all move against each
+// other, and the axes nobody has measured - watts per unit, delivered performance per billed unit,
+// site density - could reorder the survivors entirely.
+//
+// This module is now the node-build INSTANTIATION of the std.pareto selection layer (extracted
+// 2026-08-18 when the colocation selection became the second consumer, and hoisted to the
+// public std authority the same day - std.pareto already carried the dominance kernel): it names the funded
+// axes, projects each candidate into a ParetoEntry, and the spine's one dominance fold does
+// the rest. The capex axes are on the PLANNING basis - parts subtotal plus the per-platform
+// finishing allowance - because the candidate set now mixes loose board builds with whole
+// systems whose price includes chassis, power and cooling; a bare-parts comparison would
+// credit a system lot nothing for what its one price carries.
+
+data axis_upfront_cash_id: DeclarationRef = decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "axis_upfront_cash_id")
+data axis_capex_per_unit_id: DeclarationRef = decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "axis_capex_per_unit_id")
+data axis_sellable_units_id: DeclarationRef = decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "axis_sellable_units_id")
+data axis_stranded_cores_id: DeclarationRef = decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "axis_stranded_cores_id")
+data axis_failure_domain_id: DeclarationRef = decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "axis_failure_domain_id")
+data axis_maintenance_id: DeclarationRef = decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "axis_maintenance_id")
+data axis_fleet_watts_id: DeclarationRef = decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "axis_fleet_watts_id")
+
+data axis_upfront_cash: SelectionAxis = SelectionAxis { identity: axis_upfront_cash_id, goal: LowerIsBetter }
+data axis_capex_per_unit: SelectionAxis = SelectionAxis { identity: axis_capex_per_unit_id, goal: LowerIsBetter }
+data axis_sellable_units: SelectionAxis = SelectionAxis { identity: axis_sellable_units_id, goal: HigherIsBetter }
+data axis_stranded_cores: SelectionAxis = SelectionAxis { identity: axis_stranded_cores_id, goal: LowerIsBetter }
+data axis_failure_domain: SelectionAxis = SelectionAxis { identity: axis_failure_domain_id, goal: LowerIsBetter }
+data axis_maintenance: SelectionAxis = SelectionAxis { identity: axis_maintenance_id, goal: LowerIsBetter }
+data axis_fleet_watts: SelectionAxis = SelectionAxis { identity: axis_fleet_watts_id, goal: LowerIsBetter }
+
+data funded_axes: List<SelectionAxis> = [
+  axis_upfront_cash,
+  axis_capex_per_unit,
+  axis_sellable_units,
+  axis_stranded_cores,
+  axis_failure_domain,
+  axis_maintenance,
+  axis_fleet_watts,
+]
+
+// Machines to maintain stands for FOUR things at once in this model, because they are the same
+// quantity: duplicated platform BOM (PSU, cooling, scratch, carrier), maintenance population, site
+// slots consumed, and idle platform draw. Splitting them into four columns would be four copies of
+// node count wearing different names.
+data maintenance_axis_note: NonEmptyStr = "One machine is one PSU, one cooling loop, one scratch device, one carrier, one site slot, one idle platform draw and one thing to drive out and fix. In this model those are all node count, so they are one axis rather than four columns of the same number. What is NOT captured is how much each of them costs, which is why the sensitivities below name them individually."
+
+// Upgrade optionality is derived per platform. The loose builds fill all sixteen board slots, so
+// adding memory later means replacing modules; the system lots populate sixteen of thirty-two
+// spec slots, so they keep sixteen empty slots of 2DPC headroom at the cost of re-verifying the
+// population map when it is used.
+data upgrade_optionality_note: NonEmptyStr = "The loose candidates fill every board slot, so adding memory later means replacing modules and reselling the old ones. The Mt. Jade and Mt. Collins candidates populate one DIMM per channel - sixteen of the platform's thirty-two slots - so they retain second-DIMM-per-channel headroom, which is the one optionality axis separating the platforms and it runs in the system lots' favour."
+
+fn fleet_watts(c: NodeBuildCandidate) -> Nat { c.node_count * candidate_node_watts(c: c) }
+
+// The axes with no reading. Each one is a way the frontier below could be wrong, and none of them
+// is treated as equal or as zero.
+data frontier_sensitivities: List<NonEmptyStr> = [
+  "watts per core: one assumed draw per node is used for every candidate, so fleet watts separates a two-node fleet from a one-node fleet but cannot separate a 128-core node from a 64-core one, and it also cannot separate a dense 2U system from a quiet tower build",
+  "delivered performance per billed unit: no benchmark has been run, so a core is a core and the slower memory grade costs nothing here",
+  "finishing allowances: the loose-build 880-dollar and system-lot 300-dollar figures are flat assumptions, and the gap between them decides loose-versus-system as surely as the split-versus-dense answer",
+  "condition risk: a for-parts system carries repair probability no axis prices; its purchase gate carries the obligation but the frontier cannot see it",
+  "habitability admission: dense 2U systems fail the open-room noise admission and need a machine closet or a colocation cabinet; quiet tower builds pass - a site-dependent constraint, not a scalar",
+  "maintenance time: no failure rate and no hours per incident, so a second machine costs nothing here for being a second machine",
+  "site density: no floor area, power ceiling or cooling capacity has been read, so a denser node earns nothing for being denser",
+  "component liquidity and resale: how easily a used part is replaced or resold at these rates is unmodelled, and it favours the commodity module",
+  "supply durability: rates are assumed to hold when sixteen modules are wanted rather than one, and the high-density row is the weakest of those bets",
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE PROJECTION into the spine, one reading per funded axis.
+// ---------------------------------------------------------------------------------------------
+
+data no_missing_inputs: List<AxisGap> = []
+
+fn one_missing(axis: DeclarationRef, text: NonEmptyStr) -> List<AxisGap> {
+  [AxisGap { axis: axis, cause: text }]
+}
+
+// THE AXIS ATTRIBUTION LIVES HERE, NOT IN ci_node_build. supply_depth_obligation returns notes
+// because depth is a fact about what can be bought, and it has other consumers that are not
+// comparing anything. Which AXIS a depth shortfall excuses is a question only a module holding an
+// axis roster can answer, so the join happens at this boundary -- pushing the axis into
+// ci_node_build would put this module's roster in a module that does not own it.
+fn gaps_on(axis: DeclarationRef, notes: List<NonEmptyStr>) -> List<AxisGap> {
+  fold(notes, init: [], f: fn(acc, n) { concat(acc, [AxisGap { axis: axis, cause: n }]) })
+}
+
+// AN UNPRICED COMPONENT DECLARES AN ABSENCE ON BOTH CAPEX AXES AND ON NEITHER OF THE OTHERS.
+//
+// To be exact about what that does and does not buy: std.pareto still refuses this candidate
+// outright while any gap stands, so it is NOT comparable on sellable units and stranded cores in
+// the meantime. Naming the axis does not produce a partial standing.
+//
+// What it does is stop this obligation from covering a different absence. A missing sellable-units
+// reading is no longer silently excused by the fact that a price is missing; it has to declare
+// itself, or std.pareto reports that the axis has no reading and no gap naming it. A shortfall in
+// obtainable supply is a different fact and lands on the axis it actually undermines.
+fn node_missing_inputs(c: NodeBuildCandidate) -> List<AxisGap> {
+  let rate_gap = if planning_inputs_are_complete(c: c) { no_missing_inputs } else {
+    concat(
+      one_missing(axis: axis_upfront_cash_id, text: "a component in this candidate carries no rate at all, so its capex cannot be computed. A missing price is not a zero and not an average."),
+      one_missing(axis: axis_capex_per_unit_id, text: "a component in this candidate carries no rate at all, so its capex cannot be computed. A missing price is not a zero and not an average."))
+  }
+  concat(rate_gap, gaps_on(axis: axis_sellable_units_id, notes: supply_depth_obligation(c: c)))
+}
+
+// A SCENARIO IS A WORLD, NOT A CANDIDATE'S UNCERTAINTY. The 32-GiB price is one number that every
+// build faces at once, so it is varied over the WHOLE FIELD and held fixed while that field is
+// compared. Inside one scenario a capex is exact, which is why these readings are degenerate and
+// honestly so: given the price, that IS the cost. The uncertainty lives one level up, in which
+// scenario obtains, and it is answered by comparing standings across scenarios rather than by
+// blurring each candidate's number independently. Marginal per-candidate intervals would admit a
+// world where one build buys the shared DIMM at 80 while another buys it at 120, and would turn
+// 2xQ80 being 151 dollars cheaper than 2xQ64 at BOTH ends into "undecided".
+type MemoryPriceScenario {
+  identity: DeclarationRef
+  dimm_32gib_unit_price_micro: Int
+}
+
+data scenario_band_low: MemoryPriceScenario = MemoryPriceScenario {
+  identity: decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "scenario_band_low"),
+  dimm_32gib_unit_price_micro: dimm_32gib_low_micro,
+}
+
+data scenario_band_high: MemoryPriceScenario = MemoryPriceScenario {
+  identity: decl_ref(module_path: "strategy.ci_build_frontier", decl_name: "scenario_band_high"),
+  dimm_32gib_unit_price_micro: dimm_32gib_high_micro,
+}
+
+// THE ENDPOINTS ARE THE DECLARED SCENARIOS AND EVERY CLAIM BELOW IS SCOPED TO THEM. Sweeping every
+// whole dollar from 80 to 120 would be a different and stronger claim; proving that the extrema of
+// an arbitrary candidate PAIR fall at the endpoints would be a third, and it does not follow in
+// general - candidates carry different DIMM counts, node counts and capacities, so their cost
+// functions have different slopes, and integer tax and per-unit division are not linear. So the
+// vocabulary says "at every declared scenario" and never "at every price". The one pair for which
+// the stronger statement IS established is the equal-coefficient case, and it is established by its
+// own control, not by this list.
+data memory_price_scenarios: List<MemoryPriceScenario> = [scenario_band_low, scenario_band_high]
+
+// The candidate population is generated combinatorially - board x processor x memory x node count -
+// so no candidate has a declaration name of its own. Its label IS the derived key for that
+// construction, which is why it serves as the identity here. If two constructions ever produced one
+// label the spine refuses the whole selection on duplicate candidate identity rather than silently
+// comparing one of them twice, so a collision is loud, not latent.
+fn node_entry_at(c: NodeBuildCandidate, scenario: MemoryPriceScenario) -> ParetoEntry {
+  ParetoEntry {
+    identity: decl_ref(module_path: "strategy.ci_node_build", decl_name: c.label),
+    display_label: c.label,
+    readings: [
+      AxisReading { axis: axis_upfront_cash_id, interval_micro: degenerate_interval(point: planning_capex_at_32gib_price_micro(c: c, unit_price_micro: scenario.dimm_32gib_unit_price_micro)) },
+      AxisReading { axis: axis_capex_per_unit_id, interval_micro: degenerate_interval(point: planning_capex_per_unit_at_32gib_price_micro(c: c, unit_price_micro: scenario.dimm_32gib_unit_price_micro)) },
+      AxisReading { axis: axis_sellable_units_id, interval_micro: degenerate_interval(point: sellable_units(c: c)) },
+      AxisReading { axis: axis_stranded_cores_id, interval_micro: degenerate_interval(point: stranded_cores(c: c)) },
+      AxisReading { axis: axis_failure_domain_id, interval_micro: degenerate_interval(point: failure_domain_units(c: c)) },
+      AxisReading { axis: axis_maintenance_id, interval_micro: degenerate_interval(point: maintenance_population(c: c)) },
+      AxisReading { axis: axis_fleet_watts_id, interval_micro: degenerate_interval(point: fleet_watts(c: c)) },
+    ],
+    missing_inputs: node_missing_inputs(c: c),
+  }
+}
+
+data no_entries: List<ParetoEntry> = []
+
+// THE FIELD IS A PARAMETER, AND ONE SCENARIO PROJECTS ALL OF IT. Both halves matter and they are
+// the same fact seen twice: a control that plants a candidate must exercise this exact path rather
+// than a copy of it, and every entry in one field must be read at ONE price. Projecting each
+// candidate under its own price is the marginal-interval error rebuilt at the field level - it
+// admits a world where the same market charges two prices at once - so the scenario is applied by
+// this fold and is never a per-candidate argument.
+fn node_entries_in_field(field: List<NodeBuildCandidate>, scenario: MemoryPriceScenario) -> List<ParetoEntry> {
+  fold(field, init: no_entries, f: fn(acc, c) { concat(acc, [node_entry_at(c: c, scenario: scenario)]) })
+}
+
+
+// pair_verdict_at WAS HERE AND IS DELETED (2026-09-02). It re-exported std.pareto's compare_pair
+// under a module-local name, and its only consumer was a witness. Two reasons, and the second is
+// the one that matters:
+//
+// 1. A one-consumer alias over an imported function is a second name for one concept.
+//
+// 2. compare_pair ANSWERS THE DOMINANCE QUESTION WITHOUT READING missing_inputs, while the standing
+//    path refuses exactly that: std.pareto's challenger_applies excludes any challenger declaring a
+//    gap, so entry_standing will not let an incompletely-evidenced candidate dominate anyone. The
+//    two functions therefore answer one question two ways, and the exported pair API is the
+//    permissive arm. Measured on this very field: the Supermicro R12SPD-A build declares unproven
+//    supply depth, and compare_pair reports it DOMINATING the ASRock build at the low memory price
+//    while entry_standing correctly reports it NotComputable and leaves the ASRock on the frontier.
+//    That is the same class as the pair_dominates deletion the public cut already made - a pair-level
+//    answer that outruns its evidence - and it is filed against std.pareto rather than papered over
+//    here. Until it is fixed upstream this module reaches dominance ONLY through entry_standing.
+fn standing_in_field_at(c: NodeBuildCandidate, field: List<NodeBuildCandidate>, scenario: MemoryPriceScenario) -> ParetoStanding {
+  entry_standing(
+    subject: node_entry_at(c: c, scenario: scenario),
+    field: node_entries_in_field(field: field, scenario: scenario),
+    axes: funded_axes,
+    sensitivities: frontier_sensitivities,
+  )
+}
+
+// The live-roster spelling, kept because it has real consumers (ci_economics_witness). The
+// field-parameterized form above is the authority; this passes the admitted roster and nothing else,
+// so there is one path and one answer rather than two implementations of the question.
+fn standing_at(c: NodeBuildCandidate, scenario: MemoryPriceScenario) -> ParetoStanding {
+  standing_in_field_at(c: c, field: node_build_candidates, scenario: scenario)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE AGGREGATE ACROSS SCENARIOS, AND IT IS NOT A BOOLEAN. frontier_survives_the_band() used to
+// answer yes or no, which is the same state-loss the public cut removed from the dominance verdict
+// itself, just one layer up: "survives" could not distinguish a candidate that holds the frontier in
+// every world from one that holds it in some and loses it in others, and the second is precisely the
+// answer a buyer needs. Scenario sensitivity is the interesting result, not an error case, so it has
+// its own arm and carries WHICH scenarios went which way.
+type ScenarioStanding {
+  scenario: DeclarationRef
+  standing: ParetoStanding
+}
+
+type MemoryBandStanding
+  = FrontierAtEveryScenario { receipts: List<ScenarioStanding> }
+  | DominatedAtEveryScenario { receipts: List<ScenarioStanding> }
+  | ScenarioSensitive { frontier_at: List<ScenarioStanding>, dominated_at: List<ScenarioStanding> }
+  | BandStandingUnestablished { receipts: List<ScenarioStanding> }
+
+data no_scenario_standings: List<ScenarioStanding> = []
+
+fn scenario_standings_in_field(c: NodeBuildCandidate, field: List<NodeBuildCandidate>) -> List<ScenarioStanding> {
+  fold(memory_price_scenarios, init: no_scenario_standings, f: fn(acc, sc) {
+    concat(acc, [ScenarioStanding { scenario: sc.identity, standing: standing_in_field_at(c: c, field: field, scenario: sc) }])
+  })
+}
+
+
+// THE ARMS CARRY SCENARIO-BOUND RECEIPTS, NOT SCENARIO NAMES. An earlier shape kept only the
+// identities on the sensitive arm, which threw away the very thing that makes sensitivity
+// actionable: WHICH candidate dominated this one, and on which axes, in the scenario where it lost.
+// A reader would have had to re-derive the standing to learn anything, and re-deriving a discarded
+// answer is the state loss this whole cut exists to stop.
+//
+// Anything that is neither a held front nor a proven domination - a declared gap, pending evidence,
+// a refusal - makes the whole band answer UNESTABLISHED rather than being counted as one side. A
+// scenario we could not compute is not a scenario the candidate survived.
+// ONE EXHAUSTIVE FOLD, SO A RECEIPT ENTERS EXACTLY ONE PARTITION BY CONSTRUCTION. Two independent
+// filters over the same population only look disjoint: nothing stopped a receipt landing in both,
+// and the arm selection compared COUNTS, so a candidate dominated in every scenario could be
+// reported scenario-sensitive and kept. That is the fail-open this aggregate exists to close,
+// rebuilt one layer up. The match below is total over ParetoStanding and appends to exactly one
+// list, so the three lists partition the receipts and their counts cannot disagree.
+type ScenarioPartition {
+  front: List<ScenarioStanding>
+  dominated: List<ScenarioStanding>
+  unestablished: List<ScenarioStanding>
+}
+
+data empty_partition: ScenarioPartition = ScenarioPartition {
+  front: no_scenario_standings,
+  dominated: no_scenario_standings,
+  unestablished: no_scenario_standings,
+}
+
+fn partition_step(acc: ScenarioPartition, r: ScenarioStanding) -> ScenarioPartition {
+  match r.standing {
+    ProvisionallyNonDominated { sensitivities } =>
+      ScenarioPartition { front: concat(acc.front, [r]), dominated: acc.dominated, unestablished: acc.unestablished }
+    DominatedBy { dominators } =>
+      ScenarioPartition { front: acc.front, dominated: concat(acc.dominated, [r]), unestablished: acc.unestablished }
+    NotComputable { missing } =>
+      ScenarioPartition { front: acc.front, dominated: acc.dominated, unestablished: concat(acc.unestablished, [r]) }
+    PendingEvidence { undecided } =>
+      ScenarioPartition { front: acc.front, dominated: acc.dominated, unestablished: concat(acc.unestablished, [r]) }
+    SelectionRefused { cause } =>
+      ScenarioPartition { front: acc.front, dominated: acc.dominated, unestablished: concat(acc.unestablished, [r]) }
+  }
+}
+
+// Anything neither a held front nor a proven domination makes the whole band answer UNESTABLISHED
+// rather than being counted as one side: a scenario we could not compute is not a scenario the
+// candidate survived.
+fn band_standing_in_field(c: NodeBuildCandidate, field: List<NodeBuildCandidate>) -> MemoryBandStanding {
+  let rs = scenario_standings_in_field(c: c, field: field)
+  let p = fold(rs, init: empty_partition, f: fn(acc, r) { partition_step(acc: acc, r: r) })
+  if count(p.unestablished) > 0 {
+    BandStandingUnestablished { receipts: rs }
+  } else if count(p.dominated) == 0 {
+    FrontierAtEveryScenario { receipts: rs }
+  } else if count(p.front) == 0 {
+    DominatedAtEveryScenario { receipts: rs }
+  } else {
+    ScenarioSensitive { frontier_at: p.front, dominated_at: p.dominated }
+  }
+}
+
+fn band_standing(c: NodeBuildCandidate) -> MemoryBandStanding {
+  band_standing_in_field(c: c, field: node_build_candidates)
+}
+
+fn band_standing_label(c: NodeBuildCandidate) -> NonEmptyStr {
+  match band_standing(c: c) {
+    FrontierAtEveryScenario { receipts } => "on the frontier at every declared memory-price scenario"
+    DominatedAtEveryScenario { receipts } => "dominated at every declared memory-price scenario"
+    ScenarioSensitive { frontier_at, dominated_at } => "scenario-sensitive: it holds the frontier at some declared memory prices and is dominated at others"
+    BandStandingUnestablished { receipts } => "not established: at least one scenario produced no verdict"
+  }
+}
+
+// A CANDIDATE IS DROPPED ONLY IF IT IS DOMINATED IN EVERY DECLARED SCENARIO. Losing at one price and
+// holding at another is scenario-sensitive, not dominated, and dropping it would hide exactly the
+// fact the band exists to expose. Unestablished keeps the candidate too: nothing was shown.
+fn is_dominated(c: NodeBuildCandidate) -> Bool {
+  match band_standing(c: c) {
+    DominatedAtEveryScenario { receipts } => true
+    FrontierAtEveryScenario { receipts } => false
+    ScenarioSensitive { frontier_at, dominated_at } => false
+    BandStandingUnestablished { receipts } => false
+  }
+}
+
+fn surviving_candidates() -> List<NodeBuildCandidate> {
+  filter(node_build_candidates, c => is_dominated(c: c) == false)
+}
+
+data frontier_grain_note: NonEmptyStr = "THIS FRONTIER IS THE ACQUISITION-GRAIN PROJECTION, and every dominance verdict it emits is scoped to that grain. It compares unplaced node builds on parts, finishing allowance, taxes and duty reserve under EQUAL placement assumptions. A verdict like the Mt. Collins system dominating the loose 2xQ80 build is an acquisition fact, not a strategy conclusion: the system lots are machine-room equipment (candidate_habitability) while loose builds can live in free residential space, so once placement joins - colo rent, power rates, cooling, network, acoustic admission - a candidate that loses here can win there. The strategy-grain selection runs over placed fleet plans (archetype x realization x multiplicity x site), which is the recorded follow-up; until that layer lands, no verdict from this module authorizes a placement decision."
+
+data frontier_note: NonEmptyStr = "No candidate is ranked, because there is no single number to rank on. A candidate is dropped only when another is no worse on every funded axis and strictly better on at least one; everything else survives with its missing evidence attached. The capex axes carry the planning basis - parts plus the per-platform finishing allowance - so a whole system's included chassis and power count for it, and a loose build's still-unbought remainder counts against it."
+
+// ---------------------------------------------------------------------------------------------
+// THE SPECIFIC QUESTION: two smaller nodes, or one dense node?
+// ---------------------------------------------------------------------------------------------
+
+type SplitVersusDense {
+  split_label: NonEmptyStr
+  dense_label: NonEmptyStr
+  split_capex_micro: Int
+  dense_capex_micro: Int
+  known_saving_micro: Int
+  saving_permille: Int
+  split_units: Nat
+  dense_units: Nat
+  unit_shortfall: Nat
+  split_failure_domain: Nat
+  dense_failure_domain: Nat
+  extra_machines: Nat
+}
+
+fn split_versus_dense() -> SplitVersusDense {
+  let split = candidate_two_q64_32
+  let dense = candidate_q128_64
+  SplitVersusDense {
+    split_label: split.label,
+    dense_label: dense.label,
+    split_capex_micro: planning_capex_micro(c: split),
+    dense_capex_micro: planning_capex_micro(c: dense),
+    known_saving_micro: planning_capex_micro(c: dense) - planning_capex_micro(c: split),
+    saving_permille: (planning_capex_micro(c: dense) - planning_capex_micro(c: split)) * 1000 / planning_capex_micro(c: dense),
+    split_units: sellable_units(c: split),
+    dense_units: sellable_units(c: dense),
+    unit_shortfall: sellable_units(c: dense) - sellable_units(c: split),
+    split_failure_domain: failure_domain_units(c: split),
+    dense_failure_domain: failure_domain_units(c: dense),
+    extra_machines: maintenance_population(c: split) - maintenance_population(c: dense),
+  }
+}
+
+data split_versus_dense_note: NonEmptyStr = "INVERTED 2026-08-18 by the 64-GiB re-quote (499 -> 210 per module, operator-quoted): the dense build is now cheaper in cash than the two-node split, sells MORE units (per-node reserves are charged once, not twice), and is the best capex-per-unit build in the table - the split survives on exactly one axis, its halved failure domain, plus the unpriced per-machine recurring lines running the OTHER way (a second machine adds idle draw, cooling share and maintenance time, which now count AGAINST the surviving split rather than for it). The prior reading - dense buys capacity with unusually expensive DRAM - was true at the 499 rate and is recorded in the 64-GiB row's rate history; a conclusion pinned to a market rate carries the rate's date."
+
+data capex_ceiling_note: NonEmptyStr = "Capital at risk before demand is proven is the axis most likely to bind at launch, and it is the one the frontier makes visible rather than optimizing away. The cash-minimal candidate (the 16-GiB build) is on the frontier for that reason alone; the single-socket ASRock build survives beside it as the zero-stranding, lowest-watts small node even though it is the worst per sellable unit in the table. Cheap cash buys either stranded cores or a small node - the frontier shows the price of each."
+
+// capex_at_dimm_price, cheaper_processor_wins_at and frontier_survives_the_band WERE HERE AND ARE
+// DELETED. They were the hand-rolled, two-candidate, one-axis form of the scenario sweep that now
+// computes the frontier itself: capex_at_dimm_price duplicated ci_node_build's own substitution (and
+// did it slightly wrong, adding an untaxed delta to a post-tax base), and frontier_survives_the_band
+// collapsed the whole question to a Bool. Keeping them beside band_standing would be two authorities
+// answering one question, which is the fork the band was already an instance of - the module
+// declared a band, then consulted it in a side-check while the frontier read the baseline point.
+//
+// The CLAIM they carried does not retire with them: it is now
+// witness_equal_coefficient_pair_is_price_invariant, which establishes something strictly stronger
+// than the deleted code did. The old check tested the two authored endpoints, which proves the
+// ordering at 80 and at 120 and says nothing about 95. The control proves the two candidates share
+// a memory-price COEFFICIENT, so the shared price moves both costs by the same amount and the
+// ordering cannot reverse at ANY price - and the sales-tax function is monotone, so it cannot
+// reverse a strict pre-tax ordering either.
+
+data band_stability_note: NonEmptyStr = "Re-derived after the 2026-08-18 processor re-quote: with Q80 at 95 dollars the cheaper-processor build (2xQ80) undercuts the balanced 2xQ64 build on cash at BOTH ends of the 80-to-120 memory band - the same argument as before with the direction inverted, since the processor gap is constant while the memory price moves every candidate together. What keeps the balanced build on the frontier is zero stranded cores, not cash; and the thing that reordered the table was exactly the kind of move this check exists for (the 64-GiB collapse and the Q80 re-quote, both recorded in rate history)."

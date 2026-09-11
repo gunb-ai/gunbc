@@ -1,0 +1,1078 @@
+module test.claim.strategy_witness
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.nat { Nat }
+import strategy.licensing_fee_model { enterprise_fee_usd }
+import strategy.strategy_model {
+  Vision, StrategicOutcome, Capability, ExperienceTarget, Hypothesis, Constraint, Experiment,
+  Realizes, RoadmapBinding, MarketSegment, VisibilityAudience,
+  DecisionAlternative, DecisionReceipt, DecisionState, Open, Selected, SupersededBy, RefusedDecision,
+  StrategicDecision,
+  AuthorizationVerdict, Authorized, AuthorizationRefused,
+  AuthorizationRefusalCause, DecisionNotFound, DecisionNotSelected, DecisionSuperseded,
+  ProductClaim, ClaimStatus, ClaimSupported, ClaimUnsupported,
+  id_in_list, claim_status, authorize_work,
+  JourneyStage, JourneyTransitionRule,
+  StopCause, ProblemNotMaterial, TrustBoundaryRejected, InstallationCostTooHigh, ImprovementNotObserved, EconomicCaseAbsent, TimingMismatch, OtherLocatedCause,
+  TransitionReceipt, StepReceipt, StopReceipt,
+  JourneyRefusalCause, ReceiptAfterStop, ReceiptFromNoncurrentStage, TransitionNotDeclaredOrKindMismatch,
+  StageProgress, ProgressAt, ProgressStopped, ProgressRefused,
+  derive_stage,
+  ExperimentContinuation, ExperimentMayContinue, ExperimentMustStop,
+  experiment_continuation,
+}
+import gunbc.econ.acquisition {
+  AcquisitionScenario, AcquisitionStageStep, ConversionRate,
+  AcquisitionScenarioInput, AcquisitionScenarioDeclared, AcquisitionScenarioUnknown,
+  AcquisitionRefusalCause, ScenarioUnknown, ZeroEntryUnitCost, EmptyFunnel,
+  ZeroConversionNumerator, ZeroConversionCohort, ConversionRateExceedsUnity,
+  AcquisitionForecastResult, AcquisitionForecastDerived, AcquisitionForecastRefused,
+  derive_acquisition_cost_forecast, acquisition_forecast_cost_floor_micros,
+}
+import std.measure { MoneyOnce, money_amount_micro }
+import std.currency { Usd }
+import strategy.strategy_model {
+  StrategicReason, DeliversCapability, ServesOutcome, TestsHypothesis, RequiredByDecision, ServesVision,
+  RoadmapLaneBinding, UnboundLaneAcknowledged,
+  CapabilityEvidence, RoadmapAccepted, CapabilityDirectlyObserved, ObservedCapability,
+}
+import strategy.strategy_model {
+  EngagementKind, WedgeDesignPartner, TechnicalValidator, Engagement,
+}
+import strategy.gunbc_strategy {
+  visions, outcomes, capabilities, experience_targets, hypotheses, experiments, constraints,
+  realizes_rows, roadmap_bindings, market_segments, visibility_audiences,
+  decisions, product_claims, observed_capabilities, observed_capability_id_list,
+  design_partner_stages, design_partner_rules,
+  baseline_acquisition_scenario,
+  lane_bindings, unbound_lanes_acknowledged,
+  engagements, eng000_journey_receipts,
+}
+import gunbc.roadmap_authority { declared_roadmap_nodes, active_roadmap_nodes, accepted_roadmap_node_ids, nid }
+import strategy.strategy_model {
+  EvidenceAnchor, EraClose, EraClosed, EraOpen, VentureEra, TimelineEvent,
+  SubstrateKind, RustCompiler, DagCompiler,
+  HostSubstrate, SelfNativeRust, RustSeedInterpreter, HostedByGeneration,
+  GenerationFate, GenerationRetired, GenerationDeleted, GenerationAlive,
+  CompilerGeneration, SuccessionEdge,
+  ProjectionHorizon, HorizonNow, HorizonNext, HorizonLater, ProjectedStep,
+  era_is_open, generation_is_alive,
+}
+import strategy.strategy_model {
+  CadenceWindow, DailyWindow, WeeklyWindow, MonthlyWindow, QuarterlyWindow, YearlyWindow,
+  TangentReading,
+}
+import strategy.gunbc_strategy {
+  venture_eras, timeline_events, compiler_generations, succession_edges, projected_steps,
+  tangent_readings,
+}
+import strategy.strategy_model {
+  StrategicContract, ObligationAcceptanceKind, ByExecutionReceipt, ByObservationReceipt, ByOperatorJudgment,
+  StrategicObligation, DecompositionCoverage, PartialCoverage, CompleteCoverage, ProgramDecomposition,
+  ContributionKind, DischargesObligation, PreservesAcceptedState, BoundedExploration, MeasurementForDecision, ClosesPrerequisite,
+  WorkContribution, ContractAmendment,
+  ObservedOutcome, ObservedLanded, ObservedInFlight, ObservedWithdrawn, ObservationReceipt,
+  strategy_criteria_digest, strategy_contract_digest, strategy_contribution_status,
+  strategy_obligation_bound_fresh, strategy_obligation_discharge_observed,
+  ObligationPrerequisite, strategy_blocker_count, strategy_blockers_discharged,
+  MeasurementReadiness, MeasurementAbsent, MeasurementPresent, strategy_measurement_readiness,
+  ContributionStatus, ContributionStale, ContributionUnobserved, ContributionObserved,
+  strategy_contract_completion, ContractCompletion, ContractComplete, ContractCompletionRefused,
+  ContractCompletionRefusalCause, DecompositionMissing, DecompositionNotSingular, DecompositionStale, DecompositionPartial, ObligationUnbound, ObligationUndischarged,
+  strategy_program_view,
+}
+import strategy.gunbc_strategy {
+  program_contracts, contract_amendments, program_obligations, program_decompositions,
+  work_contributions, work_observations,
+  obligation_prerequisites, corrected_census_subject, selfhost_module_obligation_ids,
+}
+import v2.compiler.self_host.frontier { compiler_frontier_roster }
+
+fn capability_id_known(id: String) -> Bool {
+  fold(capabilities, init: false, f: fn(acc, c) { acc || c.id == id })
+}
+
+fn hypothesis_id_known(id: String) -> Bool {
+  fold(hypotheses, init: false, f: fn(acc, h) { acc || h.id == id })
+}
+
+fn outcome_id_known(id: String) -> Bool {
+  fold(outcomes, init: false, f: fn(acc, o) { acc || o.id == id })
+}
+
+fn segment_id_known(id: String) -> Bool {
+  fold(market_segments, init: false, f: fn(acc, s) { acc || s.id == id })
+}
+
+fn capability_count_with_id(id: String) -> Nat {
+  fold(capabilities, init: 0, f: fn(acc, c) { if c.id == id { acc + 1 } else { acc } })
+}
+
+fn decision_count_with_question(id: String) -> Nat {
+  fold(decisions, init: 0, f: fn(acc, d) { if d.question_id == id { acc + 1 } else { acc } })
+}
+
+test fn witness_graph_ids_unique_and_relations_resolve() -> Bool {
+  count(visions) == 1
+    && count(capabilities) == 6
+    && count(decisions) == 8
+    && all(capabilities, c => capability_count_with_id(id: c.id) == 1)
+    && all(decisions, d => decision_count_with_question(id: d.question_id) == 1)
+    && all(experience_targets, t => capability_id_known(id: t.exposes_capability_id))
+    && all(experiments, e => hypothesis_id_known(id: e.tests_hypothesis_id))
+    && all(realizes_rows, r => capability_id_known(id: r.capability_id) && outcome_id_known(id: r.outcome_id))
+    && all(roadmap_bindings, b => capability_id_known(id: b.delivers_capability_id))
+    && all(product_claims, c => segment_id_known(id: c.segment_id) && all(c.requires_capability_ids, r => capability_id_known(id: r)))
+}
+
+test fn witness_wipe_target_carries_four_invariants() -> Bool {
+  count(experience_targets) == 1
+    && all(experience_targets, t =>
+         count(t.invariants) == 4
+           && id_in_list(id: "PlaintextAbsentBeforeAuthorization", ids: t.invariants)
+           && id_in_list(id: "GestureDoesNotConferAuthority", ids: t.invariants))
+}
+
+fn decision_selected_as(d: StrategicDecision, expected_choice: String) -> Bool {
+  match d.state {
+    Selected { choice_id, receipt } => choice_id == expected_choice && receipt.authority == "operator"
+    Open => false
+    SupersededBy { question_id } => false
+    RefusedDecision { reason } => false
+  }
+}
+
+fn decision_is_open(d: StrategicDecision) -> Bool {
+  match d.state {
+    Open => true
+    Selected { choice_id, receipt } => false
+    SupersededBy { question_id } => false
+    RefusedDecision { reason } => false
+  }
+}
+
+test fn witness_decision_states_match_operator_rulings() -> Bool {
+  all(decisions, d =>
+    if d.question_id == "first-world" { decision_selected_as(d: d, expected_choice: "gunbc-dogfood") }
+    else {
+      if d.question_id == "roadmap-visibility" { decision_selected_as(d: d, expected_choice: "keep-public-for-now") }
+      else {
+        if d.question_id == "dashboard-host-surface" { decision_selected_as(d: d, expected_choice: "gunbc-served-dashboard-lane") }
+        else {
+          if d.question_id == "actor-model-scope" { decision_selected_as(d: d, expected_choice: "thin-projection") }
+          else { decision_is_open(d: d) }
+        }
+      }
+    })
+}
+
+test fn witness_work_authorization_verdicts() -> Bool {
+  let superseded = StrategicDecision {
+    question_id: "old-question",
+    question: "superseded synthetic",
+    alternatives: [],
+    criteria: [],
+    state: SupersededBy { question_id: "first-world" },
+  }
+  let with_synthetic = concat(decisions, [superseded])
+  (match authorize_work(question_id: "first-world", decisions: decisions) {
+    Authorized => true
+    AuthorizationRefused { cause } => false
+  })
+    && (match authorize_work(question_id: "licensing-model", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotSelected => true
+          DecisionNotFound => false
+          DecisionSuperseded => false
+        }
+    })
+    && (match authorize_work(question_id: "old-question", decisions: with_synthetic) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionSuperseded => true
+          DecisionNotFound => false
+          DecisionNotSelected => false
+        }
+    })
+    && (match authorize_work(question_id: "never-declared", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotFound => true
+          DecisionNotSelected => false
+          DecisionSuperseded => false
+        }
+    })
+}
+
+test fn witness_claims_unsupported_today_and_flip_with_evidence() -> Bool {
+  let full = ["audience-scoped-node-disclosure", "sealed-execution"]
+  all(product_claims, c =>
+    match claim_status(claim: c, observed_capability_ids: observed_capability_id_list()) {
+      ClaimSupported => false
+      ClaimUnsupported { missing_capability_ids } => count(missing_capability_ids) == count(c.requires_capability_ids)
+    })
+    && all(product_claims, c =>
+      match claim_status(claim: c, observed_capability_ids: full) {
+        ClaimSupported => true
+        ClaimUnsupported { missing_capability_ids } => false
+      })
+}
+
+test fn witness_journey_stage_is_derived_from_receipts() -> Bool {
+  let no_receipts = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [])
+  let three = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StepReceipt { from_id: "identified", to_id: "qualified", receipt_kind: "QualifiedPartnerReceipt", evidence: "synthetic" },
+    StepReceipt { from_id: "qualified", to_id: "problem-confirmed", receipt_kind: "ProblemInterviewReceipt", evidence: "synthetic" },
+    StepReceipt { from_id: "problem-confirmed", to_id: "shadow-connected", receipt_kind: "ShadowInstallationReceipt", evidence: "synthetic" },
+  ])
+  (match no_receipts {
+    ProgressAt { stage_id } => stage_id == "identified"
+    ProgressStopped { cause } => false
+    ProgressRefused { cause } => false
+  })
+    && (match three {
+      ProgressAt { stage_id } => stage_id == "shadow-connected"
+      ProgressStopped { cause } => false
+      ProgressRefused { cause } => false
+    })
+}
+
+test fn witness_journey_refusals_are_typed() -> Bool {
+  let skip = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StepReceipt { from_id: "qualified", to_id: "problem-confirmed", receipt_kind: "ProblemInterviewReceipt", evidence: "synthetic" },
+  ])
+  let wrong_kind = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StepReceipt { from_id: "identified", to_id: "qualified", receipt_kind: "SomeOtherReceipt", evidence: "synthetic" },
+  ])
+  let stopped = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StopReceipt { cause: TrustBoundaryRejected, evidence: "synthetic" },
+  ])
+  let after_stop = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StopReceipt { cause: TrustBoundaryRejected, evidence: "synthetic" },
+    StepReceipt { from_id: "identified", to_id: "qualified", receipt_kind: "QualifiedPartnerReceipt", evidence: "synthetic" },
+  ])
+  (match skip {
+    ProgressRefused { cause } =>
+      match cause {
+        ReceiptFromNoncurrentStage => true
+        ReceiptAfterStop => false
+        TransitionNotDeclaredOrKindMismatch => false
+      }
+    ProgressAt { stage_id } => false
+    ProgressStopped { cause } => false
+  })
+    && (match wrong_kind {
+      ProgressRefused { cause } =>
+        match cause {
+          TransitionNotDeclaredOrKindMismatch => true
+          ReceiptAfterStop => false
+          ReceiptFromNoncurrentStage => false
+        }
+      ProgressAt { stage_id } => false
+      ProgressStopped { cause } => false
+    })
+    && (match stopped {
+      ProgressStopped { cause } =>
+        match cause {
+          TrustBoundaryRejected => true
+          ProblemNotMaterial => false
+          InstallationCostTooHigh => false
+          ImprovementNotObserved => false
+          EconomicCaseAbsent => false
+          TimingMismatch => false
+          OtherLocatedCause { note } => false
+        }
+      ProgressAt { stage_id } => false
+      ProgressRefused { cause } => false
+    })
+    && (match after_stop {
+      ProgressRefused { cause } =>
+        match cause {
+          ReceiptAfterStop => true
+          ReceiptFromNoncurrentStage => false
+          TransitionNotDeclaredOrKindMismatch => false
+        }
+      ProgressAt { stage_id } => false
+      ProgressStopped { cause } => false
+    })
+}
+
+test fn witness_forecast_derives_and_refuses() -> Bool {
+  let ok = derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: baseline_acquisition_scenario })
+  let broken_rate = AcquisitionScenario {
+    entry_stage_label: "click",
+    entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 3000000), currency: Usd },
+    steps: [
+      AcquisitionStageStep { stage_label: "signup", assumed_rate: ConversionRate { num: 0, denom: 20 } },
+      AcquisitionStageStep { stage_label: "activated", assumed_rate: ConversionRate { num: 2, denom: 5 } },
+    ],
+  }
+  let free_click = AcquisitionScenario {
+    entry_stage_label: "click",
+    entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+    steps: [
+      AcquisitionStageStep { stage_label: "signup", assumed_rate: ConversionRate { num: 1, denom: 20 } },
+      AcquisitionStageStep { stage_label: "activated", assumed_rate: ConversionRate { num: 2, denom: 5 } },
+    ],
+  }
+  (match ok {
+    AcquisitionForecastDerived { forecast } =>
+      (match acquisition_forecast_cost_floor_micros(forecast: forecast) {
+        Present { value } => value == 150000000
+        Absent => false
+      })
+        && forecast.outcome_stage_label == "activated"
+    AcquisitionForecastRefused { cause } => false
+  })
+    && (match derive_acquisition_cost_forecast(input: AcquisitionScenarioUnknown) {
+      AcquisitionForecastDerived { forecast } => false
+      AcquisitionForecastRefused { cause } =>
+        match cause {
+          ScenarioUnknown => true
+          ZeroEntryUnitCost => false
+          EmptyFunnel => false
+          ZeroConversionNumerator { stage_label } => false
+          ZeroConversionCohort { stage_label } => false
+          ConversionRateExceedsUnity { stage_label } => false
+        }
+    })
+    && (match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: broken_rate }) {
+      AcquisitionForecastDerived { forecast } => false
+      AcquisitionForecastRefused { cause } =>
+        match cause {
+          ZeroConversionNumerator { stage_label } => stage_label == "signup"
+          ScenarioUnknown => false
+          ZeroEntryUnitCost => false
+          EmptyFunnel => false
+          ZeroConversionCohort { stage_label } => false
+          ConversionRateExceedsUnity { stage_label } => false
+        }
+    })
+    && (match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: free_click }) {
+      AcquisitionForecastDerived { forecast } => false
+      AcquisitionForecastRefused { cause } =>
+        match cause {
+          ZeroEntryUnitCost => true
+          ScenarioUnknown => false
+          EmptyFunnel => false
+          ZeroConversionNumerator { stage_label } => false
+          ZeroConversionCohort { stage_label } => false
+          ConversionRateExceedsUnity { stage_label } => false
+        }
+    })
+}
+
+test fn witness_experiment_stop_condition_cannot_be_silently_continued() -> Bool {
+  (match experiment_continuation(stop_receipts: []) {
+    ExperimentMayContinue => true
+    ExperimentMustStop { cause } => false
+  })
+    && (match experiment_continuation(stop_receipts: [StopReceipt { cause: EconomicCaseAbsent, evidence: "synthetic budget cap" }]) {
+      ExperimentMustStop { cause } =>
+        match cause {
+          EconomicCaseAbsent => true
+          ProblemNotMaterial => false
+          TrustBoundaryRejected => false
+          InstallationCostTooHigh => false
+          ImprovementNotObserved => false
+          TimingMismatch => false
+          OtherLocatedCause { note } => false
+        }
+      ExperimentMayContinue => false
+    })
+}
+
+fn vision_id_known(id: String) -> Bool {
+  fold(visions, init: false, f: fn(acc, v) { acc || v.id == id })
+}
+
+fn reason_resolves(r: StrategicReason) -> Bool {
+  match r {
+    DeliversCapability { capability_id } => capability_id_known(id: capability_id)
+    ServesOutcome { outcome_id } => outcome_id_known(id: outcome_id)
+    TestsHypothesis { hypothesis_id } => hypothesis_id_known(id: hypothesis_id)
+    RequiredByDecision { question_id } => decision_count_with_question(id: question_id) == 1
+    ServesVision { vision_id } => vision_id_known(id: vision_id)
+  }
+}
+
+fn lane_bound(owner: String) -> Bool {
+  fold(lane_bindings, init: false, f: fn(acc, b) { acc || b.lane_owner == owner })
+}
+
+fn lane_acknowledged(owner: String) -> Bool {
+  fold(unbound_lanes_acknowledged, init: false, f: fn(acc, a) { acc || a.lane_owner == owner })
+}
+
+fn declared_owner_exists(owner: String) -> Bool {
+  fold(declared_roadmap_nodes(), init: false, f: fn(acc, n) { acc || n.owner == owner })
+}
+
+test fn witness_every_active_roadmap_lane_has_strategic_reason() -> Bool {
+  count(active_roadmap_nodes()) > 0
+    && all(active_roadmap_nodes(), n => lane_bound(owner: n.owner) || lane_acknowledged(owner: n.owner))
+    && all(lane_bindings, b => reason_resolves(r: b.reason))
+    && all(lane_bindings, b => declared_owner_exists(owner: b.lane_owner))
+    && all(unbound_lanes_acknowledged, a => !(a.trigger == ""))
+}
+
+test fn witness_node_grain_bindings_target_real_roadmap_nodes() -> Bool {
+  all(roadmap_bindings, b =>
+    fold(declared_roadmap_nodes(), init: false, f: fn(acc, n) { acc || n.node == nid(s: b.roadmap_node_id) }))
+}
+
+fn accepted_in_authority(node_id: String) -> Bool {
+  fold(accepted_roadmap_node_ids(), init: false, f: fn(acc, a) { acc || a == nid(s: node_id) })
+}
+
+fn capability_evidence_valid(o: ObservedCapability) -> Bool {
+  capability_id_known(id: o.capability_id)
+    && match o.evidence {
+      RoadmapAccepted { roadmap_node_id } => accepted_in_authority(node_id: roadmap_node_id)
+      CapabilityDirectlyObserved { receipt } => !(receipt == "")
+    }
+}
+
+test fn witness_capability_evidence_consistent_with_public_authority() -> Bool {
+  count(observed_capabilities) == 1
+    && all(observed_capabilities, o => capability_evidence_valid(o: o))
+    && all(active_roadmap_nodes(), n =>
+         !fold(accepted_roadmap_node_ids(), init: false, f: fn(acc, a) { acc || a == n.node }))
+    && !capability_evidence_valid(o: ObservedCapability {
+         capability_id: "source-integration-landing-dashboard",
+         evidence: RoadmapAccepted { roadmap_node_id: "never-declared-node" },
+       })
+}
+
+fn engagement_count_with_id(id: String) -> Nat {
+  fold(engagements, init: 0, f: fn(acc, e) { if e.id == id { acc + 1 } else { acc } })
+}
+
+test fn witness_first_partner_is_self_and_stage_derives_from_real_receipts() -> Bool {
+  count(engagements) == 3
+    && all(engagements, e => engagement_count_with_id(id: e.id) == 1)
+    && (match derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: eng000_journey_receipts) {
+      ProgressAt { stage_id } => stage_id == "problem-confirmed"
+      ProgressStopped { cause } => false
+      ProgressRefused { cause } => false
+    })
+    && fold(engagements, init: 0, f: fn(acc, e) {
+         match e.kind { TechnicalValidator => acc + 1  WedgeDesignPartner => acc } }) == 2
+}
+
+fn venture_era_count_with_id(id: String) -> Nat {
+  fold(venture_eras, init: 0, f: fn(acc, e) { if e.id == id { acc + 1 } else { acc } })
+}
+
+fn venture_event_count_with_id(id: String) -> Nat {
+  fold(timeline_events, init: 0, f: fn(acc, e) { if e.id == id { acc + 1 } else { acc } })
+}
+
+fn venture_event_era_resolves(e: TimelineEvent) -> Bool {
+  venture_era_count_with_id(id: e.era_id) == 1
+}
+
+fn venture_evidence_cited(a: EvidenceAnchor) -> Bool {
+  !(a.repo == "") && !(a.reference == "")
+}
+
+test fn witness_timeline_eras_and_events_resolve_with_evidence() -> Bool {
+  count(venture_eras) == 6
+    && count(timeline_events) == 10
+    && all(venture_eras, e => venture_era_count_with_id(id: e.id) == 1)
+    && all(timeline_events, e => venture_event_count_with_id(id: e.id) == 1)
+    && all(timeline_events, e => venture_event_era_resolves(e: e))
+    && all(venture_eras, e => !(e.started_on == "") && venture_evidence_cited(a: e.start_evidence))
+    && all(venture_eras, e =>
+         match e.close {
+           EraOpen => true
+           EraClosed { on, evidence } => !(on == "") && venture_evidence_cited(a: evidence)
+         })
+    && all(timeline_events, e => !(e.occurred_on == "") && venture_evidence_cited(a: e.evidence))
+    && !venture_event_era_resolves(e: TimelineEvent {
+         id: "synthetic",
+         era_id: "never-declared-era",
+         occurred_on: "2026-01-01",
+         statement: "negative control",
+         evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" },
+       })
+}
+
+fn lineage_generation_count_with_ordinal(ordinal: Nat) -> Nat {
+  fold(compiler_generations, init: 0, f: fn(acc, g) { if g.ordinal == ordinal { acc + 1 } else { acc } })
+}
+
+fn lineage_substrate_is_rust(ordinal: Nat) -> Bool {
+  fold(compiler_generations, init: false, f: fn(acc, g) {
+    acc || (g.ordinal == ordinal && match g.substrate { RustCompiler => true  DagCompiler => false })
+  })
+}
+
+fn lineage_substrate_is_dag(ordinal: Nat) -> Bool {
+  fold(compiler_generations, init: false, f: fn(acc, g) {
+    acc || (g.ordinal == ordinal && match g.substrate { DagCompiler => true  RustCompiler => false })
+  })
+}
+
+fn lineage_edge_is_rust_to_dag(e: SuccessionEdge) -> Bool {
+  lineage_substrate_is_rust(ordinal: e.from_ordinal) && lineage_substrate_is_dag(ordinal: e.to_ordinal)
+}
+
+fn lineage_outgoing_succession_count(ordinal: Nat) -> Nat {
+  fold(succession_edges, init: 0, f: fn(acc, e) { if e.from_ordinal == ordinal { acc + 1 } else { acc } })
+}
+
+fn lineage_host_resolves(g: CompilerGeneration) -> Bool {
+  match g.host {
+    SelfNativeRust => true
+    RustSeedInterpreter => true
+    HostedByGeneration { ordinal } => lineage_substrate_is_dag(ordinal: ordinal)
+  }
+}
+
+fn lineage_alive_current_names() -> List<String> {
+  fold(compiler_generations, init: [], f: fn(acc, g) {
+    match g.fate {
+      GenerationAlive { current_name, role } => concat(acc, [current_name])
+      GenerationRetired { on, evidence } => acc
+      GenerationDeleted { on, evidence, migrated_role } => acc
+    }
+  })
+}
+
+test fn witness_lineage_two_rust_to_dag_successions() -> Bool {
+  count(compiler_generations) == 4
+    && count(succession_edges) == 2
+    && all(compiler_generations, g => lineage_generation_count_with_ordinal(ordinal: g.ordinal) == 1)
+    && all(compiler_generations, g => !(g.born_on == "") && venture_evidence_cited(a: g.born_evidence))
+    && all(compiler_generations, g => lineage_host_resolves(g: g))
+    && all(succession_edges, e => lineage_edge_is_rust_to_dag(e: e) && venture_evidence_cited(a: e.evidence))
+    && all(compiler_generations, g =>
+         if generation_is_alive(g: g) {
+           lineage_outgoing_succession_count(ordinal: g.ordinal) == 0
+         } else {
+           lineage_outgoing_succession_count(ordinal: g.ordinal) == 1
+         })
+    && count(lineage_alive_current_names()) == 2
+    && id_in_list(id: "v1", ids: lineage_alive_current_names())
+    && id_in_list(id: "v2", ids: lineage_alive_current_names())
+    && !lineage_edge_is_rust_to_dag(e: SuccessionEdge {
+         from_ordinal: 2,
+         to_ordinal: 3,
+         evidence: EvidenceAnchor { repo: "x", reference: "negative control: dag-to-rust succession never happened", note: "" },
+       })
+}
+
+test fn witness_present_state_is_derived_never_stored() -> Bool {
+  fold(venture_eras, init: 0, f: fn(acc, e) { if era_is_open(e: e) { acc + 1 } else { acc } }) == 3
+    && fold(compiler_generations, init: 0, f: fn(acc, g) { if generation_is_alive(g: g) { acc + 1 } else { acc } }) == 2
+    && all(venture_eras, e => if e.id == "era-substrate" { era_is_open(e: e) } else { true })
+    && all(venture_eras, e => if e.id == "era-platform-push" { !era_is_open(e: e) } else { true })
+}
+
+fn projection_horizon_count_now() -> Nat {
+  fold(projected_steps, init: 0, f: fn(acc, s) {
+    match s.horizon { HorizonNow => acc + 1  HorizonNext => acc  HorizonLater => acc }
+  })
+}
+
+fn projection_horizon_count_later() -> Nat {
+  fold(projected_steps, init: 0, f: fn(acc, s) {
+    match s.horizon { HorizonLater => acc + 1  HorizonNow => acc  HorizonNext => acc }
+  })
+}
+
+test fn witness_projection_grounded_in_strategy_without_fabricated_dates() -> Bool {
+  count(projected_steps) == 6
+    && all(projected_steps, s => reason_resolves(r: s.advances))
+    && all(projected_steps, s => !(s.begins_when == ""))
+    && projection_horizon_count_now() == 2
+    && projection_horizon_count_later() == 2
+    && !reason_resolves(r: DeliversCapability { capability_id: "never-declared-capability" })
+}
+
+fn cadence_reading_count_in_window(w: CadenceWindow, want_daily: Bool, want_weekly: Bool, want_monthly: Bool, want_quarterly: Bool, want_yearly: Bool) -> Bool {
+  match w {
+    DailyWindow => want_daily
+    WeeklyWindow => want_weekly
+    MonthlyWindow => want_monthly
+    QuarterlyWindow => want_quarterly
+    YearlyWindow => want_yearly
+  }
+}
+
+fn cadence_window_reading_count(want_daily: Bool, want_weekly: Bool, want_monthly: Bool, want_quarterly: Bool, want_yearly: Bool) -> Nat {
+  fold(tangent_readings, init: 0, f: fn(acc, r) {
+    if cadence_reading_count_in_window(w: r.window, want_daily: want_daily, want_weekly: want_weekly, want_monthly: want_monthly, want_quarterly: want_quarterly, want_yearly: want_yearly) { acc + 1 } else { acc }
+  })
+}
+
+test fn witness_cadence_tangent_readings_cover_all_windows_and_align() -> Bool {
+  count(tangent_readings) == 5
+    && cadence_window_reading_count(want_daily: true, want_weekly: false, want_monthly: false, want_quarterly: false, want_yearly: false) == 1
+    && cadence_window_reading_count(want_daily: false, want_weekly: true, want_monthly: false, want_quarterly: false, want_yearly: false) == 1
+    && cadence_window_reading_count(want_daily: false, want_weekly: false, want_monthly: true, want_quarterly: false, want_yearly: false) == 1
+    && cadence_window_reading_count(want_daily: false, want_weekly: false, want_monthly: false, want_quarterly: true, want_yearly: false) == 1
+    && cadence_window_reading_count(want_daily: false, want_weekly: false, want_monthly: false, want_quarterly: false, want_yearly: true) == 1
+    && all(tangent_readings, r => !(r.read_on == "") && !(r.direction == ""))
+    && all(tangent_readings, r => !(r.magnitude_evidence.repo == "") && !(r.magnitude_evidence.reference == ""))
+    && all(tangent_readings, r => reason_resolves(r: r.projects_onto))
+    && !reason_resolves(r: DeliversCapability { capability_id: "orphan-movement-control" })
+}
+
+test fn witness_instantiation_counts_and_honest_emptiness() -> Bool {
+  count(observed_capabilities) == 1
+    && count(design_partner_stages) == 7
+    && count(design_partner_rules) == 6
+    && count(constraints) == 6
+    && count(visibility_audiences) == 1
+    && count(market_segments) == 1
+    && count(experiments) == 2
+    && count(hypotheses) == 3
+}
+
+fn program_obligation_count_with_id(id: String) -> Nat {
+  fold(program_obligations, init: 0, f: fn(acc, o) { if o.id == id { acc + 1 } else { acc } })
+}
+
+fn program_obligation_known(id: String) -> Bool {
+  program_obligation_count_with_id(id: id) == 1
+}
+
+fn program_first_contract() -> StrategicContract {
+  fold(program_contracts, init: StrategicContract {
+    id: "",
+    statement: "",
+    acceptance_criteria: [],
+    constraint_ids: [],
+    adoption: DecisionReceipt { authority: "", decided_on: "", rationale: "" },
+  }, f: fn(acc, c) { if acc.id == "" { c } else { acc } })
+}
+
+fn program_first_amendment() -> ContractAmendment {
+  fold(contract_amendments, init: ContractAmendment {
+    id: "",
+    subject_contract: "",
+    previous_criteria: [],
+    summary: "",
+    receipt: DecisionReceipt { authority: "", decided_on: "", rationale: "" },
+    evidence: "",
+  }, f: fn(acc, a) { if acc.id == "" { a } else { acc } })
+}
+
+fn program_contract_known(id: String) -> Bool {
+  fold(program_contracts, init: false, f: fn(acc, c) { acc || c.id == id })
+}
+
+fn program_obligation_count_for_contract(contract_id: String) -> Nat {
+  fold(program_obligations, init: 0, f: fn(acc, o) { if o.parent_contract == contract_id { acc + 1 } else { acc } })
+}
+
+fn program_contract_by_id(id: String) -> StrategicContract {
+  fold(program_contracts, init: StrategicContract {
+    id: "",
+    statement: "",
+    acceptance_criteria: [],
+    constraint_ids: [],
+    adoption: DecisionReceipt { authority: "", decided_on: "", rationale: "" },
+  }, f: fn(acc, c) { if c.id == id { c } else { acc } })
+}
+
+fn program_contract_for_obligation(obligation_id: String) -> StrategicContract {
+  let parent = fold(program_obligations, init: "", f: fn(acc, o) { if o.id == obligation_id { o.parent_contract } else { acc } })
+  program_contract_by_id(id: parent)
+}
+
+test fn witness_program_contract_graph_resolves() -> Bool {
+  count(program_contracts) == 4
+    && count(program_obligations) == 25
+    && count(program_decompositions) == 3
+    && count(work_contributions) == 6
+    && count(work_observations) == 8
+    && count(contract_amendments) == 2
+    && count(obligation_prerequisites) == 5
+    && program_obligation_count_for_contract(contract_id: "contract-bare-minimum-computation") == 7
+    && program_obligation_count_for_contract(contract_id: "contract-v2-self-host-fixed-point") == 6
+    && program_obligation_count_for_contract(contract_id: "contract-v2-production-cutover") == 1
+    && program_obligation_count_for_contract(contract_id: "contract-language-medium-support") == 11
+    && all(obligation_prerequisites, p => program_obligation_known(id: p.blocker_obligation) && program_obligation_known(id: p.blocked_obligation))
+    && all(program_obligations, o => program_contract_known(id: o.parent_contract))
+    && all(program_obligations, o => program_obligation_count_with_id(id: o.id) == 1)
+    && all(program_decompositions, d => program_contract_known(id: d.parent_contract) && all(d.child_obligation_ids, oid => program_obligation_known(id: oid)))
+    && all(work_contributions, b => program_obligation_known(id: b.obligation_id) && !(b.work_ref == "") && !(b.maximum_conclusion == ""))
+    && all(work_observations, o => !(o.observed_on == "") && !(o.subject_revision == "") && venture_evidence_cited(a: o.evidence))
+    && all(program_decompositions, d => match d.coverage { PartialCoverage { open_note } => !(open_note == "")  CompleteCoverage { receipt } => true })
+    && all(contract_amendments, a => program_contract_known(id: a.subject_contract) && count(a.previous_criteria) > 0 && !(a.evidence == ""))
+    && !program_obligation_known(id: "obl-never-declared")
+    && !program_contract_known(id: "contract-never-declared")
+}
+
+fn program_binding_count(work_ref: String, obligation_id: String) -> Nat {
+  fold(work_contributions, init: 0, f: fn(acc, b) {
+    if b.work_ref == work_ref && b.obligation_id == obligation_id { acc + 1 } else { acc }
+  })
+}
+
+test fn witness_binding_discharges_exact_obligation_never_neighbor() -> Bool {
+  program_binding_count(work_ref: "gunb-ai/gunbc#7599", obligation_id: "obl-native-witness-execution") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7599", obligation_id: "obl-cross-invocation-reuse") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7534", obligation_id: "obl-cross-invocation-reuse") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7534", obligation_id: "obl-pre-index-lookup") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7522", obligation_id: "obl-native-witness-execution") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7628", obligation_id: "obl-no-duplicate-stage-work") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7628", obligation_id: "obl-cross-invocation-reuse") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7264", obligation_id: "obl-translate-instantiation-wrap-decision") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7264", obligation_id: "obl-remaining-stages-self-emit") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7627", obligation_id: "obl-frontier-classifier-totality") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7627", obligation_id: "obl-first-module-behavioral-replacement") == 0
+}
+
+test fn witness_contract_amendment_invalidates_stale_bindings() -> Bool {
+  let contract = program_first_contract()
+  let current = strategy_contract_digest(c: contract)
+  let am = program_first_amendment()
+  let stale_specimen = WorkContribution {
+    id: "wc-stale-control",
+    work_ref: "gunb-ai/gunbc#7599",
+    obligation_id: "obl-native-witness-execution",
+    kind: DischargesObligation,
+    maximum_conclusion: "negative control: bound against the pre-amendment five-minute criteria",
+    parent_criteria_digest: strategy_criteria_digest(criteria: am.previous_criteria),
+  }
+  all(work_contributions, b =>
+      match strategy_contribution_status(b: b, contract: program_contract_for_obligation(obligation_id: b.obligation_id), observations: work_observations) {
+        ContributionStale { bound_digest, current_digest } => false
+        ContributionUnobserved => false
+        ContributionObserved { outcome, observed_on } => !(observed_on == "")
+      })
+    && (match strategy_contribution_status(b: stale_specimen, contract: contract, observations: work_observations) {
+      ContributionStale { bound_digest, current_digest } => current_digest == current && !(bound_digest == current)
+      ContributionUnobserved => false
+      ContributionObserved { outcome, observed_on } => false
+    })
+    && !(strategy_criteria_digest(criteria: am.previous_criteria) == current)
+}
+
+test fn witness_contract_completion_refuses_below_complete() -> Bool {
+  let contract = program_first_contract()
+  let real = strategy_contract_completion(contract: contract, decompositions: program_decompositions, bindings: work_contributions, observations: work_observations)
+  let syn_receipt = DecisionReceipt { authority: "operator", decided_on: "2026-08-02", rationale: "synthetic positive control" }
+  let syn_contract = StrategicContract { id: "syn-contract", statement: "synthetic", acceptance_criteria: ["only clause"], constraint_ids: [], adoption: syn_receipt }
+  let syn_digest = strategy_contract_digest(c: syn_contract)
+  let syn_dec = ProgramDecomposition { id: "syn-dec", parent_contract: "syn-contract", parent_criteria_digest: syn_digest, child_obligation_ids: ["syn-obl"], composition_rule: "single child", coverage: CompleteCoverage { receipt: syn_receipt } }
+  let syn_binding = WorkContribution { id: "syn-wc", work_ref: "syn#1", obligation_id: "syn-obl", kind: DischargesObligation, maximum_conclusion: "synthetic", parent_criteria_digest: syn_digest }
+  let syn_landed = ObservationReceipt { id: "syn-ob", subject: "syn#1", observed_on: "2026-08-02", subject_revision: "syn", outcome: ObservedLanded, result: "synthetic landed", evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" } }
+  let syn_open = ObservationReceipt { id: "syn-ob2", subject: "syn#1", observed_on: "2026-08-02", subject_revision: "syn", outcome: ObservedInFlight, result: "synthetic open", evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" } }
+  let stale_dec = ProgramDecomposition { id: "syn-dec-stale", parent_contract: "syn-contract", parent_criteria_digest: "criteria|outdated clause", child_obligation_ids: ["syn-obl"], composition_rule: "single child", coverage: CompleteCoverage { receipt: syn_receipt } }
+  (match real {
+    ContractComplete => false
+    ContractCompletionRefused { cause } =>
+      match cause {
+        DecompositionPartial => true
+        DecompositionMissing => false
+        DecompositionNotSingular => false
+        DecompositionStale => false
+        ObligationUnbound { obligation_id } => false
+        ObligationUndischarged { obligation_id } => false
+      }
+  })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [syn_dec], bindings: [syn_binding], observations: [syn_landed]) {
+      ContractComplete => true
+      ContractCompletionRefused { cause } => false
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [], bindings: [syn_binding], observations: [syn_landed]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionMissing => true
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [stale_dec], bindings: [syn_binding], observations: [syn_landed]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionStale => true
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [syn_dec], bindings: [], observations: [syn_landed]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          ObligationUnbound { obligation_id } => obligation_id == "syn-obl"
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [syn_dec], bindings: [syn_binding], observations: [syn_open]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          ObligationUndischarged { obligation_id } => obligation_id == "syn-obl"
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+        }
+    })
+}
+
+test fn witness_program_view_is_derived_projection() -> Bool {
+  let contract = program_first_contract()
+  let view = strategy_program_view(contract: contract, obligations: program_obligations, bindings: work_contributions)
+  let planted = concat(work_contributions, [WorkContribution {
+    id: "wc-syn-preindex",
+    work_ref: "syn#2",
+    obligation_id: "obl-pre-index-lookup",
+    kind: DischargesObligation,
+    maximum_conclusion: "synthetic plant proving the view is derived",
+    parent_criteria_digest: strategy_contract_digest(c: contract),
+  }])
+  let view2 = strategy_program_view(contract: contract, obligations: program_obligations, bindings: planted)
+  count(view) == 7
+    && id_in_list(id: "obl-exact-affected-closure OPEN", ids: view)
+    && id_in_list(id: "obl-semantic-input-identity OPEN", ids: view)
+    && id_in_list(id: "obl-pre-index-lookup OPEN", ids: view)
+    && id_in_list(id: "obl-counted-fallback OPEN", ids: view)
+    && id_in_list(id: "obl-native-witness-execution BOUND", ids: view)
+    && id_in_list(id: "obl-cross-invocation-reuse BOUND", ids: view)
+    && id_in_list(id: "obl-no-duplicate-stage-work BOUND", ids: view)
+    && id_in_list(id: "obl-pre-index-lookup BOUND", ids: view2)
+    && !id_in_list(id: "obl-pre-index-lookup OPEN", ids: view2)
+}
+
+fn program_selfhost_contract() -> StrategicContract {
+  program_contract_by_id(id: "contract-v2-self-host-fixed-point")
+}
+
+test fn witness_child_discharge_unblocks_without_advancing() -> Bool {
+  let sh = program_selfhost_contract()
+  let d = strategy_contract_digest(c: sh)
+  let view = strategy_program_view(contract: sh, obligations: program_obligations, bindings: work_contributions)
+  let synthetic_missing_blocker = concat(obligation_prerequisites, [ObligationPrerequisite { blocker_obligation: "obl-direct-rust-output-door", blocked_obligation: "obl-remaining-stages-self-emit" }])
+  strategy_obligation_bound_fresh(obligation_id: "obl-translate-instantiation-wrap-decision", current_digest: d, bindings: work_contributions)
+    && strategy_obligation_discharge_observed(obligation_id: "obl-translate-instantiation-wrap-decision", current_digest: d, bindings: work_contributions, observations: work_observations)
+    && !strategy_obligation_bound_fresh(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, bindings: work_contributions)
+    && !strategy_obligation_discharge_observed(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, bindings: work_contributions, observations: work_observations)
+    && strategy_blocker_count(obligation_id: "obl-remaining-stages-self-emit", prerequisites: obligation_prerequisites) == 1
+    && strategy_blockers_discharged(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, prerequisites: obligation_prerequisites, bindings: work_contributions, observations: work_observations)
+    && !strategy_blockers_discharged(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, prerequisites: synthetic_missing_blocker, bindings: work_contributions, observations: work_observations)
+    && count(view) == 6
+    && id_in_list(id: "obl-translate-instantiation-wrap-decision BOUND", ids: view)
+    && id_in_list(id: "obl-frontier-classifier-totality BOUND", ids: view)
+    && id_in_list(id: "obl-direct-rust-output-door OPEN", ids: view)
+    && id_in_list(id: "obl-first-module-behavioral-replacement OPEN", ids: view)
+    && id_in_list(id: "obl-emitter-bootstrap-generations OPEN", ids: view)
+    && id_in_list(id: "obl-remaining-stages-self-emit OPEN", ids: view)
+    && (match strategy_contract_completion(contract: sh, decompositions: program_decompositions, bindings: work_contributions, observations: work_observations) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionPartial => true
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: program_contract_by_id(id: "contract-v2-production-cutover"), decompositions: program_decompositions, bindings: work_contributions, observations: work_observations) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionMissing => true
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+}
+
+fn program_binding_measures_decision(binding_id: String, question_id: String) -> Bool {
+  fold(work_contributions, init: false, f: fn(acc, b) {
+    acc
+      || (b.id == binding_id
+            && match b.kind {
+              MeasurementForDecision { decision_question_id } => decision_question_id == question_id
+              DischargesObligation => false
+              PreservesAcceptedState => false
+              BoundedExploration { bound } => false
+              ClosesPrerequisite => false
+            })
+  })
+}
+
+test fn witness_measurement_readiness_derived_not_assumed() -> Bool {
+  let sh = program_selfhost_contract()
+  let d = strategy_contract_digest(c: sh)
+  let planted_census = concat(work_observations, [ObservationReceipt {
+    id: "ob-syn-census",
+    subject: corrected_census_subject,
+    observed_on: "2026-08-02",
+    subject_revision: "syn",
+    outcome: ObservedLanded,
+    result: "synthetic control: a landed census observation flips readiness",
+    evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" },
+  }])
+  (match strategy_measurement_readiness(subject: corrected_census_subject, observations: work_observations) {
+    MeasurementAbsent { missing } => missing == corrected_census_subject
+    MeasurementPresent { observation_id } => false
+  })
+    && (match strategy_measurement_readiness(subject: corrected_census_subject, observations: planted_census) {
+      MeasurementPresent { observation_id } => observation_id == "ob-syn-census"
+      MeasurementAbsent { missing } => false
+    })
+    && !program_binding_measures_decision(binding_id: "wc-7627-lane-e-census", question_id: "first-module-selection")
+    && !strategy_obligation_discharge_observed(obligation_id: "obl-first-module-behavioral-replacement", current_digest: d, bindings: work_contributions, observations: work_observations)
+    && (match authorize_work(question_id: "first-module-selection", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotFound => true
+          DecisionNotSelected => false
+          DecisionSuperseded => false
+        }
+    })
+}
+
+fn program_binding_count_for_work(work_ref: String) -> Nat {
+  fold(work_contributions, init: 0, f: fn(acc, b) { if b.work_ref == work_ref { acc + 1 } else { acc } })
+}
+
+fn program_selfhost_binding_count() -> Nat {
+  fold(work_contributions, init: 0, f: fn(acc, b) {
+    if fold(program_obligations, init: false, f: fn(a2, o) { a2 || (o.id == b.obligation_id && o.parent_contract == "contract-v2-self-host-fixed-point") }) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+test fn witness_unrelated_work_carries_no_selfhost_binding() -> Bool {
+  program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7605") == 0
+    && program_selfhost_binding_count() == 2
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7264") == 1
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7627") == 1
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7599") == 1
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7664") == 0
+}
+
+fn program_frontier_module_ids_unique() -> Bool {
+  all(selfhost_module_obligation_ids(), i =>
+    fold(selfhost_module_obligation_ids(), init: 0, f: fn(acc, j) { if i == j { acc + 1 } else { acc } }) == 1)
+}
+
+fn program_frontier_modules_discharged(d: String) -> Nat {
+  fold(selfhost_module_obligation_ids(), init: 0, f: fn(acc, oid) {
+    if strategy_obligation_discharge_observed(obligation_id: oid, current_digest: d, bindings: work_contributions, observations: work_observations) { acc + 1 } else { acc }
+  })
+}
+
+test fn witness_frontier_denominator_derived() -> Bool {
+  let d = strategy_contract_digest(c: program_selfhost_contract())
+  count(selfhost_module_obligation_ids()) == count(compiler_frontier_roster)
+    && count(selfhost_module_obligation_ids()) > 0
+    && program_frontier_module_ids_unique()
+    && id_in_list(id: "obl-module-src/v2/compiler/00_compile.dag", ids: selfhost_module_obligation_ids())
+    && !id_in_list(id: "obl-module-src/v2/compiler/nonexistent.dag", ids: selfhost_module_obligation_ids())
+    && program_frontier_modules_discharged(d: d) == 0
+}
+
+fn program_language_contract() -> StrategicContract {
+  program_contract_by_id(id: "contract-language-medium-support")
+}
+
+test fn witness_language_support_contract_open_and_gated() -> Bool {
+  let lc = program_language_contract()
+  let d = strategy_contract_digest(c: lc)
+  let view = strategy_program_view(contract: lc, obligations: program_obligations, bindings: work_contributions)
+  count(view) == 11
+    && id_in_list(id: "obl-lang-support-registry OPEN", ids: view)
+    && id_in_list(id: "obl-lang-no-new-debt-gate OPEN", ids: view)
+    && id_in_list(id: "obl-ts-product-browser-profile OPEN", ids: view)
+    && id_in_list(id: "obl-spice-simulation-profile OPEN", ids: view)
+    && !id_in_list(id: "obl-ts-product-browser-profile BOUND", ids: view)
+    && strategy_blocker_count(obligation_id: "obl-ts-product-browser-profile", prerequisites: obligation_prerequisites) == 1
+    && !strategy_blockers_discharged(obligation_id: "obl-ts-product-browser-profile", current_digest: d, prerequisites: obligation_prerequisites, bindings: work_contributions, observations: work_observations)
+    && strategy_blocker_count(obligation_id: "obl-lang-status-projection", prerequisites: obligation_prerequisites) == 1
+    && (match strategy_contract_completion(contract: lc, decompositions: program_decompositions, bindings: work_contributions, observations: work_observations) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionPartial => true
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match authorize_work(question_id: "lang-ecmascript-authority", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotSelected => true
+          DecisionNotFound => false
+          DecisionSuperseded => false
+        }
+    })
+    && (match authorize_work(question_id: "lang-cpp-profile", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotSelected => true
+          DecisionNotFound => false
+          DecisionSuperseded => false
+        }
+    })
+}
+
+test fn witness_licensing_fee_curve_and_anti_engineering() -> Bool {
+  enterprise_fee_usd(group_revenue_usd40k: 0) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 2475) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 2500) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 5000) == 10000
+    && enterprise_fee_usd(group_revenue_usd40k: 12500) == 40000
+    && enterprise_fee_usd(group_revenue_usd40k: 25000) == 90000
+    && enterprise_fee_usd(group_revenue_usd40k: 125000) == 290000
+    && enterprise_fee_usd(group_revenue_usd40k: 250000) == 540000
+    && enterprise_fee_usd(group_revenue_usd40k: 500000) == 790000
+    && enterprise_fee_usd(group_revenue_usd40k: 710000) == 1000000
+    && enterprise_fee_usd(group_revenue_usd40k: 25000000) == 1000000
+    && (enterprise_fee_usd(group_revenue_usd40k: 2501) - enterprise_fee_usd(group_revenue_usd40k: 2500)) == 4
+    && (enterprise_fee_usd(group_revenue_usd40k: 25001) - enterprise_fee_usd(group_revenue_usd40k: 25000)) == 2
+    && (enterprise_fee_usd(group_revenue_usd40k: 250001) - enterprise_fee_usd(group_revenue_usd40k: 250000)) == 1
+    && (enterprise_fee_usd(group_revenue_usd40k: 710001) - enterprise_fee_usd(group_revenue_usd40k: 710000)) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 24750) == 89000
+    && (enterprise_fee_usd(group_revenue_usd40k: 30000) - enterprise_fee_usd(group_revenue_usd40k: 27500)) == 5000
+}
+
+// A PROCESS-EXIT ENTRY POINT, authored even though this module does not currently RESOLVE, so the
+// actuator's known-red row fails for the reason it names. Without it the roster would point at a
+// symbol that does not exist, and a missing function and a genuinely red claim would produce the
+// identical nonzero exit -- a masked run and a measured one rendering the same, which is the
+// execution-provenance loss DESIGN names. With it, the nonzero comes from the closure refusing on
+// compiler_frontier_roster, which is what the row says.
+fn strategy_witness_main() -> ProcessExit {
+  if witness_graph_ids_unique_and_relations_resolve() { ExitSuccess } else { ExitFailure { code: 1, reason: "witness_graph_ids_unique_and_relations_resolve returned false" } }
+}

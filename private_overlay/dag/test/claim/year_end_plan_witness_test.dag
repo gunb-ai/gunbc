@@ -1,0 +1,190 @@
+module test.claim.year_end_plan_witness
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.year_end_plan {
+  PlanItem, PlanMilestone, year_end_plan_items, plan_graph_sound, gate_conjunction_exact,
+  done_implies_deps_done, on_track_at_day, items_late_at_day, items_at_risk_at_day,
+  milestone_anchor_date, milestone_anchor_day, milestone_order, item_is_done,
+  M1InternalVertical, M1bInternalS0Proof, M2FirstExternal, M2bPrivateCohort, M3YearEndGate,
+  M4JanuaryLaunch,
+  find_item,
+}
+
+// THE DISCRIMINATING CLAIMS. (1) The graph is sound INCLUDING acyclicity by declared
+// rank - a same-milestone two-cycle now reds. (2) The s1-gate conjunction is asserted by
+// IDENTITY (all 14 named deps present, count exact) - swapping one for an unrelated item
+// at constant count reds. (3) A Done item with a not-Done dependency reds (completion
+// coherence). (4) Tracking is non-vacuous: on plan epoch day 0 the plan is on track; by
+// day 13 runner-canary alone has passed its derived latest safe start (day 12) while
+// NotStarted, so the at-risk set is exactly 1; after the final anchor the late set is
+// nonempty. (5) The five anchors are strictly ordered in BOTH representations (ISO date
+// and epoch day), so the two carriers cannot drift apart silently.
+
+fn ids_unique() -> Bool {
+  fold(year_end_plan_items, init: true, f: fn(acc, i) {
+    acc && count(filter(year_end_plan_items, j => j.id == i.id)) == 1
+  })
+}
+
+fn anchors_ordered() -> Bool {
+  milestone_anchor_date(m: M1InternalVertical) < milestone_anchor_date(m: M1bInternalS0Proof)
+    && milestone_anchor_date(m: M1bInternalS0Proof) < milestone_anchor_date(m: M2FirstExternal)
+    && milestone_anchor_date(m: M2FirstExternal) < milestone_anchor_date(m: M2bPrivateCohort)
+    && milestone_anchor_date(m: M2bPrivateCohort) < milestone_anchor_date(m: M3YearEndGate)
+    && milestone_anchor_date(m: M3YearEndGate) < milestone_anchor_date(m: M4JanuaryLaunch)
+    && milestone_anchor_day(m: M1InternalVertical) < milestone_anchor_day(m: M1bInternalS0Proof)
+    && milestone_anchor_day(m: M1bInternalS0Proof) < milestone_anchor_day(m: M2FirstExternal)
+    && milestone_anchor_day(m: M2FirstExternal) < milestone_anchor_day(m: M2bPrivateCohort)
+    && milestone_anchor_day(m: M2bPrivateCohort) < milestone_anchor_day(m: M3YearEndGate)
+    && milestone_anchor_day(m: M3YearEndGate) < milestone_anchor_day(m: M4JanuaryLaunch)
+    && milestone_order(m: M1InternalVertical) < milestone_order(m: M3YearEndGate)
+    && milestone_order(m: M3YearEndGate) < milestone_order(m: M4JanuaryLaunch)
+}
+
+// THE CRITICAL PATH AS AN ORACLE, RE-DERIVED 2026-09-08. AtRisk was UNSTARTED past latest
+// safe start, so an InProgress item could never go amber. fabric-m0's legitimate start
+// then dropped it from the onset set, and the previous derivation recorded that honestly
+// -- count 2 to 1 -- while the state was the problem: the first M1 14-day item to cross
+// (day 20, 2026-09-17) would have been invisible. AtRisk is now UNFINISHED past that day.
+//
+// The claim now: slack until day 19, and on day 20 EXACTLY FOUR unfinished items share
+// latest_start 19 (M1, min_calendar_days 14). Three already started on receipts
+// (hw-first-host, fabric-m0, llc-publication-filing) and one has not (cohort-qualified).
+// Four, not two: the two extra are the other M1 14-day rows that were InProgress before
+// this predicate change, so they were already amber-suppressed and now show. If this
+// count is not four, the unfinished predicate is not what this comment says.
+fn at_risk_onset_is_m1_fourteen_day_floor() -> Bool {
+  let before = items_at_risk_at_day(today_day: 19)
+  let onset = items_at_risk_at_day(today_day: 20)
+  count(before) == 0
+    && count(onset) == 4
+    && any(onset, i => i.id == "hw-first-host")
+    && any(onset, i => i.id == "fabric-m0")
+    && any(onset, i => i.id == "llc-publication-filing")
+    && any(onset, i => i.id == "cohort-qualified")
+}
+
+// THE NEW ITEM IS LOAD-BEARING, NOT MERELY ROSTERED. storage-provider-accounts was added because
+// the requirement was live on a side list while fabric-m0 declared no dependencies and therefore
+// read as startable; an item nobody depends on would have reproduced that defect one row over.
+// This asserts the edge, not just the row -- adding the item without the edge is the failure.
+fn storage_accounts_gate_the_fabric() -> Bool {
+  fold(find_item(id: "fabric-m0"), init: false, f: fn(acc, i) {
+    acc || count(filter(i.depends_on, d => d == "storage-provider-accounts")) == 1
+  })
+    && fold(find_item(id: "storage-provider-accounts"), init: false, f: fn(acc, i) {
+      acc || count(i.depends_on) == 0
+    })
+}
+
+fn wholesale_grounding_gates_the_channel() -> Bool {
+  fold(find_item(id: "wholesale-supply-channel"), init: false, f: fn(acc, i) {
+    acc || count(filter(i.depends_on, d => d == "wholesale-argument-grounding")) == 1
+  })
+    && fold(find_item(id: "wholesale-argument-grounding"), init: false, f: fn(acc, i) {
+      acc || count(i.depends_on) == 0
+    })
+}
+
+fn every_item_related() -> Bool {
+  fold(year_end_plan_items, init: true, f: fn(acc, i) { acc && count(i.relates_to) > 0 })
+}
+
+// THE POPULATION FLOOR IS A STATED POLICY BUDGET, NOT A MEASUREMENT OF THIS TREE (2026-09-10).
+// The conjunct was an EQUALITY against a literal, and an equality against a number copied from
+// the current tree is a CHANGE DETECTOR: automating its update collapses it to
+// measure() == measure(), and its entire content is that a human retyped a number (DESIGN.md §5).
+// A floor is different in kind. It says the plan may not SHRINK below a declared size without
+// someone raising the floor deliberately, it is satisfied by every honest addition, and it still
+// reds on the thing worth catching - items disappearing.
+//
+// THE CONTROL THAT SETTLED THIS WAS RUN AND IT IS THE ARGUMENT FOR THE DISCIPLINE. Bumping the
+// literal to match the tree did NOT go green: plan_graph_sound and done_implies_deps_done were
+// independently false on real plan data. So the tempting bump would have left CI red on two
+// structural claims while looking like the fix, and the next reader would have started hunting a
+// fresh regression that had been sitting there the whole time. Refusing to bump a change-detector
+// literal did not merely avoid a measure() == measure() defect - it surfaced two real ones.
+//
+// AND THE PREDICTION CAME TRUE WHILE THIS BRANCH WAS IN FLIGHT, which is why the numbers are no
+// longer transcribed here. #49 added an item and moved the literal from 85 to 86 against a tree
+// that carries 91, so main stayed red on this conjunct and the bump was wrong by five. That is
+// the failure mode exactly: the number is maintained by hand, by whoever last noticed, against a
+// count nobody re-derived. A floor has no such duty cycle. Any count in a comment here would have
+// rotted in the same merge, so the instrument is named and its output is not copied (DESIGN.md §6).
+data plan_item_population_floor: Int = 90
+
+// THE DAY WAS NEVER PAST THE FINAL ANCHOR, WHICH IS WHY THIS CONJUNCT IS ALSO RE-DAYED. The
+// comment at the head of this file called day 113 "after the final anchor" and it is not: 113 is
+// one day past M3YearEndGate, while the final anchor is M4JanuaryLaunch. So the conjunct was
+// evaluated in a window where every M4 item was still short of its anchor and could not be late
+// yet, and the late set was a strict subset of the not-Done set. The day is now DERIVED from the
+// anchor table as M4JanuaryLaunch + 1 rather than typed, so re-anchoring a milestone moves it
+// instead of silently invalidating it (DESIGN.md §6: name the instrument).
+//
+// LATE-AFTER-FINAL IS AN IDENTITY JOIN, NOT A THRESHOLD (2026-09-10). It asserted
+// `count(items_late_at_day(113)) > 0`, and nearly every item in the plan was already late at that
+// day, so it passed in the world where one item slipped and in the world where the plan was
+// almost entirely late - the
+// same ungrounded-oracle shape as the population count, one conjunct away from it. The grounded
+// claim is the one the definition already forces: `item_late_at_day` is `anchor < today && !done`,
+// so at a day past EVERY anchor the late set must be exactly the not-Done set. Late is always a
+// subset of not-Done, so equal counts is set equality. It reds if any milestone anchor is on or
+// after the derived day, and it reds if item_is_done and the late filter ever disagree - neither
+// of which a `> 0` threshold can see.
+fn plan_day_after_final_anchor() -> Int {
+  milestone_anchor_day(m: M4JanuaryLaunch) + 1
+}
+
+fn plan_not_done_count() -> Int {
+  count(filter(year_end_plan_items, i => !item_is_done(i: i)))
+}
+
+fn plan_flag(b: Bool) -> NonEmptyStr {
+  if b { "pass" } else { "FAIL" }
+}
+
+fn year_end_plan_witness_report() -> NonEmptyStr {
+  "year_end_plan witness: graph_sound="
+    + plan_flag(b: plan_graph_sound())
+    + " ids_unique="
+    + plan_flag(b: ids_unique())
+    + " population_at_or_above_floor="
+    + plan_flag(b: count(year_end_plan_items) >= plan_item_population_floor)
+    + " gate_conjunction_exact="
+    + plan_flag(b: gate_conjunction_exact())
+    + " done_implies_deps_done="
+    + plan_flag(b: done_implies_deps_done())
+    + " anchors_ordered="
+    + plan_flag(b: anchors_ordered())
+    + " epoch_on_track="
+    + plan_flag(b: on_track_at_day(today_day: 0))
+    + " at_risk_onset_derives="
+    + plan_flag(b: at_risk_onset_is_m1_fourteen_day_floor())
+    + " late_after_final_is_not_done_set="
+    + plan_flag(b: count(items_late_at_day(today_day: plan_day_after_final_anchor())) == plan_not_done_count())
+    + " every_item_related="
+    + plan_flag(b: every_item_related())
+    + " storage_gates_fabric="
+    + plan_flag(b: storage_accounts_gate_the_fabric())
+}
+
+fn year_end_plan_witness_main() -> ProcessExit {
+  let graph_sound = plan_graph_sound()
+  let unique = ids_unique()
+  let population = count(year_end_plan_items) >= plan_item_population_floor
+  let gate_exact = gate_conjunction_exact()
+  let coherent = done_implies_deps_done()
+  let ordered = anchors_ordered()
+  let epoch_on_track = on_track_at_day(today_day: 0)
+  let risk_derives = at_risk_onset_is_m1_fourteen_day_floor()
+  let late_after_final = count(items_late_at_day(today_day: plan_day_after_final_anchor())) == plan_not_done_count()
+  let related = every_item_related()
+  let storage_gates = storage_accounts_gate_the_fabric()
+  let wholesale_gates = wholesale_grounding_gates_the_channel()
+  if graph_sound && unique && population && gate_exact && coherent && ordered && epoch_on_track && risk_derives && late_after_final && related && storage_gates && wholesale_gates {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: year_end_plan_witness_report() }
+  }
+}

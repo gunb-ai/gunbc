@@ -1,0 +1,160 @@
+module strategy.tab_group
+
+import std.types { NonEmptyStr, List, Int, Bool, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+
+// TABS THAT CANNOT BE WIRED WRONG.
+//
+// THE BUG THIS MODULE EXISTS TO PREVENT, recorded exactly because the selector was never the part
+// that was wrong. A tab bar was emitted as
+//
+//   div.tabs > div.tabbar > span > input#scen-a
+//   div.tabs > div.scenpanes
+//
+// against the rule
+//
+//   #scen-a:checked ~ .scenpanes .scenpane[...] { display: block }
+//
+// The general sibling combinator matches only FOLLOWING SIBLINGS SHARING A PARENT. The input's
+// parent was the span; the target's parent was div.tabs. The rule could never match, the panes kept
+// their display:none default, and nine drawings disappeared from the page. The stylesheet was
+// byte-identical before and after the fix - only the nesting changed.
+//
+// That failure is silent and total, which is the worst combination: a broken tab that still shows
+// its content is a cosmetic bug a reader reports, and a tab that hides everything looks like a
+// missing section. So this module removes the two ways it can happen:
+//
+//   1. STRUCTURE BY CONSTRUCTION. There is one constructor. It places the radios itself, as direct
+//      children of the container, ahead of the bar and the panes. A caller cannot nest an input,
+//      because a caller never writes an input.
+//
+//   2. SELECTORS DERIVED, NOT WRITTEN. The stylesheet is generated from the same TabPane values
+//      that produce the id and data attributes, through the same id function. A selector cannot
+//      name an id the markup does not carry, because there is only one place the id is spelled.
+//
+// What remains uncheckable here is positional structure in an emitted string: this language has no
+// index_of and no split, so a witness cannot parse the HTML tree. It can assert that the bar follows
+// the last radio as an immediate substring, which is exactly the relation that broke, and it does.
+
+type TabPane {
+  key: NonEmptyStr
+  label: NonEmptyStr
+  body: Fragment
+}
+
+// One list, so an option cannot exist without a pane or a pane without an option. The previous
+// hand-built version kept labels and panes in separate lists and their counts agreeing was luck.
+type TabGroup {
+  name: NonEmptyStr
+  panes: List<TabPane>
+}
+
+// THE ONE PLACE AN ID IS SPELLED. Markup and stylesheet both call this, so they cannot disagree.
+fn tab_radio_id(g: TabGroup, p: TabPane) -> String {
+  join([g.name, "-", p.key], "")
+}
+
+// Both branches must be String: p.key is NonEmptyStr, and an if whose arms disagree on refinement
+// will not typecheck. join with one element is the widening.
+fn tab_first_key(g: TabGroup) -> String {
+  fold(g.panes, init: "", f: fn(acc, p) { if acc == "" { join([p.key], "") } else { acc } })
+}
+
+fn tab_first_id(g: TabGroup) -> String {
+  fold(g.panes, init: "", f: fn(acc, p) { if acc == "" { tab_radio_id(g: g, p: p) } else { acc } })
+}
+
+fn tab_last_id(g: TabGroup) -> String {
+  fold(g.panes, init: "", f: fn(acc, p) { tab_radio_id(g: g, p: p) })
+}
+
+fn tab_radio(g: TabGroup, p: TabPane) -> Fragment {
+  let id = tab_radio_id(g: g, p: p)
+  el_attrs(tag: "input", attributes: concat([
+    attr(name: "type", value: "radio"),
+    attr(name: "name", value: g.name),
+    attr(name: "id", value: id),
+    attr(name: "class", value: "tabin"),
+  ], if p.key == tab_first_key(g: g) { [attr(name: "checked", value: "checked")] } else { [] }),
+  children: [])
+}
+
+fn tab_label(g: TabGroup, p: TabPane) -> Fragment {
+  el_attrs(tag: "label", attributes: [
+    attr(name: "for", value: tab_radio_id(g: g, p: p)),
+    attr(name: "class", value: "tablab"),
+  ], children: [txt(s: p.label)])
+}
+
+fn tab_pane_div(g: TabGroup, p: TabPane) -> Fragment {
+  el_attrs(tag: "div", attributes: [
+    attr(name: "class", value: "pane"),
+    attr(name: "data-pane", value: p.key),
+  ], children: [p.body])
+}
+
+// THE ONLY CONSTRUCTOR. Radios first and unwrapped, then the bar, then the panes - all three as
+// direct children of one container, which is precisely what the sibling combinator requires. There
+// is no parameter that lets a caller change this order or nest anything.
+fn tabbed(g: TabGroup) -> Fragment {
+  el_class(tag: "div", cls: "tabs", children: concat(
+    map(g.panes, p => tab_radio(g: g, p: p)),
+    [
+      el_class(tag: "div", cls: "tabbar", children: map(g.panes, p => tab_label(g: g, p: p))),
+      el_class(tag: "div", cls: "panes", children: map(g.panes, p => tab_pane_div(g: g, p: p))),
+    ]))
+}
+
+// The stylesheet for one group, derived from the same values. Note that every id here arrives from
+// tab_radio_id, the same function the markup uses.
+fn tab_group_css(g: TabGroup) -> String {
+  join(map(g.panes, p => {
+    let id = tab_radio_id(g: g, p: p)
+    join([
+      "#", id, ":checked ~ .panes > .pane[data-pane=\"", p.key, "\"]\{display:block}\n",
+      "#", id, ":checked ~ .tabbar > label[for=\"", id, "\"]\{color:var(--plaster);background:var(--ink);border-color:var(--ink)}\n",
+    ], "")
+  }), "")
+}
+
+fn tab_groups_css(gs: List<TabGroup>) -> String {
+  join(map(gs, g => tab_group_css(g: g)), "")
+}
+
+// Structural rules shared by every group. Panes default hidden, which is why a mis-wired selector
+// is invisible rather than ugly - so this base is deliberately in one place and the overrides are
+// always generated.
+data tab_base_css: String = ".tabs\{margin:1.6rem 0}\n.tabbar\{display:flex;flex-wrap:wrap;gap:0.35rem;margin:0 0 0.9rem;border-bottom:1px solid var(--rule);padding-bottom:0.5rem}\ninput.tabin\{position:absolute;opacity:0;width:0;height:0;pointer-events:none}\nlabel.tablab\{display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);border:1px solid var(--rule);padding:0.4rem 0.7rem;cursor:pointer}\nlabel.tablab:hover\{color:var(--ink);border-color:var(--ink)}\ninput.tabin:focus-visible ~ .tabbar label.tablab\{outline:1px dotted var(--oak)}\n.pane\{display:none}\n"
+
+// ---------------------------------------------------------------------------------------------
+// CHECKS. What construction cannot guarantee, a witness must.
+// ---------------------------------------------------------------------------------------------
+
+fn tab_keys_are_unique(g: TabGroup) -> Bool {
+  all(g.panes, p => count(filter(g.panes, q => q.key == p.key)) == 1)
+}
+
+fn tab_group_is_populated(g: TabGroup) -> Bool {
+  count(g.panes) > 0
+}
+
+// Every generated selector must name an id the markup carries. Both sides come from tab_radio_id,
+// so this is a check that the derivation was actually used rather than bypassed by a literal.
+fn tab_css_covers_every_pane(g: TabGroup) -> Bool {
+  let css = tab_group_css(g: g)
+  all(g.panes, p => string_contains(s: css, pattern: tab_radio_id(g: g, p: p))
+    && string_contains(s: css, pattern: join(["data-pane=\"", p.key, "\""], "")))
+}
+
+// THE POSITIONAL CHECK, and it is the one that would have caught the original bug. The tab bar must
+// follow the LAST radio immediately, with nothing between them - which is only true when the radios
+// are unwrapped direct children of the container. A radio wrapped in a span puts a closing tag
+// between the two and this fails.
+fn tab_bar_follows_the_radios(html: String, g: TabGroup) -> Bool {
+  string_contains(s: html, pattern: join([
+    "id=\"", tab_last_id(g: g), "\" class=\"tabin\"><div class=\"tabbar\"",
+  ], ""))
+}
+
+data tab_positional_check_note: NonEmptyStr = "This language has no index_of and no split, so a witness cannot walk the emitted tree and prove a sibling relation properly. What it can do is assert the exact adjacency that broke: the tab bar opening immediately after the final radio's tag. A wrapper element around a radio puts a closing tag in that gap and the assertion fails, which is the defect that hid nine drawings."

@@ -1,0 +1,317 @@
+module strategy.asset_lifecycle
+
+import std.types { Int, List, NonEmptyStr, Bool }
+
+// ASSET LIFECYCLE (operator direction 2026-08-30): every asset in the system - modeled
+// part, screw, down to the atom - has a lifecycle, but NOT everything is tracked: the
+// tracking grade is DERIVED from what the item is worth and whether it carries data,
+// never chosen per-item by taste. The operator's stated center of gravity is the EXIT:
+// "companies never handle that process well" - and the diagnosis this module encodes is
+// that disposal fails because it is a DEFAULT DRIFT (assets rot idle until they are
+// worthless, then leave untyped: tossed, shrunk, lost) rather than a forced, typed,
+// deadline-carrying decision. So here: (1) an exit is always one typed arm with its
+// evidence; (2) a data-bearing asset cannot exit without sanitization evidence -
+// fail-closed, no exceptions arm; (3) the count ledger must conserve - acquired equals
+// held plus exited, so shrinkage is a visible refusal, not an inventory surprise; and
+// (4) idleness past the grade's floor FORCES a disposition decision - the decision may
+// be "hold, re-reviewed at a date", but it may not be silence.
+
+// ---------------------------------------------------------------------------------------------
+// Tracking grade - derived, not declared per item.
+// ---------------------------------------------------------------------------------------------
+
+type TrackingGrade
+  = SerialTracked
+  | CountTracked { reorder_floor_units: Int }
+  | UntrackedConsumable
+
+// Policy thresholds - declared once, with the reasoning attached. Value drives cost of
+// tracking vs cost of loss; data-bearing overrides value entirely (chain of custody is a
+// compliance fact, not an economics one).
+data serial_floor_micro: Int = 50000000
+data count_floor_micro: Int = 1000000
+
+data tracking_policy_note: NonEmptyStr = "Serial tracking above 50 dollars a unit: at that value the loss/mix-up cost exceeds the seconds it takes to record a serial, and every part above it in our fleet (DIMMs at 55, CPUs at 95, drives, servers) already carries a manufacturer serial. Count tracking between 1 and 50 dollars: fungible bins with a reorder floor - the obligation is a LEVEL, not an identity. Below 1 dollar: untracked consumables (screws, cable ties, standoffs) - tracking them costs more than they do, and the honest model is a bin that gets refilled when it looks low. DATA-BEARING OVERRIDES EVERYTHING: any asset that can hold customer or operational data is SerialTracked at any value, because its exit obligation (sanitization evidence) requires an identity to bind the receipt to."
+
+type AssetClassFacts {
+  id: NonEmptyStr
+  description: NonEmptyStr
+  unit_value_micro: Int
+  data_bearing: Bool
+  reorder_floor_units: Int
+}
+
+fn derived_tracking(f: AssetClassFacts) -> TrackingGrade {
+  if f.data_bearing {
+    SerialTracked
+  } else if f.unit_value_micro >= serial_floor_micro {
+    SerialTracked
+  } else if f.unit_value_micro >= count_floor_micro {
+    CountTracked { reorder_floor_units: f.reorder_floor_units }
+  } else {
+    UntrackedConsumable
+  }
+}
+
+data asset_server: AssetClassFacts = AssetClassFacts {
+  id: "mt-collins-1u",
+  description: "complete server; contains data-bearing children once in service",
+  unit_value_micro: 1775000000,
+  data_bearing: false,
+  reorder_floor_units: 0,
+}
+
+data asset_nvme: AssetClassFacts = AssetClassFacts {
+  id: "u2-nvme-4t",
+  description: "cache drive - DATA-BEARING: serial-tracked at any value, sanitization-gated exit",
+  unit_value_micro: 200000000,
+  data_bearing: true,
+  reorder_floor_units: 2,
+}
+
+data asset_dimm: AssetClassFacts = AssetClassFacts {
+  id: "ddr4-32g-rdimm",
+  description: "32 GiB RDIMM",
+  unit_value_micro: 55000000,
+  data_bearing: false,
+  reorder_floor_units: 16,
+}
+
+data asset_cpu: AssetClassFacts = AssetClassFacts {
+  id: "altra-q80-30",
+  description: "Ampere Altra Q80-30 processor",
+  unit_value_micro: 95000000,
+  data_bearing: false,
+  reorder_floor_units: 2,
+}
+
+data asset_psu: AssetClassFacts = AssetClassFacts {
+  id: "crps-psu-collins",
+  description: "CRPS supply - spares-floor item per spares-control-plane-readiness",
+  unit_value_micro: 40000000,
+  data_bearing: false,
+  reorder_floor_units: 4,
+}
+
+data asset_mt_jade: AssetClassFacts = AssetClassFacts {
+  id: "mt-jade-2u",
+  description: "Wiwynn Mt. Jade 2U server (pilot)",
+  unit_value_micro: 2000000000,
+  data_bearing: false,
+  reorder_floor_units: 0,
+}
+
+data asset_lrdimm: AssetClassFacts = AssetClassFacts {
+  id: "samsung-lrdimm-32g-2133",
+  description: "Samsung M386A4G40DM0-CPB 32G 4Rx4 LRDIMM - the incident population",
+  unit_value_micro: 30000000,
+  data_bearing: false,
+  reorder_floor_units: 0,
+}
+
+data asset_screws: AssetClassFacts = AssetClassFacts {
+  id: "rack-screw-m5",
+  description: "M5 cage screws and similar fasteners",
+  unit_value_micro: 100000,
+  data_bearing: false,
+  reorder_floor_units: 0,
+}
+
+data asset_classes: List<AssetClassFacts> = [
+  asset_server, asset_nvme, asset_dimm, asset_cpu, asset_psu, asset_screws,
+  asset_mt_jade, asset_lrdimm,
+]
+
+// ---------------------------------------------------------------------------------------------
+// Exit: every departure is one typed arm carrying its evidence.
+// ---------------------------------------------------------------------------------------------
+
+type SanitizationEvidence
+  = CryptoEraseReceipt { method: NonEmptyStr, verified_at: NonEmptyStr }
+  | PhysicalDestructionReceipt { certificate: NonEmptyStr }
+  | NotDataBearing
+
+type ExitChannel
+  = ResoldWorking { channel: NonEmptyStr, proceeds_micro: Int }
+  | ResoldForParts { channel: NonEmptyStr, proceeds_micro: Int }
+  | HarvestedIntoParts { yielded_component_ids: List<NonEmptyStr> }
+  | RecycledEwaste { downstream: NonEmptyStr }
+  | ReturnedRmaWarranty { reference: NonEmptyStr }
+  | WrittenOffLost { investigation_note: NonEmptyStr }
+
+type ExitOutcome
+  = ExitAdmitted { asset_id: NonEmptyStr, channel: ExitChannel }
+  | ExitRefusedUnsanitized { asset_id: NonEmptyStr }
+  | ExitRefusedEvidenceMismatch { asset_id: NonEmptyStr }
+
+// The wall: a data-bearing asset exits only with real sanitization evidence, and a
+// non-data-bearing asset must not carry fabricated sanitization (an erase receipt for a
+// screw is a lie that would train readers to skim receipts).
+fn admit_exit(f: AssetClassFacts, channel: ExitChannel, evidence: SanitizationEvidence) -> ExitOutcome {
+  match evidence {
+    NotDataBearing =>
+      if f.data_bearing { ExitRefusedUnsanitized { asset_id: f.id } }
+      else { ExitAdmitted { asset_id: f.id, channel: channel } },
+    CryptoEraseReceipt { method, verified_at } =>
+      if f.data_bearing { ExitAdmitted { asset_id: f.id, channel: channel } }
+      else { ExitRefusedEvidenceMismatch { asset_id: f.id } },
+    PhysicalDestructionReceipt { certificate } =>
+      if f.data_bearing { ExitAdmitted { asset_id: f.id, channel: channel } }
+      else { ExitRefusedEvidenceMismatch { asset_id: f.id } },
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conservation: acquired == held + exited, per class. Shrinkage is a refusal, never a
+// quiet count adjustment - a lost unit exits through WrittenOffLost with its
+// investigation note, which is how the ledger stays honest AND the loss stays visible.
+// ---------------------------------------------------------------------------------------------
+
+type AssetLedger {
+  asset_id: NonEmptyStr
+  acquired_units: Int
+  held_units: Int
+  exited: List<ExitChannel>
+}
+
+fn ledger_conserves(l: AssetLedger) -> Bool {
+  l.acquired_units == l.held_units + count(l.exited)
+}
+
+fn exit_proceeds_micro(c: ExitChannel) -> Int {
+  match c {
+    ResoldWorking { channel, proceeds_micro } => proceeds_micro,
+    ResoldForParts { channel, proceeds_micro } => proceeds_micro,
+    HarvestedIntoParts { yielded_component_ids } => 0,
+    RecycledEwaste { downstream } => 0,
+    ReturnedRmaWarranty { reference } => 0,
+    WrittenOffLost { investigation_note } => 0,
+  }
+}
+
+// The recovery instrument - the number companies never measure. Proceeds per exited unit
+// against the class's carried value; the point is to LOOK at it, per channel, so the
+// closet-rot pattern (hold until worthless, then scrap at zero) shows up as a falling
+// recovery rate instead of a feeling.
+fn ledger_recovery_micro(l: AssetLedger) -> Int {
+  fold(l.exited, init: 0, f: fn(acc, c) { acc + exit_proceeds_micro(c: c) })
+}
+
+// ---------------------------------------------------------------------------------------------
+// INTENT: capital deploys against an intent, and the intent is the asset's license to
+// stay (operator 2026-08-30: "to buy an item probably requires an intent to use it - an
+// item without any living intent needs pressure put on it to liquidate"). Idle-time was
+// the first draft's proxy; intent is the real primitive - every holding binds one, every
+// intent carries a review date, and the standing DERIVES: a living intent holds, a
+// lapsed review forces a re-ruling, and no living intent is standing liquidation
+// pressure. "Hold" is a legitimate ruling; silence is not a state the model can express.
+// ---------------------------------------------------------------------------------------------
+
+type AssetIntent
+  = DeployIntent { target: NonEmptyStr, review_by: NonEmptyStr }
+  | SpareFloorIntent { floor_units: Int, review_by: NonEmptyStr }
+  | SampleQualificationIntent { note: NonEmptyStr, review_by: NonEmptyStr }
+  | ResaleIntent { channel_note: NonEmptyStr, review_by: NonEmptyStr }
+  | NoLivingIntent
+
+type DispositionStanding
+  = IntentLiving { review_by: NonEmptyStr }
+  | ReviewLapsed { review_by: NonEmptyStr }
+  | PressureToLiquidate
+
+fn intent_review_by(i: AssetIntent) -> NonEmptyStr {
+  match i {
+    DeployIntent { target, review_by } => review_by,
+    SpareFloorIntent { floor_units, review_by } => review_by,
+    SampleQualificationIntent { note, review_by } => review_by,
+    ResaleIntent { channel_note, review_by } => review_by,
+    NoLivingIntent => "0000-00-00",
+  }
+}
+
+fn disposition_standing(i: AssetIntent, today: NonEmptyStr) -> DispositionStanding {
+  match i {
+    NoLivingIntent => PressureToLiquidate,
+    DeployIntent { target, review_by } => standing_by_review(review_by: review_by, today: today),
+    SpareFloorIntent { floor_units, review_by } => standing_by_review(review_by: review_by, today: today),
+    SampleQualificationIntent { note, review_by } => standing_by_review(review_by: review_by, today: today),
+    ResaleIntent { channel_note, review_by } => standing_by_review(review_by: review_by, today: today),
+  }
+}
+
+fn standing_by_review(review_by: NonEmptyStr, today: NonEmptyStr) -> DispositionStanding {
+  if review_by < today { ReviewLapsed { review_by: review_by } } else { IntentLiving { review_by: review_by } }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REGISTRY - full lifecycle starts with what we have ALREADY bought, file-managed
+// (operator ruling 2026-08-30: rows in this file now; a database arrives with automated
+// buying). Every row names its provenance; a count the operator has not censused says so.
+// ---------------------------------------------------------------------------------------------
+
+type HoldingRow {
+  asset_id: NonEmptyStr
+  units: Int
+  provenance: NonEmptyStr
+  intent: AssetIntent
+}
+
+data hold_collins_pilot: HoldingRow = HoldingRow {
+  asset_id: "mt-collins-1u",
+  units: 1,
+  provenance: "held on site; memtest-passed pilot (mt_collins_held_unit)",
+  intent: DeployIntent { target: "hw-first-host canary (year_end_plan)", review_by: "2026-10-01" },
+}
+
+data hold_collins_inbound: HoldingRow = HoldingRow {
+  asset_id: "mt-collins-1u",
+  units: 20,
+  provenance: "ordered 2026-08-30 at 1,700 pre-tax (ci_node_build mt_collins_system_lot PurchaseReceipt)",
+  intent: DeployIntent { target: "fleet units 2-21 via intake phases 1-5", review_by: "2026-12-19" },
+}
+
+data hold_mt_jade_pilot: HoldingRow = HoldingRow {
+  asset_id: "mt-jade-2u",
+  units: 1,
+  provenance: "pilot ordered 2026-08-09 ~3-4k loaded (ci_node_build mt_jade_system_lot note)",
+  intent: DeployIntent { target: "dev/secondary host", review_by: "2026-10-15" },
+}
+
+// THE FIRST REAL PRESSURE CASE, on purpose: 62 Q80-30 processors bought 2026-08-18 for
+// LOOSE MP72 builds - a path the Collins depth has since overtaken. The capital is
+// deployed against an intent that may be dead; the near review date is the pressure.
+data hold_q80_lot: HoldingRow = HoldingRow {
+  asset_id: "altra-q80-30",
+  units: 62,
+  provenance: "purchased 2026-08-18, 4,750 all-in for 62 (ci_node_build altra_q80_lot PurchaseReceipt)",
+  intent: DeployIntent { target: "loose MP72 builds - ORIGINAL intent, likely stranded by the Collins system-lot path; re-rule: deploy, hold as CPU spares floor for the Q80 fleet, or liquidate into the observed 95-dollar market", review_by: "2026-09-15" },
+}
+
+data hold_rdimms: HoldingRow = HoldingRow {
+  asset_id: "ddr4-32g-rdimm",
+  units: 16,
+  provenance: "held on site; operator estimate 16-24, declared at the census floor (fleet_convergence inv_dimms_held)",
+  intent: DeployIntent { target: "canary host population", review_by: "2026-10-01" },
+}
+
+data hold_samsung_lrdimms: HoldingRow = HoldingRow {
+  asset_id: "samsung-lrdimm-32g-2133",
+  units: 8,
+  provenance: "the 2026-08-11 srv3/srv4 incident population (host_memory_qualification note); count from the incident record, census pending",
+  intent: SampleQualificationIntent { note: "1-unit Collins sample per the fleet_convergence SampleFirst standing; the remainder becomes ResaleIntent or liquidation on the sample verdict either way", review_by: "2026-10-15" },
+}
+
+data asset_registry: List<HoldingRow> = [
+  hold_collins_pilot, hold_collins_inbound, hold_mt_jade_pilot,
+  hold_q80_lot, hold_rdimms, hold_samsung_lrdimms,
+]
+
+data registry_census_note: NonEmptyStr = "KNOWN INCOMPLETE, declared: the running srv1-4 hosts, their boards, PSUs, drives, NICs and the fastener/cable bins are not yet rows - the physical census that lands with the intake workflow adds them. A row absent from the registry is untracked capital, which is exactly the state this module exists to eliminate, so the census obligation is the registry's own first pressure case."
+
+fn registry_ids_resolve() -> Bool {
+  fold(asset_registry, init: true, f: fn(acc, h) {
+    acc && count(filter(asset_classes, a => a.id == h.asset_id)) == 1
+  })
+}
+
+data liquidation_note: NonEmptyStr = "WHY THE EXIT SIDE IS MODELED THIS HARD (operator 2026-08-30: 'companies never handle that process well'): the failure mode is not one bad sale, it is the ABSENCE OF A PROCESS - assets idle without an owner or a deadline, depreciate to zero, then leave as untyped shrinkage or a dumpster run, with data-bearing media as the compliance time bomb in the pile. Every mechanism here is the negation of one piece of that: DecisionForced negates open-ended idling; the typed ExitChannel with per-channel proceeds negates the unmeasured recovery rate; ledger conservation negates silent shrinkage; the sanitization wall negates the drive that walks out with data on it; HarvestedIntoParts closes the loop back into inventory (a dead server is a parts feed for the fleet - the decompose move applied to hardware). The disposition ledger also feeds the same intake instruments in reverse: what we learn selling (real recovery rates per channel) reprices what we are willing to pay buying - the vintage frontier's exit value stops being a guess. NOT MODELED YET, declared: per-unit serial ledgers (this module is class-grain; unit grain lands with the intake census), tax treatment of disposals, and the actual sale workflow (listing, escrow, shipping) which arrives as ordinary workflow modeling when the first real liquidation happens."

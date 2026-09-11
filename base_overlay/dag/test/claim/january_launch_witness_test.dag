@@ -1,0 +1,150 @@
+module test.claim.january_launch_witness
+
+import strategy.january_launch {
+  LaunchAdmission,
+  LaunchAdmitted,
+  LaunchRefused,
+  LaunchRefusal,
+  LaunchAnchorNotDeclared,
+  LaunchFormNotChosen,
+  LaunchPrerequisiteNotDone,
+  LaunchGradeRecutOwed,
+  LaunchForm,
+  PublicSelfServe,
+  PrivateWithNamedPartners,
+  LaunchFormDecision,
+  LaunchFormChosen,
+  LaunchFormUndecided,
+  LaunchAnchor,
+  LaunchAnchorDeclared,
+  LaunchAnchorUndeclared,
+  NamedPartnerRoster,
+  named_partner_count,
+  january_launch_admission,
+  launch_admission_under,
+  launch_form_decide_by_day,
+  january_launch_standing,
+  grade_recuts_owed,
+  grade_required_for,
+  ExitGrade,
+  ProductionGrade,
+  DemoPromiseGrade,
+  public_self_serve_production_grade_items,
+  january_launch_prerequisites,
+}
+import strategy.year_end_plan { PlanItem, year_end_plan_items }
+import std.types { Bool, Int, List, NonEmptyStr }
+
+// THE STANDING ANSWER IS A REFUSAL, AND IT NAMES THE FIRST MISSING FACT. Before this module the
+// question "are we launching in January" had no derived answer at all; the plan graph ended at the
+// year-end gate. With 2027-01-07 now declared, the first missing fact is no longer the date -- it
+// is the FORM, and the refusal moves accordingly. That the refusal MOVED when a fact landed is the
+// check working: a standing answer that reported the same cause before and after the date was
+// chosen would be reporting the module's existence rather than the plan's state.
+test fn the_launch_refuses_today_and_names_the_unchosen_form() -> Bool {
+  match january_launch_standing {
+    LaunchRefused { cause: c } =>
+      match c {
+        LaunchFormNotChosen => true
+        LaunchAnchorNotDeclared => false
+        LaunchPrerequisiteNotDone { item: _ } => false
+        LaunchGradeRecutOwed { item: _ } => false
+      }
+    LaunchAdmitted { form: _ } => false
+  }
+}
+
+// THE DATE-MISSING ARM STAYS EXERCISABLE. It is unreachable from production now that the anchor is
+// declared, so without this fixture it would be a permanently green decoration -- and the next
+// milestone to land before its own anchor would find the wall untested.
+test fn an_undeclared_anchor_refuses_before_the_form_is_even_read() -> Bool {
+  match launch_admission_under(
+    anchor: LaunchAnchorUndeclared {},
+    decision: LaunchFormChosen {
+      form: PrivateWithNamedPartners {
+        roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+      },
+    },
+  ) {
+    LaunchRefused { cause: c } =>
+      match c {
+        LaunchAnchorNotDeclared => true
+        LaunchFormNotChosen => false
+        LaunchPrerequisiteNotDone { item: _ } => false
+        LaunchGradeRecutOwed { item: _ } => false
+      }
+    LaunchAdmitted { form: _ } => false
+  }
+}
+
+// THE FORM'S DEADLINE IS DERIVED FROM THE DATE, not asserted beside it: the largest public-arm
+// recut duration back from 2027-01-07. Choosing the arm after this day makes the public arm
+// arithmetically unreachable, which is the calendar deciding the disjunction.
+test fn the_form_deadline_derives_from_the_anchor() -> Bool {
+  launch_form_decide_by_day() < 131 && launch_form_decide_by_day() > 100
+}
+
+// AN UNDECIDED FORM REFUSES RATHER THAN DEFAULTING TO THE CHEAPER ARM. This is the whole point of
+// the module: the failure mode is not choosing badly, it is never choosing and discovering in
+// January that the private arm was selected by the calendar.
+test fn an_undecided_form_refuses_rather_than_defaulting() -> Bool {
+  match january_launch_admission(decision: LaunchFormUndecided {}) {
+    LaunchRefused { cause: _ } => true
+    LaunchAdmitted { form: _ } => false
+  }
+}
+
+// A PRIVATE LAUNCH WITH NOBODY NAMED HAS NO CONSTRUCTOR. The roster carries a first and a rest, so
+// the empty case cannot be written -- there is no refusal to test because there is no state to
+// refuse. This asserts the positive half: a named roster counts what it names, which is the fact
+// the operator will be asked to supply.
+test fn a_named_partner_roster_counts_what_it_names() -> Bool {
+  named_partner_count(roster: NamedPartnerRoster { first: "partner-one", rest: [] }) == 1
+    && named_partner_count(
+      roster: NamedPartnerRoster { first: "partner-one", rest: ["partner-two", "partner-three"] }
+    ) == 3
+}
+
+// THE TWO ARMS DEMAND DIFFERENT GRADES OF THE SAME ITEMS, and this discriminates them. If both
+// arms returned the same grade the disjunction would be decorative and choosing late would cost
+// nothing -- which is exactly the belief this module exists to refute.
+test fn the_public_arm_demands_a_higher_grade_than_the_private_one() -> Bool {
+  let private_form = PrivateWithNamedPartners {
+    roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+  }
+  let public_grade = match grade_required_for(
+    form: PublicSelfServe {},
+    item_id: "tenant-boundary-minimum",
+  ) {
+    ProductionGrade => true
+    DemoPromiseGrade => false
+  }
+  let private_grade = match grade_required_for(
+    form: private_form,
+    item_id: "tenant-boundary-minimum",
+  ) {
+    ProductionGrade => false
+    DemoPromiseGrade => true
+  }
+  public_grade && private_grade
+}
+
+// AND THE PUBLIC ARM OWES RECUTS TODAY WHILE THE PRIVATE ARM OWES NONE. This is the cost of the
+// choice, stated as a number rather than as a worry.
+test fn the_public_arm_owes_recuts_the_private_arm_does_not() -> Bool {
+  let private_form = PrivateWithNamedPartners {
+    roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+  }
+  count(grade_recuts_owed(form: PublicSelfServe {})) == 4
+    && count(grade_recuts_owed(form: private_form)) == 0
+    && count(public_self_serve_production_grade_items) == 4
+}
+
+// The launch inherits the plan's terminal rather than restating it: every prerequisite it names
+// must be an item the year-end plan actually carries, or the launch is gated on nothing.
+test fn every_launch_prerequisite_is_a_real_plan_item() -> Bool {
+  count(january_launch_prerequisites) == 8
+    && fold(january_launch_prerequisites, init: true, f: fn(acc, id) {
+      acc && count(filter(year_end_plan_items, i => i.id == id)) == 1
+    })
+}

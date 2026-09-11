@@ -1,0 +1,490 @@
+module strategy.ci_program_page
+
+import std.types { Int, String, List, Bool }
+import std.nat { Nat }
+import strategy.ci_sellable_unit { units_by_memory_gib }
+import std.markup { Fragment, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import strategy.machine_tile_page { page_body_children, page_style, guard_emitted_artifact }
+import strategy.ci_pricing_page { pricing_sections, ci_page_css }
+import strategy.ci_node_build {
+  NodeBuildCandidate, node_build_candidates, selected_build,
+  candidate_q64_16, candidate_q64_32, candidate_q80_32, candidate_q128_32,
+  candidate_q128_64, candidate_two_q64_32,
+  total_cores, total_memory_gib, standard_units, sellable_units, stranded_cores,
+  unused_standard_memory_gib, known_capex_micro, known_capex_per_unit_micro,
+  board_socket_count, board_dimm_slots, cores_per_node, memory_gib_per_node,
+  node_watts,
+}
+import strategy.ci_site_fleet {
+  SiteArchetype, first_site, secondary_site, site_archetypes,
+  FleetTopology, node_ceiling_for_site, topology_nodes, topology_fixed_per_node_micro,
+  correlated_loss_permille, saturation_note, placement_thesis,
+  PlacementAdvantage, placement_advantages, placement_is_derived,
+  unpriced_site_expansion, service_label, all_in_watts_per_node,
+}
+import strategy.ci_operations {
+  IncidentClass, incident_classes, sizable_classes, unsizable_classes,
+  driver_label, automation_label, deflection_of, driver_is_sizable,
+  total_unassisted_minutes, total_assisted_minutes, travel_minutes,
+  operator_minutes, operator_load_permille, node_ceiling, working_minutes_per_month,
+  operator_capacity, OperatorCapacityStanding, OperatorCapacitySized, OperatorCapacityPartial,
+  imputed_labour_per_node_micro, imputed_hourly_micro,
+  assisted_triage_thesis, assisted_triage_falsification, operating_model_note,
+  travel_note, working_month_note, labour_visibility_note,
+}
+
+// ONE PAGE. The physical machine and the business that would sell its minutes, drawn and computed
+// from the same tree, because they are one program and reading them apart is how the numbers and
+// the drawings drift.
+
+// ---------------------------------------------------------------------------------------------
+// Rendering helpers.
+// ---------------------------------------------------------------------------------------------
+
+fn pg_pad2(v: Int) -> String {
+  if v >= 10 { to_string(v) } else { join(["0", to_string(v)], "") }
+}
+
+fn pg_usd2(micro: Int) -> String {
+  let whole = micro / 1000000
+  join(["$", to_string(whole), ".", pg_pad2(v: (micro - whole * 1000000) / 10000)], "")
+}
+
+fn pg_permille_text(p: Int) -> String {
+  join([to_string(p / 10), ".", to_string(p - p / 10 * 10), "%"], "")
+}
+
+fn pg_th(text: String) -> Fragment { el(tag: "th", children: [txt(s: text)]) }
+fn pg_td(text: String) -> Fragment { el(tag: "td", children: [txt(s: text)]) }
+fn pg_td_dim(text: String) -> Fragment { el_class(tag: "td", cls: "dim", children: [txt(s: text)]) }
+fn pg_note(text: String) -> Fragment { el_class(tag: "p", cls: "note", children: [txt(s: text)]) }
+fn pg_para(text: String) -> Fragment { el(tag: "p", children: [txt(s: text)]) }
+fn pg_h3(text: String) -> Fragment { el(tag: "h3", children: [txt(s: text)]) }
+
+fn pg_head_row(cells: List<String>) -> Fragment {
+  el(tag: "thead", children: [el(tag: "tr", children: map(cells, c => pg_th(text: c)))])
+}
+
+fn pg_scrollable(t: Fragment) -> Fragment {
+  el_class(tag: "div", cls: "scroll", children: [t])
+}
+
+fn pg_section(label: String, heading: String, body: List<Fragment>) -> Fragment {
+  el(tag: "section", children: concat([
+    el_class(tag: "span", cls: "sec-label", children: [txt(s: label)]),
+    el(tag: "h2", children: [txt(s: heading)]),
+  ], body))
+}
+
+fn pg_svg_rect(x: Int, y: Int, w: Int, h: Int, cls: String) -> Fragment {
+  el_attrs(tag: "rect", attributes: [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "width", value: to_string(w)),
+    attr(name: "height", value: to_string(h)),
+    attr(name: "class", value: cls),
+  ], children: [])
+}
+
+fn pg_svg_text(x: Int, y: Int, cls: String, content: String) -> Fragment {
+  el_attrs(tag: "text", attributes: [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "class", value: cls),
+  ], children: [txt(s: content)])
+}
+
+fn pg_svg_figure(view_w: Int, view_h: Int, label: String, children: List<Fragment>) -> Fragment {
+  el_class(tag: "div", cls: "scroll", children: [
+    el_attrs(tag: "svg", attributes: [
+      attr(name: "viewBox", value: join(["0 0 ", to_string(view_w), " ", to_string(view_h)], "")),
+      attr(name: "role", value: "img"),
+      attr(name: "class", value: "diagram"),
+      attr(name: "aria-label", value: label),
+    ], children: children),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------
+// DIAGRAM 1: the board, populated. Sockets and DIMM slots drawn from the board carrier's own
+// counts, so a corrected board profile redraws this rather than leaving it stale.
+// ---------------------------------------------------------------------------------------------
+
+data slot_pitch_px: Int = 26
+data slot_top_px: Int = 60
+data slot_height_px: Int = 120
+
+fn dimm_slot(index: Int, populated: Bool) -> Fragment {
+  el(tag: "g", children: [
+    pg_svg_rect(x: 40 + index * slot_pitch_px, y: slot_top_px, w: 14, h: slot_height_px,
+             cls: if populated { "dimm on" } else { "dimm off" }),
+  ])
+}
+
+fn socket_block(index: Int, cores: Int) -> Fragment {
+  el(tag: "g", children: [
+    pg_svg_rect(x: 40 + index * 220, y: 210, w: 180, h: 120, cls: "socket"),
+    pg_svg_text(x: 130 + index * 220, y: 262, cls: "dlabel mid", content: join([to_string(cores), " cores"], "")),
+    pg_svg_text(x: 130 + index * 220, y: 286, cls: "dcap mid", content: "Ampere Altra"),
+  ])
+}
+
+fn board_diagram(c: NodeBuildCandidate) -> Fragment {
+  let slots = board_dimm_slots()
+  let per_dimm = c.memory.capacity_gib
+  pg_svg_figure(view_w: 520, view_h: 400,
+    label: join(["Board population for ", c.label,
+      ": every DIMM slot filled and every socket seated, drawn from the board carrier's slot and socket counts"], ""),
+    children: concat(
+      concat(
+        [
+          pg_svg_rect(x: 20, y: 20, w: 480, h: 360, cls: "board"),
+          pg_svg_text(x: 32, y: 46, cls: "dcap", content: join([
+            "MP72-HB0  -  ", to_string(slots), " DIMM slots x ", to_string(per_dimm),
+            " GiB  -  ", to_string(board_socket_count()), " sockets"], "")),
+        ],
+        map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], i => dimm_slot(index: i, populated: true))),
+      [
+        socket_block(index: 0, cores: cores_per_node(c: c) / board_socket_count()),
+        socket_block(index: 1, cores: cores_per_node(c: c) / board_socket_count()),
+        pg_svg_text(x: 32, y: 366, cls: "dcap", content: join([
+          to_string(cores_per_node(c: c)), " cores  |  ",
+          to_string(memory_gib_per_node(c: c)), " GiB  |  ",
+          to_string(standard_units(c: c)), " standard units  |  ",
+          to_string(sellable_units(c: c)), " sellable"], "")),
+      ]),
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// DIAGRAM 2: what binds. Two bars per candidate - cores and memory-units - with the shorter one
+// deciding capacity and the overhang drawn as waste. This is the packing argument as a picture.
+// ---------------------------------------------------------------------------------------------
+
+data bar_scale_px: Int = 380
+data bar_max_units: Int = 256
+
+fn bar_width(units: Int) -> Int {
+  if units > bar_max_units { bar_scale_px } else { units * bar_scale_px / bar_max_units }
+}
+
+fn binding_row(c: NodeBuildCandidate, index: Int) -> Fragment {
+  let y = 46 + index * 62
+  let cores = total_cores(c: c)
+  let mem_units = units_by_memory_gib(gib: total_memory_gib(c: c))
+  let bound = standard_units(c: c)
+  el(tag: "g", children: [
+    pg_svg_text(x: 8, y: y + 10, cls: "dcap", content: c.label),
+    pg_svg_rect(x: 200, y: y, w: bar_width(units: bound), h: 14, cls: "bar sold"),
+    pg_svg_rect(x: 200 + bar_width(units: bound), y: y,
+             w: bar_width(units: cores) - bar_width(units: bound), h: 14, cls: "bar waste"),
+    pg_svg_text(x: 200 + bar_width(units: cores) + 8, y: y + 12, cls: "dcap",
+             content: join([to_string(cores), " cores"], "")),
+    pg_svg_rect(x: 200, y: y + 18, w: bar_width(units: bound), h: 14, cls: "bar sold"),
+    pg_svg_rect(x: 200 + bar_width(units: bound), y: y + 18,
+             w: bar_width(units: mem_units) - bar_width(units: bound), h: 14, cls: "bar waste"),
+    pg_svg_text(x: 200 + bar_width(units: mem_units) + 8, y: y + 30, cls: "dcap",
+             content: join([to_string(mem_units), " RAM units"], "")),
+  ])
+}
+
+fn binding_diagram() -> Fragment {
+  pg_svg_figure(view_w: 700, view_h: 46 + 62 * 6 + 30,
+    label: "For each build candidate, cores against memory-units. The solid part is what can be sold; the pale overhang is capacity paid for and unsellable because the other resource ran out first.",
+    children: concat(
+      [pg_svg_text(x: 8, y: 24, cls: "dcap", content: "SOLID = SELLABLE  |  PALE = PAID FOR AND UNSELLABLE  |  TOP BAR CORES, BOTTOM BAR MEMORY")],
+      map_indexed_candidates()),
+  )
+}
+
+// Named rather than indexed. An index helper over the candidate list would need a positional lookup
+// this language does not have, and the version that compiles without one returns the same candidate
+// six times - six identical bars that look like a diagram and say nothing.
+fn map_indexed_candidates() -> List<Fragment> {
+  [
+    binding_row(c: candidate_q64_16, index: 0),
+    binding_row(c: candidate_q64_32, index: 1),
+    binding_row(c: candidate_q80_32, index: 2),
+    binding_row(c: candidate_q128_32, index: 3),
+    binding_row(c: candidate_q128_64, index: 4),
+    binding_row(c: candidate_two_q64_32, index: 5),
+  ]
+}
+
+// ---------------------------------------------------------------------------------------------
+// DIAGRAM 3: the room, and its ceiling. The limit is the panel, not the floor.
+// ---------------------------------------------------------------------------------------------
+
+fn node_glyph(index: Int, within_ceiling: Bool) -> Fragment {
+  let col = index - index / 12 * 12
+  let row = index / 12
+  pg_svg_rect(x: 40 + col * 34, y: 70 + row * 26, w: 26, h: 18,
+           cls: if within_ceiling { "node ok" } else { "node over" })
+}
+
+fn room_diagram(a: SiteArchetype, drawn: Int) -> Fragment {
+  let ceiling = node_ceiling_for_site(a: a, node_watts: node_watts())
+  pg_svg_figure(view_w: 480, view_h: 240,
+    label: join(["One retail space: nodes drawn against the electrical ceiling of ",
+      to_string(ceiling), " derived from the panel rather than the floor area"], ""),
+    children: concat(
+      concat([
+        pg_svg_rect(x: 20, y: 20, w: 440, h: 200, cls: "room"),
+        pg_svg_text(x: 32, y: 46, cls: "dcap", content: join([
+          a.label, "  -  service ", service_label(s: a.service), "  -  ceiling ",
+          to_string(ceiling), " nodes at ", to_string(all_in_watts_per_node(node_watts: node_watts())),
+          " W each"], "")),
+      ],
+      map([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
+          i => node_glyph(index: i, within_ceiling: i < ceiling))),
+      [pg_svg_text(x: 32, y: 210, cls: "dcap",
+        content: "PALE GLYPHS EXCEED THE PANEL: THEY NEED A SERVICE UPGRADE OR ANOTHER ROOM")]),
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// DIAGRAM 4: operator load against one working month.
+// ---------------------------------------------------------------------------------------------
+
+fn load_bar(label: String, minutes: Int, y: Int) -> Fragment {
+  let w = if minutes > working_minutes_per_month { 420 } else { minutes * 420 / working_minutes_per_month }
+  el(tag: "g", children: [
+    pg_svg_text(x: 8, y: y + 12, cls: "dcap", content: label),
+    pg_svg_rect(x: 150, y: y, w: 420, h: 16, cls: "bar track"),
+    pg_svg_rect(x: 150, y: y, w: w, h: 16, cls: if minutes > working_minutes_per_month { "bar over" } else { "bar sold" }),
+    pg_svg_text(x: 580, y: y + 13, cls: "dcap", content: join([to_string(minutes / 60), " h"], "")),
+  ])
+}
+
+fn operator_load_diagram(nodes: Int, sites: Int) -> Fragment {
+  pg_svg_figure(view_w: 660, view_h: 150,
+    label: join(["Operator minutes a month at ", to_string(nodes), " nodes across ", to_string(sites),
+      " sites, against one hundred and sixty hours"], ""),
+    children: [
+      pg_svg_text(x: 8, y: 22, cls: "dcap", content: join([
+        "HARDWARE AND SITE WORK ONLY  -  ", to_string(nodes), " NODES, ", to_string(sites),
+        " SITES  -  BAR IS ONE WORKING MONTH"], "")),
+      load_bar(label: "Manual", minutes: operator_minutes(nodes: nodes, sites: sites, assisted: false), y: 40),
+      load_bar(label: "Assisted", minutes: operator_minutes(nodes: nodes, sites: sites, assisted: true), y: 70),
+      load_bar(label: "Travel alone", minutes: travel_minutes(nodes: nodes, sites: sites), y: 100),
+    ])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Operations tables.
+// ---------------------------------------------------------------------------------------------
+
+fn incident_row(c: IncidentClass) -> Fragment {
+  el(tag: "tr", children: [
+    pg_td(text: c.name),
+    pg_td_dim(text: driver_label(d: c.driver)),
+    pg_td_dim(text: pg_permille_text(p: c.rate_permille_per_driver_month)),
+    pg_td_dim(text: join([to_string(c.unassisted_minutes), " min"], "")),
+    pg_td_dim(text: join([to_string(c.assisted_minutes), " min"], "")),
+    pg_td_dim(text: pg_permille_text(p: deflection_of(t: c.automation))),
+    pg_td_dim(text: if driver_is_sizable(d: c.driver) { "sizable" } else { "not sizable" }),
+  ])
+}
+
+fn incident_table() -> Fragment {
+  pg_scrollable(t: el_class(tag: "table", cls: "widest", children: [
+    pg_head_row(cells: ["Incident class", "Driver", "Rate per driver-month", "Manual", "Assisted", "Deflected", "Standing"]),
+    el(tag: "tbody", children: map(incident_classes, c => incident_row(c: c))),
+  ]))
+}
+
+fn capacity_banner() -> Fragment {
+  match operator_capacity(nodes_per_site: 20, assisted: true) {
+    OperatorCapacitySized { node_ceiling, receipt } =>
+      el_class(tag: "p", cls: "gen", children: [txt(s: join([
+        "One operator covers ", to_string(node_ceiling), " nodes. ", receipt], ""))]),
+    OperatorCapacityPartial { sizable_node_ceiling, unsizable, obligation } =>
+      el_class(tag: "p", cls: "refused", children: [txt(s: join([
+        "A CEILING ABOUT MACHINES, NOT ABOUT A BUSINESS. Hardware, firmware and site work saturate one operator at roughly ",
+        to_string(sizable_node_ceiling),
+        " nodes at twenty nodes a site with assistance. Not counted: ",
+        join(unsizable, "; "), ". ", obligation], ""))]),
+  }
+}
+
+fn operator_scale_row(nodes: Int, sites: Int) -> Fragment {
+  el(tag: "tr", children: [
+    pg_td_dim(text: join([to_string(nodes), " nodes / ", to_string(sites), " sites"], "")),
+    pg_td_dim(text: join([to_string(operator_minutes(nodes: nodes, sites: sites, assisted: false) / 60), " h"], "")),
+    pg_td_dim(text: pg_permille_text(p: operator_load_permille(nodes: nodes, sites: sites, assisted: false))),
+    pg_td_dim(text: join([to_string(operator_minutes(nodes: nodes, sites: sites, assisted: true) / 60), " h"], "")),
+    pg_td_dim(text: pg_permille_text(p: operator_load_permille(nodes: nodes, sites: sites, assisted: true))),
+    pg_td_dim(text: pg_usd2(micro: imputed_labour_per_node_micro(nodes: nodes, sites: sites, assisted: true))),
+  ])
+}
+
+fn operator_scale_table() -> Fragment {
+  pg_scrollable(t: el_class(tag: "table", cls: "widest", children: [
+    pg_head_row(cells: ["Fleet", "Manual hours", "Of a month", "Assisted hours", "Of a month", "Imputed labour per node"]),
+    el(tag: "tbody", children: [
+      operator_scale_row(nodes: 20, sites: 1),
+      operator_scale_row(nodes: 40, sites: 2),
+      operator_scale_row(nodes: 100, sites: 5),
+      operator_scale_row(nodes: 200, sites: 10),
+    ]),
+  ]))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Site tables.
+// ---------------------------------------------------------------------------------------------
+
+fn site_row(a: SiteArchetype) -> Fragment {
+  el(tag: "tr", children: [
+    pg_td(text: a.label),
+    pg_td_dim(text: a.region_label),
+    pg_td_dim(text: service_label(s: a.service)),
+    pg_td_dim(text: to_string(node_ceiling_for_site(a: a, node_watts: node_watts()))),
+    pg_td_dim(text: pg_usd2(micro: a.rent_micro_per_month)),
+    pg_td_dim(text: pg_usd2(micro: a.transit_micro_per_month)),
+  ])
+}
+
+fn site_table() -> Fragment {
+  pg_scrollable(t: el_class(tag: "table", cls: "wide", children: [
+    pg_head_row(cells: ["Site", "Region", "Service", "Node ceiling", "Rent", "Transit"]),
+    el(tag: "tbody", children: map(site_archetypes, a => site_row(a: a))),
+  ]))
+}
+
+fn topology_row(sites: Int, nodes_per_site: Int) -> Fragment {
+  let t = FleetTopology { label: "row", site_count: sites, archetype: first_site, nodes_per_site: nodes_per_site }
+  el(tag: "tr", children: [
+    pg_td_dim(text: join([to_string(sites), " x ", to_string(nodes_per_site)], "")),
+    pg_td_dim(text: to_string(topology_nodes(t: t))),
+    pg_td_dim(text: pg_usd2(micro: topology_fixed_per_node_micro(t: t))),
+    pg_td_dim(text: to_string(nodes_per_site)),
+    pg_td_dim(text: pg_permille_text(p: correlated_loss_permille(t: t))),
+  ])
+}
+
+fn topology_table() -> Fragment {
+  pg_scrollable(t: el_class(tag: "table", cls: "wide", children: [
+    pg_head_row(cells: ["Topology", "Nodes", "Rent+transit per node", "Largest correlated loss", "Share of fleet"]),
+    el(tag: "tbody", children: [
+      topology_row(sites: 1, nodes_per_site: 10),
+      topology_row(sites: 1, nodes_per_site: 20),
+      topology_row(sites: 2, nodes_per_site: 10),
+      topology_row(sites: 2, nodes_per_site: 20),
+      topology_row(sites: 5, nodes_per_site: 20),
+      topology_row(sites: 10, nodes_per_site: 20),
+    ]),
+  ]))
+}
+
+fn placement_row(p: PlacementAdvantage) -> Fragment {
+  el(tag: "tr", children: [
+    pg_td(text: p.name),
+    pg_td(text: p.mechanism),
+    pg_td_dim(text: if placement_is_derived(p: p) { "derived" } else { "claimed" }),
+  ])
+}
+
+fn placement_table() -> Fragment {
+  pg_scrollable(t: el_class(tag: "table", cls: "wide", children: [
+    pg_head_row(cells: ["Advantage", "Mechanism", "Standing"]),
+    el(tag: "tbody", children: map(placement_advantages, p => placement_row(p: p))),
+  ]))
+}
+
+fn unpriced_expansion_list() -> Fragment {
+  el(tag: "ul", children: map(unpriced_site_expansion, u => el(tag: "li", children: [txt(s: u)])))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The combined document.
+// ---------------------------------------------------------------------------------------------
+
+data program_standfirst: String = "One machine, drawn from its own model, and the business that would sell its minutes, computed from the same tree. The drawings below are the physical program; the tables are the economic one. Neither is a forecast and nothing on this page is a margin."
+
+data program_bridge_note: String = "Everything above is a machine that has not been cut and everything below is a business that has not sold a minute. They are on one page because they constrain each other: the tile's depth decides how many fit a room, the room's panel decides how many nodes a site holds, and the node's memory decides how many minutes there are to sell."
+
+fn machine_section_intro() -> Fragment {
+  el_class(tag: "div", cls: "wrap", children: [
+    el(tag: "h1", children: [txt(s: "The machine, and the business.")]),
+    el_class(tag: "p", cls: "standfirst", children: [txt(s: program_standfirst)]),
+  ])
+}
+
+fn hardware_sections() -> List<Fragment> {
+  [
+    pg_section(label: "The node", heading: "One board, populated.", body: [
+      board_diagram(c: selected_build),
+      pg_h3(text: "What binds, per candidate"),
+      binding_diagram(),
+      pg_note(text: program_bridge_note),
+    ]),
+  ]
+}
+
+fn site_sections() -> List<Fragment> {
+  [
+    pg_section(label: "The room", heading: "The ceiling is the panel, not the floor.", body: [
+      room_diagram(a: first_site, drawn: 24),
+      site_table(),
+      pg_h3(text: "Fixed cost per node, and what one failure takes out"),
+      topology_table(),
+      pg_note(text: saturation_note),
+      pg_h3(text: "What the distribution buys"),
+      placement_table(),
+      pg_note(text: placement_thesis),
+      pg_h3(text: "What a new site costs that nobody has priced"),
+      unpriced_expansion_list(),
+    ]),
+  ]
+}
+
+fn operations_sections() -> List<Fragment> {
+  [
+    pg_section(label: "The operator", heading: "One person, one month.", body: [
+      pg_para(text: assisted_triage_thesis),
+      operator_load_diagram(nodes: 40, sites: 2),
+      operator_scale_table(),
+      capacity_banner(),
+      pg_h3(text: "Where the work comes from"),
+      incident_table(),
+      pg_note(text: working_month_note),
+      pg_note(text: travel_note),
+      pg_note(text: labour_visibility_note),
+      pg_note(text: assisted_triage_falsification),
+      pg_note(text: operating_model_note),
+    ]),
+  ]
+}
+
+fn program_body() -> Fragment {
+  el_attrs(tag: "div", attributes: [attr(name: "data-generated-by", value: "strategy.ci_program_page")], children: concat(
+    [
+      el(tag: "style", children: [txt(s: page_style)]),
+      el(tag: "style", children: [txt(s: ci_page_css)]),
+      el(tag: "style", children: [txt(s: program_css)]),
+      machine_section_intro(),
+    ],
+    concat(page_body_children(), [
+      el_class(tag: "div", cls: "wrap", children: concat(
+        concat(hardware_sections(), concat(site_sections(), operations_sections())),
+        concat(pricing_sections(), [
+          el(tag: "footer", children: [txt(s: "generated by strategy.ci_program_page - no tile cut, no minute sold")]),
+        ]))),
+    ])),
+  )
+}
+
+fn render_program_body() -> String {
+  match try_serialize_html_source(node: program_body()) {
+    EmitOk { html: h } => guard_emitted_artifact(html: h)
+    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+  }
+}
+
+// The combined sheet only adds what the two inherited sheets do not already define: the diagram
+// classes. Both inherited sheets are emitted whole rather than merged by hand, because hand-merging
+// two stylesheets is how a token silently disappears.
+data program_css: String = "svg.diagram\{width:100%;height:auto;display:block;margin:1.4rem 0}\nsvg.diagram rect.board\{fill:none;stroke:var(--ink);stroke-width:1.5}\nsvg.diagram rect.socket\{fill:var(--oak);fill-opacity:0.28;stroke:var(--ink);stroke-width:1}\nsvg.diagram rect.dimm\{stroke:var(--ink);stroke-width:0.8}\nsvg.diagram rect.dimm.on\{fill:var(--green);fill-opacity:0.45}\nsvg.diagram rect.dimm.off\{fill:none}\nsvg.diagram rect.room\{fill:none;stroke:var(--ink);stroke-width:1.5}\nsvg.diagram rect.node\{stroke:var(--ink);stroke-width:0.8}\nsvg.diagram rect.node.ok\{fill:var(--green);fill-opacity:0.45}\nsvg.diagram rect.node.over\{fill:var(--alarm);fill-opacity:0.18}\nsvg.diagram rect.bar\{stroke:none}\nsvg.diagram rect.bar.sold\{fill:var(--green);fill-opacity:0.6}\nsvg.diagram rect.bar.waste\{fill:var(--alarm);fill-opacity:0.22}\nsvg.diagram rect.bar.track\{fill:var(--rule);fill-opacity:0.4}\nsvg.diagram rect.bar.over\{fill:var(--alarm);fill-opacity:0.7}\nsvg.diagram text.dcap\{font-family:ui-monospace,Menlo,monospace;font-size:10px;fill:var(--muted)}\nsvg.diagram text.dlabel\{font-family:ui-monospace,Menlo,monospace;font-size:13px;fill:var(--ink)}\nsvg.diagram text.mid\{text-anchor:middle}\nul\{margin:0 0 1rem;padding-left:1.1rem}\nli\{margin:0 0 0.35rem;font-size:0.93rem;color:var(--muted)}"

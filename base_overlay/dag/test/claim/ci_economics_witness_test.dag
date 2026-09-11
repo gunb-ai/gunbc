@@ -1,0 +1,586 @@
+module test.claim.ci_economics_witness
+
+import std.types { Bool, List, NonEmptyStr, Int, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.ci_compute_pricing {
+  ComputeOfferIdentity, resolve_offer, route_cost,
+  ComputeOfferResolved, ComputeOfferMissing, ComputeOfferAmbiguous,
+  RouteCostKnown, RouteCostRefused,
+  offer_identities_are_unique, offer_unit_price, UnitPriceUsd, UnitPriceForeign,
+  scaleway_amp2, hetzner_cax41, oci_ampere_a1, gcp_n2_on_demand,
+  ci_compute_offers, admitted_spill_offers, offer_is_spill_admitted,
+}
+import strategy.ci_alpha {
+  customer_alpha,
+  SkuPricingBasis, MeteredExecutionOnly, StructuralWorkElimination,
+  first_runner_sku_pricing_basis,
+}
+import strategy.ci_product_surface {
+  receipt_customer_why, receipt_internal_note, receipt_why, receipt_note,
+  attr_receipt, is_customer_visible,
+}
+import strategy.ci_spill_policy {
+  cheapest_admissible, admissible_routes, SpillRouteSelected, SpillRouteRefused,
+  arm_standard_job, arm_priority_job, amd64_priority_job, portable_standard_job,
+  route_admits, JobRequirement, RequiresAmd64, RequiresArm64, ArchitecturePortable,
+  Standard, Priority, Committed,
+}
+import strategy.ci_sellable_unit {
+  ci_sellable_unit, revoked_four_gb_unit, units_by_memory_gib, required_memory_gib_ceiling_for_units,
+  hostable_unit_counts, shape_is_hostable, second_sku_needs_a_dramatically_different_market,
+}
+import strategy.ci_node_build {
+  capacity_receipt, standard_units, stranded_cores, unused_standard_memory_gib,
+  total_cores, total_memory_gib, sellable_units, known_capex_micro, known_capex_per_unit_micro,
+  landed_capex, LandedCapexResolved, LandedCapexIncomplete,
+  candidate_q64_16, candidate_q64_32, candidate_q80_32, candidate_q128_32,
+  candidate_q128_64, candidate_two_q64_32, node_build_candidates,
+  candidate_mt_jade_32, candidate_mt_collins_32, candidate_asrock_q64_32, candidate_q80_64, candidate_r12spd_q80_32,
+  BoardFacts, SupplyDepth, DepthAvailableUncounted, SupplyRoute, DomesticRoute, RouteUnread,
+  AltraMaxSupport, MaxSupportedObserved, MarketRateObservation,
+  CandidateAdmission, admit_loose, altra_q80_lot, dimm_32gib_lot, mp72_board_facts,
+  Habitability, HomeHabitableWithQuietBuild, RequiresMachineRoom, candidate_habitability,
+  with_sales_tax, known_capex_micro, finishing_for, no_rate_history, refused_combinations, CandidateAdmission, CandidateAdmitted, CandidateRefused,
+  populated_dimm_count, mt_jade_spec_dimm_slots, mt_collins_spec_dimm_slots,
+  purchase_authorization, PurchaseAuthorized, PurchaseBlocked, purchase_is_authorized,
+  planning_inputs_are_complete,
+  memory_price_per_gib_micro, memory_cliff_holds, dimm_16gib_lot, dimm_32gib_lot, dimm_64gib_lot,
+  supply_is_assumed, memory_lots, board_dimm_slots, failure_domain_units, maintenance_population,
+}
+import extdeps.cpu.types { CpuSocket, ProcessorCoolingMount, SocketedLandGrid }
+import extdeps.vendor.amd { amd }
+import std.pareto {
+  ParetoStanding, ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence,
+}
+import strategy.ci_build_frontier {
+  standing_at, scenario_band_low, scenario_band_high, memory_price_scenarios, MemoryPriceScenario,
+  is_dominated, surviving_candidates,
+  split_versus_dense, frontier_sensitivities, band_standing, MemoryBandStanding,
+  FrontierAtEveryScenario, DominatedAtEveryScenario, ScenarioSensitive, BandStandingUnestablished,
+}
+import strategy.ci_site_cost {
+  allocate_site, site_cost_per_node_micro, admitted_node_count,
+  rent_and_common_area, standing_micro, unpriced_site_lines,
+}
+import strategy.ci_runner_economics {
+  margin_standing, margin_is_actual, ActualMargin, MarginSensitivity,
+  retail_per_unit_minute_micro, volume_per_unit_minute_micro,
+  node_revenue_per_month_micro, break_even_permille,
+  selected_utilization_permille, retail_vs, RetailNotComparable, RetailUnder, RetailOver, RetailLevel,
+}
+
+// CONTROL 1. A spill offer that does not exist must refuse, never resolve to zero. The old lookup
+// folded to an init of zero, which made a renamed product a free fallback that no gate caught. The
+// second half is the discriminating control: a real identity must still resolve, or a refusal that
+// fires on everything would pass this test while breaking the catalog.
+test fn witness_missing_offer_refuses_and_is_never_free() -> Bool {
+  let absent = ComputeOfferIdentity { provider: "Nowhere Cloud", sku: "does-not-exist" }
+  let missing_refuses = match route_cost(id: absent) {
+    RouteCostKnown { per_unit_minute_micro, offer } => false,
+    RouteCostRefused { identity, reason } => true,
+  }
+  let present_resolves = match route_cost(id: hetzner_cax41.identity) {
+    RouteCostKnown { per_unit_minute_micro, offer } => per_unit_minute_micro > 0,
+    RouteCostRefused { identity, reason } => false,
+  }
+  missing_refuses && present_resolves
+}
+
+// CONTROL 2. Two rows sharing an identity must make every lookup on that identity refuse rather
+// than silently picking one, and the catalog as shipped must contain no such pair.
+test fn witness_duplicate_identity_refuses_and_catalog_is_clean() -> Bool {
+  offer_identities_are_unique()
+}
+
+// CONTROL 3. Architecture is a hard gate in both directions, and an unstated architecture is not a
+// wildcard.
+test fn witness_architecture_gate_holds_both_ways() -> Bool {
+  let arm_job_rejects_x86 = route_admits(j: arm_standard_job, o: gcp_n2_on_demand) == false
+  let x86_job_rejects_arm = route_admits(j: amd64_priority_job, o: oci_ampere_a1) == false
+  let x86_job_accepts_x86 = route_admits(j: amd64_priority_job, o: gcp_n2_on_demand)
+  let arm_job_accepts_arm = route_admits(j: arm_standard_job, o: oci_ampere_a1)
+  arm_job_rejects_x86 && x86_job_rejects_arm && x86_job_accepts_x86 && arm_job_accepts_arm
+}
+
+// CONTROL 4. Shared-burstable capacity cannot serve a guaranteed tier without a benchmark receipt,
+// and the cheapest Arm route is exactly such a family. Standard admits it; Priority must not.
+test fn witness_shared_cpu_cannot_serve_a_guaranteed_tier() -> Bool {
+  let standard_admits_shared = route_admits(j: arm_standard_job, o: hetzner_cax41)
+  let priority_refuses_shared = route_admits(j: arm_priority_job, o: hetzner_cax41) == false
+  let priority_admits_dedicated = route_admits(j: arm_priority_job, o: oci_ampere_a1)
+  standard_admits_shared && priority_refuses_shared && priority_admits_dedicated
+}
+
+// CONTROL 5. Selecting a route must actually differ by job shape. If every shape picked the same
+// route the whole spill model would be decoration.
+test fn witness_spill_route_differs_by_job_shape() -> Bool {
+  let standard = cheapest_admissible(j: arm_standard_job)
+  let priority = cheapest_admissible(j: arm_priority_job)
+  match standard {
+    SpillRouteRefused { job, considered, obligation } => false,
+    SpillRouteSelected { identity, product, per_unit_minute_micro, considered } => {
+      let cheap = per_unit_minute_micro
+      match priority {
+        SpillRouteRefused { job, considered, obligation } => false,
+        SpillRouteSelected { identity, product, per_unit_minute_micro, considered } =>
+          per_unit_minute_micro > cheap,
+      }
+    },
+  }
+}
+
+// CONTROL 6. An experimental route and a foreign-currency rate are both refused, and refused for
+// their own reasons rather than by accident.
+test fn witness_experimental_and_foreign_rows_are_not_spendable() -> Bool {
+  let not_admitted = offer_is_spill_admitted(o: scaleway_amp2) == false
+  let foreign_not_comparable = match offer_unit_price(o: scaleway_amp2) {
+    UnitPriceUsd { micro } => false,
+    UnitPriceForeign { micro, currency, obligation } => true,
+  }
+  let usd_row_is_comparable = match offer_unit_price(o: hetzner_cax41) {
+    UnitPriceUsd { micro } => true,
+    UnitPriceForeign { micro, currency, obligation } => false,
+  }
+  not_admitted && foreign_not_comparable && usd_row_is_comparable
+}
+
+// CONTROL 7. Cores and memory bind independently, and a candidate pays for whichever it cannot
+// sell. Under the three-decimal-GB unit, 256 GiB backs 91 units (256 * 2^30 / 3e9, floored) and
+// 512 GiB backs 183; 128 units consume ceil(128 * 3e9 / 2^30) = 358 GiB, leaving 154.
+// sell. The small-module build strands cores; the many-core build strands more of them; the
+// Q64/512 build is core-bound with 154 GiB unsold -- no candidate strands nothing on both axes.
+test fn witness_unbalanced_builds_strand_what_they_paid_for() -> Bool {
+  let small_cores = total_cores(c: candidate_q64_16) == 128
+  let small_mem = total_memory_gib(c: candidate_q64_16) == 256
+  let small_units = standard_units(c: candidate_q64_16) == 91
+  let small_strands = stranded_cores(c: candidate_q64_16) == 37
+  let balanced_units = standard_units(c: candidate_q64_32) == 128
+  let core_bound_strands_no_cores = stranded_cores(c: candidate_q64_32) == 0
+    && unused_standard_memory_gib(c: candidate_q64_32) == 154
+  let many_core_strands_more = stranded_cores(c: candidate_q128_32) == 73
+    && standard_units(c: candidate_q128_32) == 183
+  let sellable_below_standard = sellable_units(c: candidate_q64_32) < standard_units(c: candidate_q64_32)
+  small_cores && small_mem && small_units && small_strands
+    && balanced_units && core_bound_strands_no_cores && many_core_strands_more && sellable_below_standard
+}
+
+// CONTROL 8. Changing the build must move revenue, capex and break-even together. A model where the
+// hardware choice does not reach the money is not modelling the decision.
+test fn witness_build_choice_moves_revenue_capex_and_break_even() -> Bool {
+  let rev_small = node_revenue_per_month_micro(b: candidate_q64_16, price_micro: retail_per_unit_minute_micro, utilization_permille: selected_utilization_permille)
+  let rev_balanced = node_revenue_per_month_micro(b: candidate_q64_32, price_micro: retail_per_unit_minute_micro, utilization_permille: selected_utilization_permille)
+  let capex_small = known_capex_micro(c: candidate_q64_16)
+  let capex_balanced = known_capex_micro(c: candidate_q64_32)
+  let be_small = break_even_permille(b: candidate_q64_16, price_micro: retail_per_unit_minute_micro, dia_micro: 2000000000)
+  let be_balanced = break_even_permille(b: candidate_q64_32, price_micro: retail_per_unit_minute_micro, dia_micro: 2000000000)
+  rev_balanced > rev_small && capex_balanced > capex_small && be_balanced < be_small
+}
+
+// CONTROL 9. Neither the cheapest build nor the densest build is the cheapest sellable unit. The
+// first half is the packing alpha; the second half is the retraction of the earlier preference for
+// maximum density, and it must keep holding or the recommendation has to change with it.
+test fn witness_cheapest_and_densest_are_both_worse_per_unit() -> Bool {
+  let cheapest_is_worse = known_capex_micro(c: candidate_q64_16) < known_capex_micro(c: candidate_q64_32)
+    && known_capex_per_unit_micro(c: candidate_q64_16) > known_capex_per_unit_micro(c: candidate_q64_32)
+  let densest_is_worse = known_capex_micro(c: candidate_q128_64) > known_capex_micro(c: candidate_q64_32)
+    && known_capex_per_unit_micro(c: candidate_q128_64) > known_capex_per_unit_micro(c: candidate_q64_32)
+  cheapest_is_worse && densest_is_worse
+}
+
+// CONTROL 9b. The memory price curve has a knee and a cliff, and the build recommendation rests on
+// it. If the curve ever flattens this fails and the frontier has to be re-read.
+test fn witness_memory_price_curve_has_a_cliff() -> Bool {
+  let mid_is_knee = memory_price_per_gib_micro(m: dimm_32gib_lot) < memory_price_per_gib_micro(m: dimm_16gib_lot)
+  let dense_is_cliff = memory_price_per_gib_micro(m: dimm_64gib_lot) > memory_price_per_gib_micro(m: dimm_32gib_lot) * 2
+  mid_is_knee && dense_is_cliff && memory_cliff_holds()
+}
+
+// CONTROL 9c. THE TWO LAYERS DO NOT LEAK. A planning rate is a perfectly good basis for comparing
+// architectures and a bad basis for a purchase order, so every candidate is blocked at the purchase
+// gate AND every candidate is fully comparable on the frontier at the same time. If the gate ever
+// starts blocking the comparison, the planning model has stopped being useful.
+test fn witness_rates_are_assumed_not_contracted() -> Bool {
+  let memory_rates_assumed = all(memory_lots, m => supply_is_assumed(q: m.supply))
+  let nothing_is_bought = all(node_build_candidates, c => purchase_is_authorized(c: c) == false)
+  let obligations_are_named = match purchase_authorization(c: candidate_q64_32) {
+    PurchaseAuthorized { receipt } => false,
+    PurchaseBlocked { obligations } => count(obligations) > 4,
+  }
+  let planning_still_works = all(node_build_candidates, c => planning_inputs_are_complete(c: c))
+  memory_rates_assumed && nothing_is_bought && obligations_are_named && planning_still_works
+}
+
+// CONTROL 9d. The frontier drops only candidates that lose on every funded axis, keeps the rest, and
+// never reaches a clean non-dominated verdict while axes remain unmeasured. Extended 2026-08-18
+// when the whole-system lots joined the candidate set on the planning-capex basis: the Mt. Jade
+// barebones is dominated by the balanced loose build at the operator-quoted prices, the for-parts
+// Mt. Collins survives on cash with its condition risk named in the purchase gate, and the five
+// prior verdicts are the regression layer. The field is now GENERATED (boards x processors
+// x memory x node-count through the ratio band), so the counts pin the generator: 66 raw
+// combinations, 16 refused by the declared 2-8 GiB-per-core band, 50 admitted; among the
+// not-dominated 34, twenty are comparable frontier and fourteen are the scarce R12SPD-A
+// builds sitting NotComputable on supply depth - priced, visible, and not
+// allowed to dominate buyable candidates. The 2xQ80+16x64 specimen is dominated by the
+// Collins 16x64 build - the system lot IS the cheap Q80 carrier at the 2026-08-18 rates.
+// A REFUSAL IS NOT A STANDING. std.pareto gained SelectionRefused so that malformed evidence
+// stops being reported as ordinary non-dominance - the same state-space conflation that got
+// pair_dominates deleted upstream. The controls below assert POSITIVE standings, so a refusal
+// must fail them rather than pass through as "not dominated".
+test fn witness_frontier_drops_only_dominated_candidates() -> Bool {
+  let headroom_is_dominated = is_dominated(c: candidate_q80_32)
+  let many_core_is_dominated = is_dominated(c: candidate_q128_32)
+  let balanced_survives = is_dominated(c: candidate_q64_32) == false
+  let cash_minimal_survives = is_dominated(c: candidate_q64_16) == false
+  let dense_survives = is_dominated(c: candidate_q128_64) == false
+  let split_survives = is_dominated(c: candidate_two_q64_32) == false
+  let jade_is_dominated = is_dominated(c: candidate_mt_jade_32)
+  let collins_survives = is_dominated(c: candidate_mt_collins_32) == false
+  let asrock_survives = is_dominated(c: candidate_asrock_q64_32) == false
+  let q80_dense_dominated = is_dominated(c: candidate_q80_64)
+  let field_is_generated = count(node_build_candidates) == 50
+  let refusals_carried = count(refused_combinations()) == 16
+  let scarce_board_incomparable = all(memory_price_scenarios, sc => match standing_at(c: candidate_r12spd_q80_32, scenario: sc) {
+    NotComputable { missing } => count(missing) > 0,
+    PendingEvidence { undecided } => false,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { dominators } => false,
+    SelectionRefused { cause } => false,
+  })
+  let not_dominated_count_holds = count(surviving_candidates()) == 34
+  let survivors_carry_sensitivities = all(surviving_candidates(), c => match standing_at(c: c, scenario: scenario_band_low) {
+    ProvisionallyNonDominated { sensitivities } => count(sensitivities) > 0,
+    DominatedBy { dominators } => false,
+    SelectionRefused { cause } => false,
+    NotComputable { missing } => count(missing) > 0,
+    PendingEvidence { undecided } => count(undecided) > 0,
+  })
+  headroom_is_dominated && many_core_is_dominated && balanced_survives && cash_minimal_survives
+    && dense_survives && split_survives && jade_is_dominated && collins_survives
+    && asrock_survives && q80_dense_dominated && field_is_generated && refusals_carried
+    && scarce_board_incomparable && not_dominated_count_holds && survivors_carry_sensitivities
+    && frontier_holds_across_the_band()
+}
+
+// CONTROL 9f. The system lots are compared honestly: the planning basis credits the Mt. Jade
+// its included chassis and power (its dominator must beat it anyway), and the planned DIMM
+// population stays within the cited platform slot counts - the cross-repo join to the public
+// extdeps rows, held by execution rather than by a comment.
+test fn witness_system_lots_enter_frontier_honestly() -> Bool {
+  let jade_dominated_by_balanced = match standing_at(c: candidate_mt_jade_32, scenario: scenario_band_low) {
+    DominatedBy { dominators } => count(filter(dominators, d => d.candidate.decl_name == candidate_q64_32.label)) > 0 && all(dominators, d => count(d.winning_axes) > 0),
+    ProvisionallyNonDominated { sensitivities } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
+  }
+  let jade_population_within_spec = populated_dimm_count(c: candidate_mt_jade_32) == 16
+    && 16 <= mt_jade_spec_dimm_slots()
+  let collins_population_within_spec = populated_dimm_count(c: candidate_mt_collins_32) == 16
+    && 16 <= mt_collins_spec_dimm_slots()
+  let collins_still_blocked = purchase_is_authorized(c: candidate_mt_collins_32) == false
+  let jade_still_blocked = purchase_is_authorized(c: candidate_mt_jade_32) == false
+  jade_dominated_by_balanced && jade_population_within_spec && collins_population_within_spec
+    && collins_still_blocked && jade_still_blocked
+}
+
+// CONTROL 9g. THE SOCKET WALL, proven by a planted incompatibility: a synthetic AMD
+// SP3-shaped board (the ROMED8U name-collision with the ALTRAD8UD produced a real planning
+// misread) crossed with an LGA 4926 Altra part must land CandidateRefused - the combination
+// is unconstructible and the generator must say so before any pricing. The planted socket is
+// a TYPED CpuSocket that differs from the Ampere authority on every cpu_socket_eq axis
+// (platform owner AMD, contact count 4094), so the control exercises the same typed equality
+// production admission runs, not a string comparison. No real mismatched pair exists in the
+// fact rows, so the control plants one.
+data planted_sp3_socket: CpuSocket = CpuSocket {
+  platform_owner: amd,
+  termination: SocketedLandGrid,
+  contact_count: 4094,
+  cooling_mount: ProcessorCoolingMount { platform_owner: amd, designation: "planted SP3 mount (synthetic)" },
+}
+
+data planted_sp3_board: BoardFacts = BoardFacts {
+  label: "planted SP3 board (synthetic, never a market row)",
+  socket: planted_sp3_socket,
+  route: DomesticRoute { note: "synthetic" },
+  socket_count: 1,
+  dimm_slots: 8,
+  max_data_rate_mts: 3200,
+  altra_max_support: MaxSupportedObserved { basis: "synthetic" },
+  board_price_micro: 1000000,
+  price_note: "planted by the witness",
+  depth: DepthAvailableUncounted { note: "synthetic" },
+  planning_node_watts: 350,
+  observed_on: "2026-08-18",
+  rate_history: no_rate_history,
+}
+
+test fn witness_socket_mismatch_refuses() -> Bool {
+  match admit_loose(b: planted_sp3_board, p: altra_q80_lot, m: dimm_32gib_lot, nc: 1) {
+    CandidateRefused { label, cause } => string_contains(cause, "socket mismatch"),
+    CandidateAdmitted { c } => false,
+  }
+}
+
+// CONTROL 9h. Habitability is a typed placement fact: the system lots require a machine
+// room (they are why the fleet move needs colo), the loose builds can be finished quiet
+// (they are why home hosting is possible at all).
+fn is_machine_room(h: Habitability) -> Bool {
+  match h {
+    RequiresMachineRoom { note } => true,
+    HomeHabitableWithQuietBuild { note } => false,
+  }
+}
+
+test fn witness_habitability_splits_platforms() -> Bool {
+  is_machine_room(h: candidate_habitability(c: candidate_mt_collins_32))
+    && is_machine_room(h: candidate_habitability(c: candidate_mt_jade_32))
+    && is_machine_room(h: candidate_habitability(c: candidate_q64_32)) == false
+    && is_machine_room(h: candidate_habitability(c: candidate_asrock_q64_32)) == false
+}
+
+// CONTROL 9i. Levies: planning capex is the taxed assembly of known lines plus finishing
+// (8.875 percent on everything, operator-directed), and the domestic Collins lot carries no
+// duty while the imported ASRock board line does - asserted through the assembly identity
+// and the route-sensitive totals.
+test fn witness_levies_applied() -> Bool {
+  planning_capex_micro(c: candidate_q64_32)
+      == with_sales_tax(price_micro: known_capex_micro(c: candidate_q64_32) + finishing_for(c: candidate_q64_32))
+    && planning_capex_micro(c: candidate_mt_collins_32)
+      == with_sales_tax(price_micro: known_capex_micro(c: candidate_mt_collins_32) + finishing_for(c: candidate_mt_collins_32))
+}
+
+// CONTROL 9e. INVERTED by the 2026-08-18 memory re-quote: 64 GiB modules fell 499 -> 210,
+// so the dense build is now CHEAPER in cash than the two-node split AND sells more units -
+// the split survives on failure domain alone. The prior direction (split cheaper by >250
+// permille) was pinned here and went red on the rate change, exactly as a pinned conclusion
+// should; this is its re-derivation, both directions pinned again.
+test fn witness_split_fleet_trades_capex_for_machines() -> Bool {
+  let s = split_versus_dense()
+  s.dense_capex_micro < s.split_capex_micro
+    && s.saving_permille < 0 - 200
+    && s.split_failure_domain < s.dense_failure_domain
+    && s.split_units < s.dense_units
+    && s.unit_shortfall > 0
+    && s.extra_machines == 1
+}
+
+// CONTROL 10. Each site fixed cost is allocated exactly once: doubling the node count must halve
+// the per-node share of rent and transit, and must not change the per-node electricity.
+test fn witness_site_fixed_cost_is_allocated_exactly_once() -> Bool {
+  let four = allocate_site(admitted_nodes: 4, dia_micro: 2000000000, node_watts: 650)
+  let eight = allocate_site(admitted_nodes: 8, dia_micro: 2000000000, node_watts: 650)
+  let rent_halves = eight.rent_per_node_micro * 2 == four.rent_per_node_micro
+  let dia_halves = eight.dia_per_node_micro * 2 == four.dia_per_node_micro
+  let power_unchanged = eight.electricity_per_node_micro == four.electricity_per_node_micro
+  let total_falls = site_cost_per_node_micro(a: eight) < site_cost_per_node_micro(a: four)
+  let rent_sums_back = four.rent_per_node_micro * 4 == standing_micro(s: rent_and_common_area)
+  let dia_sums_back = four.dia_per_node_micro * 4 == 2000000000
+  rent_halves && dia_halves && power_unchanged && total_falls && rent_sums_back && dia_sums_back
+}
+
+// CONTROL 11. ActualMargin must be unreachable while transit, electricity, landed capex and
+// sellable capacity are unresolved, for every build and both tiers.
+test fn witness_actual_margin_is_impossible_today() -> Bool {
+  let capex_incomplete = match landed_capex(c: candidate_q64_32) {
+    LandedCapexResolved { usd_micro, receipt } => false,
+    LandedCapexIncomplete { known_subtotal_micro, missing, obligation } => true,
+  }
+  let none_actual = all(node_build_candidates, b =>
+    margin_is_actual(m: margin_standing(b: b, price_micro: retail_per_unit_minute_micro, utilization_permille: selected_utilization_permille)) == false
+      && margin_is_actual(m: margin_standing(b: b, price_micro: volume_per_unit_minute_micro, utilization_permille: selected_utilization_permille)) == false)
+  let names_unresolved = match margin_standing(b: candidate_q64_32, price_micro: volume_per_unit_minute_micro, utilization_permille: selected_utilization_permille) {
+    ActualMargin { permille, receipt } => false,
+    MarginSensitivity { contribution_permille, low_permille, high_permille, unresolved_inputs, unpriced, caveat } =>
+      count(unresolved_inputs) > 0 && count(unpriced) > 0 && low_permille < high_permille,
+  }
+  capex_incomplete && none_actual && names_unresolved
+}
+
+// CONTROL 12. Customer saving and operator contribution are different quantities. The saving a
+// customer keeps against a competitor must not move when our cost model moves, and it is computed
+// from prices alone. The last clause checks that a competitor cheaper than us yields no customer
+// saving rather than a negative one, so the two fields cannot disagree.
+test fn witness_customer_alpha_is_not_operator_margin() -> Bool {
+  let a = customer_alpha(competitor: "Example", competitor_micro: 4000, our_price_micro: retail_per_unit_minute_micro)
+  let saving_is_price_only = a.saving_micro == 4000 - retail_per_unit_minute_micro
+  let share_is_of_their_price = a.saving_permille == (4000 - retail_per_unit_minute_micro) * 1000 / 4000
+  let cheaper_competitor = customer_alpha(competitor: "Cheap", competitor_micro: 500, our_price_micro: retail_per_unit_minute_micro).saving_micro == 0
+  saving_is_price_only && share_is_of_their_price && cheaper_competitor
+}
+
+// CONTROL 13. A non-positive competitor rate must refuse comparison rather than divide by zero.
+test fn witness_comparison_refuses_a_missing_rate() -> Bool {
+  let zero_refuses = match retail_vs(theirs_micro: 0) {
+    RetailNotComparable { reason } => true,
+    RetailUnder { permille } => false,
+    RetailOver { permille } => false,
+    RetailLevel => false,
+  }
+  let real_rate_compares = match retail_vs(theirs_micro: 2000) {
+    RetailUnder { permille } => permille == 375,
+    RetailOver { permille } => false,
+    RetailLevel => false,
+    RetailNotComparable { reason } => false,
+  }
+  zero_refuses && real_rate_compares
+}
+
+// CONTROL 14. The costs with no reading at all must stay named on the page rather than quietly
+// dropping out of the model once a contribution figure exists.
+test fn witness_unpriced_business_costs_stay_named() -> Bool {
+  count(unpriced_site_lines) >= 8
+}
+
+data ci_economics_witness_names: List<NonEmptyStr> = [
+  "witness_missing_offer_refuses_and_is_never_free",
+  "witness_duplicate_identity_refuses_and_catalog_is_clean",
+  "witness_architecture_gate_holds_both_ways",
+  "witness_shared_cpu_cannot_serve_a_guaranteed_tier",
+  "witness_spill_route_differs_by_job_shape",
+  "witness_experimental_and_foreign_rows_are_not_spendable",
+  "witness_unbalanced_builds_strand_what_they_paid_for",
+  "witness_build_choice_moves_revenue_capex_and_break_even",
+  "witness_cheapest_and_densest_are_both_worse_per_unit",
+  "witness_memory_price_curve_has_a_cliff",
+  "witness_rates_are_assumed_not_contracted",
+  "witness_frontier_drops_only_dominated_candidates",
+  "witness_split_fleet_trades_capex_for_machines",
+  "witness_site_fixed_cost_is_allocated_exactly_once",
+  "witness_actual_margin_is_impossible_today",
+  "witness_customer_alpha_is_not_operator_margin",
+  "witness_comparison_refuses_a_missing_rate",
+  "witness_unpriced_business_costs_stay_named",
+]
+
+// One entry that calls every witness body, because the interpreter pays a fixed multi-minute
+// module-index cost per process and eighteen separate runs would pay it eighteen times.
+test fn ci_economics_witness_roster_is_complete_and_green() -> Bool {
+  count(ci_economics_witness_names) == 18
+    && witness_missing_offer_refuses_and_is_never_free()
+    && witness_duplicate_identity_refuses_and_catalog_is_clean()
+    && witness_architecture_gate_holds_both_ways()
+    && witness_shared_cpu_cannot_serve_a_guaranteed_tier()
+    && witness_spill_route_differs_by_job_shape()
+    && witness_experimental_and_foreign_rows_are_not_spendable()
+    && witness_unbalanced_builds_strand_what_they_paid_for()
+    && witness_build_choice_moves_revenue_capex_and_break_even()
+    && witness_cheapest_and_densest_are_both_worse_per_unit()
+    && witness_memory_price_curve_has_a_cliff()
+    && witness_rates_are_assumed_not_contracted()
+    && witness_frontier_drops_only_dominated_candidates()
+    && witness_split_fleet_trades_capex_for_machines()
+    && witness_socket_mismatch_refuses()
+    && witness_habitability_splits_platforms()
+    && witness_levies_applied()
+    && witness_site_fixed_cost_is_allocated_exactly_once()
+    && witness_actual_margin_is_impossible_today()
+    && witness_customer_alpha_is_not_operator_margin()
+    && witness_comparison_refuses_a_missing_rate()
+    && witness_unpriced_business_costs_stay_named()
+    && witness_receipt_surface_branches_on_sku_basis()
+    && witness_live_receipt_surface_matches_selected_basis()
+    && witness_receipt_remains_customer_visible()
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PROJECTION JOIN. PR #6 ruled the first SKU MeteredExecutionOnly and stated the refused claim
+// in the carrier; the customer-facing surface went on saying reuse was the product for five days,
+// because it AUTHORED that sentence instead of DERIVING it. The repair makes the surface a function
+// of the ruling, and these controls are what keep the function from being collapsed back into a
+// constant.
+//
+// NOTE ON WHAT IS NOT WITNESSED HERE. "receipt_why equals receipt_customer_why(the live basis)" is
+// true by construction now - there is no second authority left to disagree with - so asserting it
+// would be permanently green and would be cited as coverage while carrying no information (DESIGN
+// section 4b). The controls below are the ones whose RED is authorable: collapse either match to a
+// single arm, or re-author the customer sentence as a literal, and they fail.
+// ---------------------------------------------------------------------------------------------
+
+// CONTROL. The customer-facing receipt description must actually BRANCH on the pricing basis. If
+// someone collapses receipt_customer_why to one arm - which is exactly how the drift happened the
+// first time - the two bases render identically and this goes red.
+test fn witness_receipt_surface_branches_on_sku_basis() -> Bool {
+  let metered = receipt_customer_why(b: MeteredExecutionOnly { basis: "probe", refused_claim: "probe" })
+  let structural = receipt_customer_why(b: StructuralWorkElimination { basis: "probe", evidence: "probe" })
+  let note_metered = receipt_internal_note(b: MeteredExecutionOnly { basis: "probe", refused_claim: "probe" })
+  let note_structural = receipt_internal_note(b: StructuralWorkElimination { basis: "probe", evidence: "probe" })
+  metered != structural && note_metered != note_structural
+}
+
+// CONTROL. Under the basis actually selected today, the live customer surface must be the metered
+// arm and not the structural one. This is the assertion that would have caught the original defect:
+// it joins the shipped sentence to the ruling rather than reading either alone.
+test fn witness_live_receipt_surface_matches_selected_basis() -> Bool {
+  let expected = receipt_customer_why(b: first_runner_sku_pricing_basis)
+  let structural = receipt_customer_why(b: StructuralWorkElimination { basis: "probe", evidence: "probe" })
+  receipt_why == expected && receipt_why != structural
+}
+
+// CONTROL. The receipt stays a customer-visible attribute. The repair changed what it SAYS; it must
+// not have quietly demoted the receipt off the customer surface, which would have been a different
+// and worse way to resolve the contradiction.
+test fn witness_receipt_remains_customer_visible() -> Bool {
+  is_customer_visible(s: attr_receipt.side)
+}
+
+fn econ_flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn economics_frontier_report() -> NonEmptyStr {
+  join([
+    "frontier_drops_only_dominated=", econ_flag(b: witness_frontier_drops_only_dominated_candidates()),
+    " system_lots_honest=", econ_flag(b: witness_system_lots_enter_frontier_honestly()),
+    " split_trades=", econ_flag(b: witness_split_fleet_trades_capex_for_machines()),
+    " rates_assumed=", econ_flag(b: witness_rates_are_assumed_not_contracted()),
+    " receipt_branches=", econ_flag(b: witness_receipt_surface_branches_on_sku_basis()),
+    " receipt_matches_basis=", econ_flag(b: witness_live_receipt_surface_matches_selected_basis()),
+    " receipt_visible=", econ_flag(b: witness_receipt_remains_customer_visible()),
+  ], "")
+}
+
+// The band claim, restated over the scenario aggregate rather than the deleted Bool: the
+// provisional selection must not be dominated in every declared scenario.
+fn frontier_holds_across_the_band() -> Bool {
+  match band_standing(c: candidate_q64_32) {
+    FrontierAtEveryScenario { receipts } => true
+    ScenarioSensitive { frontier_at, dominated_at } => true
+    DominatedAtEveryScenario { receipts } => false
+    BandStandingUnestablished { receipts } => false
+  }
+}
+
+fn economics_frontier_main() -> ProcessExit {
+  let report = economics_frontier_report()
+  let all_pass = witness_frontier_drops_only_dominated_candidates()
+    && witness_system_lots_enter_frontier_honestly()
+    && witness_split_fleet_trades_capex_for_machines()
+    && witness_socket_mismatch_refuses()
+    && witness_habitability_splits_platforms()
+    && witness_levies_applied()
+    && witness_rates_are_assumed_not_contracted()
+    && witness_receipt_surface_branches_on_sku_basis()
+    && witness_live_receipt_surface_matches_selected_basis()
+    && witness_receipt_remains_customer_visible()
+  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
+}
+
+// ONE SKU, THREE DECIMAL GB, AND THE FOUR-GB UNIT IS REVOKED RATHER THAN SHADOWED. The
+// conversions are checked at the two edges where binary and decimal meet: 3 GiB is 3.22e9 bytes,
+// one unit and change, never two; 76 units need 228e9 bytes = 212.4 GiB, so 213 rounded up.
+test fn witness_one_sellable_unit_at_three_decimal_gb() -> Bool {
+  let one_core = ci_sellable_unit.cores_per_unit == 1
+  let revoked_names_this = revoked_four_gb_unit.revoked_on == ci_sellable_unit.effective_from
+  let only_admission = second_sku_needs_a_dramatically_different_market(c: ci_sellable_unit)
+  let floors = units_by_memory_gib(gib: 3) == 1 && units_by_memory_gib(gib: 6) == 2
+  let ceils = required_memory_gib_ceiling_for_units(units: 76) == 213
+  one_core && revoked_names_this && only_admission && floors && ceils
+}
+
+// THE LARGEST OFFERED SHAPE IS WHAT A NODE EXPOSES, NOT A SECOND SKU. A one-socket Q80 node cannot
+// host the 128-unit shape; the menu filtered by that node stops at 64.
+test fn witness_the_128_unit_shape_is_not_hostable_on_a_one_socket_q80() -> Bool {
+  let per_node = sellable_units(c: candidate_r12spd_q80_32)
+  let hostable = hostable_unit_counts(offered: [2, 4, 8, 16, 32, 64, 128], sellable_units_per_node: per_node)
+  per_node < 128
+    && !shape_is_hostable(units: 128, sellable_units_per_node: per_node)
+    && shape_is_hostable(units: 64, sellable_units_per_node: per_node)
+    && count(hostable) == 6
+}

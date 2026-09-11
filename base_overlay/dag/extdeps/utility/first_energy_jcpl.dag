@@ -1,0 +1,18 @@
+module extdeps.utility.first_energy_jcpl
+
+import std.types { NonEmptyStr }
+import extdeps.utility.types { ElectricUtility, UtilityGovernance, InvestorOwned }
+
+// Jersey Central Power & Light - FirstEnergy's NJ distribution subsidiary; serves
+// northwestern/central NJ including Warren and Morris counties (all four of our NJ
+// non-Hudson candidates). Cited from firstenergycorp.com service-territory pages;
+// facts here are the coarse identity grain a will-serve inquiry needs, refined by
+// the inquiry itself, never by us.
+
+data jcpl: ElectricUtility = ElectricUtility {
+  name: "Jersey Central Power & Light (JCP&L)",
+  governance: InvestorOwned { holding_company: "FirstEnergy Corp" },
+  regulator: "NJ Board of Public Utilities",
+  retail_supply_choice: true,
+  new_service_channel: "FirstEnergy commercial new-service/builders line; will-serve and load-study requests through the JCP&L new business group",
+}

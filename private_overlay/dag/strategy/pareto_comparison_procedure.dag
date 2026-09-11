@@ -1,0 +1,156 @@
+module strategy.pareto_comparison_procedure
+
+import std.types { NonEmptyStr, List, String }
+import std.decl_ref { DeclarationRef }
+import std.pareto {
+  AxisGoal, LowerIsBetter, HigherIsBetter,
+  ParetoEntry, SelectionAxis, ParetoStanding,
+  ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused,
+  entry_standing,
+}
+import strategy.workflow_stage_gate {
+  SelectionAssessment, SelectionAssessmentOutcome, seal_assessment,
+  ProcedureRegistration, register_procedure, ParetoConfigured,
+  ProcedureSupportsSelection, ProcedureRejectsSelection, ProcedurePending, ProcedureRefused,
+}
+
+// THE PROCEDURE OWNS THE ADAPTER, AND IT IS THE ONLY ROUTE TO SUPPORT.
+//
+// A gate names a comparison procedure by DeclarationRef, and the workflow records what that
+// procedure said. Nothing structural stopped a caller from pairing the procedure ref with a
+// hand-authored ProcedureSupportsSelection -- so the chain proved a recorded assertion was
+// self-consistent, never that the DECLARED procedure produced it. That is the original defect one
+// level up: the decision was checked against the assessment, and the assessment against nothing.
+//
+// This module is the pareto-backed procedure's own projection from its native answer. It lives
+// beside that procedure rather than in the generic workflow, because a hub that enumerated every
+// procedure's result type and dispatched among them would be exactly the layer inversion section 3
+// forbids: the generic carrier would then own facts belonging to each procedure.
+
+// THE PROJECTION IS LOSSY AND NOW ACTUALLY IS. An earlier version said the native detail stayed on
+// the pareto side while copying undecided, missing and cause into the generic arms' payloads. The
+// neutral arms carry nothing now, so the claim and the code agree.
+//
+// NotComputable PROJECTS TO PENDING, NOT REFUSED, and the distinction is the whole reason
+// std.pareto split those two states apart. NotComputable is an HONEST declaration: the subject says
+// which funded input it does not have, nothing is malformed, and the remedy is to supply the input.
+// SelectionRefused is the opposite -- the selection inputs contradict themselves, so the comparison
+// cannot be trusted to mean what it says. Mapping the honest gap onto the workflow's refusal arm
+// reported an unfunded axis as a broken procedure, which is the same conflation one level up that
+// gunbc#10150 removed from the gap itself.
+//
+// The generic carrier owns only what the two share at ITS grain: no terminal support-or-reject
+// answer has been supplied yet. Which input is absent, and on which axis, stays with the standing.
+fn outcome_of_standing(s: ParetoStanding) -> SelectionAssessmentOutcome {
+  match s {
+    ProvisionallyNonDominated { sensitivities } => ProcedureSupportsSelection,
+    DominatedBy { dominators } => ProcedureRejectsSelection,
+    PendingEvidence { undecided } => ProcedurePending,
+    NotComputable { missing } => ProcedurePending,
+    SelectionRefused { cause } => ProcedureRefused,
+  }
+}
+
+// The assessment is DERIVED from running the comparison, never handed in. The compared population
+// reported is the field this procedure actually ran over, so a population that disagrees with the
+// gate is a fact the workflow can catch rather than a claim it must trust.
+// A PROCEDURE IDENTITY THAT DOES NOT CARRY ITS DECIDING POLICY DOES NOT IDENTIFY A PROCEDURE.
+//
+// The adapter used to take `procedure: DeclarationRef` beside free `axes` and `sensitivities`, so
+// one identity could be worn by two materially different comparisons -- different axes, opposite
+// goals -- which is section 3's meaning fork: one name, two contracts. It also took `selected`
+// independently of `subject`, so the comparison could evaluate B and report support for A.
+//
+// ParetoProcedure joins the identity to the axes and sensitivities that decide, and it is
+// sole_constructor so the join cannot be taken apart outside this module. The adapter now derives
+// what it reports: the procedure ref from the configured procedure, the selected candidate from the
+// entry actually evaluated, the population from the field actually compared. Nothing it states
+// about the comparison is supplied by its caller.
+//
+// THE RESIDUAL, STATED RATHER THAN CLAIMED CLOSED: two ParetoProcedure values may still be
+// configured with one identity and different axes. Binding identity to policy ACROSS declarations
+// needs a registry census over the configured procedures -- a uniqueness check at identity grain
+// with a typed refusal -- which does not exist here. That census is this class's next-rung trigger;
+// nothing short of it closes the cross-declaration fork.
+type ParetoProcedure sole_constructor {
+  registration: ProcedureRegistration,
+  axes: List<SelectionAxis>,
+  sensitivities: List<NonEmptyStr>,
+}
+
+// THE REGISTRATION CARRIES THE POLICY THAT DECIDES, so two configurations sharing an identity and
+// differing in what they compare on -- a different axis, the same axis with the opposite goal, a
+// different sensitivity roster -- are distinguishable. Reusing one identity across those is a
+// meaning fork, and the workflow's structural comparison is what sees it.
+fn pareto_procedure(
+  identity: DeclarationRef,
+  axes: List<SelectionAxis>,
+  sensitivities: List<NonEmptyStr>,
+) -> ParetoProcedure {
+  ParetoProcedure {
+    registration: register_procedure(
+      identity: identity,
+      configuration: ParetoConfigured { axes: axes, sensitivities: sensitivities }),
+    axes: axes,
+    sensitivities: sensitivities,
+  }
+}
+
+// THE RETAINED STANDING IS READABLE WITHOUT BORROWING THE VOCABULARY. A consumer asking WHY needs
+// the distinction the four-arm outcome drops, and it should not have to import std.pareto's variants
+// to get it -- that would push dominance vocabulary back out into the workflow layer, which is the
+// inversion the lossy projection exists to prevent. This is the procedure's own account of its own
+// answer, at a grain the outcome cannot express: PendingEvidence and NotComputable both project to
+// ProcedurePending, and they are not the same fact.
+fn standing_detail_key(s: ParetoStanding) -> String {
+  match s {
+    ProvisionallyNonDominated { sensitivities } => "non_dominated",
+    DominatedBy { dominators } => "dominated",
+    PendingEvidence { undecided } => "pending_evidence",
+    NotComputable { missing } => "not_computable",
+    SelectionRefused { cause } => "refused",
+  }
+}
+
+// THE PROCEDURE KEEPS ITS OWN ANSWER, AND THE WORKFLOW GETS THE PROJECTION OF IT.
+//
+// This computed the ParetoStanding and threw it away, keeping only the four-arm outcome. The
+// projection is deliberately lossy -- the workflow must not learn to read dominance -- but LOSSY IS
+// NOT THE SAME AS DESTROYED. Discarding the native standing means the reason for the outcome is
+// unrecoverable, so anything later wanting to know WHY a candidate was rejected must either
+// recompute it, which is redundant work, or derive it somewhere else, which is a second authority
+// for one fact.
+//
+// The ruling is therefore the return value and the assessment is a field of it. The workflow reads
+// .assessment and nothing else; the standing stays where the vocabulary for it lives.
+type ParetoRuling sole_constructor {
+  assessment: SelectionAssessment,
+  standing: ParetoStanding,
+}
+
+// THE ASSESSMENT CARRIES THIS PROCEDURE'S OWN ACCOUNT, not only the workflow's four-arm outcome.
+// A front held at every scenario and one held at some project to the same outcome and are not the
+// same ruling, so the account is what a workflow consumer follows back to the answer this procedure
+// actually gave. It is written in this module's vocabulary and the workflow never parses it.
+fn assess_by_pareto(
+  self_ref: DeclarationRef,
+  gate: DeclarationRef,
+  procedure: ParetoProcedure,
+  subject: ParetoEntry,
+  field: List<ParetoEntry>,
+) -> ParetoRuling {
+  let standing = entry_standing(
+    subject: subject, field: field, axes: procedure.axes, sensitivities: procedure.sensitivities)
+  ParetoRuling {
+    standing: standing,
+    assessment: seal_assessment(
+      self_ref: self_ref,
+      gate: gate,
+      procedure: procedure.registration,
+      selected: subject.identity,
+      compared_population: fold(field, init: [], f: fn(acc, e) { concat(acc, [e.identity]) }),
+      outcome: outcome_of_standing(s: standing),
+      native_account: standing_detail_key(s: standing),
+    ),
+  }
+}

@@ -1,0 +1,3196 @@
+module test.claim.workflow_stage_gate_witness
+
+import std.types { Int, NonEmptyStr, List, EpochMs, String }
+import std.logic { Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, declaration_ref_display_key }
+import std.citation {
+  CitationTarget, CitationSelector, CitationVerificationOutcome,
+  CitedRepresentationIdentity, RawResponseBody,
+  CitationRetrievalRequest, RepresentationRetrieved,
+  citation_exact_pin, cited_representation_identity, observed_cited_representation,
+  verify_citation_representation, ObservedCitedRepresentation,
+}
+import std.content_hash { Sha256Digest }
+import extdeps.external_authority { ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.http.server { MediaType, TopLevelApplication }
+import extdeps.pin { Pin }
+import extdeps.version { VersionIdentity }
+import std.interval { degenerate_interval }
+import std.pareto { ParetoEntry, AxisReading, SelectionAxis, LowerIsBetter, HigherIsBetter }
+import strategy.pareto_comparison_procedure { assess_by_pareto, pareto_procedure, ParetoProcedure, standing_detail_key }
+import strategy.panel_ruling_procedure {
+  assess_by_panel, panel_procedure, PanelProcedure, PanelRulingRequest, PanelVote, VoteFor, VoteAgainst, VoteAbstain,
+}
+import strategy.workflow_stage_gate {
+  WorkStage, DecisionGate, Actuation, WorkflowNode, StageNode, GateNode, ActuationNode,
+  GatePurpose, SelectionAmong, ExternalAuthority, IrreversibleCommitment, Verification,
+  EvidenceRequirement, ProducedByStage, PublishedByExternalSubject, registrations_agree,
+  by_identity, declaration_ref_precedes,
+  EvidenceSubject, ProgramWide, AboutParcel, AboutSiteRealization, AboutCandidate,
+  RouteApplicability, AnyRoute, OnlyRoute,
+  EvidenceReceipt, IssuedOn, ReceiptEffectiveAt, ReceiptEffectivePendingEvidence,
+  CurrentIndefinitely, CurrentUntil, Revoked, SupersededBy,
+  ReceiptProvenance, InternallyProduced, VerifiedExternalDocument,
+  ReceiptOutcome, OutcomeFavourable, OutcomeAdverse, OutcomeUnread,
+  RequirementRefusedByEvidence, GateRefusedByEvidence, standing_is_refused,
+  EvidenceRefusalCause, EvidenceAdmitted, EvidenceRefused,
+  ReceiptNamesAnotherRequirement, ReceiptNamesAnotherGate, ReceiptSubjectMismatch,
+  ReceiptRevisionMismatch, ReceiptProducerNotAuthorized, ReceiptRepresentationNotVerified,
+  PublishedByExternalSubject,
+  WorkflowRealizationStanding, SelectedWorkflowDerived,
+  ActuationRefusal,
+  WorkflowGraphAdmission, GraphAdmitted, GraphRefused, admit_template, admit_projection, graph_is_admitted,
+  GraphRefusalCause, DuplicateNodeIdentity, UnknownDependency, DuplicateDependencyEdge,
+  SelfDependency, DependencyCycle, RequirementGateMismatch, RequirementProducerUnknown,
+  ActuationGateUnknown, ActuationAuthorizationEdgeMissing, DuplicateRequirementIdentity,
+  EmptyRequirementPopulation, ActivationNamesUnknownGate, ActivationNamesUnknownCandidate,
+  DuplicateCandidateIdentity,
+  WorkflowTemplate, WorkflowNodeSpec, WorkflowDependency, TemplateSelection, admit_template,
+  SelectionAssessment, SelectionAssessmentOutcome, ProcedureRegistration, ProcedureSupportsSelection,
+  ProcedureRejectsSelection, ProcedurePending, ProcedureRefused,
+  SelectionUnassessed, ConflictingAssessments, AssessmentForAnotherProcedure,
+  AssessmentSelectedAnotherCandidate, AssessedPopulationOmitsCandidate,
+  AssessedPopulationCarriesUndeclaredCandidate, ProcedureDidNotSupportSelection,
+  purpose_procedure, selection_candidates, gate_in_specs,
+  SelectionDecision, SelectionDisposition, SelectionPending, SelectionAdmitted,
+  SelectionRenewalRequired, SelectionRefused, SelectionPrefixActive,
+  realize, PrefixReason, NoBranchDeclared, AwaitingSelection, AwaitingAdjudication,
+  derive_workflow, WorkflowSnapshot, SnapshotDerived, SnapshotRefused,
+  WorkflowFacts, GateAnswer, GateAnswered, GateUnanswerable,
+  ActuationAnswer, ActuationAnswered, ActuationUnanswerable,
+  SelectionAnswer, SelectionAnswered, SelectionUnanswerable,
+  gate_answer, actuation_answer, selection_answer, actuation_policy_may_proceed, derivation_refusal,
+  SnapshotRefusal, SnapshotTemplateRefused, SnapshotRealizationRefused, SnapshotDuplicateReceiptIdentity,
+  RealizationSelectionDoesNotMatchTemplate, ActuationNotActive,
+  AdmissionEdgeOnNonGate, SelectionGateNotAPrefixNode,
+  SelectionGateRequirementIsRouteScoped, SelectionGateDependencyIsRouteScoped,
+  IssueDateUnread, WorkflowRealizationRefused, NoSelection, SelectedBy,
+  GateEvidenceConflicts, SelectionEvidenceConflicts, standing_receipt, contains_ref,
+  RealizationMultipleSelections, SnapshotDuplicateSelectionDecisionIdentity,
+  RealizationSelectedNotDeclared, RealizationSelectionRefused, RealizationGraphRefused,
+  WorkflowRealizationRefusal, SelectionRefusalCause, SelectedCandidateNotInPopulation,
+  ConflictingSelections, SelectionStandingForAnotherGate, SelectionEvidenceDidNotAdmitTheGate,
+  SelectorRefusedByEvidence,
+  disposition_receipts,
+  IssuedStanding, ReceiptEffective, ReceiptCurrency, ReceiptEffectivePendingEvidence,
+  DependencyKind, OrderingOnly, RequiresAdmission, GateNoApplicableRequirements,
+  EmptyApplicableRequirementPopulation, GatePrerequisiteIsNotAGate, SelectionGateNotDeclared,
+  SelectionGateIsNotASelection, CandidatePopulationDiverges, EvidenceProducer,
+  ProjectionForUndeclaredRoute, RequirementScopedToUndeclaredRoute,
+  DuplicateNodeIdentityAcrossTemplate, DuplicateRequirementIdentityAcrossTemplate,
+  DuplicateSelectionCandidateInPurpose, UnbranchedTemplateCarriesSelectionContent,
+  EvidenceRefusalCause, EvidenceAdmitted, EvidenceRefused,
+  NodeActivation, AlwaysActive, AfterSelection, OnlyWhenSelected,
+  RouteScope, PreSelection, SelectedRoute, gate_disposition_for, project_edges, project_nodes,
+  admit_projection,
+  GateNotActive, ReceiptProvenanceProducerMismatch,
+  GateEvidenceAdmission, admit_evidence, evidence_is_admitted,
+  GateDisposition, GateAdmitted, GatePending, GateRenewalRequired, disposition_is_admitted,
+  ActuationStanding, actuation_is_authorized,
+  CandidateStanding, CandidateViable, CandidateRefused, candidate_is_viable,
+  ProgramStanding, ProgramContinues, RefuseAndStayColo, CandidatePopulationIncomplete, program_standing,
+  requirement_standing, RequirementEvidenceConflicts, RequirementNotYetEffective, RequirementStale, RequirementSatisfied, RequirementUnmet, RequirementNotYetEffective,
+  RequirementStale, standing_is_satisfied, standing_is_stale,
+}
+
+fn probe(name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef { module_path: "test.claim.workflow_stage_gate_witness", decl_name: name, field: WholeDeclaration }
+}
+
+data now: EpochMs = 1788000000000
+data later: EpochMs = 1799000000000
+data earlier: EpochMs = 1700000000000
+
+data r_stage_a: DeclarationRef = probe(name: "stage_a")
+data r_stage_b: DeclarationRef = probe(name: "stage_b")
+data r_gate: DeclarationRef = probe(name: "gate")
+data r_act: DeclarationRef = probe(name: "act")
+data r_req: DeclarationRef = probe(name: "req")
+data r_other_req: DeclarationRef = probe(name: "other_req")
+data r_other_gate: DeclarationRef = probe(name: "other_gate")
+data r_receipt: DeclarationRef = probe(name: "receipt")
+data r_parcel_a: DeclarationRef = probe(name: "parcel_a")
+data r_parcel_b: DeclarationRef = probe(name: "parcel_b")
+data r_route_x: DeclarationRef = probe(name: "route_x")
+// The comparison procedure the fixture gates declare. A synthetic ref, because the substrate must
+// not know which procedure this is -- that is the point of the field being a DeclarationRef.
+data r_procedure: DeclarationRef = probe(name: "comparison_procedure")
+
+// THE REGISTRY SAYS WHAT THE GATE'S DECLARED IDENTITY DENOTES. Every fixture in this file compares
+// under the same pareto configuration, so the registry carries exactly that one row -- built
+// through the real configuration mint, because register_procedure is admit_callers-sealed to the
+// mints and a test cannot reach it.
+data pareto_config: ParetoProcedure = pareto_procedure(identity: r_procedure, axes: compared_axes, sensitivities: [])
+
+data r_other_procedure: DeclarationRef = probe(name: "other_comparison_procedure")
+data r_route_y: DeclarationRef = probe(name: "route_y")
+data r_absent: DeclarationRef = probe(name: "no_such_node")
+
+data rev_r: DeclarationRef = probe(name: "revision_r")
+data rev_prior: DeclarationRef = probe(name: "revision_r_minus_1")
+
+data stage_a: WorkStage = WorkStage { self_ref: r_stage_a, title: "a", depends_on: [], planning_owner: "p", planning_duration_band: "p" }
+data stage_b: WorkStage = WorkStage { self_ref: r_stage_b, title: "b", depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }], planning_owner: "p", planning_duration_band: "p" }
+
+data req: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_req,
+  gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a },
+  design_revision: rev_r,
+  applies_to: AnyRoute,
+  describes: "probe requirement",
+}
+
+data gate: DecisionGate = DecisionGate {
+  self_ref: r_gate,
+  title: "probe gate",
+  purpose: ExternalAuthority { authority: r_stage_a },
+    depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [req],
+}
+
+data act: Actuation = Actuation { self_ref: r_act, title: "act", authorized_by: r_gate, depends_on: [WorkflowDependency { predecessor: r_gate, required_when: AlwaysActive, kind: OrderingOnly }], performs: "p" }
+
+data good_graph: List<WorkflowNode> = [
+  StageNode { stage: stage_a }, StageNode { stage: stage_b },
+  GateNode { gate: gate }, ActuationNode { actuation: act },
+]
+
+// A REFUSAL IS NOT ENOUGH: the CAUSE is the thing under test. Asserting only that a malformed
+// graph refuses lets one check stand in for eight - and a self-dependency proved exactly that,
+// staying refused via the cycle check after its own arm was disabled, so its wall had no
+// discriminating red at all. Each control now names the arm it expects.
+fn as_template(ns: List<WorkflowNode>) -> WorkflowTemplate {
+  WorkflowTemplate {
+    selection: SelectedBy { gate: r_gate, candidates: [r_route_x] },
+    specs: fold(ns, init: [], f: fn(acc, n) { concat(acc, [WorkflowNodeSpec { node: n, activation: AlwaysActive }]) }),
+  }
+}
+
+fn refusal_cause_key(ns: List<WorkflowNode>) -> String {
+  match admit_projection(t: as_template(ns: ns), scope: SelectedRoute { candidate: r_route_x }) {
+    GraphAdmitted { node_count } => "admitted",
+    GraphRefused { cause } => match cause {
+      DuplicateNodeIdentity { node } => "duplicate_identity",
+      UnknownDependency { from, to } => "unknown_dependency",
+      DuplicateDependencyEdge { from, to } => "duplicate_edge",
+      SelfDependency { node } => "self_dependency",
+      DependencyCycle { remaining } => "cycle",
+      RequirementGateMismatch { requirement, names_gate } => "requirement_gate_mismatch",
+      RequirementProducerUnknown { requirement, producer } => "unknown_producer",
+      ActuationGateUnknown { actuation, gate } => "actuation_gate_unknown",
+      ActuationAuthorizationEdgeMissing { actuation, gate } => "actuation_edge_missing",
+      DuplicateRequirementIdentity { requirement } => "duplicate_requirement",
+      EmptyRequirementPopulation { gate } => "empty_requirements",
+      EmptyApplicableRequirementPopulation { gate } => "empty_applicable_requirements",
+      GatePrerequisiteIsNotAGate { gate, predecessor } => "prerequisite_not_a_gate",
+      SelectionGateNotDeclared { gate } => "selection_gate_not_declared",
+      SelectionGateIsNotASelection { gate } => "selection_gate_not_a_selection",
+      CandidatePopulationDiverges { candidate } => "candidate_population_diverges",
+      ProjectionForUndeclaredRoute { candidate } => "projection_for_undeclared_route",
+      RequirementScopedToUndeclaredRoute { requirement, route } => "requirement_scoped_to_undeclared_route",
+      DuplicateNodeIdentityAcrossTemplate { node } => "duplicate_node_across_template",
+      DuplicateRequirementIdentityAcrossTemplate { requirement } => "duplicate_requirement_across_template",
+      DuplicateSelectionCandidateInPurpose { candidate } => "duplicate_candidate_in_purpose",
+      UnbranchedTemplateCarriesSelectionContent { node } => "unbranched_template_carries_selection_content",
+      AdmissionEdgeOnNonGate { node, predecessor } => "admission_edge_on_non_gate",
+      SelectionGateNotAPrefixNode { gate } => "selector_not_a_prefix_node",
+      SelectionGateRequirementIsRouteScoped { gate, requirement } => "selector_requirement_is_route_scoped",
+      SelectionGateDependencyIsRouteScoped { gate, predecessor } => "selector_dependency_is_route_scoped",
+      ActivationNamesUnknownGate { node, gate } => "activation_unknown_gate",
+      ActivationNamesUnknownCandidate { node, candidate } => "activation_unknown_candidate",
+      DuplicateCandidateIdentity { candidate } => "duplicate_candidate",
+    },
+  }
+}
+
+// ---- IDENTITY, DEPENDENCY, CYCLE, ACTUATION: the graph-admission layer ----
+
+data dup_graph: List<WorkflowNode> = concat(good_graph, [StageNode { stage: stage_a }])
+data stage_unknown_dep: WorkStage = WorkStage { self_ref: r_stage_b, title: "b", depends_on: [WorkflowDependency { predecessor: r_absent, required_when: AlwaysActive, kind: OrderingOnly }], planning_owner: "p", planning_duration_band: "p" }
+data unknown_dep_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_unknown_dep }, GateNode { gate: gate }, ActuationNode { actuation: act }]
+data stage_self_dep: WorkStage = WorkStage { self_ref: r_stage_b, title: "b", depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }], planning_owner: "p", planning_duration_band: "p" }
+data self_dep_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_self_dep }, GateNode { gate: gate }, ActuationNode { actuation: act }]
+data stage_dup_edge: WorkStage = WorkStage { self_ref: r_stage_b, title: "b", depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }, WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }], planning_owner: "p", planning_duration_band: "p" }
+data dup_edge_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_dup_edge }, GateNode { gate: gate }, ActuationNode { actuation: act }]
+
+// A REAL THREE-NODE CYCLE, detected from the edges rather than from an authored rank.
+data cyc_a: WorkStage = WorkStage { self_ref: r_stage_a, title: "a", depends_on: [WorkflowDependency { predecessor: r_gate, required_when: AlwaysActive, kind: OrderingOnly }], planning_owner: "p", planning_duration_band: "p" }
+data cyc_gate: DecisionGate = DecisionGate { self_ref: r_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a }, depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }], requirements: [req] }
+data cycle_graph: List<WorkflowNode> = [StageNode { stage: cyc_a }, StageNode { stage: stage_b }, GateNode { gate: cyc_gate }]
+
+data act_unknown_gate: Actuation = Actuation { self_ref: r_act, title: "act", authorized_by: r_absent, depends_on: [WorkflowDependency { predecessor: r_gate, required_when: AlwaysActive, kind: OrderingOnly }], performs: "p" }
+data act_unknown_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_b }, GateNode { gate: gate }, ActuationNode { actuation: act_unknown_gate }]
+
+// An actuation that reaches the STAGE population directly, bypassing its gate entirely.
+data act_bypass: Actuation = Actuation { self_ref: r_act, title: "act", authorized_by: r_stage_b, depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }], performs: "p" }
+data act_bypass_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_b }, GateNode { gate: gate }, ActuationNode { actuation: act_bypass }]
+
+data req_wrong_gate: EvidenceRequirement = EvidenceRequirement { self_ref: r_req, gate: r_other_gate, producer: ProducedByStage { stage: r_stage_b }, subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r, applies_to: AnyRoute, describes: "p" }
+data gate_wrong_req: DecisionGate = DecisionGate { self_ref: r_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a }, depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }], requirements: [req_wrong_gate] }
+data req_gate_mismatch_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_b }, GateNode { gate: gate_wrong_req }, ActuationNode { actuation: act }]
+
+data req_unknown_producer: EvidenceRequirement = EvidenceRequirement { self_ref: r_req, gate: r_gate, producer: ProducedByStage { stage: r_absent }, subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r, applies_to: AnyRoute, describes: "p" }
+data gate_unknown_producer: DecisionGate = DecisionGate { self_ref: r_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a }, depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }], requirements: [req_unknown_producer] }
+data unknown_producer_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_b }, GateNode { gate: gate_unknown_producer }, ActuationNode { actuation: act }]
+
+fn graph_controls() -> Bool {
+  refusal_cause_key(ns: good_graph) == "admitted"
+    && refusal_cause_key(ns: dup_graph) == "duplicate_identity"
+    && refusal_cause_key(ns: unknown_dep_graph) == "unknown_dependency"
+    && refusal_cause_key(ns: self_dep_graph) == "self_dependency"
+    && refusal_cause_key(ns: dup_edge_graph) == "duplicate_edge"
+    && refusal_cause_key(ns: cycle_graph) == "cycle"
+    && refusal_cause_key(ns: act_unknown_graph) == "actuation_gate_unknown"
+    && refusal_cause_key(ns: act_bypass_graph) == "actuation_gate_unknown"
+    && refusal_cause_key(ns: req_gate_mismatch_graph) == "requirement_gate_mismatch"
+    && refusal_cause_key(ns: unknown_producer_graph) == "unknown_producer"
+}
+
+// ---- EVIDENCE ADMISSION: is this document ABOUT what the requirement asks about? ----
+
+fn receipt_for(
+  requirement: DeclarationRef,
+  gate_ref: DeclarationRef,
+  subject: EvidenceSubject,
+  revision: DeclarationRef,
+) -> EvidenceReceipt {
+  EvidenceReceipt {
+    self_ref: r_receipt,
+    requirement: requirement,
+    gate: gate_ref,
+    producer: ProducedByStage { stage: r_stage_b },
+    subject: subject,
+    design_revision: revision,
+    issued: IssuedOn { at: earlier },
+    effective: ReceiptEffectiveAt { at: earlier },
+    currency: CurrentIndefinitely,
+    outcome: OutcomeFavourable,
+    provenance: InternallyProduced { by_stage: r_stage_b },
+  }
+}
+
+data good_receipt: EvidenceReceipt = receipt_for(requirement: r_req, gate_ref: r_gate, subject: AboutParcel { parcel: r_parcel_a }, revision: rev_r)
+data wrong_parcel: EvidenceReceipt = receipt_for(requirement: r_req, gate_ref: r_gate, subject: AboutParcel { parcel: r_parcel_b }, revision: rev_r)
+data wrong_revision: EvidenceReceipt = receipt_for(requirement: r_req, gate_ref: r_gate, subject: AboutParcel { parcel: r_parcel_a }, revision: rev_prior)
+data wrong_requirement: EvidenceReceipt = receipt_for(requirement: r_other_req, gate_ref: r_gate, subject: AboutParcel { parcel: r_parcel_a }, revision: rev_r)
+data wrong_gate_receipt: EvidenceReceipt = receipt_for(requirement: r_req, gate_ref: r_other_gate, subject: AboutParcel { parcel: r_parcel_a }, revision: rev_r)
+data wrong_producer: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: PublishedByExternalSubject { source: ExternalSubjectRef { declaration: r_stage_a } },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable, provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data wrong_grain: EvidenceReceipt = receipt_for(requirement: r_req, gate_ref: r_gate, subject: ProgramWide, revision: rev_r)
+
+// A PROGRAM-WIDE document does not answer a PARCEL question: the grain is part of the scope.
+// The requirement names WHO may produce this evidence. A document from another office is not
+// this requirement's evidence, however correct its subject and revision.
+// PROBES FOR WALLS THAT HAD NONE. Each of these existed in the module and was exercised by
+// nothing, so disabling it changed no result - a wall with no discriminating red is a decoration
+// however correct its code.
+
+data provenance_mismatch: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_a },
+}
+
+data future_revoked: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: Revoked { at: later, because: "scheduled withdrawal that has not happened yet" },
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data future_superseded: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: SupersededBy { successor: probe(name: "successor_receipt"), at: later },
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data dup_req_a: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_req, gate: r_gate, producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  applies_to: AnyRoute, describes: "first copy",
+}
+
+data gate_dup_reqs: DecisionGate = DecisionGate {
+  self_ref: r_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [req, dup_req_a],
+}
+
+data dup_req_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_b }, GateNode { gate: gate_dup_reqs }, ActuationNode { actuation: act }]
+
+data gate_no_reqs: DecisionGate = DecisionGate {
+  self_ref: r_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [],
+}
+
+data no_reqs_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_b }, GateNode { gate: gate_no_reqs }, ActuationNode { actuation: act }]
+
+data act_no_edge: Actuation = Actuation {
+  self_ref: r_act, title: "act", authorized_by: r_gate,
+  depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }],
+  performs: "p",
+}
+
+data act_no_edge_graph: List<WorkflowNode> = [StageNode { stage: stage_a }, StageNode { stage: stage_b }, GateNode { gate: gate }, ActuationNode { actuation: act_no_edge }]
+
+// The provenance must BE the producer.
+// A revocation or supersession dated in the future has not happened yet.
+// One requirement declared twice would let one receipt satisfy both copies.
+// An evidence-bearing gate carrying no requirements would admit at 0 == 0.
+// Naming a gate that is not upstream of you is not authorization.
+fn untested_wall_probes() -> Bool {
+  evidence_is_admitted(a: admit_evidence(r: provenance_mismatch, req: req)) == false
+    && admitted_with(rs: [future_revoked])
+    && admitted_with(rs: [future_superseded])
+    && refusal_cause_key(ns: dup_req_graph) == "duplicate_requirement"
+    && refusal_cause_key(ns: no_reqs_graph) == "empty_requirements"
+    && refusal_cause_key(ns: act_no_edge_graph) == "actuation_edge_missing"
+}
+
+// A CANDIDATE MATCH WITHOUT ITS GATE must not activate work. Two selectors, one candidate
+// identity: work governed by selector B must not switch on because selector A chose that name.
+data other_selector: DeclarationRef = probe(name: "other_selector")
+
+data cross_selector_template: WorkflowTemplate = WorkflowTemplate {
+  selection: SelectedBy { gate: r_gate, candidates: [r_route_x] },
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: OnlyWhenSelected { gate: other_selector, candidate: r_route_x } },
+  ],
+}
+
+// stage_b is governed by ANOTHER selector; choosing r_route_x here must not activate it.
+fn cross_selector_cannot_activate() -> Bool {
+  count(project_nodes(t: cross_selector_template, scope: SelectedRoute { candidate: r_route_x })) == 1
+}
+
+// TEMPLATE ADMISSION MUST CHECK EVERY DECLARED PROJECTION, not only the selected one. A malformed
+// branch that is not currently chosen still refuses the template, so a defect cannot lie latent
+// until the route changes.
+data malformed_branch_template: WorkflowTemplate = WorkflowTemplate {
+  selection: SelectedBy { gate: r_gate, candidates: [r_route_x, r_route_y] },
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: gate }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: ActuationNode { actuation: act }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_unknown_dep }, activation: OnlyWhenSelected { gate: r_gate, candidate: r_route_y } },
+  ],
+}
+
+// Route X's own projection is clean...
+// ...and the template still refuses, because route Y's branch is malformed.
+fn unselected_branch_still_checked() -> Bool {
+  graph_is_admitted(a: admit_projection(t: malformed_branch_template, scope: SelectedRoute { candidate: r_route_x }))
+    && graph_is_admitted(a: admit_template(t: malformed_branch_template)) == false
+}
+
+fn evidence_controls() -> Bool {
+  evidence_is_admitted(a: admit_evidence(r: good_receipt, req: req))
+    && evidence_is_admitted(a: admit_evidence(r: wrong_parcel, req: req)) == false
+    && evidence_is_admitted(a: admit_evidence(r: wrong_revision, req: req)) == false
+    && evidence_is_admitted(a: admit_evidence(r: wrong_requirement, req: req)) == false
+    && evidence_is_admitted(a: admit_evidence(r: wrong_gate_receipt, req: req)) == false
+    && evidence_is_admitted(a: admit_evidence(r: wrong_grain, req: req)) == false
+    && evidence_is_admitted(a: admit_evidence(r: wrong_producer, req: req)) == false
+}
+
+// ---- CLOSURE, FRESHNESS, REOPENING: derived from the population and an as_of ----
+
+data expired_receipt: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentUntil { at: earlier },
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data revoked_receipt: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: Revoked { at: earlier, because: "probe" },
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data superseded_receipt: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: SupersededBy { successor: probe(name: "successor_receipt"), at: earlier },
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data successor_receipt: EvidenceReceipt = EvidenceReceipt {
+  self_ref: probe(name: "successor_receipt"), requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data future_receipt: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: later },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+fn admitted_with(rs: List<EvidenceReceipt>) -> Bool {
+  disposition_is_admitted(d: gate_disposition_for(g: gate, scope: SelectedRoute { candidate: r_route_x }, receipts: rs, as_of: now))
+}
+
+fn reopened_with(rs: List<EvidenceReceipt>) -> Bool {
+  match gate_disposition_for(g: gate, scope: SelectedRoute { candidate: r_route_x }, receipts: rs, as_of: now) {
+    GateRenewalRequired { gate, stale, also_unmet } => true,
+    GateAdmitted { gate, satisfied, by_receipts } => false,
+    GatePending { gate, unmet } => false,
+    GateEvidenceConflicts { gate, conflicted } => false,
+    GateRefusedByEvidence { gate, refused } => false,
+    GateNoApplicableRequirements { gate } => false,
+    GateNotActive { gate } => false,
+  }
+}
+
+fn pending_with(rs: List<EvidenceReceipt>) -> Bool {
+  match gate_disposition_for(g: gate, scope: SelectedRoute { candidate: r_route_x }, receipts: rs, as_of: now) {
+    GatePending { gate, unmet } => true,
+    GateAdmitted { gate, satisfied, by_receipts } => false,
+    GateRenewalRequired { gate, stale, also_unmet } => false,
+    GateEvidenceConflicts { gate, conflicted } => false,
+    GateRefusedByEvidence { gate, refused } => false,
+    GateNoApplicableRequirements { gate } => false,
+    GateNotActive { gate } => false,
+  }
+}
+
+// The correct current receipt closes its exact requirement.
+// A receipt for another parcel does not - and this is an evidence refusal, so the gate is
+// PENDING rather than reopened: there is no stale document, there is no document.
+// A future-effective receipt does not close today.
+// Expiry, revocation and supersession REOPEN a gate that was closed on them.
+// And the successor closes it again, with no special recovery path.
+// STALE IS A RENEWAL OBLIGATION, NOT A VERDICT: a reopened gate is not a refused candidate.
+fn closure_controls() -> Bool {
+  admitted_with(rs: [good_receipt])
+    && pending_with(rs: [wrong_parcel])
+    && pending_with(rs: [wrong_revision])
+    && pending_with(rs: [wrong_requirement])
+    && pending_with(rs: [future_receipt])
+    && reopened_with(rs: [expired_receipt])
+    && reopened_with(rs: [revoked_receipt])
+    && reopened_with(rs: [superseded_receipt])
+    && admitted_with(rs: [superseded_receipt, successor_receipt])
+    && reopened_with(rs: [expired_receipt])
+}
+
+// A duplicate receipt identity cannot double-satisfy: one requirement, one satisfaction.
+fn population_controls() -> Bool {
+  match gate_disposition_for(g: gate, scope: SelectedRoute { candidate: r_route_x }, receipts: [good_receipt, good_receipt], as_of: now) {
+    GateAdmitted { gate, satisfied, by_receipts } => satisfied == 1,
+    GatePending { gate, unmet } => false,
+    GateRenewalRequired { gate, stale, also_unmet } => false,
+    GateEvidenceConflicts { gate, conflicted } => false,
+    GateRefusedByEvidence { gate, refused } => false,
+    GateNoApplicableRequirements { gate } => false,
+    GateNotActive { gate } => false,
+  }
+}
+
+// ---- STAGE/GATE SPLIT, ACTUATION, AND THE REFUSAL GRAIN ----
+
+// Stage completion is not gate closure: the stages exist and are well-formed, and the gate is
+// still pending because no receipt exists.
+// An admitted disposition from ANOTHER gate must not authorize this actuation.
+// A gate that reopens WITHDRAWS the authorization it previously gave.
+data act_realization: WorkflowRealizationStanding = SelectedWorkflowDerived {
+  gate: r_gate, selected: r_route_x, nodes: [GateNode { gate: gate }, ActuationNode { actuation: act }],
+}
+
+// AN ADMITTED DISPOSITION FROM ANOTHER GATE CAN NO LONGER BE HANDED IN AT ALL. That control is
+// gone because the state it probed is unwritable: the standing is derived from the realization
+// and the receipt population, so the only way to author "some other gate is admitted" is to put
+// that gate in the graph, where the identity join already refuses it. What remains testable is
+// the population: no paper, correct paper, expired paper.
+data act_only_realization: WorkflowRealizationStanding = SelectedWorkflowDerived {
+  gate: r_gate, selected: r_route_x, nodes: [ActuationNode { actuation: act }],
+}
+
+// EVERY CONTROL BELOW GOES THROUGH derive_workflow. The realization is no longer an argument
+// anywhere, so a probe cannot hand in a graph the template never produced - which also means the
+// old forged-row control is deleted rather than kept as a decoration: its subject is unwritable
+// through this entry point.
+fn snap(t: WorkflowTemplate, ds: List<SelectionDecision>, rs: List<EvidenceReceipt>) -> WorkflowFacts {
+  WorkflowFacts { template: t, decisions: ds, assessments: supporting_assessments(t: t, ds: ds), receipts: rs, as_of: now }
+}
+
+// EVERY PRE-EXISTING CONTROL KEEPS ITS VERDICT, because each decision it plants is paired with a
+// well-formed SUPPORTING assessment. That is deliberate and is what makes the new controls below
+// discriminating rather than a blanket tightening: this helper answers "the procedure agreed", so
+// every refusal the new join produces is caused by a fixture that DISAGREES, never by the carrier
+// merely existing.
+//
+// THE POPULATION IS DERIVED FROM THE GATE, never written down here. A hardcoded candidate list
+// would be a second declaration of the thing the gate already owns, and it would silently mis-fire
+// on the single-candidate fixtures -- a probe that fails for a reason the probe itself introduced.
+fn supporting_assessments(t: WorkflowTemplate, ds: List<SelectionDecision>) -> List<SelectionAssessment> {
+  fold(ds, init: [], f: fn(acc, d) {
+    concat(acc, fold(gate_in_specs(t: t, ref: d.gate), init: [], f: fn(gacc, g) {
+      concat(gacc, fold(purpose_procedure(p: g.purpose), init: [], f: fn(pacc, proc) {
+        concat(pacc, [assessment_built(
+          self_ref: DeclarationRef { module_path: d.self_ref.module_path, decl_name: d.self_ref.decl_name, field: NamedField { field_name: "assessment" } },
+          gate: d.gate,
+          proc: proc.identity,
+          sel: d.selects,
+          pop: selection_candidates(g: g),
+          o: ProcedureSupportsSelection)])
+      }))
+    }))
+  })
+}
+
+fn gate_key(a: GateAnswer) -> String {
+  match a {
+    GateAnswered { disposition } => disposition_key(d: disposition),
+    GateUnanswerable { cause } => "unanswerable",
+  }
+}
+
+fn selection_of(a: SelectionAnswer) -> List<SelectionDisposition> {
+  match a {
+    SelectionAnswered { dispositions } => dispositions,
+    SelectionUnanswerable { cause, dispositions } => dispositions,
+  }
+}
+
+fn is_derived(f: WorkflowFacts) -> Bool { count(derivation_refusal(facts: f)) == 0 }
+
+fn authorized_with(rs: List<EvidenceReceipt>) -> Bool {
+  actuation_policy_may_proceed(facts: snap(t: unbranched_template, ds: [], rs: rs), actuation_ref: r_act)
+}
+
+// A template that declares the gate but not the actuation: nothing to authorize.
+data gate_only_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: gate }, activation: AlwaysActive },
+  ],
+}
+
+fn actuation_controls() -> Bool {
+  authorized_with(rs: []) == false
+    && authorized_with(rs: [good_receipt])
+    && authorized_with(rs: [expired_receipt]) == false
+    && authorized_with(rs: [denial]) == false
+    && actuation_policy_may_proceed(facts: snap(t: gate_only_template, ds: [], rs: [good_receipt]), actuation_ref: r_act) == false
+}
+
+// CANDIDATE REFUSAL AND PROGRAM REFUSAL ARE DIFFERENT CLAIMS. One refused candidate beside a
+// viable one is not a program refusal, and the program refuses only when nothing remains.
+fn empty_census_is_not_a_verdict() -> Bool {
+  match program_standing(cs: [], because_if_none: "probe") {
+    CandidatePopulationIncomplete { obligation } => true,
+    RefuseAndStayColo { because } => false,
+    ProgramContinues { open_candidates } => false,
+  }
+}
+
+// STALE AND UNMET ARE DIFFERENT OBLIGATIONS AND THE COUNTS MUST NOT MERGE. A gate carrying one
+// requirement whose paper has expired and a SECOND requirement no document has ever answered is
+// not "one problem": it is a renewal AND a gap, and a reader who renews the first still has the
+// second. A boolean "not admitted" cannot see that, and neither can a single count.
+data second_req: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_other_req, gate: r_gate, producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_b }, design_revision: rev_r,
+  applies_to: AnyRoute, describes: "a second requirement nothing answers",
+}
+
+data gate_two_reqs: DecisionGate = DecisionGate {
+  self_ref: r_gate, title: "probe gate", purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [req, second_req],
+}
+
+fn stale_and_unmet_are_counted_apart() -> Bool {
+  match gate_disposition_for(g: gate_two_reqs, scope: SelectedRoute { candidate: r_route_x }, receipts: [expired_receipt], as_of: now) {
+    GateRenewalRequired { gate, stale, also_unmet } => stale == 1 && also_unmet == 1,
+    GateAdmitted { gate, satisfied, by_receipts } => false,
+    GatePending { gate, unmet } => false,
+    GateEvidenceConflicts { gate, conflicted } => false,
+    GateRefusedByEvidence { gate, refused } => false,
+    GateNoApplicableRequirements { gate } => false,
+    GateNotActive { gate } => false,
+  }
+}
+
+// And with both answered the same gate admits, so the counts above are not an artefact of a
+// permanently unsatisfiable fixture.
+data second_receipt: EvidenceReceipt = EvidenceReceipt {
+  self_ref: probe(name: "second_receipt"), requirement: r_other_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_b }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely, outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+fn two_requirements_both_answered() -> Bool {
+  match gate_disposition_for(g: gate_two_reqs, scope: SelectedRoute { candidate: r_route_x }, receipts: [good_receipt, second_receipt], as_of: now) {
+    GateAdmitted { gate, satisfied, by_receipts } => satisfied == 2 && count(by_receipts) == 2,
+    GatePending { gate, unmet } => false,
+    GateRenewalRequired { gate, stale, also_unmet } => false,
+    GateEvidenceConflicts { gate, conflicted } => false,
+    GateRefusedByEvidence { gate, refused } => false,
+    GateNoApplicableRequirements { gate } => false,
+    GateNotActive { gate } => false,
+  }
+}
+
+fn refusal_grain_controls() -> Bool {
+  let one_bad = program_standing(cs: [CandidateRefused { candidate: r_parcel_a, because: "probe" }, CandidateViable { candidate: r_parcel_b }], because_if_none: "probe")
+  let all_bad = program_standing(cs: [CandidateRefused { candidate: r_parcel_a, because: "probe" }], because_if_none: "no market area survived the census")
+  match one_bad {
+    ProgramContinues { open_candidates } => open_candidates == 1,
+    RefuseAndStayColo { because } => false,
+    CandidatePopulationIncomplete { obligation } => false,
+  } && match all_bad {
+    RefuseAndStayColo { because } => true,
+    ProgramContinues { open_candidates } => false,
+    CandidatePopulationIncomplete { obligation } => false,
+  }
+}
+
+// ---- ROUTE SCOPING ----
+
+data req_route_y_only: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_other_req, gate: r_gate, producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  applies_to: OnlyRoute { route: r_route_y }, describes: "route-y-only work",
+}
+
+data two_route_gate: DecisionGate = DecisionGate {
+  self_ref: r_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a },   depends_on: [WorkflowDependency { predecessor: r_stage_b, required_when: AlwaysActive, kind: OrderingOnly }], requirements: [req, req_route_y_only],
+}
+
+// On route X the route-Y-only requirement is not unmet - it does not apply at all, so the one
+// satisfied requirement admits the gate.
+// On route Y it applies and is unmet, so the same receipts leave the gate pending.
+fn route_controls() -> Bool {
+  let on_x = gate_disposition_for(g: two_route_gate, scope: SelectedRoute { candidate: r_route_x }, receipts: [good_receipt], as_of: now)
+  let on_y = gate_disposition_for(g: two_route_gate, scope: SelectedRoute { candidate: r_route_y }, receipts: [good_receipt], as_of: now)
+  disposition_is_admitted(d: on_x) && disposition_is_admitted(d: on_y) == false
+}
+
+// ---- ROUND-8 CONTROLS: THE POPULATION, NOT ITS ORDER ----
+//
+// Every pair below is asserted in BOTH orders. The old fold let each candidate replace the
+// accumulator, so [current approval, expired] ended stale and [expired, current approval] ended
+// satisfied - the same facts, two verdicts. The single-receipt rows beside them are the positive
+// controls: stale, not-yet-effective and refused are all still reachable, so a green here is not
+// "everything answers satisfied".
+
+data r_second_approval: DeclarationRef = probe(name: "second_approval")
+data r_expired_row: DeclarationRef = probe(name: "expired_row")
+data r_future_row: DeclarationRef = probe(name: "future_row")
+data r_superseded_row: DeclarationRef = probe(name: "superseded_row")
+
+data second_approval_row: EvidenceReceipt = identified_receipt(self_ref: r_second_approval, o: OutcomeFavourable)
+
+data expired_row: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_expired_row, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentUntil { at: earlier }, outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data future_row: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_future_row, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: later }, effective: ReceiptEffectiveAt { at: later },
+  currency: CurrentIndefinitely, outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data superseded_row: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_superseded_row, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: SupersededBy { successor: r_approval, at: earlier }, outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+fn order_does_not_decide() -> Bool {
+  requirement_key(rs: [expired_row]) == "stale"
+    && requirement_key(rs: [future_row]) == "not_yet_effective"
+    && requirement_key(rs: [superseded_row]) == "stale"
+    && requirement_key(rs: [approval_row, expired_row]) == "satisfied"
+    && requirement_key(rs: [expired_row, approval_row]) == "satisfied"
+    && requirement_key(rs: [approval_row, future_row]) == "satisfied"
+    && requirement_key(rs: [future_row, approval_row]) == "satisfied"
+    && requirement_key(rs: [approval_row, superseded_row]) == "satisfied"
+    && requirement_key(rs: [superseded_row, approval_row]) == "satisfied"
+}
+
+// AND EVERY CURRENT APPROVAL SURVIVES, not just the last one visited. A SelectionDecision names
+// the receipt it was made on, so a population that keeps only one of two current approvals
+// refuses a decision naming the other - by list order.
+fn approvals_key(rs: List<EvidenceReceipt>) -> String {
+  fold(standing_receipt(s: requirement_standing(req: req, receipts: rs, as_of: now)), init: "", f: fn(acc, r) {
+    concat(concat(acc, "|"), declaration_ref_display_key(ref: r))
+  })
+}
+
+fn both_approvals_survive() -> Bool {
+  approvals_key(rs: [approval_row, second_approval_row]) == approvals_key(rs: [second_approval_row, approval_row])
+    && count(standing_receipt(s: requirement_standing(req: req, receipts: [approval_row, second_approval_row], as_of: now))) == 2
+    && count(standing_receipt(s: requirement_standing(req: req, receipts: [approval_row], as_of: now))) == 1
+    && approvals_key(rs: [approval_row]) != approvals_key(rs: [second_approval_row])
+}
+
+// AND THE REPRESENTATIVE IS NOT THE LAST ONE VISITED EITHER. Two future receipts report the
+// EARLIEST date - the one that actually says when this requirement can next be answered - and two
+// stale receipts report the lexicographically least identity, so neither answer moves when the
+// same population is shuffled.
+data much_later: EpochMs = 1899000000000
+
+data r_later_future: DeclarationRef = probe(name: "a_later_future_row")
+
+data later_future_row: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_later_future, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: much_later }, effective: ReceiptEffectiveAt { at: much_later },
+  currency: CurrentIndefinitely, outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+fn future_date_of(rs: List<EvidenceReceipt>) -> EpochMs {
+  match requirement_standing(req: req, receipts: rs, as_of: now) {
+    RequirementNotYetEffective { requirement, effective_at } => effective_at,
+    RequirementSatisfied { requirement, by_receipts } => 0,
+    RequirementUnmet { requirement } => 0,
+    RequirementStale { requirement, receipt, cause } => 0,
+    RequirementRefusedByEvidence { requirement, by_receipts } => 0,
+    RequirementEvidenceConflicts { requirement, approving, refusing } => 0,
+  }
+}
+
+fn stale_receipt_of(rs: List<EvidenceReceipt>) -> String {
+  match requirement_standing(req: req, receipts: rs, as_of: now) {
+    RequirementStale { requirement, receipt, cause } => declaration_ref_display_key(ref: receipt),
+    RequirementSatisfied { requirement, by_receipts } => "not_stale",
+    RequirementUnmet { requirement } => "not_stale",
+    RequirementNotYetEffective { requirement, effective_at } => "not_stale",
+    RequirementRefusedByEvidence { requirement, by_receipts } => "not_stale",
+    RequirementEvidenceConflicts { requirement, approving, refusing } => "not_stale",
+  }
+}
+
+fn the_representative_is_not_the_last_one_seen() -> Bool {
+  future_date_of(rs: [future_row, later_future_row]) == later
+    && future_date_of(rs: [later_future_row, future_row]) == later
+    && future_date_of(rs: [later_future_row]) == much_later
+    && stale_receipt_of(rs: [expired_row, superseded_row]) == stale_receipt_of(rs: [superseded_row, expired_row])
+    && stale_receipt_of(rs: [expired_row]) != stale_receipt_of(rs: [superseded_row])
+}
+
+// THE WHOLE MATRIX, NOT THE THREE CASES THAT OCCURRED TO ME. Every way a receipt can fail to
+// govern today is paired against a current approval in BOTH orders: expired, revoked, superseded,
+// issued in the future, effective in the future, an unread issue date, effectivity pending
+// evidence, and an unread outcome. Each row is also asserted ALONE, so the pair result is a
+// precedence and not "this fixture answers satisfied whatever you hand it".
+
+fn non_governing(self_ref: DeclarationRef, iss: IssuedStanding, eff: ReceiptEffective, cur: ReceiptCurrency, o: ReceiptOutcome) -> EvidenceReceipt {
+  EvidenceReceipt {
+    self_ref: self_ref, requirement: r_req, gate: r_gate,
+    producer: ProducedByStage { stage: r_stage_b },
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    issued: iss, effective: eff, currency: cur, outcome: o,
+    provenance: InternallyProduced { by_stage: r_stage_b },
+  }
+}
+
+data revoked_row: EvidenceReceipt = non_governing(self_ref: probe(name: "revoked_row"), iss: IssuedOn { at: earlier }, eff: ReceiptEffectiveAt { at: earlier }, cur: Revoked { at: earlier, because: "withdrawn" }, o: OutcomeFavourable)
+data future_issue_row: EvidenceReceipt = non_governing(self_ref: probe(name: "future_issue_row"), iss: IssuedOn { at: later }, eff: ReceiptEffectiveAt { at: earlier }, cur: CurrentIndefinitely, o: OutcomeFavourable)
+data unread_issue_row: EvidenceReceipt = non_governing(self_ref: probe(name: "unread_issue_row"), iss: IssueDateUnread { obligation: "nobody has read the issue date" }, eff: ReceiptEffectiveAt { at: earlier }, cur: CurrentIndefinitely, o: OutcomeFavourable)
+data pending_effectivity_row: EvidenceReceipt = non_governing(self_ref: probe(name: "pending_effectivity_row"), iss: IssuedOn { at: earlier }, eff: ReceiptEffectivePendingEvidence { obligation: "the effective date is unestablished" }, cur: CurrentIndefinitely, o: OutcomeFavourable)
+data unread_outcome_row: EvidenceReceipt = non_governing(self_ref: probe(name: "unread_outcome_row"), iss: IssuedOn { at: earlier }, eff: ReceiptEffectiveAt { at: earlier }, cur: CurrentIndefinitely, o: OutcomeUnread { obligation: "nobody recorded which way it went" })
+
+fn pair_is_satisfied_either_way(r: EvidenceReceipt) -> Bool {
+  requirement_key(rs: [approval_row, r]) == "satisfied" && requirement_key(rs: [r, approval_row]) == "satisfied"
+}
+
+fn no_non_governing_receipt_displaces_a_current_one() -> Bool {
+  requirement_key(rs: [revoked_row]) == "stale"
+    && requirement_key(rs: [future_issue_row]) == "not_yet_effective"
+    && requirement_key(rs: [unread_issue_row]) == "unmet"
+    && requirement_key(rs: [pending_effectivity_row]) == "unmet"
+    && requirement_key(rs: [unread_outcome_row]) == "unmet"
+    && pair_is_satisfied_either_way(r: expired_row)
+    && pair_is_satisfied_either_way(r: revoked_row)
+    && pair_is_satisfied_either_way(r: superseded_row)
+    && pair_is_satisfied_either_way(r: future_issue_row)
+    && pair_is_satisfied_either_way(r: future_row)
+    && pair_is_satisfied_either_way(r: unread_issue_row)
+    && pair_is_satisfied_either_way(r: pending_effectivity_row)
+    && pair_is_satisfied_either_way(r: unread_outcome_row)
+}
+
+// AND THE DECISION MAY CITE EITHER APPROVAL, IN EITHER ORDER. This is the reason the identity
+// population has to survive whole: on_evidence is checked against it, so a population that keeps
+// one of two current approvals refuses a decision naming the other - by list order.
+data r_sel_second: DeclarationRef = probe(name: "sel_second_receipt")
+
+data sel_second_row: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_sel_second, requirement: r_sel_req, gate: r_sel_gate,
+  producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely, outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_a },
+}
+
+fn either_approval_can_be_cited() -> Bool {
+  decide_with(rs: [sel_receipt_row, sel_second_row], on_evidence: sel_receipt) == "admitted"
+    && decide_with(rs: [sel_second_row, sel_receipt_row], on_evidence: sel_receipt) == "admitted"
+    && decide_with(rs: [sel_receipt_row, sel_second_row], on_evidence: r_sel_second) == "admitted"
+    && decide_with(rs: [sel_second_row, sel_receipt_row], on_evidence: r_sel_second) == "admitted"
+    && decide_with(rs: [sel_receipt_row, sel_second_row], on_evidence: r_absent) == "refused"
+}
+
+// ---- ROUND-9 CONTROLS ----
+//
+// THE GATE'S OWN POPULATION ALSO HAD TO STOP REMEMBERING AN ORDER. Each requirement's receipts
+// were canonical, but the gate concatenated them in AUTHORED REQUIREMENT ORDER, so the same two
+// requirements declared the other way round produced a different exact GateAdmitted. The two
+// requirements below are named so their receipt identities sort OPPOSITE to one declaration
+// order - otherwise the probe would agree with the defect.
+
+data r_zz_req: DeclarationRef = probe(name: "zz_requirement")
+data r_zz_receipt: DeclarationRef = probe(name: "aa_receipt_for_zz")
+data r_aa_req: DeclarationRef = probe(name: "aa_requirement")
+data r_aa_receipt: DeclarationRef = probe(name: "zz_receipt_for_aa")
+
+fn ordering_req(self_ref: DeclarationRef) -> EvidenceRequirement {
+  EvidenceRequirement {
+    self_ref: self_ref, gate: r_gate, producer: ProducedByStage { stage: r_stage_b },
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    applies_to: AnyRoute, describes: "ordering probe",
+  }
+}
+
+fn ordering_receipt(self_ref: DeclarationRef, requirement: DeclarationRef) -> EvidenceReceipt {
+  EvidenceReceipt {
+    self_ref: self_ref, requirement: requirement, gate: r_gate,
+    producer: ProducedByStage { stage: r_stage_b },
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+    currency: CurrentIndefinitely, outcome: OutcomeFavourable,
+    provenance: InternallyProduced { by_stage: r_stage_b },
+  }
+}
+
+data zz_req: EvidenceRequirement = ordering_req(self_ref: r_zz_req)
+data aa_req: EvidenceRequirement = ordering_req(self_ref: r_aa_req)
+data zz_receipt: EvidenceReceipt = ordering_receipt(self_ref: r_zz_receipt, requirement: r_zz_req)
+data aa_receipt: EvidenceReceipt = ordering_receipt(self_ref: r_aa_receipt, requirement: r_aa_req)
+
+fn ordering_gate(rs: List<EvidenceRequirement>) -> DecisionGate {
+  DecisionGate {
+    self_ref: r_gate, title: "ordering", purpose: ExternalAuthority { authority: r_stage_a },
+    depends_on: [], requirements: rs,
+  }
+}
+
+fn gate_receipts_key(g: DecisionGate) -> String {
+  fold(disposition_receipts(d: gate_disposition_for(g: g, scope: PreSelection, receipts: [zz_receipt, aa_receipt], as_of: now)), init: "", f: fn(acc, r) {
+    concat(concat(acc, "|"), declaration_ref_display_key(ref: r))
+  })
+}
+
+fn the_gate_population_is_canonical_too() -> Bool {
+  gate_receipts_key(g: ordering_gate(rs: [zz_req, aa_req])) == gate_receipts_key(g: ordering_gate(rs: [aa_req, zz_req]))
+    && gate_receipts_key(g: ordering_gate(rs: [zz_req, aa_req])) != ""
+    && gate_receipts_key(g: ordering_gate(rs: [zz_req])) != gate_receipts_key(g: ordering_gate(rs: [aa_req]))
+}
+
+// TWO ADMITTED SELECTIONS, EXACTLY REFUSED AND COUNTED - not "some refusal happened". The
+// previous probe asserted a kind string over two PENDING dispositions, which is neither the cause
+// nor the route case last-wins would actually have resolved.
+data two_route_sel_gate: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [r_route_y], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [sel_req],
+}
+
+data stage_route_x: WorkStage = WorkStage {
+  self_ref: probe(name: "stage_route_x"), title: "x work",
+  depends_on: [WorkflowDependency { predecessor: r_sel_gate, required_when: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x }, kind: OrderingOnly }],
+  planning_owner: "p", planning_duration_band: "p",
+}
+
+data stage_route_y: WorkStage = WorkStage {
+  self_ref: probe(name: "stage_route_y"), title: "y work",
+  depends_on: [WorkflowDependency { predecessor: r_sel_gate, required_when: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_y }, kind: OrderingOnly }],
+  planning_owner: "p", planning_duration_band: "p",
+}
+
+data two_candidate_template: WorkflowTemplate = WorkflowTemplate {
+  selection: SelectedBy { gate: r_sel_gate, candidates: [r_route_x, r_route_y] },
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: two_route_sel_gate }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_route_x }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+    WorkflowNodeSpec { node: StageNode { stage: stage_route_y }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_y } },
+  ],
+}
+
+fn admitted_on(route: DeclarationRef) -> SelectionDisposition {
+  SelectionAdmitted { gate: r_sel_gate, selected: route, by_decision: probe(name: "d"), by_assessment: probe(name: "a") }
+}
+
+fn multiple_selection_key(sels: List<SelectionDisposition>) -> String {
+  match realize(t: two_candidate_template, selection: sels) {
+    WorkflowRealizationRefused { cause } => match cause {
+      RealizationMultipleSelections { count_of } => if count_of == 2 { "multiple:2" } else { "multiple:other" },
+      RealizationSelectionDoesNotMatchTemplate => "mismatch",
+      RealizationSelectionForAnotherGate { selection_gate } => "another_gate",
+      RealizationGraphRefused { cause } => "graph",
+      RealizationSelectedNotDeclared { selected } => "not_declared",
+      RealizationSelectionRefused { cause, further_causes } => "selection_refused",
+    },
+    SelectionPrefixActive { nodes, because } => "prefix",
+    SelectedWorkflowDerived { gate, selected, nodes } => "derived",
+  }
+}
+
+fn two_selections_refuse_with_their_count() -> Bool {
+  multiple_selection_key(sels: [admitted_on(route: r_route_x), admitted_on(route: r_route_y)]) == "multiple:2"
+    && multiple_selection_key(sels: [admitted_on(route: r_route_y), admitted_on(route: r_route_x)]) == "multiple:2"
+    && multiple_selection_key(sels: [admitted_on(route: r_route_x)]) == "derived"
+}
+
+// A REAL CONFLICTED SELECTOR, END TO END. SelectionEvidenceConflicts and AwaitingAdjudication
+// existed only as arms in the witness's own key functions - nothing constructed either from a
+// selector whose evidence actually contradicts itself, so both were decoration one layer above
+// the requirement probe that did discriminate.
+
+data r_sel_approval: DeclarationRef = probe(name: "sel_approval")
+data r_sel_denial: DeclarationRef = probe(name: "sel_denial")
+
+fn sel_evidence(self_ref: DeclarationRef, o: ReceiptOutcome) -> EvidenceReceipt {
+  EvidenceReceipt {
+    self_ref: self_ref, requirement: r_sel_req, gate: r_sel_gate,
+    producer: ProducedByStage { stage: r_stage_a },
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+    currency: CurrentIndefinitely, outcome: o,
+    provenance: InternallyProduced { by_stage: r_stage_a },
+  }
+}
+
+data sel_approval_row: EvidenceReceipt = sel_evidence(self_ref: r_sel_approval, o: OutcomeFavourable)
+data sel_denial_row: EvidenceReceipt = sel_evidence(self_ref: r_sel_denial, o: OutcomeAdverse { because: "the selector's own evidence says no" })
+
+data conflicted_selector_decision: SelectionDecision = SelectionDecision {
+  self_ref: probe(name: "conflicted_decision"), gate: r_sel_gate, selects: r_route_x, on_evidence: r_sel_approval,
+}
+
+fn conflicted_facts(rs: List<EvidenceReceipt>) -> WorkflowFacts {
+  WorkflowFacts { template: two_candidate_template, decisions: [conflicted_selector_decision], assessments: supporting_assessments(t: two_candidate_template, ds: [conflicted_selector_decision]), receipts: rs, as_of: now }
+}
+
+data conflicted_receipts: List<EvidenceReceipt> = [sel_approval_row, sel_denial_row]
+
+fn conflicted_selection_key(rs: List<EvidenceReceipt>) -> String {
+  fold(selection_of(a: selection_answer(facts: conflicted_facts(rs: rs))), init: "none", f: fn(acc, d) {
+    match d {
+      SelectionEvidenceConflicts { gate, conflicted } =>
+        if declaration_ref_eq(a: gate, b: r_sel_gate) && conflicted == 1 { "conflicts:1:selector" } else { "conflicts:other" },
+      SelectionPending { gate, unmet } => "pending",
+      SelectionAdmitted { gate, selected, by_decision, by_assessment } => "admitted",
+      SelectionRenewalRequired { gate, stale } => "renewal",
+      SelectionRefused { cause, further_causes } => "refused",
+    }
+  })
+}
+
+fn conflicted_prefix_key(rs: List<EvidenceReceipt>) -> String {
+  match realize(t: two_candidate_template, selection: selection_of(a: selection_answer(facts: conflicted_facts(rs: rs)))) {
+    SelectionPrefixActive { nodes, because } => match because {
+      AwaitingAdjudication { disposition } => concat("adjudication:", sel_key(d: disposition)),
+      AwaitingSelection { disposition } => "awaiting",
+      NoBranchDeclared => "unbranched",
+    },
+    SelectedWorkflowDerived { gate, selected, nodes } => "derived",
+    WorkflowRealizationRefused { cause } => "refused",
+  }
+}
+
+fn route_x_is_active(rs: List<EvidenceReceipt>) -> Bool {
+  realization_contains(s: realize(t: two_candidate_template, selection: selection_of(a: selection_answer(facts: conflicted_facts(rs: rs)))), node: stage_route_x.self_ref)
+}
+
+fn a_contradicted_selector_selects_nothing() -> Bool {
+  conflicted_selection_key(rs: conflicted_receipts) == "conflicts:1:selector"
+    && conflicted_selection_key(rs: [sel_denial_row, sel_approval_row]) == "conflicts:1:selector"
+    && conflicted_prefix_key(rs: conflicted_receipts) == "adjudication:evidence_conflicts"
+    && route_x_is_active(rs: conflicted_receipts) == false
+    && conflicted_selection_key(rs: [sel_approval_row]) == "admitted"
+    && route_x_is_active(rs: [sel_approval_row])
+}
+
+// AND A DUPLICATED DECISION IDENTITY REFUSES BEFORE ANY OF THAT. by_decision is published, so the
+// reference has to name one row; two rows sharing a self_ref - one local, one for a foreign gate -
+// passed the gate filter as exactly one local decision and published an identity meaning two
+// things.
+data r_shared_decision: DeclarationRef = probe(name: "shared_decision_identity")
+
+data local_decision: SelectionDecision = SelectionDecision {
+  self_ref: r_shared_decision, gate: r_sel_gate, selects: r_route_x, on_evidence: r_sel_approval,
+}
+
+data foreign_decision: SelectionDecision = SelectionDecision {
+  self_ref: r_shared_decision, gate: r_other_gate, selects: r_route_y, on_evidence: r_sel_approval,
+}
+
+fn decision_identity_key(ds: List<SelectionDecision>) -> String {
+  fold(derivation_refusal(facts: WorkflowFacts { template: two_candidate_template, decisions: ds, assessments: supporting_assessments(t: two_candidate_template, ds: ds), receipts: [sel_approval_row], as_of: now }), init: "derived", f: fn(acc, c) {
+    match c {
+      SnapshotDuplicateSelectionDecisionIdentity { decision } =>
+        if declaration_ref_eq(a: decision, b: r_shared_decision) { "duplicate_decision:exact" } else { "duplicate_decision:other" },
+      SnapshotDuplicateAssessmentIdentity { assessment } => k1(a: "duplicate_assessment", b: assessment),
+      SnapshotIdentityUsedByTwoPopulations { identity } => k1(a: "identity_two_populations", b: identity),
+      SnapshotProcedureIdentityCarriesTwoConfigurations { procedure } => k1(a: "procedure_two_configurations", b: procedure),
+      SnapshotDuplicateReceiptIdentity { receipt } => "duplicate_receipt",
+      SnapshotTemplateRefused { cause } => "template",
+      SnapshotRealizationRefused { cause } => "realization",
+    }
+  })
+}
+
+fn a_decision_identity_names_one_row() -> Bool {
+  decision_identity_key(ds: [local_decision, foreign_decision]) == "duplicate_decision:exact"
+    && decision_identity_key(ds: [foreign_decision, local_decision]) == "duplicate_decision:exact"
+    && decision_identity_key(ds: [local_decision]) == "derived"
+}
+
+// THE CAUSE HAS TO SURVIVE EACH PUBLIC ANSWER, not just derivation_refusal. Reducing an
+// Unanswerable to the string "unanswerable" proves the arm was taken and nothing about what it
+// carries, so each projection is asked for the exact cause it should be preserving.
+
+fn snapshot_cause_key(c: SnapshotRefusal) -> String {
+  match c {
+    SnapshotTemplateRefused { cause } => concat("template:", graph_cause_key(c: cause)),
+    SnapshotRealizationRefused { cause } => concat("realization:", realization_cause_key(c: cause)),
+    SnapshotDuplicateReceiptIdentity { receipt } =>
+      if declaration_ref_eq(a: receipt, b: r_receipt) { "duplicate_receipt:exact" } else { "duplicate_receipt:other" },
+    SnapshotDuplicateSelectionDecisionIdentity { decision } => "duplicate_decision",
+    SnapshotDuplicateAssessmentIdentity { assessment } => k1(a: "duplicate_assessment", b: assessment),
+    SnapshotIdentityUsedByTwoPopulations { identity } => k1(a: "identity_two_populations", b: identity),
+    SnapshotProcedureIdentityCarriesTwoConfigurations { procedure } => k1(a: "procedure_two_configurations", b: procedure),
+  }
+}
+
+// AND A REALIZATION REFUSAL IS NOT ONE FACT EITHER. "realization" said an arm was taken and
+// nothing about which repair it names, so swapping one WorkflowRealizationRefusal for another
+// satisfied the probe - the same undifferentiated-string defect one level deeper.
+fn realization_cause_key(c: WorkflowRealizationRefusal) -> String {
+  match c {
+    RealizationSelectionRefused { cause, further_causes } =>
+      concat("selection_refused:", concat(selection_refusal_key(c: cause),
+        fold(further_causes, init: "", f: fn(acc, fc) { concat(acc, concat("+", selection_refusal_key(c: fc))) }))),
+    RealizationGraphRefused { cause } => concat("graph:", graph_cause_key(c: cause)),
+    RealizationSelectionForAnotherGate { selection_gate } => "another_gate",
+    RealizationSelectionDoesNotMatchTemplate => "mismatch",
+    RealizationMultipleSelections { count_of } => "multiple",
+    RealizationSelectedNotDeclared { selected } => "not_declared",
+  }
+}
+
+// The refusal keys render their located payload, not just their arm.
+fn k1(a: String, b: DeclarationRef) -> String {
+  concat(a, concat("/", declaration_ref_display_key(ref: b)))
+}
+
+fn k2(a: String, b: DeclarationRef, c: DeclarationRef) -> String {
+  concat(k1(a: a, b: b), concat("/", declaration_ref_display_key(ref: c)))
+}
+
+fn k3(a: String, b: DeclarationRef, c: DeclarationRef, d: DeclarationRef) -> String {
+  concat(k2(a: a, b: b, c: c), concat("/", declaration_ref_display_key(ref: d)))
+}
+
+// Pending and Refused must NOT reduce to one string: the witness comment said so while the
+// assertion required exactly that.
+fn non_support_key(ns: ProcedureNonSupport) -> String {
+  match ns {
+    RejectedByProcedure => "rejected",
+    PendingProcedure => "pending",
+    RefusedProcedure => "refused",
+  }
+}
+
+fn conflicting_assessment_count(f: WorkflowFacts) -> Int {
+  fold(derivation_refusal(facts: f), init: 0 - 1, f: fn(acc, c) {
+    match c {
+      SnapshotRealizationRefused { cause } => match cause {
+        RealizationSelectionRefused { cause, further_causes } => match cause {
+          ConflictingAssessments { gate, count_of } => count_of,
+          AssessmentUnderADifferentConfiguration { gate, procedure, assessment } => acc,
+          SelectedCandidateNotInPopulation { gate, selected } => acc,
+          ConflictingSelections { gate, count_of } => acc,
+          SelectionStandingForAnotherGate { gate, standing_gate } => acc,
+          SelectionEvidenceDidNotAdmitTheGate { gate, decision, evidence } => acc,
+          SelectorRefusedByEvidence { gate, refused } => acc,
+          SelectionUnassessed { gate, decision, procedure } => acc,
+          AssessmentForAnotherProcedure { gate, declared, assessed_under } => acc,
+          AssessmentSelectedAnotherCandidate { gate, decided, assessed } => acc,
+          AssessedPopulationOmitsCandidate { gate, assessment, omitted } => acc,
+          AssessedPopulationCarriesUndeclaredCandidate { gate, assessment, undeclared } => acc,
+          AssessedPopulationRepeatsCandidate { gate, assessment, repeated } => acc,
+          ProcedureDidNotSupportSelection { gate, assessment, non_support } => acc,
+        },
+        RealizationGraphRefused { cause } => acc,
+        RealizationSelectionForAnotherGate { selection_gate } => acc,
+        RealizationSelectionDoesNotMatchTemplate => acc,
+        RealizationMultipleSelections { count_of } => acc,
+        RealizationSelectedNotDeclared { selected } => acc,
+      },
+      SnapshotTemplateRefused { cause } => acc,
+      SnapshotDuplicateReceiptIdentity { receipt } => acc,
+      SnapshotDuplicateSelectionDecisionIdentity { decision } => acc,
+      SnapshotDuplicateAssessmentIdentity { assessment } => acc,
+      SnapshotIdentityUsedByTwoPopulations { identity } => acc,
+      SnapshotProcedureIdentityCarriesTwoConfigurations { procedure } => acc,
+    }
+  })
+}
+
+fn selection_refusal_key(c: SelectionRefusalCause) -> String {
+  match c {
+    SelectedCandidateNotInPopulation { gate, selected } =>
+      if declaration_ref_eq(a: selected, b: r_absent) { "candidate_not_in_population:absent" } else { "candidate_not_in_population:other" },
+    ConflictingSelections { gate, count_of } => "conflicting_selections",
+    SelectionStandingForAnotherGate { gate, standing_gate } => "standing_for_another_gate",
+    SelectionEvidenceDidNotAdmitTheGate { gate, decision, evidence } => "evidence_did_not_admit",
+    SelectorRefusedByEvidence { gate, refused } => "selector_refused_by_evidence",
+    AssessmentUnderADifferentConfiguration { gate, procedure, assessment } =>
+      k3(a: "assessment_under_a_different_configuration", b: gate, c: procedure, d: assessment),
+    SelectionUnassessed { gate, decision, procedure } =>
+      k3(a: "selection_unassessed", b: gate, c: decision, d: procedure),
+    ConflictingAssessments { gate, count_of } =>
+      concat(k1(a: "conflicting_assessments", b: gate), concat(":", int_or_more(n: count_of))),
+    AssessmentForAnotherProcedure { gate, declared, assessed_under } =>
+      k3(a: "assessment_for_another_procedure", b: gate, c: declared, d: assessed_under),
+    AssessmentSelectedAnotherCandidate { gate, decided, assessed } =>
+      k3(a: "assessment_selected_another_candidate", b: gate, c: decided, d: assessed),
+    AssessedPopulationOmitsCandidate { gate, assessment, omitted } =>
+      k3(a: "assessed_population_omits_candidate", b: gate, c: assessment, d: omitted),
+    AssessedPopulationCarriesUndeclaredCandidate { gate, assessment, undeclared } =>
+      k3(a: "assessed_population_carries_undeclared_candidate", b: gate, c: assessment, d: undeclared),
+    AssessedPopulationRepeatsCandidate { gate, assessment, repeated } =>
+      k3(a: "assessed_population_repeats_candidate", b: gate, c: assessment, d: repeated),
+    ProcedureDidNotSupportSelection { gate, assessment, non_support } =>
+      concat(k2(a: "procedure_did_not_support_selection", b: gate, c: assessment),
+             concat(":", non_support_key(ns: non_support))),
+  }
+}
+
+fn gate_cause_of(f: WorkflowFacts) -> String {
+  match gate_answer(facts: f, gate_ref: r_gate) {
+    GateUnanswerable { cause } => snapshot_cause_key(c: cause),
+    GateAnswered { disposition } => concat("answered:", disposition_key(d: disposition)),
+  }
+}
+
+fn selection_cause_of(f: WorkflowFacts) -> String {
+  match selection_answer(facts: f) {
+    SelectionUnanswerable { cause, dispositions } => concat(snapshot_cause_key(c: cause), concat("/", int_or_more(n: count(dispositions)))),
+    SelectionAnswered { dispositions } => "answered",
+  }
+}
+
+fn actuation_cause_of(f: WorkflowFacts) -> String {
+  match actuation_answer(facts: f, actuation_ref: r_act) {
+    ActuationUnanswerable { cause } => snapshot_cause_key(c: cause),
+    ActuationAnswered { standing } => "answered",
+  }
+}
+
+fn int_or_more(n: Int) -> String {
+  if n == 0 { "0" } else { "some" }
+}
+
+data absent_route_decision: SelectionDecision = SelectionDecision {
+  self_ref: probe(name: "absent_route_decision"), gate: r_sel_gate, selects: r_absent, on_evidence: r_sel_approval,
+}
+
+data conflicting_decision_a: SelectionDecision = SelectionDecision {
+  self_ref: probe(name: "conflicting_a"), gate: r_sel_gate, selects: r_route_x, on_evidence: r_sel_approval,
+}
+
+data conflicting_decision_b: SelectionDecision = SelectionDecision {
+  self_ref: probe(name: "conflicting_b"), gate: r_sel_gate, selects: r_route_y, on_evidence: r_sel_approval,
+}
+
+fn selection_facts(ds: List<SelectionDecision>) -> WorkflowFacts {
+  WorkflowFacts { template: two_candidate_template, decisions: ds, assessments: supporting_assessments(t: two_candidate_template, ds: ds), receipts: [sel_approval_row], as_of: now }
+}
+
+// THE COMPARATIVE JOIN. Every fixture below plants a decision whose EVIDENCE IS IMPECCABLE -- it
+// names a receipt that genuinely admitted the gate -- so nothing here is refused for a reason that
+// already existed. Only what the declared procedure said about the choice varies.
+//
+// Expected keys are composed from the refs this fixture EXPECTS, not from the refusal's own output,
+// so a cause that takes the right constructor while naming the wrong gate, assessment or candidate
+// still diverges.
+data r_planted: DeclarationRef = probe(name: "planted_assessment")
+
+// EVERY ASSESSMENT IN THIS FILE IS NOW OBTAINED THE WAY PRODUCTION OBTAINS ONE.
+//
+// SelectionAssessment became a sole_constructor record whose single mint is admit_callers-sealed to
+// the two procedure adapters, and no test declaration is admitted -- the rule extdeps.shell.exec
+// transport_script_seal already sets. So these fixtures can no longer hand-author an outcome; they
+// must arrange INPUTS from which the declared procedure PRODUCES the outcome under test. That is a
+// strictly stronger fixture: before, a control asserting "a rejection is refused" could pass while
+// the pareto projection was broken, because the rejection was written by hand.
+//
+// The four outcomes are induced, not asserted:
+//   supports  -- a subject that dominates the field on both axes
+//   rejects   -- a subject dominated on both axes
+//   refused   -- an axes roster naming one axis twice, which std.pareto refuses outright
+//   pending   -- a subject declaring an axis-scoped gap, so its standing is NotComputable
+//
+// The pending fixture is the one that changed when NotComputable stopped projecting to refused. An
+// honestly declared, axis-scoped evidence gap is exactly "no terminal answer yet, supply the input",
+// and it now reaches the workflow as pending -- which is also the only pareto route to pending that
+// a fixture can build, since the other one needs an overlapping non-degenerate interval and
+// OrderedClosedInterval is sole_constructor behind a REFUSING mint.
+fn peer_field(pop: List<DeclarationRef>) -> List<ParetoEntry> {
+  fold(pop, init: [], f: fn(acc, id) { concat(acc, [candidate(id: id, cost: 500, speed: 500)]) })
+}
+
+fn gapped_subject(sel: DeclarationRef) -> ParetoEntry {
+  ParetoEntry {
+    identity: sel, display_label: "c",
+    readings: [AxisReading { axis: probe(name: "axis_speed"), interval_micro: degenerate_interval(point: 900) }],
+    missing_inputs: [AxisGap { axis: probe(name: "axis_cost"), cause: "no funded cost evidence for this route" }],
+  }
+}
+
+fn assessment_built(
+  self_ref: DeclarationRef, gate: DeclarationRef, sel: DeclarationRef,
+  o: SelectionAssessmentOutcome, pop: List<DeclarationRef>, proc: DeclarationRef,
+) -> SelectionAssessment {
+  match o {
+    ProcedurePending => assess_by_pareto(
+      self_ref: self_ref, gate: gate, procedure: pareto_procedure(identity: proc, axes: compared_axes, sensitivities: []),
+      subject: gapped_subject(sel: sel), field: peer_field(pop: pop)).assessment,
+    ProcedureSupportsSelection => assess_by_pareto(
+      self_ref: self_ref, gate: gate, procedure: pareto_procedure(identity: proc, axes: compared_axes, sensitivities: []),
+      subject: candidate(id: sel, cost: 100, speed: 900), field: peer_field(pop: pop)).assessment,
+    ProcedureRejectsSelection => assess_by_pareto(
+      self_ref: self_ref, gate: gate, procedure: pareto_procedure(identity: proc, axes: compared_axes, sensitivities: []),
+      subject: candidate(id: sel, cost: 900, speed: 100), field: peer_field(pop: pop)).assessment,
+    ProcedureRefused => assess_by_pareto(
+      self_ref: self_ref, gate: gate, procedure: pareto_procedure(identity: proc, axes: contradictory_axes, sensitivities: []),
+      subject: candidate(id: sel, cost: 100, speed: 900), field: peer_field(pop: pop)).assessment,
+  }
+}
+
+fn assessment_for(sel: DeclarationRef, o: SelectionAssessmentOutcome, pop: List<DeclarationRef>, proc: DeclarationRef) -> SelectionAssessment {
+  assessment_built(self_ref: r_planted, gate: r_sel_gate, sel: sel, o: o, pop: pop, proc: proc)
+}
+
+fn facts_with_assessments(asmts: List<SelectionAssessment>) -> WorkflowFacts {
+  WorkflowFacts {
+    template: two_candidate_template, decisions: [conflicting_decision_a],
+    assessments: asmts, receipts: [sel_approval_row], as_of: now,
+  }
+}
+
+fn facts_with_assessment(a: SelectionAssessment) -> WorkflowFacts { facts_with_assessments(asmts: [a]) }
+
+// A GATE THAT DECLARES A PANEL, so the panel controls run against a gate configured to be decided
+// by a panel rather than against a registry list someone handed in beside it. There is no longer a
+// caller-suppliable registry to point at a different row: what the identity denotes is what this
+// gate carries.
+data panel_sel_gate: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [r_route_y], procedure: panel_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [sel_req],
+}
+
+data panel_template: WorkflowTemplate = WorkflowTemplate {
+  selection: SelectedBy { gate: r_sel_gate, candidates: [r_route_x, r_route_y] },
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: panel_sel_gate }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_route_x }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+    WorkflowNodeSpec { node: StageNode { stage: stage_route_y }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_y } },
+  ],
+}
+
+fn facts_under_panel_gate(asmts: List<SelectionAssessment>) -> WorkflowFacts {
+  WorkflowFacts {
+    template: panel_template, decisions: [conflicting_decision_a],
+    assessments: asmts, receipts: [sel_approval_row], as_of: now,
+  }
+}
+
+data both_routes: List<DeclarationRef> = [r_route_x, r_route_y]
+
+fn refusal(k: String) -> String {
+  concat("realization:selection_refused:", concat(k, "/some"))
+}
+
+fn supported_key() -> String { "answered" }
+
+// A REJECTED CHOICE IS REFUSED, AN AGREEING ONE IS NOT, and the three non-supporting outcomes stay
+// DISTINCT. The previous revision projected the outcome to a string and then required Pending and
+// Refused to render identically -- the comment said they were different facts while the assertion
+// required them to be one, so a mutation mapping Pending to "refused" stayed green.
+//
+// The refused fixture reaches its outcome through a CONTRADICTORY AXIS ROSTER, which is a
+// configuration the registry does not hold under this identity. That is a second true fact, and
+// the registry census raises it, so the expected cause carries it beside the outcome one:
+// asserting the outcome alone would hide the configuration check.
+fn a_selection_the_procedure_rejected_is_refused() -> Bool {
+  let base = k2(a: "procedure_did_not_support_selection", b: r_sel_gate, c: r_planted)
+  let rejected = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureRejectsSelection, pop: both_routes, proc: r_procedure)))
+  let pending = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedurePending, pop: both_routes, proc: r_procedure)))
+  let refused = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureRefused, pop: both_routes, proc: r_procedure)))
+  let supported = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: both_routes, proc: r_procedure)))
+  rejected == refusal(k: concat(base, ":rejected"))
+    && pending == refusal(k: concat(base, ":pending"))
+    && refused == refusal(k: concat(
+         k3(a: "assessment_under_a_different_configuration", b: r_sel_gate, c: r_procedure, d: r_planted),
+         concat("+", concat(base, ":refused"))))
+    && supported == supported_key()
+    && pending != refused
+}
+
+// THE POPULATION IS JOINED IN BOTH DIRECTIONS AND IS EXACT. Inclusion both ways is still not
+// exactness: [A,B,B] against declared [A,B] raises neither omission nor undeclared, so multiplicity
+// needs its own refusal -- the gate's own candidate population already rejects duplicates.
+// A DUPLICATED POPULATION NOW RAISES TWO FACTS, AND BOTH ARE ASSERTED.
+//
+// This changed when the outcomes stopped being hand-authored. std.pareto standing_from_accum
+// refuses a field in which two entries share one candidate identity -- a duplicate would be skipped
+// as self-comparison, so the comparison itself is unsound -- and that refusal projects to
+// ProcedureRefused. So a repeated candidate is both a population fault the workflow detects and a
+// procedure refusal the procedure reports, and the expected key carries both in canonical order.
+//
+// The expectation is composed from the model, not copied from the run: population causes sort
+// before "procedure_did_not_support_selection" lexicographically, and the reporting boundary joins
+// every surviving cause with "+". Dropping the population check would leave only the procedure
+// cause and change the key, so the conjunct still discriminates -- which is the property the panel
+// control failed to have.
+fn procedure_refused_key() -> String {
+  concat(k2(a: "procedure_did_not_support_selection", b: r_sel_gate, c: r_planted), ":refused")
+}
+
+fn an_assessment_over_the_wrong_population_is_refused() -> Bool {
+  let omits = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: [r_route_x], proc: r_procedure)))
+  let extra = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: [r_route_x, r_route_y, r_absent], proc: r_procedure)))
+  let repeats = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: [r_route_x, r_route_y, r_route_y], proc: r_procedure)))
+  let exact = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: both_routes, proc: r_procedure)))
+  omits == refusal(k: k3(a: "assessed_population_omits_candidate", b: r_sel_gate, c: r_planted, d: r_route_y))
+    && extra == refusal(k: k3(a: "assessed_population_carries_undeclared_candidate", b: r_sel_gate, c: r_planted, d: r_absent))
+    && repeats == refusal(k: concat(
+         k3(a: "assessed_population_repeats_candidate", b: r_sel_gate, c: r_planted, d: r_route_y),
+         concat("+", procedure_refused_key())))
+    && exact == supported_key()
+}
+
+// AN ASSESSMENT FROM A DIFFERENT PROCEDURE IS NOT THIS GATE'S ANSWER, and an absent one is not a
+// pass. Without the second, a selection gate with no assessment at all would admit -- the fail-open
+// state this whole carrier exists to close.
+fn a_repeated_undeclared_candidate_names_each_fact_once() -> Bool {
+  let dup_undeclared = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: [r_route_x, r_route_y, r_absent, r_absent], proc: r_procedure)))
+  dup_undeclared == refusal(k: concat(
+    k3(a: "assessed_population_carries_undeclared_candidate", b: r_sel_gate, c: r_planted, d: r_absent),
+    concat("+", concat(
+      k3(a: "assessed_population_repeats_candidate", b: r_sel_gate, c: r_planted, d: r_absent),
+      concat("+", procedure_refused_key())))))
+}
+
+// THE ASSESSMENT MUST BE PRODUCED BY THE DECLARED PROCEDURE, NOT HANDED IN.
+//
+// Every fixture above constructs SelectionAssessmentOutcome directly, which is exactly the hole
+// this closes: pairing the gate's procedure ref with a hand-authored ProcedureSupportsSelection
+// proved a recorded assertion was self-consistent, never that the named procedure produced it.
+// Here the assessment is DERIVED by running the real comparison.
+
+data axis_cost: SelectionAxis = SelectionAxis { identity: probe(name: "axis_cost"), goal: LowerIsBetter }
+data axis_speed: SelectionAxis = SelectionAxis { identity: probe(name: "axis_speed"), goal: HigherIsBetter }
+data compared_axes: List<SelectionAxis> = [axis_cost, axis_speed]
+
+// ONE AXIS NAMED TWICE. std.pareto refuses this roster outright, before it reads any entry, so it
+// is the fixture's route to a genuine SelectionRefused without disturbing the compared population.
+data contradictory_axes: List<SelectionAxis> = [axis_cost, SelectionAxis { identity: probe(name: "axis_cost"), goal: HigherIsBetter }]
+
+fn candidate(id: DeclarationRef, cost: Int, speed: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id, display_label: "c",
+    readings: [
+      AxisReading { axis: probe(name: "axis_cost"), interval_micro: degenerate_interval(point: cost) },
+      AxisReading { axis: probe(name: "axis_speed"), interval_micro: degenerate_interval(point: speed) },
+    ],
+    missing_inputs: [],
+  }
+}
+
+data cand_x_winning: ParetoEntry = candidate(id: r_route_x, cost: 100, speed: 900)
+data cand_x_dominated: ParetoEntry = candidate(id: r_route_x, cost: 900, speed: 100)
+data cand_y: ParetoEntry = candidate(id: r_route_y, cost: 500, speed: 500)
+
+fn pareto_assessment(subject: ParetoEntry, field: List<ParetoEntry>) -> SelectionAssessment {
+  assess_by_pareto(
+    self_ref: r_planted, gate: r_sel_gate,
+    procedure: pareto_procedure(identity: r_procedure, axes: compared_axes, sensitivities: []),
+    subject: subject, field: field).assessment
+}
+
+// THE ROUTE FROM THE ADMITTED SELECTION BACK TO THE PROCEDURE'S OWN ANSWER.
+//
+// The adapters retained their native standing locally, but the workflow took `.assessment` and the
+// admitted disposition kept only a REF -- so the detail existed and nothing led to it, which for a
+// reader is the same as not existing.
+//
+// IT HAS TO BE THE PANEL, AND FINDING OUT WHY IS WHAT MADE THIS CONTROL HONEST. The first version
+// used the Pareto procedure and failed, correctly: every ADMITTED pareto selection necessarily has
+// standing non_dominated, because any other standing projects to a non-supporting outcome and never
+// reaches admission. So on that path the account is constant and a control built there cannot
+// distinguish a live route from a dropped one. The panel is where the loss is real -- carried by
+// three jurors and carried by two are ONE outcome and TWO rulings -- so that is where the route has
+// to be shown.
+fn account_of_panel(votes: List<PanelVote>) -> String {
+  let f = panel_facts(votes: votes, quorum: 3)
+  fold(selection_of(a: selection_answer(facts: f)), init: "", f: fn(acc, d) {
+    match d {
+      SelectionAdmitted { gate, selected, by_decision, by_assessment } =>
+        fold(f.assessments, init: acc, f: fn(inner, x) {
+          if declaration_ref_eq(a: x.self_ref, b: by_assessment) { x.native_account } else { inner }
+        }),
+      SelectionPending { gate, unmet } => acc,
+      SelectionRenewalRequired { gate, stale } => acc,
+      SelectionRefused { cause, further_causes } => acc,
+      SelectionEvidenceConflicts { gate, conflicted } => acc,
+    }
+  })
+}
+
+data carried_by_three: List<PanelVote> = [
+  VoteFor { juror: probe(name: "j1") }, VoteFor { juror: probe(name: "j2") }, VoteFor { juror: probe(name: "j3") },
+]
+
+data carried_by_two: List<PanelVote> = [
+  VoteFor { juror: probe(name: "j1") }, VoteFor { juror: probe(name: "j2") },
+  VoteAgainst { juror: probe(name: "j3"), because: "sited too far" },
+]
+
+// READ THE WAY A CONSUMER MUST: from the ADMITTED disposition's assessment ref, joined back to the
+// assessment population the workflow carries -- never from the adapter's local return value, which
+// is what the earlier retention controls read and is exactly why they proved less than they claimed.
+//
+// Three things are asserted in the panel's own vocabulary rather than the workflow's four-arm
+// outcome: that the account is reachable at all; that it separates the pair the outcome cannot,
+// two panels both ProcedureSupportsSelection and both admitted, which a dropped route would read
+// as identical; and that those two outcomes really are equal, so the inequality is the ACCOUNT's
+// doing and not a difference the workflow could already see.
+fn the_admitted_selection_reaches_the_procedures_own_answer() -> Bool {
+  account_of_panel(votes: carried_by_three) == "supports_by:3"
+    && account_of_panel(votes: carried_by_two) == "supports_by:2"
+    && account_of_panel(votes: carried_by_three) != account_of_panel(votes: carried_by_two)
+    && outcome_key(o: panel_assessment(votes: carried_by_three, quorum: 3).outcome)
+         == outcome_key(o: panel_assessment(votes: carried_by_two, quorum: 3).outcome)
+}
+
+// THE PROCEDURE'S OWN ANSWER DECIDES, IN BOTH DIRECTIONS. The only difference between these two
+// runs is the candidate's measured readings; nothing about the decision, the gate or the evidence
+// changes. A workflow that could still manufacture support would admit both.
+fn the_declared_procedure_decides_not_the_author() -> Bool {
+  let winning = selection_cause_of(f: facts_with_assessment(a: pareto_assessment(subject: cand_x_winning, field: [cand_x_winning, cand_y])))
+  let dominated = selection_cause_of(f: facts_with_assessment(a: pareto_assessment(subject: cand_x_dominated, field: [cand_x_dominated, cand_y])))
+  winning == supported_key()
+    && dominated == refusal(k: concat(k2(a: "procedure_did_not_support_selection", b: r_sel_gate, c: r_planted), ":rejected"))
+}
+
+// A SECOND PROCEDURE WHOSE NATIVE ANSWER HAS A DIFFERENT SHAPE. No axes, no readings, no
+// dominance -- jurors and a quorum. If one generic projection could serve both, the workflow would
+// be back to owning every procedure's result vocabulary.
+// THE PANEL CONTROLS RUN AGAINST A GATE THAT DECLARES A PANEL, which is the honest reading rather
+// than a workaround. Nothing forbids a gate's declared procedure from BEING a panel -- the wall is
+// that the assessment's configuration must match the one the gate carries. So those controls use
+// panel_sel_gate, which is an operator configuring this gate to be decided by a panel. The
+// smuggling control keeps the DEFAULT pareto gate and runs a panel against it, which is the forgery.
+data panel_config: PanelProcedure = panel_procedure(identity: r_procedure, quorum: 3)
+
+fn panel_assessment(votes: List<PanelVote>, quorum: Int) -> SelectionAssessment {
+  assess_by_panel(gate: r_sel_gate, procedure: panel_procedure(identity: r_procedure, quorum: quorum),
+    request: PanelRulingRequest {
+      self_ref: r_planted, nominated: r_route_x, considered: both_routes, votes: votes }).assessment
+}
+
+fn panel_facts(votes: List<PanelVote>, quorum: Int) -> WorkflowFacts {
+  facts_under_panel_gate(asmts: [panel_assessment(votes: votes, quorum: quorum)])
+}
+
+// THE PANEL'S FOURTH ARM IS NOT WITNESSED HERE, AND THAT IS STRUCTURAL RATHER THAN A GAP.
+// PanelRulingRefused is produced when the nomination is absent from the field the panel considered,
+// and the workflow cannot deliver that state: the selection must be a declared candidate and the
+// assessed population must match the gate's declared population exactly, so the nominee is always
+// among the considered. An earlier version of this control tried anyway, with a fixture whose
+// population omitted a declared candidate; the population check fired first, the reported cause was
+// a population fault, and the assertion was the weak inequality form -- so it held whichever way the
+// projection ran. Mutating the refusal arm to support left it green. The arm is now witnessed where
+// it is reachable, in test.claim.panel_ruling_procedure_witness, against the procedure directly.
+// SHORT OF QUORUM IS PENDING, NOT REJECTION: an ungathered panel has not decided against anyone.
+// THE COUNTEREXAMPLE THE IDENTITY CHECK COULD NEVER REACH.
+//
+// Every check before this one was about the procedure REF, and in the scenario below the ref is
+// right. The gate declares P. A caller configures a PANEL bearing P, runs it, and the panel really
+// does support the nomination -- so the outcome is genuinely derived by a real adapter, the
+// assessment is sealed by the real mint, the identity matches, the subject matches and the
+// population matches. Before the registry every one of those passed and the workflow admitted a
+// pareto gate's selection on a panel's say-so.
+//
+// The registry is what makes the two distinguishable: it records what P DENOTES, and the
+// assessment carries the registration it was actually derived under. Family and policy digest are
+// both compared, so this control and the next one below are the two halves the review named.
+fn panel_config_under_the_pareto_identity() -> PanelProcedure {
+  panel_procedure(identity: r_procedure, quorum: 1)
+}
+
+// A WRONG IDENTITY IS NOT A WRONG CONFIGURATION, AND SAYING BOTH WAS A FABRICATION.
+//
+// configuration_causes used registrations_agree, which is identity AND configuration in one
+// predicate. So an assessment produced by procedure Q under EXACTLY the configuration this gate
+// declares for P raised AssessmentForAnotherProcedure -- true -- and, beside it,
+// AssessmentUnderADifferentConfiguration, which is false: the two configurations are structurally
+// identical. One fact, two causes, and the second one invented.
+//
+// The old foreign-procedure fixture could not expose this because its Q also carried contradictory
+// axes, so identity AND configuration genuinely differed and the extra cause happened to be true.
+// This one holds the configuration fixed and moves only the identity.
+fn a_wrong_identity_under_the_right_configuration_is_one_fact() -> Bool {
+  let same_config_other_identity = pareto_procedure(
+    identity: r_other_procedure, axes: compared_axes, sensitivities: [])
+  let assessed = assess_by_pareto(
+    self_ref: r_planted, gate: r_sel_gate, procedure: same_config_other_identity,
+    subject: cand_x_winning, field: peer_field(pop: both_routes)).assessment
+  selection_cause_of(f: facts_with_assessment(a: assessed))
+    == refusal(k: k3(a: "assessment_for_another_procedure", b: r_sel_gate, c: r_procedure, d: r_other_procedure))
+}
+
+// THE PANEL'S POLICY IS ITS QUORUM, and nothing compared it. The battery dropped the quorum
+// comparison from configurations_agree and every control stayed green -- the same hole the
+// sensitivity comparison had, one family over. A panel that rules by three jurors and a panel that
+// rules by one are two policies, so one identity may not name both.
+fn a_quorum_is_part_of_the_panel_policy() -> Bool {
+  !registrations_agree(a: panel_config.registration, b: panel_procedure(identity: r_procedure, quorum: 1).registration)
+    && registrations_agree(a: panel_config.registration, b: panel_procedure(identity: r_procedure, quorum: 3).registration)
+    && !registrations_agree(a: panel_config.registration, b: pareto_config.registration)
+}
+
+// THE RETAINED STANDING IS READ THROUGH THE ADAPTER, WHICH THE PARETO WITNESS'S OWN CONTROL DOES NOT
+// DO. That one asserts what the two projections say about a standing it constructs itself, which is
+// true and does not touch ParetoRuling.standing at all -- so the field stayed unconsumed and a
+// mutation replacing the adapter's computed standing with a constant left everything green. The
+// panel had the identical hole, found by that mutation rather than by review.
+//
+// This reads the field the adapter kept. The gapped subject is the load-bearing half: its OUTCOME is
+// "pending", which is also what an unsettled comparison projects to, while its retained standing says
+// not_computable -- the distinction the projection is designed to drop and the retention exists to
+// keep.
+fn outcome_key(o: SelectionAssessmentOutcome) -> String {
+  match o {
+    ProcedureSupportsSelection => "supports",
+    ProcedureRejectsSelection => "rejects",
+    ProcedurePending => "pending",
+    ProcedureRefused => "refused",
+  }
+}
+
+fn the_adapter_keeps_the_standing_it_computed() -> Bool {
+  let gapped = assess_by_pareto(
+    self_ref: r_planted, gate: r_sel_gate, procedure: pareto_config,
+    subject: gapped_subject(sel: r_route_x), field: peer_field(pop: both_routes))
+  let winning = assess_by_pareto(
+    self_ref: r_planted, gate: r_sel_gate, procedure: pareto_config,
+    subject: cand_x_winning, field: [cand_x_winning, cand_y])
+  standing_detail_key(s: gapped.standing) == "not_computable"
+    && outcome_key(o: gapped.assessment.outcome) == "pending"
+    && standing_detail_key(s: winning.standing) == "non_dominated"
+    && outcome_key(o: winning.assessment.outcome) == "supports"
+}
+
+fn a_panel_may_not_answer_for_a_pareto_gate() -> Bool {
+  let smuggled = assess_by_panel(
+    gate: r_sel_gate, procedure: panel_config_under_the_pareto_identity(),
+    request: PanelRulingRequest {
+      self_ref: r_planted, nominated: r_route_x, considered: both_routes,
+      votes: [VoteFor { juror: probe(name: "j1") }] }).assessment
+  selection_cause_of(f: facts_with_assessment(a: smuggled))
+    == refusal(k: k3(a: "assessment_under_a_different_configuration", b: r_sel_gate, c: r_procedure, d: r_planted))
+    && selection_cause_of(f: facts_with_assessment(a: pareto_assessment(
+         subject: cand_x_winning, field: [cand_x_winning, cand_y]))) == supported_key()
+}
+
+// THE SAME FAMILY IS NOT ENOUGH: THE POLICY MUST MATCH TOO. Two pareto configurations under one
+// identity, differing only in the goal on one axis, are two different comparisons wearing one name.
+// Without the digest the family check alone would admit this, which is why the digest is over the
+// axes and their goals rather than over the axis identities.
+data flipped_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: probe(name: "axis_cost"), goal: HigherIsBetter },
+  axis_speed,
+]
+
+
+
+// AN ENCODING IS EQUALITY AUTHORITY ONLY IF IT IS INJECTIVE, AND THE DIGEST WAS NOT.
+//
+// Agreement was decided by comparing a rendered policy_digest, which joined axis entries with ","
+// and each key to its goal with "=". So a SINGLE axis whose declaration name is spelled
+// "x=lower,<module>::y" rendered byte-for-byte identically to the TWO-axis roster [x lower,
+// y lower]. Nothing in the accepted corpus spells a declaration that way -- and decl_ref takes
+// strings, so a fixture hands the compiler one, which is the section 4b question: whether the RED is
+// authorable where the check can run, not whether the corpus authors it.
+//
+// Under structural comparison the two configurations differ in axis COUNT before any spelling is
+// considered, so the gate refuses. This control goes red against a digest-string equality authority
+// and is the regression wall for reintroducing one.
+data colliding_axis: List<SelectionAxis> = [
+  SelectionAxis { identity: probe(name: "x=lower,test.claim.workflow_stage_gate_witness::y"), goal: LowerIsBetter },
+]
+
+data two_plain_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: probe(name: "x"), goal: LowerIsBetter },
+  SelectionAxis { identity: probe(name: "y"), goal: LowerIsBetter },
+]
+
+// Two axes spelled so they RENDER alike are still two axes. Every negative wall here is read beside
+// a positive control -- a configuration agrees with itself, an identical sensitivity roster still
+// agrees -- so the disagreements are not "everything disagrees". SENSITIVITIES ARE PART OF THE
+// POLICY: the mutation battery caught that nothing said so, because dropping the sensitivity
+// comparison from configurations_agree left every control green. Two comparisons over identical
+// axes that disagree on which assumptions were varied are two policies, so one identity may not
+// name both.
+fn a_spelled_collision_is_not_agreement() -> Bool {
+  let one_axis = pareto_procedure(identity: r_procedure, axes: colliding_axis, sensitivities: [])
+  let two_axes = pareto_procedure(identity: r_procedure, axes: two_plain_axes, sensitivities: [])
+  !registrations_agree(a: one_axis.registration, b: two_axes.registration)
+    && registrations_agree(a: one_axis.registration, b: one_axis.registration)
+    && registrations_agree(a: pareto_config.registration,
+         b: pareto_procedure(identity: r_procedure, axes: compared_axes, sensitivities: []).registration)
+    && !registrations_agree(a: pareto_config.registration,
+         b: pareto_procedure(identity: r_procedure, axes: flipped_axes, sensitivities: []).registration)
+    && !registrations_agree(a: two_axes.registration,
+         b: pareto_procedure(identity: r_procedure, axes: reversed_plain_axes, sensitivities: []).registration)
+    && !registrations_agree(a: pareto_config.registration,
+         b: pareto_procedure(identity: r_procedure, axes: compared_axes,
+              sensitivities: ["power price +30%"]).registration)
+    && !registrations_agree(
+         a: pareto_procedure(identity: r_procedure, axes: compared_axes,
+              sensitivities: ["power price +30%"]).registration,
+         b: pareto_procedure(identity: r_procedure, axes: compared_axes,
+              sensitivities: ["power price +30%", "transit price +30%"]).registration)
+    && registrations_agree(
+         a: pareto_procedure(identity: r_procedure, axes: compared_axes,
+              sensitivities: ["power price +30%"]).registration,
+         b: pareto_procedure(identity: r_procedure, axes: compared_axes,
+              sensitivities: ["power price +30%"]).registration)
+}
+
+data reversed_plain_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: probe(name: "y"), goal: LowerIsBetter },
+  SelectionAxis { identity: probe(name: "x"), goal: LowerIsBetter },
+]
+
+
+fn a_structurally_different_procedure_uses_its_own_projection() -> Bool {
+  let carried = selection_cause_of(f: panel_facts(
+    votes: [VoteFor { juror: probe(name: "j1") }, VoteFor { juror: probe(name: "j2") }, VoteAgainst { juror: probe(name: "j3"), because: "sited too far" }], quorum: 3))
+  let rejected = selection_cause_of(f: panel_facts(
+    votes: [VoteFor { juror: probe(name: "j1") }, VoteAgainst { juror: probe(name: "j2"), because: "cost" }, VoteAgainst { juror: probe(name: "j3"), because: "sited too far" }], quorum: 3))
+  let short = selection_cause_of(f: panel_facts(
+    votes: [VoteFor { juror: probe(name: "j1") }], quorum: 3))
+  let base = k2(a: "procedure_did_not_support_selection", b: r_sel_gate, c: r_planted)
+  carried == supported_key()
+    && rejected == refusal(k: concat(base, ":rejected"))
+    && short == refusal(k: concat(base, ":pending"))
+}
+
+// THE ADMITTING ASSESSMENT IS NAMED ON SUCCESS. Carrying by_assessment was not enough: nothing
+// observed it, so substituting the decision's own ref for it left every control green. A field the
+// model carries and no assertion reads is not evidence, it is a claim.
+fn selection_disposition_key(f: WorkflowFacts) -> String {
+  fold(selection_of(a: selection_answer(facts: f)), init: "none", f: fn(acc, d) {
+    match d {
+      SelectionAdmitted { gate, selected, by_decision, by_assessment } => k1(a: "admitted", b: by_assessment),
+      SelectionPending { gate, unmet } => "pending",
+      SelectionRenewalRequired { gate, stale } => "renewal",
+      SelectionEvidenceConflicts { gate, conflicted } => "conflicts",
+      SelectionRefused { cause, further_causes } => "refused",
+    }
+  })
+}
+
+fn admission_names_the_assessment_that_supported_it() -> Bool {
+  let admitted = selection_disposition_key(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: both_routes, proc: r_procedure)))
+  admitted == k1(a: "admitted", b: r_planted)
+}
+
+// ONE REF MAY NOT DENOTE TWO POPULATIONS. The within-population censuses could not see this: the
+// assessment ref here is unique among assessments and unique among decisions, and collides only
+// ACROSS them. Without this fixture the cross-population census was unreachable, so dropping it
+// changed nothing.
+// THE THIRD PAIRING, IN BOTH INPUT ORDERS. The census walked assessment identities against
+// decisions and against receipts, so a decision and a receipt sharing one reference collided with
+// nothing and every census passed. Asserting both orders is what makes this a check on the PAIR
+// rather than on one list's position: a census that only walked receipts would still pass one of
+// them.
+
+// A CONFIGURED PROCEDURE IS A FOURTH IDENTITY POPULATION, and it joined the census only when the gate
+// began carrying its registration. Before that the procedure was named by a ref the caller supplied
+// beside three other populations; now it is an addressable row like the others, and one reference
+// naming both a procedure and a decision, assessment or receipt has to refuse.
+//
+// Three populations made three pairings and four make six, so all three NEW pairings are exercised
+// here rather than one standing in for the family.
+data procedure_named_like_a_decision: ParetoProcedure = pareto_procedure(identity: probe(name: "conflicting_a"), axes: compared_axes, sensitivities: [])
+
+data procedure_named_like_a_receipt: ParetoProcedure = pareto_procedure(identity: r_sel_approval, axes: compared_axes, sensitivities: [])
+
+data procedure_named_like_an_assessment: ParetoProcedure = pareto_procedure(identity: r_planted, axes: compared_axes, sensitivities: [])
+
+fn gate_declaring(reg: ProcedureRegistration) -> DecisionGate {
+  DecisionGate {
+    self_ref: r_sel_gate, title: "route?",
+    purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [r_route_y], procedure: reg },
+    depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+    requirements: [sel_req],
+  }
+}
+
+fn template_declaring(reg: ProcedureRegistration) -> WorkflowTemplate {
+  WorkflowTemplate {
+    selection: SelectedBy { gate: r_sel_gate, candidates: [r_route_x, r_route_y] },
+    specs: [
+      WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+      WorkflowNodeSpec { node: GateNode { gate: gate_declaring(reg: reg) }, activation: AlwaysActive },
+      WorkflowNodeSpec { node: StageNode { stage: stage_route_x }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+      WorkflowNodeSpec { node: StageNode { stage: stage_route_y }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_y } },
+    ],
+  }
+}
+
+fn collision_cause_under(reg: ProcedureRegistration, a: SelectionAssessment) -> String {
+  selection_cause_of(f: WorkflowFacts {
+    template: template_declaring(reg: reg), decisions: [conflicting_decision_a],
+    assessments: [a], receipts: [sel_approval_row], as_of: now })
+}
+
+// A SECOND SelectionAmong GATE IN THE SAME TEMPLATE, WHICH ADMISSION NEVER LOOKED AT. The template's
+// `selection` designates ONE gate as the selector; a second selection gate is a perfectly ordinary
+// node and is not the designated one, so nothing checked its registration. Its identity then met the
+// designated gate's identity inside template_procedure_refs, which skips an identity it has already
+// seen -- and the second CONFIGURATION was discarded with the occurrence that carried it.
+data r_sel_gate_2: DeclarationRef = probe(name: "second_selection_gate")
+
+fn second_gate_declaring(reg: ProcedureRegistration) -> DecisionGate {
+  DecisionGate {
+    self_ref: r_sel_gate_2, title: "route, again?",
+    purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [r_route_y], procedure: reg },
+    depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+    requirements: [sel_req],
+  }
+}
+
+fn template_declaring_two(first: ProcedureRegistration, second: ProcedureRegistration) -> WorkflowTemplate {
+  WorkflowTemplate {
+    selection: SelectedBy { gate: r_sel_gate, candidates: [r_route_x, r_route_y] },
+    specs: [
+      WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+      WorkflowNodeSpec { node: GateNode { gate: gate_declaring(reg: first) }, activation: AlwaysActive },
+      WorkflowNodeSpec { node: GateNode { gate: second_gate_declaring(reg: second) }, activation: AlwaysActive },
+      WorkflowNodeSpec { node: StageNode { stage: stage_route_x }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+      WorkflowNodeSpec { node: StageNode { stage: stage_route_y }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_y } },
+    ],
+  }
+}
+
+fn cause_under_two(first: ProcedureRegistration, second: ProcedureRegistration) -> String {
+  let asmt = pareto_assessment(subject: cand_x_winning, field: [cand_x_winning, cand_y])
+  selection_cause_of(f: WorkflowFacts {
+    template: template_declaring_two(first: first, second: second), decisions: [conflicting_decision_a],
+    assessments: [asmt], receipts: [sel_approval_row], as_of: now })
+}
+
+// ONE IDENTITY MAY NOT DENOTE TWO CONTRACTS. Each pairing is asserted in BOTH directions -- the
+// disagreeing pair refuses, the agreeing pair does not -- so a blanket "any second gate refuses"
+// cannot satisfy this, and neither can a check that never fires.
+// THE PAIR THE DISPLAY KEY CANNOT TELL APART. Both render "a::b::c": the first is declaration `c`
+// in module `a::b`, the second is field `c` of declaration `b` in module `a`. Different
+// declarations, one string -- so a comparator reading the rendering reports neither before the
+// other and the canonical order falls back to arrival, in the one function that exists to remove it.
+data decl_in_nested_module: DeclarationRef = DeclarationRef {
+  module_path: "a::b", decl_name: "c", field: WholeDeclaration,
+}
+
+data field_of_decl_in_parent: DeclarationRef = DeclarationRef {
+  module_path: "a", decl_name: "b", field: NamedField { field_name: "c" },
+}
+
+// THE OBSERVABLE MUST NOT BE THE COLLIDING ENCODING, and my first version of this control was.
+// It rendered each ref through declaration_ref_display_key -- the exact encoding that CANNOT tell
+// these two apart -- so both orderings printed the same string and the equality below held no
+// matter what the comparator did. A mutation restoring the display-key ordering left this control
+// GREEN. The observable is now injective over this population: the components are separated by a
+// delimiter that cannot appear inside them, so two different orders read as two different strings.
+fn field_key(f: DeclField) -> String {
+  match f {
+    WholeDeclaration => "-",
+    NamedField { field_name: n } => n as String,
+  }
+}
+
+fn ordered_keys(refs: List<DeclarationRef>) -> String {
+  fold(by_identity(refs: refs), init: "", f: fn(acc, r) {
+    join([acc, r.module_path as String, " / ", r.decl_name as String, " / ", field_key(f: r.field), " | "], "")
+  })
+}
+
+// The collision is asserted as a premise rather than assumed: if these refs ever stop rendering
+// alike this control is measuring nothing and must say so. On top of it, by_identity must give ONE
+// canonical order whichever way the pair arrives -- the whole point of by_identity, and false for
+// exactly this pair -- and it must be THIS order, stated exactly, because equality alone is
+// satisfied by any comparator that happens to be stable on arrival order. The remaining rows name which side wins, because a
+// comparator that merely stabilises on arrival order satisfies every equality above without
+// deciding anything.
+fn a_colliding_rendering_still_has_one_canonical_order() -> Bool {
+  declaration_ref_display_key(ref: decl_in_nested_module)
+      == declaration_ref_display_key(ref: field_of_decl_in_parent)
+    && ordered_keys(refs: [decl_in_nested_module, field_of_decl_in_parent])
+         == ordered_keys(refs: [field_of_decl_in_parent, decl_in_nested_module])
+    && ordered_keys(refs: [decl_in_nested_module, field_of_decl_in_parent])
+         == "a / b / c | a::b / c / - | "
+    && declaration_ref_precedes(a: field_of_decl_in_parent, b: decl_in_nested_module)
+    && !declaration_ref_precedes(a: decl_in_nested_module, b: field_of_decl_in_parent)
+    && !declaration_ref_precedes(a: decl_in_nested_module, b: decl_in_nested_module)
+    && declaration_ref_precedes(
+         a: DeclarationRef { module_path: "m", decl_name: "d", field: WholeDeclaration },
+         b: DeclarationRef { module_path: "m", decl_name: "d", field: NamedField { field_name: "a" } })
+    && declaration_ref_precedes(
+         a: DeclarationRef { module_path: "m", decl_name: "d", field: NamedField { field_name: "a" } },
+         b: DeclarationRef { module_path: "m", decl_name: "d", field: NamedField { field_name: "b" } })
+    && declaration_ref_precedes(
+         a: DeclarationRef { module_path: "m", decl_name: "a", field: WholeDeclaration },
+         b: DeclarationRef { module_path: "m", decl_name: "b", field: WholeDeclaration })
+    && declaration_ref_precedes(
+         a: DeclarationRef { module_path: "l", decl_name: "z", field: WholeDeclaration },
+         b: DeclarationRef { module_path: "m", decl_name: "a", field: WholeDeclaration })
+}
+
+// Every field that carries policy is exercised, sensitivities included -- that is the field a
+// mutation once found unguarded. Symmetry is asserted so the refusal is not a fact about which gate
+// the specs listed first, and THE OTHER DIRECTION closes it: the SAME configuration twice under one
+// identity is not a conflict, so this is not "a second selection gate always refuses".
+fn a_procedure_identity_may_not_carry_two_configurations() -> Bool {
+  let pareto_p = pareto_procedure(identity: r_procedure, axes: compared_axes, sensitivities: [])
+  let pareto_p_other_axes = pareto_procedure(identity: r_procedure, axes: contradictory_axes, sensitivities: [])
+  let pareto_p_other_sensitivities = pareto_procedure(identity: r_procedure, axes: compared_axes, sensitivities: ["price"])
+  let panel_p = panel_procedure(identity: r_procedure, quorum: 3)
+  let expected = concat(k1(a: "procedure_two_configurations", b: r_procedure), "/0")
+
+  cause_under_two(first: pareto_p.registration, second: pareto_p_other_axes.registration) == expected
+    && cause_under_two(first: pareto_p.registration, second: pareto_p_other_sensitivities.registration) == expected
+    && cause_under_two(first: pareto_p.registration, second: panel_p.registration) == expected
+    && cause_under_two(first: panel_p.registration, second: pareto_p.registration) == expected
+    && cause_under_two(first: pareto_p.registration, second: pareto_p.registration) != expected
+}
+
+fn a_procedure_identity_may_not_also_name_another_row() -> Bool {
+  let asmt = pareto_assessment(subject: cand_x_winning, field: [cand_x_winning, cand_y])
+  collision_cause_under(reg: procedure_named_like_a_decision.registration, a: asmt)
+      == concat(k1(a: "identity_two_populations", b: probe(name: "conflicting_a")), "/0")
+    && collision_cause_under(reg: procedure_named_like_a_receipt.registration, a: asmt)
+      == concat(k1(a: "identity_two_populations", b: r_sel_approval), "/0")
+    && collision_cause_under(reg: procedure_named_like_an_assessment.registration, a: asmt)
+      == concat(k1(a: "identity_two_populations", b: r_planted), "/0")
+}
+
+fn one_identity_may_not_be_both_a_decision_and_a_receipt() -> Bool {
+  let shared = probe(name: "conflicting_a")
+  let collider = sel_evidence(self_ref: shared, o: OutcomeFavourable)
+  let decision_first = selection_cause_of(f: WorkflowFacts {
+    template: two_candidate_template, decisions: [conflicting_decision_a],
+    assessments: supporting_assessments(t: two_candidate_template, ds: [conflicting_decision_a]),
+    receipts: [sel_approval_row, collider], as_of: now })
+  let receipt_first = selection_cause_of(f: WorkflowFacts {
+    template: two_candidate_template, decisions: [conflicting_decision_a],
+    assessments: supporting_assessments(t: two_candidate_template, ds: [conflicting_decision_a]),
+    receipts: [collider, sel_approval_row], as_of: now })
+  let expected = concat(k1(a: "identity_two_populations", b: shared), "/0")
+  decision_first == expected && receipt_first == expected
+}
+
+fn one_identity_may_not_be_both_a_decision_and_an_assessment() -> Bool {
+  let collided = selection_cause_of(f: facts_with_assessments(asmts: [assessment_built(
+    self_ref: probe(name: "conflicting_a"), gate: r_sel_gate, proc: r_procedure,
+    sel: r_route_x, pop: both_routes, o: ProcedureSupportsSelection)]))
+  collided == concat(k1(a: "identity_two_populations", b: probe(name: "conflicting_a")), "/0")
+}
+
+fn the_primary_cause_does_not_depend_on_population_order() -> Bool {
+  let xy = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: [r_route_x, r_route_y, r_absent, r_other_gate], proc: r_procedure)))
+  let yx = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: [r_route_x, r_route_y, r_other_gate, r_absent], proc: r_procedure)))
+  xy == yx
+}
+
+// ONE FACT, ONE CAUSE. The foreign-procedure row briefly asserted a second cause beside it, because
+// configuration agreement was decided by a predicate that also compared identity -- so a foreign
+// identity under an identical configuration reported a configuration mismatch that did not exist.
+fn the_assessment_must_be_this_gate_s_declared_procedure() -> Bool {
+  let foreign = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: both_routes, proc: r_other_procedure)))
+  let wrong_subject = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_y, o: ProcedureSupportsSelection, pop: both_routes, proc: r_procedure)))
+  let unassessed = selection_cause_of(f: facts_with_assessments(asmts: []))
+  foreign == refusal(k: k3(a: "assessment_for_another_procedure", b: r_sel_gate, c: r_procedure, d: r_other_procedure))
+    && wrong_subject == refusal(k: k3(a: "assessment_selected_another_candidate", b: r_sel_gate, c: r_route_x, d: r_route_y))
+    && unassessed == refusal(k: k3(a: "selection_unassessed", b: r_sel_gate, c: probe(name: "conflicting_a"), d: r_procedure))
+}
+
+// TWO ASSESSMENTS FOR ONE DECISION REFUSE. This arm previously had no control at all: the only
+// two-assessment population in the suite came from two DECISIONS, so ConflictingSelections returned
+// before assessment_refusals ever ran, and the arm was cited as coverage while permanently green.
+fn two_assessments_for_one_selection_refuse() -> Bool {
+  let agreeing = assessment_for(sel: r_route_x, o: ProcedureSupportsSelection, pop: both_routes, proc: r_procedure)
+  let two = selection_cause_of(f: facts_with_assessments(asmts: [agreeing, assessment_built(
+    self_ref: probe(name: "second_assessment"), gate: r_sel_gate, proc: r_procedure,
+    sel: r_route_x, pop: both_routes, o: ProcedureSupportsSelection)]))
+  let one = selection_cause_of(f: facts_with_assessments(asmts: [agreeing]))
+  let two_facts = facts_with_assessments(asmts: [agreeing, assessment_built(
+    self_ref: probe(name: "second_assessment"), gate: r_sel_gate, proc: r_procedure,
+    sel: r_route_x, pop: both_routes, o: ProcedureSupportsSelection)])
+  two == refusal(k: concat(k1(a: "conflicting_assessments", b: r_sel_gate), ":some"))
+    && conflicting_assessment_count(f: two_facts) == 2
+    && one == supported_key()
+}
+
+// ONE ASSESSMENT IDENTITY NAMES ONE ROW. A local assessment and a foreign-gate one could share a
+// self_ref, so a cause could name an identity resolving to two rows -- exactly the class the
+// receipt and decision censuses already close.
+fn an_assessment_identity_names_one_row() -> Bool {
+  let agreeing = assessment_for(sel: r_route_x, o: ProcedureSupportsSelection, pop: both_routes, proc: r_procedure)
+  let collided = selection_cause_of(f: facts_with_assessments(asmts: [agreeing, assessment_built(
+    self_ref: r_planted, gate: r_other_gate, proc: r_procedure,
+    sel: r_route_x, pop: both_routes, o: ProcedureSupportsSelection)]))
+  collided == concat(k1(a: "duplicate_assessment", b: r_planted), "/0") && selection_cause_of(f: facts_with_assessments(asmts: [agreeing])) == supported_key()
+}
+
+// EVERY RAISED CAUSE SURVIVES. Folding independent causes into one slot made the reported defect a
+// function of authored list order: a wrong procedure AND a wrong population reported whichever was
+// written later. This fixture is wrong in two ways at once and must name both.
+fn two_contradictions_are_both_reported() -> Bool {
+  let both_wrong = selection_cause_of(f: facts_with_assessment(a: assessment_for(
+    sel: r_route_x, o: ProcedureSupportsSelection, pop: [r_route_x], proc: r_other_procedure)))
+  both_wrong == refusal(k: concat(
+    k3(a: "assessed_population_omits_candidate", b: r_sel_gate, c: r_planted, d: r_route_y),
+    concat("+", k3(a: "assessment_for_another_procedure", b: r_sel_gate, c: r_procedure, d: r_other_procedure))))
+}
+
+fn the_nested_realization_cause_survives() -> Bool {
+  selection_cause_of(f: selection_facts(ds: [absent_route_decision]))
+      == "realization:selection_refused:candidate_not_in_population:absent/some"
+    && selection_cause_of(f: selection_facts(ds: [conflicting_decision_a, conflicting_decision_b]))
+      == "realization:selection_refused:conflicting_selections/some"
+    && selection_cause_of(f: selection_facts(ds: [conflicting_decision_a])) == "answered"
+}
+
+fn every_answer_carries_its_cause() -> Bool {
+  gate_cause_of(f: snap(t: down_alone_template, ds: [], rs: [good_receipt])) == "template:unknown_dependency"
+    && gate_cause_of(f: snap(t: unbranched_template, ds: [], rs: duplicate_identity_pair)) == "duplicate_receipt:exact"
+    && actuation_cause_of(f: snap(t: unbranched_template, ds: [], rs: duplicate_identity_pair)) == "duplicate_receipt:exact"
+    && selection_cause_of(f: snap(t: unbranched_template, ds: [], rs: duplicate_identity_pair)) == "duplicate_receipt:exact/0"
+    && selection_cause_of(f: snap(t: down_alone_template, ds: [], rs: [good_receipt])) == "template:unknown_dependency/0"
+    && gate_cause_of(f: snap(t: unbranched_template, ds: [], rs: [good_receipt])) == "answered:admitted"
+    && actuation_cause_of(f: snap(t: unbranched_template, ds: [], rs: [good_receipt])) == "answered"
+}
+
+// AND THE OTHER NON-PREFIX ACTIVATION IS ITS OWN FIXTURE. OnlyWhenSelected and AfterSelection are
+// two constructors; a wall proven on one is not proven on the other.
+data sel_gate_after_selection_dependency: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AfterSelection { gate: r_sel_gate }, kind: OrderingOnly }],
+  requirements: [sel_req],
+}
+
+data selector_with_after_selection_dependency: WorkflowTemplate = sel_template(
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: sel_gate_after_selection_dependency }, activation: AlwaysActive },
+  ],
+  candidates: [r_route_x],
+)
+
+fn both_non_prefix_activations_refuse() -> Bool {
+  template_cause_key(t: selector_with_after_selection_dependency) == "selector_dependency_is_route_scoped"
+    && template_cause_key(t: selector_with_route_scoped_dependency) == "selector_dependency_is_route_scoped"
+}
+
+// ---- ROUND-8 CONTROLS: A CONFLICT IS NOT A REFUSAL ----
+//
+// The gate and the selector both used to report a live approval standing against a live denial as
+// an adverse ANSWER. The single-denial rows are the positive controls for the refusal arm those
+// two states used to share.
+fn a_conflict_is_not_a_refusal() -> Bool {
+  gate_key_with(rs: [approval_row, refusal_row]) == "evidence_conflicts"
+    && gate_key_with(rs: [refusal_row, approval_row]) == "evidence_conflicts"
+    && gate_key_with(rs: [refusal_row]) == "refused_by_evidence"
+    && gate_key_with(rs: [approval_row]) == "admitted"
+}
+
+// ---- ROUND-8 CONTROL: THE DUPLICATE IS NAMED ----
+//
+// is_derived == false could not tell a duplicated receipt identity from a malformed graph or a
+// refused realization, so the arm and the identity are both asserted.
+fn duplicate_refusal_names_the_receipt() -> Bool {
+  fold(derivation_refusal(facts: snap(t: unbranched_template, ds: [], rs: duplicate_identity_pair)), init: false, f: fn(acc, c) {
+    match c {
+      SnapshotDuplicateReceiptIdentity { receipt } => declaration_ref_eq(a: receipt, b: r_receipt),
+      SnapshotDuplicateSelectionDecisionIdentity { decision } => false,
+      SnapshotDuplicateAssessmentIdentity { assessment } => false,
+      SnapshotIdentityUsedByTwoPopulations { identity } => false,
+      SnapshotProcedureIdentityCarriesTwoConfigurations { procedure } => false,
+      SnapshotTemplateRefused { cause } => false,
+      SnapshotRealizationRefused { cause } => false,
+    }
+  })
+}
+
+// ---- ROUND-8 CONTROLS: THE SELECTOR IS JUDGED ON PREFIX FACTS ONLY ----
+//
+// A selector carrying a route-scoped requirement admits pre-selection on its AnyRoute row, then
+// fails the same check once its own decision activates the route - so the snapshot would carry
+// SelectionAdmitted for a selector that no longer stands. A route-activated dependency closes the
+// same circle. well_formed_template is the positive control: a prefix-only selector still admits.
+
+data mixed_scope_sel_req: EvidenceRequirement = EvidenceRequirement {
+  self_ref: probe(name: "mixed_scope_sel_req"), gate: r_sel_gate,
+  producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  applies_to: OnlyRoute { route: r_route_x },
+  describes: "route-scoped row on the selector itself",
+}
+
+data sel_gate_mixed_scope: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [sel_req, mixed_scope_sel_req],
+}
+
+data selector_with_route_scoped_requirement: WorkflowTemplate = sel_template(
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: sel_gate_mixed_scope }, activation: AlwaysActive },
+  ],
+  candidates: [r_route_x],
+)
+
+data sel_gate_route_dependency: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x }, kind: OrderingOnly }],
+  requirements: [sel_req],
+}
+
+data selector_with_route_scoped_dependency: WorkflowTemplate = sel_template(
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: sel_gate_route_dependency }, activation: AlwaysActive },
+  ],
+  candidates: [r_route_x],
+)
+
+fn the_selector_is_judged_before_it_chooses() -> Bool {
+  template_cause_key(t: selector_with_route_scoped_requirement) == "selector_requirement_is_route_scoped"
+    && template_cause_key(t: selector_with_route_scoped_dependency) == "selector_dependency_is_route_scoped"
+    && template_cause_key(t: well_formed_template) == "admitted"
+}
+
+fn workflow_stage_gate_witness_main() -> ProcessExit {
+  if graph_controls()
+    && evidence_controls()
+    && closure_controls()
+    && population_controls()
+    && actuation_controls()
+    && refusal_grain_controls()
+    && empty_census_is_not_a_verdict()
+    && route_controls()
+    && untested_wall_probes()
+    && cross_selector_cannot_activate()
+    && unselected_branch_still_checked()
+    && external_document_controls()
+    && prerequisite_controls()
+    && round3_template_probes()
+    && round3_selection_probes()
+    && round3_realization_probes()
+    && the_row_comes_from_the_template()
+    && actuation_row_comes_from_the_template()
+    && an_unbranched_template_reports_no_selection()
+    && two_dispositions_are_refused()
+    && a_disposition_list_must_match_the_template()
+    && every_arm_checks_its_gate()
+    && round4_template_probes()
+    && the_document_answer_is_adjudicated()
+    && a_lapsed_denial_does_not_refuse()
+    && stale_and_unmet_are_counted_apart()
+    && two_requirements_both_answered()
+    && round5_probes()
+    && conflict_identity_is_order_independent()
+    && temporal_is_read_before_every_outcome()
+    && duplicate_receipt_identity_refuses()
+    && order_does_not_decide()
+    && both_approvals_survive()
+    && the_representative_is_not_the_last_one_seen()
+    && no_non_governing_receipt_displaces_a_current_one()
+    && either_approval_can_be_cited()
+    && the_gate_population_is_canonical_too()
+    && two_selections_refuse_with_their_count()
+    && a_contradicted_selector_selects_nothing()
+    && a_decision_identity_names_one_row()
+    && every_answer_carries_its_cause()
+    && the_nested_realization_cause_survives()
+    && both_non_prefix_activations_refuse()
+    && a_conflict_is_not_a_refusal()
+    && duplicate_refusal_names_the_receipt()
+    && the_selector_is_judged_before_it_chooses()
+    && a_selection_the_procedure_rejected_is_refused()
+    && an_assessment_over_the_wrong_population_is_refused()
+    && the_assessment_must_be_this_gate_s_declared_procedure()
+    && two_assessments_for_one_selection_refuse()
+    && an_assessment_identity_names_one_row()
+    && two_contradictions_are_both_reported()
+    && a_repeated_undeclared_candidate_names_each_fact_once()
+    && the_primary_cause_does_not_depend_on_population_order()
+    && the_declared_procedure_decides_not_the_author()
+    && a_structurally_different_procedure_uses_its_own_projection()
+    && a_panel_may_not_answer_for_a_pareto_gate()
+    && the_adapter_keeps_the_standing_it_computed()
+    && a_quorum_is_part_of_the_panel_policy()
+    && a_wrong_identity_under_the_right_configuration_is_one_fact()
+    && a_spelled_collision_is_not_agreement()
+    && admission_names_the_assessment_that_supported_it()
+    && one_identity_may_not_be_both_a_decision_and_an_assessment()
+    && one_identity_may_not_be_both_a_decision_and_a_receipt()
+    && a_procedure_identity_may_not_also_name_another_row()
+    && a_procedure_identity_may_not_carry_two_configurations()
+    && a_colliding_rendering_still_has_one_canonical_order()
+    && the_admitted_selection_reaches_the_procedures_own_answer()
+  {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}
+
+// ---- THREE WALLS THE ROUND-2 CATALOGUE COULD NOT REACH ----
+//
+// The external-document provenance arm had NO constructed inhabitant anywhere in the corpus:
+// VerifiedExternalDocument was declared, matched in three functions, and never built - so the
+// admissibility branch, the issuer join, and the producer-kind distinction were all decoration
+// by the same test as the ten walls above. These probes construct the arm from the REAL CIT-0
+// producer (verify_citation_representation over a pinned target and a retrieval observation),
+// not by hand-authoring an outcome, so a change to the verifier reaches these controls.
+//
+// THE CEILING IS UNCHANGED AND IS NOT WIDENED HERE: a verified representation establishes that
+// the bytes retrieved are the bytes pinned. It does not establish that the document says what
+// the requirement needs, and no probe below claims that it does.
+
+data r_authority: DeclarationRef = probe(name: "issuing_authority")
+
+data ext_hex: NonEmptyStr = "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr
+
+data ext_other_hex: NonEmptyStr = "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr
+
+data ext_digest: Sha256Digest = Sha256Digest { hex: ext_hex }
+
+data ext_other_digest: Sha256Digest = Sha256Digest { hex: ext_other_hex }
+
+data ext_route: Uri = Uri { scheme: Https, locator: "example.test/workflow-gate-fixture" }
+
+data ext_media: MediaType = MediaType { top_level: TopLevelApplication, subtype: "pdf", parameters: [] }
+
+data ext_seen_at: EpochMs = 1700000001000
+
+// ONE FIXTURE PARAMETERISED BY ITS SOURCE. The issuer a receipt can report is now READ OUT of
+// the citation, so the only way to express "a document from another authority" is to pin one -
+// which is exactly the point: the divergence has no second field to live in.
+fn source_pin(source: DeclarationRef) -> Pin<CitedRepresentationIdentity> {
+  citation_exact_pin(
+    source: ExternalSubjectRef { declaration: source },
+    access_route: ext_route,
+    byte_domain: RawResponseBody,
+    version: "workflow-gate-fixture-v1" as VersionIdentity,
+    expected_identity: ext_digest,
+  )
+}
+
+fn source_target(source: DeclarationRef) -> CitationTarget<CitationSelector> {
+  CitationTarget { expected_pin: source_pin(source: source), selector: Absent }
+}
+
+fn observed_from(source: DeclarationRef, digest: Sha256Digest) -> ObservedCitedRepresentation {
+  observed_cited_representation(
+    identity: cited_representation_identity(
+      source: ExternalSubjectRef { declaration: source },
+      access_route: ext_route,
+      byte_domain: RawResponseBody,
+    ),
+    media_type: ext_media,
+    observed_identity: digest,
+  )
+}
+
+fn outcome_from(source: DeclarationRef, digest: Sha256Digest) -> CitationVerificationOutcome<CitationSelector> {
+  verify_citation_representation(
+    target: source_target(source: source),
+    observation: RepresentationRetrieved {
+      request: CitationRetrievalRequest { locator: ext_route },
+      observed_at: ext_seen_at, http_status: 200, observed: observed_from(source: source, digest: digest),
+    },
+  )
+}
+
+data req_external: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_req, gate: r_gate,
+  producer: PublishedByExternalSubject { source: ExternalSubjectRef { declaration: r_authority } },
+  subject: AboutParcel { parcel: r_parcel_a },
+  design_revision: rev_r, applies_to: AnyRoute, describes: "externally issued probe requirement",
+}
+
+fn external_receipt(producer: EvidenceProducer, outcome: CitationVerificationOutcome<CitationSelector>) -> EvidenceReceipt {
+  EvidenceReceipt {
+    self_ref: r_receipt, requirement: r_req, gate: r_gate,
+    producer: producer,
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+    currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable,
+    provenance: VerifiedExternalDocument { outcome: outcome },
+  }
+}
+
+data ext_good: EvidenceReceipt = external_receipt(
+  producer: PublishedByExternalSubject { source: ExternalSubjectRef { declaration: r_authority } },
+  outcome: outcome_from(source: r_authority, digest: ext_digest),
+)
+
+// A DOCUMENT VERIFIED FROM ANOTHER SOURCE. Nothing about this receipt is forged: the citation
+// really was verified. It is simply not this authority's document.
+data ext_wrong_source: EvidenceReceipt = external_receipt(
+  producer: PublishedByExternalSubject { source: ExternalSubjectRef { declaration: r_authority } },
+  outcome: outcome_from(source: r_stage_a, digest: ext_digest),
+)
+
+// The bytes retrieved are not the bytes pinned, so no source is established at all.
+data ext_not_verified: EvidenceReceipt = external_receipt(
+  producer: PublishedByExternalSubject { source: ExternalSubjectRef { declaration: r_authority } },
+  outcome: outcome_from(source: r_authority, digest: ext_other_digest),
+)
+
+// SAME DECLARATION, DIFFERENT PRODUCER KIND. req names ProducedByStage { stage_b }; this receipt
+// names PublishedByExternalSubject { stage_b } and its citation really is verified from stage_b,
+// so the only thing separating it from admission is that the kind is part of producer identity.
+data producer_kind_swap: EvidenceReceipt = external_receipt(
+  producer: PublishedByExternalSubject { source: ExternalSubjectRef { declaration: r_stage_b } },
+  outcome: outcome_from(source: r_stage_b, digest: ext_digest),
+)
+
+// AN UNREAD ISSUE DATE, AND A DOCUMENT ISSUED IN THE FUTURE. Both were carried and neither was
+// consumed, so both closed their requirement.
+data issue_unread: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssueDateUnread { obligation: "the issue date was never read off the document" },
+  effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable, provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data issued_in_future: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: later }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable, provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+fn evidence_cause_key(a: GateEvidenceAdmission) -> String {
+  match a {
+    EvidenceAdmitted { receipt } => "admitted",
+    EvidenceRefused { cause } => match cause {
+      ReceiptNamesAnotherRequirement { receipt, names } => "another_requirement",
+      ReceiptNamesAnotherGate { receipt, names } => "another_gate",
+      ReceiptSubjectMismatch { receipt, expected, observed } => "subject",
+      ReceiptRevisionMismatch { receipt, expected, observed } => "revision",
+      ReceiptProducerNotAuthorized { receipt, expected, observed } => "producer",
+      ReceiptRepresentationNotVerified { receipt } => "not_verified",
+      ReceiptProvenanceProducerMismatch { receipt, provenance, producer } => "provenance",
+    },
+  }
+}
+
+// The positive control comes first: an externally issued requirement IS satisfiable, so the
+// refusals below are discriminating and not a uniformly closed arm.
+fn external_document_controls() -> Bool {
+  evidence_cause_key(a: admit_evidence(r: ext_good, req: req_external)) == "admitted"
+    && evidence_cause_key(a: admit_evidence(r: ext_wrong_source, req: req_external)) == "provenance"
+    && evidence_cause_key(a: admit_evidence(r: ext_not_verified, req: req_external)) == "not_verified"
+    && evidence_cause_key(a: admit_evidence(r: producer_kind_swap, req: req)) == "producer"
+    && pending_with(rs: [issue_unread])
+    && pending_with(rs: [issued_in_future])
+    && admitted_with(rs: [good_receipt])
+}
+
+// ---- AN UPSTREAM GATE THAT HAS NOT ADMITTED CANNOT BE SUBSTITUTED FOR ----
+//
+// gate_downstream declares gate_a upstream. Its OWN evidence is complete and current, so the
+// only thing that may hold it is the prerequisite. Three ways the prerequisite can fail to be
+// met - pending, reopened, and simply not present in the standings passed in - must all leave
+// the downstream gate pending; a stage-authored receipt is not a substitute for another gate's
+// judgement, and an absent standing is not a satisfied one.
+
+data r_gate_down: DeclarationRef = probe(name: "gate_down")
+
+data req_down: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_other_req, gate: r_gate_down,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a },
+  design_revision: rev_r, applies_to: AnyRoute, describes: "downstream probe requirement",
+}
+
+data gate_down: DecisionGate = DecisionGate {
+  self_ref: r_gate_down, title: "downstream", purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [WorkflowDependency { predecessor: r_gate, required_when: AlwaysActive, kind: RequiresAdmission }],
+  requirements: [req_down],
+}
+
+data down_receipt: EvidenceReceipt = EvidenceReceipt {
+  self_ref: probe(name: "down_receipt"), requirement: r_other_req, gate: r_gate_down,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeFavourable, provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+// THE PREREQUISITE'S STANDING IS NO LONGER SUPPLIED. It is derived from the same realization and
+// the same receipt population as everything else, so the only way to make an upstream gate
+// admitted is to produce the paper that admits it.
+data down_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: gate }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: gate_down }, activation: AlwaysActive },
+  ],
+}
+
+data down_alone_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: gate_down }, activation: AlwaysActive },
+  ],
+}
+
+fn down_standing(rs: List<EvidenceReceipt>) -> Bool {
+  match gate_answer(facts: snap(t: down_template, ds: [], rs: rs), gate_ref: r_gate_down) {
+    GateAnswered { disposition } => disposition_is_admitted(d: disposition),
+    GateUnanswerable { cause } => false,
+  }
+}
+
+// The downstream gate's OWN evidence is complete and current in every case below, so the only
+// thing that can hold it is the prerequisite - including a stage-produced receipt that would
+// have substituted for the upstream judgement under the shape this replaced.
+fn prerequisite_controls() -> Bool {
+  down_standing(rs: [down_receipt, good_receipt])
+    && down_standing(rs: [down_receipt]) == false
+    && down_standing(rs: [down_receipt, expired_receipt]) == false
+    && down_standing(rs: [down_receipt, denial]) == false
+    && is_derived(f: snap(t: down_alone_template, ds: [], rs: [down_receipt, good_receipt])) == false
+}
+
+// ---- ROUND-3 WALLS THAT HAD NO DISCRIMINATING RED ----
+//
+// Six more walls landed correct and untested: disabling each changed no result. They are
+// probed here against a well-formed selection gate, so template admission is exercised as a
+// whole rather than only its projection half.
+
+data r_sel_gate: DeclarationRef = probe(name: "sel_gate")
+data r_sel_req: DeclarationRef = probe(name: "sel_req")
+
+data sel_req: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_sel_req, gate: r_sel_gate, producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  applies_to: AnyRoute, describes: "selection evidence",
+}
+
+data sel_gate: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [sel_req],
+}
+
+fn sel_template(specs: List<WorkflowNodeSpec>, candidates: List<DeclarationRef>) -> WorkflowTemplate {
+  WorkflowTemplate { selection: SelectedBy { gate: r_sel_gate, candidates: candidates }, specs: specs }
+}
+
+fn graph_cause_key(c: GraphRefusalCause) -> String {
+  match c {
+      DuplicateNodeIdentity { node } => "duplicate_identity",
+      UnknownDependency { from, to } => "unknown_dependency",
+      DuplicateDependencyEdge { from, to } => "duplicate_edge",
+      SelfDependency { node } => "self_dependency",
+      DependencyCycle { remaining } => "cycle",
+      RequirementGateMismatch { requirement, names_gate } => "requirement_gate_mismatch",
+      RequirementProducerUnknown { requirement, producer } => "unknown_producer",
+      ActuationGateUnknown { actuation, gate } => "actuation_gate_unknown",
+      ActuationAuthorizationEdgeMissing { actuation, gate } => "actuation_edge_missing",
+      DuplicateRequirementIdentity { requirement } => "duplicate_requirement",
+      EmptyRequirementPopulation { gate } => "empty_requirements",
+      EmptyApplicableRequirementPopulation { gate } => "empty_applicable_requirements",
+      GatePrerequisiteIsNotAGate { gate, predecessor } => "prerequisite_not_a_gate",
+      SelectionGateNotDeclared { gate } => "selection_gate_not_declared",
+      SelectionGateIsNotASelection { gate } => "selection_gate_not_a_selection",
+      CandidatePopulationDiverges { candidate } => "candidate_population_diverges",
+      ProjectionForUndeclaredRoute { candidate } => "projection_for_undeclared_route",
+      RequirementScopedToUndeclaredRoute { requirement, route } => "requirement_scoped_to_undeclared_route",
+      DuplicateNodeIdentityAcrossTemplate { node } => "duplicate_node_across_template",
+      DuplicateRequirementIdentityAcrossTemplate { requirement } => "duplicate_requirement_across_template",
+      DuplicateSelectionCandidateInPurpose { candidate } => "duplicate_candidate_in_purpose",
+      UnbranchedTemplateCarriesSelectionContent { node } => "unbranched_template_carries_selection_content",
+      AdmissionEdgeOnNonGate { node, predecessor } => "admission_edge_on_non_gate",
+      SelectionGateNotAPrefixNode { gate } => "selector_not_a_prefix_node",
+      SelectionGateRequirementIsRouteScoped { gate, requirement } => "selector_requirement_is_route_scoped",
+      SelectionGateDependencyIsRouteScoped { gate, predecessor } => "selector_dependency_is_route_scoped",
+      ActivationNamesUnknownGate { node, gate } => "activation_unknown_gate",
+      ActivationNamesUnknownCandidate { node, candidate } => "activation_unknown_candidate",
+      DuplicateCandidateIdentity { candidate } => "duplicate_candidate",
+  }
+}
+
+fn template_cause_key(t: WorkflowTemplate) -> String {
+  match admit_template(t: t) {
+    GraphAdmitted { node_count } => "admitted",
+    GraphRefused { cause } => graph_cause_key(c: cause),
+  }
+}
+
+data well_formed_specs: List<WorkflowNodeSpec> = [
+  WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+  WorkflowNodeSpec { node: GateNode { gate: sel_gate }, activation: AlwaysActive },
+]
+
+// AN ADMISSION EDGE POINTING AT A STAGE. A stage has no judgement to give, so naming one as a
+// prerequisite is a gate waiting on something that can never admit.
+data gate_needs_a_stage: DecisionGate = DecisionGate {
+  self_ref: r_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: RequiresAdmission }],
+  requirements: [req_for_gate],
+}
+
+data req_for_gate: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_req, gate: r_gate, producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  applies_to: AnyRoute, describes: "probe",
+}
+
+data prereq_not_a_gate_template: WorkflowTemplate = sel_template(
+  specs: concat(well_formed_specs, [WorkflowNodeSpec { node: GateNode { gate: gate_needs_a_stage }, activation: AlwaysActive }]),
+  candidates: [r_route_x],
+)
+
+// A REQUIREMENT SCOPED TO ANOTHER ROUTE leaves this projection with nothing applicable, so the
+// gate would close at 0 == 0 exactly as an empty list would.
+data req_other_route: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_other_req, gate: r_other_gate, producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  applies_to: OnlyRoute { route: r_route_y }, describes: "probe",
+}
+
+data gate_all_other_route: DecisionGate = DecisionGate {
+  self_ref: r_other_gate, title: "g", purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [req_other_route],
+}
+
+// THE ROUTE IS DECLARED, so the requirement is well formed - it simply applies to the OTHER
+// candidate, leaving this projection with nothing applicable. (A requirement naming an
+// UNDECLARED route is a different refusal, probed below: it applies to nothing at all.)
+data two_candidate_specs: List<WorkflowNodeSpec> = [
+  WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+  WorkflowNodeSpec { node: GateNode { gate: sel_gate_two }, activation: AlwaysActive },
+]
+
+data empty_applicable_template: WorkflowTemplate = WorkflowTemplate {
+  selection: SelectedBy { gate: r_sel_gate, candidates: [r_route_x, r_route_y] },
+  specs: concat(two_candidate_specs, [WorkflowNodeSpec { node: GateNode { gate: gate_all_other_route }, activation: AlwaysActive }]),
+}
+
+// The same gate, with its requirement scoped to a route the template never declares.
+data undeclared_route_template: WorkflowTemplate = sel_template(
+  specs: concat(well_formed_specs, [WorkflowNodeSpec { node: GateNode { gate: gate_all_other_route }, activation: AlwaysActive }]),
+  candidates: [r_route_x],
+)
+
+// TWO SPECS FOR ONE NODE IDENTITY, under different activations. Every projection holds one copy,
+// so per-projection uniqueness sees nothing while the authored template carries two rows.
+data duplicate_across_template: WorkflowTemplate = sel_template(
+  specs: concat(well_formed_specs, [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+  ]),
+  candidates: [r_route_x],
+)
+
+// A CANDIDATE NAMED TWICE INSIDE THE GATE'S OWN PURPOSE.
+data sel_gate_repeat: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [r_route_x], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [sel_req],
+}
+
+data repeated_purpose_candidate_template: WorkflowTemplate = sel_template(
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: sel_gate_repeat }, activation: AlwaysActive },
+  ],
+  candidates: [r_route_x],
+)
+
+// AN UNBRANCHED TEMPLATE CARRYING SELECTION-SHAPED CONTENT. NoSelection made the degenerate
+// candidate list unwritable and left every other spelling of the same claim open.
+data unbranched_with_route_work: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: AfterSelection { gate: r_sel_gate } },
+  ],
+}
+
+// THE GATE'S POPULATION AND THE TEMPLATE'S POPULATION MUST BE THE SAME POPULATION.
+data sel_gate_two: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [r_route_y], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [sel_req],
+}
+
+data diverging_population_template: WorkflowTemplate = sel_template(
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: sel_gate_two }, activation: AlwaysActive },
+  ],
+  candidates: [r_route_x],
+)
+
+// AN EDGE ACTIVATION NAMING AN UNKNOWN CANDIDATE does not refuse if only node activations are
+// inspected - it silently vanishes from every projection, deleting the dependency quietly.
+data stage_bad_edge: WorkStage = WorkStage {
+  self_ref: r_stage_b, title: "b",
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: OnlyWhenSelected { gate: r_sel_gate, candidate: r_absent }, kind: OrderingOnly }],
+  planning_owner: "p", planning_duration_band: "p",
+}
+
+data bad_edge_template: WorkflowTemplate = sel_template(
+  specs: concat(well_formed_specs, [WorkflowNodeSpec { node: StageNode { stage: stage_bad_edge }, activation: AlwaysActive }]),
+  candidates: [r_route_x],
+)
+
+data well_formed_template: WorkflowTemplate = sel_template(specs: well_formed_specs, candidates: [r_route_x])
+
+fn round3_template_probes() -> Bool {
+  template_cause_key(t: well_formed_template) == "admitted"
+    && template_cause_key(t: prereq_not_a_gate_template) == "prerequisite_not_a_gate"
+    && template_cause_key(t: empty_applicable_template) == "empty_applicable_requirements"
+    && template_cause_key(t: diverging_population_template) == "candidate_population_diverges"
+    && template_cause_key(t: bad_edge_template) == "activation_unknown_candidate"
+    && template_cause_key(t: undeclared_route_template) == "requirement_scoped_to_undeclared_route"
+    && template_cause_key(t: duplicate_across_template) == "duplicate_node_across_template"
+    && template_cause_key(t: repeated_purpose_candidate_template) == "duplicate_candidate_in_purpose"
+    && template_cause_key(t: unbranched_with_route_work) == "unbranched_template_carries_selection_content"
+    && graph_is_admitted(a: admit_projection(t: well_formed_template, scope: SelectedRoute { candidate: r_absent })) == false
+    && graph_is_admitted(a: admit_projection(t: well_formed_template, scope: SelectedRoute { candidate: r_route_x }))
+}
+
+// ---- SELECTION: THE DECISION, THE STANDING AND THE EVIDENCE MUST ALL BE THIS GATE'S ----
+
+data sel_receipt: DeclarationRef = probe(name: "sel_receipt")
+data other_receipt: DeclarationRef = probe(name: "other_receipt")
+
+fn decide(on_evidence: DeclarationRef) -> SelectionDecision {
+  SelectionDecision { self_ref: probe(name: "decision"), gate: r_sel_gate, selects: r_route_x, on_evidence: on_evidence }
+}
+
+fn sel_key(d: SelectionDisposition) -> String {
+  match d {
+    SelectionPending { gate, unmet } => "pending",
+    SelectionAdmitted { gate, selected, by_decision, by_assessment } => "admitted",
+    SelectionRenewalRequired { gate, stale } => "renewal",
+    SelectionEvidenceConflicts { gate, conflicted } => "evidence_conflicts",
+    SelectionRefused { cause, further_causes } => "refused",
+  }
+}
+
+data sel_receipt_row: EvidenceReceipt = EvidenceReceipt {
+  self_ref: sel_receipt, requirement: r_sel_req, gate: r_sel_gate,
+  producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely, outcome: OutcomeFavourable,
+  provenance: InternallyProduced { by_stage: r_stage_a },
+}
+
+data sel_realization: WorkflowRealizationStanding = SelectedWorkflowDerived {
+  gate: r_sel_gate, selected: r_route_x, nodes: [StageNode { stage: stage_a }, GateNode { gate: sel_gate }],
+}
+
+// THE SELECTOR ROW COMES FROM THE TEMPLATE, not from the caller. Candidate population and current
+// standing are now read off one declaration instead of two that meet at a self_ref.
+fn decide_with(rs: List<EvidenceReceipt>, on_evidence: DeclarationRef) -> String {
+  fold(selection_of(a: selection_answer(facts: snap(t: well_formed_template, ds: [decide(on_evidence: on_evidence)], rs: rs))), init: "no_selection", f: fn(acc, d) { sel_key(d: d) })
+}
+
+// The positive control first: this gate's own admitted standing, on evidence that actually
+// admitted it, selects. Then the two ways that claim can be false.
+fn round3_selection_probes() -> Bool {
+  decide_with(rs: [sel_receipt_row], on_evidence: sel_receipt) == "admitted"
+    && decide_with(rs: [sel_receipt_row], on_evidence: other_receipt) == "refused"
+    && decide_with(rs: [], on_evidence: sel_receipt) == "pending"
+}
+
+// A CANDIDATE THE TEMPLATE NEVER DECLARED cannot become a realization, whatever a writable
+// SelectionAdmitted says.
+fn realization_key(s: WorkflowRealizationStanding) -> String {
+  match s {
+    SelectionPrefixActive { nodes, because } => "prefix",
+    SelectedWorkflowDerived { gate, selected, nodes } => "derived",
+    WorkflowRealizationRefused { cause } => "refused",
+  }
+}
+
+fn round3_realization_probes() -> Bool {
+  realization_key(s: realize(t: well_formed_template, selection: [SelectionAdmitted { gate: r_sel_gate, selected: r_route_x, by_decision: probe(name: "d"), by_assessment: probe(name: "a") }])) == "derived"
+    && realization_key(s: realize(t: well_formed_template, selection: [SelectionAdmitted { gate: r_sel_gate, selected: r_absent, by_decision: probe(name: "d"), by_assessment: probe(name: "a") }])) == "refused"
+    && realization_key(s: realize(t: well_formed_template, selection: [SelectionAdmitted { gate: r_other_gate, selected: r_route_x, by_decision: probe(name: "d"), by_assessment: probe(name: "a") }])) == "refused"
+}
+
+// ---- ROUND-4: THE FREE ROW, THE MOVED SENTINEL, AND THE UNGOVERNING ADMISSION ----
+
+// A FORGED ROW WITH THE RIGHT IDENTITY. Same self_ref as the gate in the realization, different
+// requirements. gate_standing used to take the row as an argument and check only that its
+// self_ref appeared in the active graph, so authorization was computed from the forgery. The row
+// now comes from the realization, and this probe is what proves the argument is gone: the forged
+// requirements cannot be supplied at all, and the standing that comes back is the real gate's.
+data forged_req: EvidenceRequirement = EvidenceRequirement {
+  self_ref: probe(name: "forged_req"), gate: r_gate, producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_b }, design_revision: rev_prior,
+  applies_to: AnyRoute, describes: "a requirement the real gate does not carry",
+}
+
+data forged_gate: DecisionGate = DecisionGate {
+  self_ref: r_gate, title: "forged", purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [], requirements: [forged_req],
+}
+
+data real_gate_realization: WorkflowRealizationStanding = SelectedWorkflowDerived {
+  gate: r_gate, selected: r_route_x, nodes: [GateNode { gate: gate }],
+}
+
+data forged_gate_realization: WorkflowRealizationStanding = SelectedWorkflowDerived {
+  gate: r_gate, selected: r_route_x, nodes: [GateNode { gate: forged_gate }],
+}
+
+fn standing_key_in(t: WorkflowTemplate, rs: List<EvidenceReceipt>) -> String {
+  gate_key(a: gate_answer(facts: snap(t: t, ds: [], rs: rs), gate_ref: r_gate))
+}
+
+fn disposition_key(d: GateDisposition) -> String {
+  match d {
+    GateAdmitted { gate, satisfied, by_receipts } => "admitted",
+    GatePending { gate, unmet } => "pending",
+    GateRenewalRequired { gate, stale, also_unmet } => "renewal",
+    GateEvidenceConflicts { gate, conflicted } => "evidence_conflicts",
+    GateRefusedByEvidence { gate, refused } => "refused_by_evidence",
+    GateNoApplicableRequirements { gate } => "no_applicable_requirements",
+    GateNotActive { gate } => "not_active",
+  }
+}
+
+// good_receipt satisfies the REAL gate's requirement and not the forged one, so the two
+// realizations answer differently - which is only possible because the row is read from the
+// realization rather than handed in beside it.
+// THE FORGED-ROW CONTROL IS DELETED, not weakened: gate_standing no longer takes a realization,
+// so there is no argument in which to hand one gate's identity carrying another gate's
+// requirements. What remains measurable is that the row genuinely comes from the TEMPLATE - two
+// templates declaring the same gate identity with different requirements answer differently, and
+// a template that does not declare it answers not-active.
+data forged_gate_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: forged_gate }, activation: AlwaysActive },
+  ],
+}
+
+data stages_only_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_b }, activation: AlwaysActive },
+  ],
+}
+
+// AND A GATE NO TEMPLATE DECLARES IS INACTIVE, WHICH IS NOT WHAT A REFUSED DERIVATION IS. Both
+// used to answer "not_active", because the query flattened a refusal into a route state. The
+// well-formed template that simply does not declare this gate still says not_active; the
+// malformed one - a gate whose prerequisite is absent - now says the question has no answer, and
+// carries the graph refusal that says why.
+fn the_row_comes_from_the_template() -> Bool {
+  standing_key_in(t: gate_only_template, rs: [good_receipt]) == "admitted"
+    && standing_key_in(t: forged_gate_template, rs: [good_receipt]) == "pending"
+    && standing_key_in(t: stages_only_template, rs: [good_receipt]) == "not_active"
+    && standing_key_in(t: down_alone_template, rs: [good_receipt]) == "unanswerable"
+}
+
+// An actuation absent from the realization has no standing to withhold or grant.
+fn actuation_row_comes_from_the_template() -> Bool {
+  actuation_policy_may_proceed(facts: snap(t: gate_only_template, ds: [], rs: [good_receipt]), actuation_ref: r_act) == false
+    && actuation_policy_may_proceed(facts: snap(t: unbranched_template, ds: [], rs: [good_receipt]), actuation_ref: r_act)
+}
+
+// ---- THE TWO ENTRY POINTS ARE NOT INTERCHANGEABLE ----
+
+data unbranched_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: fold(good_graph, init: [], f: fn(acc, n) {
+    concat(acc, [WorkflowNodeSpec { node: n, activation: AlwaysActive }])
+  }),
+}
+
+fn realization_kind(s: WorkflowRealizationStanding) -> String {
+  match s {
+    SelectionPrefixActive { nodes, because } => match because {
+      NoBranchDeclared => "prefix_unbranched",
+      AwaitingSelection { disposition } => "prefix_awaiting",
+      AwaitingAdjudication { disposition } => "prefix_adjudication",
+    },
+    SelectedWorkflowDerived { gate, selected, nodes } => "derived",
+    WorkflowRealizationRefused { cause } => "refused",
+  }
+}
+
+// The unbranched entry point takes NO selection value, so a template with no selector can be
+// realized without inventing a pending decision on a gate that decides nothing.
+// A MALFORMED UNBRANCHED TEMPLATE. Without this the unbranched entry point could skip template
+// admission entirely and every probe stayed green - the fixture was well formed, so removing the
+// wall changed nothing.
+data malformed_unbranched_template: WorkflowTemplate = WorkflowTemplate {
+  selection: NoSelection,
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: stage_unknown_dep }, activation: AlwaysActive },
+  ],
+}
+
+// AN UNBRANCHED TEMPLATE REPORTS NO SELECTION, AND THE COUNT IS WHAT SAYS SO. The previous
+// revision minted a SelectionPending on a synthesised reference so the field could be filled -
+// the sentinel this module keeps deleting. No probe here could tell that sentinel from a real
+// pending selection, because both answer "pending"; only the population size discriminates, so
+// the deletion is checked by counting rather than by reading the arm.
+fn an_unbranched_template_reports_no_selection() -> Bool {
+  count(selection_of(a: selection_answer(facts: snap(t: unbranched_template, ds: [], rs: [])))) == 0
+    && count(selection_of(a: selection_answer(facts: snap(t: well_formed_template, ds: [], rs: [])))) == 1
+}
+
+// THE DISPOSITION LIST MUST MATCH THE TEMPLATE'S BRANCHEDNESS. The previous revision had two
+// public entry points and refused a caller that picked the wrong one; the pairing is now made by
+// derive_workflow from the template itself, and the residual refusal here is what a direct call
+// still gets. Reachable only from a fixture - which is exactly where this one lives.
+// AND TWO DISPOSITIONS ARE NOT A SELECTION. The fold over the list was last-wins: the same
+// order-decides-the-answer defect the receipt population was repaired for, one layer up. A gate
+// has one selection, so more than one refuses and is counted rather than reduced.
+fn two_dispositions_are_refused() -> Bool {
+  realization_kind(s: realize(t: well_formed_template, selection: [SelectionPending { gate: r_sel_gate, unmet: 1 }, SelectionPending { gate: r_sel_gate, unmet: 2 }])) == "refused"
+    && realization_kind(s: realize(t: well_formed_template, selection: [SelectionPending { gate: r_sel_gate, unmet: 1 }])) == "prefix_awaiting"
+}
+
+fn a_disposition_list_must_match_the_template() -> Bool {
+  realization_kind(s: realize(t: malformed_unbranched_template, selection: [])) == "refused"
+    &&
+  realization_kind(s: realize(t: unbranched_template, selection: [])) == "prefix_unbranched"
+    && realization_kind(s: realize(t: well_formed_template, selection: [])) == "refused"
+    && realization_kind(s: realize(t: unbranched_template, selection: [SelectionPending { gate: r_gate, unmet: 1 }])) == "refused"
+    && realization_kind(s: realize(t: well_formed_template, selection: [SelectionPending { gate: r_sel_gate, unmet: 1 }])) == "prefix_awaiting"
+}
+
+// A PENDING OR RENEWAL DISPOSITION FROM ANOTHER GATE used to pass straight through to the prefix:
+// only the admitted arm was checked.
+fn every_arm_checks_its_gate() -> Bool {
+  realization_kind(s: realize(t: well_formed_template, selection: [SelectionPending { gate: r_other_gate, unmet: 1 }])) == "refused"
+    && realization_kind(s: realize(t: well_formed_template, selection: [SelectionRenewalRequired { gate: r_other_gate, stale: 1 }])) == "refused"
+    && realization_kind(s: realize(t: well_formed_template, selection: [SelectionRenewalRequired { gate: r_sel_gate, stale: 1 }])) == "prefix_awaiting"
+}
+
+// ---- TEMPLATE ADMISSION GOVERNS REALIZATION ----
+
+// A prefix node with an always-active edge to a route-only node: every selected projection
+// contains both and passes, while the PENDING prefix carries the edge without its predecessor.
+// admit_template validated only the selected projections, and realization never consulted it.
+data route_only_stage: WorkStage = WorkStage {
+  self_ref: probe(name: "route_only_stage"), title: "route only", depends_on: [],
+  planning_owner: "p", planning_duration_band: "p",
+}
+
+data prefix_stage_needing_route_work: WorkStage = WorkStage {
+  self_ref: r_stage_b, title: "b",
+  depends_on: [WorkflowDependency { predecessor: route_only_stage.self_ref, required_when: AlwaysActive, kind: OrderingOnly }],
+  planning_owner: "p", planning_duration_band: "p",
+}
+
+data malformed_prefix_template: WorkflowTemplate = sel_template(
+  specs: concat(well_formed_specs, [
+    WorkflowNodeSpec { node: StageNode { stage: prefix_stage_needing_route_work }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: StageNode { stage: route_only_stage }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+  ]),
+  candidates: [r_route_x],
+)
+
+// A SELECTOR REACHABLE ONLY AFTER THE SELECTION IT MAKES.
+data late_selector_template: WorkflowTemplate = WorkflowTemplate {
+  selection: SelectedBy { gate: r_sel_gate, candidates: [r_route_x] },
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: sel_gate }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+  ],
+}
+
+// A SELECTOR WHOSE EVERY REQUIREMENT IS ROUTE-SCOPED can never acquire standing before the
+// selection it exists to produce.
+data route_only_sel_req: EvidenceRequirement = EvidenceRequirement {
+  self_ref: r_sel_req, gate: r_sel_gate, producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  applies_to: OnlyRoute { route: r_route_x }, describes: "route-scoped selection evidence",
+}
+
+data sel_gate_route_only_evidence: DecisionGate = DecisionGate {
+  self_ref: r_sel_gate, title: "route?",
+  purpose: SelectionAmong { first_candidate: r_route_x, further_candidates: [], procedure: pareto_config.registration },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [route_only_sel_req],
+}
+
+data selector_without_preselection_evidence: WorkflowTemplate = sel_template(
+  specs: [
+    WorkflowNodeSpec { node: StageNode { stage: stage_a }, activation: AlwaysActive },
+    WorkflowNodeSpec { node: GateNode { gate: sel_gate_route_only_evidence }, activation: AlwaysActive },
+  ],
+  candidates: [r_route_x],
+)
+
+// AN ADMISSION EDGE ON A STAGE has no consumer: only a gate's standing reads one.
+data stage_with_admission_edge: WorkStage = WorkStage {
+  self_ref: r_stage_b, title: "b",
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: RequiresAdmission }],
+  planning_owner: "p", planning_duration_band: "p",
+}
+
+data admission_edge_on_stage_template: WorkflowTemplate = sel_template(
+  specs: concat(well_formed_specs, [WorkflowNodeSpec { node: StageNode { stage: stage_with_admission_edge }, activation: AlwaysActive }]),
+  candidates: [r_route_x],
+)
+
+fn round4_template_probes() -> Bool {
+  template_cause_key(t: malformed_prefix_template) == "unknown_dependency"
+    && template_cause_key(t: late_selector_template) == "selector_not_a_prefix_node"
+    && template_cause_key(t: selector_without_preselection_evidence) == "selector_requirement_is_route_scoped"
+    && template_cause_key(t: admission_edge_on_stage_template) == "admission_edge_on_non_gate"
+    && realization_kind(s: realize(t: malformed_prefix_template, selection: [SelectionPending { gate: r_sel_gate, unmet: 1 }])) == "refused"
+}
+
+
+// ---- THE DOCUMENT'S OWN ANSWER ----
+//
+// Every check before this one asked whether the receipt is ABOUT this requirement. None asked
+// which way it went, so a zoning denial, a refused will-serve and a failed inspection all closed
+// the requirement they answered. An adverse determination is not a missing document and not a
+// renewal obligation: it is an answer, and it is what makes a candidate refusable rather than
+// merely incomplete.
+
+fn outcome_receipt(o: ReceiptOutcome) -> EvidenceReceipt {
+  EvidenceReceipt {
+    self_ref: r_receipt, requirement: r_req, gate: r_gate,
+    producer: ProducedByStage { stage: r_stage_b },
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+    currency: CurrentIndefinitely, outcome: o,
+    provenance: InternallyProduced { by_stage: r_stage_b },
+  }
+}
+
+data denial: EvidenceReceipt = outcome_receipt(o: OutcomeAdverse { because: "the use is prohibited in this district" })
+data unadjudicated: EvidenceReceipt = outcome_receipt(o: OutcomeUnread { obligation: "nobody has recorded which way this determination went" })
+
+fn gate_key_with(rs: List<EvidenceReceipt>) -> String {
+  disposition_key(d: gate_disposition_for(g: gate, scope: SelectedRoute { candidate: r_route_x }, receipts: rs, as_of: now))
+}
+
+// A denial is DISTINCT from pending, from renewal and from admitted - and an unread outcome is
+// not a favourable one, so an unadjudicated document cannot pass as an approval.
+// A denial also outranks a stale document in the population: the answer is the answer.
+fn the_document_answer_is_adjudicated() -> Bool {
+  gate_key_with(rs: [good_receipt]) == "admitted"
+    && gate_key_with(rs: [denial]) == "refused_by_evidence"
+    && gate_key_with(rs: [unadjudicated]) == "pending"
+    && gate_key_with(rs: []) == "pending"
+    && gate_key_with(rs: [expired_receipt]) == "renewal"
+    && gate_key_with(rs: [expired_receipt, denial]) == "refused_by_evidence"
+    && authorized_with(rs: [denial]) == false
+}
+
+// A DENIAL THAT IS ITSELF EXPIRED, REVOKED OR NOT YET ISSUED IS NOT A CURRENT DENIAL. Reading the
+// answer before the paper's own standing let a withdrawn refusal go on refusing.
+data expired_denial: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentUntil { at: earlier }, outcome: OutcomeAdverse { because: "a refusal that has since lapsed" },
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data future_denial: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: later }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely, outcome: OutcomeAdverse { because: "a refusal nobody has issued yet" },
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+// TWO CURRENT DOCUMENTS POINTING OPPOSITE WAYS is a conflict, not a race won by list order.
+fn requirement_key(rs: List<EvidenceReceipt>) -> String {
+  match requirement_standing(req: req, receipts: rs, as_of: now) {
+    RequirementSatisfied { requirement, by_receipts } => "satisfied",
+    RequirementUnmet { requirement } => "unmet",
+    RequirementNotYetEffective { requirement, effective_at } => "not_yet_effective",
+    RequirementStale { requirement, receipt, cause } => "stale",
+    RequirementRefusedByEvidence { requirement, by_receipts } => "refused",
+    RequirementEvidenceConflicts { requirement, approving, refusing } => "conflict",
+  }
+}
+
+fn a_lapsed_denial_does_not_refuse() -> Bool {
+  requirement_key(rs: [denial]) == "refused"
+    && requirement_key(rs: [expired_denial]) == "stale"
+    && requirement_key(rs: [future_denial]) == "not_yet_effective"
+    && requirement_key(rs: [good_receipt, denial]) == "conflict"
+    && requirement_key(rs: [denial, good_receipt]) == "conflict"
+    && requirement_key(rs: [good_receipt]) == "satisfied"
+}
+
+
+// ---- TWO MORE WALLS THAT HAD NO DISCRIMINATING RED ----
+
+// ONE REQUIREMENT IDENTITY UNDER TWO ACTIVATIONS. The per-projection wall cannot see this: each
+// projection holds exactly one copy, so both projections pass while the authored template carries
+// two rows for one identity - and either row could then be satisfied by the other's receipt.
+data other_gate_same_req: DecisionGate = DecisionGate {
+  self_ref: r_other_gate, title: "another gate carrying the same requirement identity",
+  purpose: ExternalAuthority { authority: r_stage_a },
+  depends_on: [WorkflowDependency { predecessor: r_stage_a, required_when: AlwaysActive, kind: OrderingOnly }],
+  requirements: [EvidenceRequirement {
+    self_ref: r_sel_req, gate: r_other_gate, producer: ProducedByStage { stage: r_stage_a },
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    applies_to: AnyRoute, describes: "the same identity, a different gate, another activation",
+  }],
+}
+
+data duplicate_requirement_across_activations: WorkflowTemplate = sel_template(
+  specs: concat(well_formed_specs, [
+    WorkflowNodeSpec { node: GateNode { gate: other_gate_same_req }, activation: OnlyWhenSelected { gate: r_sel_gate, candidate: r_route_x } },
+  ]),
+  candidates: [r_route_x],
+)
+
+// A SELECTOR WHOSE OWN EVIDENCE SAYS NO. Reporting that as pending describes a decision still
+// waiting to be made, when in fact it has been made and it went against us - and pending is what
+// the prefix-active arm reads, so the workflow would sit waiting forever on a closed question.
+data sel_denial: EvidenceReceipt = EvidenceReceipt {
+  self_ref: sel_receipt, requirement: r_sel_req, gate: r_sel_gate,
+  producer: ProducedByStage { stage: r_stage_a },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeAdverse { because: "neither route is permitted for this use at this revision" },
+  provenance: InternallyProduced { by_stage: r_stage_a },
+}
+
+fn round5_probes() -> Bool {
+  template_cause_key(t: duplicate_requirement_across_activations) == "duplicate_requirement_across_template"
+    && decide_with(rs: [sel_denial], on_evidence: sel_receipt) == "refused"
+    && decide_with(rs: [sel_receipt_row], on_evidence: sel_receipt) == "admitted"
+}
+
+
+// ---- ROUND-6: DISTINCT IDENTITIES, AND THE ORDER THE ANSWER IS READ IN ----
+
+// MY TWO-ORDER CONFLICT CONTROL PROVED THE ARM AND MASKED THE IDENTITY. good_receipt and denial
+// shared one self_ref, so a branch that reported the approving document as BOTH the approval and
+// the refusal looked correct in both orders. Distinct identities, and exact fields asserted.
+data r_approval: DeclarationRef = probe(name: "approval_receipt")
+data r_refusal: DeclarationRef = probe(name: "refusal_receipt")
+
+fn identified_receipt(self_ref: DeclarationRef, o: ReceiptOutcome) -> EvidenceReceipt {
+  EvidenceReceipt {
+    self_ref: self_ref, requirement: r_req, gate: r_gate,
+    producer: ProducedByStage { stage: r_stage_b },
+    subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+    issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+    currency: CurrentIndefinitely, outcome: o,
+    provenance: InternallyProduced { by_stage: r_stage_b },
+  }
+}
+
+data approval_row: EvidenceReceipt = identified_receipt(self_ref: r_approval, o: OutcomeFavourable)
+data refusal_row: EvidenceReceipt = identified_receipt(self_ref: r_refusal, o: OutcomeAdverse { because: "the use is prohibited" })
+
+fn conflict_names(rs: List<EvidenceReceipt>) -> Bool {
+  match requirement_standing(req: req, receipts: rs, as_of: now) {
+    RequirementEvidenceConflicts { requirement, approving, refusing } =>
+      count(approving) == 1 && count(refusing) == 1
+        && contains_ref(refs: approving, needle: r_approval) && contains_ref(refs: refusing, needle: r_refusal),
+    RequirementSatisfied { requirement, by_receipts } => false,
+    RequirementUnmet { requirement } => false,
+    RequirementNotYetEffective { requirement, effective_at } => false,
+    RequirementStale { requirement, receipt, cause } => false,
+    RequirementRefusedByEvidence { requirement, by_receipts } => false,
+  }
+}
+
+fn conflict_identity_is_order_independent() -> Bool {
+  conflict_names(rs: [approval_row, refusal_row])
+    && conflict_names(rs: [refusal_row, approval_row])
+}
+
+// AN UNREAD OUTCOME ON A DOCUMENT THAT CANNOT GOVERN TODAY. The previous revision special-cased
+// only the denial arm to consult temporal standing, so a future-issued unread document and a
+// current unread document collapsed to one state - two different obligations reported as one.
+data unread_future: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: later }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentIndefinitely,
+  outcome: OutcomeUnread { obligation: "nobody has recorded which way this went" },
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+data unread_expired: EvidenceReceipt = EvidenceReceipt {
+  self_ref: r_receipt, requirement: r_req, gate: r_gate,
+  producer: ProducedByStage { stage: r_stage_b },
+  subject: AboutParcel { parcel: r_parcel_a }, design_revision: rev_r,
+  issued: IssuedOn { at: earlier }, effective: ReceiptEffectiveAt { at: earlier },
+  currency: CurrentUntil { at: earlier },
+  outcome: OutcomeUnread { obligation: "nobody has recorded which way this went" },
+  provenance: InternallyProduced { by_stage: r_stage_b },
+}
+
+fn temporal_is_read_before_every_outcome() -> Bool {
+  requirement_key(rs: [unadjudicated]) == "unmet"
+    && requirement_key(rs: [unread_future]) == "not_yet_effective"
+    && requirement_key(rs: [unread_expired]) == "stale"
+    && requirement_key(rs: [future_denial]) == "not_yet_effective"
+    && requirement_key(rs: [expired_denial]) == "stale"
+    && requirement_key(rs: [future_receipt]) == "not_yet_effective"
+}
+
+// TWO DOCUMENTS SHARING ONE IDENTITY make "the decision rests on receipt X" ambiguous, and both
+// GateAdmitted.by_receipts and SelectionDecision.on_evidence treat identity as authority.
+data duplicate_identity_pair: List<EvidenceReceipt> = [good_receipt, wrong_parcel]
+
+fn duplicate_receipt_identity_refuses() -> Bool {
+  is_derived(f: snap(t: unbranched_template, ds: [], rs: duplicate_identity_pair)) == false
+    && is_derived(f: snap(t: unbranched_template, ds: [], rs: [approval_row, second_receipt]))
+    && is_derived(f: snap(t: unbranched_template, ds: [], rs: [good_receipt]))
+}
+

@@ -1,0 +1,295 @@
+module test.claim.colo_market_witness
+
+import std.types { Bool, List, NonEmptyStr, Int, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.pareto {
+  AxisGap,
+  ParetoStanding, ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence,
+  ParetoEntry, entry_standing,
+}
+import strategy.colo_market {
+  plan_missing, quote_only_gap_axes,
+  axis_monthly_cost_id, axis_power_watts_id, axis_transit_megabits_id,
+  axis_rack_units_id, axis_ipv4_usable_id, axis_distance_miles_id,
+  ColoOfferCandidate, OfferPricing, PublishedPlan, QuoteOnly,
+  colo_candidates, colo_entry, colo_entries, colo_standing, colo_standing_label,
+  colo_axes, colo_sensitivities, open_rfqs, refused_channels,
+  DistanceEvidence, DistanceMeasured, DistanceUnmeasured, axis_distance_miles_id,
+  quarter_rack_admits_lean_load, half_rack_admits_full_fleet,
+  FleetAdmission, FleetAdmitted, FleetPowerRefused,
+  full_fleet_load, lean_two_host_load, rfq_ask_sheet,
+}
+import extdeps.colo.interserver { interserver_secaucus, interserver_half_rack_plan }
+import extdeps.colo.types { RetailPlanRow, AllocatedWatts, UnmeteredPort, Ipv4Usable, SetupWaived, PowerUnread, TransitUnread, Ipv4Unread }
+import std.measure { MoneyPerMonth, money_amount_micro, watt, bandwidth, rack_unit }
+import extdeps.currency.currency { Usd }
+
+// The colocation selection's discriminating controls. Live rows come from the public
+// extdeps.colo census; the one synthetic fixture is the planted strictly-worse offer that
+// proves domination CAN fire on this axis set, because a selection whose published field is
+// two genuine trade-offs would otherwise never exercise the arm.
+
+fn candidate_by_id(id: NonEmptyStr) -> List<ColoOfferCandidate> {
+  filter(colo_candidates, c => c.id == id)
+}
+
+// CONTROL 1. The two published InterServer tiers are a genuine trade-off - cheaper-smaller
+// against dearer-larger - so both stand on the frontier, comparable, with sensitivities.
+test fn witness_published_tiers_are_a_tradeoff() -> Bool {
+  let quarter_ok = all(candidate_by_id(id: "interserver-quarter"), c => standing_is_comparable_frontier(c: c))
+  let half_ok = all(candidate_by_id(id: "interserver-half"), c => standing_is_comparable_frontier(c: c))
+  let quarter_comparable = all(candidate_by_id(id: "interserver-quarter"), c => standing_is_comparable_frontier(c: c))
+  quarter_ok && half_ok && quarter_comparable && count(candidate_by_id(id: "interserver-quarter")) == 1
+}
+
+// A REFUSAL IS NOT A STANDING. std.pareto gained SelectionRefused so that malformed evidence
+// stops being reported as ordinary non-dominance - the same state-space conflation that got
+// pair_dominates deleted upstream. The controls below assert POSITIVE standings, so a refusal
+// must fail them rather than pass through as "not dominated".
+fn standing_is_comparable_frontier(c: ColoOfferCandidate) -> Bool {
+  match colo_standing(c: c) {
+    ProvisionallyNonDominated { sensitivities } => count(sensitivities) > 0,
+    DominatedBy { dominators } => false,
+    SelectionRefused { cause } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
+  }
+}
+
+// CONTROL 2. Every quote-only candidate lands not-computable with its RFQ named - absence of
+// a price is an obligation, never a zero - and the derived RFQ list matches the quote-only
+// population exactly.
+fn is_published(c: ColoOfferCandidate) -> Bool {
+  match c.pricing {
+    PublishedPlan { plan } => true,
+    QuoteOnly { rfq } => false,
+  }
+}
+
+fn standing_is_incomparable(c: ColoOfferCandidate) -> Bool {
+  match colo_standing(c: c) {
+    NotComputable { missing } => true,
+    PendingEvidence { undecided } => false,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { dominators } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+fn quote_only_is_incomparable(c: ColoOfferCandidate) -> Bool {
+  if is_published(c: c) { true } else { standing_is_incomparable(c: c) }
+}
+
+fn is_natcoweb(c: ColoOfferCandidate) -> Bool {
+  c.id == "natcoweb-10u" || c.id == "natcoweb-20u" || c.id == "natcoweb-cab"
+}
+
+test fn witness_quote_only_lands_incomparable_with_rfq() -> Bool {
+  let all_quote_only_incomparable = all(colo_candidates, c => quote_only_is_incomparable(c: c))
+  let published_count = count(filter(colo_candidates, c => is_published(c: c)))
+  let natcoweb_published_but_refused = all(filter(colo_candidates, c => is_natcoweb(c: c)), c => is_published(c: c) && standing_is_incomparable(c: c))
+  all_quote_only_incomparable
+    && published_count == 5
+    && natcoweb_published_but_refused
+    && count(open_rfqs()) == count(colo_candidates) - published_count
+}
+
+// CONTROL 3 - the planted dominated offer. A synthetic published offer strictly worse than
+// the InterServer half rack on every funded axis must land DominatedBy naming it: proof the
+// dominance arm fires on this axis set when a real quote deserves it.
+data planted_worse_offer: ColoOfferCandidate = ColoOfferCandidate {
+  id: "planted-strictly-worse",
+  facility: interserver_secaucus,
+  pricing: PublishedPlan { plan: RetailPlanRow {
+    plan_label: "synthetic control: strictly worse than the half rack",
+    rack_units: rack_unit(count: 10),
+    power: AllocatedWatts { allocation: watt(count: 1000) },
+    transit: UnmeteredPort { port_speed: bandwidth(count: 100000000) },
+    ipv4: Ipv4Usable { usable_addresses: 2, block_note: "synthetic" },
+    monthly: MoneyPerMonth { amount: money_amount_micro(count: 2000000000), currency: Usd },
+    setup: SetupWaived,
+    term_note: "synthetic fixture, never a market row",
+    citation: "planted by test.claim.colo_market_witness - not an observation",
+  } },
+  distance: DistanceUnmeasured { planning_estimate_miles: 50, obligation: "synthetic fixture: no measured route, and the distance axis is unfunded" },
+}
+
+test fn witness_planted_worse_offer_is_dominated() -> Bool {
+  let field = concat(colo_entries(), [colo_entry(c: planted_worse_offer)])
+  let standing = entry_standing(subject: colo_entry(c: planted_worse_offer), field: field, axes: colo_axes, sensitivities: colo_sensitivities)
+  match standing {
+    DominatedBy { dominators } =>
+      count(dominators) > 0
+        && all(dominators, d => count(d.winning_axes) > 0)
+        && count(filter(dominators, d => d.candidate.decl_name == "interserver-quarter" || d.candidate.decl_name == "interserver-half")) > 0,
+    ProvisionallyNonDominated { sensitivities } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+// CONTROL 4. Fleet fit: the published quarter tier admits the lean two-host deployment the
+// operator's ideation thread surfaced (2026-08-18), and the published half tier REFUSES the
+// full five-node move with the shortfall counted - which is why the full move is an RFQ
+// object and the lean deployment is actionable at a published price today.
+test fn witness_fleet_fit_splits_the_two_reference_loads() -> Bool {
+  let lean_admitted = match quarter_rack_admits_lean_load() {
+    FleetAdmitted { nodes_at_average, headroom_note } => nodes_at_average == 2,
+    FleetPowerRefused { shortfall_watts, remedy } => false,
+  }
+  let full_refused = match half_rack_admits_full_fleet() {
+    FleetPowerRefused { shortfall_watts, remedy } => shortfall_watts == 750,
+    FleetAdmitted { nodes_at_average, headroom_note } => false,
+  }
+  let lean_gates_named = count(lean_two_host_load.gating_obligations) >= 2
+  lean_admitted && full_refused && lean_gates_named
+}
+
+// CONTROL 5. The census carries its refusals as typed rows - the Equinix ruling, the
+// 120-volt channel, the stale promotional price, the broker surfaces - so the denominator
+// of what was considered stays auditable, and the ask sheet is nonempty.
+test fn witness_refusals_and_ask_sheet_are_carried() -> Bool {
+  count(refused_channels) == 4 && count(rfq_ask_sheet) >= 6 && count(colo_candidates) >= 19
+}
+
+fn flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn colo_witness_report() -> NonEmptyStr {
+  join([
+    "published_tradeoff=", flag(b: witness_published_tiers_are_a_tradeoff()),
+    " quote_only_incomparable=", flag(b: witness_quote_only_lands_incomparable_with_rfq()),
+    " planted_worse_dominated=", flag(b: witness_planted_worse_offer_is_dominated()),
+    " fleet_fit_splits_loads=", flag(b: witness_fleet_fit_splits_the_two_reference_loads()),
+    " refusals_carried=", flag(b: witness_refusals_and_ask_sheet_are_carried()),
+    " quote_only_roster=", flag(b: witness_the_quote_only_roster_is_every_funded_axis_but_distance()),
+    " plan_gap_axes=", flag(b: witness_each_unread_allocation_names_its_own_axis()),
+  ], "")
+}
+
+// CONTROL 6 - A PLANNING ESTIMATE CANNOT DECIDE A CLOSE PAIR. Two synthetic offers identical in
+// every published term and differing ONLY in their unmeasured distance estimate - six miles against
+// eight - must be unordered. The old model read that pair as a six-mile win.
+//
+// This control is discriminating in the exact way the repair requires: it goes RED if anyone re-adds
+// axis_distance_miles to colo_axes while distance_readings still emits an unmeasured estimate as a
+// point, because the pair would immediately become ordered on a number nobody measured. It also
+// asserts the axis is absent from the funded set directly, so the two halves cannot drift apart -
+// one is the mechanism and the other is the consequence.
+fn offer_at_estimate(id: NonEmptyStr, miles: Int) -> ColoOfferCandidate {
+  ColoOfferCandidate {
+    id: id,
+    facility: interserver_secaucus,
+    pricing: PublishedPlan { plan: RetailPlanRow {
+      plan_label: "synthetic control: identical terms, different distance estimate",
+      rack_units: rack_unit(count: 10),
+      power: AllocatedWatts { allocation: watt(count: 1000) },
+      transit: UnmeteredPort { port_speed: bandwidth(count: 100000000) },
+      ipv4: Ipv4Usable { usable_addresses: 2, block_note: "synthetic" },
+      monthly: MoneyPerMonth { amount: money_amount_micro(count: 2000000000), currency: Usd },
+      setup: SetupWaived,
+      term_note: "synthetic fixture, never a market row",
+      citation: "planted by test.claim.colo_market_witness - not an observation",
+    } },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: miles,
+      obligation: "synthetic fixture: no measured route",
+    },
+  }
+}
+
+data near_offer: ColoOfferCandidate = offer_at_estimate(id: "planted-six-miles", miles: 6)
+data far_offer: ColoOfferCandidate = offer_at_estimate(id: "planted-eight-miles", miles: 8)
+
+fn neither_dominates_the_other() -> Bool {
+  let field = [colo_entry(c: near_offer), colo_entry(c: far_offer)]
+  let near_standing = entry_standing(subject: colo_entry(c: near_offer), field: field, axes: colo_axes, sensitivities: colo_sensitivities)
+  let far_standing = entry_standing(subject: colo_entry(c: far_offer), field: field, axes: colo_axes, sensitivities: colo_sensitivities)
+  standing_is_not_dominated(s: near_standing) && standing_is_not_dominated(s: far_standing)
+}
+
+fn standing_is_not_dominated(s: ParetoStanding) -> Bool {
+  match s {
+    ProvisionallyNonDominated { sensitivities } => true,
+    DominatedBy { dominators } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+test fn witness_a_distance_estimate_cannot_decide_a_close_pair() -> Bool {
+  let axis_is_unfunded = count(filter(colo_axes, a => a.identity.decl_name == "axis_distance_miles_id")) == 0
+  axis_is_unfunded && neither_dominates_the_other()
+}
+
+
+// THE AXIS IS THE NEW LOAD-BEARING FACT, SO IT IS ASSERTED DIRECTLY RATHER THAN THROUGH A STANDING.
+// A standing arm cannot witness an axis assignment: every entry carries readings on every funded
+// axis, and std.pareto refuses a candidate carrying ANY gap, so moving a gap to a different FUNDED
+// axis leaves the standing at NotComputable and every existing control green. Identity is compared
+// with declaration_ref_eq rather than by spelling decl_name, because a string match establishes
+// only that two names are spelled alike.
+fn gaps_on_axis(gs: List<AxisGap>, ax: DeclarationRef) -> Int {
+  count(filter(gs, g => declaration_ref_eq(a: g.axis, b: ax)))
+}
+
+// EACH UNREAD ALLOCATION DECLARES ITS OWN AXIS, AND THE QUOTE-ONLY ROSTER IS EXACTLY THE FIVE
+// NON-DISTANCE AXES. Distance is excluded because it is not a FUNDED axis of this selection -- the
+// rows carry DistanceUnmeasured and no candidate carries measured road-distance evidence -- and a
+// gap must name a funded axis. The other five are the funded axes an unanswered RFQ leaves absent.
+// Asserting the roster by identity is what stops a new axis from silently joining or leaving it.
+// A PLAN SHORT ON ALL THREE READ ALLOCATIONS, SO EACH MAPPING IS EXERCISED AT ONCE. The three
+// obligation strings ARE restated in the assertion below rather than projected out of unread_plan;
+// saying they were read back was false. What the control establishes is the PAIRING -- which axis
+// each unread allocation names -- and that is what a swapped mapping breaks, because the strings
+// are distinct per allocation. Projecting them instead would need a second match over the same
+// three arms that plan_missing already matches, which is a second authority for one fact.
+//
+// The stipulation premise is narrower than "every live published plan reads all three": the
+// published Natcoweb rows have unread voltage. What holds is that NO accepted published plan is
+// simultaneously unread on power, transit and IPv4, so this row is unrepresentable in the accepted
+// corpus and perfectly representable as source -- the section 4b case, and its label says so.
+data unread_plan: RetailPlanRow = RetailPlanRow {
+  plan_label: "STIPULATED plan with nothing read",
+  rack_units: rack_unit(count: 10),
+  power: PowerUnread { obligation: "fixture: power unread" },
+  transit: TransitUnread { obligation: "fixture: transit unread" },
+  ipv4: Ipv4Unread { obligation: "fixture: ipv4 unread" },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 2000000000), currency: Usd },
+  setup: SetupWaived,
+  term_note: "fixture",
+  citation: "fixture",
+}
+
+test fn witness_each_unread_allocation_names_its_own_axis() -> Bool {
+  let gs = plan_missing(plan: unread_plan)
+  count(gs) == 3
+    && count(filter(gs, g => g.cause == "fixture: power unread" && declaration_ref_eq(a: g.axis, b: axis_power_watts_id))) == 1
+    && count(filter(gs, g => g.cause == "fixture: transit unread" && declaration_ref_eq(a: g.axis, b: axis_transit_megabits_id))) == 1
+    && count(filter(gs, g => g.cause == "fixture: ipv4 unread" && declaration_ref_eq(a: g.axis, b: axis_ipv4_usable_id))) == 1
+}
+
+test fn witness_the_quote_only_roster_is_every_funded_axis_but_distance() -> Bool {
+  count(quote_only_gap_axes) == 5
+    && count(filter(quote_only_gap_axes, a => declaration_ref_eq(a: a, b: axis_distance_miles_id))) == 0
+    && count(filter(quote_only_gap_axes, a => declaration_ref_eq(a: a, b: axis_monthly_cost_id))) == 1
+    && count(filter(quote_only_gap_axes, a => declaration_ref_eq(a: a, b: axis_power_watts_id))) == 1
+    && count(filter(quote_only_gap_axes, a => declaration_ref_eq(a: a, b: axis_transit_megabits_id))) == 1
+    && count(filter(quote_only_gap_axes, a => declaration_ref_eq(a: a, b: axis_rack_units_id))) == 1
+    && count(filter(quote_only_gap_axes, a => declaration_ref_eq(a: a, b: axis_ipv4_usable_id))) == 1
+}
+
+fn colo_witness_main() -> ProcessExit {
+  let report = colo_witness_report()
+  let all_pass = witness_published_tiers_are_a_tradeoff()
+    && witness_quote_only_lands_incomparable_with_rfq()
+    && witness_planted_worse_offer_is_dominated()
+    && witness_fleet_fit_splits_the_two_reference_loads()
+    && witness_refusals_and_ask_sheet_are_carried()
+    && witness_a_distance_estimate_cannot_decide_a_close_pair()
+    && witness_the_quote_only_roster_is_every_funded_axis_but_distance()
+    && witness_each_unread_allocation_names_its_own_axis()
+  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
+}

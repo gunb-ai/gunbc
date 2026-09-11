@@ -1,0 +1,59 @@
+module test.claim.fleet_decisions_witness
+
+import std.types { Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.fleet_decisions {
+  fleet_decisions, decided, deferred, is_decided, blocking_item, FleetDecision,
+}
+import strategy.year_end_plan { find_item }
+
+// A DEFERRED DECISION MUST NAME A REAL PLAN ITEM. The whole value of the Deferred arm is that
+// someone can follow it to the work that unblocks it; a key that resolves to nothing is a
+// dead end that still reads as a live pointer. Checked by identity against the plan.
+fn deferrals_name_real_work() -> Bool {
+  all(deferred(), d => count(find_item(id: blocking_item(d: d))) == 1)
+}
+
+// Keys are unique, or two rows answer for one question - the meaning fork this register exists
+// to prevent.
+fn keys_unique() -> Bool {
+  all(fleet_decisions, d => count(filter(fleet_decisions, e => e.key == d.key)) == 1)
+}
+
+// THE REGISTER DISCRIMINATES. A register where everything is Decided is a rubber stamp and one
+// where everything is Deferred records no decisions at all; both are failures of the same kind.
+fn register_discriminates() -> Bool {
+  count(decided()) > 0 && count(deferred()) > 0
+    && count(decided()) + count(deferred()) == count(fleet_decisions)
+}
+
+// THE OPERATOR'S DECISIONS ARE HELD BY KEY IDENTITY. These four were taken explicitly and the
+// register exists so they are not re-derived. Deleting a row, or quietly flipping one back to
+// Deferred, turns this red - which is the regression control for the failure that motivated the
+// module: a settled question being re-opened by someone who could not tell it was settled.
+fn operator_decisions_are_held() -> Bool {
+  any(fleet_decisions, d => d.key == "compute-node-local-storage" && is_decided(d: d))
+    && any(fleet_decisions, d => d.key == "leaf-network-speed" && is_decided(d: d))
+    && any(fleet_decisions, d => d.key == "host-boot-materialization" && is_decided(d: d))
+    && any(fleet_decisions, d => d.key == "management-network" && is_decided(d: d))
+    && any(fleet_decisions, d => d.key == "swap-on-compute-nodes" && is_decided(d: d))
+}
+
+// The questions that genuinely cannot be answered yet must NOT be recorded as decided. This is
+// the other direction of the same discipline, and it is the one that stops a register from
+// becoming a place where assumptions are laundered into decisions.
+fn open_questions_stay_open() -> Bool {
+  any(fleet_decisions, d => d.key == "memory-population" && !is_decided(d: d))
+    && any(fleet_decisions, d => d.key == "cache-reservation-size" && !is_decided(d: d))
+    && any(fleet_decisions, d => d.key == "siting" && !is_decided(d: d))
+    && any(fleet_decisions, d => d.key == "local-cache-drive-shape" && !is_decided(d: d))
+}
+
+fn fleet_decisions_witness_all() -> Bool {
+  deferrals_name_real_work() && keys_unique() && register_discriminates()
+    && operator_decisions_are_held() && open_questions_stay_open()
+}
+
+fn fleet_decisions_witness_main() -> ProcessExit {
+  if fleet_decisions_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "fleet_decisions_witness_all returned false" } }
+}

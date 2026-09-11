@@ -1,0 +1,237 @@
+module test.claim.finance_witness
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { Bool }
+import finance.personal_ledger {
+  close_requirements, unmet_close_causes, CloseRequirement,
+  LedgerAccount, CashChecking, RetirementLocked, EquipmentCompute, CreditCardPayable,
+  PostingDirection, Debit, Credit,
+  Posting, LedgerTransaction,
+  BalanceVerdict, Balanced, Unbalanced,
+  YearCloseVerdict, CloseAdmitted, CloseRefused,
+  account_is_deployable, transaction_balance, transaction_is_balanced, ledger_all_balanced,
+  ledger_2026, year_close_2026,
+}
+import strategy.calendar_date { CalendarDate }
+import finance.gunbai_llc {
+  placed_in_service_in_2026, placed_in_service_in_year, PlacedInService,
+  placed_in_service_date_is_valid,
+  TradeOrBusinessStanding, ActiveTradeOrBusiness, PreOperationalStartup, CommencementUndetermined,
+  PlacedInServiceStanding, PlacedInService, AcquiredNotYetInService,
+  DeductionVerdict, DeductionAvailable, DeductionRefused,
+  PublicationStanding, CertificateFiled,
+  equipment_deduction_verdict, publication_discharged,
+  gunbai_trade_or_business_standing, gunbai_publication_standing,
+  spark_placed_in_service, mt_collins_placed_in_service,
+}
+
+// WITNESS FOR THE FINANCE CARRIERS. It exists because the modules it covers were authored,
+// committed, and pushed while NOTHING EXECUTED THEM: the private roster in witnesses.yml is
+// a hand-enumerated list of entry files, and a module absent from that list is never loaded
+// no matter how green the job goes. A refusal nobody runs is a comment with a type
+// signature, which is the specification-without-execution failure DESIGN section 5 names.
+//
+// Every check below pairs an ACCEPTING control with a DISCRIMINATING RED — an input that
+// must be refused. A witness built only from inputs that pass cannot distinguish a working
+// wall from a function that returns true.
+
+// --- Double entry: the discriminating case is an UNBALANCED transaction. ---------------
+
+data witness_balanced_txn: LedgerTransaction = LedgerTransaction {
+  id: "witness-balanced",
+  date_iso: "2026-01-01",
+  postings: [
+    Posting { account: EquipmentCompute, direction: Debit, usd_micro: 500000000, memo: "control: equipment acquired" },
+    Posting { account: CreditCardPayable, direction: Credit, usd_micro: 500000000, memo: "control: liability created" },
+  ],
+  provenance: "Synthetic fixture. Not a real transaction and never included in ledger_2026.",
+}
+
+data witness_unbalanced_txn: LedgerTransaction = LedgerTransaction {
+  id: "witness-unbalanced",
+  date_iso: "2026-01-01",
+  postings: [
+    Posting { account: EquipmentCompute, direction: Debit, usd_micro: 500000000, memo: "red: debit without a matching credit" },
+    Posting { account: CreditCardPayable, direction: Credit, usd_micro: 499999999, memo: "red: one micro-dollar short" },
+  ],
+  provenance: "Synthetic fixture whose ONLY purpose is to be refused. One micro-dollar of imbalance, because a wall that only catches large errors is not a wall.",
+}
+
+fn witness_balance_accepts_the_balanced() -> Bool {
+  transaction_is_balanced(witness_balanced_txn)
+}
+
+fn witness_balance_refuses_the_unbalanced() -> Bool {
+  match transaction_balance(witness_unbalanced_txn) {
+    Balanced => false,
+    Unbalanced { transaction_id, debit_micro, credit_micro } => true,
+  }
+}
+
+fn witness_committed_ledger_balances() -> Bool {
+  ledger_all_balanced(ledger_2026)
+}
+
+// --- Deployability: the 401k is the discriminating case. -------------------------------
+
+fn witness_retirement_is_not_runway() -> Bool {
+  account_is_deployable(CashChecking) && !account_is_deployable(RetirementLocked)
+}
+
+// --- The deduction conjunction. Both gates must be required, so the red cases are the
+// --- ones where exactly ONE gate passes. A verdict that admitted either alone would be
+// --- the failure this check exists to catch.
+
+fn witness_deduction_requires_both_gates() -> Bool {
+  let both = match equipment_deduction_verdict(
+    s: ActiveTradeOrBusiness { commencement_date_iso: "2026-01-01", basis: "fixture" },
+    p: PlacedInService { date: CalendarDate { year: 2026, month: 6, day: 1 } }
+  ) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  let only_trade = match equipment_deduction_verdict(
+    s: ActiveTradeOrBusiness { commencement_date_iso: "2026-01-01", basis: "fixture" },
+    p: AcquiredNotYetInService { obligation: "fixture" }
+  ) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  let only_service = match equipment_deduction_verdict(
+    s: CommencementUndetermined { obligation: "fixture" },
+    p: PlacedInService { date: CalendarDate { year: 2026, month: 6, day: 1 } }
+  ) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  both && !only_trade && !only_service
+}
+
+// The live rows must currently REFUSE. This is not a restatement of the previous check: it
+// asserts that the standings actually committed to this repository are the refusing ones,
+// so that flipping gunbai_trade_or_business_standing to ActiveTradeOrBusiness without a
+// determination reds here rather than silently unlocking a deduction.
+fn witness_live_deduction_refuses() -> Bool {
+  let spark = match equipment_deduction_verdict(s: gunbai_trade_or_business_standing, p: spark_placed_in_service) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  let collins = match equipment_deduction_verdict(s: gunbai_trade_or_business_standing, p: mt_collins_placed_in_service) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  !spark && !collins
+}
+
+// --- Publication: only a filed certificate discharges. ---------------------------------
+
+fn witness_only_filed_certificate_discharges() -> Bool {
+  publication_discharged(CertificateFiled { dos_receipt: "fixture" })
+    && !publication_discharged(gunbai_publication_standing)
+}
+
+// --- The year close must refuse while open items stand. --------------------------------
+
+fn witness_year_close_refuses() -> Bool {
+  match year_close_2026() {
+    CloseAdmitted => false,
+    CloseRefused { causes } => true,
+  }
+}
+
+// THE GATE MUST HOLD THE TAX INPUTS IT NAMES. This is the enrolled regression control for a
+// real fail-open found 2026-09-04: the refusal message listed six blockers while the acceptance
+// condition tested only three of them, so CloseAdmitted was reachable with the September
+// disposition, the filing status and the residency interval all still missing. Deleting any of
+// these rows from the roster - which is how that defect would return - turns this red. It checks
+// by KEY IDENTITY rather than by counting requirements, because a count stays green when one row
+// is swapped for another and the point is that THESE facts specifically are held.
+fn witness_close_holds_named_tax_inputs() -> Bool {
+  any(close_requirements(), r => r.key == "september-disposition-reported" && !r.met)
+    && any(close_requirements(), r => r.key == "filing-status-declared" && !r.met)
+    && any(close_requirements(), r => r.key == "residency-declared" && !r.met)
+    && any(close_requirements(), r => r.key == "resale-basis-established" && !r.met)
+    && any(close_requirements(), r => r.key == "ledger-balanced")
+}
+
+// The causes are the unmet requirements and nothing else. A refusal that names a cause with no
+// predicate behind it is the defect this replaced, so the message must be derivable from the
+// roster: every cause reported is one the roster produced, and at least one requirement is
+// actually met, which proves the roster discriminates rather than refusing everything blindly.
+fn witness_causes_derive_from_roster() -> Bool {
+  count(unmet_close_causes()) > 0
+    && count(unmet_close_causes()) < count(close_requirements())
+    && all(unmet_close_causes(), c => c != "")
+}
+
+// Local fixtures and readers so the two date checks below read the VERDICT a caller reads,
+// not just the predicate underneath it.
+fn active_business_fixture() -> TradeOrBusinessStanding {
+  ActiveTradeOrBusiness { commencement_date_iso: "2026-01-01", basis: "fixture" }
+}
+
+fn verdict_is_available(v: DeductionVerdict) -> Bool {
+  match v {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+}
+
+fn verdict_is_refused(v: DeductionVerdict) -> Bool {
+  !verdict_is_available(v: v)
+}
+
+// THE DISCRIMINATING RED FOR R1, AND WHERE IT MOVED. The original defect - a predicate that
+// matched the ARM rather than the date - is exercised below through the CONSUMER, because the
+// review's point was that testing the predicate over two consistent fixtures never reached the
+// verdict a caller actually reads.
+//
+// The second defect, an authored tax_year disagreeing with an authored date_iso, HAS NO TEST
+// HERE AND CANNOT HAVE ONE: PlacedInService { date_iso: "2027-01-01", tax_year: 2026 } does not
+// compile any more, because there is no tax_year field to disagree with anything. That is the
+// climb - the red for that class is now a compile refusal rather than a runtime assert, and a
+// test asserting over an input production cannot construct would be a decoration.
+//
+// What remains authorable is an IMPOSSIBLE date, so that is tested here, through the verdict.
+fn witness_next_year_placement_is_not_this_year() -> Bool {
+  let next_year = PlacedInService { date: CalendarDate { year: 2027, month: 1, day: 1 } }
+  let this_year = PlacedInService { date: CalendarDate { year: 2026, month: 12, day: 31 } }
+  !placed_in_service_in_2026(p: next_year)
+    && placed_in_service_in_2026(p: this_year)
+    && placed_in_service_in_year(p: next_year, year: 2027)
+    && verdict_is_refused(v: equipment_deduction_verdict(s: active_business_fixture(), p: next_year))
+    && verdict_is_available(v: equipment_deduction_verdict(s: active_business_fixture(), p: this_year))
+}
+
+// An impossible date must not produce a verdict either way.
+fn witness_impossible_date_refuses() -> Bool {
+  let feb31 = PlacedInService { date: CalendarDate { year: 2026, month: 2, day: 31 } }
+  let month13 = PlacedInService { date: CalendarDate { year: 2026, month: 13, day: 1 } }
+  verdict_is_refused(v: equipment_deduction_verdict(s: active_business_fixture(), p: feb31))
+    && verdict_is_refused(v: equipment_deduction_verdict(s: active_business_fixture(), p: month13))
+    && !placed_in_service_date_is_valid(p: feb31)
+    && placed_in_service_date_is_valid(p: this_year_fixture())
+}
+
+fn this_year_fixture() -> PlacedInServiceStanding {
+  PlacedInService { date: CalendarDate { year: 2026, month: 12, day: 31 } }
+}
+
+fn finance_witness_all() -> Bool {
+  witness_balance_accepts_the_balanced()
+    && witness_balance_refuses_the_unbalanced()
+    && witness_committed_ledger_balances()
+    && witness_retirement_is_not_runway()
+    && witness_deduction_requires_both_gates()
+    && witness_live_deduction_refuses()
+    && witness_only_filed_certificate_discharges()
+    && witness_year_close_refuses()
+    && witness_close_holds_named_tax_inputs()
+    && witness_causes_derive_from_roster()
+    && witness_next_year_placement_is_not_this_year()
+    && witness_impossible_date_refuses()
+}
+
+fn finance_witness_main() -> ProcessExit {
+  if finance_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "finance_witness_all returned false" } }
+}

@@ -1,0 +1,283 @@
+module strategy.fleet_convergence
+
+import std.types { Int, List, NonEmptyStr, Bool }
+import strategy.buyers_pipeline {
+  DemandRow, ListingObservation, PurchaseProposal, propose, admitted_depth,
+  ProposalAdmissible, ProposalRefusedOverCeiling, ProposalRefusedNoVerifiedDepth,
+  demand_ddr4_rdimm, demand_u2_nvme,
+}
+
+// FLEET CONVERGENCE (operator direction 2026-08-30): declare what inventory we HOLD,
+// declare the serving INTENT, and derive the gap - the buyer pipeline then exists to
+// close the gap, not to shop from a hand-authored wishlist. The selection discipline is
+// refusal-first: compatibility x working x seller trust gate a listing before price
+// ranks it, and COMPATIBILITY IS CONSUMED FROM THE QUALIFICATION LAYER, never re-decided
+// here. The LRDIMM incident is the founding example: the WHY lives publicly in
+// extdeps.memory.training (only load-reduced modules execute the data-buffer MREP
+// calibration the failing platform choked on) and gunbc.host.host_memory_qualification
+// (evidence-graded severity, board-scoped receipts) - this module only translates that
+// standing into a purchase clamp. Over time every incompatibility lands the same way:
+// a typed cause at its platform/step layer, and a derived buying consequence here.
+
+// ---------------------------------------------------------------------------------------------
+// Inventory and intent.
+// ---------------------------------------------------------------------------------------------
+
+type InventoryState
+  = HeldOnSite
+  | OrderedInbound
+
+type InventoryRow {
+  component_id: NonEmptyStr
+  state: InventoryState
+  units: Int
+  provenance: NonEmptyStr
+}
+
+data inv_collins_held: InventoryRow = InventoryRow {
+  component_id: "mt-collins-1u",
+  state: HeldOnSite,
+  units: 1,
+  provenance: "pilot unit, memtest-passed 2026-08-29 (strategy.mt_collins_held_unit)",
+}
+
+data inv_collins_inbound: InventoryRow = InventoryRow {
+  component_id: "mt-collins-1u",
+  state: OrderedInbound,
+  units: 20,
+  provenance: "20-unit order executed 2026-08-30 at 1,700 pre-tax (ci_node_build mt_collins_system_lot PurchaseReceipt)",
+}
+
+data inv_dimms_held: InventoryRow = InventoryRow {
+  component_id: "ddr4-32g-rdimm",
+  state: HeldOnSite,
+  units: 16,
+  provenance: "operator estimate 2026-08-29 was 16-24 sticks; declared at the 16 floor until the intake census counts them - an inventory row is a claim the census replaces, not a guess it decorates",
+}
+
+data inv_nvme_held: InventoryRow = InventoryRow {
+  component_id: "u2-nvme-4t",
+  state: HeldOnSite,
+  units: 0,
+  provenance: "none held; cache duty per the diskless tier policy",
+}
+
+data fleet_inventory: List<InventoryRow> = [
+  inv_collins_held, inv_collins_inbound, inv_dimms_held, inv_nvme_held,
+]
+
+// Serving intent: converge the Collins expansion fleet - the 21 units we own or have
+// ordered, populated to the planned 16-DIMM one-per-channel shape with one disposable
+// cache NVMe each (no boot media; netboot per operator_tier_policy).
+data target_collins_nodes: Int = 21
+
+type BomLine {
+  component_id: NonEmptyStr
+  per_node: Int
+}
+
+data bom_barebones: BomLine = BomLine { component_id: "mt-collins-1u", per_node: 1 }
+data bom_dimms: BomLine = BomLine { component_id: "ddr4-32g-rdimm", per_node: 16 }
+data bom_cache_nvme: BomLine = BomLine { component_id: "u2-nvme-4t", per_node: 1 }
+
+data node_bom: List<BomLine> = [bom_barebones, bom_dimms, bom_cache_nvme]
+
+fn units_toward(component_id: NonEmptyStr) -> Int {
+  fold(fleet_inventory, init: 0, f: fn(acc, r) {
+    if r.component_id == component_id { acc + r.units } else { acc }
+  })
+}
+
+// The convergence derivation: required minus held-or-inbound, floored at zero. This is
+// the pipeline's demand quantity - the hand-authored wanted_units on the BOM demand rows
+// must EQUAL it, and the witness reds on drift, so intent and shopping list cannot fork.
+fn component_gap(line: BomLine) -> Int {
+  let required = target_collins_nodes * line.per_node
+  let have = units_toward(component_id: line.component_id)
+  if required > have { required - have } else { 0 }
+}
+
+fn gap_for(component_id: NonEmptyStr) -> Int {
+  fold(node_bom, init: 0, f: fn(acc, l) {
+    if l.component_id == component_id { acc + component_gap(line: l) } else { acc }
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Compatibility standing - consumed by selection, authored by the qualification layer.
+// ---------------------------------------------------------------------------------------------
+
+type CompatibilityStanding
+  = CitedSupported { source: NonEmptyStr }
+  | ReceiptProven { receipt: NonEmptyStr }
+  | SampleFirst { reason: NonEmptyStr }
+  | RefusedIncompatible { cause: NonEmptyStr }
+  | Unqualified { note: NonEmptyStr }
+
+type ComponentCompatibility {
+  component_id: NonEmptyStr
+  standing: CompatibilityStanding
+}
+
+data compat_collins: ComponentCompatibility = ComponentCompatibility {
+  component_id: "mt-collins-1u",
+  standing: ReceiptProven { receipt: "pilot unit powers on and passes memtest 254 GiB at 22 GB/s (mt_collins_held_unit MemtestBootReceipt)" },
+}
+
+data compat_rdimm_32g: ComponentCompatibility = ComponentCompatibility {
+  component_id: "ddr4-32g-rdimm",
+  standing: ReceiptProven { receipt: "32 GiB RDIMMs at 2400 running in the held unit through the memtest pass - the operator's deliberate cheap-grade choice, proven on this platform" },
+}
+
+// THE LRDIMM ROW, graded exactly as the public qualification layer grades it - NOT a
+// blanket refusal: the MREP training failure was observed and syndrome-decoded on
+// ALTRAD8UD-1L2T, receipts are board-scoped, and the Altra memory controller citation
+// says LRDIMM support exists at the family level. So for Mt. Collins the honest verdict
+// is buy-one-and-test, and selection clamps LRDIMM proposals to a 1-unit sample.
+data compat_lrdimm_32g: ComponentCompatibility = ComponentCompatibility {
+  component_id: "ddr4-32g-lrdimm",
+  standing: SampleFirst { reason: "Load-reduced modules execute the data-buffer MREP calibration step (extdeps.memory.training) that failed on ALTRAD8UD-1L2T; gunbc.host.host_memory_qualification holds that failure at AssociatedByIdenticalSignature and scopes receipts to the observed board, so a Collins LRDIMM is sample-before-population, not refused - and a Collins sample receipt (either way) lands back in the qualification layer, not here" },
+}
+
+data compat_u2_nvme: ComponentCompatibility = ComponentCompatibility {
+  component_id: "u2-nvme-4t",
+  standing: SampleFirst { reason: "Collins front-tray backplane accepts U.2 per the product brief, but no drive has been proven in ours - one sample through the intake before depth" },
+}
+
+data component_compatibility: List<ComponentCompatibility> = [
+  compat_collins, compat_rdimm_32g, compat_lrdimm_32g, compat_u2_nvme,
+]
+
+fn standing_for(component_id: NonEmptyStr) -> CompatibilityStanding {
+  fold(component_compatibility, init: Unqualified { note: "no compatibility row for this component - selection admits at most a sample" }, f: fn(acc, c) {
+    if c.component_id == component_id { c.standing } else { acc }
+  })
+}
+
+fn sample_cap(s: CompatibilityStanding) -> Int {
+  match s {
+    CitedSupported { source } => 1000000,
+    ReceiptProven { receipt } => 1000000,
+    SampleFirst { reason } => 1,
+    Unqualified { note } => 1,
+    RefusedIncompatible { cause } => 0,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Selection: refusal-first over one listing, then cheapest-admitted over many.
+// ---------------------------------------------------------------------------------------------
+
+data seller_feedback_floor_permille: Int = 980
+data seller_feedback_floor_count: Int = 50
+
+type SelectionOutcome
+  = SelectionAdmitted { component_id: NonEmptyStr, source: NonEmptyStr, units: Int, unit_price_micro: Int }
+  | SelectionRefusedIncompatible { component_id: NonEmptyStr, cause: NonEmptyStr }
+  | SelectionRefusedSellerTrust { component_id: NonEmptyStr, feedback_permille: Int, feedback_count: Int }
+  | SelectionRefusedByProposal { component_id: NonEmptyStr, note: NonEmptyStr }
+
+fn min_int(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+fn select_listing(demand: DemandRow, o: ListingObservation) -> SelectionOutcome {
+  match standing_for(component_id: demand.id) {
+    RefusedIncompatible { cause } => SelectionRefusedIncompatible { component_id: demand.id, cause: cause },
+    CitedSupported { source } => select_trusted(demand: demand, o: o),
+    ReceiptProven { receipt } => select_trusted(demand: demand, o: o),
+    SampleFirst { reason } => select_trusted(demand: demand, o: o),
+    Unqualified { note } => select_trusted(demand: demand, o: o),
+  }
+}
+
+fn select_trusted(demand: DemandRow, o: ListingObservation) -> SelectionOutcome {
+  if o.seller_feedback_permille < seller_feedback_floor_permille || o.seller_feedback_count < seller_feedback_floor_count {
+    SelectionRefusedSellerTrust { component_id: demand.id, feedback_permille: o.seller_feedback_permille, feedback_count: o.seller_feedback_count }
+  } else {
+    match propose(demand: demand, o: o) {
+      ProposalAdmissible { demand_id, source, units, unit_price_micro } =>
+        SelectionAdmitted {
+          component_id: demand_id,
+          source: source,
+          units: min_int(a: units, b: sample_cap(s: standing_for(component_id: demand_id))),
+          unit_price_micro: unit_price_micro,
+        },
+      ProposalRefusedOverCeiling { demand_id, unit_price_micro, ceiling_micro } =>
+        SelectionRefusedByProposal { component_id: demand_id, note: "over ceiling" },
+      ProposalRefusedNoVerifiedDepth { demand_id, quantity_claimed } =>
+        SelectionRefusedByProposal { component_id: demand_id, note: "no verified depth" },
+    }
+  }
+}
+
+// Cheapest admitted listing wins; refusals never rank. price 0 sentinel = nothing admitted.
+fn admitted_price(s: SelectionOutcome) -> Int {
+  match s {
+    SelectionAdmitted { component_id, source, units, unit_price_micro } => unit_price_micro,
+    SelectionRefusedIncompatible { component_id, cause } => 0,
+    SelectionRefusedSellerTrust { component_id, feedback_permille, feedback_count } => 0,
+    SelectionRefusedByProposal { component_id, note } => 0,
+  }
+}
+
+fn better_of(a: SelectionOutcome, b: SelectionOutcome) -> SelectionOutcome {
+  let pa = admitted_price(s: a)
+  let pb = admitted_price(s: b)
+  if pb == 0 { a } else if pa == 0 { b } else if pb < pa { b } else { a }
+}
+
+fn best_selection(demand: DemandRow, listings: List<ListingObservation>) -> SelectionOutcome {
+  fold(listings, init: SelectionRefusedByProposal { component_id: demand.id, note: "no listings observed" }, f: fn(acc, o) {
+    better_of(a: acc, b: select_listing(demand: demand, o: o))
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE FILL INSTRUMENT - what the pipeline is solving for. The market's price curve is
+// discovered by accumulating admitted listings against the gap: units above the dated
+// reference quote are EXPECTED (our own buying consumes the cheap depth), and the answer
+// is the realized cost to converge, not a pass/fail against a quote.
+// ---------------------------------------------------------------------------------------------
+
+type FillAcc {
+  units: Int
+  cost_micro: Int
+  marginal_unit_micro: Int
+}
+
+type FillStanding
+  = GapFilled { total_cost_micro: Int, marginal_unit_micro: Int }
+  | GapUnfilled { remaining_units: Int, admitted_cost_micro: Int }
+
+fn max_int(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+fn fill_standing(gap_units: Int, selections: List<SelectionOutcome>) -> FillStanding {
+  let acc = fold(selections, init: FillAcc { units: 0, cost_micro: 0, marginal_unit_micro: 0 }, f: fn(a, sel) {
+    match sel {
+      SelectionAdmitted { component_id, source, units, unit_price_micro } =>
+        if a.units >= gap_units {
+          a
+        } else {
+          let take = min_int(a: units, b: gap_units - a.units)
+          FillAcc {
+            units: a.units + take,
+            cost_micro: a.cost_micro + take * unit_price_micro,
+            marginal_unit_micro: max_int(a: a.marginal_unit_micro, b: unit_price_micro),
+          }
+        },
+      SelectionRefusedIncompatible { component_id, cause } => a,
+      SelectionRefusedSellerTrust { component_id, feedback_permille, feedback_count } => a,
+      SelectionRefusedByProposal { component_id, note } => a,
+    }
+  })
+  if acc.units >= gap_units {
+    GapFilled { total_cost_micro: acc.cost_micro, marginal_unit_micro: acc.marginal_unit_micro }
+  } else {
+    GapUnfilled { remaining_units: gap_units - acc.units, admitted_cost_micro: acc.cost_micro }
+  }
+}
+
+data convergence_note: NonEmptyStr = "WHY DEMAND IS DERIVED: intent (21 Collins nodes at 16 DIMMs + 1 cache NVMe each) minus inventory (held + inbound) IS the shopping list - the binding follow-on of the 20-unit barebones order is therefore visible by construction: roughly 320 more 32 GiB RDIMMs and 21 cache drives, while the barebones gap is zero. The scout scans listings against the gap; selection refuses before it ranks (incompatible, untrusted seller, over ceiling, unverified depth) and clamps sample-first components to one unit; the operator approves, always. When the intake census lands real counts, the inventory rows update and the gap re-derives - convergence is a loop, not a plan."

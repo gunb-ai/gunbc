@@ -1,0 +1,182 @@
+module strategy.ci_acquisition
+
+import std.types { Int, List, NonEmptyStr, Bool }
+
+// THE DISTRIBUTION AND ACQUISITION INSTRUMENT (operator ruling 2026-08-29, memo section
+// 4l of docs/strategy/2026-08-29-blacksmith-gaming-cpu-comparison.md): a 24/7
+// CI-opportunity ANALYST, never a GitHub-derived cold-email sender. Two independent
+// chains — repository evidence and contact authority — that join only after permission.
+// A workflow file is not contact authority; a benchmark receipt is not PR authorization.
+//
+// This seed carries the DISPOSITIONS and the two load-bearing no-constructor guarantees.
+// The full roster (CiWorkflowObservation, BenchmarkReceipt, AuditConsent,
+// AcquisitionReceipt, the operational/commercial utilization split) grows here as the S0
+// campaign produces real rows; nothing below is a fact about any actual prospect yet.
+
+// -------------------------------------------------------------------------------------
+// PRODUCER PROVENANCE FOR SPEND. Workflow YAML produces declared shape; run history
+// produces observed durations; a replay produces performance on OUR machine under
+// declared conditions; only a customer bill or authorized export produces current spend.
+// SavingsVerified-grade claims require CustomerBillObserved - nothing else constructs it.
+// -------------------------------------------------------------------------------------
+
+type SpendStanding
+  = PublicStandardFree { note: NonEmptyStr }
+  | PaidRunnerObserved { basis: NonEmptyStr }
+  | CustomerBillObserved { authorization: NonEmptyStr }
+  | SpendUnknown { obligation: NonEmptyStr }
+
+type SavingsClaimGrade
+  = SavingsEstimated { assumptions: NonEmptyStr }
+  | SavingsVerified { bill_authorization: NonEmptyStr }
+
+// The promotion gate: an estimate NEVER becomes SavingsVerified. Only an observed,
+// customer-authorized bill constructs the verified grade; every other standing yields
+// the estimated grade with its assumptions attached.
+fn savings_claim_grade(s: SpendStanding, assumptions: NonEmptyStr) -> SavingsClaimGrade {
+  match s {
+    CustomerBillObserved { authorization } => SavingsVerified { bill_authorization: authorization },
+    PublicStandardFree { note } => SavingsEstimated { assumptions: assumptions },
+    PaidRunnerObserved { basis } => SavingsEstimated { assumptions: assumptions },
+    SpendUnknown { obligation } => SavingsEstimated { assumptions: assumptions },
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// TYPED OPPORTUNITY STANDING - never one magic score. A red compatibility or
+// correctness arm is a standing of its own, not a number a savings score can outweigh.
+// -------------------------------------------------------------------------------------
+
+type OpportunityStanding
+  = NoCommercialSignal
+  | LatencyOpportunity { evidence: NonEmptyStr }
+  | CostOpportunity { evidence: NonEmptyStr }
+  | ConcurrencyOpportunity { evidence: NonEmptyStr }
+  | ArchitectureIncompatible { cause: NonEmptyStr }
+  | PrivateInputsRequired { cause: NonEmptyStr }
+  | ReplayNotPermitted { cause: NonEmptyStr }
+  | ReplayUnsafe { cause: NonEmptyStr }
+  | EvidenceInsufficient { obligation: NonEmptyStr }
+  | VerifiedArbitrage { receipt: NonEmptyStr }
+
+// -------------------------------------------------------------------------------------
+// CONTACT PROVENANCE AND THE FIRST NO-CONSTRUCTOR GUARANTEE. GitHub's Acceptable Use
+// Policies forbid using information obtained from the service for unsolicited email;
+// satisfying CAN-SPAM does not erase the contractual restriction on the lead's SOURCE.
+// Admissible channels are typed; GitHubDerivedContact is carried so the refusal is a
+// row, never a silent absence - and outreach_admission REFUSES it structurally.
+// -------------------------------------------------------------------------------------
+
+type ContactProvenance
+  = InboundRequest { record: NonEmptyStr }
+  | Referral { record: NonEmptyStr }
+  | IndependentLicensedSource { source_terms: NonEmptyStr }
+  | ExplicitAnalysisRequest { channel: NonEmptyStr }
+  | GitHubDerivedContact { how_obtained: NonEmptyStr }
+
+type OutreachAdmission
+  = OutreachAdmitted {
+      provenance_note: NonEmptyStr
+      jurisdiction: NonEmptyStr
+      suppression_checked: NonEmptyStr
+      human_authorization: NonEmptyStr
+    }
+  | OutreachRefused { cause: NonEmptyStr }
+
+// GUARANTEE 1: no OutreachAdmitted from GitHubDerivedContact. The only constructor of
+// OutreachAdmitted in this codebase; the GitHub-derived arm returns a refusal
+// unconditionally, whatever the other inputs say.
+fn outreach_admission(
+  provenance: ContactProvenance,
+  jurisdiction: NonEmptyStr,
+  suppression_checked: NonEmptyStr,
+  human_authorization: NonEmptyStr,
+) -> OutreachAdmission {
+  match provenance {
+    GitHubDerivedContact { how_obtained } => OutreachRefused {
+      cause: join(["GitHub-derived contact refused per AUP (source: ", how_obtained,
+        "): information obtained from the service may not be used for unsolicited email; no input combination overrides this arm"], ""),
+    },
+    InboundRequest { record } => OutreachAdmitted {
+      provenance_note: record, jurisdiction: jurisdiction,
+      suppression_checked: suppression_checked, human_authorization: human_authorization,
+    },
+    Referral { record } => OutreachAdmitted {
+      provenance_note: record, jurisdiction: jurisdiction,
+      suppression_checked: suppression_checked, human_authorization: human_authorization,
+    },
+    IndependentLicensedSource { source_terms } => OutreachAdmitted {
+      provenance_note: source_terms, jurisdiction: jurisdiction,
+      suppression_checked: suppression_checked, human_authorization: human_authorization,
+    },
+    ExplicitAnalysisRequest { channel } => OutreachAdmitted {
+      provenance_note: channel, jurisdiction: jurisdiction,
+      suppression_checked: suppression_checked, human_authorization: human_authorization,
+    },
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// REPLAY ADMISSION. Refusal causes are separated, not folded into one string, so the
+// census can count WHY repos are refused. License is an admission input: public-on-
+// GitHub grants viewing and forking through GitHub, not off-platform execution rights.
+// -------------------------------------------------------------------------------------
+
+type ReplayAdmission
+  = ReplayAdmitted { sandbox_profile: NonEmptyStr }
+  | ReplayRefusedLicense { cause: NonEmptyStr }
+  | ReplayRefusedSafety { cause: NonEmptyStr }
+  | ReplayRefusedArchitecture { cause: NonEmptyStr }
+  | ReplayRefusedSecrets { cause: NonEmptyStr }
+  | ReplayRefusedWorkload { cause: NonEmptyStr }
+
+data replay_sandbox_profile: NonEmptyStr = "Fresh Firecracker microVM per replay; no GitHub token, cloud credentials, metadata endpoint, SSH keys, or shared secrets; strict CPU, memory, disk, process, and wall-time ceilings; egress via dependency proxy or narrow allowlist; no route to home, control-plane, billing, or production networks; disposable per-repository cache namespace; third-party actions pinned to immutable commits; admitted build and test steps only - never deploy, publish, release, or infrastructure mutation; VM destroyed and cache disposition recorded after the run."
+
+// -------------------------------------------------------------------------------------
+// MIGRATION AUTHORIZATION AND THE SECOND NO-CONSTRUCTOR GUARANTEE. A migration PR
+// exists only downstream of an explicit repository-scoped authorization: the created-PR
+// type CONTAINS the authorization, so no reply, emoji, newsletter signup, or inferred
+// interest can construct one.
+// -------------------------------------------------------------------------------------
+
+type MigrationPrAuthorization {
+  authorizing_actor: NonEmptyStr
+  repository: NonEmptyStr
+  allowed_files: List<NonEmptyStr>
+  target_branch: NonEmptyStr
+  trial_budget_vcpu_minutes: Int
+  expiration: NonEmptyStr
+}
+
+// GUARANTEE 2 is structural: the authorization is a required field, so MigrationPrCreated
+// without one does not typecheck anywhere in the codebase.
+type MigrationPrCreated {
+  authorization: MigrationPrAuthorization
+  pr_reference: NonEmptyStr
+  benchmark_receipt_ref: NonEmptyStr
+  rollback_note: NonEmptyStr
+}
+
+type TrialDisposition
+  = TrialNeverStarted
+  | TrialBlocked { cause: NonEmptyStr }
+  | TrialFailedEquivalence { receipt: NonEmptyStr }
+  | TrialVerified { receipt: NonEmptyStr }
+  | TrialConverted { receipt: NonEmptyStr }
+  | TrialDeclined { note: NonEmptyStr }
+
+// -------------------------------------------------------------------------------------
+// THE OUTBOUND SCALE GATE. Outbound does not scale until the system has produced these
+// facts; the gate is data so the witness can hold the campaign to its own ruling.
+// -------------------------------------------------------------------------------------
+
+data outbound_scale_preconditions: List<NonEmptyStr> = [
+  "three completed, equivalent migrations",
+  "at least one 30-day retained paid customer",
+  "measured migration and support hours",
+  "no unsupported savings claims",
+  "no complaint or suppression failure",
+  "a credible path to five-to-ten customers totaling roughly 5,000 dollars MRR",
+]
+
+data s0_book_note: NonEmptyStr = "S0 does not need hundreds of organizations: 500 sellable vCPU at 30% utilization is 6.48M vCPU-minutes = about 7,290 dollars per month at the flagship price - five customers near 1,458 MRR or ten near 729; the five-near-972-or-ten-near-486 book is the 20% case, which is the S0-to-S1 demand threshold, not the planning point. Target five to ten paid design partners plus three to five explicit opt-in open-source design partners (public proof and load diversity; the OSS cohort never counts as commercial utilization). Concentration cap: no early customer above roughly 15-20% of S0 capacity."

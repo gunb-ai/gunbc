@@ -1,0 +1,127 @@
+module strategy.compliance_posture
+
+import std.types { List, NonEmptyStr, Bool }
+
+// COMPLIANCE ISSUE REGISTER (operator direction 2026-08-29; external legal-architecture
+// review folded 2026-08-29). THIS MODULE IS AN ISSUE REGISTER, NOT AN EXECUTED
+// COMPLIANCE VERDICT: carriers below are prose pointers until control/evidence rows
+// exist as declaration references, and the roster witness proves the rows are populated
+// and postured - never that a legal classification is correct. Counsel confirms scope
+// and contract language before launch. The design intent stands: a control that is a
+// typed refusal, receipt, or admission row is machine-checkable evidence; the register
+// names, per regime, which construction will carry it and what stays paperwork.
+
+type CompliancePosture
+  = DesignConstraintNow { carrier: NonEmptyStr }
+  | DeferredUntil { trigger: NonEmptyStr }
+  | ExcludedByProductPolicy { policy: NonEmptyStr }
+  | NotApplicable { reason: NonEmptyStr }
+
+type ComplianceRegime {
+  id: NonEmptyStr
+  scope_note: NonEmptyStr
+  posture: CompliancePosture
+}
+
+data regime_soc2: ComplianceRegime = ComplianceRegime {
+  id: "soc2-type2",
+  scope_note: "SOC 2 (Trust Services Criteria) is the enterprise-procurement gate for a CI vendor - the first serious customer security review asks for it. Type I attests design at a point in time, Type II attests operation over a window (so the window must START well before the report is needed). The audit consumes evidence of access control, change management, monitoring, incident response, vendor management.",
+  posture: DesignConstraintNow { carrier: "Receipts are the evidence BASE, not the whole control system (external review): beside intake/rotation/billing receipts and deploy-as-PR change management, the register owes named controls for access review and joiner/leaver, privileged access, vendor/subprocessor review, incident response with exercises, vulnerability/patch management, backup/restore testing, colo physical-access inheritance, continuity, and training. Paid Type II audit stays demand-triggered, but the OPERATING window must start before procurement blocks on it - a Type II cannot retroactively prove months of operation." },
+}
+
+data regime_gdpr: ComplianceRegime = ComplianceRegime {
+  id: "gdpr-processor",
+  scope_note: "Territorial scope per Art. 3 (corrected: NOT simply 'one EU data subject'): binds via EU establishment or, for a non-EU entity, offering services to or monitoring people in the EU (EDPB Art. 3 guidance). TWO ROLES: controller for account/billing/sales/support/fraud data; processor for customer source code, logs, artifacts and execution data. Transfers are lawful under SCCs etc. - region pinning is a customer control, not a GDPR universal.",
+  posture: DesignConstraintNow { carrier: "Constructions: product D typed retention/deletion - with deletion as TYPED STATES (AccessRevoked / LogicalReferenceDeleted / EncryptionKeyDestroyed / PhysicalObjectDeleted / BackupRetentionExpired / LegalHoldRetained), because cross-tenant dedup muddies 'your bytes were erased' and per-tenant keys clean the transaction; product C tenant-scoped cache authz; region-as-admission covering object storage, logs, telemetry, backups, support access and spill - not just the runner VM. Paperwork residue: Art. 28 DPA, subprocessor list + change notice, RoP for BOTH roles, transfer assessments, DSR/DPIA assistance, EU-representative and DPO triggers." },
+}
+
+data regime_pci: ComplianceRegime = ComplianceRegime {
+  id: "pci-dss-saq-a",
+  scope_note: "Card payments. Full PCI-DSS is for entities touching card data; a vendor using Stripe-class hosted checkout never sees a PAN and self-assesses at SAQ-A.",
+  posture: DesignConstraintNow { carrier: "The no-card-data-type invariant is necessary, not sufficient (external review): SAQ-A eligibility also requires all payment-page elements to originate from PCI-compliant providers, and a browser script or analytics tag can observe what the backend cannot store. Carry: hosted checkout/redirect or isolated provider elements, the provider AOC, no PAN in logs/analytics/support/webhooks, payment-event redaction, annual SAQ validation." },
+}
+
+data regime_us_state_privacy: ComplianceRegime = ComplianceRegime {
+  id: "us-state-privacy",
+  scope_note: "CORRECTED (external review): the CCPA B2B/employee exemptions EXPIRED 2022-12-31 - the earlier 'B2B largely exempt' claim was stale. This row is a matrix, not one law: controller-applicability thresholds (CCPA/CPRA and successors) may stay distant at S0-S2, but PROCESSOR-contract obligations (e.g. NJ: instructions, confidentiality, security, subprocessors, deletion/return, assessments) and reasonable-security duties (NY SHIELD) bind through customer contracts well before any threshold.",
+  posture: DesignConstraintNow { carrier: "Processor-contract terms and reasonable-security safeguards ride the same carriers as GDPR-processor (typed deletion, tenant authz, receipts); controller-threshold applicability stays under review with named thresholds; the breach-notification matrix row carries the per-state clocks." },
+}
+
+data regime_iso27001: ComplianceRegime = ComplianceRegime {
+  id: "iso-27001",
+  scope_note: "The international ISMS certification; largely overlapping SOC 2 evidence, asked for by EU enterprise instead of/beside SOC 2.",
+  posture: DeferredUntil { trigger: "First EU enterprise procurement that asks for it over SOC 2; the receipts evidence base is shared, only the audit framework differs." },
+}
+
+data regime_hipaa: ComplianceRegime = ComplianceRegime {
+  id: "hipaa",
+  scope_note: "US health data. Business-associate status can attach through custody of ePHI regardless of intent, so exclusion must be operationalized, not assumed.",
+  posture: ExcludedByProductPolicy { policy: "CORRECTED from NotApplicable (external review): a ToS exclusion is a product policy, not a legal impossibility - HHS holds that a provider maintaining even encrypted ePHI can be a business associate without the key, and no one can guarantee a customer never commits PHI. The enforceable posture: no BAA offered, PHI workloads contractually prohibited, known-PHI workloads refused, detected PHI triggers suspend/contain/return-or-delete with incident obligations preserved." },
+}
+
+data regime_sanctions_abuse: ComplianceRegime = ComplianceRegime {
+  id: "sanctions-and-abuse",
+  scope_note: "OFAC sanctions and abuse obligations bind from customer one, no threshold. CORRECTED (external review): processor KYC is an INPUT, not the compliance authority - OFAC holds online-commerce and technology firms responsible for their own risk-based program, and a processor cannot screen a free technical trial, org members, workload end users, or IP geography.",
+  posture: DesignConstraintNow { carrier: "Own risk-based program: customer/org screening with rescreening on list changes, billing + IP-geolocation signals, trial controls (prepaid activation already stands), blocked-vs-rejected disposition records, escalation and retention. Abuse: isolation model + typed JobRequirement prohibited-use refusals + the support/abuse COGS row." },
+}
+
+data regime_export_controls: ComplianceRegime = ComplianceRegime {
+  id: "export-controls",
+  scope_note: "Separate from sanctions (external review): EAR/ITAR - electronic transmission of non-public data received abroad can itself be an export, and controls attach to end users and end uses. The customer classifies its data; the infrastructure must not silently invalidate the customer's chosen region/access policy.",
+  posture: DesignConstraintNow { carrier: "Exclude ITAR/controlled-technical-data workloads by ToS with customer representations; region-as-admission prevents silent regional spill; overseas support/admin access treated as a data-access path; restricted-party and prohibited-end-use screening joins the sanctions program; an escalation path for classification questions." },
+}
+
+data regime_eu_data_act: ComplianceRegime = ComplianceRegime {
+  id: "eu-data-act",
+  scope_note: "Likely the largest previously missing EU row (external review): a hosted CI runner is close enough to a 'data processing service' that scope must be resolved before EU commercialization. Applicable from 2025-09-12; from 2027-01-12 providers may not charge for the switching process. Obligations: customer switching, machine-readable export of data and metadata, documented exit, no hostage egress, deletion after switching, contract transparency.",
+  posture: DesignConstraintNow { carrier: "The CAS/object-storage abstraction makes this unusually cheap IF modeled now: exportable tenant-scoped data is a read of the durable tier; the DurableHome admission's export-time-bound and exit-path arms are the same construction the Data Act demands. Scope confirmation with counsel before first EU sale." },
+}
+
+data regime_breach_matrix: ComplianceRegime = ComplianceRegime {
+  id: "breach-notification-matrix",
+  scope_note: "There is no universal 72-hour clock (external review): GDPR controller-to-authority is 72h where feasible while a processor notifies its controller without undue delay; New Jersey requires State Police notice BEFORE customer disclosure; New York requires the most expedient time subject to law enforcement; DPA/SLA and cyber-insurer notice terms can be SHORTER than any statute. Sequencing constraints are part of the obligation, not a detail.",
+  posture: DesignConstraintNow { carrier: "One matrix row per jurisdiction x role x data class carrying recipient, deadline, threshold, sequencing constraint and evidence - built as typed rows when the incident-response control lands; until then this register row is the standing obligation." },
+}
+
+data regime_nis2: ComplianceRegime = ComplianceRegime {
+  id: "nis2",
+  scope_note: "NIS2 describes cloud computing broadly enough to plausibly cover a hosted CI service, with EU-representation contemplated for non-EU providers; applicability also turns on entity size and national implementation.",
+  posture: DeferredUntil { trigger: "Scope assessment required before meaningful EU sale - a classification question for counsel, not an unconditional subjection." },
+}
+
+data regime_dora: ComplianceRegime = ComplianceRegime {
+  id: "dora",
+  scope_note: "An EU financial customer using the service for a critical/important function needs DORA-shaped contract terms (locations, security, subcontractors, audit/cooperation, continuity, exit with tested strategy) - without the vendor automatically becoming a supervised critical ICT third party.",
+  posture: DeferredUntil { trigger: "FirstEUFinancialCustomer -> DORA contract capability required; the exit/export construction shared with the Data Act row is most of the technical substance." },
+}
+
+data compliance_regimes: List<ComplianceRegime> = [
+  regime_soc2,
+  regime_gdpr,
+  regime_pci,
+  regime_us_state_privacy,
+  regime_iso27001,
+  regime_hipaa,
+  regime_sanctions_abuse,
+  regime_export_controls,
+  regime_eu_data_act,
+  regime_breach_matrix,
+  regime_nis2,
+  regime_dora,
+]
+
+// NEAR-TAUTOLOGICAL BY CONSTRUCTION and declared as such (external review): every
+// posture arm carries a string, so this proves the register is populated and postured,
+// never that a classification is correct or a named carrier exists. It earns its keep
+// only as the roster hook; the climb is control_refs/evidence_refs as declaration
+// references, at which point this fold checks reference resolution instead.
+fn regime_has_carrier_or_trigger(r: ComplianceRegime) -> Bool {
+  match r.posture {
+    DesignConstraintNow { carrier } => true,
+    DeferredUntil { trigger } => true,
+    ExcludedByProductPolicy { policy } => true,
+    NotApplicable { reason } => true,
+  }
+}
+
+data compliance_storage_tie_note: NonEmptyStr = "The storage-tiering selection and compliance are one decision seen twice: the hybrid/diskless rows (strategy.ci_storage_tiering) put durable customer data behind ONE LOGICAL storage abstraction with typed retention - but NOT one account/credential/provider failure domain (external review: a single credential or provider suspension out-blasts many disposable drives; irreplaceable products need a second recovery copy and a tested export that need not serve the hot path). Every local byte rehydratable shrinks the SOC 2 asset story and the GDPR breach surface; node OS state reverting on reboot is the change-management story, with firmware/credentials/caches governed separately."

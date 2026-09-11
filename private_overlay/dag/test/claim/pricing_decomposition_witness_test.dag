@@ -1,0 +1,99 @@
+module test.claim.pricing_decomposition_witness
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.pricing_decomposition {
+  subscription_functions, SubscriptionFunction, FunctionVerdict,
+  SoldExplicitly, RefusedAsRevenue,
+  breakage_refused, effective_rate_micro,
+  instrument_mappings, InstrumentMapping,
+  inactivity_dead_man, InactivityPolicy,
+  invoice_constructors, InvoiceConstructor, ConstructorStanding,
+  AdmittedCharge, AdmittedCredit, RefusedConstructor,
+  moral_hazard_walls,
+  risk_interfaces, RiskInterface, RiskCounterparty,
+  CustomerSide, EmployeeSide, FirmItself,
+  pricing_layers, PricingLayer,
+  product_alpha_permille, below_threshold_needs_declaration,
+  offered_tiers, OfferedTier, switch_options, SwitchOption,
+  quality_dimensions, QualityDimension, GuaranteedFloor, OpaqueOurs, DisclosedPolicy,
+  floor_met,
+}
+
+// THE DISCRIMINATING CLAIMS: (1) all three bundled functions are carried and each
+// has a verdict; (2) breakage is REFUSED as revenue - the structural mirror of
+// no-free-minutes - while the other two are sold explicitly (exactly two
+// SoldExplicitly, exactly one RefusedAsRevenue); (3) the CAP arithmetic executes
+// on both sides: the customer keeps downward moves (posted 1000 under a 1250 cap
+// pays 1000) and is protected above (posted 1500 pays 1250); (4) the invoice
+// algebra is closed with the analyst's exact split - four charges, four credits,
+// seven refused constructors - and five moral-hazard walls are carried; also all four
+// market-instrument mappings are carried; (5) the inactivity dead-man switch is
+// structurally anti-extractive: the pause is automatic, requires NO customer
+// action, and the quiet window is at most the operator's stated three months.
+
+fn is_sold(f: SubscriptionFunction) -> Bool {
+  match f.verdict {
+    SoldExplicitly { as_product } => true,
+    RefusedAsRevenue { why } => false,
+  }
+}
+
+fn pricing_decomposition_witness_main() -> ProcessExit {
+  let carried = count(subscription_functions) == 3
+  let sold_count = fold(subscription_functions, init: 0, f: fn(acc, f) {
+    if is_sold(f: f) { acc + 1 } else { acc }
+  })
+  let verdicts_split = sold_count == 2 && breakage_refused()
+  let cap_shape = effective_rate_micro(posted_micro: 1000, cap_micro: 1250) == 1000
+    && effective_rate_micro(posted_micro: 1500, cap_micro: 1250) == 1250
+  let charge_count = fold(invoice_constructors, init: 0, f: fn(acc, c) {
+    match c.standing {
+      AdmittedCharge { receipt } => acc + 1,
+      AdmittedCredit { receipt } => acc,
+      RefusedConstructor { why } => acc,
+    }
+  })
+  let credit_count = fold(invoice_constructors, init: 0, f: fn(acc, c) {
+    match c.standing {
+      AdmittedCharge { receipt } => acc,
+      AdmittedCredit { receipt } => acc + 1,
+      RefusedConstructor { why } => acc,
+    }
+  })
+  let algebra_closed = count(invoice_constructors) == 15 && charge_count == 4 && credit_count == 4
+  let walls_carried = count(moral_hazard_walls) == 6
+  let sides_covered = fold(risk_interfaces, init: 0, f: fn(acc, r) {
+    match r.counterparty {
+      CustomerSide => acc + 1,
+      EmployeeSide => acc + 10,
+      FirmItself => acc + 100,
+    }
+  }) == 111
+  let layers_carried = count(pricing_layers) == 3
+  let alpha_math = product_alpha_permille(realized_rate_micro: 1000, true_rate_micro: 1250) == -200
+    && product_alpha_permille(realized_rate_micro: 1500, true_rate_micro: 1250) == 200
+  let subsidy_wall = below_threshold_needs_declaration(alpha_permille: 100, threshold_permille: 0, subsidy_declared: false)
+    && !below_threshold_needs_declaration(alpha_permille: -200, threshold_permille: 0, subsidy_declared: false)
+    && below_threshold_needs_declaration(alpha_permille: -200, threshold_permille: 0, subsidy_declared: true)
+  let market_complete = count(offered_tiers) == 3 && count(switch_options) == 4
+  let quality_split = fold(quality_dimensions, init: 0, f: fn(acc, q) {
+    match q {
+      GuaranteedFloor { what, remedy } => acc + 1,
+      OpaqueOurs { what, why_hidden } => acc + 10,
+      DisclosedPolicy { what, disclosure } => acc + 100,
+    }
+  }) == 111
+  let floor_wall = floor_met(delivered_permille_of_floor: 1000)
+    && floor_met(delivered_permille_of_floor: 1400)
+    && !floor_met(delivered_permille_of_floor: 950)
+  let instruments_mapped = count(instrument_mappings) == 4
+  let dead_man_armed = inactivity_dead_man.pause_is_automatic
+    && !inactivity_dead_man.customer_action_required_to_pause
+    && inactivity_dead_man.quiet_window_days <= 90
+  if carried && verdicts_split && cap_shape && algebra_closed && walls_carried && sides_covered && layers_carried && alpha_math && subsidy_wall && market_complete && quality_split && floor_wall && instruments_mapped && dead_man_armed {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

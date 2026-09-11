@@ -1,0 +1,85 @@
+module test.claim.home_hosting_witness
+
+import std.types { Bool, List, NonEmptyStr, Int, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.home_hosting {
+  home_circuits, home_verification_obligations, usable_watts_per_circuit,
+  home_usable_watts, home_node_ceiling, home_electricity_monthly_micro,
+  home_all_in_monthly_micro, PlacementCostRow, placement_costs_at,
+}
+
+// CONTROL 1. The circuit arithmetic under both voltage hypotheses, exact: NEC continuous
+// derating (30 A breaker -> 24 A), two dedicated circuits, node ceiling at the 650 W
+// planning draw. The ten-node target is reachable under 240 V with two circuits and NOT
+// under 120 V with two - the discriminating pair that makes the panel reading load-bearing.
+test fn witness_circuit_arithmetic() -> Bool {
+  usable_watts_per_circuit(volts: 120) == 2880
+    && usable_watts_per_circuit(volts: 240) == 5760
+    && home_usable_watts(volts: 120) == 5760
+    && home_usable_watts(volts: 240) == 11520
+    && home_node_ceiling(volts: 120) == 8
+    && home_node_ceiling(volts: 240) == 17
+    && home_node_ceiling(volts: 120) < 10
+    && home_node_ceiling(volts: 240) >= 10
+}
+
+// CONTROL 2. Cost derivation, exact at the ten-node load (6,500 W): electricity re-derives
+// from the cited residential rate, and the all-in applies the cooling factor plus the
+// connectivity allowance - stated arithmetic over cited inputs, not a tree-copied pin.
+test fn witness_home_cost_derivation() -> Bool {
+  home_electricity_monthly_micro(it_watts: 6500) == 6500 * 720 * 270000 / 1000
+    && home_all_in_monthly_micro(it_watts: 6500)
+       == home_electricity_monthly_micro(it_watts: 6500) * 1300 / 1000 + 120000000
+}
+
+// CONTROL 3. The placement ordering the note claims, derived at both reference loads: home
+// is strictly cash-minimal against the published-colo basis AND the bay at 3,500 W and at
+// 6,500 W. Both directions pinned so a cited-rate change that flips the ordering reds this
+// control instead of silently rewriting the conclusion.
+fn cost_of(rows: List<PlacementCostRow>, which: NonEmptyStr) -> Int {
+  fold(rows, init: 0 - 1, f: fn(acc, r) {
+    if r.placement == which { r.monthly_micro } else { acc }
+  })
+}
+
+fn home_is_cheapest_at(w: Int) -> Bool {
+  let rows = placement_costs_at(it_watts: w)
+  let home = cost_of(rows: rows, which: "home (free space, residential power)")
+  let colo = cost_of(rows: rows, which: "published colo per-kW rate (InterServer quarter basis)")
+  let bay = cost_of(rows: rows, which: "2,000 sqft industrial bay (strategy.makeshift_datacenter)")
+  home > 0 && home < colo && home < bay
+}
+
+test fn witness_home_is_cash_minimal_within_ceiling() -> Bool {
+  home_is_cheapest_at(w: 3500) && home_is_cheapest_at(w: 6500)
+}
+
+// CONTROL 4. The gates are carried: the voltage hypothesis is declared unobserved in the
+// facts row, and the verification list names the panel reading first.
+test fn witness_obligations_carried() -> Bool {
+  count(home_verification_obligations) >= 5
+    && home_circuits.total_circuits == 10
+    && home_circuits.dedicated_30a_plan == 2
+}
+
+fn flag(b: Bool) -> String { if b { "pass" } else { "FAIL" } }
+
+fn home_witness_report() -> String {
+  join([
+    "circuit_arithmetic=", flag(b: witness_circuit_arithmetic()),
+    " cost_derivation=", flag(b: witness_home_cost_derivation()),
+    " home_cash_minimal=", flag(b: witness_home_is_cash_minimal_within_ceiling()),
+    " obligations_carried=", flag(b: witness_obligations_carried()),
+  ], "")
+}
+
+fn home_all_green() -> Bool {
+  witness_circuit_arithmetic()
+    && witness_home_cost_derivation()
+    && witness_home_is_cash_minimal_within_ceiling()
+    && witness_obligations_carried()
+}
+
+fn home_witness_main() -> ProcessExit {
+  if home_all_green() { ExitSuccess } else { ExitFailure { code: 1, reason: home_witness_report() } }
+}

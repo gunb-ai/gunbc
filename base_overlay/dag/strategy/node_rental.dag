@@ -1,0 +1,802 @@
+module strategy.node_rental
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat, nat_min }
+import strategy.ci_node_build {
+  selected_build, cores_per_node, memory_gib_per_node,
+  capex_amortization_per_month_micro, node_watts, planning_capex_micro,
+  EvidenceGrade, PlanningEstimate, ObservedMarketRate, QuotedExpense,
+  PurchaseReceipt, MeasuredOperatingCost, evidence_grade_label, grade_is_receipt,
+}
+import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
+import std.measure { money_amount_micro_count }
+import extdeps.cloud.hetzner {
+  cax41_listed, HetznerCloudListedRow,
+}
+import gunbc.procurement.hetzner_supply_observation {
+  hetzner_arm_rows_orderable,
+  hetzner_cax_line_unavailable,
+  NotOrderable, UnitsAvailable,
+}
+import strategy.ci_site_cost {
+  allocate_site, site_cost_per_node_micro, rent_and_common_area, standing_micro,
+  dia_planning_micro_per_month, unpriced_site_lines, UnpricedCostLine,
+}
+
+// ONE QUESTION: what does a server cost me for a month, and what does the market charge to rent
+// the same server for a month?
+//
+// No minutes, no jobs, no scheduling, no utilization. A machine, a month, a price. This is the
+// comparison that can be explained to somebody who does not work in this industry, and it is the
+// one the whole business rests on: if a server-month costs more here than it costs to rent one
+// elsewhere, nothing further downstream can fix that.
+//
+// The trap in this comparison is that nobody sells the same machine. A provider's advertised
+// instance has a different core count, a different memory ratio, and often a different KIND of core.
+// So the comparison is normalized to a REFERENCE SLICE - a fixed number of cores and gibibytes -
+// and every row says what it actually delivers against that slice rather than being scaled by a
+// ratio nobody checked.
+
+// What kind of CPU the money buys. This is the single largest reason two prices that look
+// comparable are not, and it is a fact about the product rather than a benchmark claim.
+type CoreKind
+  = DedicatedPhysicalCore { note: NonEmptyStr }
+  | SmtThread { note: NonEmptyStr }
+  | SharedBurstable { note: NonEmptyStr }
+
+fn core_kind_label(k: CoreKind) -> NonEmptyStr {
+  match k {
+    DedicatedPhysicalCore { note } => "dedicated core",
+    SmtThread { note } => "half a core (SMT thread)",
+    SharedBurstable { note } => "shared, burstable",
+  }
+}
+
+// Whether a figure is what somebody CHARGES or what something COSTS US. Putting these in one column
+// without saying which is which is the most misleading thing this page could do.
+type MoneySide
+  = OurCost { note: NonEmptyStr }
+  | MarketPrice { note: NonEmptyStr }
+
+fn money_side_label(s: MoneySide) -> NonEmptyStr {
+  match s {
+    OurCost { note } => "our cost",
+    MarketPrice { note } => "their price",
+  }
+}
+
+// A monthly figure derived from an hourly rate is only right if the provider bills every hour of
+// the month. Several cap monthly billing below that, which makes hourly-times-730 flatter us.
+type MonthlyBillingBasis
+  = MonthlyQuoted { receipt: NonEmptyStr }
+  | HourlyExtrapolated { hours: Int, obligation: NonEmptyStr }
+
+fn billing_basis_label(b: MonthlyBillingBasis) -> NonEmptyStr {
+  match b {
+    MonthlyQuoted { receipt } => "monthly rate",
+    HourlyExtrapolated { hours, obligation } => "hourly x 730",
+  }
+}
+
+fn billing_is_quoted(b: MonthlyBillingBasis) -> Bool {
+  match b {
+    MonthlyQuoted { receipt } => true,
+    HourlyExtrapolated { hours, obligation } => false,
+  }
+}
+
+data hours_per_month: Int = 730
+
+data hourly_extrapolation_caveat: MonthlyBillingBasis = HourlyExtrapolated {
+  hours: 730,
+  obligation: "This monthly figure is an hourly rate multiplied by 730. Several providers cap a month below 730 hours, and one of them capping at 672 would move this row by about eight percent - enough to reverse a comparison this close. Read the provider's monthly cap before spending this number.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REFERENCE SLICE. Chosen to match the cheapest comparable machine in the market so that the
+// comparison needs no scaling argument at all.
+// ---------------------------------------------------------------------------------------------
+
+data reference_cores: Int = 16
+data reference_memory_gib: Int = 32
+
+data reference_slice_note: NonEmptyStr = "Sixteen cores and thirty-two gibibytes, chosen because it is exactly the cheapest comparable machine on the open market. Choosing the reference to match the toughest competitor is deliberate: a reference chosen to flatter us would make the whole comparison worthless."
+
+// ---------------------------------------------------------------------------------------------
+// WHAT ONE OF OUR NODES COSTS FOR A MONTH.
+// ---------------------------------------------------------------------------------------------
+
+data nodes_per_site: Int = 20
+
+data nodes_per_site_note: NonEmptyStr = "Twenty nodes share the room's rent and transit. That is close to what a single small commercial space can power, and it is an assumption: at one node the same room costs twenty times as much per node, and the comparison below fails badly. Rent and transit per node is the number that has to be earned by filling the room."
+
+fn node_capex_per_month_micro() -> Int {
+  capex_amortization_per_month_micro(c: selected_build)
+}
+
+fn node_site_per_month_micro() -> Int {
+  site_cost_per_node_micro(a: allocate_site(
+    admitted_nodes: nodes_per_site,
+    dia_micro: dia_planning_micro_per_month,
+    node_watts: node_watts(),
+  ))
+}
+
+fn node_cost_per_month_micro() -> Int {
+  node_capex_per_month_micro() + node_site_per_month_micro()
+}
+
+// How many reference slices one node yields. Whichever of cores and memory runs out first decides
+// it, exactly as everywhere else in this tree.
+data nat_zero: Nat = 0
+
+fn slices_per_node() -> Nat {
+  nat_min(a: cores_per_node(c: selected_build) / reference_cores,
+          b: memory_gib_per_node(c: selected_build) / reference_memory_gib)
+}
+
+fn our_cost_per_slice_micro() -> Int {
+  let n = slices_per_node()
+  if n <= 0 { 0 - 1 } else { node_cost_per_month_micro() / n }
+}
+
+// Our slice is not merely equal to the reference - it exceeds it on memory, because cores run out
+// before gibibytes do on this build. Stating the surplus keeps the comparison honest in our favour
+// without inflating the price side.
+fn our_memory_per_slice_gib() -> Nat {
+  let n = slices_per_node()
+  if n <= 0 { nat_zero } else { memory_gib_per_node(c: selected_build) / n }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE MARKET, priced for the same slice.
+// ---------------------------------------------------------------------------------------------
+
+// A PRICE IS NOT A MARKET, AND THIS TYPE CARRIED ONLY THE PRICE. Two facts a rented-capacity
+// row needs and did not have. REGION, because providers do not charge one rate everywhere and an
+// architecture is not offered everywhere - a rate relayed without its location is a rate for an
+// unknown market, and comparing our fleet against it silently assumes the two serve the same one.
+// SUPPLY, because a published rate is a claim about PRICE and never a claim about AVAILABLE
+// QUANTITY: a floor nobody can buy at scale does not bound anything, and a wholesale argument that
+// says "we compete with X at their rate" is false if X cannot supply the region in question.
+// Both are modelled as typed unknowns rather than omitted, so the gap is countable and a consumer
+// that needs them must confront the arm rather than read a silent absence as satisfaction.
+type MarketRegion
+  = RegionObserved { region: NonEmptyStr, source: NonEmptyStr }
+  | RegionUnrecorded { obligation: NonEmptyStr }
+
+// THE CARRIER IS A TIME SERIES, NOT A VERDICT. A boolean SupplyObserved-or-Unobserved cannot
+// hold three dated sightings, so each new look either overwrote the last or was rejected as thin,
+// and the model stayed less informed than anyone who opened the console. Readings accumulate.
+// The standing is derived from the list.
+type SupplyShown
+  = DisplayedNotOrderable { sku_grain: NonEmptyStr }
+  | DisplayedOrderable { note: NonEmptyStr }
+
+type DatedSupplyReading {
+  observed_on: NonEmptyStr
+  account_scope: NonEmptyStr
+  regions_named: NonEmptyStr
+  shown: SupplyShown
+  source: NonEmptyStr
+}
+
+type SupplyStanding
+  = SupplyPurchasable { note: NonEmptyStr, source: NonEmptyStr }
+  | DisplayedNotOrderableToThisAccount { readings: List<DatedSupplyReading>, derived: NonEmptyStr }
+  | SupplyUnobserved { obligation: NonEmptyStr }
+
+fn region_is_known(r: MarketRegion) -> Bool {
+  match r {
+    RegionObserved { region, source } => true,
+    RegionUnrecorded { obligation } => false,
+  }
+}
+
+fn reading_is_not_orderable(r: DatedSupplyReading) -> Bool {
+  match r.shown {
+    DisplayedNotOrderable { sku_grain } => true,
+    DisplayedOrderable { note } => false,
+  }
+}
+
+fn all_readings_not_orderable(rs: List<DatedSupplyReading>) -> Bool {
+  count(rs) > 0 && count(filter(rs, r => reading_is_not_orderable(r: r))) == count(rs)
+}
+
+fn any_reading_orderable(rs: List<DatedSupplyReading>) -> Bool {
+  count(filter(rs, r => reading_is_not_orderable(r: r) == false)) > 0
+}
+
+fn derive_supply_standing(readings: List<DatedSupplyReading>) -> SupplyStanding {
+  if count(readings) == 0 {
+    SupplyUnobserved { obligation: "No dated supply reading has been filed for this row." }
+  } else if all_readings_not_orderable(rs: readings) {
+    DisplayedNotOrderableToThisAccount {
+      readings: readings,
+      derived: "SCOPED POSITIVE, not an absence: this account was shown the named SKU grain as not orderable, on every dated reading in the list. Three readings across five days (2026-09-05, 2026-09-06, 2026-09-10) make a one-day transient stockout less plausible than a single greyed control. Still open: this-account versus any-account; withdrawn versus never-offered in those regions; purchasing interface versus inventory; regions other than those named. NOT established: Hetzner cannot supply arm64; anything about the arm64 market as a whole.",
+    }
+  } else if any_reading_orderable(rs: readings) {
+    SupplyPurchasable {
+      note: "At least one dated reading showed the SKU as orderable. That is a purchasable-supply observation for this account, not a wholesale quantity quote.",
+      source: "derive_supply_standing: a DisplayedOrderable row in the readings list",
+    }
+  } else {
+    SupplyUnobserved { obligation: "Readings exist but do not classify as all-not-orderable or any-orderable." }
+  }
+}
+
+fn supply_is_known(s: SupplyStanding) -> Bool {
+  match s {
+    SupplyPurchasable { note, source } => true,
+    DisplayedNotOrderableToThisAccount { readings, derived } => true,
+    SupplyUnobserved { obligation } => false,
+  }
+}
+
+fn supply_is_purchasable(s: SupplyStanding) -> Bool {
+  match s {
+    SupplyPurchasable { note, source } => true,
+    DisplayedNotOrderableToThisAccount { readings, derived } => false,
+    SupplyUnobserved { obligation } => false,
+  }
+}
+
+fn not_orderable_reading_count(s: SupplyStanding) -> Int {
+  match s {
+    SupplyPurchasable { note, source } => 0,
+    DisplayedNotOrderableToThisAccount { readings, derived } => count(readings),
+    SupplyUnobserved { obligation } => 0,
+  }
+}
+
+fn region_label(r: MarketRegion) -> NonEmptyStr {
+  match r {
+    RegionObserved { region, source } => region,
+    RegionUnrecorded { obligation } => "region unrecorded",
+  }
+}
+
+fn supply_standing_label(s: SupplyStanding) -> NonEmptyStr {
+  match s {
+    SupplyPurchasable { note, source } => "purchasable",
+    DisplayedNotOrderableToThisAccount { readings, derived } => "not orderable to this account",
+    SupplyUnobserved { obligation } => "supply unobserved",
+  }
+}
+
+// A row may be cited as a COMPETITIVE FLOOR only when the region is known AND supply is
+// purchasable. A console reading that this account could not order is not purchasable-supply.
+fn admissible_as_competitive_floor(r: RentalRow) -> Bool {
+  region_is_known(r: r.region) && supply_is_purchasable(s: r.supply)
+}
+
+fn hetzner_arm_orderable_in_observed_regions() -> Bool {
+  hetzner_arm_rows_orderable()
+}
+
+// THE PUBLIC MODULE'S OWN OBSERVATION STRING, not a paraphrase. A greyed control described in
+// this file would be a second, weaker receipt of the same session. The bytes that exist are the
+// `observation` field on gunbc.procurement.hetzner_supply_observation hetzner_cax_line_unavailable.
+fn hetzner_cax_console_observation_text() -> NonEmptyStr {
+  match hetzner_cax_line_unavailable {
+    NotOrderable { observation } => observation
+    UnitsAvailable { count, observation } => observation
+  }
+}
+
+data this_operator_hetzner_account: NonEmptyStr = "ONE signed-in Hetzner Cloud account, this repository's operator. Not any account, not an unverified-versus-verified contrast, not a second-account control."
+
+data hetzner_cax_reading_2026_09_05: DatedSupplyReading = DatedSupplyReading {
+  observed_on: "2026-09-05",
+  account_scope: this_operator_hetzner_account,
+  regions_named: "Region of the greyed COST OPTIMIZED control was NOT recorded in this session.",
+  shown: DisplayedNotOrderable { sku_grain: "arm COST OPTIMIZED tier as a group, not CAX41 alone" },
+  source: "Operator console session 2026-09-05, already filed beside gunbc.procurement.hetzner_supply_observation hetzner_cax_line_unavailable",
+}
+
+data hetzner_cax_reading_2026_09_06: DatedSupplyReading = DatedSupplyReading {
+  observed_on: "2026-09-06",
+  account_scope: this_operator_hetzner_account,
+  regions_named: "Helsinki (hel1) and Nuremberg (nbg1)",
+  shown: DisplayedNotOrderable { sku_grain: "whole CAX line, every size" },
+  source: "gunbc.procurement.hetzner_supply_observation hetzner_cax_line_unavailable.observation",
+}
+
+data hetzner_cax_reading_2026_09_10: DatedSupplyReading = DatedSupplyReading {
+  observed_on: "2026-09-10",
+  account_scope: this_operator_hetzner_account,
+  regions_named: "Operator live at the console today: CAX line shown as not orderable. Parent 2026-09-10 scopes this with hel1 and nbg1 as the regions already named on 2026-09-06; this session did not independently re-read the region selector.",
+  shown: DisplayedNotOrderable { sku_grain: "CAX line" },
+  source: "Operator, live 2026-09-10, relayed through parent session crisp-lynx-452. Third dated observation of the same display.",
+}
+
+data hetzner_cax_supply_readings: List<DatedSupplyReading> = [
+  hetzner_cax_reading_2026_09_05,
+  hetzner_cax_reading_2026_09_06,
+  hetzner_cax_reading_2026_09_10,
+]
+
+type AccountConsoleReading {
+  account_scope: NonEmptyStr
+  regions_named_in_reading: NonEmptyStr
+  sku_grain: NonEmptyStr
+  observation_text: NonEmptyStr
+  source: NonEmptyStr
+  still_open: NonEmptyStr
+}
+
+data hetzner_cax_account_console_reading: AccountConsoleReading = AccountConsoleReading {
+  account_scope: this_operator_hetzner_account,
+  regions_named_in_reading: "2026-09-06 and the 2026-09-10 parent scope: Helsinki and Nuremberg. 2026-09-05 greyed COST OPTIMIZED region was not recorded.",
+  sku_grain: "CAX line / arm COST OPTIMIZED tier. Three dated displays, not a vendor withdrawal notice.",
+  observation_text: hetzner_cax_console_observation_text(),
+  source: "hetzner_cax_supply_readings — three dated rows. Do not treat this summary as a fourth reading.",
+  still_open: "this-account versus any-account; withdrawn versus never-offered; interface versus inventory; regions other than those named. Transient one-day stockout is less plausible after five days and three sessions. Reseller quantity remains a different question (hetzner_wholesale_quantity_enquiry).",
+}
+
+data evidence_census_note: NonEmptyStr = "competitive_floor_count is a count of OUR EVIDENCE, not a count of the market. Zero admissible rows means no row currently has both a known region and purchasable supply. Hetzner CAX is a scoped not-orderable series, which is also not a purchasable floor. It does not mean Hetzner has no arm64, that resellers cannot buy CAX, or that the advertised rate is a fiction."
+
+// ANY-ACCOUNT, OTHER-REGION, AND RESELLER QUANTITY still need a principal. The scoped
+// this-account series is already in hetzner_cax_supply_readings; these experiments close
+// what the series cannot. First three are OperatorAction — this session has no Hetzner
+// account. The fourth was the session-reachable vendor-page read.
+//
+// RETAIL UNIT-ORDER IS NOT RESELLER QUANTITY. Whether one CAX41 can be bought today on the
+// console is a different market, price and availability from whether Hetzner would supply a
+// reseller under a term. That is the same split strategy.wholesale_buyer already draws on the
+// BUYER side as WholesaleTermUnquoted. The quantity enquiry is the one the wholesale argument
+// actually needs; the other three close the retail-console gaps that would otherwise be
+// smuggled in as answers to it.
+type DischargePrincipal
+  = OperatorAction { why_this_session_cannot: NonEmptyStr }
+  | SessionTried { dated_reading: NonEmptyStr }
+
+type SupplyClosingExperiment {
+  question: NonEmptyStr
+  experiment: NonEmptyStr
+  principal: DischargePrincipal
+  would_separate: NonEmptyStr
+}
+
+fn principal_is_operator(p: DischargePrincipal) -> Bool {
+  match p {
+    OperatorAction { why_this_session_cannot } => true,
+    SessionTried { dated_reading } => false,
+  }
+}
+
+data operator_no_hetzner_account: NonEmptyStr = "This session has no Hetzner account. A console reading from an unverified or unknown-tier account cannot run this experiment. Parent 2026-09-10 already put this action to the operator."
+
+data hetzner_wholesale_quantity_enquiry: SupplyClosingExperiment = SupplyClosingExperiment {
+  question: "Can Hetzner supply a RESELLER with QUANTITY under a term commitment?",
+  experiment: "Direct sales or capacity enquiry for quantity, named volume, named term, named date. Not a one-unit retail cart.",
+  principal: OperatorAction { why_this_session_cannot: operator_no_hetzner_account },
+  would_separate: "Reseller-facing wholesale supply from retail unit-order. THIS IS THE OBSERVATION THE WHOLESALE ARGUMENT NEEDS.",
+}
+
+data hetzner_verified_account_cax_order: SupplyClosingExperiment = SupplyClosingExperiment {
+  question: "Can an established, verified account order CAX at a named region on a named date?",
+  experiment: "An actual CAX order attempt from an established/verified account, named region, named date.",
+  principal: OperatorAction { why_this_session_cannot: operator_no_hetzner_account },
+  would_separate: "Purchasing interface versus inventory, and this-account versus any-account.",
+}
+
+data hetzner_cax_order_outside_hel1_nbg1: SupplyClosingExperiment = SupplyClosingExperiment {
+  question: "Is CAX orderable outside hel1 and nbg1?",
+  experiment: "The same verified-account CAX order attempt in a region other than Helsinki (hel1) and Nuremberg (nbg1).",
+  principal: OperatorAction { why_this_session_cannot: operator_no_hetzner_account },
+  would_separate: "Those two regions versus every region.",
+}
+
+data hetzner_public_sku_availability_history: SupplyClosingExperiment = SupplyClosingExperiment {
+  question: "Does Hetzner publish SKU availability history that separates stock from withdrawal without any account?",
+  experiment: "Read the vendor status page, the cloud FAQ on unorderable instances, the technical changelog, and the What is New product log.",
+  principal: SessionTried {
+    dated_reading: "Session vivid-deer-761, 2026-09-10. status.hetzner.com/incident/0a75c7ae-3377-41dc-aabe-601063724d24 — Limited availability of cloud instances; status Identified; start 2026-06-26 06:00 UTC; affected Cloud Server. Text: high demand and limited hardware; new-server creation restricted for new customers and some existing customers; selection of affected existing customers is random; no individual priority; expand-capacity work ongoing; points at docs.hetzner.com/cloud/general/faq (Why can Cloud instances occasionally not be ordered). FAQ last-change 2026-04-27 lists: account limit reached; account deactivated; no free resources at a location; a location temporarily deactivated for some customers; restrictions temporary and may return; existing servers at that location stay. docs.hetzner.cloud/changelog: technical API/platform log, no CAX SKU stock ledger. docs.hetzner.cloud/whats-new: April 2023 announces CAX in Falkenstein with limited availability; September 2023 announces CAX also in Nuremberg and Helsinki. Those are product introductions, not a live inventory. RESULT: does not separate withdrawn from never-offered at SKU grain. It does establish that the vendor itself describes account-scoped and random existing-customer restrictions, which is why the three console readings remain this-account facts.",
+  },
+  would_separate: "Temporarily out of stock versus withdrawn, with no account at all. The pages read do not carry that ledger at SKU grain.",
+}
+
+data hetzner_supply_closing_experiments: List<SupplyClosingExperiment> = [
+  hetzner_wholesale_quantity_enquiry,
+  hetzner_verified_account_cax_order,
+  hetzner_cax_order_outside_hel1_nbg1,
+  hetzner_public_sku_availability_history,
+]
+
+fn supply_closing_experiment_count() -> Int { count(hetzner_supply_closing_experiments) }
+
+fn wholesale_argument_needs_quantity_enquiry() -> Bool {
+  hetzner_wholesale_quantity_enquiry.would_separate != ""
+    && principal_is_operator(p: hetzner_wholesale_quantity_enquiry.principal)
+    && principal_is_operator(p: hetzner_verified_account_cax_order.principal)
+    && principal_is_operator(p: hetzner_cax_order_outside_hel1_nbg1.principal)
+    && principal_is_operator(p: hetzner_public_sku_availability_history.principal) == false
+}
+
+type RentalRow {
+  provider: NonEmptyStr
+  product: NonEmptyStr
+  currency: CurrencyCode
+  side: MoneySide
+  core_kind: CoreKind
+  cores_delivered: Int
+  memory_gib_delivered: Int
+  micro_per_month: Int
+  basis: MonthlyBillingBasis
+  grade: EvidenceGrade
+  region: MarketRegion
+  supply: SupplyStanding
+  note: NonEmptyStr
+}
+
+data hetzner_row: RentalRow = RentalRow {
+  provider: "Hetzner",
+  product: "CAX41",
+  currency: Usd,
+  side: MarketPrice { note: "Advertised rate, excluding VAT." },
+  core_kind: SharedBurstable { note: "Shared vCPU family: baseline performance with temporary bursting, and the vendor recommends dedicated instances for sustained CPU-heavy work." },
+  cores_delivered: 16,
+  memory_gib_delivered: 32,
+  micro_per_month: money_amount_micro_count(m: cax41_listed.monthly.amount),
+  basis: MonthlyQuoted {
+    receipt: "extdeps.cloud.hetzner cax41_listed carries the monthly figure this vendor's own dollar-quoted console shows, so no hourly extrapolation and no exchange rate stands between the vendor's figure and this row. The EUR catalog rows are deliberately NOT read here: they are a different offer to a different market, not this one in another unit.",
+  },
+  grade: ObservedMarketRate { note: "Read from extdeps.cloud.hetzner rather than restated here. TWO WRONG FIGURES STOOD IN THIS FIELD BEFORE THIS ONE AND BOTH ARE RECORDED, because each was wrong in a different way and only the second was subtle. FIRST, 56.72 dollars, from a relayed hourly rate of 0.0777 times 730 - the RATE was right and current, but the vendor caps the month at 48.49, so the extrapolation overstated by about fifteen per cent. That is the error the hourly_extrapolation_caveat predicts. SECOND, and worse, 36.60 dollars, obtained by reading the euro catalog row and converting it at the ECB reference rate. That figure was condemned at the time as an eighty-per-cent correction to the first; it was nothing of the kind. The euro row was carrying the tariff SUPERSEDED on 2026-06-15, cited to the very document whose subject is that it changed, and joining an old euro price to a new dollar price manufactured a currency premium this vendor does not charge. Its two published currencies track each other to within two per cent across the adjustment. THE LESSON THE TYPE NOW CARRIES: a price row needs the date it takes effect, not only the amount and the citation - see TariffStanding in extdeps.cloud.hetzner." },
+  region: RegionObserved {
+    region: "Helsinki (hel1) and Nuremberg (nbg1)",
+    source: "extdeps.cloud.hetzner cax41_listed.regions_observed — identical USD monthly caps in both regions on the 2026-09-05/06 console reading. THIS IS NOT A US REGION: Ashburn and the rest of the vendor's North American cloud locations were not in that reading, so a wholesale pitch that needs US-sited Ampere still has no observed Hetzner region to cite.",
+  },
+  supply: derive_supply_standing(readings: hetzner_cax_supply_readings),
+  note: "The cheapest comparable RATE on the open market and the reason the reference slice has this shape. Supply is derived from hetzner_cax_supply_readings: three dated not-orderable displays to this account. That is a scoped positive about this vendor's CAX line, not Unobserved, and not a fact about the arm64 market as a whole.",
+}
+
+data oci_row: RentalRow = RentalRow {
+  provider: "Oracle Cloud",
+  product: "Ampere A1 flexible",
+  currency: Usd,
+  side: MarketPrice { note: "Published per-core and per-gibibyte rates, composed to the reference slice." },
+  core_kind: DedicatedPhysicalCore { note: "One OCPU is a whole physical Ampere core with no SMT - the same kind of core our nodes have." },
+  cores_delivered: 16,
+  memory_gib_delivered: 32,
+  micro_per_month: 151840000,
+  basis: hourly_extrapolation_caveat,
+  grade: ObservedMarketRate { note: "0.01 dollars per core-hour plus 0.0015 per gibibyte-hour: sixteen cores and thirty-two gibibytes for 730 hours." },
+  region: RegionUnrecorded { obligation: "Oracle publishes Ampere A1 in named commercial regions; none of those names has been joined to this composed dollar rate in this tree. Do not treat a global per-OCPU list price as a rate for an unnamed market. Closing it is a first-party region read of the same offer this row prices, not a guess from the vendor's region list." },
+  supply: SupplyUnobserved { obligation: "No account in this repository has tried to provision sixteen dedicated Ampere OCPU and thirty-two gibibytes at this composed rate. Published Always Free hours and paid quotas are not a capacity observation for the quantity a wholesale argument would need. Leave this Unobserved until a named region yields an orderable or refused receipt." },
+  note: "The closest match to what our hardware actually is, and therefore the most meaningful PRICE in the table — still not a floor, because region and supply are both unrecorded.",
+}
+
+data gcp_row: RentalRow = RentalRow {
+  provider: "Google Cloud",
+  product: "N2 on-demand",
+  currency: Usd,
+  side: MarketPrice { note: "Published n2-standard-128 rate, sliced down." },
+  core_kind: SmtThread { note: "An N2 vCPU is one hardware thread, so sixteen physical cores is a thirty-two vCPU slice." },
+  cores_delivered: 16,
+  memory_gib_delivered: 128,
+  micro_per_month: 1134338000,
+  basis: hourly_extrapolation_caveat,
+  grade: ObservedMarketRate { note: "6.215552 dollars an hour for n2-standard-128, quartered to a thirty-two vCPU slice, over 730 hours." },
+  region: RegionUnrecorded { obligation: "this N2 rate was composed without a region. N2 is also an x86 SMT-thread product, so even a grounded region would not make it the wholesale arm comparator." },
+  supply: SupplyUnobserved { obligation: "no capacity observation; and this row is not the wholesale arm64 question — do not promote it to a floor by filling region alone." },
+  note: "Delivers four times the reference memory, and still costs twenty times the next row. This is what a large cloud charges for a machine you keep. It is not a Hetzner substitute for arm wholesale.",
+}
+
+data gcp_spot_row: RentalRow = RentalRow {
+  provider: "Google Cloud",
+  product: "N2 Spot",
+  currency: Usd,
+  side: MarketPrice { note: "Published spot rate, sliced down." },
+  core_kind: SmtThread { note: "Same hardware entitlement while the instance lives." },
+  cores_delivered: 16,
+  memory_gib_delivered: 128,
+  micro_per_month: 537980000,
+  basis: hourly_extrapolation_caveat,
+  grade: ObservedMarketRate { note: "2.94784 dollars an hour for n2-standard-128, quartered, over 730 hours." },
+  region: RegionUnrecorded { obligation: "spot N2 rate composed without a region; reclaimable capacity is a different good from a month-long wholesale term even if the region were known." },
+  supply: SupplyUnobserved { obligation: "spot availability is not a wholesale-term observation. Leave Unobserved; do not treat a spot catalog as dedicated arm supply." },
+  note: "Reclaimable at short notice, so it cannot be rented to somebody for a month with a straight face.",
+}
+
+data market_rows: List<RentalRow> = [hetzner_row, oci_row, gcp_spot_row, gcp_row]
+
+fn competitive_floor_rows() -> List<RentalRow> {
+  filter(market_rows, r => admissible_as_competitive_floor(r: r))
+}
+
+fn market_row_count() -> Int { count(market_rows) }
+
+fn competitive_floor_count() -> Int { count(competitive_floor_rows()) }
+
+fn row_cost_per_core_micro(r: RentalRow) -> Int {
+  if r.cores_delivered <= 0 { 0 - 1 } else { r.micro_per_month / r.cores_delivered }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE COMPARISON. One number against one number.
+// ---------------------------------------------------------------------------------------------
+
+type RentalVerdict
+  = WeAreCheaper { by_permille: Int, note: NonEmptyStr }
+  | WeAreDearer { by_permille: Int, note: NonEmptyStr }
+  | TooCloseToCall { obligation: NonEmptyStr }
+  | CurrencyIncomparable { ours: CurrencyCode, theirs: CurrencyCode, obligation: NonEmptyStr }
+
+// OUR COLUMN'S CURRENCY, declared rather than assumed from the old field name. Every figure in our
+// cost model is micro-dollars.
+data our_currency: CurrencyCode = Usd
+
+
+
+// A margin inside the billing-basis uncertainty is not a win. Several of the market rows are hourly
+// rates extrapolated to a month, and a provider that caps a month below 730 hours moves by more than
+// this gap - so a gap smaller than that uncertainty is reported as undecided rather than as a
+// victory.
+data billing_uncertainty_permille: Int = 80
+
+// A CONVERTED FIGURE CARRIES A SECOND UNCERTAINTY THAT AN UNCONVERTED ONE DOES NOT. The ECB
+// reference rate is a daily observation nobody transacts at, and EUR/USD has moved by several
+// percent inside a single month often enough that a comparison decided by less than that is
+// decided by the day the rate was read. Fifty per mille is deliberately of the same order as the
+// billing-basis figure above rather than derived from a volatility series - deriving it would need
+// a rate HISTORY in extdeps, which does not exist, and inventing a tighter bound than the evidence
+// supports is the failure this whole guard is here to prevent.
+data fx_uncertainty_permille: Int = 50
+
+fn comparison_uncertainty_permille(basis_quoted: Bool, crossed_currency: Bool) -> Int {
+  let billing = if basis_quoted { 0 } else { billing_uncertainty_permille }
+  let fx = if crossed_currency { fx_uncertainty_permille } else { 0 }
+  billing + fx
+}
+
+// TWO MAGNITUDES IN DIFFERENT CURRENCIES DO NOT COMPARE, and no conversion authority exists in
+// this tree - extdeps.currency.currency carries currency CODES and minor-unit exponents and no
+// rate of any kind. Subtracting a euro figure from a dollar figure would produce a number with no
+// referent, and it would do so silently, which is why this is a refusal arm rather than a caveat
+// in a note. The remedy is a cited FX authority in extdeps/currency carrying a rate WITH the date
+// it was read, because an exchange rate is a time-stamped observation and not a constant.
+// WHY THIS COMPARISON SELECTS A ROW RATHER THAN CONVERTING ONE. This vendor publishes its own
+// price in each currency it bills in, so the dollar figure never has to be derived - and a figure
+// the vendor publishes always beats a figure we compute, whatever the exchange rate says.
+//
+// THE REASON IS NOT THAT CONVERSION IS FORBIDDEN. An earlier revision of this comment claimed the
+// vendor charged about a third more in dollars than its euro price converted, and refused FX on
+// that basis. THAT PREMISE WAS FALSE: the comparison had joined a superseded euro tariff to the
+// current dollar one. Valuing a euro obligation in dollars at a dated, labelled rate is a
+// perfectly legitimate thing to do, and extdeps.currency.ecb_reference_rate exists to do it. What
+// is forbidden is narrower and survives the correction: an FX-derived number may never be
+// presented AS the vendor's quote in that currency, and two tariff versions may never be joined
+// across two currencies.
+//
+// So the refusal below is a selection discipline, not a prohibition: if a row is quoted in a
+// currency this comparison does not serve, cite the vendor's own row for our market instead of
+// computing one.
+fn compare_to(r: RentalRow) -> RentalVerdict {
+  if currency_code_eq(a: r.currency, b: our_currency) == false {
+    CurrencyIncomparable {
+      ours: our_currency,
+      theirs: r.currency,
+      obligation: "this row is a list price quoted in another currency, and this vendor's prices are not FX-linked across its markets - so no exchange rate carries a reader from that offer to ours. Cite the row quoted in our market instead.",
+    }
+  } else {
+    compare_converted(r: r, theirs: r.micro_per_month, crossed_currency: false)
+  }
+}
+
+fn row_micro_per_month_in_our_currency(r: RentalRow) -> Int {
+  if currency_code_eq(a: r.currency, b: our_currency) { r.micro_per_month } else { 0 - 1 }
+}
+
+fn compare_converted(r: RentalRow, theirs: Int, crossed_currency: Bool) -> RentalVerdict {
+  let ours = our_cost_per_slice_micro()
+  let uncertainty = comparison_uncertainty_permille(basis_quoted: billing_is_quoted(b: r.basis), crossed_currency: crossed_currency)
+  if theirs <= 0 {
+    TooCloseToCall { obligation: "No usable rate for this row." }
+  } else if ours < theirs {
+    let gap = (theirs - ours) * 1000 / theirs
+    if gap < uncertainty {
+      TooCloseToCall {
+        obligation: "Our cost is below this rate by less than the uncertainty carried in getting the two figures into one unit - an hourly rate extrapolated to a month, a currency conversion through a dated reference rate, or both. A margin inside the measurement error is not a win.",
+      }
+    } else {
+      WeAreCheaper { by_permille: gap, note: "Our cost per slice is below this rate by more than the billing-basis uncertainty." }
+    }
+  } else {
+    WeAreDearer { by_permille: (ours - theirs) * 1000 / ours, note: "This rate is below our cost per slice." }
+  }
+}
+
+fn verdict_label(v: RentalVerdict) -> NonEmptyStr {
+  match v {
+    WeAreCheaper { by_permille, note } => "cheaper",
+    WeAreDearer { by_permille, note } => "dearer",
+    TooCloseToCall { obligation } => "too close to call",
+    CurrencyIncomparable { ours, theirs, obligation } => "not comparable - different currencies, no cited rate",
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THIS NUMBER IS NOT. The comparison is honest only if its boundary is stated plainly.
+// ---------------------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------------------------
+// THE COMPARISON AT TWO OTHER GRAINS. One number against one number is the right headline, but a
+// slice is a BUNDLE of cores and memory, and a bundle comparison hides which half of the bundle is
+// carrying the result. These two derivations exist because the whole-slice verdict against the
+// cheapest row turned out to be the average of a loss on one axis and a win on the other, and an
+// average that spans a sign change is not a summary of anything.
+// ---------------------------------------------------------------------------------------------
+
+fn our_micro_per_core_month() -> Int {
+  if reference_cores <= 0 { 0 - 1 } else { our_cost_per_slice_micro() / reference_cores }
+}
+
+fn our_micro_per_gib_month() -> Int {
+  let g = our_memory_per_slice_gib()
+  if g <= 0 { 0 - 1 } else { our_cost_per_slice_micro() / g }
+}
+
+// A CORE IS NOT A CORE ACROSS THESE ROWS, and this refusal is the point of the CoreKind type at
+// the top of the module. Dividing a shared-burstable vCPU price by a count and setting it beside a
+// dedicated physical core price compares two different goods and reads as a defeat or a victory
+// depending only on which row was cheaper. The comparison is admitted only between like kinds; for
+// unlike kinds the answer is a refusal naming both, which is a fact a reader can act on.
+fn core_kind_rank(k: CoreKind) -> Int {
+  match k {
+    DedicatedPhysicalCore { note } => 3,
+    SmtThread { note } => 2,
+    SharedBurstable { note } => 1,
+  }
+}
+
+data our_core_kind: CoreKind = DedicatedPhysicalCore {
+  note: "Ampere Altra Max, one whole physical core per sold unit, no SMT on the part.",
+}
+
+type GrainVerdict
+  = GrainCheaper { by_permille: Int }
+  | GrainDearer { by_permille: Int }
+  | GrainTooClose { obligation: NonEmptyStr }
+  | GrainNotLikeForLike { ours: NonEmptyStr, theirs: NonEmptyStr, obligation: NonEmptyStr }
+
+fn grain_compare(ours: Int, theirs: Int, uncertainty: Int) -> GrainVerdict {
+  if theirs <= 0 || ours <= 0 {
+    GrainTooClose { obligation: "a non-positive figure on one side is a missing reading, not a free one" }
+  } else if ours < theirs {
+    let gap = (theirs - ours) * 1000 / theirs
+    if gap < uncertainty {
+      GrainTooClose { obligation: "the gap is inside the combined billing-basis and currency-conversion uncertainty" }
+    } else {
+      GrainCheaper { by_permille: gap }
+    }
+  } else {
+    let gap = (ours - theirs) * 1000 / ours
+    if gap < uncertainty {
+      GrainTooClose { obligation: "the gap is inside the combined billing-basis and currency-conversion uncertainty" }
+    } else {
+      GrainDearer { by_permille: gap }
+    }
+  }
+}
+
+fn row_uncertainty(r: RentalRow) -> Int {
+  comparison_uncertainty_permille(
+    basis_quoted: billing_is_quoted(b: r.basis),
+    crossed_currency: currency_code_eq(a: r.currency, b: our_currency) == false,
+  )
+}
+
+fn compare_per_core(r: RentalRow) -> GrainVerdict {
+  if core_kind_rank(k: r.core_kind) == core_kind_rank(k: our_core_kind) {
+    let m = row_micro_per_month_in_our_currency(r: r)
+    if m < 0 {
+      GrainNotLikeForLike {
+        ours: "quoted in our market", theirs: "quoted in another market",
+        obligation: "a list price in another currency is a different offer and is not FX-convertible into ours",
+      }
+    } else if r.cores_delivered <= 0 {
+      GrainTooClose { obligation: "no core count on this row" }
+    } else {
+      grain_compare(ours: our_micro_per_core_month(), theirs: m / r.cores_delivered, uncertainty: row_uncertainty(r: r))
+    }
+  } else {
+    GrainNotLikeForLike {
+      ours: core_kind_label(k: our_core_kind),
+      theirs: core_kind_label(k: r.core_kind),
+      obligation: "these rows sell different goods per core, so a per-core price comparison between them measures the difference in the good and not the difference in the price. Compare them at the slice or memory grain, or price the entitlement difference first.",
+    }
+  }
+}
+
+// PER GIBIBYTE OF LISTED MEMORY. This is a DESCRIPTIVE CAPACITY RATIO AND NOT A VALUE CLAIM, and
+// the distinction is load-bearing enough to be stated where the function is rather than in a note
+// somewhere else.
+//
+// An earlier revision of this comment argued that memory is the one axis where the goods are
+// genuinely identical, so this ratio needed no like-for-like guard. That was permitting through
+// the memory axis exactly what compare_per_core refuses through the core axis - and the numerator
+// gives it away: it is a BUNDLE price, buying cores and memory and disk together. Dividing a
+// bundle by one of its resources does not allocate the bundle to that resource, on either side.
+//
+// Three concrete ways the ratio misleads if read as value. A job that fits in twelve gibibytes
+// gains nothing from sixty-four rather than thirty-two, so the denominator can double an apparent
+// advantage without changing what the customer gets. Equal capacity is not equal bandwidth,
+// latency or locality. And a job needing one forty-eight-gibibyte address space cannot substitute
+// two thirty-two-gibibyte machines, so scaling the ratio linearly can invent a configuration
+// nobody can buy.
+//
+// The ratio stays because it is genuinely informative about capacity per dollar. What it may not
+// do is produce a superiority conclusion on its own; that needs a stated workload requirement,
+// which this module does not carry - see grain_verdict_supports_value_claim below.
+fn compare_per_gib(r: RentalRow) -> GrainVerdict {
+  let m = row_micro_per_month_in_our_currency(r: r)
+  if m < 0 {
+    GrainNotLikeForLike {
+      ours: "quoted in our market", theirs: "quoted in another market",
+      obligation: "a list price in another currency is a different offer and is not FX-convertible into ours",
+    }
+  } else if r.memory_gib_delivered <= 0 {
+    GrainTooClose { obligation: "no memory figure on this row" }
+  } else {
+    grain_compare(ours: our_micro_per_gib_month(), theirs: m / r.memory_gib_delivered, uncertainty: row_uncertainty(r: r))
+  }
+}
+
+// NEITHER GRAIN RATIO ESTABLISHES BETTER VALUE, and this predicate exists so that a consumer
+// tempted to read one that way has to call something that says no. Closing it needs a declared
+// workload requirement - a memory floor, a core-time entitlement, an address-space minimum -
+// against which an offer is admissible or not. This module compares machines, not workloads, so
+// it cannot supply one and does not pretend to.
+fn grain_verdict_supports_value_claim(v: GrainVerdict) -> Bool {
+  false
+}
+
+data grain_ratio_boundary_note: NonEmptyStr = "Both per-core and per-gibibyte figures are descriptive ratios over a bundle price. Either may be quoted as capacity per dollar; neither may be quoted as better value, because the numerator buys a bundle and the denominator is one resource in it. A value claim needs a workload requirement this module does not carry."
+
+fn grain_verdict_label(v: GrainVerdict) -> NonEmptyStr {
+  match v {
+    GrainCheaper { by_permille } => "cheaper",
+    GrainDearer { by_permille } => "dearer",
+    GrainTooClose { obligation } => "too close to call",
+    GrainNotLikeForLike { ours, theirs, obligation } => "not like for like",
+  }
+}
+
+data cost_versus_price_note: NonEmptyStr = "Our column is a COST and theirs is a PRICE. A provider's price already contains their staff, their support, their datacenter, their spare parts and their profit. Ours contains a machine, a share of a room, electricity and nothing else. Comparing the two says our hardware is cheap; it does not yet say the business is."
+
+data absent_costs_note: NonEmptyStr = "Not in our figure: support, insurance, spare parts, network equipment, the software that runs it, payment processing, and the operator's own time. Those are what turn a cheap machine into a service somebody can buy, and every one of them is real."
+
+data utilization_note: NonEmptyStr = "This comparison assumes the machine is rented for a whole month. That is the one thing it has going for it against everything else in this model: a month-long rental is either sold or it is not, so there is no utilization guess anywhere in these numbers. An unsold node still costs the full amount."
+
+data commodity_warning_note: NonEmptyStr = "Renting a bare machine by the month is a commodity, and the advantage here is a purchasing advantage rather than a structural one: it comes from buying used hardware well, and anyone can shop the same market. It is a real cash advantage today and it is the weakest kind to build on alone."
+
+data one_sentence_summary: NonEmptyStr = "THE ANSWER SPLITS BY GRAIN AND THE HONEST SENTENCE SAYS SO. Against the cheapest arm row this vendor lists, we are about a tenth DEARER per slice and about two fifths CHEAPER per gibibyte - because their slice carries half the memory ours does - and the per-CORE comparison REFUSES outright, because they sell a shared burstable vCPU where we sell a dedicated physical core, which is a difference in the good rather than in the price. Against every row that does sell a comparable core we are cheaper at both grains by a wide margin. TWO CORRECTIONS ARE RECORDED HERE BECAUSE BOTH WERE BRIEFLY LIVE AND BOTH FLATTERED THE WRONG SIDE: this module first carried the competitor at 56.72 dollars from an hourly rate times 730, ignoring a monthly cap that sits about fifteen per cent below it; the repair then read the vendor's EUR catalog and FX-converted it to 36.60 dollars, which no buyer is ever quoted, because this vendor's regional prices are not exchange-rate linked. The figure that stands is the one its dollar-quoted console shows. AND THE LARGEST OPEN FACT IS NOT A PRICE AT ALL: hetzner_row.supply is derived from three dated not-orderable displays to this account (2026-09-05, 2026-09-06, 2026-09-10). That is a scoped positive about this vendor's CAX line for this account, not Unobserved, and not a claim about the arm64 market as a whole. A single sentence spanning a sign change between two axes is not a summary, so this declaration deliberately does not offer one - read compare_to, compare_per_core and compare_per_gib."
+
+// WHAT A RESELLER PAYS, BRACKETED RATHER THAN GUESSED. A reseller of arm64 capacity buys somewhere
+// between the cheapest rate that exists and the cheapest rate that is AVAILABLE, and those stopped
+// being the same number on 2026-09-05 when the Hetzner arm tier could not be selected. The bracket
+// is therefore [unavailable floor, cheapest available arm source], and a reseller forced off the
+// floor pays the upper end - which is consistent with, though NOT evidence for, a price rise.
+//
+// THE BRACKET CANNOT BE COMPUTED TODAY AND THE MISSING PIECE IS NAMED RATHER THAN ESTIMATED:
+// every Google row in this module is N2, an x86 SMT-thread product, so there is no arm64 upper
+// bound here at all. Closing it needs a cited Ampere-class rate - Google's T2A or its Axion
+// successor, or another available arm64 source - carried in extdeps/pricing beside the Ubicloud
+// and Hetzner rows rather than authored here.
+type ResellerSupplyBracket
+  = BracketOpen { lower: NonEmptyStr, missing_upper: NonEmptyStr }
+  | BracketClosed { lower_micro_per_core_min: Int, upper_micro_per_core_min: Int, source: NonEmptyStr }
+
+data arm_reseller_supply_bracket: ResellerSupplyBracket = BracketOpen {
+  lower: "Hetzner CAX41 at 48.49 dollars a month for sixteen SHARED burstable arm vCPUs, listed on a dollar-quoted console. Supply standing is derived from hetzner_cax_supply_readings: not orderable to this account on three dated readings, not a purchasable floor, not a reseller-quantity quote.",
+  missing_upper: "WHAT WAS LEARNED SINCE THIS ROW WAS OPENED, and it narrows the question rather than closing it. Ubicloud's own runner documentation states its standard x64 runners run on AMD EPYC 9454P and its premium x64 runners on Ryzen 9 7950X3D. Those are EXACTLY the processors in Hetzner's AX162/DX182 and AX102 dedicated rows - see extdeps.pricing.hetzner_dedicated, whose 2026-09-05 listing carries all three. A processor coincidence across two independently read sources is strong evidence that this reseller's x64 capacity is Hetzner dedicated metal, and it is evidence AGAINST the hypothesis that they have moved to a hyperscaler, which sells neither part. THE ARM SIDE DOES NOT MATCH THE SAME WAY: they state Ampere Altra Q80-30, while Hetzner's arm DEDICATED line is Altra Max M128-30, so their arm capacity is not Hetzner bare metal. THE ONE FACT THAT WOULD CLOSE THIS: whether Hetzner CAX cloud instances are Q80-30. If they are, this reseller's arm supply IS the product observed unorderable above, and their arm constraint and Hetzner's are the same constraint. No citation for the CAX processor model exists in this tree and none is assumed. A SECOND OBSERVATION IS RECORDED, AND DELIBERATELY NOT TURNED INTO AN ARGUMENT: their 2026-08-22 repricing moved premium x64 from 1600 to 2000 and arm64 from 1000 to 1250 micro-dollars per minute - both exactly a quarter. An earlier revision of this row read that as evidence AGAINST arm-specific scarcity, on the reasoning that a shortage in one architecture should move that architecture's price by more. THAT INFERENCE WAS RETRACTED because it needs a pricing-policy premise this repository does not have: that each tariff independently tracks its own marginal cost under a common pass-through rule. A firm facing a shortage in one product line can perfectly well raise everything uniformly to recover the aggregate impact and preserve its price ladder, and equal price changes do not require equal cost changes. Common inputs - memory, leases, currency exposure, an ending discount, a margin reset - would also produce it. What the two figures establish is that these two tariff points underwent the same proportional adjustment. They do not identify which costs moved, by how much, or why.",
+}
+
+fn bracket_is_closed(b: ResellerSupplyBracket) -> Bool {
+  match b {
+    BracketOpen { lower, missing_upper } => false,
+    BracketClosed { lower_micro_per_core_min, upper_micro_per_core_min, source } => true,
+  }
+}

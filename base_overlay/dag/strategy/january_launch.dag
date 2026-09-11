@@ -1,0 +1,271 @@
+module strategy.january_launch
+
+import std.types { Int, List, NonEmptyStr, Bool }
+import strategy.year_end_plan {
+  PlanMilestone,
+  M4JanuaryLaunch,
+  milestone_anchor_date,
+  milestone_anchor_day,
+  PlanItem,
+  PlanItemStatus,
+  Done,
+  NotStarted,
+  InProgress,
+  DeclaredBehind,
+  year_end_plan_items,
+}
+
+// JANUARY IS A LAUNCH, AND A LAUNCH IS A DISJUNCTION (operator, 2026-09-07). The year-end plan
+// ends at M3YearEndGate on 2026-12-19; everything after it was unmodelled, which meant the launch
+// was being reasoned about in prose while the plan's own arithmetic said the graph was finished.
+// This module carries the launch as the plan's terminal, and carries it as the disjunction the
+// operator stated: public self-serve is PREFERRED, private-with-named-partners is acceptable ONLY
+// if the partners are named BEFORE the date.
+//
+// THE FAILURE THIS MODULE EXISTS TO MAKE UNWRITABLE is not "we launch badly". It is that an
+// UNDECIDED disjunction silently resolves to its weaker arm. Nobody chooses the private arm; they
+// simply never choose, and every item in flight is built to the exit criterion the plan already
+// carries -- which was cut for a small private cohort. In January the public arm then needs work
+// that was never scheduled, and the launch either slips or ships at the cohort grade under a
+// public name. That is DESIGN section 5's absorbing fallback with a calendar instead of a
+// failure arm: the default is not refusal, it is the cheaper answer, and it arrives unannounced.
+// So the arm is a DECISION with a deadline, an unchosen arm REFUSES admission rather than
+// defaulting, and the grade each arm demands is declared per item rather than inferred in January.
+
+// A ROSTER THAT CANNOT BE EMPTY. "Named before the date" is the whole content of the private arm,
+// so an empty partner list is not a state to validate against -- it has no constructor. A private
+// launch with nobody named cannot be expressed, which is why this carries a first and a rest
+// rather than a List.
+type NamedPartnerRoster {
+  first: NonEmptyStr
+  rest: List<NonEmptyStr>
+}
+
+fn named_partner_count(roster: NamedPartnerRoster) -> Int {
+  1 + count(roster.rest)
+}
+
+type LaunchForm
+  = PublicSelfServe
+  | PrivateWithNamedPartners { roster: NamedPartnerRoster }
+
+// UNDECIDED IS A STATE, NOT AN ABSENCE. It is carried explicitly so that "we have not chosen" can
+// be READ, refused and dated, instead of being indistinguishable from having chosen the arm that
+// happens to need less work.
+type LaunchFormDecision
+  = LaunchFormChosen { form: LaunchForm }
+  | LaunchFormUndecided
+
+// THE ANCHOR IS DECLARED (operator, 2026-09-07: 2027-01-07) AND IT IS READ, NEVER RESTATED. Both
+// representations come from year_end_plan's M4JanuaryLaunch arm, because a date written here as
+// well as there is one fact with two homes, and the two would drift the first time one moved.
+// The refusal arm STAYS: it is what this module answered with for the hours before the date
+// existed, and it is the arm a future milestone lands in before its own anchor is chosen.
+type LaunchAnchor
+  = LaunchAnchorDeclared { iso_date: NonEmptyStr, epoch_day: Int }
+  | LaunchAnchorUndeclared
+
+data january_launch_anchor: LaunchAnchor = LaunchAnchorDeclared {
+  iso_date: milestone_anchor_date(m: M4JanuaryLaunch),
+  epoch_day: milestone_anchor_day(m: M4JanuaryLaunch),
+}
+
+type LaunchRefusal
+  = LaunchAnchorNotDeclared
+  | LaunchFormNotChosen
+  | LaunchPrerequisiteNotDone { item: NonEmptyStr }
+  | LaunchGradeRecutOwed { item: NonEmptyStr }
+
+type LaunchAdmission
+  = LaunchAdmitted { form: LaunchForm }
+  | LaunchRefused { cause: LaunchRefusal }
+
+// WHAT EACH ARM DEMANDS OF THE SAME ITEM. The two arms do not differ by which items they need --
+// they differ by the GRADE those items must reach, which is why a late choice is expensive: the
+// work is already done, to the wrong bar, and the bar is invisible in the item's own row.
+type ExitGrade
+  = DemoPromiseGrade
+  | ProductionGrade
+
+fn grade_required_for(form: LaunchForm, item_id: NonEmptyStr) -> ExitGrade {
+  match form {
+    PrivateWithNamedPartners { roster: _ } => DemoPromiseGrade
+    PublicSelfServe =>
+      if contains_id(ids: public_self_serve_production_grade_items, id: item_id) {
+        ProductionGrade
+      } else {
+        DemoPromiseGrade
+      }
+  }
+}
+
+// THE FOUR THE OPERATOR NAMED, and the reason each one moves. Every exit criterion in the year-end
+// plan was cut for a private cohort with assisted onboarding, so each of these is currently
+// written at demo-promise grade and would need recutting under the public arm.
+// WHY EACH OF THE FOUR MOVES. tenant-boundary-minimum: the private arm's exit removes co-residency
+// by giving each cohort customer a dedicated host or pool, which self-serve cannot do -- an
+// anonymous signup lands on shared fleet, so the shared-fleet adversarial suite stops being a
+// pre-S1 item and becomes a launch prerequisite. support-abuse: a declared response-time promise
+// to a handful of known customers is not a public abuse surface; self-serve admits unvetted
+// tenants, so the automated suspension path stops being a rehearsal against a synthetic abuser and
+// becomes a live control. paid-minimum: the cohort path is assisted and prepaid with founding
+// credit, so one rehearsed payment suffices; self-serve needs the unattended path -- failed cards,
+// chargebacks, fraud screening, and a spend cap that binds before concurrency does. customer-
+// portal: cut sharply to an install return page plus a credit statement because a cohort customer
+// can be told things directly; a self-serve customer has nobody to tell them, so onboarding,
+// admission failure and billing state all have to be legible without a human.
+data public_self_serve_production_grade_items: List<NonEmptyStr> = [
+  "tenant-boundary-minimum",
+  "support-abuse",
+  "paid-minimum",
+  "customer-portal",
+]
+
+fn contains_id(ids: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+  count(filter(ids, x => x == id)) == 1
+}
+
+fn item_is_done(i: PlanItem) -> Bool {
+  match i.status {
+    Done { receipt: _ } => true
+    NotStarted => false
+    InProgress { note: _ } => false
+    DeclaredBehind { reason: _ } => false
+  }
+}
+
+fn find_launch_item(id: NonEmptyStr) -> List<PlanItem> {
+  filter(year_end_plan_items, i => i.id == id)
+}
+
+fn launch_item_done(id: NonEmptyStr) -> Bool {
+  fold(find_launch_item(id: id), init: false, f: fn(acc, i) { acc || item_is_done(i: i) })
+}
+
+fn unfinished_prerequisites() -> List<NonEmptyStr> {
+  filter(january_launch_prerequisites, id => !launch_item_done(id: id))
+}
+
+// ITEMS WHOSE EXIT CRITERION IS STILL WRITTEN AT THE WRONG GRADE FOR THIS ARM. This cannot be
+// detected from the item row -- PlanItem carries an exit_criterion string and no grade -- so it is
+// DECLARED rather than inferred, and it refuses until the year-end plan's four rows are recut.
+// Adding a grade field to PlanItem is the construction that would retire this declaration, and it
+// is deliberately not done here: sixty rows would gain a field to serve four, and which grade each
+// of the other fifty-six was written at is a claim nobody has made yet.
+fn grade_recuts_owed(form: LaunchForm) -> List<NonEmptyStr> {
+  filter(
+    public_self_serve_production_grade_items,
+    id =>
+      match grade_required_for(form: form, item_id: id) {
+        ProductionGrade => !contains_id(ids: recut_at_production_grade, id: id)
+        DemoPromiseGrade => false
+      }
+  )
+}
+
+// Rows whose exit criterion has been rewritten for the public arm. Empty today: every one of the
+// four still reads as the private-cohort cut, which is exactly the finding.
+data recut_at_production_grade: List<NonEmptyStr> = []
+
+// The launch inherits the S1 gate's conjunction and adds the one item that makes a launch a launch
+// rather than a gate: a customer who arrived without being led there by hand.
+data january_launch_prerequisites: List<NonEmptyStr> = [
+  "s1-gate",
+  "first-external-customer",
+  "acquisition-instrumented",
+  "marketing-min",
+  "billing-ux",
+  "support-abuse",
+  "paid-minimum",
+  "customer-portal",
+]
+
+// THE ADMISSION. Every arm that is not an admitted launch is a typed, located refusal naming the
+// one fact that is missing, so "are we launching in January" has an answer that is a reason rather
+// than a mood.
+fn january_launch_admission(decision: LaunchFormDecision) -> LaunchAdmission {
+  launch_admission_under(anchor: january_launch_anchor, decision: decision)
+}
+
+// The anchor is a parameter so BOTH arms stay exercisable. Now that 2027-01-07 is declared, the
+// undeclared arm is unreachable from production -- and an unreachable refusal is a decoration
+// unless a fixture can still author it. This seam is what keeps the date-missing refusal honest
+// for the next milestone that lands before its own anchor.
+fn launch_admission_under(
+  anchor: LaunchAnchor,
+  decision: LaunchFormDecision,
+) -> LaunchAdmission {
+  match anchor {
+    LaunchAnchorUndeclared => LaunchRefused { cause: LaunchAnchorNotDeclared {} }
+    LaunchAnchorDeclared { iso_date: _, epoch_day: anchor_day } =>
+      match decision {
+        LaunchFormUndecided => LaunchRefused { cause: LaunchFormNotChosen {} }
+        LaunchFormChosen { form: f } => {
+          let after_recuts = fold(
+            grade_recuts_owed(form: f),
+            init: LaunchAdmitted { form: f },
+            f: fn(acc, id) {
+              match acc {
+                LaunchRefused { cause: c } => LaunchRefused { cause: c }
+                LaunchAdmitted { form: _ } =>
+                  LaunchRefused { cause: LaunchGradeRecutOwed { item: id } }
+              }
+            }
+          )
+          fold(
+            unfinished_prerequisites(),
+            init: after_recuts,
+            f: fn(acc, id) {
+              match acc {
+                LaunchRefused { cause: c } => LaunchRefused { cause: c }
+                LaunchAdmitted { form: _ } =>
+                  LaunchRefused { cause: LaunchPrerequisiteNotDone { item: id } }
+              }
+            }
+          )
+        }
+      }
+  }
+}
+
+// THE STANDING ANSWER TODAY: nothing is chosen and nothing is dated, so the launch refuses. This
+// is the module's own status line, and it is derived rather than asserted.
+data january_launch_standing: LaunchAdmission = january_launch_admission(
+  decision: LaunchFormUndecided {},
+)
+
+// THE SPREAD THE FORM DECISION LIVES IN. M3 is day 112 and the launch is day 131, so nineteen days
+// separate the gate from the launch. Every public-arm recut carries its own min_calendar_days in
+// the year-end plan, and the arm has to be chosen at least the largest of those ahead of the date
+// or the public arm is arithmetically unreachable -- at which point the calendar has decided the
+// disjunction rather than anyone. This derives that deadline instead of asserting it.
+fn launch_form_decide_by_day() -> Int {
+  match january_launch_anchor {
+    LaunchAnchorUndeclared => 0
+    LaunchAnchorDeclared { iso_date: _, epoch_day: anchor } =>
+      anchor - longest_public_arm_recut_days()
+  }
+}
+
+fn longest_public_arm_recut_days() -> Int {
+  fold(public_self_serve_production_grade_items, init: 0, f: fn(acc, id) {
+    fold(find_launch_item(id: id), init: acc, f: fn(a2, i) {
+      if i.min_calendar_days > a2 { i.min_calendar_days } else { a2 }
+    })
+  })
+}
+
+// The private arm's roster is consumed here rather than only declared: a launch that names its
+// partners can say how many, and the count is the fact the operator will be asked for.
+fn admitted_partner_count(admission: LaunchAdmission) -> Int {
+  match admission {
+    LaunchRefused { cause: _ } => 0
+    LaunchAdmitted { form: f } =>
+      match f {
+        PublicSelfServe => 0
+        PrivateWithNamedPartners { roster: r } => named_partner_count(roster: r)
+      }
+  }
+}
+
+data january_launch_owed_decisions: NonEmptyStr = "Two decisions are owed by the operator and neither is derivable: (1) the launch DATE, which every deadline here is relative to -- until it exists the plan cannot say when the form must be chosen by, nor which recuts are already late; (2) the launch FORM. The second has a deadline set by the first: the public arm's four recut items carry the year-end plan's own min_calendar_days, so the arm must be chosen at least that far ahead of the date or the public arm is arithmetically unreachable and the disjunction has been decided by the calendar rather than by anyone."

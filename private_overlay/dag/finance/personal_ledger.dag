@@ -1,0 +1,785 @@
+module finance.personal_ledger
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+
+// PERSONAL LEDGER — the operator's own balance sheet, 2026, modeled as DOUBLE ENTRY.
+//
+// Why double entry and not a signed amount: std.measure's MoneyAmount<S> is
+// Measure<Currency, S, Nat> — non-negative BY CONSTRUCTION. A finance year is full of
+// quantities that look signed (a loss, a withdrawal, a refund), and the tempting move is
+// to widen the carrier to admit a negative number. That would push the sign into a
+// VALUE, where nothing checks it, and would widen a load-bearing public std type for a
+// private need.
+//
+// Double entry puts the sign in the STRUCTURE instead. An amount is a Nat and cannot be
+// negative; DIRECTION is a typed arm; and a transaction that does not balance has no
+// accepted form. That is DESIGN section 4b rung 4 (structurally impossible) for the
+// class "the books silently disagree with themselves", rather than rung 1 (detected
+// afterward by a validator). It is also the grounded authority — double entry is the
+// accepted intersubjective framework for exactly this, so modeling it is section 3
+// citing the real upstream rather than coining a private scheme.
+//
+// DENOMINATION: every amount is micro-USD (1 USD = 1,000,000), matching the repo's
+// existing usd_micro_per_month convention in strategy.ci_site_cost. There is no float
+// anywhere in this module and there must never be one — money is an exact integer count.
+
+type LedgerAccount
+  = CashChecking
+  | CashCma
+  | BrokerageTaxable
+  | RetirementLocked
+  | CreditCardPayable
+  | EquipmentCompute
+  | HousingRent
+  | PersonalConsumption
+  | TaxPayableFederal
+  | TaxPayableState
+  | RealizedCapitalGain
+  | OpeningEquity
+  | MoneyMarketCore
+  | MercuryBusinessChecking
+  | DueFromGunbai
+  | UnclassifiedTransferSuspense
+
+// Whether an account can fund next month's rent is a FACT ABOUT THE ACCOUNT, not a note
+// beside it. The 401k is the reason this arm exists: it is 60 percent of the headline net
+// worth and zero percent of the runway, and every projection that reads the headline
+// instead of this predicate is wrong by that ratio.
+fn account_is_deployable(a: LedgerAccount) -> Bool {
+  match a {
+    CashChecking => true,
+    CashCma => true,
+    BrokerageTaxable => true,
+    RetirementLocked => false,
+    CreditCardPayable => false,
+    EquipmentCompute => false,
+    HousingRent => false,
+    PersonalConsumption => false,
+    TaxPayableFederal => false,
+    TaxPayableState => false,
+    RealizedCapitalGain => false,
+    OpeningEquity => false,
+    MoneyMarketCore => true,
+    MercuryBusinessChecking => true,
+    DueFromGunbai => false,
+    UnclassifiedTransferSuspense => false,
+  }
+}
+
+type PostingDirection
+  = Debit
+  | Credit
+
+type Posting {
+  account: LedgerAccount
+  direction: PostingDirection
+  usd_micro: Nat
+  memo: NonEmptyStr
+}
+
+type LedgerTransaction {
+  id: NonEmptyStr
+  date_iso: NonEmptyStr
+  postings: List<Posting>
+  provenance: NonEmptyStr
+}
+
+fn posting_debit_micro(p: Posting) -> Nat {
+  match p.direction {
+    Debit => p.usd_micro,
+    Credit => 0,
+  }
+}
+
+fn posting_credit_micro(p: Posting) -> Nat {
+  match p.direction {
+    Debit => 0,
+    Credit => p.usd_micro,
+  }
+}
+
+fn transaction_debit_total(t: LedgerTransaction) -> Nat {
+  fold(t.postings, init: 0, f: (acc, p) => acc + posting_debit_micro(p))
+}
+
+fn transaction_credit_total(t: LedgerTransaction) -> Nat {
+  fold(t.postings, init: 0, f: (acc, p) => acc + posting_credit_micro(p))
+}
+
+// The refusal is TYPED AND LOCATED, never a boolean. An unbalanced transaction reports
+// which transaction and by how much, because "the books are wrong" is not an actionable
+// diagnostic and DESIGN section 5 forbids the fabricated-plausible-output arm that would
+// let it pass as merely-warned.
+type BalanceVerdict
+  = Balanced
+  | Unbalanced { transaction_id: NonEmptyStr, debit_micro: Nat, credit_micro: Nat }
+
+fn transaction_balance(t: LedgerTransaction) -> BalanceVerdict {
+  let debits = transaction_debit_total(t)
+  let credits = transaction_credit_total(t)
+  if debits == credits {
+    Balanced
+  } else {
+    Unbalanced { transaction_id: t.id, debit_micro: debits, credit_micro: credits }
+  }
+}
+
+fn transaction_is_balanced(t: LedgerTransaction) -> Bool {
+  match transaction_balance(t) {
+    Balanced => true,
+    Unbalanced { transaction_id, debit_micro, credit_micro } => false,
+  }
+}
+
+fn ledger_all_balanced(ts: List<LedgerTransaction>) -> Bool {
+  fold(ts, init: true, f: (acc, t) => acc && transaction_is_balanced(t))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The 2026 transactions. Each row carries its provenance — the receipt it was read from,
+// not a recollection. Where a figure is a recollection it says so, because DESIGN section 5
+// distinguishes a measurement from an estimate and a ledger that blurs them is worse than
+// one that omits the row.
+// ---------------------------------------------------------------------------------------------
+
+data voo_sale_august: LedgerTransaction = LedgerTransaction {
+  id: "voo-sale-2026-08-05",
+  date_iso: "2026-08-05",
+  postings: [
+    Posting { account: BrokerageTaxable, direction: Debit, usd_micro: 87930460000, memo: "Proceeds of 123.3635 shares VOO at 712.79, net of 1.81 SEC fee" },
+    Posting { account: BrokerageTaxable, direction: Credit, usd_micro: 50053740000, memo: "Cost basis relieved, MinTax lot selection" },
+    Posting { account: RealizedCapitalGain, direction: Credit, usd_micro: 37876720000, memo: "Long-term capital gain, sixteen lots, zero short-term" },
+  ],
+  provenance: "Vanguard realized gain/loss detail, account 42541575, retrieved 2026-09-04. THE ONLY BOOKED DISPOSITION OF 2026. The September sale has no broker report yet and is deliberately absent rather than estimated.",
+}
+
+// A core-fund sweep is the SAME DOLLARS changing shape inside one account. It is not a
+// receipt, not a payment, and not spending, and the single largest error in the first pass
+// at this ledger came from a reading that treated a sweep as a disappearance. The arrival
+// and the sweep are recorded as one transaction precisely so that no consumer can pick up
+// half of the pair.
+data voo_proceeds_arrival_and_sweep: LedgerTransaction = LedgerTransaction {
+  id: "fidelity-arrival-sweep-2026-08-10",
+  date_iso: "2026-08-10",
+  postings: [
+    Posting { account: BrokerageTaxable, direction: Credit, usd_micro: 87930460000, memo: "Wired out of Vanguard" },
+    Posting { account: MoneyMarketCore, direction: Debit, usd_micro: 87930460000, memo: "Arrived at Fidelity and swept into SPAXX core dollar for dollar the same day" },
+  ],
+  provenance: "Transaction export 2026-09-04. The August 10 deposit and the SPAXX purchase are equal and opposite. Nothing was consumed on this date.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// The two genuinely unexplained movements. Together they are 100,000 dollars — five times
+// the residual the first reconciliation chased, and on dates that reconciliation never
+// examined. They are NOT expenses and must never be totalled as such: an outbound wire to
+// an unnamed destination is as consistent with a transfer between the operator's own
+// accounts as with a payment to a third party, and those have opposite consequences for
+// both net worth and taxable income. Recording either reading would be a fabricated fact.
+// ---------------------------------------------------------------------------------------------
+
+type TransferClassification
+  = InternalBetweenOwnAccounts { destination_account: NonEmptyStr, evidence: NonEmptyStr }
+  | ExternalPaymentToThirdParty { payee: NonEmptyStr, purpose: NonEmptyStr, evidence: NonEmptyStr }
+  | UnclassifiedExternalTransfer { obligation: NonEmptyStr }
+
+data march_wire_classification: TransferClassification = InternalBetweenOwnAccounts {
+  destination_account: "Mercury business checking, held by Gunbai LLC",
+  evidence: "Operator statement 2026-09-04. Neither wire left the operator's net worth; both funded the company account from personal funds. Because Gunbai LLC is disregarded for federal purposes there is no taxable event on the transfer itself — it is one taxpayer moving money between two of his own accounts — but it IS a member capital contribution for entity bookkeeping and must be recorded as such rather than as an expense.",
+}
+
+data august_wire_classification: TransferClassification = InternalBetweenOwnAccounts {
+  destination_account: "Mercury business checking, held by Gunbai LLC",
+  evidence: "Operator statement 2026-09-04. The sequencing now reads cleanly: 70,000 was wired to the company on 2026-08-05 out of SPAXX, and the VOO sale executed the same day REFILLED the core, arriving 2026-08-10. The disposition funded the capitalization; it was not itself the spending.",
+}
+
+fn transfer_is_classified(t: TransferClassification) -> Bool {
+  match t {
+    InternalBetweenOwnAccounts { destination_account, evidence } => true,
+    ExternalPaymentToThirdParty { payee, purpose, evidence } => true,
+    UnclassifiedExternalTransfer { obligation } => false,
+  }
+}
+
+data march_wire: LedgerTransaction = LedgerTransaction {
+  id: "wire-out-2026-03-02",
+  date_iso: "2026-03-02",
+  postings: [
+    Posting { account: MercuryBusinessChecking, direction: Debit, usd_micro: 30000000000, memo: "Member capital contribution to Gunbai LLC" },
+    Posting { account: MoneyMarketCore, direction: Credit, usd_micro: 30000000000, memo: "SPAXX redemption of the same amount and date" },
+  ],
+  provenance: "Transaction export 2026-09-04, destination resolved by operator statement 2026-09-04.",
+}
+
+data august_wire: LedgerTransaction = LedgerTransaction {
+  id: "wire-out-2026-08-05",
+  date_iso: "2026-08-05",
+  postings: [
+    Posting { account: MercuryBusinessChecking, direction: Debit, usd_micro: 70000000000, memo: "Member capital contribution to Gunbai LLC" },
+    Posting { account: MoneyMarketCore, direction: Credit, usd_micro: 69755390000, memo: "SPAXX redemption 2026-08-05" },
+    Posting { account: CashCma, direction: Credit, usd_micro: 244610000, memo: "Cash balance applied to round the wire to 70,000" },
+  ],
+  provenance: "Transaction export 2026-09-04.",
+}
+
+// The Sparks were CHARGED, creating a liability, and the card was paid later, settling it.
+// Those are two transactions over one 29,697.37 dollar acquisition, and the first pass at
+// this ledger counted the acquisition and the settlement as two separate outflows. The
+// purchase is the expense event; the payment moves money between a cash account and a
+// liability and adds nothing to spending.
+data spark_purchase: LedgerTransaction = LedgerTransaction {
+  id: "dgx-spark-2026-08",
+  date_iso: "2026-08-19",
+  postings: [
+    Posting { account: EquipmentCompute, direction: Debit, usd_micro: 29697370000, memo: "6x NVIDIA DGX Spark, Micro Center" },
+    Posting { account: CreditCardPayable, direction: Credit, usd_micro: 29697370000, memo: "Charged to card, creating the liability" },
+  ],
+  provenance: "Transaction export 2026-09-04, Micro Center. ACTUAL is 29,697.37, not the 30,000 recalled in conversation.",
+}
+
+data card_settlement_september: LedgerTransaction = LedgerTransaction {
+  id: "citi-payment-2026-09",
+  date_iso: "2026-09-02",
+  postings: [
+    Posting { account: CreditCardPayable, direction: Debit, usd_micro: 20085120000, memo: "Citi payments 2026-09-01 and 2026-09-02, settling part of the card liability" },
+    Posting { account: CashChecking, direction: Credit, usd_micro: 20085120000, memo: "Paid from checking" },
+  ],
+  provenance: "Transaction export 2026-09-04, which ENDS 2026-09-02. Only 20,085.12 of the Spark charge is evidenced as paid; the remainder may have posted after the export closed. The operator's recollection of a full payoff and a resulting checking balance near 138,746 is therefore PLAUSIBLE BUT UNEVIDENCED and is not booked here.",
+}
+
+// THE MT. COLLINS LOT, AS IT TOUCHES THIS BOOK -- WHICH IS LESS THAN AN EARLIER REVISION CLAIMED.
+//
+// THAT REVISION BOOKED THE WHOLE 39,078.06 HERE: EquipmentCompute debited for the full order, with
+// two credits, one of them a MercuryCreditCardPayable account added to THIS enum. It was wrong
+// twice, and the second error was the interesting one.
+//
+// FIRST, THE EQUIPMENT IS NOT A PERSONAL ASSET. GUNBAI owns it -- that is the whole subject of the
+// ratification at docs/entity/2026-09-10-mt-collins-ratification.md. Debiting EquipmentCompute in
+// the MEMBER's book records the company's hardware as the member's, which is the precise confusion
+// the ratification exists to remove, asserted in the ledger while being denied on paper.
+//
+// SECOND, AND THIS IS THE ONE WORTH REMEMBERING: the revision added an ENTITY liability account to
+// the MEMBER's account enum, and in the same change wrote a row at finance.gunbai_llc
+// entity_ledger_absent saying that reusing this enum across two sets of books would fork one
+// account authority. It did the thing it forbade, in the same breath, and the double-entry
+// arithmetic balanced perfectly throughout -- which is exactly why balancing is not a check on
+// whether the entry is TRUE. Caught in review rather than by any mechanism here.
+//
+// WHAT ACTUALLY HAPPENED IN THIS BOOK on 2026-09-08 is one transaction, and it is small: the member
+// charged 20,000.00 to a personal card for the company's benefit. That creates a card liability and
+// a RECEIVABLE FROM THE COMPANY. It does not acquire an asset, because the asset is not his.
+data mt_collins_owner_funded_leg: LedgerTransaction = LedgerTransaction {
+  id: "mt-collins-owner-funded-2026-09",
+  date_iso: "2026-09-08",
+  postings: [
+    Posting { account: DueFromGunbai, direction: Debit, usd_micro: 20000000000, memo: "Receivable from GUNBAI LLC: personal funds advanced for the company's equipment purchase" },
+    Posting { account: CreditCardPayable, direction: Credit, usd_micro: 20000000000, memo: "Citi Mastercard ending 6206 -- charge creating the personal liability" },
+  ],
+  provenance: "Vendor order summary supplied by the operator 2026-09-10 (20 items 35,000.00, shipping 1,650.00, tax 2,428.06, total 39,078.06) and the operator's statement lines for both card settlements dated 2026-09-08. ONLY THE 20,000.00 PERSONAL LEG IS THIS BOOK'S BUSINESS. The 19,078.06 Mercury leg and the 39,078.06 equipment asset are ENTITY facts and are deliberately absent here rather than approximated. NOT reconciled against a card export.",
+}
+
+// THE ENTRY THAT HAS NOWHERE TO GO, written out so the gap is legible rather than merely asserted.
+// On the company's books the same event is three postings:
+//   Debit  EquipmentCompute        39,078.06   the asset GUNBAI acquired
+//   Credit MercuryCreditCardPayable 19,078.06   the company's own card
+//   Credit DueToMember              20,000.00   owed to the member, mirroring DueFromGunbai above
+// None of it can be recorded, because there is no entity book. finance.gunbai_llc
+// entity_ledger_absent is the standing row for that, and mt_collins_due_to_member carries the
+// obligation's amount and its unreimbursed standing in the meantime.
+//
+// A PRE-EXISTING INSTANCE OF THE SAME CONFLATION, NOTED AND DELIBERATELY NOT FIXED HERE:
+// spark_purchase debits EquipmentCompute in this book for six DGX Sparks, while
+// finance.gunbai_llc spark_placed_in_service records them as PlacedInService for the COMPANY. So
+// that asset is already sitting in the member's book too. It predates this change, correcting it
+// needs the same missing entity carrier, and widening this diff to sweep it would hide the one
+// defect this commit is repairing behind a second one.
+
+data owner_contribution_preceded_its_protocol: NonEmptyStr = "20,000.00 of the 2026-09-08 lot purchase was funded from the operator's personal card while owner-funded-purchase-protocol was still unfinished; the contribution's classification and repayment terms are therefore owed retroactively"
+
+data rent_monthly_micro: Nat = 5450000000
+
+// Rent is the measured recurring figure, not the recalled one. Six consecutive months at
+// 5,450 establish the standing; February at 5,485 and January at 7,688.71 are separate
+// facts needing their own reading before either is folded into a run rate.
+data rent_annualized_micro: Nat = 65400000000
+
+data ledger_2026: List<LedgerTransaction> = [
+  voo_sale_august,
+  voo_proceeds_arrival_and_sweep,
+  march_wire,
+  august_wire,
+  spark_purchase,
+  card_settlement_september,
+  mt_collins_owner_funded_leg,
+]
+
+// ---------------------------------------------------------------------------------------------
+// Year close. The refusal is the product.
+// ---------------------------------------------------------------------------------------------
+//
+// A close that reports a runway while a hundred thousand dollars of transfers sit
+// unclassified is not a conservative estimate, it is a confident wrong answer — and the
+// direction of the error is unknown, because internal transfers overstate spending while
+// third-party payments understate it. So the close REFUSES, and it names every open item
+// rather than reporting the first one and stopping.
+
+type YearCloseVerdict
+  = CloseAdmitted
+  | CloseRefused { causes: NonEmptyStr }
+
+// THE CAUSES AND THE CONDITION WERE TWO LISTS. Found by external review 2026-09-04 and
+// confirmed by inspection: the refusal message named six open items while the acceptance
+// condition tested predicates covering only three of them, so CloseAdmitted was reachable
+// with the September disposition, the filing status and the residency interval all still
+// missing - and the separately defined balance check was never called at all. A gate whose
+// stated reasons and actual test are different lists is DESIGN section 5 silent wrongness
+// wearing a refusal's clothes: it reads as strict and admits anyway.
+//
+// The repair is structural rather than a longer message. ONE roster of requirements produces
+// BOTH the verdict and the causes, so a cause cannot be claimed without a predicate behind
+// it and a predicate cannot pass silently without a cause to name when it fails. Adding a
+// requirement is one row; the two can no longer drift because there is only one list.
+
+type SeptemberDispositionStanding
+  = BrokerReportPending { obligation: NonEmptyStr }
+  | BrokerReportReceived { lt_gain_micro: Nat, receipt: NonEmptyStr }
+
+data september_voo_disposition: SeptemberDispositionStanding = BrokerReportPending {
+  obligation: "The 2026-09-04 VOO sale has no broker realized gain and loss report. 2026 long-term gain is booked at 37,876.72 from the August disposition ALONE and no more. Obtain the Vanguard realized gain and loss detail for the September disposition before any 2026 tax figure is quoted as settled.",
+}
+
+fn september_disposition_is_reported(s: SeptemberDispositionStanding) -> Bool {
+  match s {
+    BrokerReportPending { obligation } => false,
+    BrokerReportReceived { lt_gain_micro, receipt } => true,
+  }
+}
+
+type FilingStatusStanding
+  = FilingStatusUndetermined { obligation: NonEmptyStr }
+  | FilingStatusDeclared { status: NonEmptyStr, receipt: NonEmptyStr }
+
+data filing_status_2026: FilingStatusStanding = FilingStatusUndetermined {
+  obligation: "Filing status for 2026 is not declared. It selects the standard deduction and the whole rate schedule, so every bracket-dependent figure in this module - the zero-rate long-term capital gain band above all - is conditional on it.",
+}
+
+fn filing_status_is_declared(f: FilingStatusStanding) -> Bool {
+  match f {
+    FilingStatusUndetermined { obligation } => false,
+    FilingStatusDeclared { status, receipt } => true,
+  }
+}
+
+type ResidencyIntervalStanding
+  = ResidencyUndeclared { obligation: NonEmptyStr }
+  | ResidencyDeclared { intervals: NonEmptyStr, receipt: NonEmptyStr }
+
+data residency_2026: ResidencyIntervalStanding = ResidencyUndeclared {
+  obligation: "The 2026 residency interval is not declared. New York City residency carries roughly 10.7 percent combined state and city on the gains booked here and New Jersey carries 6.37 percent; a part-year interval splits them by date. The move is intended but undated, so no state or city liability may be quoted.",
+}
+
+fn residency_is_declared(r: ResidencyIntervalStanding) -> Bool {
+  match r {
+    ResidencyUndeclared { obligation } => false,
+    ResidencyDeclared { intervals, receipt } => true,
+  }
+}
+
+type ResaleBasisStanding
+  = ResaleBasisUnestablished { obligation: NonEmptyStr }
+  | ResaleBasisEstablished { basis_micro: Nat, receipt: NonEmptyStr }
+
+data resale_basis_2026: ResaleBasisStanding = ResaleBasisUnestablished {
+  obligation: "The 7,809 of 2026 resale receipts has no cost of goods established. Gross receipts without basis overstate income; the offsetting basis is the acquisition cost of the specific units sold, which requires the lot to be identified rather than averaged.",
+}
+
+fn resale_basis_is_established(b: ResaleBasisStanding) -> Bool {
+  match b {
+    ResaleBasisUnestablished { obligation } => false,
+    ResaleBasisEstablished { basis_micro, receipt } => true,
+  }
+}
+
+type CloseRequirement {
+  key: NonEmptyStr
+  met: Bool
+  cause: NonEmptyStr
+}
+
+fn close_requirements() -> List<CloseRequirement> {
+  [
+    CloseRequirement {
+      key: "ledger-balanced",
+      met: ledger_all_balanced(ts: ledger_2026),
+      cause: "A 2026 transaction does not balance: its debits and credits differ, so the books do not describe a consistent position.",
+    },
+    CloseRequirement {
+      key: "march-wire-classified",
+      met: transfer_is_classified(march_wire_classification),
+      cause: "The March wire is unclassified; an internal transfer overstates spending and a third-party payment understates it, and the direction of the error is unknown.",
+    },
+    CloseRequirement {
+      key: "august-wire-classified",
+      met: transfer_is_classified(august_wire_classification),
+      cause: "The August wire is unclassified; an internal transfer overstates spending and a third-party payment understates it, and the direction of the error is unknown.",
+    },
+    CloseRequirement {
+      key: "expenditure-census-complete",
+      met: census_is_complete(gunbai_2026_expenditure_census),
+      cause: "The business expenditure census spans two books and only Mercury is read; business purchases made on personal cards because company card limits bound are unclassified.",
+    },
+    CloseRequirement {
+      key: "spark-count-established",
+      met: asset_count_is_established(spark_count_standing),
+      cause: "The DGX Spark count is ambiguous, so the residual card balance attributable to them cannot be computed.",
+    },
+    CloseRequirement {
+      key: "order-10-14932-10671-identified",
+      met: order_is_identified(ebay_order_10_14932_10671),
+      cause: "eBay order 10-14932-10671 is not identified against a purchase, so its book and its deductibility are undetermined.",
+    },
+    CloseRequirement {
+      key: "order-10-14902-88964-identified",
+      met: order_is_identified(ebay_order_10_14902_88964),
+      cause: "eBay order 10-14902-88964 is not identified against a purchase, so its book and its deductibility are undetermined.",
+    },
+    CloseRequirement {
+      key: "collectible-activity-classified",
+      met: collectible_activity_is_classified(trading_card_activity),
+      cause: "The trading card activity is unclassified between personal collectible disposition, taxed at the 28 percent collectibles rate, and a trade or business, which would change both the rate and the reporting.",
+    },
+    CloseRequirement {
+      key: "september-disposition-reported",
+      met: september_disposition_is_reported(september_voo_disposition),
+      cause: "The September VOO disposition has no broker realized gain and loss report, so 2026 gain is booked at 37,876.72 and no more.",
+    },
+    CloseRequirement {
+      key: "filing-status-declared",
+      met: filing_status_is_declared(filing_status_2026),
+      cause: "Filing status for 2026 is not declared, so the standard deduction and every bracket boundary are unfixed.",
+    },
+    CloseRequirement {
+      key: "residency-declared",
+      met: residency_is_declared(residency_2026),
+      cause: "The 2026 residency interval is not declared, so no state or city liability may be quoted on the gains booked here.",
+    },
+    CloseRequirement {
+      key: "resale-basis-established",
+      met: resale_basis_is_established(resale_basis_2026),
+      cause: "The 7,809 of resale receipts has no established basis or cost of goods, so the receipts overstate income by an unknown amount.",
+    },
+  ]
+}
+
+fn unmet_close_causes() -> List<NonEmptyStr> {
+  map(filter(close_requirements(), r => !r.met), r => r.cause)
+}
+
+fn year_close_2026() -> YearCloseVerdict {
+  let unmet = unmet_close_causes()
+  if count(unmet) == 0 {
+    CloseAdmitted
+  } else {
+    CloseRefused {
+      causes: join(concat(["No runway figure and no tax reserve may be quoted as settled while these stand: "], unmet), " "),
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Two consequences of the Mercury resolution, both of which move in the operator's favour
+// and neither of which was visible while the wires sat unclassified.
+// ---------------------------------------------------------------------------------------------
+//
+// FIRST: the net-worth tracker does not carry the Mercury account, so every balance in this
+// conversation understated the operator's position by whatever Mercury holds. A missing
+// ACCOUNT is a worse defect than a missing transaction, because it is silent — no row is
+// unexplained, the books simply describe a smaller person.
+data mercury_owner_funding_micro: Nat = 113000000000
+
+data mercury_cash_micro: Nat = 59398020000
+
+data mercury_card_payable_micro: Nat = 8836740000
+
+data mercury_net_capital_micro: Nat = 50561280000
+
+data gunbai_2026_external_spend_micro: Nat = 61241240000
+
+data gunbai_2026_hardware_micro: Nat = 48940110000
+
+data gunbai_2026_software_micro: Nat = 13053420000
+
+// The earlier figures here were 100,000 contributed, 60,000 held, 40,000 spent. All three
+// were wrong, and the reason is recorded rather than quietly overwritten: they were a
+// DERIVED DIFFERENCE across an account whose rows had not been read. The difference missed
+// 13,000 of late-2025 funding it had no way to see, and it netted a card payable against
+// cash as though the account were a single balance. A difference is not a measurement, and
+// this row is the receipt for that being true rather than merely said.
+
+// ---------------------------------------------------------------------------------------------
+// The expenditure book is NOT the account. This is the structural finding.
+// ---------------------------------------------------------------------------------------------
+//
+// Business purchases were made on personal Citi cards as well as through Mercury, because
+// card limits bound. So "what did the company spend in 2026" cannot be answered by reading
+// the company's account, and any census that reads one book and reports a total is wrong by
+// however much sits in the other — silently, since neither book looks incomplete from
+// inside itself. The personal export already shows an eBay population distinct from
+// Mercury's and the 29,697.37 Micro Center acquisition of company hardware.
+//
+// The tax consequence is the good news and is worth stating so it is not re-litigated:
+// because Gunbai LLC is DISREGARDED, the payer's identity does not affect deductibility.
+// It is one taxpayer and one Schedule C whichever card cleared the charge, so nothing is
+// lost by having paid personally. What is affected is entity hygiene — the separateness a
+// single-member LLC relies on — and the audit-time burden of demonstrating business purpose
+// for a charge that sits among groceries.
+
+type ExpenditureBook
+  = MercuryBook
+  | PersonalCardBook
+
+type BusinessExpenditureCensus
+  = CensusComplete { books_read: NonEmptyStr, total_micro: Nat }
+  | CensusPartial { books_read: NonEmptyStr, books_unread: NonEmptyStr, obligation: NonEmptyStr }
+
+data gunbai_2026_expenditure_census: BusinessExpenditureCensus = CensusPartial {
+  books_read: "Mercury checking and Mercury Credit, 2026-01-01 through 2026-09-03: 61,241.24 net of 831.26 cashback, of which 48,940.11 hardware and 13,053.42 software and cloud.",
+  books_unread: "Business purchases cleared on personal Citi and other personal cards, made there because Mercury credit limits bound. Known to include the 29,697.37 Micro Center acquisition and an eBay population distinct from Mercury's.",
+  obligation: "Classify each personal-card transaction as business or personal by PURPOSE, not by which card cleared it. Only then does a 2026 business expenditure total exist. Until then no deduction schedule, no depreciation basis, and no business expense figure may be quoted, because every one of them would be understated by an unmeasured amount.",
+}
+
+fn census_is_complete(c: BusinessExpenditureCensus) -> Bool {
+  match c {
+    CensusComplete { books_read, total_micro } => true,
+    CensusPartial { books_read, books_unread, obligation } => false,
+  }
+}
+
+// Mercury's own categorization is REFUSED as an authority, not merely distrusted. It labels
+// eBay hardware purchases as Revenue — a sign error on the largest spending population in
+// the company — and a classification that inverts direction is worse than none, because it
+// produces a plausible income statement rather than an obviously empty one. Categorization
+// is derived here from merchant and purpose; the bank's guess is discarded on import.
+data mercury_categorization_standing: NonEmptyStr = "REFUSED AS AUTHORITY. Observed 2026-09-04 classifying eBay hardware purchases as Revenue. Import the amount, the date, the merchant and the memo; never the general-ledger category."
+
+// ---------------------------------------------------------------------------------------------
+// The commitment register, read from the seller's own order records 2026-09-04.
+// ---------------------------------------------------------------------------------------------
+//
+// A commitment is not an expense and must never be totalled with actuals, but neither is it
+// absent: an issued invoice is a claim on cash that exists whether or not the ledger admits
+// it. These rows are the difference between a runway figure that is merely arithmetic and
+// one that survives the next thirty days.
+
+type CommitmentStanding
+  = InvoiceIssuedUnpaid { amount_micro: Nat, seller: NonEmptyStr, obligation: NonEmptyStr }
+  | PaidAwaitingDelivery { amount_micro: Nat }
+  | DeliveredNotInService { amount_micro: Nat }
+
+data mt_collins_lot_commitment: CommitmentStanding = InvoiceIssuedUnpaid {
+  amount_micro: 38106250000,
+  seller: "securee-0, the same seller as the single Mt. Collins unit delivered 2026-08-19 for 1,976.08 that strategy.mt_collins_held_unit models by possession",
+  obligation: "Twenty Foxconn Mt. Collins, dual Ampere Altra Q80-30, expressly NO HDD AND NO RAM. The recalled figure of 35,000 was low by 3,106.25. Payment has not been made, so no basis exists, nothing is placed in service, and no depreciation may be claimed on this lot in any year until it is.",
+}
+
+// The lot arrives with no memory, so the memory is not an afterthought to the purchase — it
+// is a second purchase of comparable size that the first one makes mandatory. Derived from
+// strategy.ci_node_build's own planning baseline rather than invented here: sixteen DIMM
+// positions per dual-socket board at the 32-GiB baseline of 110 dollars a module, across
+// twenty units. The band matters more than the point: at the 80-dollar low this is 25,600
+// and at the 120-dollar high it is 38,400, and the decision changes across that range.
+data mt_collins_ram_baseline_micro: Nat = 35200000000
+
+data mt_collins_ram_band_note: NonEmptyStr = "20 units x 16 positions x 110 dollars = 35,200 at the ci_node_build baseline; 25,600 at the 80-dollar low and 38,400 at the 120-dollar high. DIMMs already acquired against this obligation are NOT netted here, because no on-hand memory census exists yet — mobo_x_memory_census models the recipe for producing one and no receipt has been produced. Netting an unmeasured inventory against a known obligation would understate the requirement by an unknown amount."
+
+// Six Sparks were reported; the order records show two distinct acquisitions and a third
+// that reversed. Until the unit count is established the depreciation basis of this asset
+// class is not known, and a basis that is wrong in either direction is a wrong return.
+type AssetCountStanding
+  = CountEstablished { units: Nat, basis_micro: Nat }
+  | CountAmbiguous { obligation: NonEmptyStr }
+
+data spark_count_standing: AssetCountStanding = CountAmbiguous {
+  obligation: "Reconcile the DGX Spark population. Micro Center charged 29,697.37 to a personal card, eBay delivered 2 units for 10,898.25 on 2026-08-06, and a further eBay order of 5,714.85 on 2026-08-31 was cancelled and must be excluded entirely. Combined paid consideration is 40,595.62 against a recalled six units. Either the count is eight, or one of these acquisitions is something other than it appears. Count and basis both follow from the answer.",
+}
+
+fn asset_count_is_established(a: AssetCountStanding) -> Bool {
+  match a {
+    CountEstablished { units, basis_micro } => true,
+    CountAmbiguous { obligation } => false,
+  }
+}
+
+// Purchases denominated in a foreign currency are a distinct fact, not a rounding concern.
+// The Wiwynn Mt. Jade order settled in Australian dollars, so its US basis is the converted
+// amount at the transaction date and cannot be read off the order total.
+data foreign_currency_acquisition_note: NonEmptyStr = "Wiwynn Mt. Jade 2U, ordered 2026-08-05, AU 3,267.34. Basis is the USD amount actually charged at the settlement rate on the transaction date, taken from the card or bank statement — never the AUD figure and never a rate looked up later."
+
+// ---------------------------------------------------------------------------------------------
+// Engineering-sample processors: a dated, expiring option, and a suspected fork in the
+// price observation that the build frontier reads.
+// ---------------------------------------------------------------------------------------------
+//
+// Sixty-two Ampere Altra Q80-30 marked ES were acquired 2026-08-18 for 4,750.49, or 76.62 a
+// unit. strategy.ci_node_build's processor_market_note cites "95 for the 80-core (the
+// 2026-08-18 re-quote, with sixty-two units of observed depth)" — the same date and the same
+// count, so the depth behind that observation IS this lot.
+//
+// If these are engineering samples and the note is read as production Q80-30, then one row
+// carries two products: a production price and an ES depth. That is a section 3 meaning
+// fork sitting inside the frontier that selects the build shape, and its consequence is not
+// a wrong ledger entry but a wrong machine.
+//
+// The discriminating test is NOT "do they power on". ES silicon is commonly locked to the
+// platform it sampled for, and the Mt. Collins lot already ships with its own Q80-30 pairs,
+// so the configuration these parts are actually needed in is the ASRock ALTRAD8UD-1L2T
+// board acquired separately. A part that POSTs in a Foxconn chassis and refuses on the
+// ASRock would pass a careless test and still be worthless to the plan.
+
+type EngineeringSampleStanding
+  = SampleUnqualified { return_window_closes_iso: NonEmptyStr, obligation: NonEmptyStr }
+  | SampleQualified { platform: NonEmptyStr, receipt: NonEmptyStr }
+  | SampleRefused { platform: NonEmptyStr, disposition: NonEmptyStr }
+
+data altra_q80_es_lot_standing: EngineeringSampleStanding = SampleUnqualified {
+  return_window_closes_iso: "2026-09-24",
+  obligation: "Boot one ES Q80-30 on an ASRock ALTRAD8UD-1L2T — the platform the plan needs it on, not the platform that is easiest to test — and record whether it POSTs, enumerates all channels, and reports its expected core count. The window is twenty days from 2026-09-04 and it does not extend. An untested lot on 2026-09-25 is a lot that has been bought regardless of whether it works, so the deadline governs the test, not the other way round.",
+}
+
+fn sample_is_qualified(e: EngineeringSampleStanding) -> Bool {
+  match e {
+    SampleUnqualified { return_window_closes_iso, obligation } => false,
+    SampleQualified { platform, receipt } => true,
+    SampleRefused { platform, disposition } => false,
+  }
+}
+
+// The expected outcome is that they work. The row exists because the cost of being wrong is
+// asymmetric and expires: qualifying costs an afternoon, and not qualifying costs 4,750.49
+// plus a frontier premised on depth that cannot be built.
+data altra_q80_es_expectation_note: NonEmptyStr = "The operator expects these to function normally, and that expectation is reasonable — ES Ampere parts in circulation are frequently fully operational. The row is not a prediction of failure. It records that the option to be wrong cheaply closes on 2026-09-24 and that nothing has yet been executed to resolve it."
+
+// ---------------------------------------------------------------------------------------------
+// Owner-funded acquisitions: the purchase decides the book, the payment source decides the
+// counter-entry, and those are two facts rather than one.
+// ---------------------------------------------------------------------------------------------
+//
+// A business asset does not stop being a business acquisition because a personal card
+// cleared it. So the acquisition is booked to the company at full cost, and what varies is
+// only what sits on the other side of the entry.
+//
+// That counter-entry is NOT one thing. Money the company owes back to the member is a
+// LIABILITY that a later payment extinguishes; money the member leaves in permanently is
+// EQUITY that a later payment would be a distribution against. Calling both a capital
+// contribution — as this module previously did — is a section 3 meaning fork: one name over
+// two obligations whose futures differ. The distinction has no federal income tax effect
+// while the entity is disregarded, since it is one taxpayer either way, but it decides
+// whether a future transfer to the member is repayment or distribution, and it is the
+// difference between a balance sheet that is right and one that merely balances.
+
+type OwnerFundingDisposition
+  = DueToOwner { obligation: NonEmptyStr }
+  | OwnerCapitalContribution { declared_iso: NonEmptyStr }
+  | ReimbursedToOwner { settled_iso: NonEmptyStr }
+
+data personally_funded_acquisitions_micro: Nat = 10360090000
+
+data personally_funded_disposition: OwnerFundingDisposition = DueToOwner {
+  obligation: "10,360.09 of confirmed gunbai acquisitions cleared on personal cards: 5,000.00 of the 2026-08-05 DGX order that Mercury funded only 5,898.25 of, the whole 4,750.49 Q80-30 ES lot after Mercury refused it on a spend limit, 457.22 for the M128-30 and 152.38 for Hynix RAM, both settled by personal PayPal. It rests as a liability of the company to the member until the member DECLARES otherwise. The declaration is the act; leaving it undeclared and later calling it whichever is convenient is the thing this arm exists to prevent.",
+}
+
+// The Mercury spend limit that refused the 4,750.49 charge is a fact about the company's
+// purchasing capacity, not a payment detail. It is the mechanism by which company
+// acquisitions end up on personal cards, so it is the thing to fix if the commingling is to
+// stop rather than be repeatedly cleaned up after.
+data mercury_spend_limit_note: NonEmptyStr = "Mercury declined the 2026-08-18 Q80-30 charge of 4,750.49 on a spend limit and the purchase completed on a personal Citi card. Raise the limit before the Mt. Collins invoice of 38,106.25 and its memory obligation, or the same substitution recurs at ten times the size."
+
+// The 2026 company purchase population is the union of the books, not the Mercury figure.
+data gunbai_2026_confirmed_purchases_micro: Nat = 72432590000
+
+// Two orders of comparable size remain unidentified, one in each book, and they are the
+// highest-value remaining reconciliation because between them they carry nearly all the
+// residual uncertainty.
+type OrderIdentification
+  = OrderIdentified { contents: NonEmptyStr, asset_population: NonEmptyStr }
+  | OrderUnidentified { amount_micro: Nat, book: NonEmptyStr, obligation: NonEmptyStr }
+
+data ebay_order_10_14932_10671: OrderIdentification = OrderIdentified {
+  contents: "2007 World of Warcraft TCG Spectral Tiger Mount, Outland, unscratched. Delivered 2026-07-31. 8,998.25 on personal Citi.",
+  asset_population: "Personal collectible. No business population. Correctly funded personally and correctly absent from every gunbai figure.",
+}
+
+data ebay_order_10_14902_88964: OrderIdentification = OrderIdentified {
+  contents: "Spectral Tiger unscratched, WoW TCG, PSA 9-10. Ordered 2026-07-15, delivered 2026-07-20. 9,849.70 paid from MERCURY.",
+  asset_population: "Personal collectible purchased with COMPANY funds. It is an owner distribution, not a business expense and not equipment. Booking it to gunbai would create a deduction for a personal collectible — the precise entry an examination looks for, and one no amount of subsequent explanation repairs.",
+}
+
+// The two together are the "two large personal purchases of about ten thousand each" the
+// operator described before any statement was read: 18,847.95 actual against 20,000
+// recalled. The recollection was accurate; what it could not carry is that the two were
+// funded from different sides, and that difference is the whole entry.
+
+// Direction matters and it runs BOTH ways. Company purchases on personal cards are a
+// liability owed back to the member; personal purchases on company funds are a
+// DISTRIBUTION to him. This module previously modeled only the first direction, which is
+// the comfortable one — it discovers money owed TO the operator. The second direction
+// removes a deduction, and a ledger that models only the flattering direction of an error
+// is not a ledger.
+type OwnerDrawStanding
+  = DrawRecorded { amount_micro: Nat, purpose: NonEmptyStr }
+  | DrawUnrecorded { obligation: NonEmptyStr }
+
+data spectral_tiger_mercury_draw: OwnerDrawStanding = DrawRecorded {
+  amount_micro: 9849700000,
+  purpose: "Personal collectible acquired 2026-07-15 on company funds. Recorded as a member distribution against equity; it reduces the 2026 company purchase population and is deductible by nothing.",
+}
+
+// Corrected: 72,432.59 less the 9,849.70 that was never a company purchase.
+data gunbai_2026_confirmed_purchases_corrected_micro: Nat = 62582890000
+
+// A third activity exists beside personal living and gunbai, and it has been invisible
+// because its purchases sat in a shopping category and its receipts in an income one.
+// Roughly 18,847.95 of trading-card acquisitions this year against approximately 7,809 of
+// eBay and TCGPlayer receipts. Its classification is not cosmetic:
+//
+//   - collectibles held long term are taxed at a maximum rate of 28 percent, NOT the 15
+//     percent this model has been quoting for securities, so a gain here is priced wrong by
+//     every figure derived so far;
+//   - losses on personal-use property are not deductible at all, while an investment or
+//     dealer characterization changes both that answer and whether cost of goods applies;
+//   - the receipts already sit in the 2026 income population that consumes 0 percent
+//     capital-gain band capacity, and they were counted there without basis.
+type CollectibleActivityStanding
+  = ActivityUnclassified { purchases_micro: Nat, receipts_micro: Nat, obligation: NonEmptyStr }
+  | ActivityClassified { characterization: NonEmptyStr, receipt: NonEmptyStr }
+
+data trading_card_activity: CollectibleActivityStanding = ActivityUnclassified {
+  purchases_micro: 18847950000,
+  receipts_micro: 7809320000,
+  obligation: "Characterize the trading-card activity as personal collecting, investment, or a trade or business, and establish basis for every item sold. Until then the 7,809.32 of receipts is a gross number with no cost against it, no gain is computable, and the 28 percent collectibles rate rather than 15 percent applies to whatever gain exists.",
+}
+
+fn collectible_activity_is_classified(c: CollectibleActivityStanding) -> Bool {
+  match c {
+    ActivityUnclassified { purchases_micro, receipts_micro, obligation } => false,
+    ActivityClassified { characterization, receipt } => true,
+  }
+}
+
+fn order_is_identified(o: OrderIdentification) -> Bool {
+  match o {
+    OrderIdentified { contents, asset_population } => true,
+    OrderUnidentified { amount_micro, book, obligation } => false,
+  }
+}
+
+// The Spark count, narrowed but not closed. Micro Center's 29,697.37 divides by six to
+// 4,949.5616 and multiplies back to 29,697.37 EXACTLY, which is what a six-unit purchase at
+// a single unit price looks like and is not what four or five units look like. If that
+// division is the real one, the recalled "six Sparks" names the Micro Center order alone,
+// the two eBay units are additional, and the population is EIGHT with a basis of 40,595.62
+// rather than six at 29,697.37.
+//
+// This is arithmetic consistent with a hypothesis, not a count. It is falsified or
+// confirmed by counting the physical units, which is cheaper than any inference from it.
+data spark_count_hypothesis_note: NonEmptyStr = "29,697.37 / 6 = 4,949.5616 exactly, a plausible unit price for a 4TB Spark; the eBay pair at 10,898.25 implies 5,449.13 each, consistent with a resale premium. Under this reading the population is 8 units and the depreciation basis is 40,595.62. COUNT THE UNITS rather than adopting it: an asset register that inherits an arithmetic guess is a register that will be wrong for years."

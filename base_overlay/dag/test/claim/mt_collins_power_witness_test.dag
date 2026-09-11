@@ -1,0 +1,40 @@
+module test.claim.mt_collins_power_witness
+
+import std.types { Bool, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.mt_collins_power {
+  mt_collins_wall_watts_or_refusal, draw_is_derived, power_standing,
+  PowerDerived, PowerAssumedOnly, assumed_wall_watts, mt_collins_electrical,
+}
+
+// THE DERIVATION MUST REFUSE WHILE THE CENSUS IS UNREAD, and the refusal must not be a number.
+// A node whose memory draw cannot be derived does not draw only its processor, so a
+// CPU-plus-board figure is exactly what a power budget would divide by. Minus one cannot be
+// mistaken for a wattage; a zero could.
+fn refuses_while_census_unread() -> Bool {
+  !draw_is_derived() && mt_collins_wall_watts_or_refusal() == 0 - 1
+}
+
+// The standing must report AssumedOnly rather than quietly presenting the assumption as a
+// derivation. This is the check that flips when the census lands: it becomes a red demanding
+// the row be updated, which is the correct behaviour for evidence arriving.
+fn standing_is_assumed_only() -> Bool {
+  match power_standing() {
+    PowerDerived { wall_watts, assumed_watts } => false,
+    PowerAssumedOnly { assumed_watts, obligation } => assumed_watts == 650,
+  }
+}
+
+// The binding really is dual-socket. A one-socket figure charged to a two-socket node is the
+// error candidate_node_watts_note already records for the ASRock build, in the other direction.
+fn binding_is_dual_socket() -> Bool {
+  mt_collins_electrical.sockets == 2 && assumed_wall_watts() == 650
+}
+
+fn mt_collins_power_witness_all() -> Bool {
+  refuses_while_census_unread() && standing_is_assumed_only() && binding_is_dual_socket()
+}
+
+fn mt_collins_power_witness_main() -> ProcessExit {
+  if mt_collins_power_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "mt_collins_power_witness_all returned false" } }
+}

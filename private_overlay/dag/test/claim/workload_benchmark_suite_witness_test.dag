@@ -1,0 +1,412 @@
+module test.claim.workload_benchmark_suite_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.ci_acquisition { OutreachAdmission, OutreachAdmitted, OutreachRefused }
+import strategy.workload_benchmark_suite {
+  CensusVerdict,
+  DeclaredArchitecture, ArmDeclared, X64Declared, declared_architecture, architecture_is_arm,
+  ObservedExecution, NoRunObserved, RunObservedFailed, RunObservedCancelled,
+  RunObservedSucceededWithoutTests, RunObservedSucceededWithTests,
+  BaselineAdmission, BaselineAdmitted, BaselineRefused, baseline_admission, baseline_is_admitted,
+  observed_label,
+  CacheObservation, CacheUnobserved, CacheMissConfirmed, CacheHitConfirmed,
+  CacheMechanism, CacheCondition, LogicalCold, RemoteWarmOnFreshWorker,
+  CacheConditionUnestablished, cache_condition, cache_condition_is_warm,
+  ExternalEffect, ExternalEffectKind, RegistryPush, CloudRoleAssumption, CoverageUpload,
+  WorkflowArtifactUpload, EffectDisposition, RemovedFromBothRealizations, RetainedAndTimed,
+  effect_requires_removal, effect_is_removed, effect_disposition_is_sound,
+  ReplayDerivation, DerivedBuildTestReplay, PipelineExecutedAsPublished, replay_derivation,
+  BenchmarkOutcome, BenchmarkNotRun, BenchmarkFavorable, BenchmarkUnfavorable, BenchmarkIncomplete,
+  TrialAuthorization, TrialUnauthorized, TrialAuthorizedByOperator,
+  trial_authorization_from_benchmark, trial_is_authorized,
+  census_outreach_admission,
+  ProcessorFamilyRelation, SameProcessorFamily, DifferentProcessorFamily, ProcessorFamilyUnknown,
+  GapReading, ServicePathReading, SiliconReading, GapReadingUnavailable, gap_reading,
+  ubicloud_arm_family_relation,
+  WorkloadCandidate, candidate_declared_architecture, candidate_baseline, candidate_is_selected,
+  workload_census, selected_workloads, correctness_admitted_workloads,
+  candidate_biome_test, candidate_pdns_dnsdist_arm, candidate_openobserve_arm_build,
+  SamplingWindow, RunRateSample, LabelConsumption, ConsumptionSample,
+  ProviderAllowance, FreeAllowanceStanding, AllowanceBoundedBy, AllowanceUnresolved,
+  SpendScreen, SpendProvenAboveCeiling, SpendUnprovenBelowCeiling, SampleUnrepresentative,
+  spend_screen, spend_is_proven, sample_minutes_per_month, label_provider, provider_name,
+  label_is_billed_by, sample_covers_census_workload, window_is_long_enough,
+  minimum_extrapolation_window_hours,
+  ScreenedRepository, screened_verdict, spend_screen_population, repositories_with_proven_spend,
+  sample_biome, sample_pdns, sample_openobserve, depot_allowance, ubicloud_allowance,
+}
+
+// THE FIVE FORBIDDEN PROMOTIONS, HELD AS EXECUTABLE CLAIMS. Each witness below carries both
+// directions: the refusal, and a positive control that the mechanism can say yes at all. A
+// permanently-green check is a decoration, so every claim here has an authorable red - and the
+// reds were run: mutating a selected row's observed label to an unsuffixed x64 label turns
+// witness_x64_label_is_never_arm_evidence red, and that mutation is the one this item exists
+// to make impossible to land quietly.
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 1. Architecture is the label SUFFIX, and the unsuffixed label of a dual-architecture
+// provider is evidence of the OPPOSITE of what we want.
+// -------------------------------------------------------------------------------------
+
+fn label_is_arm(label: NonEmptyStr) -> Bool {
+  architecture_is_arm(a: declared_architecture(label: label))
+}
+
+test fn witness_x64_label_is_never_arm_evidence() -> Bool {
+  let ubicloud_x64_refused = label_is_arm(label: "ubicloud-standard-2") == false
+  let ubicloud_x64_wide_refused = label_is_arm(label: "ubicloud-standard-16") == false
+  let ubicloud_named_x64_refused = label_is_arm(label: "ubicloud-standard-8-ubuntu-2404") == false
+  let depot_x64_refused = label_is_arm(label: "depot-ubuntu-24.04-16") == false
+  let github_x64_refused = label_is_arm(label: "ubuntu-24.04") == false
+  let ubicloud_arm_admits = label_is_arm(label: "ubicloud-standard-2-arm")
+  let ubicloud_arm_wide_admits = label_is_arm(label: "ubicloud-standard-16-arm")
+  let depot_arm_admits = label_is_arm(label: "depot-ubuntu-24.04-arm-16")
+  let depot_arm_small_admits = label_is_arm(label: "depot-ubuntu-24.04-arm-small")
+  let github_arm_admits = label_is_arm(label: "ubuntu-24.04-arm")
+  ubicloud_x64_refused && ubicloud_x64_wide_refused && ubicloud_named_x64_refused
+    && depot_x64_refused && github_x64_refused
+    && ubicloud_arm_admits && ubicloud_arm_wide_admits && depot_arm_admits
+    && depot_arm_small_admits && github_arm_admits
+}
+
+// The census's own rows held to the same rule, in BOTH directions: what the YAML declared and
+// what the run reported. A selected workload whose observed runner was x64 is not an Arm
+// workload however its workflow file reads.
+fn candidate_declares_arm(c: WorkloadCandidate) -> Bool {
+  architecture_is_arm(a: candidate_declared_architecture(c: c))
+}
+
+fn candidate_observed_arm(c: WorkloadCandidate) -> Bool {
+  label_is_arm(label: observed_label(o: c.observed))
+}
+
+test fn witness_every_selected_workload_is_arm_declared_and_arm_observed() -> Bool {
+  let selected = selected_workloads()
+  let declared_arm = count(filter(selected, c => candidate_declares_arm(c: c)))
+  let observed_arm = count(filter(selected, c => candidate_observed_arm(c: c)))
+  count(selected) == 3 && declared_arm == 3 && observed_arm == 3
+}
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 2. A skipped, failed, cancelled or test-free run is not a baseline. The
+// discriminating case is the LAST one: OpenObserve's Arm job is green, and its green step is
+// named "Build and run binary", and it still refuses.
+// -------------------------------------------------------------------------------------
+
+fn admits(o: ObservedExecution) -> Bool {
+  baseline_is_admitted(b: baseline_admission(o: o))
+}
+
+test fn witness_only_an_executed_test_admits_a_baseline() -> Bool {
+  let with_tests = admits(o: RunObservedSucceededWithTests {
+    run_id: "control", job_id: "control", head_sha: "control",
+    observed_label: "ubicloud-standard-2-arm", test_step: "cargo test --workspace" })
+  let without_tests = admits(o: RunObservedSucceededWithoutTests {
+    run_id: "control", job_id: "control", head_sha: "control",
+    observed_label: "ubicloud-standard-2-arm", note: "compiled and moved a binary" }) == false
+  let failed = admits(o: RunObservedFailed {
+    run_id: "control", job_id: "control", cause: "test suite red" }) == false
+  let cancelled = admits(o: RunObservedCancelled { run_id: "control", job_id: "control" }) == false
+  let absent = admits(o: NoRunObserved { obligation: "no Arm run in the visible history" }) == false
+  with_tests && without_tests && failed && cancelled && absent
+}
+
+test fn witness_openobserve_green_arm_job_is_not_a_baseline() -> Bool {
+  let openobserve_refused = baseline_is_admitted(b: candidate_baseline(c: candidate_openobserve_arm_build)) == false
+  let biome_admitted = baseline_is_admitted(b: candidate_baseline(c: candidate_biome_test))
+  let pdns_admitted = baseline_is_admitted(b: candidate_baseline(c: candidate_pdns_dnsdist_arm))
+  let admitted_count = count(correctness_admitted_workloads())
+  openobserve_refused && biome_admitted && pdns_admitted && admitted_count == 2
+}
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 3. An unobserved cache is never warm. Every cache mechanism recorded by this census
+// is unobserved, because the census read YAML and run metadata and no cache log line.
+// -------------------------------------------------------------------------------------
+
+fn mechanism_is_warm(m: CacheMechanism) -> Bool {
+  cache_condition_is_warm(c: cache_condition(m: m))
+}
+
+test fn witness_unobserved_cache_is_never_warm() -> Bool {
+  let unobserved_not_warm = mechanism_is_warm(m: CacheMechanism {
+    name: "control", layer: "compiler outputs",
+    observation: CacheUnobserved { obligation: "not read" } }) == false
+  let miss_not_warm = mechanism_is_warm(m: CacheMechanism {
+    name: "control", layer: "compiler outputs",
+    observation: CacheMissConfirmed { evidence: "restore reported 0 hits" } }) == false
+  let hit_is_warm = mechanism_is_warm(m: CacheMechanism {
+    name: "control", layer: "compiler outputs",
+    observation: CacheHitConfirmed { evidence: "restore reported a full hit on a fresh worker" } })
+  unobserved_not_warm && miss_not_warm && hit_is_warm
+}
+
+fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
+  count(filter(c.caches, m => mechanism_is_warm(m: m)))
+}
+
+test fn witness_no_census_row_claims_a_warm_cache() -> Bool {
+  count(filter(workload_census, c => candidate_warm_cache_count(c: c) > 0)) == 0
+}
+
+// -------------------------------------------------------------------------------------
+// EXTERNAL MUTATIONS COME OUT OF BOTH REALIZATIONS, WHICH IS WHY THE RESULT IS A DERIVED
+// REPLAY. The positive control is the row with nothing to remove: Biome's job publishes
+// nothing, so its replay IS the published pipeline rather than a derivation of it.
+// -------------------------------------------------------------------------------------
+
+test fn witness_third_party_mutations_must_be_removed() -> Bool {
+  let push_requires = effect_requires_removal(k: RegistryPush { registry: "ghcr.io/example" })
+  let role_requires = effect_requires_removal(k: CloudRoleAssumption { role: "arn:aws:iam::0:role/Example" })
+  let coverage_requires = effect_requires_removal(k: CoverageUpload { service: "Coveralls" })
+  let artifact_retained = effect_requires_removal(k: WorkflowArtifactUpload { artifact: "binaries" }) == false
+  let unsound_is_caught = effect_disposition_is_sound(e: ExternalEffect {
+    kind: RegistryPush { registry: "ghcr.io/example" },
+    step: "control",
+    disposition: RetainedAndTimed { cause: "a registry push kept in the replay" } }) == false
+  push_requires && role_requires && coverage_requires && artifact_retained && unsound_is_caught
+}
+
+fn candidate_effects_are_sound(c: WorkloadCandidate) -> Bool {
+  count(filter(c.external_effects, e => effect_disposition_is_sound(e: e) == false)) == 0
+}
+
+test fn witness_every_census_row_disposes_its_effects_soundly() -> Bool {
+  count(filter(workload_census, c => candidate_effects_are_sound(c: c) == false)) == 0
+}
+
+fn derivation_is_derived(d: CensusVerdict<ReplayDerivation>) -> Bool {
+  match d.reading {
+    DerivedBuildTestReplay { removed_effects } => true,
+    PipelineExecutedAsPublished => false,
+  }
+}
+
+test fn witness_a_publishing_job_replays_only_as_a_derivation() -> Bool {
+  let openobserve_derived = derivation_is_derived(d: replay_derivation(effects: candidate_openobserve_arm_build.external_effects))
+  let pdns_derived = derivation_is_derived(d: replay_derivation(effects: candidate_pdns_dnsdist_arm.external_effects))
+  let biome_as_published = derivation_is_derived(d: replay_derivation(effects: candidate_biome_test.external_effects)) == false
+  openobserve_derived && pdns_derived && biome_as_published
+}
+
+// -------------------------------------------------------------------------------------
+// PROMOTION 5. No benchmark outcome authorizes a trial, and the arm that has to hold is the
+// FAVORABLE one. TrialAuthorizedByOperator carries a ci_acquisition.MigrationPrAuthorization
+// that nothing in the census module constructs, so the refusal is structural and this witness
+// is the executing evidence that it stayed structural.
+// -------------------------------------------------------------------------------------
+
+test fn witness_no_benchmark_outcome_authorizes_a_trial() -> Bool {
+  let favorable = trial_is_authorized(t: trial_authorization_from_benchmark(o: BenchmarkFavorable { receipt: "our fleet finished sooner on every repetition" })) == false
+  let unfavorable = trial_is_authorized(t: trial_authorization_from_benchmark(o: BenchmarkUnfavorable { receipt: "incumbent finished sooner" })) == false
+  let incomplete = trial_is_authorized(t: trial_authorization_from_benchmark(o: BenchmarkIncomplete { cause: "cache condition never established" })) == false
+  let not_run = trial_is_authorized(t: trial_authorization_from_benchmark(o: BenchmarkNotRun)) == false
+  favorable && unfavorable && incomplete && not_run
+}
+
+test fn witness_no_census_row_carries_a_trial_authorization() -> Bool {
+  count(filter(workload_census, c => trial_is_authorized(t: c.trial))) == 0
+}
+
+// The census found these repositories by reading GitHub, so it hands ci_acquisition the truth
+// about its own provenance and that module refuses. Nothing here is a second outreach rule.
+fn admission_is_refused(a: OutreachAdmission) -> Bool {
+  match a {
+    OutreachRefused { cause } => true,
+    OutreachAdmitted { provenance_note, jurisdiction, suppression_checked, human_authorization } => false,
+  }
+}
+
+test fn witness_census_provenance_refuses_outreach() -> Bool {
+  admission_is_refused(a: census_outreach_admission())
+}
+
+// -------------------------------------------------------------------------------------
+// THE READING. Same processor family on both sides means a gap is a SERVICE-PATH gap. The
+// controls prove the derivation discriminates: a different family reads as confounded, and an
+// unobserved one reads as no verdict at all.
+// -------------------------------------------------------------------------------------
+
+fn reading_is_service_path(g: CensusVerdict<GapReading>) -> Bool {
+  match g.reading {
+    ServicePathReading { note } => true,
+    SiliconReading { note } => false,
+    GapReadingUnavailable { cause } => false,
+  }
+}
+
+test fn witness_matched_silicon_reads_as_a_service_path_gap() -> Bool {
+  let ubicloud_service_path = reading_is_service_path(g: gap_reading(r: ubicloud_arm_family_relation))
+  let different_not_service_path = reading_is_service_path(g: gap_reading(r: DifferentProcessorFamily {
+    our_part: "Ampere Altra", incumbent_part: "AMD EPYC", source: "control" })) == false
+  let unknown_not_service_path = reading_is_service_path(g: gap_reading(r: ProcessorFamilyUnknown {
+    obligation: "control" })) == false
+  ubicloud_service_path && different_not_service_path && unknown_not_service_path
+}
+
+// -------------------------------------------------------------------------------------
+// THE POPULATION IS CLOSED AND ITS REJECTIONS STAY VISIBLE. Three selected, two of them
+// correctness-admitted, and every non-selected candidate still carrying its reason.
+// -------------------------------------------------------------------------------------
+
+test fn witness_rejected_candidates_stay_in_the_population() -> Bool {
+  let total = count(workload_census)
+  let selected = count(selected_workloads())
+  total == 6 && selected == 3 && (total - selected) == 3
+}
+
+// -------------------------------------------------------------------------------------
+// THE SPEND SCREEN. It proves a bill or it says nothing, and "nothing" has to stay distinguishable
+// from "no bill" - which is why two of the three arms refuse and only one asserts.
+// -------------------------------------------------------------------------------------
+
+fn screen_reading_is_unrepresentative(v: CensusVerdict<SpendScreen>) -> Bool {
+  match v.reading {
+    SampleUnrepresentative { cause } => true,
+    SpendProvenAboveCeiling { provider, observed_minutes_per_month, ceiling_minutes_per_month, note } => false,
+    SpendUnprovenBelowCeiling { provider, observed_minutes_per_month, cause } => false,
+  }
+}
+
+// ATTRIBUTION. PowerDNS burns roughly 282,000 minutes a month on ubuntu-24.04 - five times the
+// ceiling and entirely GitHub-hosted. If those minutes were attributed to Ubicloud the screen would
+// report an enormous fictional bill, so this is the control that keeps the biggest number in the
+// census out of the smallest provider's column.
+test fn witness_only_the_paying_providers_labels_are_billed_to_it() -> Bool {
+  let depot_label = provider_name(p: label_provider(label: "depot-ubuntu-24.04-arm-16")) == "depot"
+  let ubicloud_label = provider_name(p: label_provider(label: "ubicloud-standard-8-ubuntu-2404")) == "ubicloud"
+  let hosted_label = provider_name(p: label_provider(label: "ubuntu-24.04")) == "github-hosted"
+  let hosted_arm_label = provider_name(p: label_provider(label: "ubuntu-24.04-arm")) == "github-hosted"
+  let not_cross_billed = label_is_billed_by(label: "ubuntu-24.04", provider: "ubicloud") == false
+  let pdns_excludes_hosted = sample_minutes_per_month(s: sample_pdns) < 50000
+  depot_label && ubicloud_label && hosted_label && hosted_arm_label && not_cross_billed && pdns_excludes_hosted
+}
+
+// A synthetic sample so each arm can be driven independently of what the three real repositories
+// happen to do this week.
+fn probe_sample(hours: Int, thousandths: Int, covers: Bool) -> ConsumptionSample {
+  ConsumptionSample {
+    repository: "control/repo",
+    provider: "depot",
+    rate: RunRateSample {
+      runs_counted: 500,
+      window: SamplingWindow { start: "control-start", end: "control-end", hours: hours },
+      runs_per_month: 1000,
+    },
+    provider_labels: [LabelConsumption { label: "depot-ubuntu-24.04-arm-16", minutes_per_run_thousandths: thousandths }],
+    jobs_sampled_from_runs: 30,
+    incoherent_job_durations: 0,
+    workflows_observed: [if covers { ".github/workflows/ci.yml" } else { ".github/workflows/other.yml" }],
+    census_workflow_path: ".github/workflows/ci.yml",
+  }
+}
+
+fn probe_screen(hours: Int, thousandths: Int, covers: Bool, a: ProviderAllowance) -> CensusVerdict<SpendScreen> {
+  spend_screen(s: probe_sample(hours: hours, thousandths: thousandths, covers: covers), a: a)
+}
+
+// THE CEILING COMPARISON, IN BOTH DIRECTIONS. 1000 runs/month at 51 minutes each is 51,000 - just
+// over the 50,000 ceiling - and at 49 minutes it is 49,000, just under. The screen must flip
+// exactly there and must never promote the under case.
+test fn witness_below_the_ceiling_is_never_proven_spend() -> Bool {
+  let over = spend_is_proven(v: probe_screen(hours: 100, thousandths: 51000, covers: true, a: depot_allowance))
+  let under = spend_is_proven(v: probe_screen(hours: 100, thousandths: 49000, covers: true, a: depot_allowance)) == false
+  let far_under = spend_is_proven(v: probe_screen(hours: 100, thousandths: 100, covers: true, a: depot_allowance)) == false
+  over && under && far_under
+}
+
+// A BURST IS NOT A RATE, and the window test has to run BEFORE the ceiling test because it is the
+// one sampling error that inflates. A sample twenty times over the ceiling still refuses when its
+// window is three hours.
+test fn witness_a_short_window_refuses_before_the_ceiling_is_read() -> Bool {
+  let short_refused = screen_reading_is_unrepresentative(v: probe_screen(hours: 3, thousandths: 1000000, covers: true, a: depot_allowance))
+  let short_not_proven = spend_is_proven(v: probe_screen(hours: 3, thousandths: 1000000, covers: true, a: depot_allowance)) == false
+  let long_enough_proves = spend_is_proven(v: probe_screen(hours: 24, thousandths: 1000000, covers: true, a: depot_allowance))
+  let boundary = window_is_long_enough(w: SamplingWindow { start: "c", end: "c", hours: minimum_extrapolation_window_hours })
+  short_refused && short_not_proven && long_enough_proves && boundary
+}
+
+// AN UNBOUNDED ALLOWANCE CANNOT BE EXCEEDED. Ubicloud's free tier for public repositories could not
+// be bounded from public sources, so no volume proves a bill there - and the same consumption that
+// proves spend against Depot's bounded ceiling must not prove it against an unresolved one.
+test fn witness_an_unresolved_allowance_never_proves_spend() -> Bool {
+  let bounded_proves = spend_is_proven(v: probe_screen(hours: 100, thousandths: 51000, covers: true, a: depot_allowance))
+  let unresolved_refuses = spend_is_proven(v: probe_screen(hours: 100, thousandths: 51000, covers: true, a: ubicloud_allowance)) == false
+  let unresolved_huge_refuses = spend_is_proven(v: probe_screen(hours: 100, thousandths: 5100000, covers: true, a: ubicloud_allowance)) == false
+  bounded_proves && unresolved_refuses && unresolved_huge_refuses
+}
+
+// COVERAGE ONLY BITES BELOW THE CEILING, which is the asymmetry stated as an executable claim: an
+// above-ceiling reading survives a sample that never saw the repository's heavy workflow, because
+// missing heavy work can only have made the number SMALLER.
+test fn witness_coverage_gaps_refuse_below_the_ceiling_but_not_above_it() -> Bool {
+  let above_survives_gap = spend_is_proven(v: probe_screen(hours: 100, thousandths: 51000, covers: false, a: depot_allowance))
+  let below_with_gap_refuses = screen_reading_is_unrepresentative(v: probe_screen(hours: 100, thousandths: 100, covers: false, a: depot_allowance))
+  let below_with_coverage_reports = screen_reading_is_unrepresentative(v: probe_screen(hours: 100, thousandths: 100, covers: true, a: depot_allowance)) == false
+  above_survives_gap && below_with_gap_refuses && below_with_coverage_reports
+}
+
+// THE THREE REAL REPOSITORIES LAND ON THE THREE DIFFERENT ARMS, which is the evidence that the
+// third arm is doing work rather than sitting unreachable.
+test fn witness_the_screen_ranks_exactly_one_repository_as_paying() -> Bool {
+  let biome = spend_is_proven(v: screened_verdict(r: ScreenedRepository { sample: sample_biome, allowance: depot_allowance }))
+  let pdns_not = spend_is_proven(v: screened_verdict(r: ScreenedRepository { sample: sample_pdns, allowance: ubicloud_allowance })) == false
+  let pdns_reported = screen_reading_is_unrepresentative(v: screened_verdict(r: ScreenedRepository { sample: sample_pdns, allowance: ubicloud_allowance })) == false
+  let oo_unrepresentative = screen_reading_is_unrepresentative(v: screened_verdict(r: ScreenedRepository { sample: sample_openobserve, allowance: ubicloud_allowance }))
+  let ranked = count(repositories_with_proven_spend()) == 1
+  let population = count(spend_screen_population) == 3
+  biome && pdns_not && pdns_reported && oo_unrepresentative && ranked && population
+}
+
+fn wbs_flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn workload_census_witness_report() -> NonEmptyStr {
+  join([
+    "x64_never_arm=", wbs_flag(b: witness_x64_label_is_never_arm_evidence()),
+    " selected_arm=", wbs_flag(b: witness_every_selected_workload_is_arm_declared_and_arm_observed()),
+    " baseline_needs_tests=", wbs_flag(b: witness_only_an_executed_test_admits_a_baseline()),
+    " openobserve_not_baseline=", wbs_flag(b: witness_openobserve_green_arm_job_is_not_a_baseline()),
+    " unobserved_not_warm=", wbs_flag(b: witness_unobserved_cache_is_never_warm()),
+    " no_warm_claims=", wbs_flag(b: witness_no_census_row_claims_a_warm_cache()),
+    " mutations_removed=", wbs_flag(b: witness_third_party_mutations_must_be_removed()),
+    " effects_sound=", wbs_flag(b: witness_every_census_row_disposes_its_effects_soundly()),
+    " replay_derived=", wbs_flag(b: witness_a_publishing_job_replays_only_as_a_derivation()),
+    " no_trial_from_benchmark=", wbs_flag(b: witness_no_benchmark_outcome_authorizes_a_trial()),
+    " no_row_authorizes_trial=", wbs_flag(b: witness_no_census_row_carries_a_trial_authorization()),
+    " outreach_refused=", wbs_flag(b: witness_census_provenance_refuses_outreach()),
+    " service_path_reading=", wbs_flag(b: witness_matched_silicon_reads_as_a_service_path_gap()),
+    " population_closed=", wbs_flag(b: witness_rejected_candidates_stay_in_the_population()),
+    " provider_attribution=", wbs_flag(b: witness_only_the_paying_providers_labels_are_billed_to_it()),
+    " below_ceiling_unproven=", wbs_flag(b: witness_below_the_ceiling_is_never_proven_spend()),
+    " short_window_refuses=", wbs_flag(b: witness_a_short_window_refuses_before_the_ceiling_is_read()),
+    " unresolved_allowance=", wbs_flag(b: witness_an_unresolved_allowance_never_proves_spend()),
+    " coverage_asymmetry=", wbs_flag(b: witness_coverage_gaps_refuse_below_the_ceiling_but_not_above_it()),
+    " one_payer_ranked=", wbs_flag(b: witness_the_screen_ranks_exactly_one_repository_as_paying()),
+  ], "")
+}
+
+fn workload_census_witness_main() -> ProcessExit {
+  let report = workload_census_witness_report()
+  let all_pass = witness_x64_label_is_never_arm_evidence()
+    && witness_every_selected_workload_is_arm_declared_and_arm_observed()
+    && witness_only_an_executed_test_admits_a_baseline()
+    && witness_openobserve_green_arm_job_is_not_a_baseline()
+    && witness_unobserved_cache_is_never_warm()
+    && witness_no_census_row_claims_a_warm_cache()
+    && witness_third_party_mutations_must_be_removed()
+    && witness_every_census_row_disposes_its_effects_soundly()
+    && witness_a_publishing_job_replays_only_as_a_derivation()
+    && witness_no_benchmark_outcome_authorizes_a_trial()
+    && witness_no_census_row_carries_a_trial_authorization()
+    && witness_census_provenance_refuses_outreach()
+    && witness_matched_silicon_reads_as_a_service_path_gap()
+    && witness_rejected_candidates_stay_in_the_population()
+    && witness_only_the_paying_providers_labels_are_billed_to_it()
+    && witness_below_the_ceiling_is_never_proven_spend()
+    && witness_a_short_window_refuses_before_the_ceiling_is_read()
+    && witness_an_unresolved_allowance_never_proves_spend()
+    && witness_coverage_gaps_refuse_below_the_ceiling_but_not_above_it()
+    && witness_the_screen_ranks_exactly_one_repository_as_paying()
+  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
+}

@@ -1,0 +1,134 @@
+module test.claim.fleet_qualification_witness
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { Bool }
+import std.nat { Nat }
+import strategy.fleet_qualification {
+  PopulationVerdict, PopulationAccepted, PopulationRefused,
+  PopulationRefusalCause, MixedRegisteredAndLoadReduced, ChannelsNotFullyPopulated, CapacityBelowFloor,
+  CapacityObservation, CapacityMeasured, CapacityUnmeasured,
+  FleetAdmission, Admitted, AdmissionRefused,
+  ProcurementVerdict, ProcurementAdmitted, ProcurementRefused,
+  population_verdict, fleet_admission, admission_is_admitted,
+  matrix_is_complete, bulk_memory_procurement, cell_is_measured,
+  matrix_2666_reference, matrix_2133,
+  admission_floor_per_mille, channels_per_socket_required, node_capacity_floor_mib,
+}
+
+// Every check pairs an accepting control with a discriminating red. The reds here are the
+// interesting half: this module's whole claim is that it REFUSES things, and a refusal that
+// never fires is indistinguishable from a function returning true.
+
+fn witness_population_accepts_a_good_node() -> Bool {
+  match population_verdict(registered_and_load_reduced_mixed: false, channels_populated: 8, total_mib: 262144) {
+    PopulationAccepted => true,
+    PopulationRefused { cause } => false,
+  }
+}
+
+// RDIMM/LRDIMM mixing must refuse even when every OTHER property is perfect — channels full,
+// capacity ample. If this arm were ordered after the numeric checks it would be shadowed by
+// them on most real inputs and nobody would notice.
+fn witness_mixed_dimm_types_refuse() -> Bool {
+  match population_verdict(registered_and_load_reduced_mixed: true, channels_populated: 8, total_mib: 1048576) {
+    PopulationAccepted => false,
+    PopulationRefused { cause } => match cause {
+      MixedRegisteredAndLoadReduced { detail } => true,
+      ChannelsNotFullyPopulated { populated, required } => false,
+      CapacityBelowFloor { observed_mib, floor_mib } => false,
+    },
+  }
+}
+
+fn witness_partial_channels_refuse() -> Bool {
+  match population_verdict(registered_and_load_reduced_mixed: false, channels_populated: 5, total_mib: 262144) {
+    PopulationAccepted => false,
+    PopulationRefused { cause } => match cause {
+      ChannelsNotFullyPopulated { populated, required } => true,
+      MixedRegisteredAndLoadReduced { detail } => false,
+      CapacityBelowFloor { observed_mib, floor_mib } => false,
+    },
+  }
+}
+
+fn witness_capacity_below_floor_refuses() -> Bool {
+  match population_verdict(registered_and_load_reduced_mixed: false, channels_populated: 8, total_mib: 131072) {
+    PopulationAccepted => false,
+    PopulationRefused { cause } => true,
+  }
+}
+
+// An UNMEASURED node must not be admitted. This is the arm that stops "it booted, ship it"
+// from becoming the fleet policy, and it is the one most likely to be quietly relaxed under
+// delivery pressure, so it is enrolled rather than trusted.
+fn witness_unmeasured_node_is_not_admitted() -> Bool {
+  admission_is_admitted(fleet_admission(
+    node_identity: "fixture",
+    population: PopulationAccepted,
+    capacity: CapacityUnmeasured { obligation: "fixture" },
+  )) == false
+}
+
+fn witness_admits_at_and_above_floor() -> Bool {
+  admission_is_admitted(fleet_admission(
+    node_identity: "fixture",
+    population: PopulationAccepted,
+    capacity: CapacityMeasured { relative_throughput_per_mille: admission_floor_per_mille, receipt: "fixture" },
+  ))
+}
+
+// One per mille below the floor must refuse. A boundary check that only fires far from the
+// boundary is not a boundary check.
+fn witness_refuses_one_per_mille_below_floor() -> Bool {
+  admission_is_admitted(fleet_admission(
+    node_identity: "fixture",
+    population: PopulationAccepted,
+    capacity: CapacityMeasured { relative_throughput_per_mille: admission_floor_per_mille - 1, receipt: "fixture" },
+  )) == false
+}
+
+// A refused population must never reach the performance test: a node that cannot legally be
+// built does not get to argue about its throughput.
+fn witness_bad_population_refuses_despite_good_measurement() -> Bool {
+  admission_is_admitted(fleet_admission(
+    node_identity: "fixture",
+    population: PopulationRefused { cause: ChannelsNotFullyPopulated { populated: 4, required: channels_per_persocket_placeholder() } },
+    capacity: CapacityMeasured { relative_throughput_per_mille: 1000, receipt: "fixture" },
+  )) == false
+}
+
+fn channels_per_persocket_placeholder() -> Nat {
+  channels_per_socket_required
+}
+
+// The live state must currently REFUSE procurement, because no cell has been measured. This
+// is not a restatement of the matrix check: it asserts that the rows COMMITTED here are the
+// unmeasured ones, so that filling in a throughput figure without a receipt does not silently
+// unlock a two-hundred-module purchase.
+fn witness_procurement_currently_refuses() -> Bool {
+  match bulk_memory_procurement() {
+    ProcurementAdmitted => false,
+    ProcurementRefused { cause } => true,
+  }
+}
+
+fn witness_matrix_cells_are_unmeasured() -> Bool {
+  !cell_is_measured(matrix_2666_reference) && !cell_is_measured(matrix_2133) && !matrix_is_complete()
+}
+
+fn fleet_qualification_witness_all() -> Bool {
+  witness_population_accepts_a_good_node()
+    && witness_mixed_dimm_types_refuse()
+    && witness_partial_channels_refuse()
+    && witness_capacity_below_floor_refuses()
+    && witness_unmeasured_node_is_not_admitted()
+    && witness_admits_at_and_above_floor()
+    && witness_refuses_one_per_mille_below_floor()
+    && witness_bad_population_refuses_despite_good_measurement()
+    && witness_procurement_currently_refuses()
+    && witness_matrix_cells_are_unmeasured()
+}
+
+fn fleet_qualification_witness_main() -> ProcessExit {
+  if fleet_qualification_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "fleet_qualification_witness_all returned false" } }
+}

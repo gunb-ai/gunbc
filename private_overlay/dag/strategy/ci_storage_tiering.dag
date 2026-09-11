@@ -1,0 +1,582 @@
+module strategy.ci_storage_tiering
+
+import std.types { Int, List, NonEmptyStr, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.interval { OrderedClosedInterval, degenerate_interval }
+import std.pareto {
+  AxisGoal, LowerIsBetter,
+  SelectionAxis, AxisReading, AxisGap, ParetoEntry, ParetoStanding,
+  entry_standing, pareto_label,
+}
+
+// THE STORAGE/SERVING TIER SELECTION (operator direction 2026-08-29: this axis was
+// missing from the Pareto model). Grain: one S1 rack-month at the planning book -
+// 21 nodes, 2,100 sellable vCPU, 30% utilization, ~2.7M jobs/month at 5 minutes,
+// 2 GB of cache/image restore per job start (PLANNING FIGURE - the S0 per-job
+// cache-bytes receipt retires it and could move every number here).
+//
+// ADMISSION BEFORE PARETO. Serving ~5.4 PB/month of cache reads is ~17 Gbps AVERAGE
+// (2-3x at diurnal peak). A candidate whose hot serving crosses the site's DIA is not
+// a worse point on a cost axis - it is INADMISSIBLE at the modeled circuit, and saying
+// so with a typed refusal is the state-space distinction the axes must not absorb: a
+// cheap-looking all-cloud row would otherwise survive the frontier it cannot serve.
+
+// Base inputs, each a named planning assumption (external review 2026-08-29: the job
+// count was hiding an average-2-vCPU-per-job assumption, and the Gbps figure was a
+// second manually synchronized copy - both now derive). Units: decimal GB throughout.
+data planning_sellable_vcpu: Int = 2100
+data planning_utilization_permille: Int = 300
+data planning_avg_allocated_vcpu_per_job: Int = 2
+data planning_avg_job_duration_minutes: Int = 5
+data planning_month_minutes: Int = 43200
+data planning_restore_gb_per_job: Int = 2
+data planning_dia_gbps: Int = 10
+data planning_peak_multiplier: Int = 3
+
+fn planning_jobs_per_month() -> Int {
+  planning_sellable_vcpu * planning_utilization_permille * planning_month_minutes
+    / (1000 * planning_avg_allocated_vcpu_per_job * planning_avg_job_duration_minutes)
+}
+
+fn planning_monthly_serving_gb() -> Int {
+  planning_jobs_per_month() * planning_restore_gb_per_job
+}
+
+// GB/month to average Gbps: gigabytes x 8 gigabits over the month's seconds.
+fn planning_hot_serving_gbps_average() -> Int {
+  planning_monthly_serving_gb() * 8 / (planning_month_minutes * 60)
+}
+
+type ServingLocality
+  = HotServedLocally
+  | HotServedLocallyWithOriginMiss { assumed_local_hit_permille: Int }
+  | HotServedOverWan
+
+type DurableHome
+  = DurableInCloudObjectStorage { provider_note: NonEmptyStr }
+  | DurableOnLocalDrives { ops_note: NonEmptyStr }
+
+// COST IS DECOMPOSED BY THE IDENTITY OF THE UNCERTAIN INPUT, not by the row holding the total. The
+// hybrid rows are "drive amortization plus object storage", and those two parts have different
+// evidence natures: the amortization is this candidate's own BOM, while the object-storage rate is
+// ONE provider rate that both hybrid rows pay at the same time. Handing each row an independent
+// [535, 985] interval would admit a world where hybrid buys storage at 300 while diskless buys the
+// same storage at 750 - the shared-parameter error corrected in ci_build_frontier, recreated in a
+// second domain. So the shared rate is a scenario and the candidate-specific part is a quoted point.
+//
+// The published cloud rows are NOT on this parameter: S3, R2 and B2 are different providers with
+// their own separately quoted rates, so each carries its own fixed cost.
+// THE FIXED COMPONENT IS ITSELF EVIDENCE AND MOSTLY IS NOT GROUNDED. all-local's "~$600/mo hardware
+// amortized", hybrid's "~$235/mo drive amortization (21 x 2x4TB used U.2)" and the diskless row's
+// boot-service increment are planning figures over USED-MARKET drive prices with no quoted rate and
+// no declared band, so they are approximations wearing point precision - the same defect as the
+// makeshift bay, one layer in. The published provider rows are different: their monthly figures are
+// COMPUTED from cited published unit rates (R2 at 0.015/GB-mo, B2 at ~6.95/TB-mo, S3 storage plus
+// egress), so those are derivations from quoted authorities rather than guesses.
+type FixedCostEvidence
+  = FixedComputedFromQuotedRates { micro: Int, citation: NonEmptyStr }
+  | FixedUngrounded { obligation: NonEmptyStr }
+
+type TierCostBasis
+  = QuotedMonthlyCost { micro: Int }
+  | ObjectStorageDependentCost { candidate_fixed: FixedCostEvidence }
+  | UngroundedCost { obligation: NonEmptyStr }
+
+// Every warm-start figure here is an estimate. The module's own sensitivity row says so, and the R2
+// description says "8-20s restore" beside a field holding 12000 - a declared range already
+// collapsed to its middle. No row carries a measurement or bounds, so there is nothing to build an
+// interval from for ANY candidate. The carrier stays so the first measured restore funds the axis.
+type LatencyEvidence
+  = LatencyMeasured { interval_ms: OrderedClosedInterval<Int>, receipt: NonEmptyStr }
+  | LatencyEstimated { planning_ms: Int, obligation: NonEmptyStr }
+
+type StorageTierCandidate {
+  id: NonEmptyStr
+  description: NonEmptyStr
+  serving: ServingLocality
+  durable: DurableHome
+  cost_basis: TierCostBasis
+  warm_start: LatencyEvidence
+  local_durable_surfaces: Int
+  boot_media_per_node: Int
+}
+
+data tier_all_cloud_s3: StorageTierCandidate = StorageTierCandidate {
+  id: "all-cloud-s3",
+  description: "Everything in S3-class storage with metered egress: durable truth AND hot serving. Egress alone at 5.4 PB/mo x ~$90/TB is ~$486k/mo - beside the point, because the bytes cannot cross a 10G DIA at all.",
+  serving: HotServedOverWan,
+  durable: DurableInCloudObjectStorage { provider_note: "S3 standard, ~$23/TB-mo + $90/TB egress" },
+  cost_basis: UngroundedCost { obligation: "monthly cost is a transcribed product, not a quote: the S3 rates ($23/TB-mo, $90/TB egress) are quoted but the 5.4 PB/mo egress volume is a PLANNING workload figure with no declared band, and the multiplication itself is authored in prose rather than modeled. A rate times an estimate is an estimate" },
+  warm_start: LatencyEstimated { planning_ms: 15000, obligation: "warm-start time has no measurement: these are planning estimates pending a pilot that measures restore on real NVMe and real WAN, and no row carries bounds" },
+  local_durable_surfaces: 0,
+  boot_media_per_node: 1,
+}
+
+data tier_all_cloud_r2: StorageTierCandidate = StorageTierCandidate {
+  id: "all-cloud-r2",
+  description: "Everything in Cloudflare R2 Standard: $0.015/GB-mo storage (~$750 at 50 TB), zero Internet egress, Class A/B operations billed (~$100/mo at ~100 GETs/job after the 10M free tier). Would LOOK like the cheapest admissible row if its monthly figure were a quote - it is a published rate times an estimated 50 TB and ~100 GETs/job, so it now carries no cost reading at all - and 8-20s restore added to every job start - and still inadmissible: ~17 Gbps average through a 10G DIA. The row exists to show why admission runs before the frontier: it is refused before any axis is consulted, which is why it still reaches a typed refusal now that it carries no cost reading to survive on. Admission by a larger circuit must join that circuit's own MRC into this row - a candidate may not borrow a network realization whose cost it does not carry.",
+  serving: HotServedOverWan,
+  durable: DurableInCloudObjectStorage { provider_note: "R2 Standard: zero egress by contract, operations metered" },
+  cost_basis: UngroundedCost { obligation: "monthly cost is a transcribed product, not a quote: the R2 rate ($0.015/GB-mo) and the zero-egress term are contractual, but 50 TB stored and ~100 GETs/job are PLANNING workload figures with no declared band, and the multiplication is authored in prose rather than modeled" },
+  warm_start: LatencyEstimated { planning_ms: 12000, obligation: "warm-start time has no measurement: these are planning estimates pending a pilot that measures restore on real NVMe and real WAN, and no row carries bounds" },
+  local_durable_surfaces: 0,
+  boot_media_per_node: 1,
+}
+
+data tier_all_cloud_b2: StorageTierCandidate = StorageTierCandidate {
+  id: "all-cloud-b2",
+  description: "Everything in Backblaze B2: ~$6.95/TB-mo storage (~$348 at 50 TB) - but B2's free direct egress is capped at 3x average monthly storage (150 TB here); the remaining ~5.25 PB/mo of direct serving bills at ~$10/TB = ~$52,500/mo. The external review's point made a row: zero-egress differs materially by provider CONTRACT, and the B2-direct realization of the same architecture is 60x the R2 realization's cost. Refused on bandwidth admission regardless.",
+  serving: HotServedOverWan,
+  durable: DurableInCloudObjectStorage { provider_note: "B2: free egress capped at 3x stored; partner/CDN paths differ and would be their own candidate" },
+  cost_basis: UngroundedCost { obligation: "monthly cost is a transcribed product, not a quote: the B2 rates (~$6.95/TB-mo, ~$10/TB over the 3x-storage free-egress cap) are quoted but the 50 TB stored and the ~5.25 PB/mo billed remainder are PLANNING workload figures with no declared band, and both the cap arithmetic and the multiplication are authored in prose rather than modeled" },
+  warm_start: LatencyEstimated { planning_ms: 12000, obligation: "warm-start time has no measurement: these are planning estimates pending a pilot that measures restore on real NVMe and real WAN, and no row carries bounds" },
+  local_durable_surfaces: 0,
+  boot_media_per_node: 1,
+}
+
+data tier_all_local: StorageTierCandidate = StorageTierCandidate {
+  id: "all-local-durable",
+  description: "Durability AND serving on owned drives: replicated pairs, a real drive-health program (SMART monitoring, scrubbing, rebuild windows), backups still needed somewhere off-site. ~$600/mo hardware amortized but every local drive is now a durable-state surface whose failure loses data, not warmth.",
+  serving: HotServedLocally,
+  durable: DurableOnLocalDrives { ops_note: "42 drives durable: replication, scrub, rebuild, off-site backup - the ops program the operator called a PITA, priced in kind" },
+  cost_basis: UngroundedCost { obligation: "hardware amortization is not grounded: ~600 a month is a planning amortization over used-market drive prices with no quoted rate and no declared band. This row buys no object storage, so its cost does not move with that rate either - the gap is its own" },
+  warm_start: LatencyEstimated { planning_ms: 800, obligation: "warm-start time has no measurement: these are planning estimates pending a pilot that measures restore on real NVMe and real WAN, and no row carries bounds" },
+  local_durable_surfaces: 42,
+  boot_media_per_node: 1,
+}
+
+data tier_hybrid: StorageTierCandidate = StorageTierCandidate {
+  id: "hybrid-cloud-durable-local-cache",
+  description: "Durable truth 100% in zero-egress object storage; every local NVMe byte rehydratable by construction (job scratch, warm cache, public-dep mirror). A failed drive loses warmth, never data: no DURABLE-drive health program (no RAID, no scrubbing, no rebuild) - media telemetry, auto-cull and a spare pool remain, so a degraded device does not turn every read into an origin miss. ~$235/mo drive amortization (21 x 2x4TB used U.2) + ~$300-750/mo object storage.",
+  serving: HotServedLocallyWithOriginMiss { assumed_local_hit_permille: 950 },
+  durable: DurableInCloudObjectStorage { provider_note: "zero-egress-by-contract object storage for images, toolchains, artifacts, logs, receipts, cache source-of-truth; hybrid origin traffic is MISS traffic, so B2's 3x-storage egress cap can also fit at this grain" },
+  cost_basis: ObjectStorageDependentCost { candidate_fixed: FixedUngrounded { obligation: "drive amortization is not grounded: the figure is a planning amortization over USED-MARKET U.2 drive prices with no quoted rate and no declared band, so no interval can be derived from it and this candidate carries no cost reading" } },
+  warm_start: LatencyEstimated { planning_ms: 800, obligation: "warm-start time has no measurement: these are planning estimates pending a pilot that measures restore on real NVMe and real WAN, and no row carries bounds" },
+  local_durable_surfaces: 0,
+  boot_media_per_node: 1,
+}
+
+data tier_hybrid_diskless: StorageTierCandidate = StorageTierCandidate {
+  id: "hybrid-diskless-netboot",
+  description: "The hybrid row completed: nodes network-boot an immutable OS image into RAM-root (iPXE/UEFI HTTP from a redundant pair of site boot hosts, images mirrored from object storage), so no node carries ANY durable state - image update is a reboot, and node OS STATE reverts on power-cycle (firmware, credentials, cache bytes and external effects remain separately governed: signed image manifests, short-lived machine identity and digest-verified cache are the rest of that story). Intake's live-boot IS the production boot path. Costs a site boot service and ~30-60s slower cold boot; deletes the boot-drive line from every node's BOM.",
+  serving: HotServedLocallyWithOriginMiss { assumed_local_hit_permille: 950 },
+  durable: DurableInCloudObjectStorage { provider_note: "as hybrid; plus the boot image itself" },
+  cost_basis: ObjectStorageDependentCost { candidate_fixed: FixedUngrounded { obligation: "boot-service cost is not grounded: the row cites a site boot service and the deleted per-node boot drive but quotes no amount for either, so its fixed component is an unquoted planning figure" } },
+  warm_start: LatencyEstimated { planning_ms: 800, obligation: "warm-start time has no measurement: these are planning estimates pending a pilot that measures restore on real NVMe and real WAN, and no row carries bounds" },
+  local_durable_surfaces: 0,
+  boot_media_per_node: 0,
+}
+
+data storage_tier_candidates: List<StorageTierCandidate> = [
+  tier_all_cloud_s3,
+  tier_all_cloud_r2,
+  tier_all_cloud_b2,
+  tier_all_local,
+  tier_hybrid,
+  tier_hybrid_diskless,
+]
+
+// ---------------------------------------------------------------------------------------------
+// ADMISSION: hot serving must fit the site circuit. A typed refusal, never an axis reading.
+// ---------------------------------------------------------------------------------------------
+
+type ServingAdmission
+  = ServingAdmitted
+  | ServingAdmittedWithOriginBudget { origin_peak_gbps: Int, dia_gbps: Int }
+  | ServingRefusedExceedsDia { required_gbps_average: Int, dia_gbps: Int }
+
+// A hybrid candidate is admitted CONDITIONALLY: its origin traffic is miss traffic,
+// (1 - hit) x average x peak multiplier, and must fit the circuit. The assumed hit
+// ratio is a planning figure the S0 receipt replaces (bytes_hit_local vs
+// bytes_fetched_origin, p50/p95/p99, concurrent-start distribution); a disk failure
+// converts local hits to origin misses, so the same budget is the degraded-arm budget,
+// and mass rewarm (50 TB over 10G is ~11-16h before customer traffic) is a declared
+// event class, not an ordinary miss.
+fn serving_admission(c: StorageTierCandidate) -> ServingAdmission {
+  match c.serving {
+    HotServedLocally => ServingAdmitted,
+    HotServedLocallyWithOriginMiss { assumed_local_hit_permille } => {
+      let origin_peak = planning_hot_serving_gbps_average() * (1000 - assumed_local_hit_permille) * planning_peak_multiplier / 1000
+      if origin_peak > planning_dia_gbps {
+        ServingRefusedExceedsDia { required_gbps_average: origin_peak, dia_gbps: planning_dia_gbps }
+      } else {
+        ServingAdmittedWithOriginBudget { origin_peak_gbps: origin_peak, dia_gbps: planning_dia_gbps }
+      }
+    },
+    HotServedOverWan =>
+      if planning_hot_serving_gbps_average() > planning_dia_gbps {
+        ServingRefusedExceedsDia { required_gbps_average: planning_hot_serving_gbps_average(), dia_gbps: planning_dia_gbps }
+      } else {
+        ServingAdmitted
+      },
+  }
+}
+
+fn is_admitted(c: StorageTierCandidate) -> Bool {
+  match serving_admission(c: c) {
+    ServingAdmitted => true,
+    ServingAdmittedWithOriginBudget { origin_peak_gbps, dia_gbps } => true,
+    ServingRefusedExceedsDia { required_gbps_average, dia_gbps } => false,
+  }
+}
+
+fn admitted_candidates() -> List<StorageTierCandidate> {
+  filter(storage_tier_candidates, c => is_admitted(c: c))
+}
+
+// ---------------------------------------------------------------------------------------------
+// AXES over the admitted field.
+// ---------------------------------------------------------------------------------------------
+
+data axis_tier_cost_id: DeclarationRef = decl_ref(module_path: "strategy.ci_storage_tiering", decl_name: "axis_tier_cost_id")
+data axis_tier_latency_id: DeclarationRef = decl_ref(module_path: "strategy.ci_storage_tiering", decl_name: "axis_tier_latency_id")
+data axis_tier_durable_surfaces_id: DeclarationRef = decl_ref(module_path: "strategy.ci_storage_tiering", decl_name: "axis_tier_durable_surfaces_id")
+data axis_tier_boot_media_id: DeclarationRef = decl_ref(module_path: "strategy.ci_storage_tiering", decl_name: "axis_tier_boot_media_id")
+
+data axis_tier_cost: SelectionAxis = SelectionAxis { identity: axis_tier_cost_id, goal: LowerIsBetter }
+data axis_tier_latency: SelectionAxis = SelectionAxis { identity: axis_tier_latency_id, goal: LowerIsBetter }
+data axis_tier_durable_surfaces: SelectionAxis = SelectionAxis { identity: axis_tier_durable_surfaces_id, goal: LowerIsBetter }
+data axis_tier_boot_media: SelectionAxis = SelectionAxis { identity: axis_tier_boot_media_id, goal: LowerIsBetter }
+
+data always_funded_axes: List<SelectionAxis> = [
+  axis_tier_cost,
+  axis_tier_durable_surfaces,
+  axis_tier_boot_media,
+]
+
+// axis_tier_latency IS DECLARED AND FUNDS ITSELF THE MOMENT ONE ROW CARRIES A MEASURED RESTORE, and
+// that transition is REAL rather than promised. An earlier shape left the axis statically absent and
+// LatencyMeasured unconsumed, so a row changing from estimated to measured would have funded
+// nothing: a constructor describing a transition that could not occur is worse than no constructor,
+// because it reads as coverage. The axis set is therefore DERIVED from the evidence in the field.
+//
+// Today every row is LatencyEstimated - the module's own sensitivity row says so, and the R2
+// description says "8-20s restore" beside a field holding 12000 - so the axis is unfunded, and no
+// guess orders the table.
+fn latency_is_measured(c: StorageTierCandidate) -> Bool {
+  match c.warm_start {
+    LatencyMeasured { interval_ms, receipt } => true
+    LatencyEstimated { planning_ms, obligation } => false
+  }
+}
+
+fn axes_for_field(field: List<StorageTierCandidate>) -> List<SelectionAxis> {
+  if count(filter(field, c => latency_is_measured(c: c))) > 0 {
+    concat(always_funded_axes, [axis_tier_latency])
+  } else { always_funded_axes }
+}
+
+fn storage_tier_axes() -> List<SelectionAxis> {
+  axes_for_field(field: admitted_candidates())
+}
+
+data storage_tier_sensitivities: List<NonEmptyStr> = [
+  "per-job restore bytes: 2 GB is a planning figure; the S0 per-job cache-bytes receipt retires it, and the admission verdicts scale linearly with it",
+  "DIA capacity: selected_dia in ci_site_cost is CostUnquoted - the 10G planning circuit is unpurchased, and a bigger circuit moves the admission line without changing the economics that put hot serving local",
+  "job-start restore time: NOT A FUNDED AXIS. The warm-vs-cold ms figures are estimates until the pilot measures restore on real NVMe and real WAN - the R2 row's own description says 8-20s beside a field holding 12000 - so no row carries bounds and none can fund the axis. It matters, since it is most of the case for serving locally, which is why it is named here rather than approximated: an axis with no evidence is unfunded and says so, not funded with numbers that look like evidence",
+  "drive amortization: used U.2 prices float; the fragility discipline (verified depth, price-depth curve) applies to drives as it does to chassis",
+  "object-storage provider terms: zero-egress is a provider policy, not physics - R2/B2 repricing or egress-term changes re-run this table",
+]
+
+// ONE OBJECT-STORAGE RATE, APPLIED TO EVERY CANDIDATE THAT PAYS IT. The hybrid rows cite the same
+// zero-egress object storage at 300 to 750 a month; that is one provider rate, not two independent
+// uncertainties, so it is varied over the whole field and held fixed while the field is compared.
+// Within a scenario a monthly cost is exact, which is why these readings are degenerate.
+//
+// This is the same SHAPE as ci_build_frontier's memory scenario and deliberately not a shared
+// abstraction yet: a DIMM market price and an object-storage provider rate are different facts, and
+// two typed carriers for two facts are not two authorities for one. Whether the folds genuinely
+// generalise is answered after a third domain shows what they share, not guessed before it.
+type ObjectStorageRateScenario {
+  identity: DeclarationRef
+  monthly_micro: Int
+}
+
+data object_storage_rate_low: ObjectStorageRateScenario = ObjectStorageRateScenario {
+  identity: decl_ref(module_path: "strategy.ci_storage_tiering", decl_name: "object_storage_rate_low"),
+  monthly_micro: 300000000,
+}
+
+data object_storage_rate_high: ObjectStorageRateScenario = ObjectStorageRateScenario {
+  identity: decl_ref(module_path: "strategy.ci_storage_tiering", decl_name: "object_storage_rate_high"),
+  monthly_micro: 750000000,
+}
+
+data object_storage_rate_scenarios: List<ObjectStorageRateScenario> = [object_storage_rate_low, object_storage_rate_high]
+
+// A CONSEQUENCE OF SHARING THE RATE, WORTH STATING BECAUSE IT BOUNDS WHAT THIS SCENARIO CAN DECIDE:
+// every ObjectStorageDependentCost row adds the SAME scenario term, so the rate shifts all of them
+// by one constant and can never reorder two of them against each other on cost. It can only change
+// a comparison between a rate-dependent row and one whose cost does not move. So TierRateSensitive
+// is reachable only across that boundary - which is exactly what the witness constructs, and is why
+// no all-hybrid field will ever produce it however wide the band is.
+
+type TierCostReading
+  = TierCostAt { micro: Int }
+  | TierCostGap { obligation: NonEmptyStr }
+
+fn tier_monthly_cost_at(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> TierCostReading {
+  match c.cost_basis {
+    QuotedMonthlyCost { micro } => TierCostAt { micro: micro }
+    UngroundedCost { obligation } => TierCostGap { obligation: obligation }
+    ObjectStorageDependentCost { candidate_fixed } => match candidate_fixed {
+      FixedComputedFromQuotedRates { micro, citation } => TierCostAt { micro: micro + scenario.monthly_micro }
+      FixedUngrounded { obligation } => TierCostGap { obligation: obligation }
+    }
+  }
+}
+
+// How hard the shared rate pushes this candidate: one share, or none. Two candidates with the same
+// coefficient move together, so a strict ordering between them at one rate holds at every rate.
+fn object_storage_rate_coefficient(c: StorageTierCandidate) -> Int {
+  match c.cost_basis {
+    QuotedMonthlyCost { micro } => 0
+    UngroundedCost { obligation } => 0
+    ObjectStorageDependentCost { candidate_fixed } => 1
+  }
+}
+
+data no_latency_readings: List<AxisReading> = []
+
+// A measured row emits its interval; an estimated row emits nothing. When the axis is unfunded the
+// absence is invisible, and when a measurement funds it the estimated rows become real declared
+// gaps rather than guesses standing in for readings.
+fn latency_readings(c: StorageTierCandidate) -> List<AxisReading> {
+  match c.warm_start {
+    LatencyMeasured { interval_ms, receipt } => [AxisReading { axis: axis_tier_latency_id, interval_micro: interval_ms }]
+    LatencyEstimated { planning_ms, obligation } => no_latency_readings
+  }
+}
+
+// THE FIELD IS THREADED, NOT CONSULTED GLOBALLY. This used to ask admitted_candidates() whether any
+// row was measured while the axis set was chosen from an explicit field, so a fixture could fund the
+// axis and still get no gap declared for its estimated peers - two halves of one decision reading
+// two different populations. Both now read the same field.
+// THESE TWO FUNCTIONS ALREADY NAMED THEIR AXIS IN THEIR OWN NAMES, and the carrier could not say
+// it. An unmeasured warm start declares an absence on LATENCY; an unquoted rate declares one on
+// COST. Under the flat shape the two were interchangeable, so either could stand in for the other
+// and a control could only ever check the obligation string.
+//
+// Stated precisely, because the opposite reading is tempting: a tier carrying either gap is still
+// refused outright by std.pareto. Naming the axis does not make it comparable on durable surfaces
+// and boot media; it makes each absence account for itself.
+fn latency_missing_in_field(c: StorageTierCandidate, field: List<StorageTierCandidate>) -> List<AxisGap> {
+  match c.warm_start {
+    LatencyMeasured { interval_ms, receipt } => no_tier_missing
+    LatencyEstimated { planning_ms, obligation } =>
+      if count(filter(field, x => latency_is_measured(c: x))) > 0 {
+        [AxisGap { axis: axis_tier_latency_id, cause: obligation }]
+      } else { no_tier_missing }
+  }
+}
+
+data no_cost_readings: List<AxisReading> = []
+
+fn cost_readings_at(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> List<AxisReading> {
+  match tier_monthly_cost_at(c: c, scenario: scenario) {
+    TierCostAt { micro } => [AxisReading { axis: axis_tier_cost_id, interval_micro: degenerate_interval(point: micro) }]
+    TierCostGap { obligation } => no_cost_readings
+  }
+}
+
+fn cost_missing(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> List<AxisGap> {
+  match tier_monthly_cost_at(c: c, scenario: scenario) {
+    TierCostAt { micro } => no_tier_missing
+    TierCostGap { obligation } => [AxisGap { axis: axis_tier_cost_id, cause: obligation }]
+  }
+}
+
+fn tier_readings_at(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> List<AxisReading> {
+  concat(cost_readings_at(c: c, scenario: scenario), concat([
+    AxisReading { axis: axis_tier_durable_surfaces_id, interval_micro: degenerate_interval(point: c.local_durable_surfaces) },
+    AxisReading { axis: axis_tier_boot_media_id, interval_micro: degenerate_interval(point: c.boot_media_per_node) },
+  ], latency_readings(c: c)))
+}
+
+data no_tier_missing: List<AxisGap> = []
+
+fn tier_entry_in_field(c: StorageTierCandidate, field: List<StorageTierCandidate>, scenario: ObjectStorageRateScenario) -> ParetoEntry {
+  ParetoEntry {
+    identity: decl_ref(module_path: "strategy.ci_storage_tiering", decl_name: c.id),
+    display_label: c.id,
+    readings: tier_readings_at(c: c, scenario: scenario),
+    missing_inputs: concat(cost_missing(c: c, scenario: scenario), latency_missing_in_field(c: c, field: field)),
+  }
+}
+
+
+data no_tier_entries: List<ParetoEntry> = []
+
+fn tier_entries_in_field(field: List<StorageTierCandidate>, scenario: ObjectStorageRateScenario) -> List<ParetoEntry> {
+  fold(field, init: no_tier_entries, f: fn(acc, c) { concat(acc, [tier_entry_in_field(c: c, field: field, scenario: scenario)]) })
+}
+
+
+// The production seam, over an explicit field. The live roster and a fixture roster take exactly the
+// same path - axis selection, entry projection, missing-input projection and standing all read the
+// one field passed in - so a control that plants a row is exercising production, not a copy of it.
+fn tier_standing_in_field(c: StorageTierCandidate, field: List<StorageTierCandidate>, scenario: ObjectStorageRateScenario) -> ParetoStanding {
+  entry_standing(
+    subject: tier_entry_in_field(c: c, field: field, scenario: scenario),
+    field: tier_entries_in_field(field: field, scenario: scenario),
+    axes: axes_for_field(field: field),
+    sensitivities: storage_tier_sensitivities,
+  )
+}
+
+fn tier_standing_at(c: StorageTierCandidate, scenario: ObjectStorageRateScenario) -> ParetoStanding {
+  tier_standing_in_field(c: c, field: admitted_candidates(), scenario: scenario)
+}
+
+type TierScenarioStanding {
+  scenario: DeclarationRef
+  standing: ParetoStanding
+}
+
+data no_tier_standings: List<TierScenarioStanding> = []
+
+// THE AGGREGATE IS NOT A BOOLEAN, for the reason it is not one in ci_build_frontier: holding the
+// frontier at every rate and holding it at one rate but not the other are different answers, and
+// the second is the one a buyer needs to see.
+type TierRateStanding
+  = TierFrontierAtEveryRate { receipts: List<TierScenarioStanding> }
+  | TierDominatedAtEveryRate { receipts: List<TierScenarioStanding> }
+  | TierRateSensitive { frontier_at: List<TierScenarioStanding>, dominated_at: List<TierScenarioStanding> }
+  | TierRateStandingUnestablished { receipts: List<TierScenarioStanding> }
+
+fn tier_scenario_standings_in_field(c: StorageTierCandidate, field: List<StorageTierCandidate>) -> List<TierScenarioStanding> {
+  fold(object_storage_rate_scenarios, init: no_tier_standings, f: fn(acc, sc) {
+    concat(acc, [TierScenarioStanding { scenario: sc.identity, standing: tier_standing_in_field(c: c, field: field, scenario: sc) }])
+  })
+}
+
+
+// ONE EXHAUSTIVE FOLD, SO A RECEIPT ENTERS EXACTLY ONE PARTITION BY CONSTRUCTION - the same repair
+// as ci_build_frontier's, for the same reason: two independent filters over one population only look
+// disjoint, and selecting the arm by comparing counts let a row dominated at every rate be reported
+// rate-sensitive and kept.
+type TierRatePartition {
+  front: List<TierScenarioStanding>
+  dominated: List<TierScenarioStanding>
+  unestablished: List<TierScenarioStanding>
+}
+
+data empty_tier_partition: TierRatePartition = TierRatePartition {
+  front: no_tier_standings,
+  dominated: no_tier_standings,
+  unestablished: no_tier_standings,
+}
+
+fn tier_partition_step(acc: TierRatePartition, r: TierScenarioStanding) -> TierRatePartition {
+  match r.standing {
+    ProvisionallyNonDominated { sensitivities } =>
+      TierRatePartition { front: concat(acc.front, [r]), dominated: acc.dominated, unestablished: acc.unestablished }
+    DominatedBy { dominators } =>
+      TierRatePartition { front: acc.front, dominated: concat(acc.dominated, [r]), unestablished: acc.unestablished }
+    NotComputable { missing } =>
+      TierRatePartition { front: acc.front, dominated: acc.dominated, unestablished: concat(acc.unestablished, [r]) }
+    PendingEvidence { undecided } =>
+      TierRatePartition { front: acc.front, dominated: acc.dominated, unestablished: concat(acc.unestablished, [r]) }
+    SelectionRefused { cause } =>
+      TierRatePartition { front: acc.front, dominated: acc.dominated, unestablished: concat(acc.unestablished, [r]) }
+  }
+}
+
+fn tier_rate_standing_in_field(c: StorageTierCandidate, field: List<StorageTierCandidate>) -> TierRateStanding {
+  let rs = tier_scenario_standings_in_field(c: c, field: field)
+  let p = fold(rs, init: empty_tier_partition, f: fn(acc, r) { tier_partition_step(acc: acc, r: r) })
+  if count(p.unestablished) > 0 {
+    TierRateStandingUnestablished { receipts: rs }
+  } else if count(p.dominated) == 0 {
+    TierFrontierAtEveryRate { receipts: rs }
+  } else if count(p.front) == 0 {
+    TierDominatedAtEveryRate { receipts: rs }
+  } else {
+    TierRateSensitive { frontier_at: p.front, dominated_at: p.dominated }
+  }
+}
+
+fn tier_rate_standing(c: StorageTierCandidate) -> TierRateStanding {
+  tier_rate_standing_in_field(c: c, field: admitted_candidates())
+}
+
+// THE AGGREGATE IS THE ANSWER, NOT A SIDECAR. An earlier shape kept a scenario-free tier_standing
+// that silently evaluated the LOW rate, and the survival witness consumed it - so the canonical
+// selection still ran on one endpoint while the typed multi-scenario standing sat beside it,
+// consulted by nobody. That is the same defect as a declared band whose consumers read the
+// baseline. Survival now derives from the aggregate; a single-rate view may exist, but only under a
+// name that says which rate it is.
+fn tier_survives(c: StorageTierCandidate) -> Bool {
+  match tier_rate_standing(c: c) {
+    TierDominatedAtEveryRate { receipts } => false
+    TierFrontierAtEveryRate { receipts } => true
+    TierRateSensitive { frontier_at, dominated_at } => true
+    TierRateStandingUnestablished { receipts } => true
+  }
+}
+
+fn tier_standing_at_low_rate(c: StorageTierCandidate) -> ParetoStanding {
+  tier_standing_at(c: c, scenario: object_storage_rate_low)
+}
+
+fn tier_rate_standing_label(c: StorageTierCandidate) -> NonEmptyStr {
+  match tier_rate_standing(c: c) {
+    TierFrontierAtEveryRate { receipts } => "on the frontier at every declared object-storage rate"
+    TierDominatedAtEveryRate { receipts } => "dominated at every declared object-storage rate"
+    TierRateSensitive { frontier_at, dominated_at } => "rate-sensitive: it holds the frontier at some declared object-storage rates and is dominated at others"
+    TierRateStandingUnestablished { receipts } => "not established: at least one rate produced no verdict"
+  }
+}
+
+fn tier_standing_label(c: StorageTierCandidate) -> NonEmptyStr {
+  tier_rate_standing_label(c: c)
+}
+
+// OPERATOR REQUIREMENT (2026-08-29): the final system is durable enough that a failed
+// disk does not strand its consumers - the fabric reconnects them to another source of
+// the same bytes (a rack peer's copy, or the cloud durable tier): an abstracted storage
+// layer. Two constraints this model imposes on any realization of that requirement,
+// ahead of the design: (1) the working set is immutable content-addressed blobs, so the
+// abstraction is a read-through content-addressed store with tiered fill (local NVMe ->
+// rack peer -> object storage), NOT a POSIX network filesystem - NFS semantics buy
+// consistency machinery and failure modes the workload does not have; and (2) failover
+// must be LOUD: a dead disk transparently served from WAN at 20x latency is the
+// absorbing-fallback arm (DESIGN section 5) - degradation is a typed, counted event
+// that ranks the disk swap, never a silent widen. The realization design (peer-fill
+// protocol, miss accounting, minimal first version) is open pending the side-analyst
+// critique; this row fixes the requirement and its two walls, not the mechanism.
+type StorageFabricTier
+  = LocalNvme
+  | RackPeer
+  | CloudObjectStorage
+
+data storage_fabric_fill_order: List<StorageFabricTier> = [LocalNvme, RackPeer, CloudObjectStorage]
+
+// THE POLICY DOES NOT STAND ON A FRONTIER RESULT, AND THE CLAIM IS WEAKER THAN IT WAS. This used
+// to say the two hybrid rows are both NON-DOMINATED and that diskless trades ~$15/mo of boot service
+// against the boot-media axis. Neither survives this cut: every admitted row's fixed cost component
+// is declared ungrounded, so every admitted cost standing is UNESTABLISHED rather than a held
+// frontier, and the $15/mo figure was an unquoted planning increment for a boot service nobody has
+// priced - precisely the kind of number this module stopped emitting.
+//
+// What remains, and it is enough for the policy to be honest: the boot-media axis is a COUNT, and
+// counts are exact. The diskless row carries zero node boot media and the hybrid row carries one.
+// That is an observation about the design, not a cost comparison, and it is the whole basis of the
+// selection below - a declared operator preference over an axis that is actually measured, chosen
+// while the cost axes are unfunded and NOT justified by them. If the drive amortization and the boot
+// service are later quoted, the frontier may or may not agree with this policy; the policy does not
+// currently claim it does (external review 2026-08-29, narrowed 2026-09-02).
+type StorageTierSelectionPolicy
+  = RequireNoNodeDurableMedia
+  | PermitNodeBootMedia
+
+data operator_tier_policy: StorageTierSelectionPolicy = RequireNoNodeDurableMedia
+
+fn policy_admits_candidate(policy: StorageTierSelectionPolicy, c: StorageTierCandidate) -> Bool {
+  match policy {
+    RequireNoNodeDurableMedia => c.boot_media_per_node == 0,
+    PermitNodeBootMedia => true,
+  }
+}
+
+data tiering_grain_note: NonEmptyStr = "Verdict shape this module exists to carry: durability offloads to zero-egress object storage 100% - the operator's offload instinct, scoped to the axis where it is right - while hot serving is pinned local by the admission wall, not by preference: bytes-per-job times jobs-per-month exceeds any purchasable circuit long before it exceeds any storage budget. Every local byte is then rehydratable by construction, which is what dissolves the drive-health program: a failed drive loses warmth, never data. The all-local row shows what owning durability costs in OPS TERMS - its dollar figure is an ungrounded planning amortization and is no longer emitted as a reading - while the diskless row completes statelessness and is the landing SELECTED BY operator_tier_policy. That policy is a declared preference over the exact boot-media count, not a frontier verdict and not derived from one: every admitted cost standing in this table is currently UNESTABLISHED, so no cost-based landing is available to claim."

@@ -1,0 +1,143 @@
+module strategy.buyers_pipeline
+
+import std.types { Int, List, NonEmptyStr, Bool }
+
+// THE BUYERS PIPELINE (operator direction 2026-08-29): the operator inputs the parts and
+// configurations we need supply for; an LLM scout workflow continuously scans listings
+// (eBay and peers), files typed observations, and PROPOSES purchases - and the authority
+// split is the load-bearing design: A SCOUT MAY OBSERVE AND PROPOSE, NEVER APPROVE. The
+// approval act is the operator's, out of band of the scout (the same reason scaffold
+// approval is external to the diff: an agent that can write a proposal can equally write
+// a row claiming it was approved). Everything the fragility discipline learned binds
+// here: an unverified listing quantity counts as ZERO depth, price is delivered-and-
+// qualified (freight, expected yield), and a proposal that exceeds its demand row's
+// ceiling is a typed refusal, not a judgment call.
+
+type ConditionClass
+  = ListedWorking
+  | ListedForParts
+  | ListedBiosTestedOnly
+
+// TWO PRICES, TWO FACTS (operator correction 2026-08-30): we do not SET ceilings.
+// reference_unit_micro is a dated market quote/estimate - expected to drift UP as our own
+// buying consumes depth, and refreshed by executed purchases. viability_ceiling_micro is
+// the only refusal wall, and it is DERIVED from a named economics instrument (the price
+// at which the build stops surviving), never taste. A listing above reference but under
+// viability is an ordinary admissible buy - that spread is exactly what the pipeline is
+// solving for: the real cost of converging the fleet against a moving market.
+type DemandRow {
+  id: NonEmptyStr
+  spec: NonEmptyStr
+  reference_unit_micro: Int
+  viability_ceiling_micro: Int
+  viability_source: NonEmptyStr
+  wanted_units: Int
+  qualification_note: NonEmptyStr
+  refusal_conditions: List<NonEmptyStr>
+}
+
+// Standing demand, seeded 2026-08-29. Ceilings come from the modeled economics, not
+// hope: the Collins ceiling is the analyst's hedge-priced ~$1,000; the EPYC ceiling is
+// dollar-per-core parity with the Collins row (~$11/core x 128 cores, delivered).
+data demand_mt_collins: DemandRow = DemandRow {
+  id: "mt-collins-1u",
+  spec: "Foxconn Mt. Collins 1U barebones, dual Altra Q80-30 (chassis 1A624RA00-600-G class), no RAM/drives",
+  reference_unit_micro: 1775000000,
+  viability_ceiling_micro: 1775000000,
+  viability_source: "ci_node_build mt_collins_system_lot PurchaseReceipt - the market-cleared executed price stands as the wall for the 1-unit remainder; a proper derivation from the node-economics spread is the open obligation",
+  wanted_units: 1,
+  qualification_note: "Intake workflow phases 1-5 within the return window; random-sample selection from the seller manifest, never seller-picked units. REFERENCE RE-BASED 2026-08-30 on the executed 20-unit purchase at 1,700 pre-tax plus 75 observed freight; wanted_units holds the 1-unit remainder of the original 21",
+  refusal_conditions: ["seller will not palletize or quote freight", "quantity claimed but not verifiable at purchase time"],
+}
+
+data demand_epyc_rome_platform: DemandRow = DemandRow {
+  id: "epyc-rome-2s-platform",
+  spec: "Dual-socket EPYC Rome/Milan platform, 2x 7742/7713 class (128 cores), 16+ DDR4 DIMM slots, 1U/2U rack chassis with BMC - H11DSI, Gigabyte MZ72/R182/R282, Dell R6525, Supermicro AS-1124US class",
+  reference_unit_micro: 1400000000,
+  viability_ceiling_micro: 1400000000,
+  viability_source: "derived dollar-per-core parity with the Collins row (~11 x 128 delivered) - the diversity pilot must not pay more per core than the vintage it hedges; no executed reference exists yet, so reference equals the derivation",
+  wanted_units: 4,
+  qualification_note: "Same intake workflow; x86 memtest is the easy path. First units are the DIVERSITY PILOT - prove the second vintage end to end before depth",
+  refusal_conditions: ["VENDOR-LOCKED CPUs (Dell/Lenovo-locked Rome parts are common and worthless outside their chassis) unless the chassis is the locked vendor's and priced accordingly", "consumer boards without BMC", "quantity unverifiable"],
+}
+
+data demand_ddr4_rdimm: DemandRow = DemandRow {
+  id: "ddr4-32g-rdimm",
+  spec: "32 GiB DDR4 ECC RDIMM, 2400-3200 (grade priced separately; 2400 acceptable per the operator's cost ruling)",
+  reference_unit_micro: 55000000,
+  viability_ceiling_micro: 120000000,
+  viability_source: "ci_node_build memory_band_note - the frontier is tested to the 120-dollar band top, so the build recommendation itself survives every admissible buy; 55 is only the 2400-grade quote at shallow depth",
+  wanted_units: 320,
+  qualification_note: "Slot-swap pass on a known-good server; EDAC-clean under stressapptest. wanted_units is DERIVED by strategy.fleet_convergence (21 nodes x 16 minus 16 held) and the witness reds on drift",
+  refusal_conditions: ["mixed unlabeled lots without per-stick identification", "LRDIMMs sold as RDIMMs"],
+}
+
+data demand_u2_nvme: DemandRow = DemandRow {
+  id: "u2-nvme-4t",
+  spec: "Used enterprise U.2 NVMe ~4TB (PM983/PM9A3/CD5/CD6 class), for DISPOSABLE cache duty",
+  reference_unit_micro: 200000000,
+  viability_ceiling_micro: 200000000,
+  viability_source: "PROVISIONAL - equals the reference until the storage-tiering instrument prices the local-cache break-even; a provisional wall is declared debt, not a derivation",
+  wanted_units: 21,
+  qualification_note: "SMART wear <70%, no media errors at intake; cache duty means health is an admission gate, not an ongoing program. wanted_units is DERIVED by strategy.fleet_convergence (1 per node, none held) and the witness reds on drift",
+  refusal_conditions: ["drives with SED/locked firmware that cannot be crypto-erased", "SATA sold as NVMe"],
+}
+
+data buyer_demand_rows: List<DemandRow> = [
+  demand_mt_collins,
+  demand_epyc_rome_platform,
+  demand_ddr4_rdimm,
+  demand_u2_nvme,
+]
+
+// ---------------------------------------------------------------------------------------------
+// Observations and proposals: what the scout files. Depth discipline baked into the type:
+// claimed quantity and verified quantity are different fields, and admitted depth reads
+// ONLY the verified one.
+// ---------------------------------------------------------------------------------------------
+
+type ListingObservation {
+  demand_id: NonEmptyStr
+  source: NonEmptyStr
+  unit_price_delivered_micro: Int
+  quantity_claimed: Int
+  quantity_verified: Int
+  seller_feedback_permille: Int
+  seller_feedback_count: Int
+  condition: ConditionClass
+  observed_at: NonEmptyStr
+}
+
+fn admitted_depth(o: ListingObservation) -> Int {
+  o.quantity_verified
+}
+
+type PurchaseProposal
+  = ProposalAdmissible { demand_id: NonEmptyStr, source: NonEmptyStr, units: Int, unit_price_micro: Int }
+  | ProposalRefusedOverCeiling { demand_id: NonEmptyStr, unit_price_micro: Int, ceiling_micro: Int }
+  | ProposalRefusedNoVerifiedDepth { demand_id: NonEmptyStr, quantity_claimed: Int }
+
+fn propose(demand: DemandRow, o: ListingObservation) -> PurchaseProposal {
+  if o.unit_price_delivered_micro > demand.viability_ceiling_micro {
+    ProposalRefusedOverCeiling {
+      demand_id: demand.id,
+      unit_price_micro: o.unit_price_delivered_micro,
+      ceiling_micro: demand.viability_ceiling_micro,
+    }
+  } else if admitted_depth(o: o) == 0 {
+    ProposalRefusedNoVerifiedDepth { demand_id: demand.id, quantity_claimed: o.quantity_claimed }
+  } else {
+    ProposalAdmissible {
+      demand_id: demand.id,
+      source: o.source,
+      units: if admitted_depth(o: o) < demand.wanted_units { admitted_depth(o: o) } else { demand.wanted_units },
+      unit_price_micro: o.unit_price_delivered_micro,
+    }
+  }
+}
+
+data scout_workflow_contract_note: NonEmptyStr = "THE SCOUT WORKFLOW CONTRACT: input is buyer_demand_rows; output is ListingObservation rows plus propose() results; cadence is a scheduled agent run (daily is plenty - liquidation moves in days, not minutes). The scout verifies quantity where the marketplace permits (purchase-quantity probe, seller question) and otherwise files quantity_verified: 0, which propose() turns into a typed refusal rather than a hopeful buy. THE SCOUT NEVER ACTUATES A PURCHASE: an admissible proposal is a message to the operator carrying the demand row, the listing, and the intake obligation it would trigger; the operator's approval and payment are the out-of-band act. Dissolution of the manual step: none planned - purchase actuation staying human is a design decision, not debt."
+
+data epyc_diversity_note: NonEmptyStr = "WHY THE EPYC DEMAND ROW EXISTS (operator 2026-08-29): Ampere is niche - deep TODAY in one rotating liquidation pool, but one channel, and the operator notes his own bias toward it. Rome/Milan dual-socket DDR4 platforms are the closest x86 analog to Mt. Collins/Mt. Jade (same memory grade, same 1DPC discipline, similar dollars-per-core when unlocked), the used market is far wider, and an x86 vintage also unlocks the customer segment whose jobs are x86-only (the Amdahl partition in the gaming-CPU memo applies to ISA too). Known traps priced into the refusal conditions: vendor-locked CPUs saturate the cheap end of the Rome market, and 2x 225W runs hotter than the Altra pair. The pilot is 4 units - prove the second vintage through the same intake, netboot and fabric path before giving it depth; the vintage frontier gets its measured row from the pilot, not from listings."
+
+data architecture_posture_ruling: NonEmptyStr = "OPERATOR RULING 2026-08-30 (v3; v2 reworked after the analyst's final ruling on this thread): ARCHITECTURE IS NOT AN IDEOLOGY, IT IS A CAPEX / LIQUIDATION / ARBITRAGE DECISION. Frozen center, in the analyst's corrected wording: warehoused inventory, cold spares, and pilot/hedge nodes are NOT serving supply - the supply-beneath-demand law is stated over ADMITTED ONLINE owned capacity only, and it holds PER EXECUTION-COMPATIBILITY CLASS (ISA is one hard coordinate; memory/disk envelope, isolation class, restart safety are others), because aggregate demand above aggregate capacity can still strand a whole class (the analyst's 100-ARM/60-ARM-demand counterexample). For each class: admitted online owned capacity stays beneath qualified PAID baseline demand for that class; customer work spills when projected pickup would exceed the class's queue-delay bound; preemptible internal work (dogfood as InternalScavenger, see serving_capacity) fills unused owned capacity and is evicted first. FLEET EXPANSION is authorized by sustained compatible demand and marginal avoided-spill economics - buy the next node when expected avoided spill cost minus owned marginal cost exceeds node fixed cost plus risk reserve - NEVER by a fixed 100-percent-utilization threshold (utilization splits into three readings, also in serving_capacity). ARM leads on both operative axes today (capex per core, watts per core) so the fleet leans ARM; the EPYC pilot STANDS as the supply-diversity hedge against Ampere-channel concentration; x86 spill clears at a premium via a price PER ISA CLASS - two flat prices - but that pricing sentence is DECLARED, NOT LIVE: the economics closure that would carry it (ci_runner_economics / ci_spill_policy / ci_pricing_page) is a rostered KnownRed on extdeps.ci_compute_pricing, and today's surface exposes one flat price, so per-ISA pricing becomes authority only when that closure lands and the pricing page consumes it. Vintage selection stays ISA-neutral: a vintage joins the owned fleet when its liquidation price crosses the frontier, whatever its ISA. ENROLLMENT DEBT, declared: this ruling is consumed today by review diligence and by the typed carriers it names; it becomes structural authority only when purchase admission, the spill router, and the pricing page consume those carriers - that consumer enrollment is the ruling's own dissolution trigger for its prose form."

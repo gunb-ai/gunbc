@@ -1,0 +1,358 @@
+module strategy.mt_collins_held_unit
+
+import std.types { String, NonEmptyStr }
+
+// OBSERVATIONS FROM THE HELD UNIT, 2026-08-29. These are receipts produced by holding and
+// probing one physical Foxconn Mt. Collins — the observing layer's facts, deliberately NOT
+// authored into public extdeps.ampere.mt_collins_product_brief, which models cited public
+// collateral only (DESIGN: observations are receipts in the observing layer, never facts
+// owned by the observed upstream). Identity below is the unit's own FRU, read over IPMI.
+
+type HeldUnitIdentity {
+  board_manufacturer: NonEmptyStr
+  board_product: NonEmptyStr
+  board_part_number: NonEmptyStr
+  board_serial: NonEmptyStr
+  chassis_part_number: NonEmptyStr
+  board_manufacture_date: NonEmptyStr
+}
+
+data mt_collins_held_unit_identity: HeldUnitIdentity = HeldUnitIdentity {
+  board_manufacturer: "FOXCONN",
+  board_product: "Mt. Collins",
+  board_part_number: "02030A800-600-G",
+  board_serial: "02030A800TEXFT02L",
+  chassis_part_number: "1A624RA00-600-G",
+  board_manufacture_date: "2021-10-18",
+}
+
+// OCP SLOT OCCUPANCY IS ESTABLISHED AND THE SLOT IS EMPTY (operator, 2026-09-10). The platform has
+// an OCP 3.0 mezzanine slot and NO onboard 10GbE - a collateral fact modelled at
+// extdeps.ampere.mt_collins_1u_product_brief.specifications - so an empty slot means this unit has
+// no 10G path at all, only its onboard 1G ports.
+//
+// WHAT THIS CORRECTS, AND THE CORRECTION IS THE INSTRUCTIVE PART. Until today this row said
+// occupancy was UNOBSERVED and named lspci on a netbooted host as the decisive read. The reasoning
+// that made it unobserved was right and is kept below: four OCP-named thermal sensors
+// (OCP_Zone_Temp, OCP_Temp, OCP_OPT1_Temp, OCP_OPT2_Temp) were read over the BMC REST API on
+// 2026-09-06, and sensor NAMES establish that the chassis is INSTRUMENTED for an OCP card and an
+// optical zone while establishing nothing about whether one is FITTED - an empty slot on a board
+// whose SDR was authored for the populated configuration presents exactly the same name list.
+// That inference was sound. It was simply superseded by a cheaper instrument: the operator has the
+// machine and looked. Possession beats a decisive read that nobody has run.
+//
+// THE PROCUREMENT CONSEQUENCE IS NOW DERIVABLE RATHER THAN CONTINGENT. Twenty nodes with empty OCP
+// slots need twenty cards if the fleet wants 10G, and the operator prices used 10G cards at roughly
+// 30 dollars - about 600 for the fleet, against a delivered node cost of 1,953.90. That is 1.5 per
+// cent of one node's cost to change the network axis for all twenty.
+//
+// AND IT SETTLES THE BONDING QUESTION IN THE SAME MOTION (operator ruling, 2026-09-10: 10G cards
+// "much simpler" than bonding, and strongly preferred). The bonded-1G alternative was never the
+// equal it looked: LACP hashes per flow, so two bonded 1G links raise aggregate throughput across
+// CONCURRENT restores and leave a SINGLE restore capped at one gigabit. Job-start latency sits on
+// every job's critical path, so the bonded pair improves the axis that is not the bottleneck and
+// leaves the one that is. A single 10G port fixes both, needs no LACP support in the switch, no
+// bond configuration on the host, and halves the data-port count - which is also what makes the
+// switch sizing derivable instead of assumed. strategy.year_end_plan fleet-network-baseline carries
+// the consequence.
+type OcpSlotOccupancy
+  = OcpSlotPopulated { card: NonEmptyStr }
+  | OcpSlotEmpty
+  | OcpSlotOccupancyUnobserved { discriminator_owed: NonEmptyStr }
+
+data mt_collins_ocp_slot_occupancy: OcpSlotOccupancy = OcpSlotEmpty
+
+// THREE TEST NICs ORDERED 2026-09-09, 66.52 TOTAL, AND NONE IS AN OCP 3.0 SFF CARD. All three were
+// bought in one sitting before the form-factor question was raised; they are not successive
+// corrections. Return windows run to 2026-10-16, 2026-10-18 and 2026-11-13, so nothing is stranded.
+//
+//   Mellanox MCX4411A-ACAN (CX4411A, 25GbE SFP28 mezzanine), 21.75
+//     OCP SPEC 2.0, TYPE 1 -- confirmed against NVIDIA's own OCP 2.0 manual, which is a DIFFERENT
+//     document from the OCP 3.0 one. OCP 2.0 mezzanine and OCP 3.0 SFF are different connectors and
+//     different mechanicals; a 2.0 card does not seat in a 3.0 slot. Also SINGLE port, not dual.
+//   Dell CX422A, DP/N 0R887V (ConnectX-4 Lx, dual SFP28), 21.78
+//     rNDC -- a Dell RACK NETWORK DAUGHTER CARD, which is Dell's own proprietary mezzanine and not
+//     a PCIe add-in card. Dell's compatibility list is PowerEdge R640/R740/R740XD/R840/R940/R940XA
+//     and it seats in a dedicated NDC socket on a Dell board. There is no riser, adapter or bracket
+//     that puts it in this chassis.
+//
+//   Mellanox MCX4421A-ACAN (CX4421A, dual-port 25GbE SFP28), 22.99
+//     ALSO OCP 2.0. Confirmed 2026-09-10 against NVIDIA's own OCP 2.0 hardware document, whose
+//     covered-part list is explicit: MCX4421A-XCQN, MCX4411A-ACAN/ACUN, MCX4421A-ACAN/ACUN,
+//     MCX4411A-ACQN, MCX4421A-ACQN, MCX4431A-GCAN/GCUN, MCX4431M-GCAN. THE WHOLE MCX44xx FAMILY IS
+//     OCP 2.0. Retail listings describe these as "PCIe 3.0 x8", which is the HOST INTERFACE
+//     signalling and not the mechanical form factor -- that phrase is what makes an OCP 2.0
+//     mezzanine card read as a PCIe add-in card, and it is why three consecutive orders missed.
+//
+// THE LESSON THE PART NUMBERS TEACH: 4411 vs 4421 is single- vs dual-port, NOT 2.0 vs 3.0. The
+// generation lives in a different digit, and the ConnectX-4 Lx OCP 3.0 SFF part is in the MCX46xx
+// range rather than MCX44xx -- VERIFY THE EXACT OPN AGAINST NVIDIA'S OCP 3.0 DOCUMENT BEFORE
+// ORDERING, because this corpus has now been wrong about it twice by pattern-matching one digit.
+// The decisive test for any candidate is which NVIDIA hardware manual lists the OPN, not the
+// seller's description.
+//
+// SO ALL THREE ARE RETURNS, AND THE THREE WRONG ANSWERS ARE THREE DIFFERENT FORM FACTORS: OCP 2.0
+// mezzanine (twice) and a Dell rNDC. Not one mistake repeated -- three distinct proprietary
+// mechanicals, each listed by its seller as a "PCIe Network Adapter", because each of them IS PCIe
+// ELECTRICALLY. The host interface and the mechanical form are different facts and retail listings
+// routinely publish only the first.
+//
+// THE PREDICATE THAT WOULD HAVE REFUSED ALL THREE BEFORE PURCHASE, and which the fleet order must
+// pass: take the exact OPN, find the VENDOR HARDWARE MANUAL that lists that OPN among its covered
+// parts, and read the FORM FACTOR that manual is written for. NVIDIA publishes separate manuals for
+// OCP 2.0 and OCP 3.0 and each enumerates its own parts; Dell publishes rNDC datasheets with a
+// server compatibility list. A card is admissible only if the manual covering its OPN is the OCP
+// 3.0 one. Seller wording, product titles, and the phrase "PCIe 3.0 x8" are all inadmissible as
+// form-factor evidence -- that phrase appeared on all three of these.
+//
+// THE OCP 3.0 SFF PART IN THIS FAMILY, NAMED AT LAST: MCX4621A-ACAB. That is the ConnectX-4 Lx
+// OCP 3.0 SFF dual-port 25GbE OPN, and MCX46xx rather than MCX44xx is the generation boundary. The
+// ACAB part supports 10GbE as well as 25, so there is no reason to hunt the 10G-only variant.
+//
+// AND A FOURTH TRAP THE FIRST THREE DID NOT EXPOSE: BRACKET AND RETENTION. An OCP 3.0 SFF card is
+// not one mechanical -- retention differs (thumbnut, pull-tab, internal lock) and OEM-branded pulls
+// ship with brackets cut for their own chassis. An HPE-branded MCX4621A-ACAB (P11341-B21) is listed
+// elsewhere as carrying a LONG BRACKET, which proves the point precisely: an OEM cross-reference
+// establishes the SILICON and not the RETENTION. So a correct OPN is necessary and still not
+// sufficient, and the check before buying is a side or front photograph of the actual bracket
+// against this chassis's opening -- not a part number match.
+//
+// CANARY DISCIPLINE, unchanged and now with a candidate: buy ONE exact MCX4621A-ACAB, seat it,
+// and let the fleet purchase wait on a wet receipt from that unit. Twenty cards on a part-number
+// match would repeat tonight's error with two more digits of confidence and no more evidence.
+//
+// STILL OPEN AND ANSWERABLE BY LOOKING: whether this chassis has a usable PCIe slot or extdeps.ampere.mt_collins_1u_product_brief.specifications says 10G is reached "only
+// through the OCP 3.0 mezzanine slot", which is a statement about the 10G PATH and not a claim that
+// no PCIe slot exists. If a riser is present and free, the Dell PCIe card is a live candidate for
+// the single-node test and the OCP question stays open for the fleet. If not, both cards are
+// returns. The operator has the machine; this is an inspection, not a research task.
+type PcieExpansionStanding
+  = PcieSlotObserved { detail: NonEmptyStr }
+  | NoPcieSlotObserved
+  | PcieExpansionUnobserved
+
+data mt_collins_pcie_expansion: PcieExpansionStanding = PcieExpansionUnobserved
+
+data ocp_slot_occupancy_provenance: NonEmptyStr = "2026-09-10, operator, by direct inspection of the held unit: the OCP slot is EMPTY and this is stated as certain. SUPERSEDES the 2026-09-06 BMC sensor reading, which found four OCP-named sensors present over /api/sensors and correctly declined to read them as occupancy, because an SDR authored for the populated configuration names the same sensors on an empty slot. The lspci-on-a-netbooted-host discriminator that row named is no longer owed for THIS unit; it remains the mechanical route for any unit nobody has opened."
+
+fn ocp_slot_needs_card(o: OcpSlotOccupancy) -> Bool {
+  match o {
+    OcpSlotPopulated { card } => false
+    OcpSlotEmpty => true
+    OcpSlotOccupancyUnobserved { discriminator_owed } => true
+  }
+}
+
+// THE UNOBSERVED ARM REFUSES TOWARD BUYING, deliberately. A unit nobody has looked at is treated as
+// needing a card, because the two errors are not symmetric: buying a spare 30-dollar card for a
+// populated slot wastes 30 dollars, while assuming a card is present and finding an empty slot at
+// rack-and-stack time costs a shipping cycle on the critical path. This is the fleet-level default
+// and not a claim about any particular unit.
+
+data form_factor_resolution_note: String = "The public collateral's 2U-versus-marketplace-1U discrepancy (extdeps.ampere.mt_collins_product_brief.platform platform_note) is RESOLVED FOR THIS UNIT by possession, 2026-08-29: the held chassis (part 1A624RA00-600-G) is 1U. Scope is exactly this chassis part number - the public 2U documents plausibly describe a different chassis variant of the same board, so this receipt narrows the discrepancy to a chassis-variant fact rather than contradicting the collateral wholesale. Other variants exist; identity travels with the chassis part number, not the marketing name."
+
+// BMC access facts, observed by probing the held unit at its LAN address. Factory-default
+// credentials on a publicly documented default are an observation, not a secret; the unit
+// MUST be re-credentialed before any placement reachable from untrusted networks, and that
+// obligation is the row below, not a footnote.
+type BmcAccessObservation {
+  management_stack: NonEmptyStr
+  default_username: NonEmptyStr
+  default_password: NonEmptyStr
+  refused_credentials_note: NonEmptyStr
+  transports_observed: NonEmptyStr
+}
+
+data mt_collins_bmc_access: BmcAccessObservation = BmcAccessObservation {
+  management_stack: "AMI MegaRAC (SP-X-style REST API at /api/*; no Redfish endpoint at /redfish/v1 on this firmware)",
+  default_username: "admin",
+  default_password: "admin",
+  refused_credentials_note: "root/root was tried first from a secondhand recollection and is REFUSED by this firmware over IPMI lanplus; admin/admin authenticates on both the web API (privilege 4) and IPMI lanplus.",
+  transports_observed: "HTTPS web UI and REST API on 443; IPMI v2 lanplus; Serial-over-LAN; cd-media/hd-media remote media services enabled, NFS remote media mounts and lists images.",
+}
+
+data bmc_recredential_obligation: NonEmptyStr = "Factory admin/admin stands until the unit's first placement decision. Before any exposure beyond the operator's own LAN, set a unique credential and record the rotation as a receipt here; a default credential on a routable BMC is a critical exposure, and this row is the standing reminder that the default is CURRENTLY IN PLACE."
+
+// First-boot memory-test receipt, 2026-08-29. MemTest86 (free package, ARM64 UEFI build)
+// booted headlessly via BMC NFS remote media from srv2:/srv/bmc, no local disk and no
+// keyboard: media config PUT then POST /api/settings/media/remote/start-media - which
+// REQUIRES the undocumented key image_redirection:1 (absent, the firmware answers opaque
+// errors 13410/13460; the key was recovered from the firmware's own UI bundle) - then
+// IPMI bootdev cdrom + power reset. Execution established by three instruments, screen
+// unseen: the NFS read counter (71 reads then quiet - the EFI app loaded to RAM), the
+// attached redirection session (status 1, session_index 0), and CPU0's power rails
+// climbing (54W to 66W CPU, 9.6W to 12.8W MEM) while CPU1 idled - the boot-CPU workload
+// signature. Operator then confirmed the screen via KVM.
+type MemtestBootReceipt {
+  test_software: NonEmptyStr
+  visible_memory: NonEmptyStr
+  cpu_clock_reading: NonEmptyStr
+  dimm_grade_note: NonEmptyStr
+  test_bandwidth_reading: NonEmptyStr
+  verdict_status: NonEmptyStr
+}
+
+data mt_collins_first_memtest: MemtestBootReceipt = MemtestBootReceipt {
+  test_software: "MemTest86 free, ARM64 UEFI build (BOOTAA64.efi), booted from BMC NFS virtual CD",
+  visible_memory: "254 GB visible - consistent with 8x 32GB trained; DIMM count and slot map not yet confirmed against the J1..J31 1DPC positions (dmidecode pass pending)",
+  cpu_clock_reading: "3000 MHz is the Q80-30 CPU clock as shown by memtest, not the memory speed",
+  dimm_grade_note: "operator: DIMMs are a cheaper slower grade, likely 2400-rated - a deliberate capex choice; the delivered-performance-per-billed-unit sensitivity in the frontier rows is where that trade gets priced when the S0 benchmark receipt lands",
+  test_bandwidth_reading: "22 GB/s memtest test bandwidth - a test-harness reading, not a platform ceiling",
+  verdict_status: "RUNNING as of 2026-08-29; pass/error verdict and the per-stick EDAC pass under Linux are outstanding - this receipt records boot and execution, not memory health",
+}
+
+data observation_provenance_note: String = "Producer: IPMI fru print 0 and probe session over the operator's LAN (host bmc-mtcollins1, 192.168.1.228, session proud-pike-265, 2026-08-29), via srv2. SEL at first power-on additionally showed PSU2 'AC lost' - one PSU corded, redundancy unarmed - recorded here as a placement-time reminder, not a defect."
+
+// ---------------------------------------------------------------------------------------------
+// SECOND PROBE OF THE HELD UNIT, 2026-08-31, from the container over the operator's LAN. The BMC
+// at 192.168.1.228 answers the factory credential (bmc_recredential_obligation still stands,
+// unrotated, two days later). What this probe is FOR is MOBO-X-2: the rung needs the unit's
+// per-slot channel census, and the honest result of the probe is that this BMC firmware cannot
+// produce one. That negative is modelled below rather than narrated, because an unmodelled
+// instrument ceiling is exactly how a group-level telemetry reading gets promoted into a slot map
+// it never contained.
+
+// WHY THE TELEMETRY ARM CANNOT CARRY A SLOT MAP AT ALL. The refusal record has no available form:
+// BmcGroupTelemetryOnly holds a BmcPerSlotInventoryRefusal, a type whose every inhabitant is a
+// refusal, so the arm cannot be written as if it had per-slot inventory. The distinction is
+// structural rather than a field a later author could set to "available" while the firmware
+// stayed silent (DESIGN section 4b: construction over validation).
+type BmcPerSlotInventoryRefusal {
+  attempted_endpoints: NonEmptyStr
+  refusal: NonEmptyStr
+  what_group_telemetry_cannot_establish: NonEmptyStr
+}
+
+type MemoryCensusCapability
+  = BmcGroupTelemetryOnly {
+      cpu_domains_observed: NonEmptyStr
+      memory_power_observed: NonEmptyStr
+      dimm_group_temperature_observed: NonEmptyStr
+      per_slot_inventory: BmcPerSlotInventoryRefusal
+    }
+  | HostSmbiosCensusAvailable {
+      producer: NonEmptyStr
+      first_evidence: NonEmptyStr
+    }
+
+data mt_collins_memory_census_capability: MemoryCensusCapability = BmcGroupTelemetryOnly {
+  cpu_domains_observed: "two populated CPU domains: CPU0 and CPU1 both report live DDR rails (CPU0_1V2VDDQ0123 and CPU0_1V2VDDQ4567 at 1.23/1.224 V, the CPU1 pair identical) - the held unit is a 2P board, which is a fact about THIS unit and not about the 1P Rev-A selection MOBO-X-1 made",
+  memory_power_observed: "CPU0_MEM_Pwr 8 W and CPU1_MEM_Pwr 10.4 W with the host powered (chassis-status power_status 1), Total_Power 200 W, CPU0_CPU_Pwr 62 W and CPU1_CPU_Pwr 66 W",
+  dimm_group_temperature_observed: "GROUP granularity only: CPU0_DIMMG0_Temp 48 C, CPU0_DIMMG1_Temp 45 C, CPU1_DIMMG0_Temp 48 C, CPU1_DIMMG1_Temp 50 C - two thermal groups per socket over an unstated number of slots",
+  per_slot_inventory: BmcPerSlotInventoryRefusal {
+    attempted_endpoints: "GET /api/system-inventory, /api/settings/system-inventory, /api/smbios, /api/settings/smbios-info, /api/dimm, /api/settings/dimm, /api/memory, /api/processors, /api/asset-info, /api/settings/asset-info, /api/screen-capture, /api/video/screenshot - each answered 404 code 1010 Invalid API Call; /redfish/v1 is absent on this firmware, as mt_collins_bmc_access already records",
+    refusal: "this AMI MegaRAC build exposes no per-slot memory inventory over any endpoint reached, so the census MOBO-X-2 requires cannot be produced from the BMC at all",
+    what_group_telemetry_cannot_establish: "DIMM slot identity against the J1..J31 positions, channel membership, rank organization, per-slot capacity, trained speed, and therefore channel-count topology - a two-group thermal reading is consistent with many populations and selects none of them",
+  },
+}
+
+// THE SYSTEM EVENT LOG, READ IN FULL AT THE SAME PROBE, AND WHAT ITS SILENCE IS NOT. Zero
+// memory-class records is a real reading and a weak one: this firmware logs no memory sensor
+// events on this platform that we have ever observed it log, so absence here does not distinguish
+// "no errors occurred" from "errors are not logged to the SEL". It is recorded because the
+// depopulation experiments of MOBO-X-2 will read this same log, and their reading needs a
+// pre-mutation baseline that says what the instrument said BEFORE anything was moved.
+type SelObservation {
+  records_examined: NonEmptyStr
+  memory_class_records: NonEmptyStr
+  last_recorded_event: NonEmptyStr
+  what_this_does_not_establish: NonEmptyStr
+}
+
+data mt_collins_sel_baseline: SelObservation = SelObservation {
+  records_examined: "230 records, the whole log, read at GET /api/logs/event on 2026-08-31",
+  memory_class_records: "zero: no record carries a memory sensor type, and no sensor name in the log contains DIMM or MEM",
+  last_recorded_event: "id 230, 2026-08-29 10:19:24 UTC, SOL_Status session_deactivated; the last boot event is id 227, Sys_Boot_Restart at 2026-08-29 10:15:34 UTC, followed by Boot_Progress id 228 at 10:16:48 - nothing has been logged since",
+  what_this_does_not_establish: "NOT a memory health verdict. The log is silent about memory on this platform whether or not memory is healthy, so this row is a baseline for comparison, never evidence of a pass.",
+}
+
+// THE 2026-08-29 MEMTEST HAS NO CAPTURED VERDICT, AND THAT IS ITS OWN STANDING. What the probe
+// establishes is that the host is powered and that the memtest ISO is still the redirected boot
+// medium - NOT that MemTest86 has been executing continuously for two days. It could be running,
+// finished and sitting at its result screen, hung, or rebooted back into the medium; no reachable
+// instrument distinguishes these, and the difference matters because a depopulation experiment
+// that starts without a captured baseline verdict can no longer tell a pre-existing memory fault
+// from one the mutation caused.
+//
+// THERE IS NO SEPARATE "VERDICT UNESTABLISHED" ARM, DELIBERATELY. Every arm that is not
+// VerdictObserved carries the obligation that closes it, so the unestablished state has no silent
+// form and cannot be held simultaneously with, or independently of, the observation it qualifies
+// (DESIGN: state-space conflation is the failure a second parallel arm would introduce here).
+type MemtestVerdictProducer
+  = HostConsoleObservation
+  | MemtestResultArtifact
+  | HostBootedOsMemoryTest
+
+type MemtestVerdictCaptureObligation {
+  subject: NonEmptyStr
+  producer: MemtestVerdictProducer
+  reason: NonEmptyStr
+}
+
+type MemtestExecutionStanding
+  = VerdictObserved { verdict: NonEmptyStr, producer: MemtestVerdictProducer }
+  | ExecutionObservedRunning { observation: NonEmptyStr, obligation: MemtestVerdictCaptureObligation }
+  | BootMediumStillRedirected {
+      medium: NonEmptyStr
+      first_known_boot: NonEmptyStr
+      observed_at: NonEmptyStr
+      obligation: MemtestVerdictCaptureObligation
+    }
+
+data mt_collins_memtest_standing: MemtestExecutionStanding = BootMediumStillRedirected {
+  medium: "memtest86-iso.iso, redirection_status 1, via the NFS remote-media configuration still pointing at 192.168.1.188:/srv/bmc (GET /api/settings/media/remote/configurations, 2026-08-31)",
+  first_known_boot: "2026-08-29 10:15:34 UTC, SEL id 227 Sys_Boot_Restart, the boot the mt_collins_first_memtest receipt describes",
+  observed_at: "2026-08-31, container probe over the operator's LAN",
+  obligation: MemtestVerdictCaptureObligation {
+    subject: "the held Foxconn Mt. Collins, board serial 02030A800TEXFT02L",
+    producer: HostConsoleObservation,
+    reason: "the 2026-08-29 execution has no captured terminal verdict; the reachable BMC API exposes neither a screen capture nor a console transcript, so closing this obligation requires the operator's KVM or serial console session, and it must close - or be explicitly abandoned - BEFORE any depopulation mutates the population under test",
+  },
+}
+
+// WHETHER THE PRIOR RUN'S VERDICT IS IN HAND. Consumers ask this rather than pattern-matching the
+// standing themselves, so the rule that only VerdictObserved counts has one authority.
+fn memtest_verdict_is_captured(standing: MemtestExecutionStanding) -> Bool {
+  match standing {
+    VerdictObserved { verdict: _, producer: _ } => true
+    ExecutionObservedRunning { observation: _, obligation: _ } => false
+    BootMediumStillRedirected { medium: _, first_known_boot: _, observed_at: _, obligation: _ } => false
+  }
+}
+
+fn held_unit_memtest_verdict_is_captured() -> Bool {
+  memtest_verdict_is_captured(standing: mt_collins_memtest_standing)
+}
+
+// ---------------------------------------------------------------------------------------------
+// FRONT DRIVE BAY OBSERVATION, 2026-09-06. The 2.5" backplane interface was recorded NOWHERE and
+// it gated the node-local cache-drive option: SATA and U.2 are different purchases, different
+// price bands and different bandwidth ceilings, so "the machine has 2.5" bays" was never enough to
+// decide anything. The operator inspected the held unit and the bays are U.2. That closes the
+// gating unknown; it does NOT decide that any drive is bought, which stays fleet_decisions'
+// local-cache-drive-shape, and the standing direction is diskless compute nodes.
+type DriveBayObservation {
+  form_factor: NonEmptyStr
+  interface: NonEmptyStr
+  bay_count: NonEmptyStr
+  producer: NonEmptyStr
+  decides: NonEmptyStr
+}
+
+data mt_collins_front_bays: DriveBayObservation = DriveBayObservation {
+  form_factor: "2.5 inch front bays",
+  interface: "U.2 - NVMe over the front backplane, NOT SATA",
+  bay_count: "not counted at the time of the interface observation; the count is a separate obligation and no consumer here may assume one",
+  producer: "operator visual inspection of the held unit, 2026-09-06, reported in session quiet-cat-23",
+  decides: "The drive INTERFACE question only. U.2 means a cache or scratch drive in a front bay is an NVMe purchase at NVMe prices and NVMe bandwidth, so the earlier framing that a front-bay drive might be a cheap SATA option is withdrawn. It does not establish bay count, backplane lane budget, cabling presence, or that any drive should be bought.",
+}
+
+// The operator additionally reports that the unit's populated DIMM slots are EVERY OTHER SLOT.
+// Recorded because it NARROWS the two-reading conflict and would otherwise be lost, and typed as
+// what it is: a visual report, not the per-slot census. It does not close mobo_x_memory_census's
+// obligation, because the question that decides the memory purchase is not HOW MANY sticks are in
+// but WHICH CHANNEL each occupies - one DIMM per channel across all sixteen channels and a
+// half-populated eight-channel layout look identical from the front and have opposite consequences,
+// the first already at full bandwidth and made WORSE by filling the empty slots, the second at half
+// bandwidth and fixed by filling them. Only dmidecode against the J-slot table separates them.
+data operator_slot_population_report: NonEmptyStr = "2026-09-06, operator visual: every other DIMM slot populated. With 32 slots that is 16 modules, and against the 254 GB visible in mt_collins_first_memtest it implies 16 x 16 GiB rather than the 8 x 32 GiB that receipt guessed - so the CAPACITY reading is narrowed. The CHANNEL map is not, and it is the channel map that decides whether filling the remaining slots raises capacity at the cost of data rate or doubles the memory bandwidth for free."

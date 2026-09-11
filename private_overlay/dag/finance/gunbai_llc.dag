@@ -1,0 +1,438 @@
+module finance.gunbai_llc
+
+import std.types { Int, NonEmptyStr, Bool }
+import std.nat { Nat }
+import strategy.calendar_date { CalendarDate, calendar_date_is_valid, calendar_date_in_year, calendar_date_iso }
+
+// GUNBAI LLC — the entity, modeled from its FORMATION DOCUMENTS, not from recollection.
+//
+// Every row below is read off one of two instruments: the IRS CP 575 G notice dated
+// 2025-06-02 assigning the EIN, and the Operating Agreement executed 2025-05-31. Where a
+// fact is not in either document it is absent here rather than guessed, because an entity
+// fact that is wrong on a filing costs a rejected return, not a code review comment.
+//
+// LEGAL NAME IS A SECTION 3 SINGLE AUTHORITY, and this entity currently has three
+// spellings in circulation: the IRS notice says GUNBAI LLC, the Operating Agreement says
+// Gunbai LLC, and the operator and the GitHub organization both say gunb.ai / gunb-ai.
+// The CP 575 is explicit that a variation "may cause a delay in processing, result in
+// incorrect information in your account, or even cause you to be assigned more than one
+// EIN". So the legal name is carried once, here, and the trade name is a SEPARATE field —
+// never the same field with a prettier value.
+
+type EntityLegalName {
+  as_filed: NonEmptyStr
+  authority: NonEmptyStr
+}
+
+data gunbai_legal_name: EntityLegalName = EntityLegalName {
+  as_filed: "Gunbai LLC",
+  authority: "Articles of Organization filed with the New York Department of State 2025-05-31; IRS CP 575 G dated 2025-06-02 renders it GUNBAI LLC in the all-caps convention of that notice. Filings and payments use this string, never the gunb.ai or gunb-ai trade spelling.",
+}
+
+data gunbai_trade_name: NonEmptyStr = "gunb.ai"
+
+// Federal tax classification. A single-member LLC is DISREGARDED by default and this one
+// affirmatively elects to stay that way (Operating Agreement Article V section 5.1). The
+// consequence is the load-bearing one for every projection in this repo: the company files
+// NO separate federal income tax return. Its income and deductions land on the member's
+// Form 1040, which is why the personal ledger and the business ledger cannot be modeled as
+// two independent systems that meet at a distribution.
+type FederalTaxClassification
+  = DisregardedEntity
+  | AssociationTaxableAsCorporation
+  | SCorporationElected
+
+data gunbai_federal_classification: FederalTaxClassification = DisregardedEntity
+
+type EntityFacts {
+  legal_name: EntityLegalName
+  ein: NonEmptyStr
+  dos_id: NonEmptyStr
+  dos_file_number: NonEmptyStr
+  formation_state: NonEmptyStr
+  formation_county: NonEmptyStr
+  formation_date_iso: NonEmptyStr
+  sole_member: NonEmptyStr
+  principal_office: NonEmptyStr
+  registered_agent: NonEmptyStr
+  initial_capital_micro: Nat
+  governing_law: NonEmptyStr
+}
+
+data gunbai_facts: EntityFacts = EntityFacts {
+  legal_name: gunbai_legal_name,
+  ein: "39-2453063",
+  dos_id: "7625243",
+  dos_file_number: "250531000010",
+  formation_state: "New York",
+  formation_county: "New York",
+  formation_date_iso: "2025-05-31",
+  sole_member: "Brian Searls",
+  principal_office: "313 W 22nd St Apt 1B, New York, NY 10011",
+  registered_agent: "InCorp Services, Inc., One Commerce Plaza, 99 Washington Ave., Suite 805-A, Albany, NY 12210-2822",
+  initial_capital_micro: 100000000,
+  governing_law: "New York Limited Liability Company Law",
+}
+
+// ---------------------------------------------------------------------------------------------
+// The deduction question — modeled as a REFUSAL, because it is genuinely undecided and the
+// amount riding on it is larger than any other open item in the finance model.
+// ---------------------------------------------------------------------------------------------
+//
+// Equipment bought by a disregarded entity is deductible against the member's other income
+// only if the LLC is carrying on an ACTIVE TRADE OR BUSINESS. If it has not yet begun
+// operations, the same dollars are section 195 start-up costs: capitalized and amortized
+// over fifteen years rather than deducted now. Same hardware, same year, same receipts —
+// two answers that differ by roughly the entire 2026 tax bill.
+//
+// This module does NOT decide it. Commencement is a facts-and-circumstances determination
+// that belongs to a CPA reading the actual activity, and a model that picked the favorable
+// arm because the favorable arm is favorable would be exactly the fabricated-plausible-output
+// failure DESIGN section 5 forbids. What the model does is make the undecidedness TYPED,
+// so that every downstream projection either carries the refusal or is visibly wrong.
+
+type TradeOrBusinessStanding
+  = ActiveTradeOrBusiness { commencement_date_iso: NonEmptyStr, basis: NonEmptyStr }
+  | PreOperationalStartup { basis: NonEmptyStr }
+  | CommencementUndetermined { obligation: NonEmptyStr }
+
+data gunbai_trade_or_business_standing: TradeOrBusinessStanding = CommencementUndetermined {
+  obligation: "Determine, with a CPA, the date Gunbai LLC began carrying on an active trade or business. Evidence pointing at a 2026 commencement: hardware acquired and placed in service, a compute programme under execution, a customer pipeline instrumented. Evidence pointing the other way: the year-end plan bills zero-dollar invoices through November and treats the first nonzero commercial payment as a December 19 gate conjunct, so first revenue may fall in 2026 only barely or not at all. Until this row is replaced by ActiveTradeOrBusiness with a date, no deduction may be claimed by any consumer of this module.",
+}
+
+fn standing_permits_current_deduction(s: TradeOrBusinessStanding) -> Bool {
+  match s {
+    ActiveTradeOrBusiness { commencement_date_iso, basis } => true,
+    PreOperationalStartup { basis } => false,
+    CommencementUndetermined { obligation } => false,
+  }
+}
+
+// Placed-in-service is a SEPARATE gate from purchase, and conflating them is the common
+// and expensive error. Depreciation begins when the asset is ready and available for its
+// assigned function, not when it is paid for. Hardware bought in December and racked in
+// February is a NEXT-year deduction.
+// THE YEAR IS PART OF THE DATE, NOT A FIELD BESIDE IT. This has now been wrong twice, and the
+// second version is the instructive one. The first carried only date_iso and matched the ARM
+// rather than the date, so every PlacedInService answered yes and a 2027-01-01 placement
+// produced a 2026 deduction. The second added a tax_year field beside date_iso and a comment
+// asserting the mismatch was unwritable - which was FALSE:
+// PlacedInService { date_iso: "2027-01-01", tax_year: 2026 } constructs, and the predicate
+// answers about 2026. Two independently authored fields for one fact is a second authority
+// (DESIGN section 3), and a check that can be satisfied by editing the declaration while the
+// other field lies is validation standing where construction was available (section 5).
+// Carrying a structured CalendarDate leaves no state in which the year and the date disagree,
+// because there is only one of them and the ISO string is derived for display.
+type PlacedInServiceStanding
+  = PlacedInService { date: CalendarDate }
+  | AcquiredNotYetInService { obligation: NonEmptyStr }
+
+data spark_placed_in_service: PlacedInServiceStanding = PlacedInService {
+  date: CalendarDate { year: 2026, month: 8, day: 15 },
+}
+
+data mt_collins_placed_in_service: PlacedInServiceStanding = AcquiredNotYetInService {
+  obligation: "Twenty Mt. Collins 1U units are committed but not yet delivered, racked, or memory-populated; the RAM is an unpriced obligation and a server without memory is not available for its assigned function. If these are placed in service on or before 2026-12-31 their basis is deductible against 2026 income; if they slip to January the deduction moves to 2027, where it meets a different income year and a different state.",
+}
+
+fn placed_in_service_in_year(p: PlacedInServiceStanding, year: Int) -> Bool {
+  match p {
+    PlacedInService { date } => calendar_date_in_year(d: date, year: year),
+    AcquiredNotYetInService { obligation } => false,
+  }
+}
+
+// A structured date makes the year/date disagreement unwritable; it does not make an IMPOSSIBLE
+// date unwritable - 31 February still constructs - so that residue is validated here and the
+// verdict refuses over it rather than answering. An invalid date is not a false year, but a
+// consumer that answers a tax question over one is fabricating an outcome from a state it never
+// established.
+fn placed_in_service_date_is_valid(p: PlacedInServiceStanding) -> Bool {
+  match p {
+    PlacedInService { date } => calendar_date_is_valid(d: date),
+    AcquiredNotYetInService { obligation } => true,
+  }
+}
+
+fn placed_in_service_in_2026(p: PlacedInServiceStanding) -> Bool {
+  placed_in_service_in_year(p: p, year: 2026)
+}
+
+// The deduction is available only when BOTH gates pass. Conjunction is stated once, here,
+// so no consumer can satisfy one gate and quietly assume the other.
+type DeductionVerdict
+  = DeductionAvailable { note: NonEmptyStr }
+  | DeductionRefused { cause: NonEmptyStr }
+
+fn equipment_deduction_verdict(s: TradeOrBusinessStanding, p: PlacedInServiceStanding) -> DeductionVerdict {
+  if !placed_in_service_date_is_valid(p) {
+    DeductionRefused { cause: "The placed-in-service date is not a date that exists. No gate is evaluated over it - answering either way would be a verdict derived from a state the model never established." }
+  } else if standing_permits_current_deduction(s) && placed_in_service_in_2026(p) {
+    DeductionAvailable { note: "Both gates pass: an active trade or business exists and the asset is available for its assigned function within the tax year." }
+  } else {
+    DeductionRefused { cause: "At least one gate fails. Either commencement of an active trade or business is undetermined or negative, or the asset was not placed in service within the tax year. Both are required and neither is assumed." }
+  }
+}
+
+// New York compliance obligations that attach to the entity by its FORM and its COUNTY,
+// independent of whether it earns anything. They are rostered because an obligation nobody
+// modeled is an obligation nobody discharges, and two of these carry deadlines that have
+// already run.
+type ComplianceObligation {
+  id: NonEmptyStr
+  requirement: NonEmptyStr
+  standing: NonEmptyStr
+}
+
+// Section 206 has THREE states, not two, and the middle one is where this entity actually
+// sits. Publishing and certifying are separate acts with separate evidence: the newspapers
+// produce affidavits, and the Department of State is discharged only by a Certificate of
+// Publication filed WITH those affidavits attached. A boolean "published yes or no" cannot
+// represent an entity that has run the six weeks and holds both affidavits but has filed
+// nothing — which is precisely the state that reads as compliant to its own operator while
+// the statutory consequence still stands.
+// A fourth state, discovered 2026-09-04 and materially distinct from the one it was first
+// recorded as. The affidavits were discarded and only photographs survive. Publication
+// itself is unaffected — the six weeks ran and the newspapers' own records evidence it —
+// but a photograph is not a notarized instrument and cannot be annexed to the certificate.
+// The distinction is worth its own arm precisely because it is invisible in the direction
+// that matters: an operator holding images believes the obligation is one envelope away,
+// and it is one REISSUE away, which is a different actor on a different clock.
+type PublicationStanding
+  = NotPublished { obligation: NonEmptyStr }
+  | PublishedAffidavitsLost { evidence_held: NonEmptyStr, obligation: NonEmptyStr }
+  | PublishedCertificateNotFiled { affidavits_held: NonEmptyStr, obligation: NonEmptyStr }
+  | CertificateFiled { dos_receipt: NonEmptyStr }
+
+data gunbai_publication_standing: PublicationStanding = PublishedAffidavitsLost {
+  evidence_held: "Photographic copies only, of two affidavits from two newspapers, one of them placed through Column. The originals were discarded. The photographs evidence that publication OCCURRED and carry the dates and identifiers needed to locate the publishers' records; they are not themselves filable, because section 206 requires the notarized affidavits annexed to the certificate.",
+  obligation: "Request a duplicate original notarized affidavit of publication from each newspaper, Column first. Publication does not need to be repeated and no republication cost is owed. Once both reissues are in hand this row advances to PublishedCertificateNotFiled and the filing proceeds unchanged.",
+}
+
+fn publication_discharged(p: PublicationStanding) -> Bool {
+  match p {
+    NotPublished { obligation } => false,
+    PublishedAffidavitsLost { evidence_held, obligation } => false,
+    PublishedCertificateNotFiled { affidavits_held, obligation } => false,
+    CertificateFiled { dos_receipt } => true,
+  }
+}
+
+// What non-filing actually costs, stated because the operator's instinct to fix it before
+// earning revenue is CORRECT and the reason is worth carrying: the consequence of an
+// undischarged section 206 is suspension of the LLC's authority to maintain an action or
+// special proceeding in New York courts. It does not void the entity, and it does not void
+// its contracts — it removes its ability to ENFORCE them in the state's own courts. That
+// is a dormant defect while nobody owes you anything and a live one the moment a customer
+// contract exists, which is exactly the transition the year-end plan schedules.
+data ny_publication_requirement: ComplianceObligation = ComplianceObligation {
+  id: "ny-llc-publication",
+  requirement: "New York LLC Law section 206: publish notice of formation once a week for six successive weeks in two newspapers designated by the clerk of the county of the office, then file a Certificate of Publication with the Department of State annexing the affidavits.",
+  standing: "PUBLISHED, AFFIDAVITS LOST, CERTIFICATE NOT FILED as of 2026-09-04. See gunbai_publication_standing. Discharge is a reissue plus a filing away, and the reissue depends on two third parties rather than on the operator alone, so it is the item on the critical path to first revenue rather than a formality behind it.",
+}
+
+data ny_llc_annual_fee: ComplianceObligation = ComplianceObligation {
+  id: "ny-it-204-ll",
+  requirement: "New York Form IT-204-LL, the LLC annual filing fee, is due from an LLC that is disregarded for federal purposes and has New York source gross income, on or before the fifteenth day of the third month following the close of the tax year. The fee is scaled to New York source gross income with a floor.",
+  standing: "UNVERIFIED for tax year 2025, the entity's first partial year. Whether a filing was due turns on whether there was New York source gross income.",
+}
+
+data nyc_unincorporated_business_tax: ComplianceObligation = ComplianceObligation {
+  id: "nyc-ubt",
+  requirement: "New York City imposes the Unincorporated Business Tax on unincorporated businesses carrying on a trade or business in the city, including single-member LLCs treated as disregarded. The principal office is in Manhattan, so the entity is within scope by location if it is carrying on a trade or business at all.",
+  standing: "NO LIABILITY EXPECTED while the entity operates at a loss, since the tax is on net business income. The obligation is rostered for its FILING question, not its payment question, and it is coupled to the same commencement determination as the deduction: an entity active enough to deduct is an entity in scope for this.",
+}
+
+// Effective 2026-01-01, New York requires every LLC formed or authorized in the state to
+// disclose its beneficial owners to the Department of State. An entity that existed before
+// that date files on a transition deadline rather than at formation, which places this
+// entity's obligation inside the planning window this repo's finance model covers. It is
+// rostered because it is a DATED obligation on an entity that currently transacts little
+// and is therefore easy to forget, and because non-compliance carries a delinquency mark
+// against the entity rather than a mere fee.
+data ny_llc_transparency_act: ComplianceObligation = ComplianceObligation {
+  id: "ny-llc-transparency-act",
+  requirement: "New York LLC Transparency Act beneficial ownership disclosure to the Department of State, identifying each beneficial owner of the LLC. Gunbai LLC is a single-member entity, so the disclosure is expected to name one beneficial owner.",
+  standing: "OPEN, with a transition deadline understood to fall on 2027-01-01 for entities formed before 2026-01-01. Gunbai LLC was formed 2025-05-31 and is therefore in the transition population rather than the at-formation population. CONFIRM the operative deadline and the filing channel against the Department of State's own guidance before relying on this row; the statute was amended between passage and effect and this row cites no receipt.",
+}
+
+// The federal beneficial-ownership regime is NOT the same obligation and must not be
+// treated as discharging the state one. Its scope was narrowed during 2025 such that
+// domestic entities are broadly outside it, which is exactly the condition under which an
+// operator concludes "beneficial ownership does not apply to me" and misses the state
+// filing that does.
+data federal_boi_relationship: ComplianceObligation = ComplianceObligation {
+  id: "fincen-boi-distinctness",
+  requirement: "Confirm current federal FinCEN beneficial ownership reporting scope for a domestic single-member LLC, and record it as a fact DISTINCT from the New York obligation.",
+  standing: "Understood to be narrowed to foreign-formed entities for reporting purposes as of 2025, leaving domestic entities such as this one outside federal scope. UNCITED HERE. Whatever its answer, it does not discharge ny-llc-transparency-act.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// Owner-funded purchase: the protocol, and the one obligation it leaves open
+// ---------------------------------------------------------------------------------------------
+//
+// THE OCCASION. On 2026-09-08 the twenty-unit Mt. Collins invoice settled 39,078.06 across two
+// cards belonging to two principals, because a Mercury limit raise was requested and DENIED on
+// 2026-09-05. 20,000.00 of it went on the member's PERSONAL Citi card. finance.personal_ledger
+// mt_collins_owner_funded_leg books the personal side. This section is the company side.
+//
+// THE CLASSIFICATION, AND WHY IT IS A LIABILITY RATHER THAN EQUITY. gunbai is a
+// DisregardedEntity (gunbai_federal_classification), and for TEMPORARY personal-card funding that
+// the company intends to repay exactly, the clean form is a liability owed back to the member --
+// "Due to Member" -- not a capital contribution and not a second expense. The distinction is not
+// cosmetic: a capital contribution is permanent and changes the member's basis in the entity,
+// while an advance is extinguished by repayment and changes nothing. Recording an advance as a
+// contribution overstates equity and leaves a debt the books say does not exist.
+//
+// AND THE REIMBURSEMENT IS NOT A SECOND EXPENSE. The asset and its basis were recognised at
+// acquisition; the later transfer discharges an existing liability and recognises nothing. Booking
+// it twice would double the equipment on the company's books against one delivery of hardware.
+//
+// PROVENANCE, STATED SO IT IS NOT MISTAKEN FOR ADVICE THIS REPOSITORY OBTAINED. The shape above
+// came from operator research on 2026-09-10, not from engaged counsel and not from a cited
+// authority in extdeps.regulation. strategy.year_end_plan counsel-market-census and
+// m2-legal-issue-spot are where a bounded external reading is actually procured. This is a
+// DEFENSIBLE DEFAULT recorded so the money has a home today; it is not a professional opinion, and
+// it is exactly the sort of row a later reading may correct.
+
+type OwnerFundedFundingForm
+  = DueToMemberAdvance
+  | MemberCapitalContribution
+  | MemberLoanWithTerms { note: NonEmptyStr }
+
+fn funding_form_is_extinguished_by_repayment(f: OwnerFundedFundingForm) -> Bool {
+  match f {
+    DueToMemberAdvance => true
+    MemberCapitalContribution => false
+    MemberLoanWithTerms { note } => true
+  }
+}
+
+// SUBSTANTIATION IS A ROSTER, NOT A HABIT. A card statement proves that money moved; it does not
+// establish WHAT was bought, FOR WHOM, or that the company owns it. Each row below answers a
+// question a statement cannot, which is why the roster is enumerated rather than summarised as
+// "keep the receipts".
+type SubstantiationItem {
+  requirement: NonEmptyStr
+  answers: NonEmptyStr
+}
+
+data owner_funded_substantiation: List<SubstantiationItem> = [
+  SubstantiationItem { requirement: "Vendor invoice and receipt", answers: "what was bought, from whom, at what price" },
+  SubstantiationItem { requirement: "Card statement excerpt showing the charge and the member's payment of it", answers: "that the member's own funds were used, and when" },
+  SubstantiationItem { requirement: "Evidence of the company-paid portion of the same transaction", answers: "that the split is complete and no amount is claimed twice" },
+  SubstantiationItem { requirement: "Purchase date, vendor, invoice number, exact reimbursable amount", answers: "the identity of the obligation being discharged" },
+  SubstantiationItem { requirement: "Equipment description, serial numbers, business purpose", answers: "the character of the expenditure, which a statement cannot establish" },
+  SubstantiationItem { requirement: "Delivery location and sales-tax treatment", answers: "situs, and whether tax was correctly charged" },
+  SubstantiationItem { requirement: "Statement that the purchase was made for and on behalf of the company because company credit was insufficient", answers: "why a member paid at all" },
+  SubstantiationItem { requirement: "Statement that the company owns the equipment and all refund, credit, warranty and disposition rights", answers: "ownership, which the cardholder name otherwise contradicts" },
+  SubstantiationItem { requirement: "Sole-member approval of the reimbursement", answers: "authorisation, which a single member must still give explicitly" },
+  SubstantiationItem { requirement: "Company-bank evidence at the moment reimbursement occurs", answers: "that the liability was actually discharged" },
+]
+
+// THE OWNERSHIP DEFECT AND ITS REPAIR. If the invoice names the member personally rather than the
+// company, the cardholder name is the ONLY ownership evidence and it points the wrong way. A signed
+// ratification -- the member purchased as the company's agent, the company accepts ownership -- is
+// what turns a personal receipt into a company asset. Whether this invoice names the company is
+// UNOBSERVED here and is the first thing to check, not an assumption to carry.
+type InvoicePurchaserStanding
+  = InvoiceNamesCompany
+  | InvoiceNamesMemberRatificationOwed
+  | InvoicePurchaserUnobserved
+
+data mt_collins_invoice_purchaser: InvoicePurchaserStanding = InvoiceNamesMemberRatificationOwed
+
+// OBSERVED 2026-09-10 (operator): THE ACQUISITION PAPER NAMES THE MEMBER AS PURCHASER AND
+// REFERENCES THE MERCURY ACCOUNT, WHICH IS THE COMPANY'S. It does not name the Company as
+// purchaser. That is a MIXED record rather than a purely personal one, and the mixture is what
+// makes the ratification arm live rather than optional: an instrument belonging to the Company
+// appears on the paper, so a reader can see the Company funded part of it, and still nothing on
+// the paper says the Company BOUGHT it.
+//
+// AND THE MERCURY REFERENCE DOES NOT RESCUE IT, WHICH IS THE POINT WORTH KEEPING. A card issued to
+// a sole member bears his name whether the account belongs to him or to his company, so the name on
+// the paper distinguishes nothing. What the Mercury reference establishes is WHICH BOOK the money
+// came from -- a FUNDING fact. Who the vendor sold to is an OWNERSHIP fact, and no payment
+// instrument answers it: a company may pay a member's personal bill and a member may pay a
+// company's, and the card says nothing about which happened. So the ratification is owed on the
+// strength of what the paper does not say, not on the strength of which card appears.
+//
+// WHAT THE RATIFICATION HAS TO SAY, and each clause answers something the invoice now says wrongly
+// or not at all: that the member purchased AS THE COMPANY'S AGENT rather than for himself; that the
+// company ACCEPTS OWNERSHIP of the equipment; that ownership carries the refund, credit, warranty
+// and disposition rights with it, because those are the rights a vendor honours for whoever it
+// believes it sold to; and that it is dated and signed by the sole member, who is also the only
+// person who can approve it. It is one document and it is retroactive, which is admissible -- a
+// ratification is by definition after the act.
+//
+// AND THE ASSET REGISTER IS THE SECOND HALF. A ratification that is not followed by the equipment
+// appearing in the company's asset register leaves the claim asserted and unrecorded.
+
+type RatificationStanding
+  = RatificationExecuted { dated_iso: NonEmptyStr }
+  | RatificationOwed { required: List<NonEmptyStr> }
+
+// PREPARED 2026-09-10 AND AWAITING SIGNATURE: docs/entity/2026-09-10-mt-collins-ratification.md,
+// authored on the Member's explicit authorization. IT IS UNSIGNED, so this row stays Owed. A
+// prepared document is not an executed one, and flipping this to RatificationExecuted before a
+// signature exists would be the same defect as reading enrollment as execution.
+data mt_collins_ratification: RatificationStanding = RatificationOwed {
+  required: [
+    "purchase made by the member AS AGENT for the company, because company credit was insufficient",
+    "company accepts ownership of the equipment described in the vendor invoice",
+    "refund, credit, warranty and disposition rights vest in the company",
+    "vendor, invoice number, purchase date and the equipment described",
+    "the 20,000.00 personal leg recorded as Due to Member and approved for reimbursement",
+    "dated and signed by the sole member",
+    "equipment entered in the company asset register",
+  ],
+}
+
+fn acquisition_ownership_is_documented(
+  purchaser: InvoicePurchaserStanding,
+  ratification: RatificationStanding
+) -> Bool {
+  match purchaser {
+    InvoiceNamesCompany => true
+    InvoicePurchaserUnobserved => false
+    InvoiceNamesMemberRatificationOwed =>
+      match ratification {
+        RatificationExecuted { dated_iso } => true
+        RatificationOwed { required } => false
+      }
+  }
+}
+
+// REIMBURSE THE MEMBER'S BANK ACCOUNT, NOT THE CARD. A company payment made directly to a personal
+// credit-card account discharges whatever balance sits there, which may include personal charges;
+// the transfer then has no clean correspondence to the substantiated amount. Paying the member and
+// letting the member pay the card keeps one company outflow matched to one substantiated
+// obligation. A direct card payment can still be accounted for correctly and is not forbidden --
+// it just spends the clarity this protocol exists to produce.
+data reimbursement_route: NonEmptyStr = "company operating account -> member's personal bank account, memo naming the card's last four, the vendor invoice, and the purchase date; the member then pays the card"
+
+type OwnerFundedObligationStanding
+  = ObligationRecordedUnreimbursed { usd_micro: Nat }
+  | ObligationReimbursed { usd_micro: Nat, settled_iso: NonEmptyStr }
+
+data mt_collins_due_to_member: OwnerFundedObligationStanding = ObligationRecordedUnreimbursed {
+  usd_micro: 20000000000,
+}
+
+fn obligation_is_open(o: OwnerFundedObligationStanding) -> Bool {
+  match o {
+    ObligationRecordedUnreimbursed { usd_micro } => true
+    ObligationReimbursed { usd_micro, settled_iso } => false
+  }
+}
+
+// WHAT IS STILL MISSING, NAMED AS A CAPABILITY RATHER THAN A CHORE. Everything above is the
+// PROTOCOL and the STANDING of one obligation. It is not a posted entry, because this corpus has
+// no entity-side ledger at all -- finance.personal_ledger is the member's book, and its
+// LedgerAccount enumerates personal accounts. Posting the company side needs a company book:
+// double-entry over an entity account set, with the equipment asset on one side and Due to Member
+// on the other. Reusing the personal account enum would be a meaning fork -- one name serving two
+// sets of books -- so the carrier has to be authored, not borrowed. Until it exists,
+// strategy.year_end_plan owner-funded-purchase-protocol cannot reach Done, and this row is the
+// reason rather than an oversight.
+data entity_ledger_absent: NonEmptyStr = "no entity-side double-entry carrier exists; the company-side entry that owner-funded-purchase-protocol requires has nowhere to be posted, and reusing finance.personal_ledger LedgerAccount would fork one account authority across two books"

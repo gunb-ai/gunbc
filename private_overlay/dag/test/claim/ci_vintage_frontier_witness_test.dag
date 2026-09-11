@@ -1,0 +1,348 @@
+module test.claim.ci_vintage_frontier_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import std.pareto {
+  AxisGap,
+  ParetoStanding, ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence,
+  SelectionRefused,
+}
+import strategy.ci_vintage_frontier {
+  equivalence_missing, single_thread_missing, vintage_missing, without_axis,
+  vintage_entry, agent_buyer_entry,
+  axis_capex_per_equiv_id, axis_watts_per_equiv_id, axis_equiv_per_ru_id, axis_single_thread_id,
+  VintageCandidate, vintage_candidates,
+  altra_mt_jade_vintage, milan_7713_vintage, gaming_9950x_vintage,
+  ampereone_a160_vintage, bergamo_9754_vintage,
+  vintage_standing, agent_buyer_standing,
+  VintageAwaitingLiquidation, agent_buyer_flip_is_fundable,
+  standing_in_field, VintageCapex, VintageCapexBanded, VintageCapexAwaitingSharedScenario, VintageCapexIncompleteBom,
+  PowerEvidence, PowerMeasured, PowerPlanningEstimated,
+  EquivalenceEvidence, EquivalenceByDefinition, EquivalenceBenchmarkEstimated,
+  SingleThreadEvidence, SingleThreadByDefinition, SingleThreadEstimated,
+}
+
+// The vintage frontier's discriminating controls. The field is small and hand-seeded, so
+// the witnesses pin the STRUCTURE of the answer - who survives, who is incomparable, and
+// which verdict flips when the single-thread axis is un-funded - rather than any figure.
+
+fn standing_is_frontier(s: ParetoStanding) -> Bool {
+  match s {
+    ProvisionallyNonDominated { sensitivities } => true,
+    DominatedBy { dominators } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+fn standing_is_incomparable(s: ParetoStanding) -> Bool {
+  match s {
+    NotComputable { missing } => true,
+    PendingEvidence { undecided } => false,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { dominators } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+fn standing_is_dominated(s: ParetoStanding) -> Bool {
+  match s {
+    DominatedBy { dominators } => true,
+    ProvisionallyNonDominated { sensitivities } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+// CONTROL 1, RESTATED A SECOND TIME - AND THE RESTATEMENT IS THE FINDING. This first asserted that
+// three "observed" vintages survive the full axis set; it then narrowed to Milan alone, the one row
+// whose SOURCE states a real capex band. That was still wrong, and the reviewer found why: every
+// per-equivalent axis DIVIDES BY the Altra-equivalence, which outside the defining row is a
+// benchmark-chained planning number with no declared spread. A grounded 2-3k numerator over an
+// unbounded divisor is not a grounded region - it was emerging as an interval whose width was the
+// numerator's alone, which is precisely the understatement this PR exists to remove.
+//
+// So the honest reading of the live field is that NOTHING is on this frontier: every candidate is
+// NotComputable, each for a cause it names. That is not a defect in the frontier, it is the frontier
+// reporting that the vintage comparison was never funded by evidence - it was funded by a benchmark
+// chain nobody has run on our workload. The claim is UNFUNDED, not refuted, and it returns axis by
+// axis: measure the equivalence on a real workload and three axes light up at once.
+// THE DOMAIN IS GUARDED, because this control's whole content is a universal over it. "Every
+// candidate is NotComputable" is vacuously true of an empty roster, and an emptied roster would
+// therefore report the STRONGEST version of this claim while establishing nothing - the
+// predicate-vacuously-true-on-an-empty-domain mode, in a control whose subject makes it especially
+// easy to miss. The five is the authored roster size, so dropping a candidate stops the line too.
+test fn witness_no_live_vintage_is_on_the_frontier() -> Bool {
+  count(vintage_candidates) == 5
+    && all(vintage_candidates, c => standing_is_incomparable(s: vintage_standing(c: c)))
+}
+
+// The discriminating half of control 1, and the reason it is not a tautology dressed as a check:
+// the emptiness must be caused by the EQUIVALENCE and be repairable by grounding it. Hand the
+// production projector a row whose equivalence is exact and whose capex band is real, in a field
+// with a peer it strictly beats, and it must reach the frontier. If this greens while control 1
+// greens, "everything is NotComputable" is a live consequence of the evidence rather than a
+// projector that can no longer fund anything at all.
+test fn witness_grounding_the_equivalence_refunds_the_axes() -> Bool {
+  standing_is_frontier(s: standing_in_field(c: grounded_probe, field: [grounded_probe, weaker_peer]))
+}
+
+// CONTROL 2. The unliquidated successors are incomparable BY THEIR OWN declaration: no
+// market means no capex reading, and the watch obligation rides in place of a guessed
+// price. Neither a zero nor an average may stand in for a liquidation that has not happened.
+test fn witness_unliquidated_successors_are_incomparable() -> Bool {
+  standing_is_incomparable(s: vintage_standing(c: ampereone_a160_vintage))
+    && standing_is_incomparable(s: vintage_standing(c: bergamo_9754_vintage))
+}
+
+// CONTROL 3 IS A STANDING DEBT AND IT IS RECORDED AS ONE RATHER THAN QUIETLY DELETED. The
+// agent-buyer flip - un-fund single-thread and the gaming vintage is dominated by the Altra build -
+// is the operator's thesis stated as a selection fact, and it CANNOT be established while either
+// candidate's capex is ungrounded. It was previously green on two invented points, so it was never
+// evidence for the thesis; asserting it now would be asserting it on the same non-evidence.
+//
+// What is still checkable is that the flip is unavailable for the stated REASON and not silently
+// gone: both rows must be NotComputable under the agent-buyer axes too. When the two capex
+// obligations are discharged this control is replaced by the dominance assertion it stands in for.
+//
+// CORRECTION TO AN EARLIER EXPLANATION OF MINE: I first wrote that this was blocked by the spine's
+// entry-wide missing_inputs refusing a candidate under an axis set that does not fund the missing
+// axis. That is a real defect in std.pareto and it is filed, but it is NOT what blocks this flip -
+// agent_buyer_axes still FUNDS capex and removes only single-thread, so a missing capex genuinely
+// blocks this particular comparison.
+//
+// The debt is reason-locked: the rows must be incomparable AND their capex arms must be the exact
+// ungrounded ones, so a later unrelated incomparability cannot keep this green while the thesis
+// stays silently unfunded.
+// Matching the arm IS the check. count(obligation) > 0 stood in the ungrounded arm and was true by
+// construction on a NonEmptyStr - a conjunct that discriminates nothing reads as strength and
+// carries none.
+//
+// THE ARM ITSELF WAS TOO COARSE, on review 5091375040: one generic ungrounded arm answered true for
+// BOTH rows, so either could have acquired the other's blocker - or a third, unrelated one - with
+// this control still green. The two debts have different dissolution conditions, so they are now
+// different constructors, and each row is locked to the one that actually blocks it. Swapping the
+// two arms between the rows must red this control; under the old single arm it could not.
+fn capex_awaits_the_shared_scenario(c: VintageCandidate) -> Bool {
+  match c.capex {
+    VintageCapexAwaitingSharedScenario { obligation } => true
+    VintageCapexIncompleteBom { obligation } => false
+    VintageCapexBanded { low_usd_micro, high_usd_micro, note } => false
+    VintageAwaitingLiquidation { watch_obligation } => false
+  }
+}
+
+fn capex_awaits_the_missing_bom_lines(c: VintageCandidate) -> Bool {
+  match c.capex {
+    VintageCapexIncompleteBom { obligation } => true
+    VintageCapexAwaitingSharedScenario { obligation } => false
+    VintageCapexBanded { low_usd_micro, high_usd_micro, note } => false
+    VintageAwaitingLiquidation { watch_obligation } => false
+  }
+}
+
+// Its cause check is reason-locked against the REAL arm rather than a renaming of it, so the
+// obligation each row carries - and therefore what would discharge it - stays in view. The two rows
+// are ungrounded for genuinely different reasons: Mt. Jade's funds when the shared memory scenario
+// is threaded across modules, the gaming row's when its two unpriced BOM lines are quoted.
+
+// THE AXIS IS THE NEW LOAD-BEARING FACT, SO IT IS ASSERTED DIRECTLY RATHER THAN THROUGH A STANDING.
+//
+// A standing arm cannot witness an axis assignment. Every entry here already carries readings on
+// every funded axis, and std.pareto refuses a candidate carrying ANY gap -- so moving a gap to a
+// different FUNDED axis leaves the standing at NotComputable and every existing control green. The
+// assignment is exactly the fact this migration adds, and only a control over the gap population
+// itself can see it.
+//
+// Identity is compared with declaration_ref_eq, not by spelling the decl_name: a string comparison
+// establishes that two names are spelled alike, which is a second naming scheme beside the ref the
+// module already owns.
+fn gaps_on_axis(gs: List<AxisGap>, ax: DeclarationRef) -> Int {
+  count(filter(gs, g => declaration_ref_eq(a: g.axis, b: ax)))
+}
+
+// EVERY PER-EQUIVALENT AXIS DIVIDES BY THE EQUIVALENCE, SO AN ESTIMATED EQUIVALENCE DECLARES AN
+// ABSENCE ON ALL THREE -- AND ON SINGLE-THREAD IT DECLARES NOTHING, because single-thread does not
+// divide by it. That asymmetry is the claim; without this control, dropping capex and watts from
+// per_equivalent_axes leaves every live standing unchanged, because independent capex and power
+// gaps already cover those readings. The claim would be false and nothing would go red.
+test fn witness_the_equivalence_gap_names_every_per_equivalent_axis() -> Bool {
+  let estimated = equivalence_missing(c: gaming_9950x_vintage)
+  let single = single_thread_missing(c: gaming_9950x_vintage)
+  count(estimated) == 3
+    && gaps_on_axis(gs: estimated, ax: axis_capex_per_equiv_id) == 1
+    && gaps_on_axis(gs: estimated, ax: axis_watts_per_equiv_id) == 1
+    && gaps_on_axis(gs: estimated, ax: axis_equiv_per_ru_id) == 1
+    && gaps_on_axis(gs: estimated, ax: axis_single_thread_id) == 0
+    && count(single) == 1
+    && gaps_on_axis(gs: single, ax: axis_single_thread_id) == 1
+}
+
+// THE PROJECTION DROPS ONE NAMED AXIS AND KEEPS EVERYTHING ELSE, INCLUDING A FOREIGN ONE.
+//
+// The first version of this filter was a generic intersection with the comparison roster, which
+// deletes a gap naming an axis outside this module's vocabulary just as readily as it drops the one
+// axis the agent-buyer comparison intends to stop funding. std.pareto refuses an unfunded gap
+// precisely so a mis-authored one is caught; an intersection removes the row before that refusal
+// can see it, leaving the wall permanently green by construction.
+//
+// The foreign row below is stipulated and its axis is deliberately not a vintage axis. Asserting it
+// SURVIVES is the discriminating half: an intersection passes the first two conjuncts and fails
+// this one.
+data foreign_axis: DeclarationRef = decl_ref(module_path: "test.claim.ci_vintage_frontier_witness", decl_name: "an_axis_this_module_does_not_declare")
+
+data mixed_gaps: List<AxisGap> = [
+  AxisGap { axis: axis_capex_per_equiv_id, cause: "fixture: capex" },
+  AxisGap { axis: axis_single_thread_id, cause: "fixture: single thread" },
+  AxisGap { axis: axis_equiv_per_ru_id, cause: "fixture: equiv per ru" },
+  AxisGap { axis: foreign_axis, cause: "fixture: an axis no vintage comparison funds" },
+]
+
+// THE PRODUCTION ENTRY BUILDER IS THE SUBJECT, NOT ONLY THE HELPER. Asserting on without_axis alone
+// would leave agent_buyer_entry free to call something else, or to call it with a different axis,
+// while this stayed green -- the helper is not the thing the comparison uses.
+//
+// The helper half stays because it is the only place the FOREIGN row can be exercised: a foreign
+// gap cannot be reached through agent_buyer_entry without authoring a candidate whose producer
+// emits one, and vintage_missing is a total function over the four known axes.
+fn entry_gap_axes_of(c: VintageCandidate) -> List<AxisGap> { agent_buyer_entry(c: c).missing_inputs }
+
+// gaming_9950x carries an estimated equivalence, an estimated single-thread index, an unmeasured
+// power figure and an incomplete BOM, so its raw gap set spans every vintage axis. Its agent-buyer
+// entry must therefore lose the single-thread gap and keep every other one.
+//
+// AND THE FULL ENTRY IS COMPARED PER AXIS TOO, not by total. A count equality lets a mutation
+// inside vintage_entry remap one capex gap onto watts: the total is unchanged, every absent funded
+// axis still carries at least one gap so the standing stays NotComputable, and the two projection
+// controls never touch the full entry. Cardinality does not establish assignment -- the same defect
+// already found in the makeshift control.
+test fn witness_the_agent_buyer_projection_drops_only_single_thread() -> Bool {
+  let kept = without_axis(gaps: mixed_gaps, drop: axis_single_thread_id)
+  let helper_half = count(kept) == 3
+    && gaps_on_axis(gs: kept, ax: axis_single_thread_id) == 0
+    && gaps_on_axis(gs: kept, ax: axis_capex_per_equiv_id) == 1
+    && gaps_on_axis(gs: kept, ax: axis_equiv_per_ru_id) == 1
+    && gaps_on_axis(gs: kept, ax: foreign_axis) == 1
+  let raw = vintage_missing(c: gaming_9950x_vintage)
+  let projected = entry_gap_axes_of(c: gaming_9950x_vintage)
+  let full = vintage_entry(c: gaming_9950x_vintage).missing_inputs
+  let production_half = gaps_on_axis(gs: raw, ax: axis_single_thread_id) == 1
+    && gaps_on_axis(gs: projected, ax: axis_single_thread_id) == 0
+    && count(projected) == count(raw) - 1
+    && gaps_on_axis(gs: projected, ax: axis_capex_per_equiv_id) == gaps_on_axis(gs: raw, ax: axis_capex_per_equiv_id)
+    && gaps_on_axis(gs: projected, ax: axis_watts_per_equiv_id) == gaps_on_axis(gs: raw, ax: axis_watts_per_equiv_id)
+    && gaps_on_axis(gs: projected, ax: axis_equiv_per_ru_id) == gaps_on_axis(gs: raw, ax: axis_equiv_per_ru_id)
+    && gaps_on_axis(gs: full, ax: axis_capex_per_equiv_id) == gaps_on_axis(gs: raw, ax: axis_capex_per_equiv_id)
+    && gaps_on_axis(gs: full, ax: axis_watts_per_equiv_id) == gaps_on_axis(gs: raw, ax: axis_watts_per_equiv_id)
+    && gaps_on_axis(gs: full, ax: axis_equiv_per_ru_id) == gaps_on_axis(gs: raw, ax: axis_equiv_per_ru_id)
+    && gaps_on_axis(gs: full, ax: axis_single_thread_id) == gaps_on_axis(gs: raw, ax: axis_single_thread_id)
+  helper_half && production_half
+}
+
+test fn witness_the_agent_buyer_flip_is_unfunded_not_silently_gone() -> Bool {
+  let both_incomparable = standing_is_incomparable(s: agent_buyer_standing(c: gaming_9950x_vintage))
+    && standing_is_incomparable(s: agent_buyer_standing(c: altra_mt_jade_vintage))
+  let cause_is_the_declared_capex_gap =
+    capex_awaits_the_missing_bom_lines(c: gaming_9950x_vintage)
+      && capex_awaits_the_shared_scenario(c: altra_mt_jade_vintage)
+  both_incomparable && cause_is_the_declared_capex_gap && agent_buyer_flip_is_fundable() == false
+}
+
+// CONTROL 4 - A REAL WIDE READING REACHES PendingEvidence THROUGH THE PRODUCTION PROJECTOR. No LIVE
+// row can carry this any more: the width lives in a capex band, and no live row pairs a real band
+// with an exact divisor. That is exactly the case §4b sanctions a fixture for - the forbidden state
+// is unrepresentable in the accepted corpus but perfectly representable as source handed to the
+// compiler - and declining the fixture here would leave the spine's whole reason for existing
+// unexecuted. The rows below are stipulated, never observations, and the id says so.
+//
+// The discriminating half is the collapse: replace the band with the midpoint the memo took - a
+// single point rather than the band its source states - and the comparison decides, so the control
+// fails. That is the exact defect this PR exists to remove, so the control is red in its presence.
+fn probe(id: NonEmptyStr, equivalence: EquivalenceEvidence, watts: Int, capex: VintageCapex) -> VintageCandidate {
+  VintageCandidate {
+    id: id,
+    description: "synthetic fixture, never an observation",
+    equivalence: equivalence,
+    power: PowerMeasured { watts: watts, note: "stipulated as metered so the probe isolates the ONE variable it is about - the capex band. Planning power here would add a second gap and the entry would report NotComputable, which is a true answer to a different question than this control asks" },
+    rack_units_per_node: 4,
+    single_thread: SingleThreadByDefinition { index_micro: 1000000 },
+    capex: capex,
+  }
+}
+
+data exact_equivalence: EquivalenceEvidence = EquivalenceByDefinition {
+  equiv_per_node: 100,
+  note: "synthetic fixture: an equivalence stipulated exact so the axes it divides are funded",
+}
+
+// A grounded row: exact divisor, and the 2-3k band Milan's source actually states.
+data grounded_probe: VintageCandidate = probe(
+  id: "grounded-probe",
+  equivalence: exact_equivalence,
+  watts: 300,
+  capex: VintageCapexBanded { low_usd_micro: 2000000000, high_usd_micro: 3000000000, note: "synthetic fixture: Milan's stated band on an exact divisor" },
+)
+
+// Strictly worse on capex and on watts, so the frontier claim above is a real comparison.
+data weaker_peer: VintageCandidate = probe(
+  id: "weaker-peer",
+  equivalence: exact_equivalence,
+  watts: 600,
+  capex: VintageCapexBanded { low_usd_micro: 5000000000, high_usd_micro: 6000000000, note: "synthetic fixture: strictly above the grounded probe at both ends" },
+)
+
+// 2.4k a node over 100 equivalents sits strictly INSIDE the grounded probe's region, so the capex
+// axis cannot decide; every other axis is equal, so none can. The honest answer is "not established".
+data challenger_inside_the_band: VintageCandidate = probe(
+  id: "challenger-inside",
+  equivalence: exact_equivalence,
+  watts: 300,
+  capex: VintageCapexBanded { low_usd_micro: 2400000000, high_usd_micro: 2400000000, note: "synthetic fixture: an exact point planted inside the grounded probe's band" },
+)
+
+fn probe_against(challenger: VintageCandidate) -> ParetoStanding {
+  standing_in_field(c: grounded_probe, field: [grounded_probe, challenger])
+}
+
+fn standing_is_pending(s: ParetoStanding) -> Bool {
+  match s {
+    PendingEvidence { undecided } => count(undecided) > 0,
+    NotComputable { missing } => false,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { dominators } => false,
+    SelectionRefused { cause } => false,
+  }
+}
+
+test fn witness_a_real_band_reaches_pending_evidence() -> Bool {
+  standing_is_pending(s: probe_against(challenger: challenger_inside_the_band))
+}
+
+fn vintage_flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn vintage_witness_report() -> NonEmptyStr {
+  join([
+    "no_live_frontier=", vintage_flag(b: witness_no_live_vintage_is_on_the_frontier()),
+    " grounding_refunds=", vintage_flag(b: witness_grounding_the_equivalence_refunds_the_axes()),
+    " successors_incomparable=", vintage_flag(b: witness_unliquidated_successors_are_incomparable()),
+    " agent_buyer_flip_unfunded=", vintage_flag(b: witness_the_agent_buyer_flip_is_unfunded_not_silently_gone()),
+    " band_reaches_pending=", vintage_flag(b: witness_a_real_band_reaches_pending_evidence()),
+    " equivalence_gap_axes=", vintage_flag(b: witness_the_equivalence_gap_names_every_per_equivalent_axis()),
+    " projection_drops_one=", vintage_flag(b: witness_the_agent_buyer_projection_drops_only_single_thread()),
+  ], "")
+}
+
+fn vintage_witness_main() -> ProcessExit {
+  let report = vintage_witness_report()
+  let all_pass = witness_no_live_vintage_is_on_the_frontier()
+    && witness_grounding_the_equivalence_refunds_the_axes()
+    && witness_unliquidated_successors_are_incomparable()
+    && witness_the_agent_buyer_flip_is_unfunded_not_silently_gone()
+    && witness_a_real_band_reaches_pending_evidence()
+    && witness_the_equivalence_gap_names_every_per_equivalent_axis()
+    && witness_the_agent_buyer_projection_drops_only_single_thread()
+  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
+}
