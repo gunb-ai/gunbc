@@ -10,8 +10,7 @@ import product.placement_supply { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import v2.std.decl_ref_resolution {
   DeclarationRefResolution,
-  DeclarationRefResolved, DeclarationRefModuleAbsent, DeclarationRefDeclarationAbsent,
-  DeclarationRefFieldAbsent, DeclarationRefAmbiguous,
+  declaration_ref_resolution_is_resolved, declaration_ref_resolution_arm_key,
   resolve_declaration_ref_live
 }
 
@@ -420,12 +419,10 @@ type GeneratedArtifactProducerCoverage
   | GeneratedArtifactProducerUncovered { row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution }
 
 fn generated_artifact_producer_coverage_of(row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution) -> GeneratedArtifactProducerCoverage {
-  match resolution {
-    DeclarationRefResolved { declaration_identity: _ } => GeneratedArtifactProducerCovered { row: row }
-    DeclarationRefModuleAbsent { reference: _ } => GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
-    DeclarationRefDeclarationAbsent { reference: _ } => GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
-    DeclarationRefFieldAbsent { reference: _ } => GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
+  if declaration_ref_resolution_is_resolved(resolution: resolution) {
+    GeneratedArtifactProducerCovered { row: row }
+  } else {
+    GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
   }
 }
 
@@ -463,22 +460,12 @@ fn every_generated_artifact_producer_covered(pool_roots: List<String>) -> Bool {
   count(generated_artifact_producer_refusals(pool_roots: pool_roots)) == 0
 }
 
-fn declaration_ref_resolution_arm_key(r: DeclarationRefResolution) -> String {
-  match r {
-    DeclarationRefResolved { declaration_identity: _ } => "resolved"
-    DeclarationRefModuleAbsent { reference: _ } => "module-absent"
-    DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
-    DeclarationRefFieldAbsent { reference: _ } => "field-absent"
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => "ambiguous"
-  }
-}
-
 // LOCATED: the artifact path, the producer it claims, and the resolver arm that refused it.
 fn generated_artifact_producer_coverage_rendered(c: GeneratedArtifactProducerCoverage) -> String {
   match c {
     GeneratedArtifactProducerCovered { row } =>
       concat(concat(concat("generated artifact ", row.artifact_path), " covered by producer "), declaration_ref_display_key(ref: row.producer))
     GeneratedArtifactProducerUncovered { row, resolution } =>
-      concat(concat(concat(concat(concat("generated artifact ", row.artifact_path), " UNCOVERED: producer "), declaration_ref_display_key(ref: row.producer)), " "), declaration_ref_resolution_arm_key(r: resolution))
+      concat(concat(concat(concat(concat("generated artifact ", row.artifact_path), " UNCOVERED: producer "), declaration_ref_display_key(ref: row.producer)), " "), declaration_ref_resolution_arm_key(resolution: resolution))
   }
 }
