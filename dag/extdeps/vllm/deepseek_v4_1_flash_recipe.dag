@@ -58,6 +58,17 @@ fn v41_flash_headroom(total: Gigabyte) -> Gigabyte {
   gigabyte(count: (gigabyte_count(g: total) * v41_flash_headroom_factor_tenths + 9) / 10)
 }
 
+// READ THIS AS THE PUBLISHER'S ARITHMETIC, NOT AS A FLOOR ANYONE MEASURED. The page's own sentence
+// around it is: "It fits one GB200 NVL4 tray (768 GB) at TP4, or one 8-GPU H200 node (1128 GB) with
+// room for KV cache, but 1M context will need the context or batch capped -- measure before
+// assuming." That caveat is the half a summary drops, and it belongs here, beside the number a reader
+// is most likely to mistake for a measurement.
+//
+// IT IS AN ANNOTATION RATHER THAN A ROW, DELIBERATELY. It stood as `v41_flash_fit_statement`, a
+// String declaration nothing read -- and its decidable content is already carried decidably next
+// door: which hardware the publisher verified is v41_flash_verified_hardware, and the minimum is the
+// Measure above. What was left in the sentence was commentary, which §4c puts in an annotation and
+// keeps out of program data, precisely so it cannot be mistaken for a fact something consumes.
 data v41_flash_vram_minimum: Gigabyte = gigabyte(count: 614)
 
 // THE FIGURE ROW CARRIES THE PAGE'S SENTENCE, AND ITS VALUE IS RENDERED FROM THE MEASURE rather than
@@ -68,10 +79,6 @@ data v41_flash_vram_minimum_figure: VllmPublishedFigure = VllmPublishedFigure {
   value: to_string(gigabyte_count(g: v41_flash_vram_minimum)) as NonEmptyStr,
   derivation: "the checkpoint total times the recipe schema's 1.2 headroom factor, stated verbatim on the page as `vram_minimum_gb: 614 is that total times the schema's 1.2 headroom factor`" as NonEmptyStr,
 }
-
-// THE FITS SENTENCE, KEPT AS THE PUBLISHER WROTE IT, including its own caveat -- which is the half a
-// summary drops.
-data v41_flash_fit_statement: NonEmptyStr = "It fits one GB200 NVL4 tray (768 GB) at TP4, or one 8-GPU H200 node (1128 GB) with room for KV cache, but 1M context will need the context or batch capped -- measure before assuming" as NonEmptyStr
 
 // THE VERIFIED-HARDWARE ROSTER THE PAGE CARRIES IN ITS OWN METADATA, and what is NOT in it matters as
 // much as what is: there is no GB10 / DGX Spark entry, so the publisher makes no claim about this
@@ -113,6 +120,12 @@ fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
 // which point that lane's frontier rows become imports and these declarations acquire their readers.
 // The rows the witnesses already exercise are the ones a reader can check today; the rest are the
 // figures that lane asked for, in the shape it asked for them.
+// AND THE PAGE SAYS DOCKER IS THE ONLY ROUTE: "No pip wheel serves this architecture, so the Install
+// block only offers Docker." That stood as a String row nothing read -- the same defect this module
+// just deleted one declaration earlier for the fit statement, which is how a class gets fixed at one
+// instance and left standing at the next. Its decidable content is that the image below is not one
+// install option among several; it is the only one the publisher offers, which is why a reference
+// that does not resolve is a hard stop for a consumer rather than an inconvenience.
 data v41_flash_documented_image: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
 data v41_flash_documented_engine_floor: NonEmptyStr = "vLLM 0.30.0+" as NonEmptyStr
-data v41_flash_documented_install_note: NonEmptyStr = "No pip wheel serves this architecture, so the Install block only offers Docker" as NonEmptyStr
+
