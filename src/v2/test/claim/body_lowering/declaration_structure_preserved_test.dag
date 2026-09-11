@@ -32,16 +32,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // whereupon all three return body_lowering_reason_wrapper_retained_emitted.
 
 fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^declaration_structure_preserved_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "PREPARE_REFUSED"
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: src, file: ^declaration_structure_preserved_subject, rules: dag_lex()) {
+        Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+        Accepted { value: ts, diagnostics: _ } =>
+          match parse_module_prepared(
+            tokens: ts,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: _ } => "PARSE_REFUSED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+                Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+              }
           }
       }
   }
@@ -52,6 +59,8 @@ data coproduct_with_field_block_source: String = "module m.t\ntype T = A { x: In
 data fn_type_alias_source: String = "module m.t\ntype F = fn(Int) -> Int\nfn f() -> Int {\n  1\n}\n"
 
 data record_literal_field_init_source: String = "module m.t\ntype R { a: Int }\ndata d: R = R { a: 1 }\nfn f() -> Int {\n  1\n}\n"
+
+data where_refinement_alias_source: String = "module m.t\ntype Tight = String where non_empty\nfn f() -> Int {\n  1\n}\n"
 
 // EVERY SOURCE CARRIES A FUNCTION, and that is not decoration. A module of
 // declarations alone refuses at normalize with namespace_graft_body_dissolved_refused
@@ -69,4 +78,8 @@ test fn fn_type_alias_interior_is_not_retained_holds() -> Bool {
 
 test fn record_literal_field_init_is_not_retained_holds() -> Bool {
   normalize_outcome(src: record_literal_field_init_source) == "ACCEPTED"
+}
+
+test fn where_refinement_clause_interior_is_not_retained_holds() -> Bool {
+  normalize_outcome(src: where_refinement_alias_source) == "ACCEPTED"
 }
