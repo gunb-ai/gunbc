@@ -236,11 +236,19 @@ fn manifest_observation(
 // THIS PARAGRAPH IS MAIN'S, RESTORED, AND THE RESTORATION IS THE POINT. gunbc#10933 corrected it in
 // the same commit that added publish_work -- an atomic, correct edit -- and this branch silently
 // carried the superseded `exercised by the enrolled witnesses and by nothing else` text back over
-// it. No conflict was raised and no merge commit touched the file: the resurrection came from a
-// `--ours` resolution taken when the squash of gunbc#10934 collided, at a moment when the check I
-// ran asked only whether main had touched the file AFTER the squash. It had touched it BEFORE. A
-// clean merge is exactly the thing that will not tell you, which is why the receipt is here rather
-// than in a commit message.
+// it. THE RESURRECTION ENTERED EARLY, at the `--ours` resolution taken when gunbc#10934's squash
+// collided -- there WAS a conflict there, which is what an `--ours` resolution answers -- and the
+// check run at that moment asked only whether main had touched the file AFTER the squash. It had
+// touched it BEFORE, inside the range that question excludes.
+//
+// EVERY LATER INTEGRATION THEN CARRIED IT FORWARD LEGITIMATELY AND SILENTLY, and that is the half
+// worth recording: by then only one side had touched this file, so git had nothing to conflict about
+// and correctly kept the branch text. Merge 542e069b64 is the observation -- its base already
+// contained gunbc#10933, and its result nonetheless carried the superseded paragraph. No conflict
+// was raised at that merge and no merge commit touched this file. A clean merge is exactly the thing
+// that will not tell you, and a three-dot diff compares against the merge base, so branch text
+// reverting main reads there as no change at all; only `git diff origin/main HEAD` shows it. That is
+// why the receipt is here rather than in a commit message.
 //
 // WHAT IS CHANGED FROM MAIN'S TEXT, and only this: the second consumer is named, and the clause
 // `today it is reached by enrolled witnesses and by no job-ending on a run path` is DROPPED. That
