@@ -80,10 +80,15 @@ type CodeSearchHit {
 // THE DISAGREEMENT IS NOT OBSERVABLE FROM ONE PAGE, AND THIS MODULE ONLY EVER HOLDS ONE. A single
 // item beside a total of 250 is ordinary pagination, not the anomaly; the anomaly is that a WALK
 // delivered more than the total its own responses declared, which needs the pages counted. So no
-// citation to a local instrument belongs in this block. An earlier revision named a witness claim
-// here and said the published mock "exhibits the defect" - the claim has since been deleted for
-// being green by construction, and the exhibits sentence was never true. Both are gone rather than
-// repaired.
+// citation to a local instrument belongs in this block, and no claim of local evidence does either.
+//
+// TWO SENTENCES WERE REMOVED FROM THIS FILE FOR ASSERTING SUCH EVIDENCE, and the second one took
+// two attempts. A witness claim was named here as the instrument and has since been deleted for
+// being green by construction. A sentence saying the published mock "exhibits the defect" was
+// removed from THIS block - and survived verbatim in the mock_response description below, where
+// review found it, so for one commit the file carried both the removal notice and the thing it
+// said had been removed. The mock note now states what the fixture actually shows, which is a real
+// hit and a real total and nothing about the anomaly.
 //
 // The page-by-page figures from a real scan belong to that scan's own receipt, where a fold over
 // the page receipts computes the count. Copying them into this module would put them beyond reach
@@ -176,7 +181,7 @@ service github.CodeSearch {
           ]
         },
         outcome: hermetic_code_search_outcome
-      } "hermetic decoded-200 shape for GET /search/code, carrying the first real hit of the 2026-09-10 depot-arm query and that query's real total_count of 250 beside a single delivered item - so the fixture itself exhibits the total_count-is-not-a-count defect rather than describing it"
+      } "hermetic decoded-200 shape for GET /search/code, carrying the first real hit of the 2026-09-10 depot-arm query and that query's real total_count of 250. One item beside a total of 250 is ordinary pagination and demonstrates nothing about the cross-page anomaly, which no single page can show"
     }
   }
 }
