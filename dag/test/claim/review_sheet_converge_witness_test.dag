@@ -525,6 +525,57 @@ test fn absent_listing_appends_a_located_row() -> Bool {
   }
 }
 
+test fn append_follows_observed_header_order_not_schema_order() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "alpha")])
+  let headers = ["listing_id", "standing", "title", "judgement"]
+  let observed = w_observed(headers: headers, rows: [])
+  match decide_review_sheet(observed: observed, projection: projection) {
+    Apply { plan: p } =>
+      match p.appends |> first {
+        Present { value: a } =>
+          match a.cells.skip(n: 1).first() {
+            Present { value: standing } =>
+              standing == w_standing_observed()
+                && match a.cells.skip(n: 2).first() {
+                  Present { value: title } =>
+                    title == "alpha"
+                      && match a.cells.skip(n: 3).first() {
+                        Present { value: judgement } =>
+                          judgement == ""
+                            && match value_ranges_from_write_plan(plan: p, tab: "Review" as NonEmptyStr) |> first {
+                              Present { value: vr } =>
+                                match vr.values {
+                                  Present { value: rows } =>
+                                    match rows |> first {
+                                      Present { value: cells } =>
+                                        match cells.skip(n: 1).first() {
+                                          Present { value: standing_cell } =>
+                                            standing_cell == w_standing_observed()
+                                              && match cells.skip(n: 2).first() {
+                                                Present { value: title_cell } => title_cell == "alpha"
+                                                Absent => false
+                                              }
+                                          Absent => false
+                                        }
+                                      Absent => false
+                                    }
+                                  Absent => false
+                                }
+                              Absent => false
+                            }
+                        Absent => false
+                      }
+                  Absent => false
+                }
+            Absent => false
+          }
+        Absent => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
 test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool {
   let projection = w_projection(rows: [
     ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },
