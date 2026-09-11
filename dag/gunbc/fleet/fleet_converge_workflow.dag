@@ -168,6 +168,7 @@ type FleetConvergeWorkflowMode
   | HostResetReturn
   | RunnerHostFileObserve
   | RunnerHostFileConverge
+  | RunnerPasswordSessionToolConverge
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -190,6 +191,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     HostResetReturn => "host_reset_return"
     RunnerHostFileObserve => "runner_host_file_observe"
     RunnerHostFileConverge => "runner_host_file_converge"
+    RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
   }
 }
 
@@ -214,7 +216,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -260,6 +262,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     HostResetReturn => none
     RunnerHostFileObserve => none
     RunnerHostFileConverge => none
+    RunnerPasswordSessionToolConverge => none
   }
 }
 
@@ -651,6 +654,14 @@ data fleet_converge_runner_host_file_converge_step_if: String = fleet_converge_m
 
 data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mode_step_if(modes: [RunnerHostFileObserve, RunnerHostFileConverge])
 
+// THE MODE THAT CLOSES #11061'S REFUSAL. That change made a password-session leg refuse with a
+// typed cause naming sshpass; this mode is the route that makes the refusal stop being true. It is
+// a STEP in the existing host-pinned fleet-converge job rather than a job of its own, because the
+// two own-job precedents here each state a reason that does not apply to it: host reset kills its
+// own runner, and dashboard deploy needs the mutation concurrency domain. An apt ensure needs
+// neither.
+data fleet_converge_runner_password_session_tool_converge_step_if: String = fleet_converge_mode_step_if(mode: RunnerPasswordSessionToolConverge)
+
 data fleet_converge_spark_grants_step_if: String = fleet_converge_mode_step_if(mode: SparkGrants)
 
 data fleet_converge_spark_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: SparkBootstrap)
@@ -928,6 +939,18 @@ fn fleet_converge_runner_host_file_converge_step() -> Step {
     name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back",
     invoke: gunbc_ci_runner_host_file_converge_invoke(),
     if_condition: fleet_converge_runner_host_file_converge_step_if,
+  )
+}
+
+// IT REUSES THE RUNNER-HOST STEP SHAPER rather than spelling a fifth Step literal: same population
+// (a rostered runner named by the host input), same env binding, same timeout authority. What
+// differs is only the id, the sentence and the mode gate, which is exactly what the shaper takes.
+fn fleet_converge_runner_password_session_tool_converge_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "runner_password_session_tool_converge",
+    name: "Password-session tools: ensure every tool password_session_host_cli_requirements enrolls is present on this runner, installing only what is measured absent",
+    invoke: gunbc_ci_runner_password_session_tool_converge_invoke(),
+    if_condition: fleet_converge_runner_password_session_tool_converge_step_if,
   )
 }
 
@@ -1355,6 +1378,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_runtime_image_probe_step(),
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_runner_host_file_converge_step(),
+        fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
