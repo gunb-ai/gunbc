@@ -72,12 +72,15 @@ import extdeps.crypto.hash
 // AND WHAT THE HERMETIC WITNESSES DO NOT SHOW: they exercise this function through a MOCK that
 // replays one constant digest for every path. That establishes the modeled effect route and the
 // verdict algebra above it; it does NOT establish that any real bytes were hashed. Only the hand-run
-// instrument tools.fabric_m0_origin_readback_probe shows the live handler computing over real bytes,
-// and no required lane runs it. Three instruments, three propositions. It does NOT
-// close whether the path handed here is the origin readback's staged output rather than a cache
-// copy -- staged_path is still chosen by the caller, so the class as a whole stays MITIGATABLE and
-// only this sub-class reaches structural impossibility. A class's rung is the minimum across its
-// paths, so the honest report for the enclosing class is the lower one.
+// instrument tools.fabric_m0_origin_readback_probe shows the live handler computing over real bytes.
+// Three instruments, three propositions, and that instrument's own annotation carries its execution
+// standing -- dated there rather than asserted live here, for the reason the egress paragraph above
+// gives.
+//
+// WHAT THE SEAL DOES NOT CLOSE: whether the path handed here is the origin readback's staged output
+// rather than a cache copy. staged_path is still chosen by the caller, so the class as a whole stays
+// MITIGATABLE and only this sub-class reaches structural impossibility. A class's rung is the
+// minimum across its paths, so the honest report for the enclosing class is the lower one.
 //
 // NEXT-RUNG TRIGGER, AS A CAPABILITY: a durable-origin read operation that STAGES ITS OWN OUTPUT at
 // a path it mints, so the path a digest is computed over is produced by the read rather than chosen
