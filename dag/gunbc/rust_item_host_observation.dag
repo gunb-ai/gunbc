@@ -29,6 +29,7 @@ import gunbc.rust_item_scan {
   AttributedToFileLevel,
   AttributedToUnnamedMacroBlock,
   AttributionOutOfRange,
+  line_is_attribute_or_comment,
   scan_rust_source
 }
 import std.algebra { trim }
@@ -1232,17 +1233,18 @@ fn rust_reference_fold_file(
   }
 }
 
-// A COMMENT IS NOT A REFERENCE. A `//` line naming a token is prose about the token -- the
-// receipt a deletion leaves behind, the doc comment above a renderer that no longer renders -- and
-// a population that counted it would report a consumer where there is a sentence. The check is
-// per line and precedes the token test, so a token inside a comment never reaches attribution.
-fn rust_line_is_comment(text: String) -> Bool {
-  let t = trim(s: text)
-  string_length(s: t) >= 2 && substring(s: t, start: 0, end: 2) == "//"
-}
-
+// A LEADING COMMENT IS NOT A REFERENCE. A line whose first text is `//` (or an attribute) naming a
+// token is prose about the token -- the receipt a deletion leaves behind, the doc comment above a
+// renderer that no longer renders -- and a population that counted it would report a consumer where
+// there is a sentence. The predicate is the scan's own (gunbc.rust_item_scan
+// line_is_attribute_or_comment), so this reader and the item reader skip the same lines. WHAT IT
+// DOES NOT COVER, stated because the earlier wording claimed more: a token in a TRAILING comment
+// after code, or inside a `/* */` block, is counted as a reference. That direction fails loudly --
+// the line attributes to its item and, in the census, becomes an undisposed site that blocks --
+// which is the fail-closed side of the two; a comment reader that stripped `//` from the end of a
+// line would silently drop a string literal carrying `//`.
 fn rust_line_references_token(text: String, token: String) -> Bool {
-  !rust_line_is_comment(text: text) && string_contains(s: text, pattern: token)
+  !line_is_attribute_or_comment(text: text) && string_contains(s: text, pattern: token)
 }
 
 fn rust_source_carries_a_token(content: String, tokens: List<String>) -> Bool {

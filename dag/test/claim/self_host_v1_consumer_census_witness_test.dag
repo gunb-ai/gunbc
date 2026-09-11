@@ -21,6 +21,7 @@ import gunbc.v1_consumer_census {
   consumer_disposition_blocks
 }
 import std.decl_ref { declaration_ref_display_key }
+import gunbc.stage0_partition_package_graph { stage0_host_shell_package_name }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
   planted_undisposed_discovered, planted_stale_discovered, planted_same_size_discovered,
@@ -188,7 +189,7 @@ fn the_population_carries_the_partition() -> Bool {
 // impl method produced (rostered uncitable, carried with its oracle disposition), a different impl
 // method with the token (undisposed uncitable), and a comment line carrying the token (no row).
 fn seed_link_observation(sources: List<RustFileChangeInput>) -> RustReferenceObservation {
-  observe_rust_references(sources: sources, generated_repo_paths: [], tokens: v1_seed_link_tokens, rows: rust_source_namespace_rows)
+  observe_rust_references(sources: sources, generated_repo_paths: [], tokens: v1_seed_link_tokens(), rows: rust_source_namespace_rows)
 }
 
 data cssl_assembly_path: String = "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs"
@@ -271,8 +272,8 @@ fn the_manifest_relation_keys_on_the_package_graph() -> Bool {
   let all = v1_cargo_manifest_dependencies()
   let seed = v1_seed_manifest_dependencies()
   count(all) > count(seed)
-    && (seed |> all(d => d.dependency_package == "v1-compiler"))
-    && (all |> filter(d => !cargo_dependency_is_seed_edge(d: d)) |> all(d => d.dependency_package != "v1-compiler"))
+    && (seed |> all(d => d.dependency_package == stage0_host_shell_package_name()))
+    && (all |> filter(d => !cargo_dependency_is_seed_edge(d: d)) |> all(d => d.dependency_package != stage0_host_shell_package_name()))
     && count(seed |> filter(d => match d.origin {
          CargoManifestHandMaintained { repo_path: rp } => rp == "src/v1/tests/Cargo.toml"
          CargoManifestRenderedFromPartition { renderer: _ } => false

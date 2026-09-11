@@ -641,6 +641,7 @@ fn reference_sources() -> List<RustFileChangeInput> {
     reference_source(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs", content: "pub fn nothing_here() -> u32 {\n    1\n}\n"),
     reference_source(path: "fixtures/planted_unclaimed/lib.rs", content: "pub use v1_compiler::v1_rt;\n"),
     reference_source(path: "dag/gunbc/instruments/planted_comment_shims/lib.rs", content: "// once reached v1_rt; kept as a receipt\n/// doc: v1_rt is not linked here\npub fn documented() -> u32 {\n    1\n}\n"),
+    reference_source(path: "dag/gunbc/instruments/planted_trailing_shims/lib.rs", content: "pub fn trailing() -> u32 {\n    1 // v1_rt mentioned after code\n}\n"),
   ]
 }
 
@@ -693,8 +694,15 @@ test fn a_file_naming_no_token_yields_no_row() -> Bool {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs")) == 0
 }
 
-// A COMMENT IS NOT A REFERENCE: a token inside `//` or `///` prose yields no row and no
-// unattributed line -- the receipt a deletion leaves behind must not read as a consumer.
+// A LEADING COMMENT IS NOT A REFERENCE: a token inside a line that begins with `//` or `///`
+// yields no row and no unattributed line -- the receipt a deletion leaves behind must not read as
+// a consumer. A TRAILING comment is the other way, by the predicate's stated scope: it is counted,
+// and the second arm pins that so the scope is executed rather than described.
+test fn a_token_in_a_trailing_comment_is_counted_and_attributed_to_its_item() -> Bool {
+  count(reference_row_for(path: "dag/gunbc/instruments/planted_trailing_shims/lib.rs")) == 1
+    && reference_row_projects_to(path: "dag/gunbc/instruments/planted_trailing_shims/lib.rs", module_path: "v1_compiled.planted_trailing_shims.lib", decl_name: "trailing")
+}
+
 test fn a_token_inside_a_comment_line_is_not_a_reference() -> Bool {
   count(reference_row_for(path: "dag/gunbc/instruments/planted_comment_shims/lib.rs")) == 0
     && match reference_observation() {
