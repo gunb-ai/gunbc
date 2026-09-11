@@ -55,3 +55,11 @@ test fn scale_fraction_ceil_generic_over_quantity_holds() -> Bool {
   hertz_count(h: measure_scale_fraction_ceil(m: hertz(9), num: 1, den: 2)) == 5
 }
 
+test fn measure_sub_exact_holds() -> Bool {
+  byte_size_count(b: measure_sub(a: byte_size(10), b: byte_size(4))) == 6
+}
+
+test fn measure_sub_floors_at_zero_holds() -> Bool {
+  byte_size_count(b: measure_sub(a: byte_size(3), b: byte_size(10))) == 0
+}
+

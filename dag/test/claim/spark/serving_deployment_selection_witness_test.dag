@@ -57,7 +57,7 @@ import gunbc.spark.serving_deployment_selection {
   derived_candidate_identity, v4_1_profile_at, v4_1_runtime_vllm_gb10_lead,
   ax_no_redundancy,
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
-  assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
+  unique_constraint_identities, constraint_native_quality, constraint_no_redundancy,
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
   kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
@@ -850,8 +850,8 @@ test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool {
 }
 
 test fn assessment_dispositions_join_the_constraint_identities_on_the_input() -> Bool {
-  let glm_ids = assessment_constraint_identities(input: glm_decision_input)
-  let v41_ids = assessment_constraint_identities(input: deepseek_v4_1_decision_input)
+  let glm_ids = unique_constraint_identities(cs: glm_decision_input.constraints)
+  let v41_ids = unique_constraint_identities(cs: deepseek_v4_1_decision_input.constraints)
   count(glm_ids) == 2
     && any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_native_quality))
     && !any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))

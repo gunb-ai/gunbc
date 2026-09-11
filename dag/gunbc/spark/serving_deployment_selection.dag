@@ -2,7 +2,7 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le }
+import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le, measure_sub }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
@@ -823,7 +823,7 @@ fn weight_fit_against_envelope(fleet: FleetSnapshot, per_rank: ByteSize, basis_p
     WeightsNotRuledOutByLowerBound {
       per_rank_bytes: per_rank,
       usable_bytes: usable,
-      slack_bytes: byte_size(byte_size_count(b: usable) - byte_size_count(b: per_rank)),
+      slack_bytes: measure_sub(a: usable, b: per_rank),
     }
   } else {
     WeightsImpossibleByLowerBound { per_rank_bytes: per_rank, usable_bytes: usable }
@@ -1579,10 +1579,6 @@ fn constraint_dispositions_for(input: ServingDeploymentDecisionInput) -> List<Co
         declaration_ref_display_key(ref: input.constraint_authority),
       ], "") as NonEmptyStr,
     })
-}
-
-fn assessment_constraint_identities(input: ServingDeploymentDecisionInput) -> List<DeclarationRef> {
-  unique_constraint_identities(cs: input.constraints)
 }
 
 // DERIVED, NOT ACCEPTED. The parameter's binding evidence quotes the actual declared parameters, so

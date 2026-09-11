@@ -244,6 +244,10 @@ fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q,
   Measure { count: a.count + b.count }
 }
 
+fn measure_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
+  Measure { count: if a.count < b.count { 0 } else { a.count - b.count } }
+}
+
 fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }

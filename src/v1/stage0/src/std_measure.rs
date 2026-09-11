@@ -301,6 +301,20 @@ pub fn measure_add<Q, S>(
     })
 }
 
+pub fn measure_sub<Q, S>(
+    a: Rc<Measure<Q, S, i64>>,
+    b: Rc<Measure<Q, S, i64>>,
+) -> Rc<Measure<Q, S, i64>> {
+    Rc::new(Measure {
+        count: if a.count.clone() < b.count.clone() {
+            0
+        } else {
+            a.count.clone() - b.count.clone()
+        },
+        _phantom: std::marker::PhantomData,
+    })
+}
+
 pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
     (a.count.clone() <= b.count.clone())
 }
