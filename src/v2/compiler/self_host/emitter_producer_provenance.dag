@@ -285,6 +285,29 @@ fn emitter_producer_mint_admission(
   closure: RealizedEmitterClosure
 ) -> EmitterProducerMintAdmission {
   match producer {
+    // THE SEED ARM IS UNCONDITIONAL, AND THAT IS A DECLARED FRONTIER RATHER THAN A DECISION
+    // THAT THE QUESTION DOES NOT ARISE. An empty realized closure is exactly as uninformative
+    // here as it is for a V2Emitter* producer: v2_emitter_closure_admission refuses it there
+    // because the closure is the only evidence the fold consults, and nothing about that
+    // reasoning is special to a v2 producer. What differs is the blast radius, not the logic.
+    //
+    // CONSUMER POPULATION, enumerated rather than estimated, because that is what makes this a
+    // frontier and not a shrug. Every site that mints under this arm today:
+    // emitter_producer_provenance fabricated_v1_seed_producer_receipt (against
+    // cssl_harness_realized_closure, which names v1.compile and v1.compiler.emit_rust), and the
+    // four V1SeedEmitter mint sites in
+    // v2.test.claim.self_host.direct_rust_door_group_algebra_test. All five supply a non-empty
+    // closure, so tightening this arm would refuse none of them TODAY — which is precisely why
+    // it must not be tightened casually: a wall that refuses nothing in the current population
+    // is indistinguishable from one that is correct, and the arm's unconditional shape is load
+    // bearing for callers that have not been written yet.
+    //
+    // TRIGGER: this frontier closes when the seed-produced population is itself enumerated and
+    // closed — when every V1SeedEmitter mint site is reachable from one roster rather than
+    // discovered by search — so that tightening the arm is a change whose refused set can be
+    // computed instead of hoped for. Not satisfied by adding the empty-closure clause here and
+    // fixing whatever goes red: that is the same per-site exception pricing DESIGN section 6
+    // forbids, and it would land the wall without ever establishing what it refuses.
     V1SeedEmitter => ProducerMintAdmitted
     V2EmitterInterpreted =>
       match v2_emitter_closure_admission(closure: closure) {

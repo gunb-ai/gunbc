@@ -113,7 +113,15 @@ data anc_seed_closure: RealizedEmitterClosure = RealizedEmitterClosure {
 }
 
 // The recurring closure reaches neither the seed emitter nor the interpreted emitter.
-data anc_native_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+// THIS IS THE INTERPRETED ROUTE'S OWN CLOSURE, and naming it honestly is the point.
+// v2.compiler.self_host.candidate_generation mints V2EmitterInterpreted against exactly these
+// three module paths (realized_closure_for_v2_direct_rust_door_emit_run). An earlier revision
+// of this file called the identical list anc_native_closure and used it as the NATIVE positive
+// control, which made "native" a label rather than a claim: the wall could not tell the two
+// routes apart because the native compiler is these same modules compiled (review 63985).
+// It is kept, under its true name, because the controls below need it — what distinguishes a
+// native generation is not which modules its closure names but which BYTES executed.
+data anc_shared_route_closure: RealizedEmitterClosure = RealizedEmitterClosure {
   emitter_module_paths: [
     "v2.compiler.self_host.candidate_generation",
     "v2.compiler.emit_produced",
@@ -197,6 +205,42 @@ fn anc_genesis(
   }
 }
 
+fn anc_successor_ran(
+  generation: Int,
+  parent_generation: Int,
+  parent_hex: String,
+  ran_hex: String,
+  artifact_hex: String,
+  read_back: ReadBackReceipt,
+  closure: RealizedEmitterClosure,
+  build_path: BuildPathTreatment
+) -> Optional<NativeGeneration> {
+  match anc_observed(hex: parent_hex) {
+    Absent => optional_absent()
+    Present { value: parent } =>
+      match anc_observed(hex: ran_hex) {
+        Absent => optional_absent()
+        Present { value: ran } =>
+      optional_present(
+        value: anc_generation(
+          generation: generation,
+          ancestry: SucceedsNative {
+            parent_generation: parent_generation,
+            parent_artifact: parent,
+            produced_by_execution_of: ran
+          },
+          artifact_hex: artifact_hex,
+          read_back: read_back,
+          closure: closure,
+          build_path: build_path
+        )
+      )
+      }
+  }
+}
+
+// The ordinary successor: the bytes that ran ARE the parent artifact. Every control that is not
+// specifically about producer-execution attribution goes through this.
 fn anc_successor(
   generation: Int,
   parent_generation: Int,
@@ -206,23 +250,16 @@ fn anc_successor(
   closure: RealizedEmitterClosure,
   build_path: BuildPathTreatment
 ) -> Optional<NativeGeneration> {
-  match anc_observed(hex: parent_hex) {
-    Absent => optional_absent()
-    Present { value: parent } =>
-      optional_present(
-        value: anc_generation(
-          generation: generation,
-          ancestry: SucceedsNative {
-            parent_generation: parent_generation,
-            parent_artifact: parent
-          },
-          artifact_hex: artifact_hex,
-          read_back: read_back,
-          closure: closure,
-          build_path: build_path
-        )
-      )
-  }
+  anc_successor_ran(
+    generation: generation,
+    parent_generation: parent_generation,
+    parent_hex: parent_hex,
+    ran_hex: parent_hex,
+    artifact_hex: artifact_hex,
+    read_back: read_back,
+    closure: closure,
+    build_path: build_path
+  )
 }
 
 // POSITIVE CONTROL fixtures. The genesis is produced BY the seed, on a closure that reaches
@@ -247,7 +284,7 @@ fn anc_good_successor() -> Optional<NativeGeneration> {
     parent_hex: anc_built_hex,
     artifact_hex: anc_other_hex,
     read_back: anc_read_back(hex: anc_other_hex),
-    closure: anc_native_closure,
+    closure: anc_shared_route_closure,
     build_path: anc_remap
   )
 }
@@ -388,12 +425,36 @@ test fn successor_whose_closure_names_nothing_is_refused() -> Bool {
   )
 }
 
-// POSITIVE CONTROL FOR THE TWO CLAUSES ABOVE, stated separately from the general successor
-// positive so that a wall which refused every closure could not pass them. The real native
-// closure names three modules, none of them the seed, the seed interpreter or the interpreted
-// emitter, and it is ADMITTED.
-test fn the_real_native_closure_is_still_admitted() -> Bool {
+// POSITIVE CONTROL FOR THE CLOSURE CLAUSES, stated separately from the general successor
+// positive so that a wall which refused every closure could not pass them. Its name says what
+// it actually establishes: the SAME closure the interpreted route uses is admitted once the
+// executed bytes bind to the named ancestor. Calling this "the real native closure" — as an
+// earlier revision did — asserted exactly the thing closure membership cannot establish.
+test fn the_shared_route_closure_is_admitted_when_the_executed_bytes_bind() -> Bool {
   anc_admitted(g: anc_good_successor())
+}
+
+// THE REVIEW-63985 CONTROL: THE INTERPRETED PRODUCTION ROUTE IS REFUSED AS A NATIVE ANCESTOR.
+// This is the exact closure v2.compiler.self_host.candidate_generation mints V2EmitterInterpreted
+// against, offered as a native successor whose producing execution is NOT the artifact its
+// ancestry names as parent — which is the only thing the interpreted route can honestly supply,
+// since it has no ancestor binary at all. Before producer-execution attribution existed this
+// minted an admitted native generation, because the closure names the same modules the native
+// compiler is compiled from and closure membership can only ever be a negative filter.
+test fn the_interpreted_production_route_is_refused_as_a_native_ancestor() -> Bool {
+  anc_refused_with(
+    g: anc_successor_ran(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      ran_hex: anc_other_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_shared_route_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_producer_execution_is_not_the_named_ancestor
+  )
 }
 
 // DISCRIMINATING RED 3 — a green build is not a verified ancestor.
@@ -405,7 +466,7 @@ test fn successor_without_a_read_back_is_refused() -> Bool {
       parent_hex: anc_built_hex,
       artifact_hex: anc_other_hex,
       read_back: ReadBackUnperformed,
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: anc_remap
     ),
     cause: ^ancestry_read_back_unperformed
@@ -423,7 +484,7 @@ test fn successor_whose_read_back_diverges_is_refused() -> Bool {
       parent_hex: anc_built_hex,
       artifact_hex: anc_other_hex,
       read_back: anc_read_back(hex: anc_built_hex),
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: anc_remap
     ),
     cause: ^ancestry_read_back_diverged
@@ -440,7 +501,7 @@ test fn successor_numbering_must_be_parent_plus_one() -> Bool {
       parent_hex: anc_built_hex,
       artifact_hex: anc_other_hex,
       read_back: anc_read_back(hex: anc_other_hex),
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: anc_remap
     ),
     cause: ^ancestry_successor_not_parent_plus_one
@@ -458,7 +519,7 @@ test fn build_path_treatment_discriminates_genesis_from_recurrence() -> Bool {
       parent_hex: anc_built_hex,
       artifact_hex: anc_other_hex,
       read_back: anc_read_back(hex: anc_other_hex),
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: BuildPathPinned { directory: "/build/successor" }
     ),
     cause: ^ancestry_successor_build_path_pinned
@@ -470,7 +531,7 @@ test fn build_path_treatment_discriminates_genesis_from_recurrence() -> Bool {
         parent_hex: anc_built_hex,
         artifact_hex: anc_other_hex,
         read_back: anc_read_back(hex: anc_other_hex),
-        closure: anc_native_closure,
+        closure: anc_shared_route_closure,
         build_path: BuildPathUnresolved
       ),
       cause: ^ancestry_build_path_unresolved
@@ -494,7 +555,7 @@ test fn genesis_whose_closure_omits_the_seed_is_refused() -> Bool {
     g: anc_genesis(
       artifact_hex: anc_built_hex,
       read_back: anc_read_back(hex: anc_built_hex),
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: BuildPathPinned { directory: "/build/genesis" }
     ),
     cause: ^ancestry_genesis_closure_omits_seed
@@ -514,7 +575,7 @@ test fn read_back_reported_against_an_unbuilt_artifact_is_refused() -> Bool {
       parent_hex: anc_built_hex,
       artifact_hex: "not-a-sha512-digest",
       read_back: anc_read_back(hex: anc_built_hex),
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: anc_remap
     ),
     cause: ^ancestry_artifact_not_materialized
@@ -591,7 +652,7 @@ test fn unverified_ancestor_carries_the_mints_own_cause() -> Bool {
       parent_hex: anc_built_hex,
       artifact_hex: anc_other_hex,
       read_back: ReadBackUnperformed,
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: anc_remap
     )
   ) {
@@ -700,7 +761,7 @@ test fn a_successor_naming_a_different_parent_generation_is_refused_by_name() ->
       parent_hex: anc_built_hex,
       artifact_hex: anc_other_hex,
       read_back: anc_read_back(hex: anc_other_hex),
-      closure: anc_native_closure,
+      closure: anc_shared_route_closure,
       build_path: anc_remap
     ),
     ancestor: anc_good_genesis(),

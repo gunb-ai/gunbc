@@ -67,6 +67,7 @@ type NativeAncestry
   | SucceedsNative {
       parent_generation: Int
       parent_artifact: ObservedArtifactDigest
+      produced_by_execution_of: ObservedArtifactDigest
     }
 
 // A read-back is the artifact REPORTING ITS OWN IDENTITY after being built, which is what
@@ -122,12 +123,34 @@ type NativeGeneration {
 fn native_generation_producer(g: NativeGeneration) -> EmitterProducer {
   match g.ancestry {
     GenesisFromSeed { seed_binary: _ } => V1SeedEmitter
-    SucceedsNative { parent_generation: p, parent_artifact: _ } =>
+    SucceedsNative {
+      parent_generation: p,
+      parent_artifact: _,
+      produced_by_execution_of: _
+    } =>
       V2EmitterNative { generation: p }
   }
 }
 
 data genesis_generation_number: Int = 0
+
+// A MODULE-PATH CLOSURE CANNOT ESTABLISH NATIVENESS, AND AN EARLIER REVISION PRETENDED IT
+// COULD. The native compiler IS those modules compiled, so the interpreted route and the native
+// route name THE SAME MODULES: v2.compiler.self_host.candidate_generation mints
+// V2EmitterInterpreted against realized_closure_for_v2_direct_rust_door_emit_run, and this
+// module's own "native" fixture was byte-identical to it (review 63985). Every closure clause is
+// therefore a NEGATIVE filter — it can say the seed did not participate, and it can never say
+// the prior native generation did. A positive control built on closure membership alone is
+// satisfiable by editing a declaration while the realization lies, which is precisely the tell
+// DESIGN section 5 gives for validation standing where construction was available.
+//
+// So nativeness is bound to EXECUTED BYTES instead. produced_by_execution_of names the artifact
+// that ran to produce this generation, and the mint requires it to be the very artifact the
+// ancestry names as its parent. The interpreted route cannot honestly supply that: it has no
+// ancestor binary, and any digest it offers is one the successor's own parent_artifact field
+// must equal. The check is on two fields of one value, so it fires inside the mint rather than
+// waiting for a join the mint cannot perform.
+data ancestry_producer_execution_is_not_the_named_ancestor: String = "native generation mint refused: the artifact that executed to produce this generation is not the artifact its ancestry names as the parent — a closure naming native modules is not evidence that native bytes ran, because the interpreted route names the same modules"
 
 data ancestry_genesis_not_generation_zero: String = "native generation mint refused: GenesisFromSeed is the migration step onto generation 0 and carries no other generation number"
 
@@ -216,9 +239,17 @@ fn native_generation_mint_admission(
             )
         }
       }
-    SucceedsNative { parent_generation: p, parent_artifact: _ } =>
+    SucceedsNative {
+      parent_generation: p,
+      parent_artifact: parent,
+      produced_by_execution_of: ran
+    } =>
       if g.generation != p + 1 {
         NativeGenerationRefused { cause: ^ancestry_successor_not_parent_plus_one }
+      } else if !content_hash_eq_sha512(left: ran.observed, right: parent.observed) {
+        NativeGenerationRefused {
+          cause: ^ancestry_producer_execution_is_not_the_named_ancestor
+        }
       } else {
         match emitter_producer_mint_admission(
           producer: native_generation_producer(g: g),
@@ -268,7 +299,11 @@ fn admit_genesis(
       GenesisRefused { cause: ^genesis_already_executed }
     GenesisNotExecuted =>
       match candidate.ancestry {
-        SucceedsNative { parent_generation: _, parent_artifact: _ } =>
+        SucceedsNative {
+          parent_generation: _,
+          parent_artifact: _,
+          produced_by_execution_of: _
+        } =>
           GenesisRefused { cause: ^genesis_candidate_is_not_a_genesis }
         GenesisFromSeed { seed_binary: _ } =>
           match native_generation_mint_admission(g: candidate) {
@@ -435,7 +470,11 @@ fn successor_names_its_ancestor(
   match successor.ancestry {
     GenesisFromSeed { seed_binary: _ } =>
       SuccessionRefused { cause: ^ancestry_succession_candidate_is_genesis }
-    SucceedsNative { parent_generation: p, parent_artifact: a } =>
+    SucceedsNative {
+      parent_generation: p,
+      parent_artifact: a,
+      produced_by_execution_of: _
+    } =>
       if p != ancestor.generation {
         SuccessionRefused { cause: ^ancestry_succession_parent_generation_mismatch }
       } else {
