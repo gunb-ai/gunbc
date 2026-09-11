@@ -295,11 +295,17 @@ test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Boo
 
 // ── A CEILING THAT MOVES NAMES A DIFFERENT POOL, WHICH IS THE POINT OF PUTTING IT IN THE NAME ──
 //
-// THE FAILURE THIS FORBIDS, and it is reachable without anyone editing this repository: group B's
-// tolerant ceiling is the canary arm's declared bound, so relaunching that engine under a different
-// bound moves it. If the partition name did not carry the ceiling, acquire events written under the
-// old one would be replayed against the new root and reinterpreted rather than continued -- the
-// module's own invariant, violated by a change nobody here makes.
+// THE FAILURE THIS FORBIDS. The tolerant ceiling is derived from rows in OTHER modules -- the
+// declared allocation for group A, the canary arm's bound for group B -- so the author who moves it
+// is editing a file that never mentions this partition. If the name did not carry the ceiling,
+// acquire events written under the old one would be replayed against the new root and reinterpreted
+// rather than continued, which is the module's own invariant violated by an edit made somewhere that
+// gives no reason to think about it.
+//
+// AN EARLIER VERSION OF THIS BLOCK SAID THE CEILING MOVES WITH NO EDIT AT ALL, which is not true
+// today: the canary's bound is a static row and nothing observes the running container. It becomes
+// true when CeilingFromRouteLaunch has a producer, and this control is what makes that landing safe
+// rather than silent.
 //
 // The quality partition is asserted UNCHANGED under the same reading, because its ceiling is a row
 // in this repository that an author must edit to move, and its history must continue rather than

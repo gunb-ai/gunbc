@@ -83,20 +83,31 @@ import gunbc.serving.turn_demand { serving_turn_requirements }
 // is still the history of that pool, and renaming it would silently start an empty pool while seats
 // were held in the old one.
 //
-// AND THE TOLERANT PARTITION CARRIES ITS CEILING IN ITS NAME, WHICH THE QUALITY ONE DOES NOT NEED.
-// The invariant above -- a new ceiling is a new pool -- is enforced by the version suffix, and a
-// suffix bumped BY HAND is sufficient only while the ceiling is a row in this repository that an
-// author must edit to move. That is true of the quality seat and false of the tolerant one: group
-// A's ceiling is declared here and is advertised as cheap to supersede, and group B's is
-// glm_canary_arm max_num_seqs, which moves whenever the canary is relaunched under a different bound
-// -- WITHOUT ANY EDIT TO THIS REPOSITORY AT ALL. A hand-bumped suffix cannot be bumped by an author
-// who never runs, so the events written under the old ceiling would be replayed against the new root
-// and REINTERPRETED rather than continued, which is the exact state the version exists to prevent.
+// AND THE TOLERANT PARTITION CARRIES ITS CEILING IN ITS NAME. The invariant above -- a new ceiling is
+// a new pool -- is enforced by a version suffix, and a suffix bumped BY HAND is only as good as the
+// chance that whoever moves the ceiling is looking at this function when they do it.
 //
-// So the ceiling is part of the tolerant partition's identity: changing it names a different pool,
-// which starts empty, and the old pool's events stay under the name that describes them. The
-// asymmetry is not tidiness -- it is that only one of the two ceilings can move while nobody is
-// looking.
+// THE REASON STATED HERE FIRST WAS FALSE AND IS CORRECTED RATHER THAN SOFTENED. It said group B's
+// ceiling "moves whenever the canary is relaunched under a different bound, without any edit to this
+// repository at all". It does not: glm_canary_arm max_num_seqs is a static data row, nothing observes
+// the running container's bound, and relaunching the canary changes nothing here. An author must edit
+// that row, exactly as with the quality seat. That annotation asserted a machine behaviour the
+// declarations do not have -- which is the class this same branch files, appearing in the argument
+// for the construction rather than in the construction.
+//
+// THE ASYMMETRY THAT IS REAL, AND IT IS WEAKER. The quality ceiling is a row in THIS module, three
+// lines from the suffix it invalidates. The tolerant ceiling is derived from rows in OTHER modules --
+// gunbc.serving.serving_enrollment's declared allocation for group A, gunbc.spark.glm_canary_converge's
+// arm for group B -- so the author who moves it is editing a file that never mentions this partition
+// and has no reason to think about its version. That is an argument about attention, not about
+// reachability, and it is enough: the cost of deriving the suffix is a longer name, and the cost of a
+// missed hand-bump is a pool whose history is reinterpreted against a root it was not written under.
+//
+// AND ONE FUTURE STATE MAKES IT UNREACHABLE BY HAND. serving_canary_route_ceiling's other arm,
+// CeilingFromRouteLaunch, carries a count read off the launch that is running. Nothing produces that
+// arm today. When something does, the ceiling moves with an OBSERVATION and there is no edit and no
+// author to bump anything -- at which point a derived suffix is the only mechanism that can hold, and
+// having it already in place is what stops that landing from silently reinterpreting live history.
 fn harness_seat_partition(group: FabricGroup, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
   match class {
     InteractiveQualitySensitive =>
