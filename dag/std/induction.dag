@@ -611,6 +611,51 @@ fn cost_bound_params(b: CostBound) -> List<String> {
   reverse(cost_bound_params_into(b: b, seen: []))
 }
 
+// ORDERABILITY IS A PROPERTY OF THE WHOLE BOUND, AND IT HAS TO BE ASKED BEFORE ANY COMPARISON.
+// ParamGrowth carries `representable` per parameter, and the projection consults it — but a bound
+// with NO parameters has no per-parameter flag to carry, and ForeverBound is exactly that shape. So
+// a consumer that only read the per-parameter flag would order an unbounded cost as if it were
+// constant, which is not a weaker answer than refusing: it is the opposite answer.
+//
+// MEASURED, not argued: before this predicate existed, cost_fidelity_of(linear, sqrt) answered
+// "the realization is FASTER" (a fractional exponent read as (0,0), i.e. constant) and
+// cost_fidelity_of(ForeverBound, ConstantBound) answered "preserved" (no parameters, so no axes, so
+// equivalent). Both are the fabricated plausible output DESIGN section 5 forbids, produced by the
+// module whose annotations forbid it.
+fn atomic_cost_is_orderable(c: AtomicCost) -> Bool {
+  match c {
+    PolyCost { param: _, exponent: e } =>
+      match e {
+        IntegerExpZero => true
+        IntegerExpPos { degree: _ } => true
+        FractionExp { numerator: _, root: _ } => false
+        LogBasedExp { base: _, argument: _ } => false
+      }
+    LogCost { param: _ } => true
+    CallerBodyCost { param: _ } => true
+  }
+}
+
+fn atomic_factors_are_orderable(factors: List<AtomicCost>) -> Bool {
+  factors |> fold(init: true, f: fn(acc, c) { acc && atomic_cost_is_orderable(c: c) })
+}
+
+fn cost_bound_is_orderable(b: CostBound) -> Bool {
+  match b {
+    ConstantBound => true
+    AtomicBound { cost: c } => atomic_cost_is_orderable(c: c)
+    ProductBound { factors: fs } => atomic_factors_are_orderable(factors: fs)
+    SumOfProductsBound { terms: ts } =>
+      ts |> fold(init: true, f: fn(acc, factors) {
+        acc && atomic_factors_are_orderable(factors: factors)
+      })
+    SumBound { terms: ts } =>
+      ts |> fold(init: true, f: fn(acc, inner) { acc && cost_bound_is_orderable(b: inner) })
+    ForeverBound => false
+    ErrorBound => false
+  }
+}
+
 // THE PROJECTION TO CostShape, AND IT IS PARTIAL ON PURPOSE. CostShape can say exactly four things,
 // and each has exactly one preimage here: constant (0,0,0), iterate-body (1,0,1), linear-scan
 // (1,0,0), sort-body (1,1,0), all in a single parameter. Every other real bound -- logarithmic,

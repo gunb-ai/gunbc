@@ -3,6 +3,7 @@ module std.realization_cost_fidelity
 import std.algebra { CostShape, Equal, Greater, Less, Ordering }
 import std.induction {
   CostBound,
+  cost_bound_is_orderable,
   ParamGrowth,
   cost_bound_growth_in_param,
   cost_bound_params,
@@ -50,8 +51,8 @@ import std.logic { Bool }
 // THE CONSUMER: the compile-obligation census's realization-cost-fidelity row — the row the census
 // currently reports as having no home — joined per (primitive, target) through
 // `realization_cost_fidelity_rows`, with `count_cost_fidelity_findings`,
-// `count_cost_fidelity_unmeasured`, `count_cost_model_unmigrated` and `count_cost_body_dependent`
-// as its four reported populations. THE ROUTE: the census entry point folds
+// `count_cost_fidelity_unmeasured`, `count_cost_model_unmigrated` `count_cost_body_dependent` and
+// `count_cost_not_orderable` as its five reported populations. THE ROUTE: the census entry point folds
 // `std.primitive_identity`'s modeled costs against `RealizationCostFact` rows measured from the
 // emitted compiler, and reports the rows.
 //
@@ -83,6 +84,7 @@ type CostFidelity
   | RealizationFasterThanModeled
   | RealizationDivergesByOperand
   | RealizationCostBodyDependent
+  | CostGrowthNotOrderable
   | RealizationCostUnknown
   | ModeledCostNotStructured
 
@@ -185,7 +187,23 @@ fn param_axis_comparison(
   }
 }
 
+// ORDERABILITY IS ASKED FIRST, BEFORE ANY AXIS EXISTS. A bound this reading cannot place on the
+// (degree, logs) lattice -- a fractional or log-based exponent, an unbounded bound, a malformed one
+// -- has no position to compare, and comparing it anyway produced the two fabrications this arm
+// exists to stop: sqrt(n) ordered as cheaper than n, and ForeverBound ordered as equal to a
+// constant. It is deliberately NOT folded into RealizationCostBodyDependent: that arm means both
+// costs are fully known and their ORDER turns on a body cost nobody modeled, which is a different
+// ignorance with a different repair (model the body, versus extend this reading to the exponent
+// forms std.induction already carries).
 fn cost_fidelity_of(modeled: CostBound, realized: CostBound) -> CostFidelity {
+  if !cost_bound_is_orderable(b: modeled) || !cost_bound_is_orderable(b: realized) {
+    CostGrowthNotOrderable
+  } else {
+    cost_fidelity_of_orderable(modeled: modeled, realized: realized)
+  }
+}
+
+fn cost_fidelity_of_orderable(modeled: CostBound, realized: CostBound) -> CostFidelity {
   match dominance_of_comparisons(
     comparisons: param_axis_comparisons(modeled: modeled, realized: realized)
   ) {
@@ -282,6 +300,7 @@ fn cost_fidelity_is_finding(fidelity: CostFidelity) -> Bool {
     RealizationFasterThanModeled => true
     RealizationDivergesByOperand => true
     RealizationCostBodyDependent => false
+    CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -302,6 +321,7 @@ fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int
       RealizationFasterThanModeled => acc
       RealizationDivergesByOperand => acc
       RealizationCostBodyDependent => acc
+      CostGrowthNotOrderable => acc
       ModeledCostNotStructured => acc
     }
   })
@@ -316,6 +336,25 @@ fn count_cost_body_dependent(rows: List<RealizationCostFidelityRow>) -> Int {
   rows |> fold(init: 0, f: fn(acc, row) {
     match row.fidelity {
       RealizationCostBodyDependent => acc + 1
+      RealizationCostUnknown => acc
+      CostShapePreserved => acc
+      RealizationSlowerThanModeled => acc
+      RealizationFasterThanModeled => acc
+      RealizationDivergesByOperand => acc
+      CostGrowthNotOrderable => acc
+      ModeledCostNotStructured => acc
+    }
+  })
+}
+
+// A BOUND THIS READING CANNOT ORDER IS A FIFTH REPORTED POPULATION. An arm that no count reports is
+// an answer nobody reads -- the defect one round earlier in this module -- so the arm and its
+// population land together.
+fn count_cost_not_orderable(rows: List<RealizationCostFidelityRow>) -> Int {
+  rows |> fold(init: 0, f: fn(acc, row) {
+    match row.fidelity {
+      CostGrowthNotOrderable => acc + 1
+      RealizationCostBodyDependent => acc
       RealizationCostUnknown => acc
       CostShapePreserved => acc
       RealizationSlowerThanModeled => acc
@@ -336,6 +375,7 @@ fn count_cost_model_unmigrated(rows: List<RealizationCostFidelityRow>) -> Int {
       RealizationFasterThanModeled => acc
       RealizationDivergesByOperand => acc
       RealizationCostBodyDependent => acc
+      CostGrowthNotOrderable => acc
     }
   })
 }

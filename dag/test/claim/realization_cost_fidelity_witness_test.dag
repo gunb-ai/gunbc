@@ -7,6 +7,9 @@ module test.claim.realization_cost_fidelity_witness
 // plainest possible evidence that the cost grammar this join needed was never missing.
 import std.algebra { Equal, Greater, Less, ShapeIterateBody, ShapeLinearScan, ShapeSortBody }
 import std.induction {
+  ConstantBound,
+  ForeverBound,
+  ErrorBound,
   CostBound,
   CallerBodyCost,
   LogCost,
@@ -28,6 +31,7 @@ import std.realization_cost_fidelity {
   CostShapePreserved,
   ModeledCostNotStructured,
   ModeledCostBoundFact,
+  CostGrowthNotOrderable,
   RealizationCostBodyDependent,
   RealizationCostFact,
   RealizationCostUnknown,
@@ -36,6 +40,7 @@ import std.realization_cost_fidelity {
   RealizationSlowerThanModeled,
   cost_fidelity_of,
   count_cost_body_dependent,
+  count_cost_not_orderable,
   count_cost_fidelity_findings,
   count_cost_fidelity_unmeasured,
   count_cost_model_unmigrated,
@@ -74,6 +79,7 @@ test fn concat_model_over_prices_the_left_operand() -> Bool {
     RealizationSlowerThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
+    CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -104,6 +110,7 @@ test fn slower_realization_is_reported() -> Bool {
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
+    CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -116,6 +123,7 @@ test fn identical_costs_are_preserved() -> Bool {
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
+    CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -140,6 +148,7 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
     RealizationCostBodyDependent => false
+    CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -154,6 +163,7 @@ test fn log_squared_and_linear_do_not_collide() -> Bool {
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
+    CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -213,6 +223,7 @@ test fn iterate_body_and_linear_scan_project_to_different_arms() -> Bool {
 test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_iterate_body(param: "n")) {
     RealizationCostBodyDependent => true
+    CostGrowthNotOrderable => false
     CostShapePreserved => false
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
@@ -229,6 +240,7 @@ test fn a_body_does_not_outrank_a_real_growth_difference() -> Bool {
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
+    CostGrowthNotOrderable => false
     RealizationCostUnknown => false
     ModeledCostNotStructured => false
   }
@@ -246,6 +258,7 @@ test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
     ] },
   ) {
     RealizationCostBodyDependent => true
+    CostGrowthNotOrderable => false
     CostShapePreserved => false
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
@@ -331,4 +344,77 @@ test fn a_fractional_exponent_is_not_rounded_to_a_shape() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// THE TWO FABRICATIONS THIS ARM EXISTS TO STOP, both reproduced by execution before the repair.
+//
+// A FRACTIONAL EXPONENT WAS ORDERED AS CONSTANT: representable:false zeroes the growth to (0,0),
+// param_growth_order never consulted the flag, and sqrt(n) therefore compared CHEAPER than n. The
+// module's own annotation said a reader reporting constant or linear for such a bound "would be
+// fabricating"; the join did it three lines of indirection away.
+test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool {
+  match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_sqrt(param: "n")) {
+    CostGrowthNotOrderable => true
+    RealizationFasterThanModeled => false
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// AN UNBOUNDED COST WAS ORDERED AS EQUAL TO A CONSTANT: ForeverBound names no parameters, so the
+// axis list was empty, and an empty axis list is Equivalent in std.pareto. "No axes" and "no
+// difference" are not the same fact.
+test fn an_unbounded_cost_is_not_preserved_against_a_constant() -> Bool {
+  match cost_fidelity_of(modeled: ForeverBound, realized: ConstantBound) {
+    CostGrowthNotOrderable => true
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationSlowerThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostBodyDependent => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+test fn a_malformed_bound_is_not_orderable() -> Bool {
+  match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: ErrorBound) {
+    CostGrowthNotOrderable => true
+    _ => false
+  }
+}
+
+// TWO GENUINE CONSTANTS STILL COMPARE, so the gate is about orderability rather than about having
+// no parameters: the empty-axis case is only wrong when a side was unorderable.
+test fn two_constants_still_compare_as_preserved() -> Bool {
+  match cost_fidelity_of(modeled: ConstantBound, realized: ConstantBound) {
+    CostShapePreserved => true
+    _ => false
+  }
+}
+
+// AND THE ARM IS COUNTED: an answer no population reports is an answer nobody reads, which is the
+// defect this module shipped one round earlier.
+test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
+    unstructured: [],
+    target: InterpreterHost,
+    facts: [
+      RealizationCostFact {
+        primitive: probe_primitive_a,
+        target: InterpreterHost,
+        cost: cost_sqrt(param: "n"),
+      },
+    ],
+  )
+  count_cost_not_orderable(rows: rows) == 1
+    && count_cost_fidelity_findings(rows: rows) == 0
+    && count_cost_body_dependent(rows: rows) == 0
+    && count_cost_fidelity_unmeasured(rows: rows) == 0
+    && count_cost_model_unmigrated(rows: rows) == 0
 }
