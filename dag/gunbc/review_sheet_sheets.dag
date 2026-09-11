@@ -127,6 +127,32 @@ fn a1_start_cell(cells: String) -> String {
   }
 }
 
+fn a1_contains_digit(s: String) -> Bool {
+  string_contains(s: s, pattern: "0")
+    || string_contains(s: s, pattern: "1")
+    || string_contains(s: s, pattern: "2")
+    || string_contains(s: s, pattern: "3")
+    || string_contains(s: s, pattern: "4")
+    || string_contains(s: s, pattern: "5")
+    || string_contains(s: s, pattern: "6")
+    || string_contains(s: s, pattern: "7")
+    || string_contains(s: s, pattern: "8")
+    || string_contains(s: s, pattern: "9")
+}
+
+fn a1_cells_open_ended_from_a1(cells: String) -> Bool {
+  let segs = cells.split(delimiter: ":")
+  if (segs |> count) != 2 {
+    false
+  } else {
+    match segs.skip(n: 1).first() {
+      Absent => false
+      Present { value: end } =>
+        (end != "") && !a1_contains_digit(s: end)
+    }
+  }
+}
+
 fn a1_readback_standing(range: String) -> A1ReadbackStanding {
   let parts = range.split(delimiter: "!")
   if (parts |> count) != 2 {
@@ -147,14 +173,23 @@ fn a1_readback_standing(range: String) -> A1ReadbackStanding {
             Absent =>
               A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
             Present { value: cells } =>
-              if a1_start_cell(cells: cells) == "A1" {
-                A1ReadbackAnchored { tab: tab as NonEmptyStr }
-              } else {
+              if a1_start_cell(cells: cells) != "A1" {
                 A1ReadbackUnreadable {
                   reason: concat(
                     "readback not A1-anchored; write A1 would not match the compared cells: ",
                     range,
                   ) as NonEmptyStr
+                }
+              } else {
+                if a1_cells_open_ended_from_a1(cells: cells) {
+                  A1ReadbackAnchored { tab: tab as NonEmptyStr }
+                } else {
+                  A1ReadbackUnreadable {
+                    reason: concat(
+                      "bounded A1 range; append would write past unobserved rows: ",
+                      range,
+                    ) as NonEmptyStr
+                  }
                 }
               }
           }
