@@ -1675,90 +1675,97 @@ pub struct TransitionAdmission {
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
 ///
-/// STRUCTURAL-TEXT AND LOGIC AUTHORITY REQUALIFICATION (2026-09-09, gunbc#10692). No ordinal is
-/// claimed, for the reason the entries above give. Five binding sites on the v2 self-host branch
-/// stop spelling two type names into the ambient kernel set and name the authority module
-/// instead, which is `TargetChanged` and is not auto-admitted: `EmitSpellingEscape.from/to`,
-/// `apply_emit_spelling_escapes.spelling` and `integer_string_to_decimal_digits_step.s` requalify
-/// `String` to `v2.std.text`; `py_bool_grounding` and `ts_bool_grounding` requalify their
-/// `BooleanAlgebra` parameter `Bool` to `v2.std.logic`.
+/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
+/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
+/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
+/// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
+/// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
+/// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
+/// by this sentence.
 ///
-/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check. The three
-/// `String` sites carry STRUCTURAL text — `v2.std.text.String` is `FreeMonoid<Char>`, and the
-/// chars(String) <- Variant cluster repair (this branch) restored structural reads end-to-end, so
-/// the carriers' types name the structural authority rather than the kernel homonym; the
-/// qualification is also load-bearing for native emission, whose host-String arm keys on
-/// declaration provenance (this branch, `is_host_text_carrier_type`), so an unqualified spelling
-/// would render the host carrier while value-position consumers render the structure. The two
-/// `Bool` sites bind a value whose own declaration already carries the qualified parameter:
-/// `v2.std.logic` declares `type Bool = True | False` and `bool_boolean_algebra:
-/// BooleanAlgebra<Bool>` resolves that spelling to its OWN module's declaration, so a grounding
-/// row annotated `BooleanAlgebra<Bool>` with the kernel reading stated a type its value does not
-/// inhabit. This is the gunbc#9907 namespace-lane requalification reaching five sites the XL-N
-/// closure repair touched.
+/// TWENTIETH DISSOLUTION (2026-09-10). That trigger fired and the wall said so rather than this
+/// paragraph: #10945 merged, and the required floor on gunbc#10951 (run 34517633122) reported the
+/// row as `CONSUMED ADMISSION ... already satisfied at the base — consumed by its own merge` and
+/// then refused adjudication with `1 consumed admission(s) due for deletion on this roster-touching
+/// change`. This change edits `evaluate_wave_admission`, so it is the toucher the rule charges, and
+/// the deletion is paid here rather than deferred to a follow-up nobody owes.
 ///
-/// ONE CHANGE CLASS. Nothing is requalified at the leaf: every spelling is identical on both
-/// sides, and what moved is the declaration behind it — from the ambient kernel type set
-/// (`<kernel>`) to the explicitly named authority module. No membership edge is added or removed
-/// by these five sites (the requalification is by qualified path or an import the module already
-/// carried), which is why the run reports exactly five binding rows and nothing else.
+/// THE RECEIPT IS THE DISPOSITION, NOT THE SIDE — which is the correction the eighteenth and
+/// nineteenth dissolutions above were both written to record. This row arrived from main through a
+/// merge and was never authored on this branch; that is not evidence of anything, and the reason it
+/// goes is that the wall computed its transition as merged and printed it.
 ///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10692 merges. Main then binds
-/// each spelling to the named target, base and head agree, no run can produce these deltas, and
-/// all five report CONSUMED rather than stale — coming due on this roster's next touch.
-/// Adjudicate that deletion by joining each row against main's tree on its own
-/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
-/// a trigger sentence is not evidence that the trigger fired.
-const V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL: &str =
-    "gunbc#10692 structural-text/logic authority requalification 2026-09-09";
+/// THE RESTING STATE WAS EMPTY AND THIS CHANGE AUTHORS ONE ROW BACK INTO IT, which is the ordinary
+/// motion and not a regression of the dissolution above: the twentieth dissolution retired a row
+/// whose delta had stopped being producible, and the row below admits a different delta that this
+/// change produces. Empty is not permissive and non-empty is not permission - a run with any delta
+/// no row names still refuses it as UNADJUDICATED.
+///
+/// TWENTY-FIRST DISSOLUTION (2026-09-11). #10956 merged, and the required floor on gunbc#11071
+/// (run 34627055157) reported its row as `CONSUMED ADMISSION ... already satisfied at the base —
+/// consumed by its own merge`. This change edits the roster, so it is the toucher the rule charges
+/// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
+/// empty was the resting state and one change authoring rows back into it is the ordinary motion.
+///
+/// gunbc#11071 LinuxKernelRelease rehome (2026-09-11). `gunbc.served_surface_browser_observation`
+/// authored `LinuxKernelRelease`, the brand for what `uname -r` answers. That is a fact the Linux
+/// kernel owns, and it was declared inside a downstream RECEIPT module — so when
+/// `extdeps.linux.edac` needed to key its GHES/APEI topology facts to a kernel release it could not
+/// reach the brand at all: an extdeps module may not import a gunbc one. The only two landings were
+/// re-coining the brand upstream, which is the §3 fork, or moving it. It moved, to the new
+/// `extdeps.linux.kernel`, and both prior consumers import it from there.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `LinuxKernelRelease` is authored
+/// on both sides in all three declarations below, and what changed is which declaration it admits:
+/// base `{gunbc.served_surface_browser_observation}`, head `{extdeps.linux.kernel}`. That is the
+/// motion this wall exists to make an author say out loud. It is not `AuthoredReferenceResolution`:
+/// the name was bound to a real declaration that this change deliberately relocated.
+///
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. The moved declaration is
+/// byte-identical to the one it replaces — same name, same `NonEmptyStr where brand(...)` body, same
+/// brand STRING, so every `as LinuxKernelRelease` ascription in the corpus denotes the same brand it
+/// did at the base; a changed brand string would have changed what the ascriptions mean and this row
+/// would be admitting a semantic change under a relocation's name. The two consumers are the
+/// complete population: `LinuxKernelRelease` resolved to exactly
+/// `gunbc.served_surface_browser_observation` and
+/// `test.claim.served_surface_browser_observation_witness` at the base, and both are edited here, so
+/// no third site is left resolving through a module that no longer authors the name. The witness
+/// suite over the consuming module passes on this head. The closure blast radius the same run
+/// measured is 4 modules — `extdeps.linux.kernel` imports only the citation vocabulary the base
+/// consumer already reached (`std.types`, `std.decl_ref`, `extdeps.external_authority`,
+/// `extdeps.uri`), so nothing downstream gained reach it did not have.
+///
+/// TRIGGER: these rows go when #11071 merges. The base then authors `LinuxKernelRelease` in
+/// `extdeps.linux.kernel`, the delta stops being producible, and CONSUMED comes due on the roster's
+/// next touch — adjudicated by the declaring-module join, not by this sentence.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "gunbc#11071 LinuxKernelRelease rehome",
         subject: AdmissionSubject::Binding {
-            module: "v2.extdeps.languages.python",
-            in_declaration: "py_bool_grounding",
-            spelling: "Bool",
-            target: "v2.std.logic",
+            module: "gunbc.served_surface_browser_observation",
+            in_declaration: "ContainerVisibleHostKernel",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "gunbc#11071 LinuxKernelRelease rehome",
         subject: AdmissionSubject::Binding {
-            module: "v2.extdeps.languages.typescript",
-            in_declaration: "ts_bool_grounding",
-            spelling: "Bool",
-            target: "v2.std.logic",
+            module: "gunbc.served_surface_browser_observation",
+            in_declaration: "playwright_chromium_151_linux_arm64_headless_navigation_run",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "gunbc#11071 LinuxKernelRelease rehome",
         subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.target_model",
-            in_declaration: "EmitSpellingEscape",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.target_model",
-            in_declaration: "apply_emit_spelling_escapes",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.integer",
-            in_declaration: "integer_string_to_decimal_digits_step",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "test.claim.served_surface_browser_observation_witness",
+            in_declaration: "witness_run_owns_one_execution_identity",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2659,6 +2666,12 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
+///
+/// Annotation-grain refusals are the exception named by
+/// `fail_closed_gate_refuses_its_own_repair`: the parser still produced the module (annotation
+/// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
+/// unreadable base sealed the transition that only moves `//` onto the declaration the grain
+/// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -2667,7 +2680,15 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         })]
         .into(),
     ));
-    if !fill.diagnostics.is_empty() {
+    let annotation_erased_readable = !fill.modules.is_empty()
+        && !fill.diagnostics.is_empty()
+        && fill.diagnostics.iter().all(|d| {
+            matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        });
+    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
@@ -2783,6 +2804,15 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
+            // A BASE THIS PARSER CANNOT READ IS UNEVALUATED, FULL STOP. The annotation case that
+            // used to be repaired here is now answered truthfully upstream: `base_records` reads
+            // the real base declarations out of an annotation-refused parse via
+            // `annotation_erased_readable`, so the only reason left to reach this arm is a base
+            // carrying NON-annotation diagnostics. Substituting head records there is exactly the
+            // fabricated parse the readable path exists to avoid -- the remainders would still
+            // compare equal whenever the head touched only comments, so the old discriminator
+            // would happily certify a baseline for a file that failed to parse for an unrelated
+            // reason. The residual case argues for deletion, not for retention.
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         }
     }

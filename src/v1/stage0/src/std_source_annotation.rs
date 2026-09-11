@@ -5,7 +5,6 @@ use self::AnnotationAdmission::*;
 use self::AnnotationAttachment::*;
 use self::AnnotationAttachmentRefusal::*;
 use self::AnnotationPlacement::*;
-pub use crate::std_algebra::FreeSemigroup;
 pub use crate::std_occurrence_identity::OccurrenceId;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, SourceSpan};
@@ -116,18 +115,24 @@ pub enum AnnotationAttachment {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NonEmptyAnnotationAttachmentRefusals {
+    pub head: Rc<AnnotationAttachmentRefusal>,
+    pub tail: Rc<Vec<Rc<AnnotationAttachmentRefusal>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AnnotationAdmission {
     AnnotationsAdmitted {
         graph: Rc<SourceAnnotationGraph>,
     },
     AnnotationsRefused {
-        refusals: Rc<FreeSemigroup<Rc<AnnotationAttachmentRefusal>>>,
+        refusals: Rc<NonEmptyAnnotationAttachmentRefusals>,
     },
 }
 
 pub fn non_empty_refusals_all(
-    refusals: Rc<FreeSemigroup<Rc<AnnotationAttachmentRefusal>>>,
+    refusals: Rc<NonEmptyAnnotationAttachmentRefusals>,
 ) -> Rc<Vec<Rc<AnnotationAttachmentRefusal>>> {
     v1_rt::concat(Rc::new(vec![refusals.head.clone()]), refusals.tail.clone())
 }
@@ -138,7 +143,7 @@ pub fn admit_annotations(result: Rc<AnnotationAttachmentResult>) -> Rc<Annotatio
             graph: result.graph.clone(),
         }),
         Some(head) => Rc::new(AnnotationAdmission::AnnotationsRefused {
-            refusals: Rc::new(FreeSemigroup {
+            refusals: Rc::new(NonEmptyAnnotationAttachmentRefusals {
                 head: head.clone(),
                 tail: Rc::new(
                     result
@@ -149,7 +154,6 @@ pub fn admit_annotations(result: Rc<AnnotationAttachmentResult>) -> Rc<Annotatio
                         .skip(1 as usize)
                         .collect::<Vec<_>>(),
                 ),
-                _phantom: std::marker::PhantomData,
             }),
         }),
     }

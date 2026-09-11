@@ -89,14 +89,18 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
+mod native_lane_runner;
 mod required_floor_runner;
+mod required_lane_roster;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
+pub use native_lane_runner::run_required_v2_native;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
     run_claim_measured, run_required_floor,
 };
+pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
@@ -3454,7 +3458,11 @@ pub(crate) fn string_list_data_from_module_source(
     use crate::v1_std_core::{ExprData, LiteralValue};
 
     let filename = module_rel_path.to_string();
-    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        filename.clone(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index =
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
@@ -4870,10 +4878,17 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
 
-// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
-// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
-// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
-// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
+// DELETE WHEN dissolved: `UnlistedImportBindingSource`,
+// `classify_unlisted_import_binding_source`, `unlisted_import_rows_from_resolved`,
+// `UnlistedImportCensusRow`, and the unlisted-import-specific census helpers. The standalone bin
+// this marker once named was swept in gunbc#9160, and the dead `compile_clean_unlisted_import_census`
+// wrapper deleted when the per-class `compile_clean_diagnostic_census` subsumed it (its
+// `unlisted_import_rows` carries the same rows); what remains is the binding-source classification
+// the diagnostic census consumes. The census itself is NOT in this list: per DESIGN section 4b(4) it
+// stays enrolled after each class's climb as the executing evidence that the class stays at zero.
+// Receipt: the marker const below is itself the receipt -- present until deletion, gone with the
+// scaffold (a count receipt over the marker STRING counts this comment and the marker test too,
+// so the count form can never read what it claims).
 // namespace-only lane (docs/plans/namespace-resolution-design.md).
 pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_unlisted_import_census";
@@ -4904,10 +4919,16 @@ impl UnlistedImportBindingSource {
     }
 }
 
-/// One attributed row of the UnlistedImportUse census.
+/// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
+/// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
+/// NOT the occurrence identity the Step 0 binding-provenance census
+/// (gunbc.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
+/// edits: (file, position) locates the charge, but does not name the selected declaration, the
+/// producing rule, or the pre/post-edit targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnlistedImportCensusRow {
     pub file: String,
+    pub position: i64,
     pub referenced_name: String,
     pub referencing_module: String,
     pub definer_module: Option<String>,
@@ -8656,9 +8677,11 @@ fn module_self_declared_names(content: &str) -> BTreeSet<String> {
             "pub type ",
             "pub data ",
             "pub fn ",
+            "pub func ",
             "type ",
             "data ",
             "fn ",
+            "func ",
             "test fn ",
             "test data ",
         ]
@@ -20978,9 +21001,10 @@ fn entry_likely_has_unified_claim_owned_data(content: &str) -> bool {
 }
 
 fn top_level_decl_names(content: &str) -> Vec<String> {
-    const ITEM_KEYWORDS: [&str; 7] = [
+    const ITEM_KEYWORDS: [&str; 8] = [
         "data ",
         "fn ",
+        "func ",
         "type ",
         "service ",
         "const ",
@@ -30549,9 +30573,10 @@ pub fn layer_import_facts(
 // verdict logic; this bridge only projects top-level decl keys + content hashes from the
 // witness-layer trees. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared
 // host seam (Chunk D).
-const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 7] = [
+const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 8] = [
     "data ",
     "fn ",
+    "func ",
     "type ",
     "service ",
     "const ",
@@ -35290,7 +35315,11 @@ fn parse_module_items_for_transport_script(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path);
-    let tokens = v1_compiler_tokenize::tokenize(content.clone(), filename.to_string());
+    let tokens = v1_compiler_tokenize::tokenize(
+        content.clone(),
+        filename.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
@@ -36145,7 +36174,11 @@ pub fn parse_extdeps_module_items(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path);
-    let tokens = tokenize(content.clone(), filename.to_string());
+    let tokens = tokenize(
+        content.clone(),
+        filename.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices_map = HashMap::new();
     source_indices_map.insert(filename.to_string(), source_index);
@@ -37783,7 +37816,7 @@ mod import_closure_equivalence_tests {
             std::env::temp_dir().join(format!("gunbc-out-of-pool-entry-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).expect("scratch dir");
         let entry_path = scratch.join("out_of_pool_entry.dag");
-        let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfn out_of_pool_probe() -> Bool {\n  true\n}\n";
+        let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfunc out_of_pool_probe() -> Bool {\n  true\n}\n";
         std::fs::write(&entry_path, content).expect("write entry");
         let entry = Rc::new(crate::v1_compiler_compile::SourceFile {
             path: entry_path.to_string_lossy().into_owned(),
@@ -41065,10 +41098,135 @@ fn process_cpu_ms() -> u64 {
 /// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
 /// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
 /// right; only the CPU counter was absolute.
-/// The one spelling of "this reading would not read". Named rather than inlined so a check can
-/// bind to the arm that produces it: an unreadable field is `na` in every reader, and a fabricated
-/// number can only appear here by deleting this arm.
-const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the raw
+/// bracket-tagged `wall_s= phase= cpu_ms=` key=value eprintln dissolved into the observation
+/// projection (2026-09-11). The census probes assert the raw shape is ABSENT from this file by
+/// substring, so this comment deliberately does not spell it.
+#[allow(dead_code)]
+pub const FLOOR_HEARTBEAT_CENSUS_MARKER: &str = "[floor-heartbeat]";
+
+/// Mirrors of `gunbc.observation_seed_render` `seed_heartbeat_*_unreadable_cause`: one cause per
+/// source the beat reads, so the line names WHICH file did not read. A fabricated number can only
+/// appear on the line by deleting one of these arms.
+const HEARTBEAT_STAT_UNREADABLE: &str = "/proc/self/stat unreadable";
+const HEARTBEAT_STATM_UNREADABLE: &str = "/proc/self/statm unreadable";
+const HEARTBEAT_CGROUP_CURRENT_UNREADABLE: &str = "memory.current unreadable";
+const HEARTBEAT_CGROUP_EVENTS_UNREADABLE: &str = "memory.events unreadable";
+const HEARTBEAT_CGROUP_EVENTS_LOCAL_UNREADABLE: &str = "memory.events.local unreadable";
+const HEARTBEAT_VMSTAT_UNREADABLE: &str = "/proc/vmstat unreadable";
+const HEARTBEAT_STALL_UNREADABLE: &str = "stall counters unreadable";
+/// Mirror of `gunbc.observation_seed_render` `seed_heartbeat_run_id`.
+const HEARTBEAT_RUN_ID: &str = "required floor";
+
+fn heartbeat_unreadable(cause: &str) -> String {
+    format!("unreadable ({cause})")
+}
+
+fn heartbeat_measured_count(v: Option<u64>, cause: &str) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => heartbeat_unreadable(cause),
+    }
+}
+
+fn heartbeat_measured_bytes(v: Option<u64>, cause: &str) -> String {
+    match v {
+        Some(b) => measurement_human_bytes(b),
+        None => heartbeat_unreadable(cause),
+    }
+}
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.seed_heartbeat_line` --
+/// `ci_heartbeat_line ∘ ci_render_line` over the floor's real sample. JUSTIFIED DIVERGENCE from
+/// the interpreter seed boundary: the heartbeat runs on the detached liveness thread in a
+/// memory-constrained context, and an interpreter render there would build a duplicate module
+/// index, consuming the very memory the heartbeat watches, on the one thread whose job is to
+/// stay alive when the interpreter is busy. The format authority stays in `.dag`: this fn is
+/// held byte-equal to the oracle by `heartbeat_tests::render_heartbeat_line_mirror_matches_seed_oracle`
+/// (which runs the `.dag` through the interpreter on the same two specimens), and the oracle's
+/// bytes for those specimens are pinned on the required floor by
+/// `test.claim.observation_seed_heartbeat_witness_test`. The stall clause is computed by the
+/// `memory_governor` mirrors of `gunbc.memory_stall_refusal` -- the same two functions the stall
+/// refusal consumes -- exactly as the `.dag` renderer calls the authority's own.
+pub(crate) fn render_heartbeat_line_mirror(
+    elapsed_ms: u64,
+    seam: &str,
+    sample: &required_floor_runner::FloorResourceSample,
+    stall: Option<&crate::memory_governor::MemoryStallObservation>,
+    emoji: bool,
+) -> String {
+    let _ = FLOOR_HEARTBEAT_CENSUS_MARKER;
+    let glyph = if emoji { "🕐" } else { "◷" };
+    // ci_subject_activity_text over [RunSegment, PhaseSegment?]: "run <id>", then ", now <phase>".
+    let identity = if seam.is_empty() {
+        format!("still in run {HEARTBEAT_RUN_ID}")
+    } else {
+        format!("still in run {HEARTBEAT_RUN_ID}, now {seam}")
+    };
+    let cpu = match sample.cpu_ms {
+        Some(ms) => crate::v1_rt::obs_human_duration(ms),
+        None => heartbeat_unreadable(HEARTBEAT_STAT_UNREADABLE),
+    };
+    let (high, max) = match sample.cgroup_events {
+        Some((h, m)) => (Some(h), Some(m)),
+        None => (None, None),
+    };
+    let (swap_in, host_major) = match sample.host_vmstat {
+        Some((s, m)) => (Some(s), Some(m)),
+        None => (None, None),
+    };
+    let stall_text = match stall {
+        Some(o) => format!(
+            "{} faults/min at {} user cpu",
+            crate::memory_governor::memory_stall_major_faults_per_minute(o),
+            crate::memory_governor::mirror_ci_human_percent(
+                crate::memory_governor::memory_stall_self_cpu_share_basis_points(o)
+            )
+        ),
+        None => heartbeat_unreadable(HEARTBEAT_STALL_UNREADABLE),
+    };
+    let vitals = [
+        format!("cpu {cpu}"),
+        format!(
+            "memory {}",
+            heartbeat_measured_bytes(sample.rss_bytes, HEARTBEAT_STATM_UNREADABLE)
+        ),
+        format!(
+            "cgroup charge {}",
+            heartbeat_measured_bytes(
+                sample.cgroup_charge_bytes,
+                HEARTBEAT_CGROUP_CURRENT_UNREADABLE
+            )
+        ),
+        format!(
+            "cgroup events high {} / max {} / local high {}",
+            heartbeat_measured_count(high, HEARTBEAT_CGROUP_EVENTS_UNREADABLE),
+            heartbeat_measured_count(max, HEARTBEAT_CGROUP_EVENTS_UNREADABLE),
+            heartbeat_measured_count(
+                sample.cgroup_local_high_events,
+                HEARTBEAT_CGROUP_EVENTS_LOCAL_UNREADABLE
+            )
+        ),
+        format!(
+            "major faults {}",
+            heartbeat_measured_count(sample.major_faults, HEARTBEAT_STAT_UNREADABLE)
+        ),
+        format!(
+            "host swap-in {}",
+            heartbeat_measured_count(swap_in, HEARTBEAT_VMSTAT_UNREADABLE)
+        ),
+        format!(
+            "host major faults {}",
+            heartbeat_measured_count(host_major, HEARTBEAT_VMSTAT_UNREADABLE)
+        ),
+        format!("stall {stall_text}"),
+    ]
+    .join(", ");
+    format!(
+        "{glyph} {} in — {identity}. {vitals}",
+        crate::v1_rt::obs_human_duration(elapsed_ms)
+    )
+}
 
 // A HEARTBEAT, BECAUSE A BLANK INTERVAL AND A FOUR-HOUR INTERVAL LOOK IDENTICAL FROM OUTSIDE.
 //
@@ -41152,17 +41310,19 @@ fn spawn_floor_heartbeat() {
         // /proc here as the resource sample does.
         let now_faults = crate::memory_governor::self_major_faults();
         let now_user_cpu = crate::memory_governor::self_user_cpu_ms();
-        let stall_fields = match (&stall_window, now_faults, now_user_cpu) {
-            (Some(prev), Some(f), Some(c)) => required_floor_runner::floor_stall_metric_fields(
-                prev.started.elapsed().as_millis() as u64,
-                Some(f.saturating_sub(prev.major_faults)),
-                Some(c.saturating_sub(prev.self_user_cpu_ms)),
-            ),
-            // A window that cannot be read has no figures, and renders the sentinel rather than
+        let stall = match (&stall_window, now_faults, now_user_cpu) {
+            (Some(prev), Some(f), Some(c)) => {
+                required_floor_runner::floor_stall_window_observation(
+                    prev.started.elapsed().as_millis() as u64,
+                    Some(f.saturating_sub(prev.major_faults)),
+                    Some(c.saturating_sub(prev.self_user_cpu_ms)),
+                )
+            }
+            // A window that cannot be read has no figures, and renders its cause rather than
             // a zero -- a zero share is the most severe reading this line can carry, so
             // fabricating one manufactures a stall. With the window opened at spawn this arm is
             // reached only where the counters themselves do not read.
-            _ => required_floor_runner::floor_stall_metric_fields(0, None, None),
+            _ => None,
         };
         if let (Some(f), Some(c)) = (now_faults, now_user_cpu) {
             stall_window = Some(required_floor_runner::FloorStallWindow {
@@ -41171,18 +41331,183 @@ fn spawn_floor_heartbeat() {
                 self_user_cpu_ms: c,
             });
         }
+        // Projected through the observation renderer's mirror (restoration of the floor-memory
+        // migration #9228 deleted; gunbc.observation_emit_census floor_heartbeat_site). Every
+        // reading that did not read prints its cause; nothing here formats a number.
         eprintln!(
-            "[floor-heartbeat] wall_s={} phase={} {} {}",
-            started.elapsed().as_secs(),
-            if seam.is_empty() { "<unset>" } else { &seam },
-            floor_resource_sample(cpu_baseline_ms),
-            stall_fields
+            "{}",
+            render_heartbeat_line_mirror(
+                started.elapsed().as_millis() as u64,
+                &seam,
+                &floor_resource_sample(cpu_baseline_ms),
+                stall.as_ref(),
+                typecheck_emoji(),
+            )
         );
         beat += 1;
         if beat % 10 == 0 {
             floor_cgroup_envelope(&format!("beat-{beat}"));
         }
     });
+}
+
+#[cfg(test)]
+mod heartbeat_tests {
+    use super::*;
+
+    /// Run `gunbc.observation_seed_render.seed_heartbeat_line` through the interpreter on the
+    /// checkout's own `.dag` roots. `None` when the entry cannot be resolved or the call refuses,
+    /// which the test then reports rather than treating as agreement.
+    #[allow(clippy::too_many_arguments)]
+    fn run_seed_heartbeat_line(
+        elapsed_ms: u64,
+        seam: &str,
+        sample: &required_floor_runner::FloorResourceSample,
+        stall: Option<&crate::memory_governor::MemoryStallObservation>,
+        emoji: bool,
+    ) -> Option<String> {
+        use v1_interpreter::Value;
+        let root = workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/gunbc/observation_seed_render.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(&roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let int = |name: &str, v: u64| (Some(name.to_string()), Value::Int(v as i64));
+        let flag = |name: &str, b: bool| (Some(name.to_string()), Value::Bool(b));
+        // Unit-bearing arguments cross the seam as std.measure carriers built by the
+        // authority's own constructors, never as bare integers (review 63436; same shape as
+        // `render_batch_summary_line`'s `nanosecond`).
+        let carrier = |ctor: &str, v: u64| -> Option<Value> {
+            v1_interpreter::run_in_context_with_args(
+                &ctx,
+                ctor,
+                &[(Some("count".to_string()), Value::Int(v as i64))],
+                false,
+            )
+            .ok()
+        };
+        let ms = |name: &str, v: u64| -> Option<(Option<String>, Value)> {
+            Some((Some(name.to_string()), carrier("millisecond", v)?))
+        };
+        let bytes = |name: &str, v: u64| -> Option<(Option<String>, Value)> {
+            Some((Some(name.to_string()), carrier("byte_size", v)?))
+        };
+        let (high, max) = sample.cgroup_events.unwrap_or((0, 0));
+        let (swap_in, host_major) = sample.host_vmstat.unwrap_or((0, 0));
+        let out = v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "seed_heartbeat_line",
+            &[
+                ms("elapsed", elapsed_ms)?,
+                (Some("seam".to_string()), str_value(seam.to_string())),
+                ms("cpu", sample.cpu_ms.unwrap_or(0))?,
+                int("major_faults", sample.major_faults.unwrap_or(0)),
+                flag("stat_available", sample.cpu_ms.is_some()),
+                bytes("rss", sample.rss_bytes.unwrap_or(0))?,
+                flag("rss_available", sample.rss_bytes.is_some()),
+                bytes("cgroup_charge", sample.cgroup_charge_bytes.unwrap_or(0))?,
+                flag(
+                    "cgroup_charge_available",
+                    sample.cgroup_charge_bytes.is_some(),
+                ),
+                int("cgroup_high_events", high),
+                int("cgroup_max_events", max),
+                flag("cgroup_events_available", sample.cgroup_events.is_some()),
+                int(
+                    "cgroup_local_high_events",
+                    sample.cgroup_local_high_events.unwrap_or(0),
+                ),
+                flag(
+                    "cgroup_events_local_available",
+                    sample.cgroup_local_high_events.is_some(),
+                ),
+                int("host_swap_in", swap_in),
+                int("host_major_faults", host_major),
+                flag("vmstat_available", sample.host_vmstat.is_some()),
+                ms("stall_window", stall.map(|o| o.window_wall_ms).unwrap_or(0))?,
+                int(
+                    "stall_major_faults",
+                    stall.map(|o| o.major_faults_in_window).unwrap_or(0),
+                ),
+                ms(
+                    "stall_user_cpu",
+                    stall.map(|o| o.self_user_cpu_ms_in_window).unwrap_or(0),
+                )?,
+                flag("stall_available", stall.is_some()),
+                flag("emoji", emoji),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    }
+
+    /// THE ORACLE RED for `render_heartbeat_line_mirror`: the mirror must be byte-equal to the
+    /// `.dag` renderer on the same two specimens `test.claim.observation_seed_heartbeat_witness_test`
+    /// pins on the required floor -- a fully-read beat and a beat where nothing read. The
+    /// expected strings are asserted here as well, so the three agree over one input: if the
+    /// `.dag` moves, the floor witness reds; if the mirror moves, this reds; and neither can
+    /// pass by the other's construction.
+    #[test]
+    fn render_heartbeat_line_mirror_matches_seed_oracle() {
+        let measured = required_floor_runner::FloorResourceSample {
+            cpu_ms: Some(59_830),
+            major_faults: Some(1234),
+            rss_bytes: Some(16_107_200_512),
+            cgroup_charge_bytes: Some(17_179_869_184),
+            cgroup_events: Some((3, 0)),
+            cgroup_local_high_events: Some(1),
+            host_vmstat: Some((0, 999)),
+        };
+        let stall =
+            required_floor_runner::floor_stall_window_observation(60_000, Some(178_795), Some(480))
+                .expect("both counters read");
+        let mirror = render_heartbeat_line_mirror(
+            1_980_000,
+            "closure-strict-resolve",
+            &measured,
+            Some(&stall),
+            true,
+        );
+        let oracle = run_seed_heartbeat_line(
+            1_980_000,
+            "closure-strict-resolve",
+            &measured,
+            Some(&stall),
+            true,
+        )
+        .expect("the .dag oracle must resolve and render");
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "🕐 33 minutes in — still in run required floor, now closure-strict-resolve. cpu 59 seconds, memory 15.0 GiB, cgroup charge 16.0 GiB, cgroup events high 3 / max 0 / local high 1, major faults 1234, host swap-in 0, host major faults 999, stall 178795 faults/min at 0.8% user cpu"
+        );
+
+        let unreadable = required_floor_runner::FloorResourceSample::default();
+        let mirror = render_heartbeat_line_mirror(500, "", &unreadable, None, false);
+        let oracle = run_seed_heartbeat_line(500, "", &unreadable, None, false)
+            .expect("the .dag oracle must resolve and render");
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "◷ 500ms in — still in run required floor. cpu unreadable (/proc/self/stat unreadable), memory unreadable (/proc/self/statm unreadable), cgroup charge unreadable (memory.current unreadable), cgroup events high unreadable (memory.events unreadable) / max unreadable (memory.events unreadable) / local high unreadable (memory.events.local unreadable), major faults unreadable (/proc/self/stat unreadable), host swap-in unreadable (/proc/vmstat unreadable), host major faults unreadable (/proc/vmstat unreadable), stall unreadable (stall counters unreadable)"
+        );
+    }
 }
 
 /// The non-verdict admission, as a PURE FUNCTION OF TWO IDENTITY SETS.
@@ -42351,10 +42676,10 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
-    required_ci_emit_compile_probe_root, required_emit_compile_entries,
-    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
-    EmitCompileSelection, MutationVerdict,
+    emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
+    local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
+    required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE

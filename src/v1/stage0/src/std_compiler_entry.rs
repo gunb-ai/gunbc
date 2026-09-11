@@ -16,12 +16,9 @@ use std::rc::Rc;
 pub enum CompilerEntryDriver {
     RetainedHostCliKernel,
     DirectIngestDriver,
-    SourceRootEvalDriver,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RetainedHostCliKernel;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DirectIngestDriver;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SourceRootEvalDriver;
