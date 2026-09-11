@@ -177,6 +177,10 @@ fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> Li
   )
 }
 
+fn namespace_graft_production_emitted_identity_optional(production: GrammarProduction) -> Symbol? {
+  node_atom_identity_optional(node: production.emitted)
+}
+
 fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol? {
   fold_list(
     xs: dag_grammar_root().productions,
@@ -185,10 +189,9 @@ fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol?
       match acc {
         Present { value: _ } => acc
         Absent =>
-          if production.name == name {
-            node_atom_identity_optional(node: production.emitted)
-          } else {
-            optional_absent()
+          match production.name == name {
+            true => namespace_graft_production_emitted_identity_optional(production: production)
+            false => optional_absent()
           }
       }
     }
