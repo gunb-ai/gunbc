@@ -74,12 +74,13 @@ fn reconciled_parent_passes() {
 fn emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_process() {
     let main_rs = driver_main();
     assert!(
-        main_rs.contains("checked_sub(exclusive_sum)"),
-        "remainder must be checked_sub so OverAttributed cannot mint remainder_nanos 0; emitted:\n{main_rs}"
+        !main_rs.contains("saturating_sub(exclusive_sum)") && !main_rs.contains("checked_sub("),
+        "remainder is the fold residual — not a second subtraction that can clamp or fork OverAttributed; emitted:\n{main_rs}"
     );
     assert!(
-        !main_rs.contains("saturating_sub(exclusive_sum)"),
-        "RED: saturating_sub is the clamp that fabricated remainder_nanos 0"
+        main_rs.contains("NativeDriverCostReconciled { residual, .. }")
+            || main_rs.contains("NativeDriverCostReconciled { residual, ..}"),
+        "remainder_nanos must come from native_driver_cost_account residual; emitted:\n{main_rs}"
     );
     assert!(
         main_rs.contains("std::process::exit(1)")

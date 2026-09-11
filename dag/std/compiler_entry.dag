@@ -53,9 +53,10 @@ import std.measure {
 // line per unique module that partitions prepare into resolve vs infer (the two halves
 // native_test_resolve_module / native_test_infer_resolved) and carries decls=. The
 // `[native-cost-partition]` verdict is native_driver_cost_account over NativeDriverExclusiveRows,
-// not a second copy of the reconcile law. A non-Reconciled arm is a process refusal, not a
-// printed string with exit 0. Re-run the emitted binary over a universe file to re-derive the
-// numbers.
+// not a second copy of the reconcile law: remainder_nanos is that fold's residual, and
+// OverAttributed carries no remainder field (underflow is not a number). A non-Reconciled
+// arm is a process refusal, not a printed string with exit 0. Re-run the emitted binary over
+// a universe file to re-derive the numbers.
 
 type CompilerEntryDriver
   = RetainedHostCliKernel
