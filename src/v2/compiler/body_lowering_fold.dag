@@ -1868,10 +1868,104 @@ fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>>
   }
 }
 
+fn body_lower_node_is_eq_token(n: Node) -> Bool {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: n)) {
+    Present { value: id } => id == ^dag_token_eq
+    Absent => false
+  }
+}
+
+fn body_lower_eq_body_fold_init() -> Optional<Node> {
+  optional_absent()
+}
+
+fn body_lower_last_child_fold_step(_acc: Optional<Node>, e: Edge) -> Optional<Node> {
+  optional_present(value: e.target)
+}
+
+fn body_lower_last_child_optional(n: Node) -> Optional<Node> {
+  fold(n.children, init: body_lower_eq_body_fold_init(), f: body_lower_last_child_fold_step)
+}
+
+fn body_lower_atom_body_optional(expr: Node) -> Optional<Node> {
+  match body_lower_materialize_int_literal_operand_optional(node: expr) {
+    Present { value: lit } => Present { value: lit }
+    Absent => body_lower_operand_ref_optional(node: expr)
+  }
+}
+
+fn body_lower_eq_expr_to_body(expr: Node) -> Outcome<Optional<Node>> {
+  match body_lower_body_subtree_lower(captured: expr) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: body_opt, diagnostics: d } =>
+      match body_opt {
+        Present { value: lowered } =>
+          outcome_with_diagnostics(
+            value: optional_present(value: lowered),
+            diagnostics: d
+          )
+        Absent =>
+          match body_lower_atom_body_optional(expr: expr) {
+            Present { value: atom } =>
+              outcome_with_diagnostics(
+                value: optional_present(value: atom),
+                diagnostics: d
+              )
+            Absent =>
+              match body_lower_last_child_optional(n: expr) {
+                Absent => outcome_with_diagnostics(value: optional_absent(), diagnostics: d)
+                Present { value: last } =>
+                  match body_lower_atom_body_optional(expr: last) {
+                    Present { value: atom } =>
+                      outcome_with_diagnostics(
+                        value: optional_present(value: atom),
+                        diagnostics: d
+                      )
+                    Absent => body_lower_eq_expr_to_body(expr: last)
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } => body_lower_body_subtree_lower(captured: body)
-    ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
+    ParseSubtreeAbsent =>
+      match body_lower_body_after_eq_token(captured: captured) {
+        Present { value: expr } => body_lower_eq_expr_to_body(expr: expr)
+        Absent => outcome_accepted(value: optional_absent())
+      }
+  }
+}
+
+fn body_lower_eq_body_fold_step(acc: Optional<Node>, e: Edge) -> Optional<Node> {
+  match acc {
+    Present { value: n } =>
+      if body_lower_node_is_eq_token(n: n) {
+        optional_present(value: e.target)
+      } else {
+        optional_present(value: n)
+      }
+    Absent =>
+      if body_lower_node_is_eq_token(n: e.target) {
+        optional_present(value: e.target)
+      } else {
+        body_lower_body_after_eq_token(captured: e.target)
+      }
+  }
+}
+
+fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
+  match fold(captured.children, init: body_lower_eq_body_fold_init(), f: body_lower_eq_body_fold_step) {
+    Absent => optional_absent()
+    Present { value: n } =>
+      if body_lower_node_is_eq_token(n: n) {
+        optional_absent()
+      } else {
+        optional_present(value: n)
+      }
   }
 }
 
