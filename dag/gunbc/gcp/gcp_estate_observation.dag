@@ -507,7 +507,16 @@ fn workspace_admin_has_no_gunb_ci_project_roles() -> Bool {
 data gap_workspace_admin_domain_wide_delegation: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "gunbai-ci-workspace-admin@gunb-ci/workspace-domain-wide-delegation" as NonEmptyStr,
   cause: "the only remaining security-weight unread; no gcloud read can answer it. GCP silence (no project roles, no user keys) is not evidence the account is unprivileged -- Workspace power is domain-wide delegation on the SA client ID in the admin console. If it has delegation, an account impersonable from a pool is a path into the Workspace domain; if it does not, the account is inert and a cleanup candidate",
-  discharge: "Google Workspace admin-console read of domain-wide delegation for this service account client ID, not a gcloud command; do not ask the operator without routing through the direction session",
+  discharge: "Google Workspace admin-console read of domain-wide delegation for this service account client ID, not a gcloud command; do not ask the operator",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
+data gap_workspace_admin_workflow_refs: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "gunbai-ci-workspace-admin@gunb-ci/workflow-refs" as NonEmptyStr,
+  cause: "no workflow in this gunbc tree names this account; whether any other repo impersonates it is unread; not a gcloud surface",
+  discharge: "not an operator gcloud read; do not ask the operator",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -639,11 +648,11 @@ data observed_gunbai_auto_named_service_accounts: List<ObservedNamedServiceAccou
 data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAccount> = [
   ObservedNamedServiceAccount {
     email: secrets_ci_integration_tests_sa_email,
-    display_name: "",
+    display_name: "CI integration test service account",
   },
   ObservedNamedServiceAccount {
     email: gunbai_dev_secrets_sa_email,
-    display_name: "",
+    display_name: "Gunbai Dev Secrets",
   },
   ObservedNamedServiceAccount {
     email: gunbai_ci_secrets_sa_email,
@@ -651,7 +660,7 @@ data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAc
   },
   ObservedNamedServiceAccount {
     email: gunbai_ci_iap_sa_email,
-    display_name: "",
+    display_name: "gunbai-ci-iap",
   },
   ObservedNamedServiceAccount {
     email: fleet_automation_sa_email,
@@ -663,7 +672,7 @@ data observed_gunbai_secrets_named_service_accounts: List<ObservedNamedServiceAc
   },
   ObservedNamedServiceAccount {
     email: secrets_compute_default_sa_email,
-    display_name: "Compute Engine default",
+    display_name: "Compute Engine default service account",
   },
   ObservedNamedServiceAccount {
     email: fleet_cloud_convergence_sa_email,
@@ -780,6 +789,14 @@ fn all_observed_named_service_accounts() -> List<ObservedNamedServiceAccount> {
 
 fn workspace_admin_display_name_says_test() -> Bool {
   (observed_gunbai_ci_workspace_admin_sa.display_name).contains("Test")
+}
+
+fn secrets_named_sas_all_have_display_names() -> Bool {
+  fold(
+    observed_gunbai_secrets_named_service_accounts,
+    init: true,
+    f: fn(acc, sa) { acc && sa.display_name != "" },
+  )
 }
 
 data observed_gunb_test_project: GcpProject = GcpProject {
@@ -1195,6 +1212,7 @@ fn operator_audit_census() -> GcpEstateCensus {
     ],
     coverage_gaps: [
       gap_workspace_admin_domain_wide_delegation,
+      gap_workspace_admin_workflow_refs,
       gap_gemini_project_beyond_identity,
       gap_pool_creation_timestamps,
       gap_token_creator_binding_members,
