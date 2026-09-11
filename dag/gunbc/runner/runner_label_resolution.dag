@@ -71,7 +71,7 @@ type RunnerLabelResolution
   | RunnerLabelSnapshotStale {
       label: String
       observed_at: Rfc3339Timestamp
-      stale_snapshots: List<CatalogSnapshot>
+      untrusted_snapshots: List<SnapshotAssessment>
       cause: NonEmptyStr
     }
   | RunnerLabelAbsentFromSurvey {
@@ -187,16 +187,26 @@ fn snapshot_standing_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestam
   }
 }
 
-fn snapshot_is_stale_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> Bool {
-  match snapshot_standing_for(snapshot: snapshot, observed_at: observed_at) {
+// THE ASSESSMENT IS THE CARRIER, AND THE CAUSE TEXT IS A PROJECTION OF IT. An earlier revision
+// split the standing into three arms to stop two different facts sharing one sentence, and then
+// stored only List<CatalogSnapshot> in the refusal - so the distinction survived in the English
+// and nowhere a consumer could match on it. The sentence was fixed and the carrier left fused,
+// which is section 4c's rule read backwards: a count that lives only in a String.
+type SnapshotAssessment {
+  snapshot: CatalogSnapshot
+  standing: SnapshotStanding
+}
+
+fn assessment_is_untrusted(a: SnapshotAssessment) -> Bool {
+  match a.standing {
     SnapshotPredatesObservation => true
     SnapshotOrderUndecidable { cause } => true
     SnapshotPostdatesObservation => false
   }
 }
 
-fn snapshot_order_was_undecidable(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> Bool {
-  match snapshot_standing_for(snapshot: snapshot, observed_at: observed_at) {
+fn assessment_is_undecidable(a: SnapshotAssessment) -> Bool {
+  match a.standing {
     SnapshotOrderUndecidable { cause } => true
     SnapshotPredatesObservation => false
     SnapshotPostdatesObservation => false
@@ -207,25 +217,37 @@ fn surveyed_snapshots() -> List<CatalogSnapshot> {
   fold(runs_on_label_catalogs(), init: [], f: (acc, c) => concat(acc, [c.snapshot]))
 }
 
-fn stale_snapshots_for(observed_at: Rfc3339Timestamp) -> List<CatalogSnapshot> {
-  filter(surveyed_snapshots(), s => snapshot_is_stale_for(snapshot: s, observed_at: observed_at))
+// ONE COMPARISON PER SNAPSHOT, COMPUTED AT THE ANCESTOR BOTH READERS SHARE. An earlier revision
+// re-derived the standing three times for every snapshot in the survey - once to filter, twice
+// more to count the two kinds for the message - which is section 2's authored duplication with
+// unmatched_resolution as the least common ancestor. The assessments are computed once and folded.
+fn assess_snapshots(observed_at: Rfc3339Timestamp) -> List<SnapshotAssessment> {
+  map(surveyed_snapshots(), s => SnapshotAssessment {
+    snapshot: s,
+    standing: snapshot_standing_for(snapshot: s, observed_at: observed_at),
+  })
+}
+
+fn untrusted_assessments(assessments: List<SnapshotAssessment>) -> List<SnapshotAssessment> {
+  filter(assessments, a => assessment_is_untrusted(a: a))
 }
 
 data label_miss_next_rung_trigger: NonEmptyStr = "A vendor-side label-family recognizer, homed in each provider's own extdeps module and cited to that vendor's own documented naming scheme, would separate 'this label belongs to a family we never modelled' from 'this vendor does not publish this label'. Until it exists, consult the snapshot's declared_scope."
 
 fn unmatched_resolution(label: String, observed_at: Rfc3339Timestamp) -> RunnerLabelResolution {
-  let stale = stale_snapshots_for(observed_at: observed_at)
-  if count(stale) > 0 {
+  let assessments = assess_snapshots(observed_at: observed_at)
+  let untrusted = untrusted_assessments(assessments: assessments)
+  if count(untrusted) > 0 {
+    let undecidable = count(filter(untrusted, a => assessment_is_undecidable(a: a)))
     RunnerLabelSnapshotStale {
       label: label,
       observed_at: observed_at,
-      stale_snapshots: stale,
+      untrusted_snapshots: untrusted,
       cause: join(["no surveyed runner catalog carries the label '", label,
-        "', and at least one snapshot is not trusted for an observation at ", observed_at, ": ",
-        to_string(count(filter(stale, s => snapshot_order_was_undecidable(snapshot: s, observed_at: observed_at) == false))),
-        " were fetched BEFORE it, and ",
-        to_string(count(filter(stale, s => snapshot_order_was_undecidable(snapshot: s, observed_at: observed_at)))),
-        " could not be ORDERED against it at all - RFC 3339 lexical comparison refused, so nothing about their age was established. Both route here because both mean the catalog may have gained the label without us knowing, and the remedy for both is to re-fetch those vendor pages. Neither is a finding about the observed repository."], ""),
+        "', and ", to_string(count(untrusted)), " snapshot(s) are not trusted for an observation at ", observed_at, ": ",
+        to_string(count(untrusted) - undecidable), " were fetched BEFORE it, and ",
+        to_string(undecidable),
+        " could not be ORDERED against it at all - RFC 3339 lexical comparison refused, so nothing about their age was established. Both route here because both mean a catalog may have gained the label without us knowing, and the remedy for both is to re-fetch those vendor pages. Neither is a finding about the observed repository. The per-snapshot standings are carried on this arm; this sentence is a projection of them."], ""),
     }
   } else {
     RunnerLabelAbsentFromSurvey {
@@ -272,7 +294,7 @@ type ProviderReading
 fn resolution_cause(r: RunnerLabelResolution) -> NonEmptyStr {
   match r {
     RunnerLabelResolved { row, snapshot } => "resolved"
-    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => cause
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => cause
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => cause
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => cause
   }
@@ -281,7 +303,7 @@ fn resolution_cause(r: RunnerLabelResolution) -> NonEmptyStr {
 fn resolution_label(r: RunnerLabelResolution) -> String {
   match r {
     RunnerLabelResolved { row, snapshot } => row.label
-    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => label
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => label
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => label
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => label
   }

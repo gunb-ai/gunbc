@@ -15,7 +15,7 @@ import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow, github_host
 import gunbc.runner_provider_survey { runs_on_label_rows }
 import gunbc.runner_label_resolution {
   SnapshotStanding, SnapshotPredatesObservation, SnapshotOrderUndecidable, SnapshotPostdatesObservation,
-  snapshot_standing_for, snapshot_order_was_undecidable,
+  SnapshotAssessment, snapshot_standing_for, assessment_is_untrusted, assessment_is_undecidable,
   RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
   RunnerLabelAmbiguousAcrossCatalogs,
   LabelMatch, resolve_from_matches,
@@ -158,7 +158,7 @@ data observation_before_every_snapshot: Rfc3339Timestamp = "2026-06-01T00:00:00Z
 test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() -> Bool {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
     RunnerLabelResolved { row, snapshot } => false
-    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => count(stale_snapshots) > 0
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => count(untrusted_snapshots) > 0
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
   }
@@ -204,7 +204,7 @@ fn snapshot_postdates(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) 
 test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> Bool {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: observation_before_every_snapshot) {
     RunnerLabelResolved { row, snapshot } => false
-    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => false
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => false
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } =>
       count(snapshots_consulted) > 0
         && count(filter(snapshots_consulted, s => snapshot_postdates(snapshot: s, observed_at: observed_at) == false)) == 0
@@ -218,9 +218,9 @@ test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> 
 test fn witness_every_snapshot_the_stale_arm_reports_predates_the_observation() -> Bool {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
     RunnerLabelResolved { row, snapshot } => false
-    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } =>
-      count(stale_snapshots) > 0
-        && count(filter(stale_snapshots, s => snapshot_postdates(snapshot: s, observed_at: observed_at))) == 0
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } =>
+      count(untrusted_snapshots) > 0
+        && count(filter(untrusted_snapshots, a => snapshot_postdates(snapshot: a.snapshot, observed_at: observed_at))) == 0
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
   }
@@ -337,7 +337,7 @@ fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
     RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } =>
       count(matches) == 2 && string_length(s: cause) > 0
     RunnerLabelResolved { row, snapshot } => false
-    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => false
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => false
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
   }
 }
@@ -447,15 +447,48 @@ test fn witness_an_unorderable_snapshot_is_not_reported_as_an_old_one() -> Bool 
     SnapshotOrderUndecidable { cause } => false
     SnapshotPostdatesObservation => false
   }
-  // both still route to re-fetch, which is the policy the split preserves
-  let both_route_to_refetch = snapshot_is_stale_for(snapshot: undecidable_snapshot, observed_at: biome_observed_at)
-    && snapshot_is_stale_for(snapshot: plainly_older_snapshot, observed_at: biome_observed_at)
-  let only_one_is_undecidable = snapshot_order_was_undecidable(snapshot: undecidable_snapshot, observed_at: biome_observed_at)
-    && snapshot_order_was_undecidable(snapshot: plainly_older_snapshot, observed_at: biome_observed_at) == false
+  let undecidable_assessment = SnapshotAssessment {
+    snapshot: undecidable_snapshot,
+    standing: snapshot_standing_for(snapshot: undecidable_snapshot, observed_at: biome_observed_at),
+  }
+  let older_assessment = SnapshotAssessment {
+    snapshot: plainly_older_snapshot,
+    standing: snapshot_standing_for(snapshot: plainly_older_snapshot, observed_at: biome_observed_at),
+  }
+  let both_route_to_refetch = assessment_is_untrusted(a: undecidable_assessment)
+    && assessment_is_untrusted(a: older_assessment)
+  let only_one_is_undecidable = assessment_is_undecidable(a: undecidable_assessment)
+    && assessment_is_undecidable(a: older_assessment) == false
   undecidable_is_named && older_is_named_as_older && both_route_to_refetch && only_one_is_undecidable
 }
 
+// THE DISTINCTION MUST BE AVAILABLE TO A CONSUMER MATCHING ON THE VALUE, not only to a human
+// reading the cause. That is the whole point of carrying assessments rather than bare snapshots:
+// an earlier revision split the standing into three arms and then stored List<CatalogSnapshot> on
+// the refusal, so the split survived in the English and nowhere a program could reach it.
+//
+// This claim partitions the arm's OWN payload and asserts the partition is total: every untrusted
+// snapshot is either pre-dating or unorderable, the two counts sum to the whole, and today's live
+// survey is entirely the pre-dating kind. That last conjunct is the actionable reading a consumer
+// wants - it says the remedy is "re-fetch four stale catalogs", not "our clocks are unreadable" -
+// and it is derived from the value rather than parsed out of a sentence.
+test fn witness_the_untrusted_partition_is_readable_from_the_value() -> Bool {
+  match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
+    RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => {
+      let undecidable = filter(untrusted_snapshots, a => assessment_is_undecidable(a: a))
+      let predating = filter(untrusted_snapshots, a => assessment_is_undecidable(a: a) == false)
+      count(untrusted_snapshots) > 0
+        && count(undecidable) + count(predating) == count(untrusted_snapshots)
+        && count(filter(untrusted_snapshots, a => assessment_is_untrusted(a: a) == false)) == 0
+        && count(undecidable) == 0
+    }
+    other => false
+  }
+}
+
 fn all_claims_hold() -> Bool {
+  witness_the_untrusted_partition_is_readable_from_the_value()
+    &&
   witness_an_unorderable_snapshot_is_not_reported_as_an_old_one()
     &&
   witness_every_surveyed_runs_on_label_resolves()
