@@ -21,21 +21,20 @@ import std.types { String, Bool, List }
 // cannot read one). The pair join carries two further refusals: a selected lane whose
 // authority-expected phase set is empty stops rather than greening over zero phases, and the
 // observed ran set must equal the authority-expected set exactly. Lane ownership is load-bearing
-// now that the workflow is three independently selected lanes with the native route isolated in
-// its own. The terminal state is the census's dissolution row: the workflow emission consumes
+// because the lanes are independently selected jobs (the native route was a third lane from
+// 2026-09-09 to 2026-09-11; its deletion is gunbc.rung_drop v2_native_route_off_the_merge_path).
+// The terminal state is the census's dissolution row: the workflow emission consumes
 // this roster whole and the host enum, lane match and REQUIRED_CI_PHASES list delete atomically.
 // Until then the parallel representation is this module's declared debt and the per-run joins are
 // its wall.
 type RequiredCiLane
   = BuildLane
   | WitnessesLane
-  | V2NativeLane
 
 fn required_ci_lane_name(l: RequiredCiLane) -> String {
   match l {
     BuildLane => "build"
     WitnessesLane => "witnesses"
-    V2NativeLane => "v2-native"
   }
 }
 
@@ -64,7 +63,6 @@ type RequiredCiPhase
   | GeneratedArtifactPhase
   | RegenFixedPointPhase
   | FloorPhase
-  | V2NativePhase
 
 // TWO NAMED ARMS, NEVER A WIDENED PATH PREDICATE. A path that neither authority owns is in
 // neither arm; inability to produce either arm refuses GeneratedArtifactPhase. The registry arm
@@ -110,7 +108,6 @@ fn required_ci_phase_name(p: RequiredCiPhase) -> String {
     GeneratedArtifactPhase => "generated-artifact"
     RegenFixedPointPhase => "regen-fixed-point"
     FloorPhase => "floor"
-    V2NativePhase => "v2-native"
   }
 }
 
@@ -123,7 +120,6 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
     GeneratedArtifactPhase => BuildLane
     RegenFixedPointPhase => BuildLane
     FloorPhase => WitnessesLane
-    V2NativePhase => V2NativeLane
   }
 }
 
@@ -137,7 +133,6 @@ data required_ci_phases: List<RequiredCiPhase> = [
   GeneratedArtifactPhase,
   RegenFixedPointPhase,
   FloorPhase,
-  V2NativePhase,
 ]
 
 fn required_ci_phase_is(a: RequiredCiPhase, b: RequiredCiPhase) -> Bool {
