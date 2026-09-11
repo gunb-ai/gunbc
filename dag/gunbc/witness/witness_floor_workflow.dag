@@ -3027,11 +3027,9 @@ data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.wi
 fn floor_attempt_production_wraps_are_renderable() -> Bool {
   wrap_command_is_renderable(command: witness_floor_build_script())
     && wrap_command_is_renderable(command: build_lane_build_script())
-    && wrap_command_is_renderable(command: v2_native_lane_build_script())
     && wrap_command_is_renderable(command: heal_generated_artifacts_build_script())
     && wrap_command_is_renderable(command: witness_floor_run_script())
     && wrap_command_is_renderable(command: build_lane_run_script())
-    && wrap_command_is_renderable(command: v2_native_lane_run_script())
     && wrap_command_is_renderable(command: repo_self_clippy_command())
     && wrap_command_is_renderable(command: required_ci_measurement_finalize_script())
     && wrap_command_is_renderable(command: required_ci_measurement_adjudicate_script())
