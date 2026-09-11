@@ -35,6 +35,7 @@ import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_fro
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.ebay.browse { ebay_browse_frontier_rows }
+import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontier_rows }
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
@@ -66,6 +67,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_r2_frontier_rows,
     backblaze_b2_frontier_rows,
     ebay_browse_frontier_rows,
+    ebay_account_deletion_frontier_rows,
     cloudflare_permission_group_observation_frontier_rows,
     colo_types_frontier_rows,
   ]
