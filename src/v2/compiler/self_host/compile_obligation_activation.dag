@@ -3,324 +3,208 @@ module v2.compiler.self_host.compile_obligation_activation
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import v2.compiler.compile {
   CompileLens,
-  CompileLensGrain,
   required_compile_lens_roster,
   required_lens_roster_digest,
 }
 import v2.compiler.self_host.compile_obligation_ledger {
   ObligationLedger,
   ObligationLedgerObserved,
-  ObligationLedgerRow,
   ObligationLedgerUnobservable,
-  count_registrations_without_rows,
   rows_for_lens,
 }
 import v2.std.algebra { Cons, Empty, fold_list, list_reverse }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
-// WHAT "TURNING ON" AN OBLIGATION ACTUALLY MEANS, AND WHY IT IS NOT A SWITCH.
+// WHAT IS SELF-HOST-SPECIFIC ABOUT ACTIVATING A COMPILE OBLIGATION, AND WHAT IS NOT.
 //
-// All eight required compile lenses are already registered and already run on every
-// validate_then_compile call. Nothing here adds a switch, a flag or an enrolment step, because none
-// is missing: the roster fires today. What is missing is EVIDENCE, and every honest thing one can
-// say about an obligation is a statement about which evidence exists — so this authority is a
-// derivation from receipts to a state, and the state is never authored.
+// An earlier revision of this module declared a nine-arm ladder — Registered, Reached, Executed,
+// Qualified, Observed, ClosureClosed, CandidateEnforced, SuccessorEnforced, SeedIndependent — and
+// derived it from receipts. The derivation was right and the vocabulary was a FORK, which a §3
+// check caught before it was ever pushed. Every one of those arms already had a preimage, and none
+// of them here:
 //
-// That is the whole design constraint. A data row saying "accumulator_copy: Qualified" would be a
-// claim with no producer, which is the rung inflation DESIGN section 4b names: a type name, a
-// roster entry or a plan establishes nothing. Every arm below is reachable only by supplying the
-// receipt that arm requires, and a missing receipt yields the lower state rather than the higher
-// one with a caveat.
+//   - CandidateEnforced / SuccessorEnforced / SeedIndependent are not states, they are PATHS.
+//     `gunbc.guarantee_measurement` `GuaranteePath` carries exactly that axis, with
+//     `PathRealization = InterpreterRealization | EmittedTarget { language }`.
+//   - Registered / Reached / Executed / Qualified are a DISPOSITION PER PATH, whose vocabulary the
+//     roadmap already fixes — Unmeasured, BelowFloor, FrontierAccepted, OnLadder,
+//     OutsideModeledGuarantee — derived and never stored, folded by below-floor dominance, then
+//     frontier, then unmeasured, then the MINIMUM rung across paths.
+//   - Observed is a ledger fact and ClosureClosed is a findings fact; both have their own carriers.
+//
+// So nine names stood over five dispositions and a path axis, and a reader would have had to map
+// them by hand — the second ladder DESIGN §4b's rungs exist to prevent. This module now declares
+// none of that. It keeps only the two facts that are genuinely about SELF-HOSTING a compile
+// obligation, and the disposition derivation lands in `gunbc.guarantee_measurement` first, because
+// model-before-implement means the home precedes its consumer rather than the consumer minting a
+// vocabulary while it waits.
 
-// THE LADDER, AND ONLY THE LAST THREE ARE "ON".
+// FACT ONE: WHICH OBLIGATIONS MUST CLIMB TOGETHER, AND WHY THAT IS NOT A PRESENTATION CHOICE.
 //
-// Registered        - a row in required_compile_lens_roster, at a declared grain. True today for
-//                     all eight, and worth nothing on its own.
-// Reached           - the obligation is reached by the NATIVE route, not only by the interpreter.
-// Executed          - it ran and produced a witness on that route.
-// Qualified         - a planted RED was refused AND a nearby green was accepted, both through the
-//                     native route. Refusal alone is not qualification: a gate that refuses
-//                     everything refuses the red too.
-// Observed          - the all-lens ledger carries a complete row set for it over a real subject.
-// ClosureClosed     - the findings it reported are repaired, and anything it could not classify is
-//                     resolved or carried as open coverage BY NAME.
-// CandidateEnforced - the self-host candidate path cannot be promoted without its receipt.
-// SuccessorEnforced - the emitted successor compiler enforces it too.
-// SeedIndependent   - the same receipts reproduce with v1 withdrawn.
-type ObligationActivationState
-  = Registered
-  | Reached
-  | Executed
-  | Qualified
-  | Observed
-  | ClosureClosed
-  | CandidateEnforced
-  | SuccessorEnforced
-  | SeedIndependent
+// A bundle exists where an obligation's honest standing depends on a fact a SECOND authority owns,
+// so reporting the gate alone overstates it:
+//
+//   - COMPLEXITY is the accumulator-copy gate AND the realization-cost fidelity join. A lens that
+//     prices the declaration while the lane runs the realization can convict a correct construction
+//     and acquit a quadratic one (gunbc.recurring_failure_mode
+//     lens_prices_the_authority_while_the_lane_runs_the_realization), so the gate's standing is
+//     worth no more than the cost authority underneath it.
+//   - DETERMINISM is the gate AND the traversal-order facts for the operations it ranges over AND
+//     non-primitive reachability. Absence from the declared roster is not evidence of determinism,
+//     so the gate's silence is only as good as the roster's coverage.
+//
+// The membership is the fact this module owns. What a bundle's standing IS — the fold over its
+// members — is the same minimum-across-paths law §4b(1) already states, so it is named here and
+// computed where the dispositions live.
+type ObligationBundle {
+  bundle: DeclarationRef
+  members: List<DeclarationRef>
+}
 
-fn activation_rank(s: ObligationActivationState) -> Int {
-  match s {
-    Registered => 0
-    Reached => 1
-    Executed => 2
-    Qualified => 3
-    Observed => 4
-    ClosureClosed => 5
-    CandidateEnforced => 6
-    SuccessorEnforced => 7
-    SeedIndependent => 8
+type ObligationBundleCause
+  = BundleMemberNotRegistered { member: DeclarationRef }
+  | BundleWithoutMembers { bundle: DeclarationRef }
+  | BundleRosterEmpty
+
+type ObligationBundleCoverage
+  = ObligationBundleCoverageClosed { roster_digest: String, bundles: Int, members: Int }
+  | ObligationBundleCoverageRefused { cause: ObligationBundleCause }
+
+fn lens_is_registered(wanted: DeclarationRef) -> Bool {
+  fold_list(
+    xs: required_compile_lens_roster(),
+    empty: false,
+    cons: fn(acc, lens) {
+      acc
+        || declaration_ref_display_key(ref: lens.identity)
+          == declaration_ref_display_key(ref: wanted)
+    }
+  )
+}
+
+// A BUNDLE MEMBER THAT NAMES NO REGISTRATION IS A GROUPING OVER NOTHING, and an empty bundle is a
+// name with no subject. Both refuse: a bundle exists to make one member's silence visible behind
+// another's green, and a bundle whose membership is wrong cannot do that for anyone.
+fn unregistered_members(bundles: List<ObligationBundle>) -> List<DeclarationRef> {
+  list_reverse(xs: fold_list(xs: bundles, empty: Empty, cons: fn(acc, b) {
+    fold_list(xs: b.members, empty: acc, cons: fn(inner, m) {
+      if lens_is_registered(wanted: m) { inner } else { Cons { head: m, tail: inner } }
+    })
+  }))
+}
+
+fn empty_bundles(bundles: List<ObligationBundle>) -> List<DeclarationRef> {
+  list_reverse(xs: fold_list(xs: bundles, empty: Empty, cons: fn(acc, b) {
+    match b.members {
+      Empty => Cons { head: b.bundle, tail: acc }
+      Cons { head: _, tail: _ } => acc
+    }
+  }))
+}
+
+fn count_bundle_members(bundles: List<ObligationBundle>) -> Int {
+  fold_list(xs: bundles, empty: 0, cons: fn(acc, b) {
+    fold_list(xs: b.members, empty: acc, cons: fn(inner, _) { inner + 1 })
+  })
+}
+
+fn obligation_bundle_coverage(bundles: List<ObligationBundle>) -> ObligationBundleCoverage {
+  match bundles {
+    Empty => ObligationBundleCoverageRefused { cause: BundleRosterEmpty }
+    Cons { head: _, tail: _ } =>
+      match empty_bundles(bundles: bundles) {
+        Cons { head: b, tail: _ } =>
+          ObligationBundleCoverageRefused { cause: BundleWithoutMembers { bundle: b } }
+        Empty =>
+          match unregistered_members(bundles: bundles) {
+            Cons { head: m, tail: _ } =>
+              ObligationBundleCoverageRefused { cause: BundleMemberNotRegistered { member: m } }
+            Empty =>
+              ObligationBundleCoverageClosed {
+                roster_digest: required_lens_roster_digest(),
+                bundles: fold_list(xs: bundles, empty: 0, cons: fn(acc, _) { acc + 1 }),
+                members: count_bundle_members(bundles: bundles),
+              }
+          }
+      }
   }
 }
 
-fn activation_is_on(s: ObligationActivationState) -> Bool {
-  activation_rank(s: s) >= activation_rank(s: CandidateEnforced)
-}
-
-// THE RECEIPTS, EACH A SEPARATE FACT. They are separate fields rather than one status because they
-// are produced by different instruments at different times, and collapsing them would let one
-// instrument's green stand for another's silence.
+// FACT TWO: THE RECEIPTS THE SELF-HOST ROUTE PRODUCES, and nothing about what they add up to.
 //
-// QUALIFICATION IS TWO RECEIPTS, NOT ONE, and that is the arm most likely to be fudged: a gate that
-// refuses every subject refuses the planted red too, so a red-caught receipt alone establishes
-// nothing about discrimination. The accepted-green receipt is what separates a wall from a wall
-// that is always down.
-type ObligationReceipts {
-  reached_by_native_route: Bool
+// These are observations this route can make about one obligation. They are deliberately NOT folded
+// into a standing here: folding them is the disposition derivation, it is per path, and its home is
+// gunbc.guarantee_measurement. Carrying the observations without the verdict is what lets that home
+// land first and consume these unchanged.
+//
+// QUALIFICATION IS TWO OBSERVATIONS, NOT ONE, and the pair is the part most easily fudged: a gate
+// that refuses every subject refuses the planted red too, so a caught red alone says nothing about
+// discrimination. §4b(1) states the same requirement for a rung — a discriminating RED refused on
+// the real acceptance path PLUS an accepted positive control — which is why both fields exist and
+// why neither is a summary of the other.
+type SelfHostObligationReceipts {
+  obligation: DeclarationRef
+  reached_on_route: Bool
   executed_with_witness: Bool
   planted_red_refused: Bool
   nearby_green_accepted: Bool
   ledger_rows_observed: Int
   findings_open: Int
-  unclassifiable_carried_by_name: Bool
   unclassifiable_present: Bool
-  candidate_promotion_requires_receipt: Bool
-  successor_enforces: Bool
-  reproduces_without_seed: Bool
+  unclassifiable_carried_by_name: Bool
 }
 
-fn no_receipts() -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: false,
+fn no_self_host_receipts(obligation: DeclarationRef) -> SelfHostObligationReceipts {
+  SelfHostObligationReceipts {
+    obligation: obligation,
+    reached_on_route: false,
     executed_with_witness: false,
     planted_red_refused: false,
     nearby_green_accepted: false,
     ledger_rows_observed: 0,
     findings_open: 0,
-    unclassifiable_carried_by_name: false,
     unclassifiable_present: false,
-    candidate_promotion_requires_receipt: false,
-    successor_enforces: false,
-    reproduces_without_seed: false,
+    unclassifiable_carried_by_name: false,
   }
 }
 
-// THE LADDER IS CLIMBED ONE RUNG AT A TIME AND NEVER SKIPPED. Each arm requires its own receipt AND
-// every receipt below it, so a lane that produces a late receipt early cannot report a state its
-// foundations do not support — the classic way an activation board reads higher than the system is.
-fn closure_is_closed(r: ObligationReceipts) -> Bool {
+// The two predicates a consumer needs that are facts about the RECEIPTS rather than judgments about
+// the obligation: whether this route qualified it, and whether the findings it produced are closed.
+// A consumer folds these per path; this module does not say what the fold answers.
+fn receipts_qualify(r: SelfHostObligationReceipts) -> Bool {
+  r.reached_on_route && r.executed_with_witness && r.planted_red_refused && r.nearby_green_accepted
+}
+
+// UNCLASSIFIABLE RESIDUE IS CLOSED ONLY WHEN CARRIED BY NAME. Silent residue leaves the closure
+// open; named residue is open coverage someone can go and close, and the difference between them is
+// the whole of "resolved or carried as open coverage by name" (DESIGN §5: a typed, located,
+// countable diagnostic, never a silence).
+fn receipts_close_the_closure(r: SelfHostObligationReceipts) -> Bool {
   r.findings_open == 0 && (!r.unclassifiable_present || r.unclassifiable_carried_by_name)
 }
 
-fn activation_state_of(r: ObligationReceipts) -> ObligationActivationState {
-  if !r.reached_by_native_route {
-    Registered
-  } else {
-    if !r.executed_with_witness {
-      Reached
-    } else {
-      if !(r.planted_red_refused && r.nearby_green_accepted) {
-        Executed
-      } else {
-        if r.ledger_rows_observed == 0 {
-          Qualified
-        } else {
-          if !closure_is_closed(r: r) {
-            Observed
-          } else {
-            if !r.candidate_promotion_requires_receipt {
-              ClosureClosed
-            } else {
-              if !r.successor_enforces {
-                CandidateEnforced
-              } else {
-                if !r.reproduces_without_seed { SuccessorEnforced } else { SeedIndependent }
-              }
-            }
-          }
-        }
-      }
-    }
+// THE LEDGER SUPPLIES THE OBSERVATION COUNT AND NOTHING ELSE: what it reports is what the obligation
+// SAID, and whether the findings were repaired is a different fact with a different producer.
+fn with_ledger_observation(
+  r: SelfHostObligationReceipts,
+  ledger: ObligationLedger
+) -> SelfHostObligationReceipts {
+  SelfHostObligationReceipts {
+    obligation: r.obligation,
+    reached_on_route: r.reached_on_route,
+    executed_with_witness: r.executed_with_witness,
+    planted_red_refused: r.planted_red_refused,
+    nearby_green_accepted: r.nearby_green_accepted,
+    ledger_rows_observed: observed_rows_for(ledger: ledger, obligation: r.obligation),
+    findings_open: r.findings_open,
+    unclassifiable_present: r.unclassifiable_present,
+    unclassifiable_carried_by_name: r.unclassifiable_carried_by_name,
   }
 }
 
-// ONE NODE PER REQUIRED OBLIGATION, plus the two BUNDLES whose members must climb together.
-//
-// A bundle exists where an obligation's honest state depends on facts a second authority owns, so
-// reporting the gate alone would overstate it. Complexity is the accumulator-copy gate AND the
-// realization-cost fidelity join: a lens that prices the authority while the lane runs the
-// realization can convict a correct construction, so the gate's qualification is not worth more
-// than the cost authority underneath it. Determinism is the gate AND the traversal-order facts for
-// the operations it ranges over AND non-primitive reachability: absence from the declared roster is
-// not evidence of determinism, so the gate's silence is only as good as the roster's coverage.
-//
-// A BUNDLE'S STATE IS THE MINIMUM OVER ITS MEMBERS, which is DESIGN section 4b(1) applied to a
-// group: a class's rung is the minimum across its in-scope paths, and citing the strongest member
-// while another stays silent is exactly the inflation that rule names.
-type ObligationNode {
-  obligation: DeclarationRef
-  members: List<DeclarationRef>
-  receipts: ObligationReceipts
-}
-
-fn node_state(n: ObligationNode) -> ObligationActivationState {
-  activation_state_of(r: n.receipts)
-}
-
-fn min_state(a: ObligationActivationState, b: ObligationActivationState) -> ObligationActivationState {
-  if activation_rank(s: a) <= activation_rank(s: b) { a } else { b }
-}
-
-fn bundle_state(nodes: List<ObligationNode>) -> ObligationActivationState {
-  match nodes {
-    Empty => Registered
-    Cons { head: first, tail: rest } =>
-      fold_list(
-        xs: rest,
-        empty: node_state(n: first),
-        cons: fn(acc, n) { min_state(a: acc, b: node_state(n: n)) }
-      )
-  }
-}
-
-// THE PROGRAM'S STATE IS THE MINIMUM OVER EVERY REQUIRED OBLIGATION. There is no aggregate that
-// averages, counts or reports a majority: eight obligations of which seven are qualified and one is
-// Registered is a program at Registered, because the compile door admits a program only if every
-// required obligation admitted it, so the weakest member IS the guarantee.
-fn program_state(nodes: List<ObligationNode>) -> ObligationActivationState {
-  bundle_state(nodes: nodes)
-}
-
-fn count_nodes_at_or_above(
-  nodes: List<ObligationNode>,
-  floor: ObligationActivationState
-) -> Int {
-  fold_list(xs: nodes, empty: 0, cons: fn(acc, n) {
-    if activation_rank(s: node_state(n: n)) >= activation_rank(s: floor) { acc + 1 } else { acc }
-  })
-}
-
-fn count_nodes_on(nodes: List<ObligationNode>) -> Int {
-  count_nodes_at_or_above(nodes: nodes, floor: CandidateEnforced)
-}
-
-// A NODE WITH NO REGISTRATION IS A BOARD ROW WITH NO SUBJECT, and a registration with no node is an
-// obligation nobody is tracking. Both are refusals rather than silences, for the same reason the
-// registration/observation join in the door refuses: two lists of equal length are not a join.
-type ActivationCoverageCause
-  = ObligationNodeWithoutRegistration { obligation: DeclarationRef }
-  | RegistrationWithoutObligationNode { registration: DeclarationRef }
-  | ActivationRosterEmpty
-
-type ActivationCoverage
-  = ActivationCoverageClosed { roster_digest: String, nodes: Int }
-  | ActivationCoverageRefused { cause: ActivationCoverageCause }
-
-// A LOOKUP IS A FILTER THEN A HEAD, not an if/else over Optional: the empty branch of an if has no
-// element to carry, so the two arms cannot agree on a type. Collecting the matches and reading the
-// first keeps every branch in the same shape and makes "none matched" the Empty list rather than a
-// constructor whose payload type has to be guessed.
-fn nodes_matching(nodes: List<ObligationNode>, wanted: DeclarationRef) -> List<ObligationNode> {
-  list_reverse(xs: fold_list(xs: nodes, empty: Empty, cons: fn(acc, n) {
-    if declaration_ref_display_key(ref: n.obligation) == declaration_ref_display_key(ref: wanted) {
-      Cons { head: n, tail: acc }
-    } else {
-      acc
-    }
-  }))
-}
-
-fn lenses_matching(lenses: List<CompileLens>, wanted: DeclarationRef) -> List<CompileLens> {
-  list_reverse(xs: fold_list(xs: lenses, empty: Empty, cons: fn(acc, lens) {
-    if declaration_ref_display_key(ref: lens.identity) == declaration_ref_display_key(ref: wanted) {
-      Cons { head: lens, tail: acc }
-    } else {
-      acc
-    }
-  }))
-}
-
-fn node_is_registered(lenses: List<CompileLens>, obligation: DeclarationRef) -> Bool {
-  match lenses_matching(lenses: lenses, wanted: obligation) {
-    Empty => false
-    Cons { head: _, tail: _ } => true
-  }
-}
-
-fn registration_is_tracked(nodes: List<ObligationNode>, registration: DeclarationRef) -> Bool {
-  match nodes_matching(nodes: nodes, wanted: registration) {
-    Empty => false
-    Cons { head: _, tail: _ } => true
-  }
-}
-
-fn first_unregistered_node(
-  nodes: List<ObligationNode>,
-  lenses: List<CompileLens>
-) -> List<DeclarationRef> {
-  list_reverse(xs: fold_list(xs: nodes, empty: Empty, cons: fn(acc, n) {
-    if node_is_registered(lenses: lenses, obligation: n.obligation) {
-      acc
-    } else {
-      Cons { head: n.obligation, tail: acc }
-    }
-  }))
-}
-
-fn first_untracked_registration(
-  nodes: List<ObligationNode>,
-  lenses: List<CompileLens>
-) -> List<DeclarationRef> {
-  list_reverse(xs: fold_list(xs: lenses, empty: Empty, cons: fn(acc, lens) {
-    if registration_is_tracked(nodes: nodes, registration: lens.identity) {
-      acc
-    } else {
-      Cons { head: lens.identity, tail: acc }
-    }
-  }))
-}
-
-fn activation_coverage(nodes: List<ObligationNode>) -> ActivationCoverage {
-  let lenses = required_compile_lens_roster()
-  match lenses {
-    Empty => ActivationCoverageRefused { cause: ActivationRosterEmpty }
-    Cons { head: _, tail: _ } =>
-      match first_unregistered_node(nodes: nodes, lenses: lenses) {
-        Cons { head: d, tail: _ } =>
-          ActivationCoverageRefused { cause: ObligationNodeWithoutRegistration { obligation: d } }
-        Empty =>
-          match first_untracked_registration(nodes: nodes, lenses: lenses) {
-            Cons { head: d, tail: _ } =>
-              ActivationCoverageRefused {
-                cause: RegistrationWithoutObligationNode { registration: d }
-              }
-            Empty =>
-              ActivationCoverageClosed {
-                roster_digest: required_lens_roster_digest(),
-                nodes: fold_list(xs: nodes, empty: 0, cons: fn(acc, _) { acc + 1 }),
-              }
-          }
-      }
-  }
-}
-
-// THE LEDGER SUPPLIES THE Observed RECEIPT AND NOTHING ELSE. It is an observation, not a decision,
-// so it can raise an obligation to Observed and can never raise it past ClosureClosed: what the
-// ledger reports is what the obligation SAID, and whether the findings were repaired is a different
-// fact with a different producer.
 fn observed_rows_for(ledger: ObligationLedger, obligation: DeclarationRef) -> Int {
   match ledger {
     ObligationLedgerUnobservable { at_grain: _ } => 0
@@ -330,25 +214,5 @@ fn observed_rows_for(ledger: ObligationLedger, obligation: DeclarationRef) -> In
         empty: 0,
         cons: fn(acc, _) { acc + 1 }
       )
-  }
-}
-
-fn with_ledger_observation(
-  r: ObligationReceipts,
-  ledger: ObligationLedger,
-  obligation: DeclarationRef
-) -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: r.reached_by_native_route,
-    executed_with_witness: r.executed_with_witness,
-    planted_red_refused: r.planted_red_refused,
-    nearby_green_accepted: r.nearby_green_accepted,
-    ledger_rows_observed: observed_rows_for(ledger: ledger, obligation: obligation),
-    findings_open: r.findings_open,
-    unclassifiable_carried_by_name: r.unclassifiable_carried_by_name,
-    unclassifiable_present: r.unclassifiable_present,
-    candidate_promotion_requires_receipt: r.candidate_promotion_requires_receipt,
-    successor_enforces: r.successor_enforces,
-    reproduces_without_seed: r.reproduces_without_seed,
   }
 }

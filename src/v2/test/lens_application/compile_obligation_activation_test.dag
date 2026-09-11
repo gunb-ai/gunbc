@@ -1,294 +1,183 @@
 module v2.test.lens_application.compile_obligation_activation
 
-// THE CLAIM UNDER TEST IS THAT A STATE CANNOT BE REACHED WITHOUT ITS RECEIPT, so every control here
-// withholds exactly one receipt and asserts the state falls to the rung below. A witness that only
-// supplied every receipt and checked for SeedIndependent would prove the happy path and nothing
-// about the wall.
+// THE CONTROLS SURVIVE THE RESTRUCTURE AND ARE RE-TARGETED. An earlier revision derived a nine-arm
+// ladder here; the ladder was a fork of vocabulary that already exists and is gone. What the
+// controls were actually testing was never the enum — it was that a receipt pair cannot be
+// half-supplied, that residue must be named, and that a grouping refuses a bad membership — and
+// each of those is a fact about the receipts or the bundle, so each control re-points at the fact
+// rather than at the deleted arm.
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.compiler.compile { required_compile_lens_roster }
 import v2.compiler.self_host.compile_obligation_activation {
-  ActivationCoverageClosed,
-  ActivationCoverageRefused,
-  ActivationRosterEmpty,
-  CandidateEnforced,
-  ClosureClosed,
-  Executed,
-  ObligationNode,
-  ObligationNodeWithoutRegistration,
-  ObligationReceipts,
-  Observed,
-  Qualified,
-  Reached,
-  Registered,
-  RegistrationWithoutObligationNode,
-  SeedIndependent,
-  SuccessorEnforced,
-  activation_coverage,
-  activation_is_on,
-  activation_state_of,
-  bundle_state,
-  count_nodes_on,
-  no_receipts,
-  node_state,
-  program_state,
+  BundleMemberNotRegistered,
+  BundleRosterEmpty,
+  BundleWithoutMembers,
+  ObligationBundle,
+  ObligationBundleCoverageClosed,
+  ObligationBundleCoverageRefused,
+  SelfHostObligationReceipts,
+  no_self_host_receipts,
+  obligation_bundle_coverage,
+  receipts_close_the_closure,
+  receipts_qualify,
 }
-import v2.std.algebra { fold_list, length, list_reverse, Cons, Empty }
+import v2.std.algebra { Cons, Empty, fold_list, length, list_reverse }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn every_receipt() -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: true,
+data probe_obligation: DeclarationRef = decl_ref(module_path: "v2.test.probe", decl_name: "alpha")
+data probe_bundle: DeclarationRef = decl_ref(module_path: "v2.test.probe", decl_name: "bundle")
+
+fn receipts(red: Bool, green: Bool) -> SelfHostObligationReceipts {
+  SelfHostObligationReceipts {
+    obligation: probe_obligation,
+    reached_on_route: true,
+    executed_with_witness: true,
+    planted_red_refused: red,
+    nearby_green_accepted: green,
+    ledger_rows_observed: 3,
+    findings_open: 0,
+    unclassifiable_present: false,
+    unclassifiable_carried_by_name: false,
+  }
+}
+
+// THE POSITIVE CONTROL, so the refusals below are properties of the withheld observation rather
+// than of a predicate that answers false for everything.
+test fn both_halves_of_the_pair_qualify() -> Bool {
+  receipts_qualify(r: receipts(red: true, green: true))
+}
+
+// THE ARM MOST EASILY FUDGED: a gate that refuses every subject refuses the planted red too, so a
+// caught red alone says nothing about discrimination. §4b(1) wants the RED and an accepted positive
+// control, and withholding either must fail.
+test fn a_caught_red_without_an_accepted_green_does_not_qualify() -> Bool {
+  !receipts_qualify(r: receipts(red: true, green: false))
+}
+
+test fn an_accepted_green_without_a_caught_red_does_not_qualify() -> Bool {
+  !receipts_qualify(r: receipts(red: false, green: true))
+}
+
+// A ROUTE THAT WAS NEVER REACHED CANNOT QUALIFY ON LATER OBSERVATIONS: supplying the pair while the
+// route is unreached must still fail, which is the "a late receipt cannot lift a missing early one"
+// property, expressed as a fact about the receipts rather than as a rung.
+test fn an_unreached_route_does_not_qualify_on_later_observations() -> Bool {
+  !receipts_qualify(r: SelfHostObligationReceipts {
+    obligation: probe_obligation,
+    reached_on_route: false,
     executed_with_witness: true,
     planted_red_refused: true,
     nearby_green_accepted: true,
     ledger_rows_observed: 3,
     findings_open: 0,
-    unclassifiable_carried_by_name: false,
     unclassifiable_present: false,
-    candidate_promotion_requires_receipt: true,
-    successor_enforces: true,
-    reproduces_without_seed: true,
-  }
+    unclassifiable_carried_by_name: false,
+  })
 }
 
-// THE POSITIVE CONTROL, so every refusal below is a property of the withheld receipt rather than of
-// the derivation refusing everything.
-test fn every_receipt_present_reaches_seed_independent() -> Bool {
-  match activation_state_of(r: every_receipt()) {
-    SeedIndependent => true
-    _ => false
-  }
+test fn no_receipts_qualify_nothing() -> Bool {
+  !receipts_qualify(r: no_self_host_receipts(obligation: probe_obligation))
 }
 
-// NO RECEIPTS IS Registered, NOT AN ERROR AND NOT A BLANK. Registration is true today for all eight
-// obligations and is worth exactly this much.
-test fn no_receipts_is_registered() -> Bool {
-  match activation_state_of(r: no_receipts()) {
-    Registered => true
-    _ => false
-  }
-}
-
-fn without_native_route() -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: false,
+fn residue(present: Bool, named: Bool) -> SelfHostObligationReceipts {
+  SelfHostObligationReceipts {
+    obligation: probe_obligation,
+    reached_on_route: true,
     executed_with_witness: true,
     planted_red_refused: true,
     nearby_green_accepted: true,
     ledger_rows_observed: 3,
     findings_open: 0,
-    unclassifiable_carried_by_name: false,
-    unclassifiable_present: false,
-    candidate_promotion_requires_receipt: true,
-    successor_enforces: true,
-    reproduces_without_seed: true,
+    unclassifiable_present: present,
+    unclassifiable_carried_by_name: named,
   }
 }
 
-// A LATE RECEIPT CANNOT LIFT A MISSING EARLY ONE. Everything above is supplied and the native route
-// is not, so the obligation is Registered — not SeedIndependent-with-a-caveat, which is how an
-// activation board comes to read higher than the system it describes.
-test fn later_receipts_cannot_substitute_for_the_native_route() -> Bool {
-  match activation_state_of(r: without_native_route()) {
-    Registered => true
-    _ => false
-  }
+// UNCLASSIFIABLE RESIDUE CLOSES ONLY WHEN CARRIED BY NAME: silent residue leaves the closure open,
+// named residue is open coverage someone can close.
+test fn unnamed_residue_leaves_the_closure_open() -> Bool {
+  !receipts_close_the_closure(r: residue(present: true, named: false))
 }
 
-fn red_caught_but_no_green() -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: true,
-    executed_with_witness: true,
-    planted_red_refused: true,
-    nearby_green_accepted: false,
-    ledger_rows_observed: 3,
-    findings_open: 0,
-    unclassifiable_carried_by_name: false,
-    unclassifiable_present: false,
-    candidate_promotion_requires_receipt: true,
-    successor_enforces: true,
-    reproduces_without_seed: true,
-  }
+test fn named_residue_closes_the_closure() -> Bool {
+  receipts_close_the_closure(r: residue(present: true, named: true))
 }
 
-// THE ARM MOST LIKELY TO BE FUDGED: a gate that refuses everything refuses the planted red too, so
-// a caught red alone is not qualification. Withholding only the accepted green must drop the state
-// to Executed.
-test fn a_caught_red_without_an_accepted_green_is_not_qualified() -> Bool {
-  match activation_state_of(r: red_caught_but_no_green()) {
-    Executed => true
-    _ => false
-  }
-}
-
-fn findings_open_receipts() -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: true,
+test fn open_findings_leave_the_closure_open() -> Bool {
+  !receipts_close_the_closure(r: SelfHostObligationReceipts {
+    obligation: probe_obligation,
+    reached_on_route: true,
     executed_with_witness: true,
     planted_red_refused: true,
     nearby_green_accepted: true,
     ledger_rows_observed: 3,
     findings_open: 2,
-    unclassifiable_carried_by_name: false,
     unclassifiable_present: false,
-    candidate_promotion_requires_receipt: true,
-    successor_enforces: true,
-    reproduces_without_seed: true,
-  }
-}
-
-test fn open_findings_hold_the_state_at_observed() -> Bool {
-  match activation_state_of(r: findings_open_receipts()) {
-    Observed => true
-    _ => false
-  }
-}
-
-fn unclassifiable_unnamed() -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: true,
-    executed_with_witness: true,
-    planted_red_refused: true,
-    nearby_green_accepted: true,
-    ledger_rows_observed: 3,
-    findings_open: 0,
     unclassifiable_carried_by_name: false,
-    unclassifiable_present: true,
-    candidate_promotion_requires_receipt: true,
-    successor_enforces: true,
-    reproduces_without_seed: true,
-  }
+  })
 }
 
-fn unclassifiable_named() -> ObligationReceipts {
-  ObligationReceipts {
-    reached_by_native_route: true,
-    executed_with_witness: true,
-    planted_red_refused: true,
-    nearby_green_accepted: true,
-    ledger_rows_observed: 3,
-    findings_open: 0,
-    unclassifiable_carried_by_name: true,
-    unclassifiable_present: true,
-    candidate_promotion_requires_receipt: true,
-    successor_enforces: true,
-    reproduces_without_seed: true,
-  }
-}
-
-// UNCLASSIFIABLE RESIDUE IS ADMISSIBLE ONLY IF IT IS CARRIED BY NAME. Silent residue holds the
-// closure open; named residue is open coverage someone can go and close, and the difference between
-// them is the whole of "resolved or carried as open coverage by name".
-test fn unnamed_unclassifiable_residue_holds_the_closure_open() -> Bool {
-  match activation_state_of(r: unclassifiable_unnamed()) {
-    Observed => true
-    _ => false
-  }
-}
-
-test fn named_unclassifiable_residue_lets_the_closure_close() -> Bool {
-  match activation_state_of(r: unclassifiable_named()) {
-    SeedIndependent => true
-    _ => false
-  }
-}
-
-fn node_at(obligation: DeclarationRef, r: ObligationReceipts) -> ObligationNode {
-  ObligationNode { obligation: obligation, members: [], receipts: r }
-}
-
-data probe_alpha: DeclarationRef = decl_ref(module_path: "v2.test.probe", decl_name: "alpha")
-data probe_beta: DeclarationRef = decl_ref(module_path: "v2.test.probe", decl_name: "beta")
-
-// A BUNDLE IS ITS WEAKEST MEMBER. Reporting the strongest while another stays silent is the
-// inflation DESIGN §4b(1) names, and a bundle exists precisely where one member's silence would
-// otherwise be hidden behind another's green.
-test fn a_bundle_reports_its_weakest_member() -> Bool {
-  match bundle_state(nodes: [
-    node_at(obligation: probe_alpha, r: every_receipt()),
-    node_at(obligation: probe_beta, r: no_receipts()),
+// A BUNDLE OVER A MEMBER NOBODY REGISTERED IS A GROUPING OVER NOTHING, and it refuses rather than
+// reporting a standing for a subject that does not exist.
+test fn a_bundle_member_that_is_not_registered_refuses() -> Bool {
+  match obligation_bundle_coverage(bundles: [
+    ObligationBundle { bundle: probe_bundle, members: [probe_obligation] }
   ]) {
-    Registered => true
-    _ => false
+    ObligationBundleCoverageRefused { cause: cause } =>
+      match cause {
+        BundleMemberNotRegistered { member: _ } => true
+        BundleWithoutMembers { bundle: _ } => false
+        BundleRosterEmpty => false
+      }
+    ObligationBundleCoverageClosed { roster_digest: _, bundles: _, members: _ } => false
   }
 }
 
-// AND THE PROGRAM IS ITS WEAKEST OBLIGATION: seven qualified and one registered is a program at
-// Registered, because the door admits a program only if EVERY required obligation admitted it.
-test fn the_program_state_is_the_weakest_obligation() -> Bool {
-  match program_state(nodes: [
-    node_at(obligation: probe_alpha, r: every_receipt()),
-    node_at(obligation: probe_beta, r: red_caught_but_no_green()),
+// AN EMPTY BUNDLE IS A NAME WITH NO SUBJECT: it cannot make any member's silence visible, which is
+// the only reason a bundle exists.
+test fn an_empty_bundle_refuses() -> Bool {
+  match obligation_bundle_coverage(bundles: [
+    ObligationBundle { bundle: probe_bundle, members: [] }
   ]) {
-    Executed => true
-    _ => false
-  }
-}
-
-// "ON" IS THE LAST THREE RUNGS AND NOTHING EARLIER: a qualified, observed, closed obligation is
-// still not enforcing anything until the candidate path refuses without its receipt.
-test fn qualified_and_closed_is_still_not_on() -> Bool {
-  let closed = ObligationReceipts {
-    reached_by_native_route: true,
-    executed_with_witness: true,
-    planted_red_refused: true,
-    nearby_green_accepted: true,
-    ledger_rows_observed: 3,
-    findings_open: 0,
-    unclassifiable_carried_by_name: false,
-    unclassifiable_present: false,
-    candidate_promotion_requires_receipt: false,
-    successor_enforces: false,
-    reproduces_without_seed: false,
-  }
-  match activation_state_of(r: closed) {
-    ClosureClosed => !activation_is_on(s: ClosureClosed) && activation_is_on(s: CandidateEnforced)
-    _ => false
-  }
-}
-
-// COVERAGE IS A JOIN IN BOTH DIRECTIONS: a node with no registration is a board row with no
-// subject, and a registration with no node is an obligation nobody is tracking.
-test fn a_node_without_a_registration_refuses() -> Bool {
-  match activation_coverage(nodes: [node_at(obligation: probe_alpha, r: no_receipts())]) {
-    ActivationCoverageRefused { cause: cause } =>
+    ObligationBundleCoverageRefused { cause: cause } =>
       match cause {
-        ObligationNodeWithoutRegistration { obligation: _ } => true
-        RegistrationWithoutObligationNode { registration: _ } => false
-        ActivationRosterEmpty => false
+        BundleWithoutMembers { bundle: _ } => true
+        BundleMemberNotRegistered { member: _ } => false
+        BundleRosterEmpty => false
       }
-    ActivationCoverageClosed { roster_digest: _, nodes: _ } => false
+    ObligationBundleCoverageClosed { roster_digest: _, bundles: _, members: _ } => false
   }
 }
 
-test fn an_untracked_registration_refuses() -> Bool {
-  match activation_coverage(nodes: []) {
-    ActivationCoverageRefused { cause: cause } =>
+test fn an_empty_bundle_roster_refuses() -> Bool {
+  match obligation_bundle_coverage(bundles: []) {
+    ObligationBundleCoverageRefused { cause: cause } =>
       match cause {
-        RegistrationWithoutObligationNode { registration: _ } => true
-        ObligationNodeWithoutRegistration { obligation: _ } => false
-        ActivationRosterEmpty => false
+        BundleRosterEmpty => true
+        BundleWithoutMembers { bundle: _ } => false
+        BundleMemberNotRegistered { member: _ } => false
       }
-    ActivationCoverageClosed { roster_digest: _, nodes: _ } => false
+    ObligationBundleCoverageClosed { roster_digest: _, bundles: _, members: _ } => false
   }
 }
 
-// THE POSITIVE CONTROL FOR THE JOIN: one node per registration closes, over the real roster.
-test fn a_node_per_registration_closes_the_coverage() -> Bool {
-  let nodes = list_reverse(xs: fold_list(
+// THE POSITIVE CONTROL FOR THE JOIN, over the REAL roster: a bundle whose members are registrations
+// closes, and reports how many members it covers.
+test fn a_bundle_over_real_registrations_closes() -> Bool {
+  let members = list_reverse(xs: fold_list(
     xs: required_compile_lens_roster(),
     empty: Empty,
-    cons: fn(acc, lens) {
-      Cons { head: node_at(obligation: lens.identity, r: no_receipts()), tail: acc }
-    }
+    cons: fn(acc, lens) { Cons { head: lens.identity, tail: acc } }
   ))
-  match activation_coverage(nodes: nodes) {
-    ActivationCoverageClosed { roster_digest: _, nodes: n } =>
-      n == length(xs: required_compile_lens_roster()) && count_nodes_on(nodes: nodes) == 0
-    ActivationCoverageRefused { cause: _ } => false
+  match obligation_bundle_coverage(bundles: [
+    ObligationBundle { bundle: probe_bundle, members: members }
+  ]) {
+    ObligationBundleCoverageClosed { roster_digest: _, bundles: b, members: m } =>
+      b == 1 && m == length(xs: required_compile_lens_roster())
+    ObligationBundleCoverageRefused { cause: _ } => false
   }
 }
