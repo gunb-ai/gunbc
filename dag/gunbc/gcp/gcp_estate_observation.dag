@@ -963,6 +963,28 @@ fn gunbai_secrets_has_sts() -> Bool {
   gunbai_secrets_enables_service(service: sts_api_service_id)
 }
 
+type EnabledServicesReadStanding
+  = ClosedUnfiltered {
+      project_id: GcpProjectId
+      ids: List<NonEmptyStr>
+    }
+
+fn gunbai_secrets_enabled_services_standing() -> EnabledServicesReadStanding {
+  ClosedUnfiltered {
+    project_id: fleet_secrets_gcp_project,
+    ids: gunbai_secrets_enabled_service_ids,
+  }
+}
+
+fn gunbai_secrets_enabled_services_are_closed() -> Bool {
+  match gunbai_secrets_enabled_services_standing() {
+    ClosedUnfiltered { project_id: p, ids: ids } =>
+      p == fleet_secrets_gcp_project
+        && ids.length() == 27
+        && !gunbai_secrets_enables_service(service: sheets_api_service_id)
+  }
+}
+
 fn none_of_the_three_sandboxes_has_sheets() -> Bool {
   gunb_test_sheets_is_absent() && !gunbai_auto_has_sheets() && !gunb_ci_has_sheets()
 }

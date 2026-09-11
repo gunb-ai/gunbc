@@ -67,6 +67,7 @@ import gunbc.gcp_estate_observation {
   gunbai_auto_is_the_only_pool_host_without_sts,
   sheets_home_is_create_purpose_scoped_unminted,
   gunbai_secrets_enabled_service_ids,
+  gunbai_secrets_enabled_services_are_closed,
   copied_malformed_condition_has_three_instances,
   copied_malformed_instance_count_in_census,
   gunb_test_has_sts,
@@ -377,6 +378,7 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && gunb_ci_enabled_service_ids.length() == 40
     && gunb_test_enabled_service_ids.length() == 27
     && gunbai_secrets_enabled_service_ids.length() == 27
+    && gunbai_secrets_enabled_services_are_closed()
     && census.service_accounts.length() == 25
     && custody_sas_with_no_wif_bindings(census: census)
     && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
