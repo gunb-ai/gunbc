@@ -472,18 +472,3 @@ data deepseek_v4_1_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content"
 // system message behaves like a user message for appending the assistant generation header.
 data deepseek_v4_1_flash_system_token: NonEmptyStr = "<｜System｜>" as NonEmptyStr
 data deepseek_v4_1_flash_mid_conversation_system_messages_supported: Bool = true
-<<<<<<< HEAD
-=======
-
-// vLLM RECIPE FLAGS, cited to recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash. These are upstream's
-// own serving prescriptions for this model. Whether a given engine build has the named parsers is
-// a different fact, owned by the serving unit, not by this row.
-// WHAT THIS MODULE DOES NOT CARRY. No KV-pool token figure, no max-num-seqs, no measured
-// throughput, no rendering observation against a serving endpoint. Those are properties of a
-// scenario, and a number measured under one and read under another is the failure already named
-// on the GLM peer. This change grounds the publisher authority; a measurement belongs to the
-// unit that made it.
-data deepseek_v4_1_flash_vllm_tokenizer_mode: NonEmptyStr = "deepseek_v41" as NonEmptyStr
-data deepseek_v4_1_flash_vllm_tool_call_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr
-data deepseek_v4_1_flash_vllm_reasoning_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr
->>>>>>> 585cd889ee (Set GB10 V4.1 KV layout to fp8_ds_mla; leave bytes-per-token unestablished.)
