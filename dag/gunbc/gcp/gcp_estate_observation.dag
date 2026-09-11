@@ -85,6 +85,7 @@ type ObservedWifProvider {
   project_number: String
   pool_id: NonEmptyStr
   provider_id: NonEmptyStr
+  issuer_uri: String
   attribute_condition: String
 }
 
@@ -225,27 +226,85 @@ fn github_pool_id_does_not_discriminate_project(left: ObservedWifPool, right: Ob
   left.pool_id == right.pool_id && left.project_number != right.project_number
 }
 
+data observed_gunbai_auto_github_provider: ObservedWifProvider = ObservedWifProvider {
+  project_number: unread_project_number_314501921854 as String,
+  pool_id: github_pool_id,
+  provider_id: "github" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com/",
+  attribute_condition: "assertion.repository=='gunb-ai/gunb.ai'",
+}
+
+fn gunbai_auto_legacy_principal_set_member() -> String {
+  concat(
+    concat("principalSet://iam.googleapis.com/projects/", unread_project_number_314501921854 as String),
+    "/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunb.ai",
+  )
+}
+
+fn gunbai_auto_provider_condition_is_tight_legacy_repo() -> Bool {
+  observed_gunbai_auto_github_provider.attribute_condition == "assertion.repository=='gunb-ai/gunb.ai'"
+    && (observed_gunbai_auto_github_provider.attribute_condition).contains(legacy_federated_repo)
+}
+
+type LegacyFederationHygiene
+  = CorrectlyScopedPossiblyInertUndeclared {
+      pool_project_number: String
+      pool_id: NonEmptyStr
+      provider_id: NonEmptyStr
+      federated_repo: String
+      modeled_repo: String
+    }
+
+fn gunbai_auto_legacy_federation_hygiene() -> LegacyFederationHygiene {
+  CorrectlyScopedPossiblyInertUndeclared {
+    pool_project_number: unread_project_number_314501921854 as String,
+    pool_id: github_pool_id,
+    provider_id: observed_gunbai_auto_github_provider.provider_id,
+    federated_repo: legacy_federated_repo,
+    modeled_repo: "gunb-ai/gunbc",
+  }
+}
+
+type FederationGenerationHypothesis
+  = GithubPoolIsPriorGenerationUngrounded {
+      auto_github_pool_condition: String
+      secrets_github_pool_condition: String
+      modeled_github_actions_condition: String
+    }
+
+fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
+  GithubPoolIsPriorGenerationUngrounded {
+    auto_github_pool_condition: observed_gunbai_auto_github_provider.attribute_condition,
+    secrets_github_pool_condition: "assertion.repository_owner=='https:'",
+    modeled_github_actions_condition: "assertion.repository == 'gunb-ai/gunbc'",
+  }
+}
+
+fn secrets_github_pool_condition_is_the_malformed_one() -> Bool {
+  match github_pool_generation_hypothesis() {
+    GithubPoolIsPriorGenerationUngrounded {
+      auto_github_pool_condition: auto_c,
+      secrets_github_pool_condition: secrets_c,
+      modeled_github_actions_condition: _,
+    } =>
+      (secrets_c).contains("repository_owner=='https:'")
+        && (auto_c).contains(legacy_federated_repo)
+        && !(auto_c).contains("https:")
+  }
+}
+
 data observed_ci_secrets_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: gunbai_ci_secrets_sa_email,
   role: role_iam_workload_identity_user,
-  member: Absent,
+  member: Present { value: gunbai_auto_legacy_principal_set_member() },
   pool_project_number: Present { value: unread_project_number_314501921854 as String },
 }
 
 data observed_ci_iap_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: gunbai_ci_iap_sa_email,
   role: role_iam_workload_identity_user,
-  member: Absent,
+  member: Present { value: gunbai_auto_legacy_principal_set_member() },
   pool_project_number: Present { value: unread_project_number_314501921854 as String },
-}
-
-data gap_project_314501921854: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/314501921854/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
-  cause: "gunbai-auto github-pool is observed ACTIVE; its providers and attribute conditions are unread; the pool id github-pool is shared with gunbai-secrets and does not discriminate",
-  discharge: "iam.googleapis.com list providers on projects/314501921854/.../workloadIdentityPools/github-pool and read each attribute condition",
-  trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
-  trusting_role: Present { value: role_iam_workload_identity_user },
-  federated_repo: Present { value: legacy_federated_repo },
 }
 
 data gap_third_legacy_sa: EstateCoverageGap = EstateCoverageGap {
@@ -277,20 +336,11 @@ data gap_github_oidc_issuer_unrelayed: EstateCoverageGap = EstateCoverageGap {
 
 data gap_github_pool_provider_id: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "projects/582015116396/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
-  cause: "operator audit recorded attribute condition assertion.repository_owner=='https:' and not the provider resource id; minting an id would be a guess wearing observation standing",
-  discharge: "iam.googleapis.com list providers on pool github-pool",
+  cause: "operator audit recorded attribute condition assertion.repository_owner=='https:' and not the provider resource id; this is the only malformed condition of the three and it lives in the custody project",
+  discharge: "iam.googleapis.com list providers on pool github-pool in gunbai-secrets",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
-}
-
-data gap_cross_project_principal_set_member: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/314501921854/principalSet-member-uri" as NonEmptyStr,
-  cause: "audit named the pool project number and the federated repo gunb-ai/gunb.ai but not the principalSet member URI or pool id",
-  discharge: "getIamPolicy on gunbai-ci-secrets and gunbai-ci-iap; parse principalSet members verbatim",
-  trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
-  trusting_role: Present { value: role_iam_workload_identity_user },
-  federated_repo: Present { value: legacy_federated_repo },
 }
 
 data observed_gunbai_auto_project: GcpProject = GcpProject {
@@ -572,18 +622,16 @@ fn operator_audit_census() -> GcpEstateCensus {
       EstateObserved { value: observed_github_pool },
       EstateObserved { value: observed_gunbai_auto_github_pool },
     ],
-    wif_providers: [],
+    wif_providers: [EstateObserved { value: observed_gunbai_auto_github_provider }],
     principal_set_bindings: [
       EstateObserved { value: observed_ci_secrets_cross_project_binding },
       EstateObserved { value: observed_ci_iap_cross_project_binding },
     ],
     coverage_gaps: [
-      gap_project_314501921854,
       gap_third_legacy_sa,
       gap_service_account_records_unconstructible,
       gap_github_oidc_issuer_unrelayed,
       gap_github_pool_provider_id,
-      gap_cross_project_principal_set_member,
       gap_gunb_ci_service_accounts_and_pools,
       gap_gunbai_auto_service_accounts,
       gap_wif_pools_outside_secrets,
@@ -928,7 +976,7 @@ fn census_measured_fingerprint(census: GcpEstateCensus) -> String {
         EstateUnread { gap: g } => concat(acc, concat("|unread-provider|", g.cause as String))
         EstateObserved { value: p } => concat(
           acc,
-          concat("|provider|", concat(p.provider_id as String, concat("|", p.attribute_condition))),
+          concat("|provider|", concat(p.provider_id as String, concat("|", concat(p.issuer_uri, concat("|", p.attribute_condition))))),
         )
       }
     },

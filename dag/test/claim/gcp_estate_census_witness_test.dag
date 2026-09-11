@@ -12,18 +12,15 @@ import gunbc.gcp_estate_observation {
   gunbai_ci_secrets_sa_email,
   gunbai_ci_iap_sa_email,
   census_gap_count,
-  unread_project_gap_names_trusting_accounts,
-  unread_project_gap_names_role_and_repo,
-  gap_project_314501921854,
   fleet_automation_has_no_principal_set_binding,
+  gap_github_pool_provider_id,
+  operator_prose_project_name_slip,
+  unread_project_number_314501921854,
   principal_set_pool_project_number,
   principal_set_citation,
   PrincipalSetCitesProject,
   PrincipalSetUnparsed,
   MemberIsNotAPrincipalSet,
-  gap_github_pool_provider_id,
-  operator_prose_project_name_slip,
-  unread_project_number_314501921854,
   census_subject_is_enumerated_project_number,
   census_subject_is_observed_project_number,
   census_subject_is_named_gap,
@@ -63,6 +60,11 @@ import gunbc.gcp_estate_observation {
   none_of_the_three_sandboxes_has_sheets,
   sheets_calling_strategy_is_create_not_adopt,
   gunb_test_sts_is_absent,
+  gunbai_auto_provider_condition_is_tight_legacy_repo,
+  gunbai_auto_legacy_federation_hygiene,
+  CorrectlyScopedPossiblyInertUndeclared,
+  secrets_github_pool_condition_is_the_malformed_one,
+  observed_gunbai_auto_github_provider,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
@@ -103,10 +105,20 @@ test fn sa_email_derives_gunbai_secrets_and_operator_prose_slipped() -> Bool {
 test fn unread_project_is_a_named_gap_not_an_absence() -> Bool {
   let census = operator_audit_census()
   census_gap_count(census: census) != 0
-    && unread_project_gap_names_trusting_accounts(gap: gap_project_314501921854)
-    && unread_project_gap_names_role_and_repo(gap: gap_project_314501921854)
-    && (gap_project_314501921854.discharge as String).contains("attribute condition")
-    && (gap_project_314501921854.cause as String).contains("314501921854")
+    && gunbai_auto_provider_condition_is_tight_legacy_repo()
+    && match gunbai_auto_legacy_federation_hygiene() {
+      CorrectlyScopedPossiblyInertUndeclared {
+        pool_project_number: n,
+        pool_id: _,
+        provider_id: _,
+        federated_repo: repo,
+        modeled_repo: current,
+      } =>
+        n == unread_project_number_314501921854 as String
+          && repo == "gunb-ai/gunb.ai"
+          && current == "gunb-ai/gunbc"
+    }
+    && secrets_github_pool_condition_is_the_malformed_one()
 }
 
 test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
@@ -115,8 +127,9 @@ test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
 
 test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
   (gap_github_pool_provider_id.cause as String).contains("assertion.repository_owner=='https:'")
-    && (gap_github_pool_provider_id.cause as String).contains("not the provider resource id")
-    && operator_audit_census().wif_providers.length() == 0
+    && (gap_github_pool_provider_id.cause as String).contains("malformed")
+    && operator_audit_census().wif_providers.length() == 1
+    && observed_gunbai_auto_github_provider.provider_id as String == "github"
 }
 
 test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
@@ -124,11 +137,7 @@ test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
   let number = unread_project_number_314501921854 as String
   census_subject_is_enumerated_project_number(census: census, number: number)
     && census_subject_is_observed_project_number(census: census, number: number)
-    && census_subject_is_named_gap(
-      census: census,
-      subject: gap_project_314501921854.subject_identity as String,
-    )
-    && (gap_project_314501921854.subject_identity as String).contains("providers")
+    && !census_subject_is_named_gap(census: census, subject: concat("projects/", number))
 }
 
 test fn observed_project_is_enumerated_observed_and_not_a_gap() -> Bool {
@@ -222,6 +231,7 @@ data fixture_oidc_narrow: ObservedWifProvider = ObservedWifProvider {
   project_number: "582015116396",
   pool_id: "github-actions" as NonEmptyStr,
   provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
   attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
 }
 
@@ -229,6 +239,7 @@ data fixture_oidc_wide: ObservedWifProvider = ObservedWifProvider {
   project_number: "582015116396",
   pool_id: "github-actions" as NonEmptyStr,
   provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
   attribute_condition: "true",
 }
 
