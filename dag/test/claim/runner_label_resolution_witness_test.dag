@@ -2,7 +2,7 @@ module test.claim.runner_label_resolution_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.decl_ref { declaration_ref_eq }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelRow }
 import extdeps.ci_runner.depot { depot_provider_identity }
@@ -14,6 +14,8 @@ import extdeps.time.rfc3339 {
 import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow, github_hosted_ubuntu_catalog }
 import gunbc.runner_provider_survey { runs_on_label_rows }
 import gunbc.runner_label_resolution {
+  SnapshotStanding, SnapshotPredatesObservation, SnapshotOrderUndecidable, SnapshotPostdatesObservation,
+  snapshot_standing_for, snapshot_order_was_undecidable,
   RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
   RunnerLabelAmbiguousAcrossCatalogs,
   LabelMatch, resolve_from_matches,
@@ -411,7 +413,51 @@ test fn witness_another_ci_systems_label_namespace_is_not_consulted() -> Bool {
     && count(filter(circleci_resource_classes, l => resolved_not_arm(label: l, observed_at: biome_observed_at))) == 0
 }
 
+// -------------------------------------------------------------------------------------
+// AN UNORDERABLE SNAPSHOT IS NOT AN OLD SNAPSHOT, even though both route to "re-fetch".
+//
+// snapshot_is_stale_for sends the undecidable arm to the same destination as the pre-dating one,
+// which is the right POLICY — when the instrument cannot say, the arm that costs us effort is the
+// honest one. What it may not do is report the same REASON. An earlier revision's refusal said
+// "fetched BEFORE the observation" for both, including the arm where rfc3339_compare had explicitly
+// refused to order them and nothing about their age was established: the right destination reached
+// by a stated reason that is not true, which is a fabricated plausible output on a failure path.
+//
+// The standing is now three-valued and the two are separable by a caller. The timestamps below are
+// the exact pair rfc3339_compare refuses: a fractional second against a whole one, which the RFC's
+// section 5.1 preconditions exclude from lexical ordering.
+data undecidable_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-04T16:04:06.5Z",
+  declared_scope: "constructed for this claim; a fractional-second stamp that cannot be lexically ordered against a whole-second one",
+}
+
+data plainly_older_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-07-11T00:00:00Z",
+  declared_scope: "constructed for this claim; unambiguously earlier than the observation",
+}
+
+test fn witness_an_unorderable_snapshot_is_not_reported_as_an_old_one() -> Bool {
+  let undecidable_is_named = match snapshot_standing_for(snapshot: undecidable_snapshot, observed_at: biome_observed_at) {
+    SnapshotOrderUndecidable { cause } => string_length(s: cause) > 0
+    SnapshotPredatesObservation => false
+    SnapshotPostdatesObservation => false
+  }
+  let older_is_named_as_older = match snapshot_standing_for(snapshot: plainly_older_snapshot, observed_at: biome_observed_at) {
+    SnapshotPredatesObservation => true
+    SnapshotOrderUndecidable { cause } => false
+    SnapshotPostdatesObservation => false
+  }
+  // both still route to re-fetch, which is the policy the split preserves
+  let both_route_to_refetch = snapshot_is_stale_for(snapshot: undecidable_snapshot, observed_at: biome_observed_at)
+    && snapshot_is_stale_for(snapshot: plainly_older_snapshot, observed_at: biome_observed_at)
+  let only_one_is_undecidable = snapshot_order_was_undecidable(snapshot: undecidable_snapshot, observed_at: biome_observed_at)
+    && snapshot_order_was_undecidable(snapshot: plainly_older_snapshot, observed_at: biome_observed_at) == false
+  undecidable_is_named && older_is_named_as_older && both_route_to_refetch && only_one_is_undecidable
+}
+
 fn all_claims_hold() -> Bool {
+  witness_an_unorderable_snapshot_is_not_reported_as_an_old_one()
+    &&
   witness_every_surveyed_runs_on_label_resolves()
     && witness_another_ci_systems_label_namespace_is_not_consulted()
     && witness_two_catalogs_carrying_one_label_refuse_rather_than_race()

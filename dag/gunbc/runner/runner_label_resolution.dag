@@ -167,12 +167,39 @@ fn resolve_from_matches(
 // look again", which is work on our side, rather than to "the vendor does not publish this",
 // which is a claim about someone else. When the instrument cannot say, the arm that costs us
 // effort is the honest one.
-fn snapshot_is_stale_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> Bool {
+// WHY A SNAPSHOT IS NOT TRUSTED FOR THIS OBSERVATION, AND THE TWO REASONS ARE NOT THE SAME FACT.
+// Both route to "go and re-fetch", which is the right POLICY for either; what they may not do is
+// share a sentence. An earlier revision collapsed them to a Bool and the refusal then reported
+// "fetched BEFORE the observation" for both — including the arm where rfc3339_compare explicitly
+// REFUSED to order them and nothing of the kind was established. That is a fabricated plausible
+// output on a failure path: the right destination reached by a stated reason that is not true.
+type SnapshotStanding
+  = SnapshotPredatesObservation
+  | SnapshotOrderUndecidable { cause: NonEmptyStr }
+  | SnapshotPostdatesObservation
+
+fn snapshot_standing_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> SnapshotStanding {
   match rfc3339_compare(left: snapshot.fetched_at, right: observed_at) {
-    Rfc3339Precedes => true
-    Rfc3339Follows => false
-    Rfc3339Simultaneous => false
-    Rfc3339OrderUndecidable { cause } => true
+    Rfc3339Precedes => SnapshotPredatesObservation
+    Rfc3339Follows => SnapshotPostdatesObservation
+    Rfc3339Simultaneous => SnapshotPostdatesObservation
+    Rfc3339OrderUndecidable { cause } => SnapshotOrderUndecidable { cause: cause }
+  }
+}
+
+fn snapshot_is_stale_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> Bool {
+  match snapshot_standing_for(snapshot: snapshot, observed_at: observed_at) {
+    SnapshotPredatesObservation => true
+    SnapshotOrderUndecidable { cause } => true
+    SnapshotPostdatesObservation => false
+  }
+}
+
+fn snapshot_order_was_undecidable(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> Bool {
+  match snapshot_standing_for(snapshot: snapshot, observed_at: observed_at) {
+    SnapshotOrderUndecidable { cause } => true
+    SnapshotPredatesObservation => false
+    SnapshotPostdatesObservation => false
   }
 }
 
@@ -194,8 +221,11 @@ fn unmatched_resolution(label: String, observed_at: Rfc3339Timestamp) -> RunnerL
       observed_at: observed_at,
       stale_snapshots: stale,
       cause: join(["no surveyed runner catalog carries the label '", label,
-        "', and this repository's snapshot of at least one provider was fetched BEFORE the observation at ", observed_at,
-        ", so a catalog could have gained the label in between. This is a coverage obligation on us and the remedy is to re-fetch those vendor pages, NOT a finding about the observed repository."], ""),
+        "', and at least one snapshot is not trusted for an observation at ", observed_at, ": ",
+        to_string(count(filter(stale, s => snapshot_order_was_undecidable(snapshot: s, observed_at: observed_at) == false))),
+        " were fetched BEFORE it, and ",
+        to_string(count(filter(stale, s => snapshot_order_was_undecidable(snapshot: s, observed_at: observed_at)))),
+        " could not be ORDERED against it at all - RFC 3339 lexical comparison refused, so nothing about their age was established. Both route here because both mean the catalog may have gained the label without us knowing, and the remedy for both is to re-fetch those vendor pages. Neither is a finding about the observed repository."], ""),
     }
   } else {
     RunnerLabelAbsentFromSurvey {
