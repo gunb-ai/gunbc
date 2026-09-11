@@ -1,0 +1,153 @@
+module test.claim.fleet_bootstrap_principal_session_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user, fleet_bootstrap_principal_login }
+import gunbc.fleet_bootstrap_principal_session {
+  FleetSshPrincipalSession,
+  FleetSshKeySession,
+  FleetSshPasswordSession,
+  fleet_ssh_session_for_principal,
+  fleet_bootstrap_credential_path_env,
+  FleetBootstrapCredentialLocus,
+  BootstrapCredentialFileHeld,
+  BootstrapCredentialInRunEnvironment,
+  BootstrapCredentialNotHeld,
+  FleetBootstrapCredentialPathReady,
+  FleetBootstrapCredentialPathAbsent,
+  resolve_fleet_bootstrap_credential_path,
+  exec_as_fleet_principal_with_stdin,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
+}
+import gunbc.fleet_known_hosts_anchor { SshTarget, portable_remote_words }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture {
+  fleet_ssh_execution_context_hermetic_witness_fixture,
+}
+
+// THE CONTROLS FOR ONE MEASURED DEFECT, AND THEY ARE DISCRIMINATING RATHER THAN DESCRIPTIVE.
+//
+// mode=spark_grants refused on every one of srv9-srv12 on 2026-09-11 (runs 34575801880, 34579018156,
+// 34579022921, 34579027462) because gunbc.spark.managed_grant_install and
+// gunbc.spark.grant_privileged_operation reached briansrls -- the bootstrap principal, which holds no
+// fleet key on any host this repository provisioned -- over the KEY session. Every assertion below
+// goes RED against that code and GREEN against the derivation that replaced it, which is what makes
+// them evidence rather than restatement. The grant installer's own refusal receipt is the before-state.
+fn session_is_password(session: FleetSshPrincipalSession) -> Bool {
+  match session {
+    FleetSshPasswordSession => true
+    FleetSshKeySession => false
+  }
+}
+
+// RED ON THE OLD CODE: the bootstrap principal resolved to whatever shaper each call site named, and
+// two of them named the key session. There was no declaration this could even be asked of.
+test fn the_bootstrap_principal_resolves_to_the_password_session() -> Bool {
+  session_is_password(session: fleet_ssh_session_for_principal(principal: fleet_bootstrap_principal_login()))
+}
+
+// THE LOGIN IS NOT SPELLED TWICE, AND THERE IS NOW EXACTLY ONE SPELLING TO CHECK. The second literal
+// (gunbc.spark.managed_access_bootstrap spark_operator_bootstrap_login) was deleted after review 63721
+// read the fork as load-bearing: the derivation below compares against this name, so two literals that
+// drifted apart would resolve every bootstrap leg to the key session and refuse. This asserts the
+// derivation consumes the ACCOUNT MODEL rather than any string, so reintroducing a literal anywhere
+// cannot leave it green while the session fact points at a login nobody uses.
+test fn the_bootstrap_login_is_the_operator_account_from_the_account_model() -> Bool {
+  (fleet_bootstrap_principal_login() as String) == (fleet_posix_operator_user.name as String)
+}
+
+// THE MANAGED EXECUTOR KEEPS THE KEY SESSION. The repair must not overshoot into "everything is a
+// password leg": gunbc-automation is an account this repository created and keyed, and its proof leg
+// in gunbc.spark.managed_access_apply is the one that establishes key-only authentication. If this
+// went password-only, that proof would be testing something else entirely.
+test fn the_managed_executor_resolves_to_the_key_session() -> Bool {
+  !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-automation" as NonEmptyStr))
+    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-inference" as NonEmptyStr))
+    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "ghrunner" as NonEmptyStr))
+    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "root" as NonEmptyStr))
+}
+
+// A HELD FILE IS THE PATH THAT WAS HELD, unchanged. The operator-workstation entry materializes its own
+// owner-only file, so the locus must pass it through rather than reaching for the runner's environment.
+test fn a_held_credential_file_resolves_to_that_exact_path() -> Bool {
+  match resolve_fleet_bootstrap_credential_path(
+    locus: BootstrapCredentialFileHeld { path: "/run/gunbc-witness-credential" as NonEmptyStr },
+  ) {
+    FleetBootstrapCredentialPathReady { path: p } => (p as String) == "/run/gunbc-witness-credential"
+    FleetBootstrapCredentialPathAbsent { cause: _ } => false
+  }
+}
+
+// NOT-HELD REFUSES, AND THE REFUSAL NAMES THE PRINCIPAL IT IS ABOUT. This is the arm that keeps a leg
+// with no credential from silently becoming a key leg -- the exact substitution that produced the
+// srv9-srv12 refusals, one layer down.
+test fn declaring_no_credential_refuses_and_names_the_bootstrap_principal() -> Bool {
+  match resolve_fleet_bootstrap_credential_path(locus: BootstrapCredentialNotHeld) {
+    FleetBootstrapCredentialPathAbsent { cause: why } =>
+      string_contains(why as String, fleet_bootstrap_principal_login() as String)
+        && string_contains(why as String, "NOT attempted")
+    FleetBootstrapCredentialPathReady { path: _ } => false
+  }
+}
+
+// THE ENVIRONMENT VARIABLE NAMES A PATH, NOT A SECRET, and it says so in its own name. Carried over
+// from the witness that guarded it at its previous home so the rehoming did not drop the check.
+test fn the_credential_environment_variable_names_a_file_and_not_a_secret() -> Bool {
+  string_contains(fleet_bootstrap_credential_path_env as String, "FILE")
+    && !string_contains(fleet_bootstrap_credential_path_env as String, "PASSWORD")
+    && !string_contains(fleet_bootstrap_credential_path_env as String, "SECRET")
+}
+
+// ── THE DISCRIMINATOR, BY EXECUTION ─────────────────────────────────────────────────────────────
+//
+// Everything above reads the derivation. These two read WHICH UPSTREAM OPERATION THE LEG ACTUALLY
+// REACHED, which is the only thing that would have caught the defect: the old code produced a
+// perfectly well-typed leg, it just sent it down ssh.Session instead of ssh.PasswordFileSsh. The two
+// hermetic mocks answer with different stdout, so the operation is observable rather than inferred --
+// and the bootstrap assertion below is RED against the pre-repair code, where this principal reached
+// the key transport.
+data witness_bootstrap_target_endpoint: NonEmptyStr = "srv-test.example" as NonEmptyStr
+
+fn witness_leg_stdout(principal: NonEmptyStr, credential: FleetBootstrapCredentialLocus) -> String? {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: context } =>
+      match portable_remote_words(raws: ["id", "-un"]) {
+        Absent => none
+        Present { value: words } =>
+          match exec_as_fleet_principal_with_stdin(
+            context: context,
+            target: SshTarget { endpoint: witness_bootstrap_target_endpoint, principal: principal },
+            words: words,
+            stdin_payload: "",
+            credential: credential,
+          ) {
+            FleetPrincipalLegRefused { cause: _ } => none
+            FleetPrincipalLegRan { session: _, result: r } => Present { value: r.stdout }
+          }
+      }
+  }
+}
+
+test fn the_bootstrap_principal_leg_reaches_the_password_transport_by_execution() -> Bool {
+  match witness_leg_stdout(
+    principal: fleet_bootstrap_principal_login(),
+    credential: BootstrapCredentialFileHeld { path: "/run/gunbc-witness-credential" as NonEmptyStr },
+  ) {
+    Absent => false
+    Present { value: out } =>
+      out == "mock-password-file-ssh-portable-words-stdin"
+        && out != "mock-ssh-portable-words-stdin"
+  }
+}
+
+test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bool {
+  match witness_leg_stdout(
+    principal: "gunbc-automation" as NonEmptyStr,
+    credential: BootstrapCredentialNotHeld,
+  ) {
+    Absent => false
+    Present { value: out } =>
+      out == "mock-ssh-portable-words-stdin"
+        && out != "mock-password-file-ssh-portable-words-stdin"
+  }
+}

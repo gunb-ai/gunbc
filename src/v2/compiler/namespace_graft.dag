@@ -2,8 +2,8 @@ module v2.compiler.namespace_graft
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_right, list_snoc_item }
-import v2.std.collection { Absent, List, Present }
+import v2.std.algebra { fold_list, fold_list_right, list_append, list_snoc_item }
+import v2.std.collection { Absent, List, Present, optional_absent }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -18,6 +18,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
+  Cardinality,
   Conj,
   Edge,
   Named,
@@ -29,9 +30,18 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.grammar {
+  GrammarExpr,
+  GrammarExprFold,
+  GrammarProduction,
+  fold_grammar_expr,
+  node_atom_identity_optional
+}
 import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_surface_module_header_metadata_edge,
+  dag_grammar_root,
+  dag_grammar_top_level_item_expr,
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_unwrap_module_working_root,
@@ -148,6 +158,126 @@ fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
   })
 }
 
+fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> List<Symbol> {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { [] },
+      nonterminal: fn(production) { [production] },
+      sequence: fn(left, right) { list_append(left: left, right: right) },
+      choice: fn(left, right) { list_append(left: left, right: right) },
+      optional: fn(xs) { xs },
+      repeat: fn(xs) { xs }
+    }
+  )
+}
+
+fn namespace_graft_production_emitted_identity_optional(production: GrammarProduction) -> Symbol? {
+  node_atom_identity_optional(node: production.emitted)
+}
+
+fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol? {
+  fold_list(
+    xs: dag_grammar_root().productions,
+    empty: optional_absent(),
+    cons: fn(acc, production) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match production.name == name {
+            true => namespace_graft_production_emitted_identity_optional(production: production)
+            false => optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn namespace_graft_top_level_item_alternative_emitted_ids() -> List<Symbol> {
+  fold_list(
+    xs: namespace_graft_grammar_expr_nonterminal_productions(expr: dag_grammar_top_level_item_expr()),
+    empty: [],
+    cons: fn(acc, production_name) {
+      match namespace_graft_emitted_identity_for_production_name(name: production_name) {
+        Present { value: emitted } => list_snoc_item(xs: acc, item: emitted)
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn namespace_graft_id_is_top_level_item_unit(id: Symbol, unit_ids: List<Symbol>) -> Bool {
+  fold_list(
+    xs: unit_ids,
+    empty: false,
+    cons: fn(found, emitted) {
+      found || (emitted == id)
+    }
+  )
+}
+
+fn namespace_graft_collect_unit_nodes(node: Node) -> List<Node> {
+  namespace_graft_collect_unit_nodes_against(
+    node: node,
+    unit_ids: namespace_graft_top_level_item_alternative_emitted_ids()
+  )
+}
+
+fn namespace_graft_collect_unit_nodes_against(node: Node, unit_ids: List<Symbol>) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if namespace_graft_id_is_top_level_item_unit(id: id, unit_ids: unit_ids) {
+        [node]
+      } else {
+        fold(node.children, init: [], f: fn(acc, edge) {
+          concat(acc, namespace_graft_collect_unit_nodes_against(node: edge.target, unit_ids: unit_ids))
+        })
+      }
+    Absent =>
+      fold(node.children, init: [], f: fn(acc, edge) {
+        concat(acc, namespace_graft_collect_unit_nodes_against(node: edge.target, unit_ids: unit_ids))
+      })
+  }
+}
+
+fn namespace_graft_reconstruct_unit_edge(node: Node) -> Edge {
+  Edge {
+    label: Positional,
+    target: node
+  }
+}
+
+fn namespace_graft_reconstruct_declaration_forest(units: List<Node>) -> List<Edge> {
+  [
+    Edge {
+      label: Named { name: ^dag_surface_top_level_item },
+      target: Node {
+        kind: TypeNode { connective: Cardinality },
+        children: fold(units, init: [], f: fn(acc, unit) {
+          list_snoc_item(xs: acc, item: namespace_graft_reconstruct_unit_edge(node: unit))
+        }),
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ]
+}
+
+fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
+  let flattened = namespace_graft_collect_body_edges(root: root)
+  if count(flattened) == 0 {
+    let units = namespace_graft_collect_unit_nodes(
+      node: namespace_graft_unwrap_module_working_root(root: root)
+    )
+    if count(units) == 0 {
+      []
+    } else {
+      namespace_graft_reconstruct_declaration_forest(units: units)
+    }
+  } else {
+    flattened
+  }
+}
+
 fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
   if namespace_graft_already_grafted(root: root) {
     false
@@ -166,13 +296,14 @@ fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
 
 // The empty-observation narrow made unwritable (operator ruling msg_d18a55de): a
 // collector that cannot express a module's declarations must not report "this module
-// has none". A pre-graft tree that carries top-level declarations (the
-// dag_surface_top_level_item identity atoms survive the normalize fold on every
-// measured shape) while the collected body is EMPTY is the collector failing to
-// carry the forest — a decidable comparison of two trees in hand, refused loudly.
-// A module with no declarations at all (header only) keeps its legitimate empty
-// body: the discriminant is declaration presence, not body emptiness alone. This
-// guard covers total dissolution; partial-drop fidelity is the deeper graft repair.
+// has none". Flattening parse-projection / transparent-sequence spines into a
+// declaration's CHILDREN dropped type/data/import/fn shells (every child is itself
+// a projection), so a module whose declarations contribute no function body looked
+// identical to a LOST forest. Conj body edges must be uniquely Named (well_formed). Flattening
+// already produces that shape for a nonempty forest, so a nonempty flatten is kept as-is.
+// An empty flatten with surviving top-level-item alternatives reconstructs one Named forest
+// (Cardinality of those units as Positional children, interiors kept). Empty flatten, no units,
+// and a leftover dag_surface_top_level_item is a genuine loss and still refuses.
 fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -329,7 +460,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
               correction: Unavailable { reason: ExternalContractUnknown }
             })
           Cons { head: _, tail: _ } => {
-            let body_edges = namespace_graft_collect_body_edges(root: root)
+            let body_edges = namespace_graft_body_edges_for_graft(root: root)
             if namespace_graft_body_dissolved(root: root, body_edges: body_edges) {
               outcome_rejected(Diagnostic {
                 reason: ^namespace_graft_body_dissolved_refused,

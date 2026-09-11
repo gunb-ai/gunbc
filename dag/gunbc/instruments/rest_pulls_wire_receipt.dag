@@ -1,0 +1,36 @@
+module gunbc.instruments.rest_pulls_wire_receipt
+
+import std.types { Secret, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.pulls { Open }
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
+
+// Wet github.Pulls.List against gunbc_repository. RestOk is the live green; a 200 whose body
+// does not inhabit the declared List is RestBodyUndecodable. An entry point rather than a shell
+// script because DESIGN rules an ad-hoc .sh in this repository unmodeled realization: a
+// measurement worth re-deriving is worth an entry point. Run it as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/rest_pulls_wire_receipt.dag \
+//     --function list_open_pulls_wire_receipt
+func list_open_pulls_wire_receipt() -> ProcessExit uses net: Network {
+  let result = github.Pulls.List(
+    auth_token: "" as Secret,
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    state: Open,
+  )
+  match result.outcome {
+    RestOk => ExitSuccess
+    RestBodyUndecodable { status: _, cause } =>
+      exit_failure(reason: cause as String)
+    RestStatusRefused { status: _, body } =>
+      exit_failure(reason: body)
+    RestTransportRefused { cause } =>
+      exit_failure(reason: cause as String)
+  }
+}

@@ -1,0 +1,134 @@
+module test.claim.ebay_browse_witness
+
+import std.types { Bool, String, List }
+import v2.std.algebra { for_all, filter }
+import std.roster_frontier { FrontierRow, FrontierSubject, DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
+import std.decl_ref { decl_ref }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import std.measure { money_amount_micro }
+import extdeps.currency.currency { Usd, Eur, currency_alphabetic_code }
+import extdeps.api_rate_limit { rate_limit_period_seconds }
+import extdeps.ebay.rate_limits { ebay_buy_browse_rate_limit, ebay_rate_limits }
+import extdeps.ebay.inventory {
+  New, UsedExcellent, ForPartsOrNotWorking, ManufacturerRefurbished, FixedPrice, Auction
+}
+import extdeps.ebay.browse {
+  browse_condition_from_id, browse_condition_id, browse_condition_id_rows,
+  BrowsePriceAtMost, BrowseBuyingOptionsAnyOf, BrowseConditionAnyOf, BrowseDeliveryCountry,
+  BrowseFilterRendered, BrowseFilterEmptyValueSet, BrowseFilterConditionHasNoId,
+  browse_render_filters, browse_contextual_location_header,
+  browse_search_page_admission, ebay_browse_frontier_rows, browse_search_limit_default, BrowseSearchPageAdmitted, BrowseSearchLimitOutOfRange,
+  BrowseSearchOffsetNotAPageBoundary, BrowseSearchBeyondResultWindow
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_browse_condition_id_3000_decodes_to_used_excellent() -> Bool {
+  match browse_condition_from_id(raw: "3000") {
+    Present { value: UsedExcellent } => true
+    _ => false
+  }
+}
+
+test fn witness_browse_condition_id_7000_decodes_to_for_parts() -> Bool {
+  match browse_condition_from_id(raw: "7000") {
+    Present { value: ForPartsOrNotWorking } => true
+    _ => false
+  }
+}
+
+test fn witness_browse_unlisted_condition_id_is_absent() -> Bool {
+  match browse_condition_from_id(raw: "3500") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn witness_browse_manufacturer_refurbished_has_no_condition_id() -> Bool {
+  match browse_condition_id(c: ManufacturerRefurbished) {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn witness_browse_condition_ids_round_trip_through_the_table() -> Bool {
+  for_all(xs: browse_condition_id_rows, predicate: fn(r) {
+    match browse_condition_id(c: r.condition) {
+      Present { value: id } => id == r.condition_id
+      Absent => false
+    }
+  })
+}
+
+test fn witness_browse_filters_render_the_published_grammar() -> Bool {
+  match browse_render_filters(filters: [
+    BrowsePriceAtMost { max: money_amount_micro(count: 179990000), currency: Usd },
+    BrowseBuyingOptionsAnyOf { formats: [FixedPrice, Auction] },
+    BrowseConditionAnyOf { conditions: [New, UsedExcellent] },
+    BrowseDeliveryCountry { country: "US" }
+  ]) {
+    BrowseFilterRendered { param: p } =>
+      p == "price:[..179.990000],priceCurrency:USD,buyingOptions:\{FIXED_PRICE|AUCTION},conditionIds:\{1000|3000},deliveryCountry:US"
+    _ => false
+  }
+}
+
+test fn witness_browse_filter_refuses_a_condition_without_an_id() -> Bool {
+  match browse_render_filters(filters: [
+    BrowseDeliveryCountry { country: "US" },
+    BrowseConditionAnyOf { conditions: [New, ManufacturerRefurbished] }
+  ]) {
+    BrowseFilterConditionHasNoId { condition: ManufacturerRefurbished } => true
+    _ => false
+  }
+}
+
+test fn witness_browse_filter_refuses_an_empty_value_set() -> Bool {
+  match browse_render_filters(filters: [BrowseBuyingOptionsAnyOf { formats: [] }]) {
+    BrowseFilterEmptyValueSet { field: f } => f as String == "buyingOptions"
+    _ => false
+  }
+}
+
+test fn witness_browse_contextual_location_header_matches_upstream_example() -> Bool {
+  browse_contextual_location_header(country: "US", postal_code: "19406") == "contextualLocation=country%3DUS%2Czip%3D19406"
+}
+
+test fn witness_currency_alphabetic_code_names_each_currency() -> Bool {
+  currency_alphabetic_code(c: Usd) == "USD" && currency_alphabetic_code(c: Eur) == "EUR"
+}
+
+test fn witness_browse_rate_limit_is_five_thousand_per_day_and_enrolled() -> Bool {
+  ebay_buy_browse_rate_limit.requests == 5000
+    && rate_limit_period_seconds(p: ebay_buy_browse_rate_limit.period) == 86400
+    && length(filter(xs: ebay_rate_limits, predicate: fn(l) { l.scope as String == "buy_browse" })) == 1
+}
+
+test fn witness_browse_search_page_admission_holds_the_published_bounds() -> Bool {
+  (match browse_search_page_admission(limit: browse_search_limit_default, offset: 0) { BrowseSearchPageAdmitted { limit: l, offset: _ } => l == 50  _ => false })
+    &&   (match browse_search_page_admission(limit: 200, offset: 9800) { BrowseSearchPageAdmitted { limit: _, offset: _ } => true  _ => false })
+    && (match browse_search_page_admission(limit: 201, offset: 0) { BrowseSearchLimitOutOfRange { limit: l } => l == 201  _ => false })
+    && (match browse_search_page_admission(limit: 200, offset: 150) { BrowseSearchOffsetNotAPageBoundary { limit: _, offset: o } => o == 150  _ => false })
+    && (match browse_search_page_admission(limit: 200, offset: 10000) { BrowseSearchBeyondResultWindow { limit: _, offset: o } => o == 10000  _ => false })
+}
+
+test fn witness_browse_frontier_rows_are_well_formed_and_in_the_census() -> Bool {
+  frontier_rows_well_formed(rows: ebay_browse_frontier_rows)
+    && for_all(xs: w_browse_expected_frontier_subjects(), predicate: fn(want) {
+      length(filter(xs: ebay_browse_frontier_rows, predicate: fn(row) { frontier_subject_eq(a: row.subject, b: want) })) == 1
+    })
+    && for_all(xs: ebay_browse_frontier_rows, predicate: fn(row) {
+      length(filter(xs: w_browse_expected_frontier_subjects(), predicate: fn(want) { frontier_subject_eq(a: row.subject, b: want) })) == 1
+    })
+    && for_all(xs: ebay_browse_frontier_rows, predicate: fn(row) {
+      any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+    })
+}
+
+fn w_browse_expected_frontier_subjects() -> List<FrontierSubject> {
+  [
+    DeclSubject { ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "browse_production_access") },
+    DeclSubject { ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "BrowseItem") },
+    DeclSubject { ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "BrowseSearchPagedCollection") },
+  ]
+}
