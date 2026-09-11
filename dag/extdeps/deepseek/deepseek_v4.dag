@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_blob_url }
 
 // THE DEEPSEEK V4 FAMILY, as its own extdeps authority because it is an independently versioned
 // upstream model rather than a property of whatever happens to serve it. gunbc.harness pins a model
@@ -83,14 +84,9 @@ fn deepseek_v4_think_max_is_recommended_at(window: TokenCount) -> Bool {
 // A caller wanting an output budget therefore derives it from the window MINUS the input it has, and
 // attributing that bound to the MODEL would be authority substitution: it is a property of the
 // serving engine's admission, which is why it is recorded here as an absence plus a measurement
-// rather than as a deepseek_v4_max_output_tokens row.
+// rather than as a deepseek_v4_max_output_tokens row. The saturating subtract is
+// `std.measure` `token_count_remaining_in_window`, not a product wrapper.
 data deepseek_v4_declares_no_output_ceiling: Bool = true
-
-fn deepseek_v4_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
-  let w = token_count_value(t: window)
-  let i = token_count_value(t: input_tokens)
-  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
-}
 
 // WHETHER THINKING IS ON WHEN A REQUEST SAYS NOTHING IS A PROPERTY OF THE SERVING REALIZATION, NOT
 // OF THE MODEL, and the two realizations this fleet can reach disagree. The official API enables
@@ -140,16 +136,18 @@ data deepseek_v4_tools_force_reasoning_retention: Bool = true
 // the pinned revision rather than from a runtime's template, because a runtime's template is one
 // realization of the encoder and can differ from it -- the fp8 snapshot on one serving pair carries
 // no template at all, while the IQ3_S artifact on another renders the encoder's text exactly.
-data deepseek_v4_encoder_repo: NonEmptyStr = "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr
+data deepseek_v4_encoder_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr,
+}
 data deepseek_v4_encoder_path: NonEmptyStr = "encoding/encoding_dsv4.py" as NonEmptyStr
 data deepseek_v4_encoder_revision: NonEmptyStr = "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr
 data deepseek_v4_encoder_revision_modified: NonEmptyStr = "2026-06-22T12:12:13Z" as NonEmptyStr
 
-// The readable reference, DERIVED from the three pinned rows above rather than declared beside them:
-// the Hugging Face blob URL for exactly that file at exactly that commit. The Think Max preamble
-// (deepseek_v4_think_max_preamble) and the effort values are transcribed from this file.
-fn deepseek_v4_encoder_source_url() -> String {
-  join(["https://huggingface.co/", deepseek_v4_encoder_repo, "/blob/", deepseek_v4_encoder_revision, "/", deepseek_v4_encoder_path], "")
+// The readable reference, DERIVED from the pinned Hub identity rather than a second URL shape:
+// `hub_blob_url` for exactly that file at exactly that commit.
+fn deepseek_v4_encoder_source_url() -> NonEmptyStr {
+  hub_blob_url(repo: deepseek_v4_encoder_repo, revision: deepseek_v4_encoder_revision, path_in_repo: deepseek_v4_encoder_path)
 }
 
 // THINKING IS STRUCTURAL, NOT WORDED. encode_messages takes thinking_mode "chat" or "thinking";
