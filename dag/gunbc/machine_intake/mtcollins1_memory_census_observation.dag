@@ -392,6 +392,52 @@ data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObli
   mtcollins1_rank_mixing_rule_obligation,
 ]
 
+// ── the controller's media state machine, recovered from the controller itself ─────────────────
+
+// THIS IS RECORDED BECAUSE MISREADING IT COST AN ENTIRE INVESTIGATION. redirection_status was read
+// here as a health value where nonzero meant trouble, so the 100 -> 1 transition was reported as a
+// media drop and a "decay clock" was measured off it. Both were wrong, and the correction did not
+// come from reasoning — it came from the controller's OWN served frontend (source.min.js), which
+// renders these values for the operator:
+//
+//   0    status_0 "~"                          idle / nothing attached
+//   100  status_100                            connecting / pending
+//   1    "Started" + " - Connection Accepted"  SERVING. The healthy steady state.
+//   2    " - Connection Denied"                refusal
+//   3    " - Login Failed"                     refusal
+//   4    " - MAX Session Reached"              refusal
+//   5    " - Permission Denied"                refusal
+//   any value outside {0,1,100} renders "Stopped"; session_index 255 renders "N/A".
+//
+// MEASURED AGAINST THE LIVE CONTROLLER: attach at 22:38:16 -> 100 with session_index 255 ->
+// session_index 0 at +12s, still 100 -> status 1 at +15s -> HELD at 1 for 4m27s idle and then
+// through an entire boot. So 1 is not a decay, it is the destination.
+//
+// THE CONSEQUENCE FOR ANY READINESS PREDICATE, and this is the part that matters beyond this unit:
+// "nonzero means attached" admits 100, which is merely CONNECTING, and admits 2 through 5, which
+// are REFUSALS. Only 1 may satisfy media-ready; 100 must be polled with a bound; 2-5 must be
+// distinct typed refusals. A predicate that resets a host on 100 can expose a partly-ready medium
+// to firmware reads, which is the plausible reading of the attempt-3 initrd failure below.
+type MtCollins1MediaStateMachine {
+  idle: Int
+  connecting: Int
+  serving: Int
+  first_refusal: Int
+  last_refusal: Int
+  authority: NonEmptyStr
+  readiness_rule: NonEmptyStr
+}
+
+data mtcollins1_media_state_machine: MtCollins1MediaStateMachine = MtCollins1MediaStateMachine {
+  idle: 0,
+  connecting: 100,
+  serving: 1,
+  first_refusal: 2,
+  last_refusal: 5,
+  authority: "The controller's own served frontend, source.min.js, which renders 1 as \"Started - Connection Accepted\", 2 \" - Connection Denied\", 3 \" - Login Failed\", 4 \" - MAX Session Reached\", 5 \" - Permission Denied\", and anything outside {0,1,100} as \"Stopped\". Not inferred from behaviour.",
+  readiness_rule: "Only 1 is media-ready. 100 is connecting and must be polled with a bound, never treated as attached. 2 through 5 are distinct refusals and must not be admitted by a nonzero test.",
+}
+
 // ── why the second capture took five attempts, and the defect that caused it ───────────────────
 
 // THE HOST WOULD NOT BOOT THE PRESENTED MEDIUM, AND THE REASON IS A FIELD THE BOOT-HANDOFF MODEL
@@ -449,6 +495,25 @@ data mtcollins1_boot_delivery_defect: MtCollins1BootDeliveryDefect = MtCollins1B
 // reports the same serial from the CONTROLLER's IPMI FRU, over a different transport, from a
 // different agent, recorded days earlier. Host-side DMI and controller-side FRU agreeing on one
 // serial is what makes this an observation OF A UNIT; either alone is an observation of a reading.
+// THE ATTEMPT LABEL INSIDE THIS ARTIFACT IS NOT AN ATTEMPT IDENTITY, AND THAT IS A PRODUCER DEFECT
+// rather than a transcription slip. The capture's own header reads "attempt=3" — but so does the
+// FAILED run recorded at mtcollins1_attempt3_failure, whose artifact is committed as
+// mtcollins1-attempt3-sol.log. Two materially different attempts, minutes apart, one with no host
+// capture at all and one that produced these bytes, both answer to "attempt=3".
+//
+// THE CAUSE IS THAT THE PRODUCER CARRIED A LITERAL. The capture script hard-codes its own attempt
+// number, so re-running it re-uses the identity instead of minting a new one; the artifact FILE was
+// correctly never overwritten, but the identity inside it was. An attempt identity that a rerun can
+// silently duplicate is not an identity, and joining receipts on it would merge two attempts with
+// different outcomes.
+//
+// THE BYTES ARE NOT EDITED TO FIX THIS. They are what the machine produced, and rewriting a capture
+// to correct its own label would destroy the only property that makes it evidence. So the label is
+// recorded as unreliable, the model carries the distinguishing facts instead — different artifact,
+// different digest, different wall-clock window, different outcome — and the producer's literal is
+// named as the thing to remove.
+data mtcollins1_host_capture_attempt_label_defect: NonEmptyStr = "The capture's header reads attempt=3, the same label the FAILED run at mtcollins1_attempt3_failure carries. The producer hard-codes its attempt number, so a rerun reuses the identity rather than minting one. The artifacts are distinguished by digest and by wall-clock window (failed run 2026-09-10T22:19Z, this capture 2026-09-11T01:26:50Z to 01:30:29Z), never by that label. Removing the literal from the producer is the fix; the bytes are left exactly as captured."
+
 data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
 
 data mtcollins1_host_capture_byte_count: Int = 270880
@@ -457,7 +522,12 @@ data mtcollins1_host_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a",
 })
 
-data mtcollins1_host_capture_observed_at: EpochMs = 1789428410000
+// CORRECTED. This previously read 1789428410000, which is 2026-09-14T23:26:50Z — nearly four days
+// after the capture actually ran. The artifact's own first line says
+// "GUNBC-HOST-CAPTURE mtcollins1 attempt=3 begin 2026-09-11T01:26:50Z", and this module's whole
+// claim is that it states nothing the artifact does not contain, so a timestamp the artifact
+// contradicts is the one kind of error it cannot be allowed to carry. 1789090010000 is that line.
+data mtcollins1_host_capture_observed_at: EpochMs = 1789090010000
 
 // EVERY SECTION OF THAT CAPTURE CARRIES ITS ARGV AND ITS EXIT STATUS, which is what makes a
 // missing reading distinguishable from a zero one. All nineteen sections exited 0, so no field
@@ -481,9 +551,25 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
 // THE FAILED ATTEMPT IS PRESERVED, WHICH IS THE POINT OF PRESERVING IT. Attempt 3 was built to
 // close the binding gap above and to add a named memory workload with before/after EDAC counters.
 // It never produced a host capture: the kernel loaded from the virtual CD and then panicked with
-// "VFS: Unable to mount root fs on unknown-block(0,0)" — the MegaRAC remote-media session dropped
-// out from under casper between loading the kernel and mounting the squashfs root. The controller
-// reported redirection_status 100 immediately before the reset and status 1 afterwards.
+// "VFS: Unable to mount root fs on unknown-block(0,0)". THE ORIGINAL TEXT HERE CALLED THAT A
+// MEDIA DROP AND IT WAS WRONG TWICE OVER, so it is corrected rather than quietly edited.
+//
+// It read the 100 -> 1 transition as the session dying. It is not: the controller's own frontend
+// renders 1 as "Started - Connection Accepted" and 100 as connecting, so 100 -> 1 is the
+// redirection SUCCEEDING. That misreading is what mtcollins1_media_state_machine now records.
+//
+// And the console refutes the drop directly. The captured sequence is GNU GRUB, then
+// "EFI stub: Booting Linux Kernel", then "EFI stub: ERROR: Failed to load initrd:
+// 0x8000000000000001", then the VFS panic. So the firmware DID select the medium, GRUB DID run
+// off it, and the kernel DID start; what failed is the INITRD load, with EFI_LOAD_ERROR. A
+// medium that had vanished could not have served GRUB and a kernel first.
+//
+// WHAT THIS ATTEMPT THEREFORE DOES AND DOES NOT ESTABLISH. It establishes an initrd-load failure
+// on a boot that reached the CD. It does NOT establish why. The attempt reset the host while the
+// redirection was still at 100 (connecting), so a plausible reading is that GRUB's small reads
+// succeeded against a partly-ready medium and the larger initrd read did not — consistent with
+// the successful boots, which reset when the session had already reached 1. That is plausible and
+// unproven, and it is recorded at that strength deliberately.
 //
 // ITS BYTES ARE COMMITTED ANYWAY. The recurring failure mode this whole census exists to answer is
 // that a decisive observation gets produced by ad-hoc probing and then lost because the probe's
@@ -510,7 +596,7 @@ type MtCollins1CaptureAttemptFailure {
 data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1CaptureAttemptFailure {
   attempt: 3,
   intent: "Close the subject-binding gap (dmidecode type 1/2/3), record per-section argv and exit status, and add a named memory workload with EDAC counters read before and after, so the health reading would be a load-based one rather than a snapshot.",
-  observed_failure: "The host loaded the kernel from the presented virtual CD and panicked: \"VFS: Unable to mount root fs on unknown-block(0,0)\". The remote-media session dropped between kernel load and root mount; redirection_status read 100 immediately before the reset and 1 after. No host capture was produced.",
+  observed_failure: "The host reached the CD's GRUB, started the EFI kernel, and then failed at the INITRD load: \"EFI stub: ERROR: Failed to load initrd: 0x8000000000000001\", followed by \"VFS: Unable to mount root fs on unknown-block(0,0)\". NOT a media drop — a medium that had vanished could not have served GRUB and a kernel first. The host was reset while the redirection was still at 100 (connecting) rather than 1 (started), which is a plausible but unproven cause. No host capture was produced.",
   preserved_artifacts: "artifacts/bmc/mtcollins1-attempt3-sol.log (the console, carrying the panic) and artifacts/bmc/mtcollins1-attempt3-srv2-side.txt (the pre-boot ARP observation with a typed verdict against the expected MAC, plus the boot artifact digest). A failed attempt whose bytes are discarded reproduces the exact failure mode this census exists to end.",
   why_not_retried: "A further attempt refused before booting: stop-media and start-media both answered HTTP 500 and the session never returned to redirection_status 100. This controller is the only out-of-band path to the M1 canary, so driving a degraded remote-media subsystem harder was declined in favour of leaving the path intact. Boot override was cleared and the controller verified healthy over IPMI.",
 }
