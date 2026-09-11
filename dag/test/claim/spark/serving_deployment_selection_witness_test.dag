@@ -22,8 +22,10 @@ import gunbc.spark.serving_deployment_selection {
   spark_fleet_snapshot, serving_parameters_current, spark_runtime, eight_host_topologies,
   artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
   artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
-  full_fleet_covering_topologies, native_quality_holds, no_redundancy_holds,
+  full_fleet_covering_topologies, fleet_admitted_topologies, native_quality_holds, no_redundancy_holds,
   topology_shape_eq,
+  serving_selection_constraints, id_constraint_authority,
+  deepseek_v4_1_candidate_field,
   TopologyShape, topology_shape,
   ServingDeploymentChoiceDomain, serving_deployment_domain,
   ServingDeploymentCandidateField, serving_candidate_field,
@@ -310,6 +312,8 @@ fn input_with(field: ServingDeploymentCandidateField, w: WorkloadDemandStanding)
     evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: w),
     quality_requirement: deepseek_quality_requirement,
     selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: serving_selection_constraints,
+    constraint_authority: id_constraint_authority,
   )
 }
 
@@ -437,10 +441,18 @@ test fn native_quality_is_a_fact_on_the_weight_treatment() -> Bool {
     && !native_quality_holds(c: cand(name: "twobit_fact", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)))
 }
 
-test fn leftover_hosts_fail_the_no_redundancy_constraint() -> Bool {
-  no_redundancy_holds(c: native_tp4_x2, fleet: spark_fleet_snapshot)
-    && no_redundancy_holds(c: native_tp8_x1, fleet: spark_fleet_snapshot)
-    && !no_redundancy_holds(c: cand(name: "leftover", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2)), fleet: spark_fleet_snapshot)
+test fn replica_count_above_one_fails_no_redundancy() -> Bool {
+  no_redundancy_holds(c: native_tp8_x1)
+    && !no_redundancy_holds(c: native_tp4_x2)
+    && !no_redundancy_holds(c: cand(name: "two_replicas", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2)))
+}
+
+test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
+  match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
+    ServingFieldEstablished =>
+      count(fleet_admitted_topologies(fleet: spark_fleet_snapshot)) > count(eight_host_topologies)
+    ServingFieldUnestablished { causes: _ } => false
+  }
 }
 
 test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool {
