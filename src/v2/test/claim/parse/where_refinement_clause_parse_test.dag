@@ -1,0 +1,213 @@
+module v2.test.parse.where_refinement_clause_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_lex,
+  parse_subtree_find_production_captured,
+  ParseSubtreeAbsent,
+  ParseSubtreeFound
+}
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Edge, Named, Node, Positional }
+import v2.std.optional { Absent, Optional, Present }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data where_refinement_positive_bare_source: String = "module probe.where_bare\n\ntype Tight = String where non_empty\n\nfn f() -> Int {\n  1\n}\n"
+
+data where_refinement_positive_brand_source: String = "module probe.where_brand\n\ntype UnitId = String where brand(\"UnitId\")\n\nfn f() -> Int {\n  1\n}\n"
+
+data where_refinement_positive_range_source: String = "module probe.where_range\n\ntype Port = Int where range(min: 1, max: 46)\n\nfn f() -> Int {\n  1\n}\n"
+
+data where_refinement_negative_empty_clause_source: String = "module probe.where_empty\n\ntype Tight = String where\n\nfn f() -> Int {\n  1\n}\n"
+
+fn where_refinement_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn where_refinement_parse_accepted(text: String, file: Symbol) -> Bool {
+  match where_refinement_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn where_refinement_tree_carries_clause(root: Node) -> Bool {
+  match parse_subtree_find_production_captured(
+    root: root,
+    emitted: ^dag_surface_where_refinement_clause
+  ) {
+    ParseSubtreeFound { captured: _ } => true
+    ParseSubtreeAbsent =>
+      match where_refinement_find_host_conj(root: root) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn where_refinement_edge_names_clause(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => n == ^dag_surface_where_refinement_clause
+    _ => false
+  }
+}
+
+fn where_refinement_find_host_conj(root: Node) -> Optional<Node> {
+  match fold(root.children, init: false, f: fn(found, e) {
+    found || where_refinement_edge_names_clause(e: e)
+  }) {
+    true => Present { value: root }
+    false =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => where_refinement_find_host_conj(root: e.target)
+        }
+      })
+  }
+}
+
+fn where_refinement_edge_label_text(e: Edge) -> String {
+  match e.label {
+    Named { name: n } => symbol_lexeme(sym: n)
+    Positional => "positional"
+  }
+}
+
+fn where_refinement_child_labels(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) {
+    join([acc, "|", where_refinement_edge_label_text(e: e)], "")
+  })
+}
+
+fn where_refinement_find_flag(root: Node) -> String {
+  match where_refinement_tree_carries_clause(root: root) {
+    true => "find=true"
+    false => "find=false"
+  }
+}
+
+fn where_refinement_locus_from_root(root: Node) -> String {
+  match where_refinement_find_host_conj(root: root) {
+    Present { value: host } =>
+      join(
+        [
+          "variant_conj: [",
+          where_refinement_child_labels(n: host),
+          "] ",
+          where_refinement_find_flag(root: root)
+        ],
+        ""
+      )
+    Absent =>
+      join(
+        [
+          "host-conj-absent: root children [",
+          where_refinement_child_labels(n: root),
+          "] ",
+          where_refinement_find_flag(root: root)
+        ],
+        ""
+      )
+  }
+}
+
+fn where_refinement_locus_exit(root: Node) -> ProcessExit {
+  match where_refinement_tree_carries_clause(root: root) {
+    true => ExitSuccess
+    false => exit_failure(reason: where_refinement_locus_from_root(root: root))
+  }
+}
+
+fn where_refinement_positive_parse_carries_clause_holds() -> Bool {
+  match where_refinement_tokenize_parse(
+    text: where_refinement_positive_bare_source,
+    file: ^where_refinement_positive_bare
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      where_refinement_tree_carries_clause(root: tree)
+        && where_refinement_parse_accepted(
+          text: where_refinement_positive_brand_source,
+          file: ^where_refinement_positive_brand
+        )
+        && where_refinement_parse_accepted(
+          text: where_refinement_positive_range_source,
+          file: ^where_refinement_positive_range
+        )
+  }
+}
+
+fn where_refinement_clause_survives_normalize_locus() -> ProcessExit {
+  match where_refinement_tokenize_parse(
+    text: where_refinement_positive_bare_source,
+    file: ^where_refinement_normalize_bare
+  ) {
+    Rejected { diagnostics: r } =>
+      exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: r } =>
+          exit_failure(
+            reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+          )
+        Accepted { value: normalized, diagnostics: _ } =>
+          where_refinement_locus_exit(root: normalized.root)
+      }
+  }
+}
+
+fn where_refinement_empty_clause_parse_refuses_holds() -> Bool {
+  !where_refinement_parse_accepted(
+    text: where_refinement_negative_empty_clause_source,
+    file: ^where_refinement_negative_empty
+  )
+}
+
+test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
+  where_refinement_positive_parse_carries_clause_holds()
+}
+
+test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
+  match where_refinement_tokenize_parse(
+    text: where_refinement_positive_bare_source,
+        file: ^where_refinement_normalize_bare
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: normalized, diagnostics: _ } =>
+          where_refinement_tree_carries_clause(root: normalized.root)
+      }
+  }
+}
+
+test fn where_refinement_empty_clause_is_refused_holds() -> Bool {
+  where_refinement_empty_clause_parse_refuses_holds()
+}
