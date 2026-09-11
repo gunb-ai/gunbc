@@ -1,0 +1,86 @@
+module gunbc.recurring_failure_mode.concession_annotation_is_not_a_disposition
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data concession_annotation_is_not_a_disposition: RecurringFailureMode = RecurringFailureMode {
+  identity: "concession_annotation_is_not_a_disposition" as NonEmptyStr,
+
+  receipts: [
+    "**a sentence that admits an invalid construction is allowed to stand in for deleting it** (INVALID STATE: an author identifies a decoration -- a fold that ignores its argument, a published column that is identically one arm for every row, a constructor with no remaining inhabitant, a located cause computed and then discarded -- and writes an annotation conceding that fact while leaving the construction in the executing surface. The concession is treated as the disposition. ",
+
+    "HARM, AND IT IS WORSE THAN NOT NOTICING. ",
+
+    "A missed decoration is a gap. A conceded decoration is a gap wearing diligence: the rule is stated, the author is visibly honest, and a reviewer who would have demanded deletion stops, because the sentence already did the work of noticing. ",
+
+    "The invalid state stays writable, a fold still reads it, and the next reader cites the concession as evidence the class is governed. ",
+
+    "DESIGN section 4c is why the costume works: no Accepted program can read the annotation, so the only thing that moved is what a human sees. ",
+
+    "DISTINGUISHING FACTS. It is not [[stale_present_tense_coverage_claim_in_the_authority_consulted_first]] -- that class ASSERTS COVERAGE that is false; this one ADMITS THE DEFECT and still ships the construction. ",
+
+    "It is not [[self_authorized_dissolution]] -- that class offers a trigger as PERMISSION to create debt; here the debt is already identified as something the module's own deletion rule would remove, and the annotation is offered as having removed it. ",
+
+    "It is not [[a_written_row_is_not_a_firing_mechanism]] -- that class files a ledger row and counts the filing as the remedy; here the missing act is a DELETION of a construction the author already classified, and no new row is required for the classification to have been correct. ",
+
+    "It is not an unmarked workaround: the defect is marked, which is exactly what conceals it. ",
+
+    "THE TELL is mechanical: the same change, or the same module header, both STATES a deletion rule and RETAINS a construction that rule would delete. ",
+
+    "SPECIMEN ONE, and it is the one this class was filed from. ",
+
+    "gunbc#10942's census derived every other column, then kept `RouteReach` / `reached_by_native_route` after gunbc#11003 deleted the required-v2-native lane. ",
+
+    "The axis had gone constant: `route_reach_of` ignored its argument, `ReachedByNativeRoute` had no constructor anywhere in the tree, and `census_counts` published `reached_by_native_route=` as a permanently-zero column -- DESIGN section 4b's decoration and DESIGN section 3c's dangling declaration. ",
+
+    "The previous cut KEPT THE AXIS and wrote an annotation conceding it had gone constant. ",
+
+    "The same module had just deleted the unread-verdict premise on exactly those grounds. ",
+
+    "Stating the rule and then not applying it is the class: the concession read as diligence while the decoration stayed, and a fold still published it. ",
+
+    "Review 63691 named it; the axis was deleted in `9142f62`. ",
+
+    "The author's own reply recorded that it was the third time in that PR a sentence acknowledging a problem was allowed to stand in for fixing it. ",
+
+    "SPECIMEN TWO, prior and already repaired, which is what establishes this as recurring rather than singular. ",
+
+    "`gunbc.package_delivery` `observe_protocol_schema_identity` computed a located cause and discarded it behind `ContentHash?`, while the annotation at that site said the cause \"reaches this line\" and that the next repair was to stop discarding it. ",
+
+    "Review 55992 on gunbc#9241 pointed out that registering a future repair is not a disposition: the distinction was computed and thrown away in the same change that computed it. ",
+
+    "The repair was to return `ProtocolSchemaIdentityObservation` so the cause reaches the caller in the type, not in the comment. ",
+
+    "RUNG FOUND AT: mitigatable. ",
+
+    "Both specimens survived until a reviewer joined the concession to the construction it left standing. ",
+
+    "CEILING, STATED PER SUB-CASE BECAUSE THE SUB-CASES DO NOT SHARE ONE. ",
+
+    "THE ANNOTATION ITSELF CARRIES NO RUNG: whether a free-prose sentence is a concession rather than a description is not a property the source decides, so DESIGN section 4c puts that form in the adjacent column -- outside the modeled guarantee -- rather than at a low rung. ",
+
+    "THE STRUCTURED SUB-CASE DOES: a producer that ignores its argument, a published count that is identically one arm over a closed roster, a constructor with no call site in the tree. ",
+
+    "Those are facts a fold over the Node tree can ask, so the ceiling is mechanically preventable -- a check that refuses a constant census column, or a type whose remaining constructor is uninhabited, reliably exposes the state. ",
+
+    "It is not structurally guaranteed while the decoration remains authorable as source handed to the compiler; the RED is fixture-authorable, which is why a check here is not a 4b decoration. ",
+
+    "NEXT TRIGGER: a census or other closed-roster fold whose producer ignores its argument, or whose published column is identically one arm for every row, refuses at ingestion rather than being describable beside the column. ",
+
+    "A grep for \"gone constant\" / \"next repair\" / \"for now\" does not fire this trigger; those phrases are how the concession is currently spelled, not the invalid state. ",
+
+    "The capability is refusing the construction, which is what makes the concession have nothing left to stand in for.)"
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.v2_compile_obligation_census", decl_name: "census_counts"),
+    decl_ref(module_path: "gunbc.v2_compile_obligation_census", decl_name: "native_standing"),
+    decl_ref(
+      module_path: "gunbc.rung_drop.v2_native_route_off_the_merge_path",
+      decl_name: "v2_native_route_off_the_merge_path"
+    ),
+    decl_ref(module_path: "gunbc.package_delivery", decl_name: "observe_protocol_schema_identity"),
+    decl_ref(module_path: "gunbc.package_delivery", decl_name: "ProtocolSchemaIdentityObservation"),
+  ],
+}
