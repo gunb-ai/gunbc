@@ -71,6 +71,7 @@ import gunbc.review_sheet_operator {
   buyer_review_workspace_domain_sharing,
   buyer_review_account_tenancy,
   spreadsheet_share_intervention,
+  share_intervention_for_spreadsheet,
   sheets_api_enablement_decision,
   sheets_api_desired_enablement,
   review_sheet_gcp_project,
@@ -747,6 +748,26 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
     ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
+}
+
+test fn identified_spreadsheet_share_uses_that_id_not_a_placeholder() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  let share = share_intervention_for_spreadsheet(
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    writer: w_fixture_writer(),
+  )
+  string_contains(s: share.identity as String, pattern: "sheet-abc")
+    && !string_contains(s: share.identity as String, pattern: "unidentified")
+}
+
+test fn awaiting_creation_does_not_mint_an_unidentified_share_id() -> Bool {
+  !string_contains(
+    s: share_intervention_for_spreadsheet(
+      spreadsheet: SpreadsheetAwaitingCreation,
+      writer: w_fixture_writer(),
+    ).identity as String,
+    pattern: "unidentified",
+  )
 }
 
 test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {

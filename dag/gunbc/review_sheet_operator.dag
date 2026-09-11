@@ -21,6 +21,7 @@ import gunbc.gcp_service_enablement {
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
+import extdeps.google.workspace { google_workspace_product }
 
 // Sheets API project and calling identity are AwaitingIdentification — same standing as
 // SpreadsheetAwaitingCreation. This PR does not name a GCP project or a service account. Estate
@@ -197,11 +198,17 @@ fn admit_review_sheet_operator(
                         match sharing_policy {
                           DomainSharingPolicyUnobserved =>
                             ReviewSheetOperatorRefused {
-                              reason: "Workspace domain sharing policy unread; the operator is admin and the policy is readable" as NonEmptyStr
+                              reason: concat(
+                                google_workspace_product as String,
+                                " domain sharing policy unread; the operator is admin and the policy is readable",
+                              ) as NonEmptyStr
                             }
                           DomainSharingForbidsExternalPrincipals =>
                             ReviewSheetOperatorRefused {
-                              reason: "Workspace domain sharing policy forbids sharing with a service-account principal" as NonEmptyStr
+                              reason: concat(
+                                google_workspace_product as String,
+                                " domain sharing policy forbids sharing with a service-account principal",
+                              ) as NonEmptyStr
                             }
                           DomainSharingAllowsServiceAccountShare =>
                             if intervention_is_discharged(intervention: share) {
@@ -217,6 +224,17 @@ fn admit_review_sheet_operator(
             ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
           }
       }
+  }
+}
+
+fn share_intervention_for_spreadsheet(
+  spreadsheet: BuyerReviewSpreadsheet,
+  writer: ServiceAccountEmail,
+) -> HumanIntervention {
+  match spreadsheet {
+    SpreadsheetAwaitingCreation => spreadsheet_create_intervention()
+    SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
+      spreadsheet_share_intervention(spreadsheet_id: id, writer: writer)
   }
 }
 
@@ -244,7 +262,7 @@ fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
             },
             spreadsheet: buyer_review_spreadsheet,
             serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: sa),
-            share: spreadsheet_share_intervention(spreadsheet_id: "unidentified" as NonEmptyStr, writer: sa),
+            share: share_intervention_for_spreadsheet(spreadsheet: buyer_review_spreadsheet, writer: sa),
             sharing_policy: buyer_review_workspace_domain_sharing,
             tenancy: buyer_review_account_tenancy,
           )
