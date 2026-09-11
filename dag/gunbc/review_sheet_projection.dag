@@ -46,6 +46,21 @@ type ReviewSheetProjection {
   rows: List<ProjectionRow>
 }
 
+// Derived payload erasure is caller-supplied, never implicit in ListingGone: a listing
+// ending and a person exercising a right are unrelated facts. It writes DerivedField only,
+// never OperatorEntered, never a silent row drop; standing stays ListingGone. Located
+// writes or a located refuse; quiet success is refused. Judgement has no deletion arm.
+// identity_column in the intended binding is an eBay item id: a stub that keeps that key
+// still retains eBay data under a broad MAD reading. Identity split is deferred until
+// exemption wording puts the item id in scope.
+// Blanking DerivedField is a real meaning loss for human re-audit: title and price are why
+// they wrote buy, and a labelled stub does not carry that. The buyer loop still has
+// identity plus the operator cell and can refuse to re-ask. We gave something up; we did
+// not never have it.
+type DerivedPayloadErasure {
+  listing_id: NonEmptyStr
+}
+
 type ObservedSheetRow {
   data_index: Int
   cells: List<String>
@@ -319,6 +334,69 @@ fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List
     |> map(raw => KeyedRow { row_key: raw, value: true })
 }
 
+fn erasure_key_rows(erasures: List<DerivedPayloadErasure>) -> List<KeyedRow<String, DerivedPayloadErasure>> {
+  map(erasures, e => KeyedRow { row_key: e.listing_id as String, value: e })
+}
+
+fn listing_has_erasure(erasure_by_id: Map<String, DerivedPayloadErasure>, listing_id: NonEmptyStr) -> Bool {
+  match erasure_by_id.lookup(listing_id as String) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn column_is_listing_standing(column: ReviewColumn) -> Bool {
+  match column.kind {
+    ListingStanding => true
+    OperatorEntered => false
+    DerivedField { source_field: _ } => false
+  }
+}
+
+fn read_row_listing_standing(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+) -> ListingStandingRead? {
+  match schema.columns |> filter(c => column_is_listing_standing(column: c)) |> first {
+    Absent => none
+    Present { value: col } =>
+      match header_by_name.lookup(col.name as String) {
+        Absent => none
+        Present { value: idx } => Present { value: read_listing_standing(cell: cell_at(cells: row.cells, index: idx)) }
+      }
+  }
+}
+
+fn erasure_still_projected_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure refused while listing still in projection listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_requires_gone_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure requires ListingGone listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_not_on_sheet_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure listing not on sheet listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_missing_standing_column_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure missing ListingStanding column listing=", listing_id as String) as NonEmptyStr
+}
+
+fn first_erasure_not_on_sheet(
+  erasures: List<DerivedPayloadErasure>,
+  observed_by_id: Map<String, Bool>,
+) -> NonEmptyStr? {
+  erasures
+    |> filter(e => match observed_by_id.lookup(e.listing_id as String) {
+      Present { value: _ } => false
+      Absent => true
+    })
+    |> map(e => e.listing_id)
+    |> first
+}
+
 fn derived_by_column(row: ProjectionRow) -> Map<String, String> {
   fold(row.derived, init: empty_map(), f: fn(acc, cell) {
     map_insert(acc, cell.column as String, cell.value)
@@ -439,6 +517,14 @@ fn decide_derived_field_cell(observed: String, desired: String) -> CellDecision 
   }
 }
 
+fn decide_derived_erasure_cell(observed: String) -> CellDecision {
+  if observed == "" {
+    CellSkip
+  } else {
+    CellWrite { value: "" }
+  }
+}
+
 fn classification_from_cell_decision(
   plan: ReviewSheetWritePlan,
   listing_id: NonEmptyStr,
@@ -490,6 +576,7 @@ fn classify_existing_row(
   row: ObservedSheetRow,
   rows_by_listing: Map<String, ProjectionRow>,
   identity_index: Int,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
   plan: ReviewSheetWritePlan,
 ) -> ReviewSheetClassification {
   let listing_raw = cell_at(cells: row.cells, index: identity_index)
@@ -512,6 +599,7 @@ fn classify_existing_row(
           listing_id: listing_id,
           in_projection: true,
           derived: derived_by_column(row: prow),
+          erasure_by_id: erasure_by_id,
           plan: plan,
         )
       Absent =>
@@ -522,6 +610,7 @@ fn classify_existing_row(
           listing_id: listing_id,
           in_projection: false,
           derived: empty_map(),
+          erasure_by_id: erasure_by_id,
           plan: plan,
         )
     }
@@ -535,6 +624,7 @@ fn fold_columns_for_row(
   listing_id: NonEmptyStr,
   in_projection: Bool,
   derived: Map<String, String>,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
   plan: ReviewSheetWritePlan,
 ) -> ReviewSheetClassification {
   fold(schema.columns, init: ReviewSheetNeedsWrite { plan: plan }, f: fn(acc, col) {
@@ -562,31 +652,64 @@ fn fold_columns_for_row(
                 )
               OperatorEntered => ReviewSheetNeedsWrite { plan: p }
               DerivedField { source_field: _ } =>
-                if in_projection {
-                  match derived.lookup(col.name as String) {
-                    Absent =>
-                      ReviewSheetUnreadable {
-                        reason: omitted_derived_column_reason(listing_id: listing_id, column: col.name)
-                      }
-                    Present { value: desired } =>
-                      classification_from_cell_decision(
-                        plan: p,
-                        listing_id: listing_id,
-                        column: col.name,
-                        column_index: idx,
-                        data_index: row.data_index,
-                        decision: decide_derived_field_cell(observed: observed, desired: desired),
-                      )
+                if listing_has_erasure(erasure_by_id: erasure_by_id, listing_id: listing_id) {
+                  if in_projection {
+                    ReviewSheetUnreadable { reason: erasure_still_projected_reason(listing_id: listing_id) }
+                  } else {
+                    match read_row_listing_standing(schema: schema, header_by_name: header_by_name, row: row) {
+                      Absent =>
+                        ReviewSheetUnreadable {
+                          reason: erasure_missing_standing_column_reason(listing_id: listing_id)
+                        }
+                      Present { value: standing_read } =>
+                        match standing_read {
+                          StandingKnown { state: standing_state } =>
+                            if listing_standing_eq(a: standing_state, b: StandingGone) {
+                              classification_from_cell_decision(
+                                plan: p,
+                                listing_id: listing_id,
+                                column: col.name,
+                                column_index: idx,
+                                data_index: row.data_index,
+                                decision: decide_derived_erasure_cell(observed: observed),
+                              )
+                            } else {
+                              ReviewSheetUnreadable { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+                            }
+                          StandingBlank =>
+                            ReviewSheetUnreadable { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+                          StandingForeign { raw: _ } =>
+                            ReviewSheetUnreadable { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+                        }
+                    }
                   }
                 } else {
-                  classification_from_cell_decision(
-                    plan: p,
-                    listing_id: listing_id,
-                    column: col.name,
-                    column_index: idx,
-                    data_index: row.data_index,
-                    decision: decide_derived_field_cell(observed: observed, desired: observed),
-                  )
+                  if in_projection {
+                    match derived.lookup(col.name as String) {
+                      Absent =>
+                        ReviewSheetUnreadable {
+                          reason: omitted_derived_column_reason(listing_id: listing_id, column: col.name)
+                        }
+                      Present { value: desired } =>
+                        classification_from_cell_decision(
+                          plan: p,
+                          listing_id: listing_id,
+                          column: col.name,
+                          column_index: idx,
+                          data_index: row.data_index,
+                          decision: decide_derived_field_cell(observed: observed, desired: desired),
+                        )
+                    }
+                  } else {
+                    classification_from_cell_decision(
+                      plan: p,
+                      listing_id: listing_id,
+                      column: col.name,
+                      column_index: idx,
+                      data_index: row.data_index,
+                      decision: decide_derived_field_cell(observed: observed, desired: observed),
+                    )
+                  }
                 }
             }
           }
@@ -855,6 +978,14 @@ fn append_listing_row(
 }
 
 fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProjection) -> ReviewSheetClassification {
+  classify_review_sheet_with_erasure(observed: observed, projection: projection, erasures: [])
+}
+
+fn classify_review_sheet_with_erasure(
+  observed: ObservedSheet,
+  projection: ReviewSheetProjection,
+  erasures: List<DerivedPayloadErasure>,
+) -> ReviewSheetClassification {
   match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
     KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
       ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
@@ -880,14 +1011,26 @@ fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProject
               ) {
                 KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
                   ReviewSheetUnreadable { reason: concat("duplicate sheet listing ", d) as NonEmptyStr }
-                KeyedRosterBuilt { rows: obs_rows } => finish_classify(
-                  observed: observed,
-                  projection: projection,
-                  header_by_name: header_by_name,
-                  identity_index: identity_index,
-                  rows_by_listing: keyed_string_map(rows: proj_rows),
-                  observed_by_id: keyed_string_map(rows: obs_rows),
-                )
+                KeyedRosterBuilt { rows: obs_rows } =>
+                  match keyed_roster_build(
+                    incomings: erasure_key_rows(erasures: erasures),
+                    key_eq: review_sheet_key_eq,
+                  ) {
+                    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+                      ReviewSheetUnreadable {
+                        reason: concat("duplicate derived payload erasure listing ", d) as NonEmptyStr
+                      }
+                    KeyedRosterBuilt { rows: erasure_rows } => finish_classify(
+                      observed: observed,
+                      projection: projection,
+                      header_by_name: header_by_name,
+                      identity_index: identity_index,
+                      rows_by_listing: keyed_string_map(rows: proj_rows),
+                      observed_by_id: keyed_string_map(rows: obs_rows),
+                      erasures: erasures,
+                      erasure_by_id: keyed_string_map(rows: erasure_rows),
+                    )
+                  }
               }
           }
       }
@@ -903,6 +1046,8 @@ fn finish_classify(
   identity_index: Int,
   rows_by_listing: Map<String, ProjectionRow>,
   observed_by_id: Map<String, Bool>,
+  erasures: List<DerivedPayloadErasure>,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
 ) -> ReviewSheetClassification {
   let after_existing = fold(observed.rows, init: ReviewSheetNeedsWrite { plan: empty_write_plan() }, f: fn(acc, row) {
     match acc {
@@ -916,6 +1061,7 @@ fn finish_classify(
           row: row,
           rows_by_listing: rows_by_listing,
           identity_index: identity_index,
+          erasure_by_id: erasure_by_id,
           plan: p,
         )
     }
@@ -924,7 +1070,11 @@ fn finish_classify(
     ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
     ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
     ReviewSheetConverged => ReviewSheetConverged
-    ReviewSheetNeedsWrite { plan: p } => {
+    ReviewSheetNeedsWrite { plan: p } =>
+      match first_erasure_not_on_sheet(erasures: erasures, observed_by_id: observed_by_id) {
+        Present { value: missing } =>
+          ReviewSheetUnreadable { reason: erasure_not_on_sheet_reason(listing_id: missing) }
+        Absent => {
       let start_row = (observed.rows |> count) + 2
       let column_by_name = columns_by_name(schema: projection.schema)
       let missing = projection.rows |> filter(r => match observed_by_id.lookup(r.listing_id as String) {
@@ -966,7 +1116,8 @@ fn finish_classify(
         ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
         ReviewSheetConverged => ReviewSheetConverged
       }
-    }
+        }
+      }
   }
 }
 
@@ -1050,6 +1201,17 @@ data buyer_review_judgement_read_frontier: Disposition = Scaffold {
   bind: DeclarationRef {
     module_path: "gunbc.review_sheet_projection",
     decl_name: "judgement_for_listing",
+    field: WholeDeclaration
+  }
+}
+
+// Live ensure still calls classify_review_sheet (empty erasures). A named later change binds
+// classify_review_sheet_with_erasure when a caller supplies DerivedPayloadErasure rows.
+data derived_payload_erasure_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_projection",
+    decl_name: "classify_review_sheet_with_erasure",
     field: WholeDeclaration
   }
 }
