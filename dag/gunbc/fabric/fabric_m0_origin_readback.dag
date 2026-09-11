@@ -24,8 +24,12 @@ import extdeps.crypto.hash
 //
 // WHAT THIS CLOSES AND WHAT IT DOES NOT, measured rather than asserted (DESIGN 4b(1)). It closes
 // AUTHORED CONFIRMATION: the confirming digest is computed by this function, over the file named in
-// the same value, and read_origin_staged_file is the ONLY constructor in the corpus -- there is no
-// fixture mint beside it and no admitted caller list.
+// the same value, and read_origin_staged_file is the only constructor. That negative is TRACKED
+// rather than asserted, which is what makes it safe to write: OriginReading is sole_constructor, so
+// every construction outside this module is a COMPILE REFUSAL and adding one cannot pass; and the
+// only mutation that could add a second mint -- writing one into this module -- is an edit to this
+// very file, so the claim cannot rot out from under a reader elsewhere. There is no fixture mint
+// beside it and no admitted caller list.
 //
 // THERE WAS ONE, IT WAS A HOLE, AND IT MERGED -- recorded here rather than quietly removed because
 // a guarantee that was reported and not held is the one thing DESIGN 4b(1) says must not stand.
@@ -44,10 +48,18 @@ import extdeps.crypto.hash
 // gunbc.recurring_failure_mode.admitted_call_edge_with_unrestricted_value_egress and cited, not
 // restated.
 //
-// THE EGRESS QUESTION, ANSWERED FOR THIS TYPE RATHER THAN ASSUMED: every function in either witness
-// module that returns a value carrying an OriginReading REQUIRES one as a parameter, so it
-// propagates and never mints. The only zero-argument egress is a call to read_origin_staged_file
-// itself, whose result the caller cannot aim -- it is the digest of whatever file was named.
+// THE EGRESS QUESTION, SNAPSHOT-BOUND BECAUSE NOTHING RECOMPUTES IT. Measured at gunbc#10972 over
+// test.claim.fabric_m0_commit_witness and test.claim.fabric_m0_completion_witness: every function
+// there returning a value that carries an OriginReading REQUIRED one as a parameter, so it
+// propagated and never minted, and the only zero-argument egress was a call to
+// read_origin_staged_file itself, whose result a caller cannot aim -- it is the digest of whatever
+// file was named.
+//
+// IT IS DATED ON PURPOSE. Adding a zero-argument helper to either witness module would falsify it,
+// and that edit happens in a different file from this comment, so nothing invalidates or recomputes
+// the sentence -- the live open-world form would rot silently. A historical observation cannot. What
+// holds WITHOUT a date is the sole_constructor refusal above; this paragraph only records that the
+// two witness modules were, at that commit, clean of alternate mints.
 //
 // AND WHAT THE HERMETIC WITNESSES DO NOT SHOW: they exercise this function through a MOCK that
 // replays one constant digest for every path. That establishes the modeled effect route and the

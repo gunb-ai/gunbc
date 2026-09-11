@@ -70,10 +70,15 @@ import gunbc.fabric_m0_origin_readback {
 //     --entry dag/gunbc/instruments/fabric_m0_origin_readback_probe.dag --function probe
 // Run from the repository root -- the fixture paths are repository-relative.
 //
-// STANDING, STATED PLAINLY: no required lane executes this. It is a hand-run instrument, the same
-// standing every other real-effect probe in this directory carries, and the compile-refusal half in
-// test.claim.fabric_m0_origin_readback_seal is what runs per PR. Calling this covered would be the
-// proxy-assertion class.
+// STANDING, STATED POSITIVELY AND THEN DATED. Its consumer is the recipe above, run by hand: that
+// is the whole executing route, and it is the same standing every other real-effect probe in this
+// directory carries. What runs per PR is the compile-refusal half, test.claim
+// .fabric_m0_origin_readback_seal. Calling this file covered would be the proxy-assertion class.
+//
+// The complement -- that NO required lane enrolled it -- was true when measured at gunbc#10972 and
+// is recorded as of that commit rather than as a live claim. Enrolling it would happen in a CI
+// roster, a different file from this one, so nothing here would be invalidated or recomputed by the
+// edit that falsifies it; a dated observation cannot rot, and a live open-world negative would.
 //
 // The expected digests are a CONTROLLED FIXTURE oracle, not a measurement copied off the current
 // tree: the two files are committed beside this module and their content is chosen there, so

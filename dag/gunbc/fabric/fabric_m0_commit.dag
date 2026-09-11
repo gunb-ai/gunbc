@@ -238,9 +238,22 @@ fn manifest_observation(
 // returns the publication; and the instrument tools.fabric_m0_origin_readback_probe calls it to
 // drive the whole gate over real bytes. Both are in-tree and both execute.
 //
-// SO THE FRONTIER MOVED RATHER THAN VANISHED, and it is one layer up: publish_work itself is
-// reached by enrolled witnesses and by no JOB-ENDING. The frontier is that missing ending, not a
-// missing caller here.
+// SO THE FRONTIER MOVED RATHER THAN VANISHED, and it is one layer up, at publish_work. It is
+// stated below as the CAPABILITY THAT CLOSES IT and deliberately not as a claim about what does not
+// yet call publish_work.
+//
+// THE DRAFT OF THIS REPAIR SAID `reached by enrolled witnesses and by no JOB-ENDING`, WHICH IS THE
+// SHAPE THIS ANNOTATION EXISTS TO REMOVE, one layer up, in the edit that removes it. The defect is
+// not that a negative was stated; it is that the negative was LIVE, OPEN-WORLD and UNTRACKED --
+// nothing derives it, nothing recomputes it, and the single mutation that falsifies it (someone
+// adding a job-ending caller) is the mutation least likely to touch this comment. A claim is
+// admissible when a mutation able to falsify it must also invalidate or recompute it: structurally
+// tracked (`A calls B`, derived from named identities, which adding a caller does not falsify), or
+// derived from a complete population that call-edge changes invalidate, or bound to a named
+// immutable snapshot. The positive trigger below is the first of those and carries the whole
+// meaning, so the negative is dropped rather than snapshot-bound: it added nothing the capability
+// sentence does not already say, and section 3c asks who consumes this and by what route, never for
+// the complement of the current consumer set.
 //
 // THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a job-publication path that
 // holds a run's required work and decides its ending -- the roadmap's compute-artifact-return-
