@@ -1,8 +1,15 @@
 module test.claim.docker_image_digest_command_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.languages.json.emit {
+  json_array, json_object, json_kv, json_string, serialize_json,
+}
 import extdeps.exec.command { argv_words }
-import extdeps.docker.cli { docker_image_digest_command, docker_image_inspect_id_command }
+import extdeps.docker.cli {
+  docker_image_digest_command, docker_image_inspect_command,
+  docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
+  docker_image_inspect_names_no_such_image,
+}
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -10,6 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data digest_pinned_fixture: NonEmptyStr = "example.invalid/repo:tag@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr
 data tagged_fixture: NonEmptyStr = "example.invalid/repo:tag" as NonEmptyStr
+data inspect_id_fixture: NonEmptyStr = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr
 
 fn argv_has_exact_word(words: List<String>, want: String) -> Bool {
   fold(words, init: false, f: (acc, w) => acc || w == want)
@@ -19,18 +27,26 @@ fn digest_listing_words(image: NonEmptyStr) -> List<String> {
   argv_words(command: docker_image_digest_command(image: image))
 }
 
-fn inspect_id_words(image: NonEmptyStr) -> List<String> {
-  argv_words(command: docker_image_inspect_id_command(image: image))
+fn inspect_words(image: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_inspect_command(image: image))
 }
 
-// THE RED: a digest-pinned identity is inspect, not docker images' REPOSITORY[:TAG] match.
+fn inspect_argv_is_portable(image: NonEmptyStr) -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: inspect_words(image: image)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE RED: a digest-pinned identity is inspect without a Go template, not docker images' REPOSITORY[:TAG] match.
 test fn a_digest_pinned_identity_readback_inspects_the_digest_reference() -> Bool {
   let image = digest_pinned_fixture
-  let words = inspect_id_words(image: image)
+  let words = inspect_words(image: image)
   argv_has_exact_word(words: words, want: "inspect")
-    && argv_has_exact_word(words: words, want: "--format")
     && argv_has_exact_word(words: words, want: image as String)
     && !argv_has_exact_word(words: words, want: "images")
+    && !argv_has_exact_word(words: words, want: "--format")
+    && inspect_argv_is_portable(image: image)
     && string_contains(s: image as String, pattern: "@sha256:")
 }
 
@@ -50,12 +66,28 @@ test fn a_tagged_identity_readback_still_lists() -> Bool {
     }
 }
 
-// THE DIGEST ARM IS REFUSED ON typed_argv_exec. spark_remote_run quotes and is the executing path
-// (fleet-converge 34643985099). Omitting this check would cite the working transport while the
-// other stayed silent (DESIGN §4b(1)).
-test fn a_digest_inspect_argv_is_refused_on_typed_argv_exec() -> Bool {
-  match typed_argv_shell_safe_refusal_argv(argv: inspect_id_words(image: digest_pinned_fixture)) {
-    Present { value: why } => string_contains(s: why, pattern: "allowlist")
-    Absent => false
+fn inspect_id_json_document() -> String {
+  serialize_json(v: json_array(elements: [
+    json_object(members: [json_kv(key: "Id", value: json_string(s: inspect_id_fixture as String))]),
+  ]))
+}
+
+// THE Id IS READ FROM INSPECT JSON, not from a --format template.
+test fn inspect_stdout_json_yields_the_unique_id() -> Bool {
+  match docker_image_inspect_id_from_stdout(stdout: inspect_id_json_document()) {
+    DockerImageInspectId { id: id } => id == inspect_id_fixture
+    DockerImageInspectIdUnreadable { cause: _ } => false
   }
+}
+
+test fn inspect_stdout_that_is_not_one_object_is_unreadable() -> Bool {
+  match docker_image_inspect_id_from_stdout(stdout: "[]") {
+    DockerImageInspectIdUnreadable { cause: why } => string_contains(s: why, pattern: "one-element")
+    DockerImageInspectId { id: _ } => false
+  }
+}
+
+test fn inspect_stderr_no_such_image_is_the_absent_classifier() -> Bool {
+  docker_image_inspect_names_no_such_image(stderr: "Error: No such image: example.invalid/repo:tag")
+    && !docker_image_inspect_names_no_such_image(stderr: "Error: connection refused")
 }

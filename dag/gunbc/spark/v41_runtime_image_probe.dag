@@ -8,7 +8,11 @@ import std.nat { Nat }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.docker.cli { docker_run_ephemeral_command, docker_image_pull_command, docker_image_inspect_id_command }
+import extdeps.docker.cli {
+  docker_run_ephemeral_command, docker_image_pull_command, docker_image_inspect_command,
+  docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
+  docker_image_inspect_names_no_such_image,
+}
 import extdeps.vllm.deepseek_v4_1_sm12 {
   VllmCompiledSurface,
   v41_fp4_weight_surface, v41_csa2_surface, v41_dspark_surface,
@@ -589,7 +593,7 @@ fn v41_probe_pull_argv(image_reference: NonEmptyStr) -> List<String> {
 }
 
 fn v41_probe_digest_argv(image_reference: NonEmptyStr) -> List<String> {
-  argv_words(command: docker_image_inspect_id_command(image: image_reference))
+  argv_words(command: docker_image_inspect_command(image: image_reference))
 }
 
 // A REMOTE RUN THAT DID NOT LAND AND ONE THAT RAN AND FAILED ARE DIFFERENT FACTS, and spark_remote_run
@@ -623,28 +627,39 @@ func v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmpty
     Present { value: refusal } => refusal
     Absent => {
       let digest_run = spark_remote_run(ctx: ctx, argv: v41_probe_digest_argv(image_reference: reference))
-      match v41_privileged_outcome(step: "image-digest" as NonEmptyStr, run: digest_run) {
-        Present { value: refusal } => refusal
-        Absent => {
-          let digest = trim(s: v41_privileged_stdout(run: digest_run))
-          if digest == "" {
-            V41ProbeRefused { step: "image-digest" as NonEmptyStr, cause: "the pull reported success and no image carries the reference it was asked to fetch" }
+      match digest_run {
+        RemoteUnreachable { cause: why } => V41ProbeRefused { step: "image-digest" as NonEmptyStr, cause: why }
+        RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
+          if code != 0 {
+            if docker_image_inspect_names_no_such_image(stderr: err) {
+              V41ProbeRefused {
+                step: "image-digest" as NonEmptyStr,
+                cause: "docker image inspect: No such image (the pull reported success and the daemon names no object for this reference)",
+              }
+            } else {
+              V41ProbeRefused { step: "image-digest" as NonEmptyStr, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") }
+            }
           } else {
-            let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: digest as NonEmptyStr))
-            match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
-              Present { value: refusal } => refusal
-              Absent => {
-                let out = v41_privileged_stdout(run: probe_run)
-                V41ProbeRead {
-                  reference: reference,
-                  observed_digest: digest as NonEmptyStr,
-                  stdout: out,
-                  readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
+            match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
+              DockerImageInspectIdUnreadable { cause: why } =>
+                V41ProbeRefused { step: "image-digest" as NonEmptyStr, cause: why }
+              DockerImageInspectId { id: digest } => {
+                let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: digest))
+                match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
+                  Present { value: refusal } => refusal
+                  Absent => {
+                    let out = v41_privileged_stdout(run: probe_run)
+                    V41ProbeRead {
+                      reference: reference,
+                      observed_digest: digest,
+                      stdout: out,
+                      readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
+                    }
+                  }
                 }
               }
             }
           }
-        }
       }
     }
   }
