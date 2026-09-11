@@ -32,9 +32,6 @@ import gunbc.compile_permit_scope {
 }
 import gunbc.witness_floor_workflow {
   running_supersession_for_fleet_standing,
-  running_cancel_authorized,
-  MutableHeadSupersedable,
-  ImmutableExecutionSubject,
   cancel_in_progress_of_policy,
   WitnessFloorConcurrencyPolicy,
   PendingReplacementPolicy,
@@ -628,22 +625,42 @@ fn observed_safe_fleet() -> FleetCompileCancellationStanding {
   ])
 }
 
-test fn w_running_cancel_join_is_supersedable_and_safe() -> Bool {
-  running_cancel_authorized(mutable: MutableHeadSupersedable, fleet: observed_safe_fleet()) == true
-    && running_cancel_authorized(mutable: MutableHeadSupersedable, fleet: producer_absent_standing(eligible_hosts: two_host_fleet())) == false
-    && running_cancel_authorized(mutable: ImmutableExecutionSubject, fleet: observed_safe_fleet()) == false
-    && running_cancel_authorized(mutable: ImmutableExecutionSubject, fleet: producer_absent_standing(eligible_hosts: two_host_fleet())) == false
+test fn w_running_cancel_four_cell_through_the_producer() -> Bool {
+  let unproven = running_supersession_for_fleet_standing(standing: producer_absent_standing(eligible_hosts: two_host_fleet()))
+  let safe = running_supersession_for_fleet_standing(standing: observed_safe_fleet())
+  let unproven_is_never = match unproven {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
+  }
+  let safe_is_mutable = match safe {
+    SupersedeMutableHeadRuns => true
+    NeverSupersedeRunning => false
+    SupersedeRunningForEvent { event: _ } => false
+  }
+  let unproven_cancel = match cancel_in_progress_of_policy(policy: unproven) {
+    CancelInProgressBool { value: b } => b == false
+    CancelInProgressExpression { expression: _ } => false
+  }
+  let safe_cancel = match cancel_in_progress_of_policy(policy: safe) {
+    CancelInProgressExpression { expression: e } => e == mutable_head_runs_cancel_expression()
+    CancelInProgressBool { value: _ } => false
+  }
+  unproven_is_never
+    && safe_is_mutable
+    && supersession_available_under(policy: unproven, event: "pull_request") == false
+    && supersession_available_under(policy: unproven, event: "merge_group") == false
+    && supersession_available_under(policy: safe, event: "pull_request") == true
+    && supersession_available_under(policy: safe, event: "merge_group") == false
+    && unproven_cancel
+    && safe_cancel
 }
 
-test fn w_emitted_cancel_in_progress_is_the_join_projection() -> Bool {
-  running_cancel_authorized(
-    mutable: MutableHeadSupersedable,
-    fleet: fleet_compile_cancellation_standing
-  ) == false
-    && match cancel_in_progress_of_policy(policy: witness_floor_running_supersession_policy) {
-      CancelInProgressBool { value: b } => b == false
-      CancelInProgressExpression { expression: _ } => false
-    }
+test fn w_emitted_cancel_in_progress_is_the_live_unproven_projection() -> Bool {
+  match cancel_in_progress_of_policy(policy: witness_floor_running_supersession_policy) {
+    CancelInProgressBool { value: b } => b == false
+    CancelInProgressExpression { expression: _ } => false
+  }
 }
 
 // THE CONTAINMENT IS A FUNCTION OF ITS OWN REASON, AND OF WHAT THE HOSTS ACTUALLY RUN.

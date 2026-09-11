@@ -248,12 +248,14 @@ data witness_floor_workflow_name: String = "witnesses"
 // note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
 // its rows are deleted with this one standing as the single authority.
 //
-// WHOLE-WORKFLOW SUBJECT (operator ruling 2026-09-10, P0a.1). Newest pull-request head and newest
-// main push each cancel the predecessor WORKFLOW, not a job inside a later run: a job-level group
-// on the successor cannot cancel a predecessor whose top-level group never let the successor
-// start. merge_group is an immutable candidate (sha). Heal revalidation is workflow_dispatch with
-// expected_healed_sha and groups on that sha so an unrelated main push cannot cancel it. Other
-// dispatch is the requested run_id. A cancelled predecessor is not a green result.
+// GROUPING IS THE OCCUPANCY AXIS. pull_request shares one group per PR number so a newer head
+// replaces the PENDING predecessor in that group; push to main shares github.ref so main is
+// bounded to one running plus one pending. merge_group is an immutable candidate (sha). Heal
+// revalidation is workflow_dispatch with expected_healed_sha and groups on that sha so an
+// unrelated main push cannot share the group. Other dispatch is the requested run_id. Running
+// cancellation is a different fact: it is refused while fleet_compile_cancellation_standing is
+// producer-absent, so a started job is not SIGKILLed by the successor. A cancelled predecessor is
+// not a green result.
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event_name == 'merge_group' && format('mg-{0}', github.sha) || github.event_name == 'workflow_dispatch' && github.event.inputs.expected_healed_sha != '' && format('heal-{0}', github.event.inputs.expected_healed_sha) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref || format('run-{0}', github.run_id) }}"
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
@@ -339,35 +341,6 @@ type WitnessFloorConcurrencyPolicy {
 // cancellation the moment this workflow reached main, while hosts that had not yet restarted onto
 // the new unit went on losing a permit per kill. The unobserved fleet is on the refusing side, so
 // that interval is unwritable rather than merely unlikely.
-type MutableHeadStanding
-  = MutableHeadSupersedable
-  | ImmutableExecutionSubject
-
-fn mutable_head_standing_of_event(event: String) -> MutableHeadStanding {
-  if is_mutable_ci_head_event(event: event) {
-    MutableHeadSupersedable
-  } else {
-    ImmutableExecutionSubject
-  }
-}
-
-fn fleet_running_cancel_is_safe(standing: FleetCompileCancellationStanding) -> Bool {
-  match standing {
-    FleetCancellationSafe { hosts: _ } => true
-    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => false
-  }
-}
-
-fn running_cancel_authorized(
-  mutable: MutableHeadStanding,
-  fleet: FleetCompileCancellationStanding,
-) -> Bool {
-  match mutable {
-    ImmutableExecutionSubject => false
-    MutableHeadSupersedable => fleet_running_cancel_is_safe(standing: fleet)
-  }
-}
-
 fn running_supersession_for_fleet_standing(
   standing: FleetCompileCancellationStanding,
 ) -> RunningSupersessionPolicy {
