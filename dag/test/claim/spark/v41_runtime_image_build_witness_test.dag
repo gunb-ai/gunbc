@@ -42,14 +42,20 @@ import gunbc.spark.vllm_runtime_image_build {
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
 }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import gunbc.spark.serving_runtime_capability_probe {
+  v41_sm121_capability_probe_rows, v41_gb10_source_build_probe, gb10_observed_compute_capability,
+  capability_outcome, CapabilityOutcomeLookup, OutcomeFound, OutcomeUnrecorded, OutcomeConflicted,
+  KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused, KernelProbeSymbolUngrounded,
+  ArchitectureRegistered, MlaKvCacheLayoutAdmitted, Fp4WeightSupportedHere, Fp4WeightKernels,
+  FlashInferSparseMlaSm120Symbols,
+}
 import gunbc.spark.v41_runtime_image_probe {
-  V41CapabilityPresent, V41CapabilityAbsent, V41CapabilityUnread,
-  v41_capability_kv_layout, v41_capability_fp4_weight, v41_capability_architecture,
-  v41_probe_script, v41_capability_reading, v41_probe_architecture_class,
-  v41_capability_flashinfer_sm120,
-  v41_absent_capabilities_of, v41_unread_capabilities_of, v41_reading_is_present, v41_recorded,
-  V41RecordedReading,
-  v41_probed_architecture_present, v41_probed_sibling_architecture, v41_probed_sibling_architecture_present,
+  V41CapabilityReading, V41CapabilityPresent, V41CapabilityAbsent, V41CapabilityUnread,
+  v41_probe_label,
+  v41_probe_script, v41_capability_reading,
+  v41_absent_capabilities_of, v41_unread_capabilities_of,
+  v41_probed_sibling_architecture, v41_probed_sibling_architecture_present,
   v41_probed_admitted_kv_layouts, v41_probed_rejected_kv_layouts, v41_probed_layout_admitted,
 }
 
@@ -140,7 +146,7 @@ test fn the_generated_probe_script_names_every_symbol_the_roster_declares() -> B
     && script_names_all(symbols: v41_csa2_surface.python_modules)
     && script_names_all(symbols: v41_dspark_surface.python_modules)
     && script_names_all(symbols: v41_sm12_demand_symbols())
-    && string_contains(s: v41_probe_script(), pattern: v41_probe_architecture_class as String)
+    && string_contains(s: v41_probe_script(), pattern: deepseek_v4_1_flash_architecture_class as String)
 }
 
 // THE LAYOUT QUESTION IS ASKED BY CALLING THE ADMISSION RULE AND IT ASKS ABOUT THE LAYOUT THAT IS
@@ -164,22 +170,22 @@ test fn a_capability_with_no_verdict_line_reads_unread_and_never_absent() -> Boo
   let silent = "DETAIL mla-kv-cache-layout-admitted error ImportError\n"
   let measured = "VERDICT mla-kv-cache-layout-admitted=absent\n"
   let present = "VERDICT fp4-weight-kernels=present\n"
-  (match v41_capability_reading(stdout: silent, capability: v41_capability_kv_layout) {
+  (match v41_capability_reading(stdout: silent, capability: v41_probe_label(c: MlaKvCacheLayoutAdmitted)) {
     V41CapabilityUnread { capability: _, cause: _ } => true
     V41CapabilityAbsent { capability: _ } => false
     V41CapabilityPresent { capability: _ } => false
   })
-    && (match v41_capability_reading(stdout: measured, capability: v41_capability_kv_layout) {
+    && (match v41_capability_reading(stdout: measured, capability: v41_probe_label(c: MlaKvCacheLayoutAdmitted)) {
       V41CapabilityAbsent { capability: _ } => true
       V41CapabilityUnread { capability: _, cause: _ } => false
       V41CapabilityPresent { capability: _ } => false
     })
-    && (match v41_capability_reading(stdout: present, capability: v41_capability_fp4_weight) {
+    && (match v41_capability_reading(stdout: present, capability: v41_probe_label(c: Fp4WeightKernels)) {
       V41CapabilityPresent { capability: _ } => true
       V41CapabilityAbsent { capability: _ } => false
       V41CapabilityUnread { capability: _, cause: _ } => false
     })
-    && (match v41_capability_reading(stdout: present, capability: v41_capability_architecture) {
+    && (match v41_capability_reading(stdout: present, capability: v41_probe_label(c: ArchitectureRegistered)) {
       V41CapabilityUnread { capability: _, cause: _ } => true
       V41CapabilityPresent { capability: _ } => false
       V41CapabilityAbsent { capability: _ } => false
@@ -194,7 +200,7 @@ test fn a_capability_with_no_verdict_line_reads_unread_and_never_absent() -> Boo
 // producer is fixed, because it is the producer that can regress.
 test fn contradictory_verdict_lines_read_unread_rather_than_present() -> Bool {
   let both = "VERDICT architecture-registered=present\nVERDICT architecture-registered=absent\n"
-  (match v41_capability_reading(stdout: both, capability: v41_capability_architecture) {
+  (match v41_capability_reading(stdout: both, capability: v41_probe_label(c: ArchitectureRegistered)) {
     V41CapabilityUnread { capability: _, cause: _ } => true
     V41CapabilityPresent { capability: _ } => false
     V41CapabilityAbsent { capability: _ } => false
@@ -263,11 +269,26 @@ test fn the_in_image_layout_admission_agrees_with_the_source_at_the_pinned_revis
 // sibling is the discriminator -- the registry is not missing DeepSeek entries, it is missing this
 // one -- and both sources are asserted to agree about it too.
 test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped() -> Bool {
-  !v41_probed_architecture_present
+  (match capability_outcome(
+     rows: v41_sm121_capability_probe_rows(),
+     image_reference: v41_gb10_source_build_probe.image_reference,
+     capability: ArchitectureRegistered,
+     device: gb10_observed_compute_capability,
+   ) {
+     OutcomeUnrecorded => false
+     OutcomeConflicted { distinct_answers: _ } => false
+     OutcomeFound { outcome: o } =>
+       match o {
+         KernelObservedAbsent { symbol: _ } => true
+         KernelObservedPresent { symbol: _ } => false
+         KernelProbeRefused { reason: _ } => false
+         KernelProbeSymbolUngrounded { roster: _, defect: _ } => false
+       }
+   })
     && !vllm_07b75534_registry_maps_deepseek_v4_1
     && v41_probed_sibling_architecture_present
     && vllm_07b75534_registry_answers_for(architecture: v41_probed_sibling_architecture)
-    && !vllm_07b75534_registry_answers_for(architecture: v41_probe_architecture_class)
+    && !vllm_07b75534_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
 }
 
 // TWO READINGS, JOINED, AND NEITHER OF THEM IS A STATEMENT ABOUT WHERE THE PUBLISHED IMAGE CAME FROM.
@@ -377,17 +398,17 @@ test fn the_reader_parses_verdict_lines_rather_than_searching_the_output() -> Bo
   let prefix_collision = "VERDICT fp4-weight-kernels-extended=present\n"
   let inside_a_detail = "DETAIL something NOT_VERDICT fp4-weight-kernels=present in prose\n"
   let unknown_value = "VERDICT fp4-weight-kernels=present_garbage\n"
-  (match v41_capability_reading(stdout: prefix_collision, capability: v41_capability_fp4_weight) {
+  (match v41_capability_reading(stdout: prefix_collision, capability: v41_probe_label(c: Fp4WeightKernels)) {
     V41CapabilityUnread { capability: _, cause: _ } => true
     V41CapabilityPresent { capability: _ } => false
     V41CapabilityAbsent { capability: _ } => false
   })
-    && (match v41_capability_reading(stdout: inside_a_detail, capability: v41_capability_fp4_weight) {
+    && (match v41_capability_reading(stdout: inside_a_detail, capability: v41_probe_label(c: Fp4WeightKernels)) {
       V41CapabilityUnread { capability: _, cause: _ } => true
       V41CapabilityPresent { capability: _ } => false
       V41CapabilityAbsent { capability: _ } => false
     })
-    && (match v41_capability_reading(stdout: unknown_value, capability: v41_capability_fp4_weight) {
+    && (match v41_capability_reading(stdout: unknown_value, capability: v41_probe_label(c: Fp4WeightKernels)) {
       V41CapabilityUnread { capability: _, cause: why } => string_contains(s: why, pattern: "present_garbage")
       V41CapabilityPresent { capability: _ } => false
       V41CapabilityAbsent { capability: _ } => false
@@ -404,10 +425,10 @@ test fn the_reader_parses_verdict_lines_rather_than_searching_the_output() -> Bo
 // them would let a question nobody put read as a capability nobody has. Over three readings built here
 // -- one of each outcome -- the two folds must disagree in exactly the right way, and a fold that
 // treated Unread as Absent goes red on the first clause.
-data probe_partition_fixture: List<V41RecordedReading> = [
-  v41_recorded(capability: "alpha" as NonEmptyStr, outcome: V41CapabilityPresent { capability: "alpha" as NonEmptyStr }),
-  v41_recorded(capability: "beta" as NonEmptyStr, outcome: V41CapabilityAbsent { capability: "beta" as NonEmptyStr }),
-  v41_recorded(capability: "gamma" as NonEmptyStr, outcome: V41CapabilityUnread { capability: "gamma" as NonEmptyStr, cause: "nobody asked" }),
+data probe_partition_fixture: List<V41CapabilityReading> = [
+  V41CapabilityPresent { capability: "alpha" as NonEmptyStr },
+  V41CapabilityAbsent { capability: "beta" as NonEmptyStr },
+  V41CapabilityUnread { capability: "gamma" as NonEmptyStr, cause: "nobody asked" },
 ]
 
 fn fixture_names(xs: List<NonEmptyStr>) -> String {
@@ -417,9 +438,6 @@ fn fixture_names(xs: List<NonEmptyStr>) -> String {
 test fn an_unasked_question_is_not_a_measured_absence() -> Bool {
   fixture_names(xs: v41_absent_capabilities_of(readings: probe_partition_fixture)) == "beta"
     && fixture_names(xs: v41_unread_capabilities_of(readings: probe_partition_fixture)) == "gamma"
-    && !v41_reading_is_present(r: v41_recorded(capability: "beta" as NonEmptyStr, outcome: V41CapabilityAbsent { capability: "beta" as NonEmptyStr }))
-    && !v41_reading_is_present(r: v41_recorded(capability: "gamma" as NonEmptyStr, outcome: V41CapabilityUnread { capability: "gamma" as NonEmptyStr, cause: "nobody asked" }))
-    && v41_reading_is_present(r: v41_recorded(capability: "alpha" as NonEmptyStr, outcome: V41CapabilityPresent { capability: "alpha" as NonEmptyStr }))
 }
 
 // A CLEAN TREE IS AN EMPTY ANSWER, AND ANYTHING ELSE REFUSES. `git status --porcelain` prints one line

@@ -5,10 +5,12 @@ import std.nat { Nat }
 import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout, v41_sm12_attention_class }
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
   timothystewart6_vllm_gb10_registry_reading, xomoxcc_dgx_spark_sglang_registry_reading,
+  gunbc_vllm_dsv41_gb10_registry_reading,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference,
@@ -98,10 +100,28 @@ type ProbedRuntimeImage sole_constructor {
 // SM120 decode API being importable (`has_flashinfer_sparse_mla_sm120`, the second arm of that same
 // branch). Both the layout and the symbols that answer for it live in the upstream roster named
 // below, never spelled here.
+// TWO MORE QUESTIONS ARRIVED WITH THE FIRST IMAGE THIS FLEET BUILT ITSELF, and they are here rather
+// than in the lane that asked them because a capability vocabulary with two homes is the fork this
+// module exists to prevent. Both are refinements of questions already on this list, and neither
+// collapses into the row it refines.
+//
+// Fp4WeightSupportedHere IS A CALL, NOT A LOOKUP. Fp4WeightKernels asks whether the FP4 GEMM entry
+// points were compiled into the extension. `cutlass_scaled_mm_supports_fp4(capability)` is the
+// PREDICATE vLLM itself calls to decide whether that GEMM can run on the device in front of it, and
+// an entry point that exists can still answer no here -- which is precisely the sm_121 question. A
+// probe that found the symbol and stopped has measured the build, not the device.
+//
+// FlashInferSparseMlaSm120Symbols IS THE SECOND ARM OF THE KV BRANCH. MlaKvCacheLayoutAdmitted asks
+// what the backend admits; on the major-12 arm that admission also requires FlashInfer's sparse MLA
+// SM120 decode entry points to be importable, and a package that lacks them fails the layout
+// question for a reason that has nothing to do with the layout. Kept apart, a refusal says which of
+// the two it was.
 type RuntimeKernelCapability
   = ArchitectureRegistered
   | Fp4WeightKernels
+  | Fp4WeightSupportedHere
   | MlaKvCacheLayoutAdmitted
+  | FlashInferSparseMlaSm120Symbols
   | Csa2CompressorKernels
   | DSparkSpeculator
 
@@ -109,7 +129,9 @@ fn runtime_kernel_capability_label(c: RuntimeKernelCapability) -> String {
   match c {
     ArchitectureRegistered => "architecture-registered"
     Fp4WeightKernels => "fp4-weight-kernels"
+    Fp4WeightSupportedHere => "fp4-weight-kernels-supported-here"
     MlaKvCacheLayoutAdmitted => "mla-kv-cache-layout-admitted"
+    FlashInferSparseMlaSm120Symbols => "flashinfer-sparse-mla-sm120-symbols"
     Csa2CompressorKernels => "csa2-compressor-kernels"
     DSparkSpeculator => "dspark-speculator"
   }
@@ -485,10 +507,16 @@ fn v41_serving_profile_label(p: V41ServingProfile) -> String {
   }
 }
 
+// THE TWO REFINED QUESTIONS ARE REQUIRED BY BOTH PROFILES, AND THAT IS A TIGHTENING. Speculation is
+// the only thing these profiles disagree about; the FP4 weight path running on THIS device, and the
+// FlashInfer entry points the major-12 KV branch reaches through, are needed to decode at all. An
+// image probed before those questions existed now reads UNPROBED for them rather than passing -- which
+// is the correct answer to a question nobody put to it, and the reason the verdict keeps unprobed
+// apart from missing.
 fn v41_required_capabilities(profile: V41ServingProfile) -> List<RuntimeKernelCapability> {
   match profile {
-    V41BaselineDecode => [ArchitectureRegistered, Fp4WeightKernels, MlaKvCacheLayoutAdmitted, Csa2CompressorKernels]
-    V41SpeculativeDecode => [ArchitectureRegistered, Fp4WeightKernels, MlaKvCacheLayoutAdmitted, Csa2CompressorKernels, DSparkSpeculator]
+    V41BaselineDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels]
+    V41SpeculativeDecode => [ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere, MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator]
   }
 }
 
@@ -624,10 +652,98 @@ data v41_sm121_sglang_probe_rows: List<RuntimeCapabilityProbeRow> = [
   },
 ]
 
+// ── THE IMAGE THIS FLEET BUILT ITSELF ──────────────────────────────────────────────────────────
+//
+// The sweep above measured images someone else published. This one was built on spark-a3ee from
+// vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397 by the modeled build in
+// gunbc.spark.vllm_runtime_image_build, and probed inside its own digest by the executable probe in
+// gunbc.spark.v41_runtime_image_probe -- the discharge the build obligation below asks for, taken on
+// the same accelerator with the same questions.
+//
+// THE REFERENCE IS AN IMAGE ID AND NOT A REPOSITORY PATH, because this image was never pushed
+// anywhere: it exists in one daemon's local store, and what identifies it there is the config digest
+// that daemon reported. Spelling the derived build tag here instead would have made the subject of a
+// receipt move whenever the recipe changed, which is the defect the readings above already corrected
+// once -- an observation's subject is whatever was observed, permanently.
+//
+// ITS ARCHITECTURE ROW DERIVES FROM A READING LIKE EVERY ROW ABOVE. The full list the registry
+// answered for is in gunbc.spark.runtime_architecture_registry_reading with its host, date and
+// instrument, so this row asks that reading rather than carrying a second hand-written answer about
+// the same run -- and the subject of both is the digest, not the derived build tag.
+data v41_gb10_source_build_probe: ProbedRuntimeImage = ProbedRuntimeImage {
+  image_reference: gunbc_vllm_dsv41_gb10_registry_reading.image_reference,
+  framework: "vllm" as NonEmptyStr,
+  framework_version: "0.1.dev1+g07b755346" as NonEmptyStr,
+}
+
+data v41_sm121_source_build_probe_rows: List<RuntimeCapabilityProbeRow> = [
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: ArchitectureRegistered,
+    outcome: architecture_registered_outcome(reading: gunbc_vllm_dsv41_gb10_registry_reading),
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: KernelObservedPresent { symbol: "every operator extdeps.vllm.deepseek_v4_1_sm12 v41_fp4_weight_surface declares, looked up in torch.ops inside this digest. This is the FULL weight surface and not the partial one the published candidates had: the GEMM and its support predicate are both registered here" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Fp4WeightSupportedHere,
+    outcome: KernelProbeRefused { reason: "the run that produced these rows found the predicate in the operator table and did not CALL it -- the probe asked the lookup question twice rather than asking the runtime. The probe has since been corrected to call it with the capability the interpreter reports, and this digest has not been re-probed since: the image lives on a host this lane is no longer permitted to run work on. Recording this as absent would turn a question nobody asked into evidence against the build" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: MlaKvCacheLayoutAdmitted,
+    outcome: KernelObservedPresent { symbol: join(["the backend's own supports_combination, called inside this digest at the device capability the image reported, admitted ", v41_sm12_kv_layout as String, " -- and rejected nvfp4_ds_mla, which is the layout the FP4 KV operators were once taken to stand for. The admitted and rejected sets it returned are recorded in gunbc.spark.v41_runtime_image_probe and joined there against extdeps.vllm.deepseek_v4_1_sm12's reading of the same rule at the pinned revision"], "") as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: FlashInferSparseMlaSm120Symbols,
+    outcome: KernelObservedPresent { symbol: "every entry point extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_demand_symbols declares, imported inside this digest. Symbol inventory only: the scoped dispatch-table question for this checkpoint's shapes was not asked, and upstream says the unscoped answer can pass where the scoped one refuses" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: Csa2CompressorKernels,
+    outcome: KernelObservedPresent { symbol: "the modules extdeps.vllm.deepseek_v4_1_sm12 v41_csa2_surface declares, each resolved inside this digest" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_gb10_source_build_probe,
+    host: "spark-a3ee" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11" as NonEmptyStr,
+    capability: DSparkSpeculator,
+    outcome: KernelObservedPresent { symbol: "the modules extdeps.vllm.deepseek_v4_1_sm12 v41_dspark_surface declares, each resolved inside this digest" as NonEmptyStr },
+  },
+]
+
 // THE ONE ROSTER EVERY READER SHOULD CONSUME, so no consumer can pick up the vLLM receipts and miss
-// the SGLang ones or the other way round.
+// the SGLang ones, the source-built one, or any other -- a sweep whose denominator splits is a sweep
+// that can report a clean result over half its subjects.
 fn v41_sm121_capability_probe_rows() -> List<RuntimeCapabilityProbeRow> {
-  fold(v41_sm121_sglang_probe_rows, init: v41_sm121_vllm_probe_rows, f: (acc, r) => append(acc, r))
+  fold(
+    concat(v41_sm121_sglang_probe_rows, v41_sm121_source_build_probe_rows),
+    init: v41_sm121_vllm_probe_rows,
+    f: (acc, r) => append(acc, r),
+  )
 }
 
 // ── THE BUILD OBLIGATION THIS SWEEP PRODUCED ───────────────────────────────────────────────────
@@ -658,7 +774,7 @@ data v41_sm121_build_obligation: RuntimeBuildObligation = RuntimeBuildObligation
   profile: V41SpeculativeDecode,
   device: gb10_observed_compute_capability,
   required: v41_required_capabilities(profile: V41SpeculativeDecode),
-  discharge: "run the same capability probe inside the built image's exact digest on a GB10 and append its rows here. The build's PREREQUISITE half is discharged only when every capability this profile requires reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree. That half is inventory; the build is FIT for service only once an engine has started from this image with the V4.1 checkpoint at a declared context and answered a request, which is a RuntimeFeasibility receipt in gunbc.spark.serving_deployment_selection and is not observed here. One of the five cannot be asked yet: the FP4 KV-cache question awaits its operator roster, and a discharge claimed while that capability reads KernelProbeSymbolUngrounded would be four answers and one blind spot" as NonEmptyStr,
+  discharge: "run the same capability probe inside the built image's exact digest on a GB10 and append its rows here. The build's PREREQUISITE half is discharged only when every capability this profile requires reads KernelObservedPresent for that digest at compute capability 12.1 -- a green build log is not a reading, and neither is the presence of vllm/models/deepseek_v4_1 in the source tree. That half is inventory; the build is FIT for service only once an engine has started from this image with the V4.1 checkpoint at a declared context and answered a request, which is a RuntimeFeasibility receipt in gunbc.spark.serving_deployment_selection and is not observed here. THIS OBLIGATION IS NOT DISCHARGED, and the rows for the built image say why: extdeps.vllm.deepseek_v4_1_sm12 has landed, so the KV question is asked as the layout the backend admits rather than by ungrounded operator names, and the image built from that revision answered PRESENT to every kernel question and ABSENT to the registry one -- the architecture the profile needs is not registered in it. A build carrying the kernels and not the entry point is ruled out by the same list that would have ruled it in" as NonEmptyStr,
 }
 
 // WHAT EACH CAPABILITY MEANS IS THE SYMBOL THE PROBE ASKED FOR, carried beside the obligation so the
@@ -675,10 +791,9 @@ fn v41_capability_probe_symbol(c: RuntimeKernelCapability) -> CapabilityProbeSym
   match c {
     ArchitectureRegistered => ProbeSymbolGrounded { symbol: v41_probe_registry_symbol }
     Fp4WeightKernels => ProbeSymbolGrounded { symbol: "torch.ops.* : cutlass_scaled_fp4_mm and cutlass_scaled_mm_supports_fp4, both registered at the pinned upstream revision. scaled_fp4_quant alone is the quantiser, not the FP4 GEMM, and every image probed so far had exactly that partial surface" as NonEmptyStr }
-    MlaKvCacheLayoutAdmitted => ProbeSymbolAwaitingRoster {
-      roster: "extdeps.vllm.deepseek_v4_1_sm12" as NonEmptyStr,
-      trigger: "that roster landing with the sm_12x KV layout fact and the symbols that answer for it -- the admitted layout (fp8_ds_mla, per supports_combination at device capability major 12) and FlashInfer's sparse MLA SM120 decode API, which that same branch requires. The operator names this module asked before were not registered ops AND stood for a layout this hardware never selects, so neither the spelling nor the question survived contact with upstream. Both belong in the roster's one home, and this capability is re-read from there rather than re-spelled here" as NonEmptyStr,
-    }
+    Fp4WeightSupportedHere => ProbeSymbolGrounded { symbol: "torch.ops._C.cutlass_scaled_mm_supports_fp4, CALLED with the compute capability the interpreter itself reported inside the image, and its return value read as the answer. The symbol's presence is the Fp4WeightKernels question; this one is what the runtime says about this device" as NonEmptyStr }
+    MlaKvCacheLayoutAdmitted => ProbeSymbolGrounded { symbol: join(["the layout ", v41_sm12_kv_layout as String, ", as extdeps.vllm.deepseek_v4_1_sm12 reads it out of the pinned revision, asked of the backend itself: supports_combination is CALLED once per candidate dtype at the device capability the image reports, and returns none for an admitted combination. No operator name is looked up, because the operators that exist are present in any image with the compiled extension and decide nothing here"], "") as NonEmptyStr }
+    FlashInferSparseMlaSm120Symbols => ProbeSymbolGrounded { symbol: join(["the FlashInfer sparse MLA SM120 decode entry points extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_demand_symbols declares, each imported inside the image. They are what ", v41_sm12_attention_class as String, " requires on the major-12 arm, and they are asked separately from the layout so a missing package does not read as a rejected layout. The SCOPED question -- has_flashinfer_sparse_mla_sm120_config, which asks whether the dispatch table carries a specialization for this checkpoint's head count and top-k -- is not this capability, and upstream's own docstring says the unscoped one can pass where the scoped one refuses"], "") as NonEmptyStr }
     Csa2CompressorKernels => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.compressor and vllm.models.deepseek_v4_1.sparse_mla -- the compressed sparse attention path, whose compressor pools compress_ratio tokens into one KV latent. Both paths exist in the upstream tree at the pinned revision" as NonEmptyStr }
     DSparkSpeculator => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.nvidia.dspark and vllm.v1.worker.gpu.spec_decode.dspark, both present in the upstream tree at the pinned revision" as NonEmptyStr }
   }

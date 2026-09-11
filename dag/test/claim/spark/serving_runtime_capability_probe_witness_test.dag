@@ -16,6 +16,7 @@ import gunbc.spark.runtime_architecture_registry_reading {
 
 import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
@@ -129,14 +130,15 @@ test fn a_capability_asked_with_an_unauthored_symbol_is_unprobed_and_never_missi
     })
 }
 
-// AND THE OBLIGATION MUST NOT HAND THE BUILD LANE A SYMBOL WE INVENTED. The capability whose roster
-// has not landed carries a frontier naming that roster, not a corrected spelling of our own: one
-// upstream name, one home.
-test fn the_capability_without_a_landed_roster_carries_a_frontier_not_a_spelling() -> Bool {
+// THE FRONTIER FIRED, SO THE PROBE DOES NOT FLIP TO A SPELLING OF OUR OWN. This capability carried a
+// ProbeSymbolAwaitingRoster while extdeps.vllm.deepseek_v4_1_sm12 was unlanded; that roster is on the
+// tree, so the symbol is grounded -- and what it must be grounded IN is the roster's value, not a
+// string this module reinvented while the import was available. The join is against the roster's own
+// declaration, which is the one thing an author cannot satisfy by editing this file.
+test fn the_landed_roster_grounds_the_kv_symbol_in_the_rosters_own_value() -> Bool {
   match v41_capability_probe_symbol(c: MlaKvCacheLayoutAdmitted) {
-    ProbeSymbolGrounded { symbol: _ } => false
-    ProbeSymbolAwaitingRoster { roster: ro, trigger: t } =>
-      ro as String == "extdeps.vllm.deepseek_v4_1_sm12" && length(t as String) != 0
+    ProbeSymbolAwaitingRoster { roster: _, trigger: _ } => false
+    ProbeSymbolGrounded { symbol: sym } => string_contains(s: sym as String, pattern: v41_sm12_kv_layout as String)
   }
 }
 

@@ -46,6 +46,12 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.spark.fabric_reach { ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import gunbc.spark.serving_runtime_capability_probe {
+  RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere,
+  MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator,
+  runtime_kernel_capability_label,
+}
 import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe, spark_build_host_admissible, admissible_spark_build_hosts }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
@@ -90,52 +96,21 @@ import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe, spark_build_host_
 // table. What IS modelled is everything around it: which names are asked, in what image, on what
 // host, over what transport, and how the answer is read back.
 
-// ── THE CAPABILITY NAMES ──────────────────────────────────────────────────────────────────────
+// ── THE CAPABILITY NAMES COME FROM THE AUTHORITY THAT OWNS THEM ──────────────────────────────
 //
-// 🟡 dissolve-on: these five labels are the strings gunbc.spark.serving_runtime_capability_probe
-// runtime_kernel_capability_label produces, and they are spelled here because that module is still
-// in flight (#11016). They are replaced by an import of it the moment it lands, and the probe rows
-// this lane produces are appended to ITS roster rather than kept here -- one image's capability
-// readings belong beside every other image's, or the sweep's denominator silently splits in two.
-data v41_capability_architecture: NonEmptyStr = "architecture-registered" as NonEmptyStr
-data v41_capability_fp4_weight: NonEmptyStr = "fp4-weight-kernels" as NonEmptyStr
-// RENAMED FROM fp4-kv-cache-kernels, and the rename is the finding rather than tidying. The four FP4
-// KV operators that exist at this revision are registered by the compiled extension unconditionally,
-// so asking whether they are present answers yes in any image that has the extension at all -- while
-// the layout those operators were being used to stand for, nvfp4_ds_mla, is rejected on device major
-// 12 by the backend's own admission rule whatever is compiled. The question that decides something on
-// this hardware is which KV layout the backend admits here, so that is the question asked.
-data v41_capability_kv_layout: NonEmptyStr = "mla-kv-cache-layout-admitted" as NonEmptyStr
-data v41_capability_csa2: NonEmptyStr = "csa2-compressor-kernels" as NonEmptyStr
-data v41_capability_dspark: NonEmptyStr = "dspark-speculator" as NonEmptyStr
-// THE NAME SAYS SYMBOL INVENTORY, BECAUSE THAT IS WHAT IS MEASURED. Upstream asks two questions
-// about the SM120 sparse decode path and they are not the same: has_flashinfer_sparse_mla_sm120 checks
-// that three entry points are importable and callable, which is what this capability measures, while
-// has_flashinfer_sparse_mla_sm120_config(num_q_heads, top_k) asks whether the DISPATCH TABLE carries a
-// specialization for THIS MODEL'S shapes -- and upstream's own docstring says the first can pass for a
-// package that later rejects a valid configuration. Reporting the first under a name that sounds like
-// the second is promoting symbol existence into hardware support.
+// gunbc.spark.serving_runtime_capability_probe owns RuntimeKernelCapability and the label each one
+// renders to. This lane spelled those strings itself while that module was in flight (#11016); it has
+// landed, so the spellings are gone and the probe asks its questions by the authority's own names. A
+// label this module wrote and a label that module wrote agreeing today is not a property anything
+// preserves tomorrow, and a probe printing a verdict under a name no reader looks up is a run that
+// measured an image and told nobody.
 //
-// 🟡 dissolve-on: the scoped question needs `num_q_heads` and `top_k` for this checkpoint -- padded
-// head count, and the SWA specialization width that _required_sm120_sparse_topk derives from the
-// window size and the speculative token count. Those come from the model's own config and speculative
-// config, which this lane does not have modeled; when extdeps.deepseek.deepseek_v4_1_flash carries
-// them, the probe calls has_flashinfer_sparse_mla_sm120_config with them and this capability is
-// replaced by the scoped one.
-data v41_capability_flashinfer_sm120: NonEmptyStr = "flashinfer-sparse-mla-sm120-symbols" as NonEmptyStr
-
-// FP4 SUPPORT IS A QUESTION THE RUNTIME ANSWERS, NOT A SYMBOL THAT EXISTS.
-// `cutlass_scaled_mm_supports_fp4(cuda_device_capability)` is a PREDICATE: vLLM calls it to decide
-// whether the FP4 GEMM can run on this device, and its presence in the operator table says only that
-// the extension was compiled with the entry point. So it is called, with the capability the
-// interpreter itself reported, and its ANSWER is what the verdict reads.
-data v41_capability_fp4_support: NonEmptyStr = "fp4-weight-kernels-supported-here" as NonEmptyStr
-
-// 🟡 dissolve-on: the architecture class name is owned by extdeps.deepseek.deepseek_v4_1_flash
-// (DSV41-0, #11007), which has not landed on main. It is spelled here so the probe is executable;
-// it is replaced by an import of that module the moment it lands. A second spelling of a model's
-// architecture name is the fork this repository consolidates later at interest.
-data v41_probe_architecture_class: NonEmptyStr = "DeepseekV41ForCausalLM" as NonEmptyStr
+// THE CAST IS TO THE TYPE THE SCRIPT GENERATOR NEEDS, NOT A CLAIM ABOUT THE LABEL. Every arm of that
+// match is a non-empty literal, so no label can be empty; the cast is what lets a rendered name be
+// quoted into the program the same way an authored symbol is.
+fn v41_probe_label(c: RuntimeKernelCapability) -> NonEmptyStr {
+  runtime_kernel_capability_label(c: c) as NonEmptyStr
+}
 
 // ── THE SCRIPT ────────────────────────────────────────────────────────────────────────────────
 
@@ -182,10 +157,10 @@ fn v41_py_fp4_support_block() -> String {
   join([
     "try:\n",
     "    _supports_fp4 = bool(torch.ops._C.cutlass_scaled_mm_supports_fp4(major * 10 + minor))\n",
-    "    print(\"DETAIL\", ", v41_py_quote(s: v41_capability_fp4_support), ", \"call\", \"_C.cutlass_scaled_mm_supports_fp4\", \"found\", str(_supports_fp4))\n",
-    "    print(\"VERDICT\", ", v41_py_quote(s: v41_capability_fp4_support), " + \"=\" + (\"present\" if _supports_fp4 else \"absent\"))\n",
+    "    print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: Fp4WeightSupportedHere)), ", \"call\", \"_C.cutlass_scaled_mm_supports_fp4\", \"found\", str(_supports_fp4))\n",
+    "    print(\"VERDICT\", ", v41_py_quote(s: v41_probe_label(c: Fp4WeightSupportedHere)), " + \"=\" + (\"present\" if _supports_fp4 else \"absent\"))\n",
     "except Exception as _error:\n",
-    "    print(\"DETAIL\", ", v41_py_quote(s: v41_capability_fp4_support), ", \"call\", \"_C.cutlass_scaled_mm_supports_fp4\", \"errored\", repr(_error))\n",
+    "    print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: Fp4WeightSupportedHere)), ", \"call\", \"_C.cutlass_scaled_mm_supports_fp4\", \"errored\", repr(_error))\n",
   ], "")
 }
 
@@ -201,14 +176,14 @@ fn v41_py_kv_layout_block() -> String {
     "            head_size=512, dtype=_torch.bfloat16, kv_cache_dtype=_dtype, block_size=64,\n",
     "            use_mla=True, has_sink=True, use_sparse=True, use_mm_prefix=False,\n",
     "            device_capability=_capability(major, minor))\n",
-    "        print(\"DETAIL\", ", v41_py_quote(s: v41_capability_kv_layout), ", \"layout\", _dtype, \"admitted\" if _reason is None else \"rejected:\" + str(_reason))\n",
+    "        print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: MlaKvCacheLayoutAdmitted)), ", \"layout\", _dtype, \"admitted\" if _reason is None else \"rejected:\" + str(_reason))\n",
     "        if _reason is None:\n",
     "            _admitted.append(_dtype)\n",
     "    print(\"ADMITTED_LAYOUTS\", \",\".join(_admitted))\n",
-    "    print(\"VERDICT\", ", v41_py_quote(s: v41_capability_kv_layout),
+    "    print(\"VERDICT\", ", v41_py_quote(s: v41_probe_label(c: MlaKvCacheLayoutAdmitted)),
     " + \"=\" + (\"present\" if ", v41_py_quote(s: v41_sm12_kv_layout), " in _admitted else \"absent\"))\n",
     "except Exception as _error:\n",
-    "    print(\"DETAIL\", ", v41_py_quote(s: v41_capability_kv_layout), ", \"error\", repr(_error))\n",
+    "    print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: MlaKvCacheLayoutAdmitted)), ", \"error\", repr(_error))\n",
   ], "")
 }
 
@@ -305,15 +280,15 @@ fn v41_probe_script() -> String {
     "print(\"REGISTRY_COUNT\", len(architectures))\n",
     "for architecture in architectures:\n",
     "    print(\"REGISTERED\", architecture)\n",
-    "print(\"DETAIL\", ", v41_py_quote(s: v41_capability_architecture), ", \"registry\", ", v41_py_quote(s: v41_probe_architecture_class), ", \"found\" if ", v41_py_quote(s: v41_probe_architecture_class), " in architectures else \"missing\", \"\")\n",
-    "print(\"VERDICT\", ", v41_py_quote(s: v41_capability_architecture),
-    " + \"=\" + (\"present\" if ", v41_py_quote(s: v41_probe_architecture_class), " in architectures else \"absent\"))\n",
-    v41_py_capability_call(label: v41_capability_fp4_weight, surface: v41_fp4_weight_surface),
+    "print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: ArchitectureRegistered)), ", \"registry\", ", v41_py_quote(s: deepseek_v4_1_flash_architecture_class), ", \"found\" if ", v41_py_quote(s: deepseek_v4_1_flash_architecture_class), " in architectures else \"missing\", \"\")\n",
+    "print(\"VERDICT\", ", v41_py_quote(s: v41_probe_label(c: ArchitectureRegistered)),
+    " + \"=\" + (\"present\" if ", v41_py_quote(s: deepseek_v4_1_flash_architecture_class), " in architectures else \"absent\"))\n",
+    v41_py_capability_call(label: v41_probe_label(c: Fp4WeightKernels), surface: v41_fp4_weight_surface),
     v41_py_fp4_support_block(),
     v41_py_kv_layout_block(),
-    v41_py_capability_call(label: v41_capability_csa2, surface: v41_csa2_surface),
-    v41_py_capability_call(label: v41_capability_dspark, surface: v41_dspark_surface),
-    "report(", v41_py_quote(s: v41_capability_flashinfer_sm120),
+    v41_py_capability_call(label: v41_probe_label(c: Csa2CompressorKernels), surface: v41_csa2_surface),
+    v41_py_capability_call(label: v41_probe_label(c: DSparkSpeculator), surface: v41_dspark_surface),
+    "report(", v41_py_quote(s: v41_probe_label(c: FlashInferSparseMlaSm120Symbols)),
     ", ops=[], modules=[], attrs=", v41_py_list(xs: v41_sm12_demand_symbols()), ")\n",
   ], "")
 }
@@ -437,14 +412,18 @@ fn v41_capability_reading(stdout: String, capability: NonEmptyStr) -> V41Capabil
   }
 }
 
-data v41_probed_capabilities: List<NonEmptyStr> = [
-  v41_capability_architecture,
-  v41_capability_fp4_weight,
-  v41_capability_fp4_support,
-  v41_capability_kv_layout,
-  v41_capability_csa2,
-  v41_capability_dspark,
-  v41_capability_flashinfer_sm120,
+// THE QUESTIONS THIS PROBE PUTS, AS THE AUTHORITY'S CAPABILITIES RATHER THAN AS NAMES. The list is
+// this lane's, not the authority's: it is what THIS script asks, which is a superset of what any one
+// serving profile requires, and a probe that asked fewer questions than it reports on would leave a
+// reader unable to tell an unasked question from a missing one.
+data v41_probed_capabilities: List<RuntimeKernelCapability> = [
+  ArchitectureRegistered,
+  Fp4WeightKernels,
+  Fp4WeightSupportedHere,
+  MlaKvCacheLayoutAdmitted,
+  Csa2CompressorKernels,
+  DSparkSpeculator,
+  FlashInferSparseMlaSm120Symbols,
 ]
 
 fn v41_capability_reading_line(r: V41CapabilityReading) -> String {
@@ -484,6 +463,8 @@ fn v41_probe_body(o: V41ProbeOutcome) -> String {
     V41ProbeRead { reference: ref, observed_digest: digest, stdout: out, readings: rs } =>
       join([
         join(["probed reference=", ref as String, " observed_digest=", digest as String, "\n"], ""),
+        join(["absent=", join(map(v41_absent_capabilities_of(readings: rs), c => c as String), ","),
+              " unread=", join(map(v41_unread_capabilities_of(readings: rs), c => c as String), ","), "\n"], ""),
         join(map(rs, r => v41_capability_reading_line(r: r)), ""),
         "--- probe stdout ---\n",
         out,
@@ -492,58 +473,32 @@ fn v41_probe_body(o: V41ProbeOutcome) -> String {
   }
 }
 
-// ── THE READINGS THIS LANE TOOK ───────────────────────────────────────────────────────────────
+// ── WHAT THIS LANE READ THAT IS NOT A CAPABILITY ──────────────────────────────────────────────
 //
-// EXECUTED, NOT PREDICTED. Every row below was produced by the generated script above running inside
-// the digest named beside it, through `docker run --rm --entrypoint python3 --gpus all`, on a GB10
-// whose interpreter reported compute capability 12.1 and whose vLLM reported 0.1.dev1+g07b755346 --
-// the version string CONTAINS the commit -- which is what the packager stamped, not proof that these
-// bytes were compiled from it. It is recorded because a self-report is still evidence about the
-// artifact; it is not recorded as provenance, for the same reason extdeps.vllm.server declines to read
-// a server's version prefix as runtime provenance.
+// EXECUTED, NOT PREDICTED. The rows below were produced by the generated script above running inside
+// the digest gunbc.spark.serving_runtime_capability_probe names for this image, through `docker run
+// --rm --entrypoint python3 --gpus all`, on a GB10 whose interpreter reported compute capability 12.1
+// and whose vLLM reported the version string that CONTAINS the lead commit -- which is what the
+// packager stamped, not proof that these bytes were compiled from it. It is evidence about the
+// artifact; it is not provenance, for the same reason extdeps.vllm.server declines to read a server's
+// version prefix as runtime provenance.
 //
-// A RECEIPT IS NOT A TRANSCRIPTION, AND THE DIFFERENCE IS WHETHER ANYTHING CAN CHECK IT. An earlier
-// revision carried each reading as a sentence in an `evidence: NonEmptyStr` field, and the witness
-// asserted `string_contains` over those sentences -- prose this same change authored, checked against
-// itself, which is the `measure() == measure()` change detector DESIGN §5 names and not an oracle at
-// all. The rows now carry the OUTCOME in the type the reader already uses and the measured VALUES in
-// their own typed fields, so a witness can join them against an INDEPENDENT source: what upstream's
-// code says the backend admits, read at the pinned revision by extdeps.vllm.deepseek_v4_1_sm12. Two
-// differently-sourced facts agreeing is evidence; a sentence matching itself is not. The rationale
-// that used to live in those fields is annotation, where §4c puts prose.
+// AND THE SEVEN CAPABILITY READINGS ARE NOT AMONG THEM. They are in the authority's roster, where a
+// consumer sweeping every probed image finds them. What is here is what that vocabulary does not ask:
+// a companion registry fact, and the layout sets the backend returned. Both are joined in the
+// witnesses against an INDEPENDENT source -- what upstream's code says at the pinned revision, read by
+// extdeps.vllm.deepseek_v4_1_sm12 -- because two differently-sourced facts agreeing is evidence and a
+// sentence matching itself is not.
 //
-// 🟡 dissolve-on: these rows move to gunbc.spark.serving_runtime_capability_probe's roster the moment
-// #11016 lands. One image's capability readings belong beside every other image's, or the sweep's
-// denominator silently splits in two; they are here only because that roster is not yet on main.
-type V41RecordedReading sole_constructor {
-  capability: NonEmptyStr
-  outcome: V41CapabilityReading
-}
-
-fn v41_recorded(capability: NonEmptyStr, outcome: V41CapabilityReading) -> V41RecordedReading {
-  V41RecordedReading { capability: capability, outcome: outcome }
-}
-
-data v41_probed_digest: NonEmptyStr = "sha256:b8b4ef35b17c2dd10c73f323819996f8928f0e5bd52f8980eedd9c634162461f" as NonEmptyStr
-data v41_probed_at: NonEmptyStr = "2026-09-11" as NonEmptyStr
-// A COMPUTE CAPABILITY IS A PAIR, NOT A STRING. `torch.cuda.get_device_capability` returns (major,
-// minor) and the two are read separately by every arm that dispatches on them -- the SM12 branch tests
-// the MAJOR alone -- so carrying "12.1" as text is a join waiting to be done by substring.
-// 🟡 dissolve-on: replaced by gunbc.spark.serving_runtime_capability_probe's ComputeCapability, which
-// is the declared home for this shape, when #11016 lands; spelled as two fields here rather than
-// minting a second record for it.
-data v41_probed_compute_capability_major: Nat = 12
-data v41_probed_compute_capability_minor: Nat = 1
-data v41_probed_framework_version: NonEmptyStr = "0.1.dev1+g07b755346" as NonEmptyStr
-
-// THE ARCHITECTURES THE IMAGE ANSWERED FOR, as a membership question rather than a count. The count
-// an earlier revision carried (383) was a number nothing could check: it summarised a list the row
-// did not hold, so it could only ever be compared against itself. What decides the lane is whether
-// ONE name is in that list, and that is what is recorded.
-data v41_probed_architecture_present: Bool = false
-
 // A DEEPSEEK NAME THE IMAGE DOES ANSWER FOR, recorded because it is what makes the absence
 // discriminating: the registry is not missing DeepSeek entries, it is missing the V4.1 one.
+//
+// THE ABSENCE ITSELF IS NOT HERE. It is a capability reading, and capability readings have one home:
+// gunbc.spark.serving_runtime_capability_probe's roster, where this digest's ArchitectureRegistered
+// row sits beside every other image's. What stays here is the COMPANION fact that rules out the two
+// readings a bare absence is compatible with -- an empty registry, and a probe that never imported
+// one -- because it is a different question about the same run and nothing in the capability
+// vocabulary asks it.
 data v41_probed_sibling_architecture: NonEmptyStr = "DeepseekV4ForCausalLM" as NonEmptyStr
 data v41_probed_sibling_architecture_present: Bool = true
 
@@ -567,73 +522,36 @@ fn v41_probed_layout_admitted(dtype: NonEmptyStr) -> Bool {
     if acc { true } else { d as String == dtype as String })
 }
 
-// WHAT THE RECORDED RUN ASKED, AND WHAT IT DID NOT.
+// ── WHAT A RUN READ, PARTITIONED ──────────────────────────────────────────────────────────────
 //
-// THE ONE MEASURED ABSENCE IS THE ONE THE LANE EXISTED TO SETTLE. The image built from the lead commit
-// did not answer for the V4.1 architecture when its own registry was asked. Two SOURCE facts sit
-// beside that reading and are joined to it in the witness rather than folded into it: the class is in
-// the tree at vllm/models/deepseek_v4_1/nvidia/vl_model.py, and registry.py at that revision maps no
-// name to vllm.models.deepseek_v4_1 while DeepseekV4ForCausalLM maps to vllm.models.deepseek_v4.
+// THE READINGS THIS LANE TOOK ARE NOT HERE ANY MORE, AND THAT IS THE POINT. They were rows in this
+// module while gunbc.spark.serving_runtime_capability_probe was in flight; it has landed, so this
+// image's seven readings sit in ITS roster, keyed by the digest they were taken in and by the
+// vendor-qualified device they were taken on, beside every other image's. One image's capability
+// readings kept apart from the rest is a sweep whose denominator has silently split in two.
 //
-// WHAT THAT DOES NOT SAY. It does not say the build failed, and it does not say an architecture gate
-// dropped anything -- the reading is about a registry lookup, and the source rows are about a file.
-// The five presences are likewise symbol and admission readings: what resolved, and what the backend
-// answered when asked. None of them is a statement that a kernel is correct, fast, or exercised.
+// WHAT STAYS IS THE PARTITION ITSELF, applied to what a LIVE probe just read. A run parses one
+// verdict line per capability and gets three answers, and the two that are not `present` rank the
+// image out for different reasons: an absence is a fact about the image, an unread is a fact about
+// the run. Folded together -- as an earlier revision folded them, into one "unmet" list -- a question
+// nobody asked reads as a capability nobody has, and the fix is a re-probe rather than a rebuild.
 //
-// ONE CAPABILITY IS UNREAD BECAUSE THE RUN THAT PRODUCED THESE ROWS NEVER ASKED IT. The probe has
-// since been corrected to CALL cutlass_scaled_mm_supports_fp4 rather than merely find it -- symbol
-// presence in the operator table is not the runtime's answer about this device -- and that question
-// has not been put to this image yet. It is recorded as unread rather than folded into the weight-
-// kernel row, because "the entry point is compiled in" and "the runtime says it can run here" are
-// different facts and only the first was measured.
-//
-// AND WHAT THE PROBE'S OTHER CORRECTION DOES NOT CHANGE, stated because a corrected instrument invites
-// the question: the old helpers returned False on any exception, which could manufacture an absence.
-// Every row below except the architecture one is a PRESENCE, which that defect cannot produce; the
-// architecture row is computed by membership in a list the same run printed in full (383 names), not
-// through an exception-prone lookup. So no recorded value depends on the arm that was wrong.
-data v41_image_capability_readings: List<V41RecordedReading> = [
-  v41_recorded(capability: v41_capability_architecture, outcome: V41CapabilityAbsent { capability: v41_capability_architecture }),
-  v41_recorded(capability: v41_capability_fp4_weight, outcome: V41CapabilityPresent { capability: v41_capability_fp4_weight }),
-  v41_recorded(capability: v41_capability_fp4_support, outcome: V41CapabilityUnread { capability: v41_capability_fp4_support, cause: "the recorded run found the predicate in the operator table and did not call it; the corrected probe calls it and this image has not been re-probed" }),
-  v41_recorded(capability: v41_capability_kv_layout, outcome: V41CapabilityPresent { capability: v41_capability_kv_layout }),
-  v41_recorded(capability: v41_capability_csa2, outcome: V41CapabilityPresent { capability: v41_capability_csa2 }),
-  v41_recorded(capability: v41_capability_dspark, outcome: V41CapabilityPresent { capability: v41_capability_dspark }),
-  v41_recorded(capability: v41_capability_flashinfer_sm120, outcome: V41CapabilityPresent { capability: v41_capability_flashinfer_sm120 }),
-]
-
-fn v41_reading_is_present(r: V41RecordedReading) -> Bool {
-  match r.outcome {
-    V41CapabilityPresent { capability: _ } => true
-    V41CapabilityAbsent { capability: _ } => false
-    V41CapabilityUnread { capability: _, cause: _ } => false
-  }
-}
-
-// MEASURED ABSENCE AND UNASKED QUESTION ARE REPORTED SEPARATELY, because they rank an image out for
-// different reasons and only the first is a fact about the image. An earlier revision folded both
-// into one "unmet" list, which made a question nobody asked look like a capability nobody has.
-fn v41_absent_capabilities_of(readings: List<V41RecordedReading>) -> List<NonEmptyStr> {
+// THE FOLDS TAKE THEIR READINGS AS AN ARGUMENT, which is what lets a witness exercise them against
+// readings it builds. Asserting which capability a RECORDED roster lands in would compare this
+// change's rows to this change's rows and go red only when an author edits one; that the two buckets
+// stay disjoint at all is a property of the folds, and it is checkable.
+fn v41_absent_capabilities_of(readings: List<V41CapabilityReading>) -> List<NonEmptyStr> {
   fold(readings, init: [], f: (acc, r) =>
-    match r.outcome {
+    match r {
       V41CapabilityAbsent { capability: c } => append(acc, c)
       V41CapabilityPresent { capability: _ } => acc
       V41CapabilityUnread { capability: _, cause: _ } => acc
     })
 }
 
-// THE FOLDS TAKE A ROSTER so their behaviour can be exercised against readings a witness builds,
-// rather than against the recorded ones -- asserting which capability the RECORDED roster puts in
-// which bucket compares this change's rows to this change's rows, and goes red only when an author
-// edits one of them. What is worth checking is that the two buckets stay disjoint at all, and that is
-// a property of these folds.
-//
-// THE WRAPPERS BELOW APPLY THEM TO THE RECEIPT, and their consumer is the one already named for the
-// receipt itself: gunbc.spark.serving_runtime_capability_probe's roster, which these rows move to when
-// #11016 lands. No witness asserts their VALUES, deliberately.
-fn v41_unread_capabilities_of(readings: List<V41RecordedReading>) -> List<NonEmptyStr> {
+fn v41_unread_capabilities_of(readings: List<V41CapabilityReading>) -> List<NonEmptyStr> {
   fold(readings, init: [], f: (acc, r) =>
-    match r.outcome {
+    match r {
       V41CapabilityUnread { capability: c, cause: _ } => append(acc, c)
       V41CapabilityPresent { capability: _ } => acc
       V41CapabilityAbsent { capability: _ } => acc
@@ -721,7 +639,7 @@ func v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmpty
                   reference: reference,
                   observed_digest: digest as NonEmptyStr,
                   stdout: out,
-                  readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: c)),
+                  readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
                 }
               }
             }
@@ -826,12 +744,4 @@ func v41_published_image_probe_ci_wet() -> ProcessExit
       }
       }
   }
-}
-
-fn v41_image_absent_capabilities() -> List<NonEmptyStr> {
-  v41_absent_capabilities_of(readings: v41_image_capability_readings)
-}
-
-fn v41_image_unread_capabilities() -> List<NonEmptyStr> {
-  v41_unread_capabilities_of(readings: v41_image_capability_readings)
 }
