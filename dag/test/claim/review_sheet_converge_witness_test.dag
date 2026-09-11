@@ -628,7 +628,11 @@ test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool 
     identity_column: "listing_id" as NonEmptyStr,
     columns: map(a1_column_letters, n => ReviewColumn {
       name: n as NonEmptyStr,
-      kind: DerivedField { source_field: n as NonEmptyStr },
+      kind: if n == "Z" {
+        DerivedField { source_field: n as NonEmptyStr }
+      } else {
+        OperatorEntered
+      },
     }),
   }
   let projection = ReviewSheetProjection {
