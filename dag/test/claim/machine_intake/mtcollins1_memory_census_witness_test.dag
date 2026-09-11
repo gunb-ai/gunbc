@@ -2,6 +2,9 @@ module test.claim.mtcollins1_memory_census_witness_test
 
 import std.types { Bool, Int, List, list_length }
 import std.nat { Nat }
+import extdeps.memory { host_memory_population_nominal_bytes }
+import extdeps.memory.types { HostMemoryPopulation, MemoryPopulationRow }
+import std.measure { kibibyte_to_byte_size }
 import extdeps.linux.edac {
   ChannelTopologyAbsent,
   ChannelTopologyEnumerated,
@@ -51,6 +54,8 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation {
   MtCollins1PartnerRequirement,
   MtCollins1BootDeliveryObservation,
   mtcollins1_acquisition_standing,
+  mtcollins1_host_memory_population,
+  mtcollins1_memtotal_kb,
   mtcollins1_boot_delivery_observation,
   mtcollins1_cross_channel_rank_mixing_standing,
   mtcollins1_partner_requirement,
@@ -608,4 +613,42 @@ test fn the_measured_edac_tree_matches_what_the_authority_predicts() -> Bool {
   mtcollins1_edac_topology.csrow_node_count == 0
     && mtcollins1_edac_topology.apei_firmware_first
     && mtcollins1_edac_topology.dimm_node_count == 16
+}
+
+
+// ── the capacity join the missing catalog row used to block ────────────────────────────────────
+
+// THIS IS THE CHECK THAT COULD NOT BE WRITTEN YESTERDAY. mtcollins1_memtotal_kb carried a declared
+// frontier saying its consumer was a capacity join needing a catalog row for every installed part,
+// and that one of the three had none. gunbc#11066 landed that row, so the frontier is discharged
+// and this is the consumer it named.
+//
+// NOMINAL AND USABLE ARE DIFFERENT FACTS, which is the trap this join has to respect rather than
+// paper over. The population states what is INSTALLED; MemTotal states what the kernel finds
+// USABLE after firmware and kernel reservations, and it is always smaller. gunbc.fleet.fleet_intent
+// records the same gap on the upgraded fleet hosts -- about 10 GiB per host between the two -- and
+// warns that a wall spending nominal would overcommit by exactly that. So this asserts the
+// RELATIONSHIP, not equality: usable is strictly less than nominal, and within a few percent of it.
+fn population_stick_total(pop: HostMemoryPopulation) -> Int {
+  fold(pop.rows, init: 0, f: fn(acc, r) { acc + r.stick_count })
+}
+
+// A usable figure ABOVE nominal would mean the population under-counts what the machine has; one
+// far below would mean sticks are installed that the firmware is not presenting. Both are real
+// failure shapes for a census whose purpose is deciding what to buy, and both go red here.
+test fn the_kernel_usable_memory_agrees_with_the_catalogued_population() -> Bool {
+  population_stick_total(pop: mtcollins1_host_memory_population) == 16
+    && byte_size_count(b: kibibyte_to_byte_size(k: mtcollins1_memtotal_kb))
+       < byte_size_count(b: host_memory_population_nominal_bytes(pop: mtcollins1_host_memory_population))
+    && (byte_size_count(b: kibibyte_to_byte_size(k: mtcollins1_memtotal_kb)) * 100)
+       > (byte_size_count(b: host_memory_population_nominal_bytes(pop: mtcollins1_host_memory_population)) * 95)
+}
+
+// AND THE POPULATION'S CATALOG IDENTITIES MUST MATCH THE OBSERVED BINDINGS, so the two cannot drift
+// apart: the stick counts here are the same ten / five / one asserted against the firmware readings
+// above, but stated through catalog rows rather than part-number spellings.
+test fn the_population_rows_match_the_observed_part_counts() -> Bool {
+  fold(mtcollins1_host_memory_population.rows, init: true, f: fn(acc, r) {
+    acc && bindings_of_part(part: r.module.part_number) == r.stick_count
+  })
 }

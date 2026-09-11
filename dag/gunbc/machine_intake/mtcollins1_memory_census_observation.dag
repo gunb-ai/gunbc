@@ -13,6 +13,12 @@ import std.measure {
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.linux.edac { EdacDriverBinding, GhesEdac }
+import extdeps.memory.types { DramModuleCatalogRow, HostMemoryPopulation, MemoryPopulationRow }
+import extdeps.memory.sk_hynix {
+  hma82gr7afr4n_vk_catalog,
+  hma82gr7afr8n_vk_catalog,
+  hma82gr7cjr8n_vk_catalog,
+}
 import extdeps.ocp.mt_jade.memory_mixing {
   MtJadeDimmMixingAxis,
   MtJadeDimmMixingPlacement,
@@ -465,6 +471,26 @@ fn mtcollins1_partner_requirement(b: MtCollins1FirmwareChannelBinding, peer_conn
 
 data mtcollins1_cross_channel_rank_mixing_standing: MtJadeMixedDimmSupport = mtcollins1_mixing_verdict(placement: DifferentChannel, axis: Mixing1rAnd2r)
 
+// ── the population, in the corpus's own carrier ────────────────────────────────────────────────
+
+// THIS IS WHAT THE CENSUS WAS FOR, AND IT COULD NOT BE WRITTEN UNTIL TODAY. HostMemoryPopulation is
+// how gunbc.fleet.fleet_intent states what a machine carries, and mtcollins1 could not inhabit it
+// while one of its three installed parts -- HMA82GR7CJR8N-VK at J11 -- had no catalog row to point
+// at. gunbc#11066 landed that row from SK hynix Rev. 1.7, so the observation resolves into the
+// same shape every other fleet host uses instead of staying a bespoke list of strings.
+//
+// THE STICK COUNTS ARE THE OBSERVED ONES, and they are joined to CATALOG IDENTITIES rather than to
+// part-number spellings: ten AFR4N, five AFR8N, one CJR8N, sixteen in total across sixteen
+// populated connectors. A future edit that renamed a part on both local readings would still have
+// to survive resolution against the manufacturer rows these count.
+data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+  rows: [
+    MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 10 },
+    MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 5 },
+    MemoryPopulationRow { module: hma82gr7cjr8n_vk_catalog, stick_count: 1 },
+  ],
+}
+
 // ── what this census does NOT license anyone to conclude ───────────────────────────────────────
 
 // AN EARLIER REVISION CARRIED THREE `data` ROWS HERE describing modelling work this census
@@ -476,17 +502,27 @@ data mtcollins1_cross_channel_rank_mixing_standing: MtJadeMixedDimmSupport = mtc
 // row in the receipt of an unrelated observation.
 //
 // WHAT REMAINS HERE IS THE PART THAT IS ACTUALLY ABOUT THIS UNIT: the readings above are a
-// POPULATION, not a REQUIREMENT, and two terms stand between them and any purchase.
+// POPULATION, and the rules that turn a population into a REQUIREMENT are upstream facts this
+// module resolves against rather than restates.
 //
-// RANK. That a module added to a channel must match the rank of the module already in it is an OCP
-// Mt. Jade constraint, and no authority in this corpus carries it. So the observed 10 x 1R / 6 x 2R
-// split is what this unit HAS; what it NEEDS is not derivable here.
+// THIS PARAGRAPH USED TO SAY THE OPPOSITE AND WAS LEFT STANDING TOO LONG. It asserted that the OCP
+// same-channel rank rule was "carried by no authority in this corpus" and that "chip width is not
+// closed at all" -- true when written, false the moment gunbc#11068 landed, and still sitting here
+// while the section above derived same-channel rank, width and density from that very authority.
+// A receipt that both consumes a rule and denies it exists is a meaning fork (DESIGN section 3),
+// and the defect is instructive: the contradiction was introduced by fixing the model in layers
+// and not re-reading the prose around the edit. Review 64092 found it.
 //
-// CHIP WIDTH IS NOT CLOSED AT ALL, and this is the sharper trap because the observation looks like
-// it answers the question. Ampere admits both x4 and x8 devices, and no cited rule requires the
-// second module in a channel to match its peer's width. An earlier version of the probe beside
-// this module wrote the requirement as "10 x 1Rx4 + 6 x 2Rx8" -- reading widths off the installed
-// modules and presenting them as constraints on the ones to buy. That is a term nothing closes.
+// WHAT THE AUTHORITY NOW SETTLES, via mtcollins1_same_channel_verdict: same-channel rank, x4/x8
+// width and density all read MixingNotSupported, so each empty partner's rank, width and density
+// are FIXED by the module already in its channel. The width term the earlier probe closed by
+// reading it off the installed modules turns out to be closed by the specification -- which makes
+// that draft right by accident, and this module's later "unresolved" claim wrong by being cautious
+// about a rule it had not yet been given.
+//
+// WHAT REMAINS GENUINELY OPEN is cross-channel RANK mixing, which the same table answers TBD and
+// which this unit already runs; mtcollins1_cross_channel_rank_mixing_standing carries that
+// non-affirmation rather than rounding it to permission.
 //
 // SO THIS MODULE AUTHORS NO REQUIREMENT AND NO FILL VECTOR. The derivation belongs in a lane that
 // consumes cited authorities -- the Ampere connector/channel mapping, an SK Hynix catalog row for
@@ -735,11 +771,7 @@ data mtcollins1_consumption_frontier: List<MtCollins1ConsumptionFrontier> = [
   artifact_identity_frontier(decl_name: "mtcollins1_census_sol_byte_count"),
   artifact_identity_frontier(decl_name: "mtcollins1_census_kernel"),
   boot_delivery_frontier(decl_name: "mtcollins1_attempt3_failure"),
-  census_frontier_row(
-    decl_name: "mtcollins1_memtotal_kb",
-    awaited: "A capacity join: populated connector count x per-module capacity should account for MemTotal, less firmware reservation. That join needs a catalog row for EVERY installed part, and one of the three -- HMA82GR7CJR8N-VK -- had none, which is why the join cannot be written here rather than why it was forgotten.",
-    trigger: "A catalog-complete population capability: an SK Hynix catalog row for every part this unit carries, so a HostMemoryPopulation can be constructed and MemTotal checked against it. The missing row is in flight as gunbc#11066.",
-  ),
+
 
 ]
 

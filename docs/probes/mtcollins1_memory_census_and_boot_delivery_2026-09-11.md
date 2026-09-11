@@ -100,9 +100,13 @@ whole point of the census. Two separate gaps stand between the observed populati
 purchase order:
 
 - **Rank.** That the module added to a channel must match the rank of the module already in
-  it is the OCP Mt. Jade same-channel rule. It is cited to no authority in this corpus — the
-  gap is recorded below — so "10 × 1R + 6 × 2R is what to buy" is an observation wearing a
-  requirement's clothes until that rule is modelled from the specification.
+  it is the OCP Mt. Jade same-channel rule. When this was first written that rule was cited
+  to no authority here, so "10 × 1R + 6 × 2R is what to buy" was an observation wearing a
+  requirement's clothes. #11068 closed that: `extdeps.ocp.mt_jade` `memory_mixing` reads
+  `MixingNotSupported` for same-channel rank, and the receipt resolves each empty partner
+  against it. The sentence above is kept in the past tense rather than deleted because the
+  distinction it draws — between what a machine HAS and what it NEEDS — is the reason the
+  census was worth doing.
 - **Chip width.** An earlier revision of this section wrote the requirement as
   **10 × 1Rx4 + 6 × 2Rx8**, reading widths off the installed modules and presenting them as
   constraints on the ones to buy. A later revision then said the width was unresolved
