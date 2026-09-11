@@ -46,8 +46,9 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
   ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy,
-  select_serving_deployment, select_serving_deployment_at_sm12_admit, select_serving_deployment_at_sm12_join,
-  establish_serving_candidate_field_at_sm12,
+  select_serving_deployment,
+  v4_1_profile_standings_from, v4_1_candidate_field_from_sm12, v4_1_decision_input_from_sm12,
+  v4_1_declared_profile_standings, ServingProfileReady, ServingProfileSm12JoinFailed,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
@@ -57,7 +58,7 @@ import gunbc.spark.serving_deployment_selection {
   ax_no_redundancy,
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
-  serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token, ax_sm12_kv_admitted,
+  serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
   kv_layout_from_sm12_admit, kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
@@ -99,14 +100,20 @@ test fn the_real_deepseek_v4_1_subject_returns_obligations_rather_than_a_topolog
 }
 
 test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
-  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-    ServingDeploymentNeedsEvidence { needs: live } =>
-      match select_serving_deployment_at_sm12_admit(input: deepseek_v4_1_decision_input, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-        ServingDeploymentNeedsEvidence { needs: injected } => count(live) == count(injected)
-        _ => false
+  match v4_1_gb10_kv_layout {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      match k {
+        KvFp8DsMlaLayout => v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: k))
+        KvAutoLayout => false
+        KvFp8Layout => false
+        KvFp4Layout => false
       }
-    _ => false
+    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
+    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+      _ => false
+    }
 }
 
 // ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
@@ -404,11 +411,14 @@ fn profile_with_layout(p: ServingDecisionParameters, k: KvLayoutPolicy) -> Servi
 
 test fn candidate_identity_includes_the_complete_profile() -> Bool {
   let t = topology_shape(tensor_parallel_degree: 4, replica_count: 1)
-  let p = v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead)
-  !declaration_ref_eq(
-    a: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: p),
-    b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: profile_with_layout(p: p, k: KvFp4Layout)),
-  )
+  match v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead) {
+    ServingProfileSm12JoinFailed { runtime: _, standing: _ } => false
+    ServingProfileReady { profile: p } =>
+      !declaration_ref_eq(
+        a: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: p),
+        b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: profile_with_layout(p: p, k: KvFp4Layout)),
+      )
+  }
 }
 
 test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
@@ -657,13 +667,17 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
           KvFp4Layout => false
         })
     && match v4_1_gb10_kv_layout {
-      KvFp8DsMlaLayout => true
-      KvAutoLayout => false
-      KvFp8Layout => false
-      KvFp4Layout => false
+      Sm12KvLayoutAdmitted { policy: k } =>
+        match k {
+          KvFp8DsMlaLayout => true
+          KvAutoLayout => false
+          KvFp8Layout => false
+          KvFp4Layout => false
+        }
+        && (kv_layout_wire(k: k) as String) == (v41_sm12_kv_layout as String)
+        && v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: k))
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
     }
-    && (kv_layout_wire(k: v4_1_gb10_kv_layout) as String) == (v41_sm12_kv_layout as String)
-    && v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: v4_1_gb10_kv_layout))
     && !v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: KvAutoLayout))
     && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
     && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
@@ -693,21 +707,31 @@ fn planted_join_is_named_failure(wire: NonEmptyStr, admitted: List<NonEmptyStr>)
 }
 
 fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
-  count(v4_1_declared_profiles) == 3
-    && all(v4_1_declared_profiles, p =>
-      match p.kv_layout {
-        KvAutoLayout => false
-        KvFp8DsMlaLayout => true
-        KvFp8Layout => false
-        KvFp4Layout => false
-      })
-    && match establish_serving_candidate_field_at_sm12(field: deepseek_v4_1_candidate_field, wire: wire, admitted: admitted) {
+  let standings = v4_1_profile_standings_from(standing: sm12_kv_layout_standing(wire: wire, admitted: admitted))
+  let field = v4_1_candidate_field_from_sm12(wire: wire, admitted: admitted)
+  count(standings) == 3
+    && all(standings, s => match s {
+      ServingProfileReady { profile: p } =>
+        match p.kv_layout {
+          KvAutoLayout => false
+          KvFp8DsMlaLayout => false
+          KvFp8Layout => false
+          KvFp4Layout => false
+        }
+      ServingProfileSm12JoinFailed { runtime: _, standing: st } =>
+        match st {
+          Sm12KvLayoutAdmitted { policy: k } =>
+            match k { KvAutoLayout => false, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+          Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
+        }
+    })
+    && match establish_serving_candidate_field(field: field) {
       ServingFieldEstablished => false
       ServingFieldUnestablished { causes: cs } =>
         any(cs, c => names_sm12_kv_join(s: c))
           && !any(cs, c => string_contains(s: c as String, pattern: "no serving profiles"))
     }
-    && match select_serving_deployment_at_sm12_join(input: deepseek_v4_1_decision_input, wire: wire, admitted: admitted) {
+    && match select_serving_deployment(input: v4_1_decision_input_from_sm12(wire: wire, admitted: admitted)) {
       ServingDeploymentSelectionRefused { defects: ds } => any(ds, d => names_sm12_kv_join(s: d))
       ServingDeploymentNeedsEvidence { needs: _ } => false
       ServingDeploymentSelected { selected: _ } => false
@@ -788,8 +812,6 @@ test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_fac
 test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
   !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
     && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
-    && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_sm12_kv_admitted))
-    && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_sm12_kv_admitted))
     && match kv_bytes_per_token_standing(c: cand(name: "glm_kv", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))) {
       KvBytesPerTokenNotThisSubject => true
       KvBytesPerTokenUnestablished { layout: _, obligation: _ } => false

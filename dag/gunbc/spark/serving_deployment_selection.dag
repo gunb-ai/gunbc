@@ -282,8 +282,30 @@ fn sm12_kv_layout_standing(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Sm
   }
 }
 
-fn sm12_kv_join_causes(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
+type ServingProfileStanding
+  = ServingProfileReady { profile: ServingDecisionParameters }
+  | ServingProfileSm12JoinFailed { runtime: RuntimeRevision, standing: Sm12KvLayoutStanding }
+
+fn serving_profile_ready(profile: ServingDecisionParameters) -> ServingProfileStanding {
+  ServingProfileReady { profile: profile }
+}
+
+fn ready_profiles(standings: List<ServingProfileStanding>) -> List<ServingDecisionParameters> {
+  flat_map(standings, s => match s {
+    ServingProfileReady { profile: p } => [p]
+    ServingProfileSm12JoinFailed { runtime: _, standing: _ } => []
+  })
+}
+
+fn sm12_join_causes_from_profile_standings(standings: List<ServingProfileStanding>) -> List<NonEmptyStr> {
+  flat_map(standings, s => match s {
+    ServingProfileReady { profile: _ } => []
+    ServingProfileSm12JoinFailed { runtime: _, standing: st } => sm12_kv_join_causes_from_standing(st: st)
+  })
+}
+
+fn sm12_kv_join_causes_from_standing(st: Sm12KvLayoutStanding) -> List<NonEmptyStr> {
+  match st {
     Sm12KvLayoutAdmitted { policy: _ } => []
     Sm12KvLayoutJoinFailed { wire: _, obligation: o } => [o]
   }
@@ -408,27 +430,32 @@ data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
-data v4_1_gb10_kv_layout: KvLayoutPolicy = match kv_layout_policy_matching_wire(wire: v41_sm12_kv_layout) {
-  Present { value: k } => k
-  Absent => KvFp8DsMlaLayout
+data v4_1_gb10_kv_layout: Sm12KvLayoutStanding = sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes)
+
+// V4.1 PARAMETER SET on GB10. The KV field is Sm12KvLayoutStanding, not a guessed constructor.
+// On JoinFailed the three runtimes remain as profile standings; the KV slot is not filled with
+// Auto or fp8_ds_mla. Higher-precision KV does not violate native quality. Speculation is DSpark.
+fn v4_1_profile_from_standing(runtime: RuntimeRevision, standing: Sm12KvLayoutStanding) -> ServingProfileStanding {
+  match standing {
+    Sm12KvLayoutAdmitted { policy: k } => ServingProfileReady {
+      profile: serving_decision_parameters(
+        max_model_len: deepseek_v4_1_flash_context_length,
+        memory_request: spark_host_memory_request,
+        max_num_batched_tokens: spark_host_max_num_batched_tokens,
+        max_num_seqs: spark_host_max_num_seqs,
+        executor: ExecutorRayProfile,
+        kv_layout: k,
+        speculative: SpeculationDraft { algorithm: DSpark },
+        runtime: runtime,
+      )
+    }
+    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } =>
+      ServingProfileSm12JoinFailed { runtime: runtime, standing: standing }
+  }
 }
 
-// V4.1 PARAMETER SET on GB10. Window is the yarn-scaled ceiling from
-// extdeps.deepseek.deepseek_v4_1_flash. KV layout is the wire match of v41_sm12_kv_layout.
-// Admission is not a reason to omit a profile: an empty or non-matching admit roster is
-// sm12_kv_admit_gaps / NeedsEvidence. Higher-precision KV does not violate native quality.
-// Speculation is DSpark. Per-token KV bytes stay an obligation; the card's 890 does not apply.
-fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingDecisionParameters {
-  serving_decision_parameters(
-    max_model_len: deepseek_v4_1_flash_context_length,
-    memory_request: spark_host_memory_request,
-    max_num_batched_tokens: spark_host_max_num_batched_tokens,
-    max_num_seqs: spark_host_max_num_seqs,
-    executor: ExecutorRayProfile,
-    kv_layout: v4_1_gb10_kv_layout,
-    speculative: SpeculationDraft { algorithm: DSpark },
-    runtime: runtime,
-  )
+fn v4_1_profile_at(runtime: RuntimeRevision) -> ServingProfileStanding {
+  v4_1_profile_from_standing(runtime: runtime, standing: v4_1_gb10_kv_layout)
 }
 
 data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
@@ -443,11 +470,17 @@ data v4_1_runtime_published_arm64: RuntimeRevision = RuntimeRevision {
   },
 }
 
-data v4_1_declared_profiles: List<ServingDecisionParameters> = [
-  v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead),
-  v4_1_profile_at(runtime: v4_1_runtime_published_arm64),
-  v4_1_profile_at(runtime: spark_runtime),
-]
+fn v4_1_profile_standings_from(standing: Sm12KvLayoutStanding) -> List<ServingProfileStanding> {
+  [
+    v4_1_profile_from_standing(runtime: v4_1_runtime_vllm_gb10_lead, standing: standing),
+    v4_1_profile_from_standing(runtime: v4_1_runtime_published_arm64, standing: standing),
+    v4_1_profile_from_standing(runtime: spark_runtime, standing: standing),
+  ]
+}
+
+data v4_1_declared_profile_standings: List<ServingProfileStanding> = v4_1_profile_standings_from(standing: v4_1_gb10_kv_layout)
+
+data v4_1_declared_profiles: List<ServingDecisionParameters> = ready_profiles(standings: v4_1_declared_profile_standings)
 
 // ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
 type TopologyShape sole_constructor {
@@ -947,7 +980,7 @@ fn derived_candidates(stem: String, artifacts: List<ModelArtifact>, topologies: 
 }
 
 fn derived_candidates_for(stem: String, domain: ServingDeploymentChoiceDomain) -> List<DeploymentCandidate> {
-  derived_candidates(stem: stem, artifacts: domain.artifacts, topologies: domain.topologies, profiles: domain.profiles)
+  derived_candidates(stem: stem, artifacts: domain.artifacts, topologies: domain.topologies, profiles: ready_profiles(standings: domain.profiles))
 }
 
 // THE SHARE OF EQUAL-CAPACITY REPLICAS LOST WHEN ONE REPLICA IS LOST -- not a physical blast radius,
@@ -984,7 +1017,6 @@ data ax_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serv
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
 data ax_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_no_redundancy")
 data ax_kv_bytes_per_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_kv_bytes_per_token")
-data ax_sm12_kv_admitted: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_sm12_kv_admitted")
 data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
 data ax_workload_established: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_workload_established")
@@ -1046,7 +1078,6 @@ data v4_1_selection_constraints: List<HardConstraint> = concat(serving_selection
 data v4_1_selection_axes: List<SelectionAxis> = concat(serving_selection_axes, [
   SelectionAxis { identity: ax_no_redundancy, goal: HigherIsBetter },
   SelectionAxis { identity: ax_kv_bytes_per_token, goal: LowerIsBetter },
-  SelectionAxis { identity: ax_sm12_kv_admitted, goal: HigherIsBetter },
 ])
 
 // THE MEASUREMENTS THAT DO NOT EXIST YET, each named so its absence is a located obligation rather
@@ -1161,15 +1192,19 @@ fn combination_key_render(k: CombinationKey) -> String {
 type ServingDeploymentChoiceDomain sole_constructor {
   artifacts: List<ModelArtifact>
   topologies: List<TopologyShape>
-  profiles: List<ServingDecisionParameters>
+  profiles: List<ServingProfileStanding>
 }
 
 fn serving_deployment_domain(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, parameters: ServingDecisionParameters) -> ServingDeploymentChoiceDomain {
-  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: [parameters] }
+  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: [serving_profile_ready(profile: parameters)] }
 }
 
 fn serving_deployment_domain_over(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, profiles: List<ServingDecisionParameters>) -> ServingDeploymentChoiceDomain {
-  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: profiles }
+  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: map(profiles, p => serving_profile_ready(profile: p)) }
+}
+
+fn serving_deployment_domain_over_standings(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, standings: List<ServingProfileStanding>) -> ServingDeploymentChoiceDomain {
+  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: standings }
 }
 
 fn combination_for_profile(a: ModelArtifact, t: TopologyShape, p: ServingDecisionParameters) -> CombinationKey {
@@ -1185,7 +1220,7 @@ fn combinations_for_artifact(a: ModelArtifact, topologies: List<TopologyShape>, 
 }
 
 fn expected_combinations(d: ServingDeploymentChoiceDomain) -> List<CombinationKey> {
-  flat_map(d.artifacts, a => combinations_for_artifact(a: a, topologies: d.topologies, profiles: d.profiles))
+  flat_map(d.artifacts, a => combinations_for_artifact(a: a, topologies: d.topologies, profiles: ready_profiles(standings: d.profiles)))
 }
 
 fn candidate_combination(c: DeploymentCandidate) -> CombinationKey {
@@ -1198,10 +1233,12 @@ fn key_occurrences(keys: List<CombinationKey>, k: CombinationKey) -> Nat {
 
 fn domain_profiles_defect(d: ServingDeploymentChoiceDomain) -> List<NonEmptyStr> {
   concat(
-    if count(d.profiles) == 0 {
-      ["the declared domain carries no serving profiles, so no candidate can inhabit it" as NonEmptyStr]
-    } else { [] },
-    flat_map(d.profiles, p => match parameters_defect(p: p) {
+    concat(
+      if count(d.profiles) == 0 {
+        ["the declared domain carries no serving profiles, so no candidate can inhabit it" as NonEmptyStr]
+      } else { [] },
+      sm12_join_causes_from_profile_standings(standings: d.profiles)),
+    flat_map(ready_profiles(standings: d.profiles), p => match parameters_defect(p: p) {
       Present { value: d } => [d]
       Absent => []
     }),
@@ -1236,18 +1273,14 @@ type ServingFieldStanding
   = ServingFieldEstablished
   | ServingFieldUnestablished { causes: List<NonEmptyStr> }
 
-fn field_carries_v4_1_sm12_kv(field: ServingDeploymentCandidateField) -> Bool {
-  any(field.domain.artifacts, a => declaration_ref_eq(a: a.identity, b: artifact_deepseek_v4_1_flash_native.identity))
-}
-
-fn establish_serving_candidate_field_with_causes(field: ServingDeploymentCandidateField, extra_causes: List<NonEmptyStr>) -> ServingFieldStanding {
+fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
   let expected = expected_combinations(d: field.domain)
   let actual = map(field.candidates, c => candidate_combination(c: c))
   let missing = filter(expected, k => key_occurrences(keys: actual, k: k) == 0)
   let extra = filter(actual, k => key_occurrences(keys: expected, k: k) == 0)
   let duplicated_actual = filter(expected, k => key_occurrences(keys: actual, k: k) > 1)
   let duplicated_declared = filter(expected, k => key_occurrences(keys: expected, k: k) > 1)
-  let param_defect = concat(domain_profiles_defect(d: field.domain), extra_causes)
+  let param_defect = domain_profiles_defect(d: field.domain)
   if count(missing) == 0 && count(extra) == 0 && count(duplicated_actual) == 0
     && count(duplicated_declared) == 0 && count(param_defect) == 0 {
     ServingFieldEstablished
@@ -1264,18 +1297,6 @@ fn establish_serving_candidate_field_with_causes(field: ServingDeploymentCandida
         param_defect),
     }
   }
-}
-
-fn establish_serving_candidate_field_at_sm12(field: ServingDeploymentCandidateField, wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingFieldStanding {
-  if field_carries_v4_1_sm12_kv(field: field) {
-    establish_serving_candidate_field_with_causes(field: field, extra_causes: sm12_kv_join_causes(wire: wire, admitted: admitted))
-  } else {
-    establish_serving_candidate_field_with_causes(field: field, extra_causes: [])
-  }
-}
-
-fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
-  establish_serving_candidate_field_at_sm12(field: field, wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes)
 }
 
 // ── THE PROJECTOR ─────────────────────────────────────────────────────────────────────────────
@@ -1369,28 +1390,6 @@ fn kv_bytes_gap(c: DeploymentCandidate) -> List<AxisGap> {
   }
 }
 
-fn sm12_kv_admit_gaps(c: DeploymentCandidate, admitted: List<NonEmptyStr>) -> List<AxisGap> {
-  if declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
-    if kv_wire_in_roster(wire: kv_layout_wire(k: c.profile.kv_layout), admitted: admitted) {
-      []
-    } else {
-      [AxisGap { axis: ax_sm12_kv_admitted, cause: sm12_kv_admit_obligation }]
-    }
-  } else {
-    []
-  }
-}
-
-fn sm12_kv_admit_reading(c: DeploymentCandidate, admitted: List<NonEmptyStr>) -> AxisReading? {
-  if !declaration_ref_eq(a: c.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity) {
-    none
-  } else if kv_wire_in_roster(wire: kv_layout_wire(k: c.profile.kv_layout), admitted: admitted) {
-    Present { value: reading(axis: ax_sm12_kv_admitted, v: 1) }
-  } else {
-    none
-  }
-}
-
 fn optional_reading(r: AxisReading?) -> List<AxisReading> {
   match r {
     Present { value: v } => [v]
@@ -1398,15 +1397,13 @@ fn optional_reading(r: AxisReading?) -> List<AxisReading> {
   }
 }
 
-fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, admitted: List<NonEmptyStr>) -> List<AxisReading> {
+fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisReading> {
   concat(
     concat(
       concat(optional_reading(r: quality_reading(profile: execution_profile_of(c: c, p: p), e: e)),
              optional_reading(r: runtime_reading(profile: execution_profile_of(c: c, p: p), e: e))),
       concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
              optional_reading(r: workload_reading(e: e)))),
-    concat(
-      optional_reading(r: sm12_kv_admit_reading(c: c, admitted: admitted)),
     [
       reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
       reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c))),
@@ -1414,26 +1411,24 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
       reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
       reading(axis: ax_independent_replicas, v: c.topology.replica_count),
       reading(axis: ax_replica_capacity_share_lost, v: replica_capacity_share_lost_percent(c: c)),
-    ]))
+    ])
 }
 
-fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, admitted: List<NonEmptyStr>) -> List<AxisGap> {
+fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisGap> {
   concat(
     concat(
       concat(quality_gap(profile: execution_profile_of(c: c, p: p), e: e),
              runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
       concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
-    concat(
-      concat(kv_bytes_gap(c: c), sm12_kv_admit_gaps(c: c, admitted: admitted)),
-      map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
+    concat(kv_bytes_gap(c: c), map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
 }
 
-fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, admitted: List<NonEmptyStr>) -> ParetoEntry {
+fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
   ParetoEntry {
     identity: c.identity,
     display_label: c.label,
-    readings: candidate_readings(c: c, e: e, p: p, admitted: admitted),
-    missing_inputs: candidate_gaps(c: c, e: e, p: p, admitted: admitted),
+    readings: candidate_readings(c: c, e: e, p: p),
+    missing_inputs: candidate_gaps(c: c, e: e, p: p),
   }
 }
 
@@ -1644,21 +1639,13 @@ fn resolve_in_field(field: ServingDeploymentCandidateField, identity: Declaratio
 }
 
 fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDeploymentSelection {
-  select_serving_deployment_at_sm12_admit(input: input, admitted: v41_sm12_admitted_kv_cache_dtypes)
-}
-
-fn select_serving_deployment_at_sm12_admit(input: ServingDeploymentDecisionInput, admitted: List<NonEmptyStr>) -> ServingDeploymentSelection {
-  select_serving_deployment_at_sm12_join(input: input, wire: v41_sm12_kv_layout, admitted: admitted)
-}
-
-fn select_serving_deployment_at_sm12_join(input: ServingDeploymentDecisionInput, wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentSelection {
-  match establish_serving_candidate_field_at_sm12(field: input.field, wire: wire, admitted: admitted) {
+  match establish_serving_candidate_field(field: input.field) {
     ServingFieldUnestablished { causes: c } => ServingDeploymentSelectionRefused { defects: c }
     ServingFieldEstablished =>
       match select_realization(
         assessment: assessment_for(input: input),
         candidate_field_identity: input.field.identity,
-        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile, admitted: admitted)),
+        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile)),
         axes: input.axes,
         constraints: input.constraints,
         constraint_authority: input.constraint_authority,
@@ -1931,10 +1918,10 @@ data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement
   rationale: "operator policy 2026-09-11: native quality always. Only the published V4.1 Flash checkpoint is admissible; a requantised or quality-degrading substitute is other weights and is excluded by constraint_native_quality before dominance, not ranked" as NonEmptyStr,
 )
 
-data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = serving_deployment_domain_over(
+data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = serving_deployment_domain_over_standings(
   artifacts: [artifact_deepseek_v4_1_flash_native],
   topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
-  profiles: v4_1_declared_profiles,
+  standings: v4_1_declared_profile_standings,
 )
 
 data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
@@ -1942,6 +1929,32 @@ data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = serving_ca
   domain: deepseek_v4_1_domain,
   candidates: derived_candidates_for(stem: "deepseek_v4_1", domain: deepseek_v4_1_domain),
 )
+
+fn v4_1_candidate_field_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentCandidateField {
+  let standings = v4_1_profile_standings_from(standing: sm12_kv_layout_standing(wire: wire, admitted: admitted))
+  let domain = serving_deployment_domain_over_standings(
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+    standings: standings,
+  )
+  serving_candidate_field(
+    identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_candidate_field"),
+    domain: domain,
+    candidates: derived_candidates_for(stem: "deepseek_v4_1", domain: domain),
+  )
+}
+
+fn v4_1_decision_input_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentDecisionInput {
+  serving_decision_input(
+    field: v4_1_candidate_field_from_sm12(wire: wire, admitted: admitted),
+    evidence: serving_evidence_current,
+    quality_requirement: deepseek_v4_1_quality_requirement,
+    selection_policy: deepseek_v4_1_selection_policy,
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_v4_1_constraint_authority,
+    axes: v4_1_selection_axes,
+  )
+}
 
 data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
   field: deepseek_v4_1_candidate_field,
