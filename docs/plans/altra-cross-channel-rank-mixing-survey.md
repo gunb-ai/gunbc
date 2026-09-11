@@ -16,7 +16,12 @@ What the survey DID establish, at its real strength:
    "DIMM modules on all channels on a socket must be identically sized" — Mt. Collins GSG Issue
    1.05 p.10 (already carried by `extdeps.ampere.mt_collins_product_brief.memory_population`) and,
    in identical wording, Mt. Jade PVT/DVT (NVMe) GSG Issue 1.00 p.11. "Sized" is capacity; a 16 GB
-   1R and a 16 GB 2R module satisfy it. Neither sentence says anything about rank.
+   1R and a 16 GB 2R module satisfy it. Neither sentence says anything about rank. Stated
+   positively: this is the ONE published cross-channel population constraint on these platforms
+   that anyone can currently be held to. Mt. Collins unit 1 is uniformly 16 GB per module and
+   satisfies it. A future census that finds a mixed-capacity socket is therefore violating a
+   published rule — a sharper and different finding than the rank TBD, and one a fleet check can
+   enforce today from `extdeps.ampere.mt_collins_product_brief.memory_population`.
 2. **No later revision of the OCP Mt. Jade specification is discoverable.** Search-engine index
    and the Internet Archive CDX index of `opencompute.org/documents/` both carry only
    `open-compute-specification-mt-jade-rev-1-0-pdf-1`. The OCP contribution database itself
@@ -25,7 +30,13 @@ What the survey DID establish, at its real strength:
    (Mt. Mitchell v0.80, `extdeps.ocp.mt_mitchell`) is DDR5 and does not carry a DDR4 Table 3.
 3. **Other Altra platform vendors publish board-level homogeneity guidance, none of it about rank
    across channels, and none of it a statement about the SoC.** See the table below.
-4. **A firmware log line seen on the Ampere community forum is NOT evidence about rank.** The
+4. **The unit-1 part is not on Ampere's AVL; its single-rank sibling is.** Altra Family AVL
+   Issue 1.15 (Dec 2025) Table 3 lists SK hynix HMA82GR7CJR**4**N-VK (16 GB, 1Rx4) at 1DPC and
+   2DPC, and does not list HMA82GR7CJR**8**N-VK (16 GB, 2Rx8, the unit-1 part per gunbc#11066).
+   This is a fact about the AVL, not a rule about mixing, but it bears on the purchase: an
+   all-single-rank fill on the AVL'd CJR4N-VK part would retire a non-AVL module AND remove the
+   unaffirmed cross-channel rank mix with the same modules.
+5. **A firmware log line seen on the Ampere community forum is NOT evidence about rank.** The
    Altra DRAM init firmware prints `ERROR: Non-identical DIMM mixture NOT supported!` as its
    terminal line on a 2R×4 64 GB + 1R×8 16 GB cross-channel population (thread 564, ADP ES2,
    DRAM FW 211207) — but the specific error above it is `ERR: Mismatch Capacity MCU1`, i.e. the
