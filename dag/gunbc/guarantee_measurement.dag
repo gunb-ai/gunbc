@@ -265,7 +265,7 @@ type GuaranteeCeilingReason
 // it, separating cannot-climb from can-climb-after-one-grounding from can-climb-now-but-unbuilt.
 //
 // A DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). Inside this module the requirement is
-// consumed by disposition_is_at_ceiling and by nothing else, which is honest but partial: the
+// consumed by ceiling_standing and by nothing else, which is honest but partial: the
 // comparison exists to be ASKED by something that owes an answer.
 //   CONSUMER: the compile-obligation activation authority, which states per required compile lens
 //   what is owed and reads class_disposition to decide whether the obligation is met.
@@ -601,7 +601,7 @@ fn minimum_on_ladder(dispositions: List<GuaranteeDisposition>) -> GuaranteeDispo
 // OutsideModeledGuarantee so that an outside path contributes no rung, which is right for a path
 // that someone classified -- and wrong for NO PATHS AT ALL, because the seed then leaks out as the
 // answer: a class nobody measured would report as outside the modeled guarantee, and
-// disposition_is_at_ceiling would call that AT CEILING against an outside-the-ladder ceiling, so a
+// ceiling_standing would call that AT CEILING against an outside-the-ladder ceiling, so a
 // class nobody looked at would stop owing its next-rung trigger. That is the inverse of the leak
 // section 4b guards: not "we do not model this" masquerading as a weak rung, but ignorance
 // masquerading as a deliberate classification. The module already makes this argument for a single
@@ -630,22 +630,56 @@ fn class_disposition(evidence: List<PathEvidence>) -> GuaranteeDisposition {
   fold_dispositions(dispositions: map(evidence, e => disposition_for_path(evidence: e)))
 }
 
-// A CLASS AT ITS CEILING IS DONE; A CLASS BELOW IT OWES ITS TRIGGER. This is the one place the
-// requirement and the disposition meet, and it is a comparison rather than a stored state: below
-// the ceiling is a correctness gap, never optional elegance (DESIGN section 4b).
-// AN INDEX COMPARISON ALONE IS NOT THE QUESTION, because OutsideTheLadder is index 0 and the four
-// non-rung dispositions all report index 0: over a requirement whose ceiling is OutsideTheLadder -
-// which is exactly the class DESIGN puts in the column beside the ladder - a BelowFloor class would
-// read as AT its ceiling, and a class that has reached its ceiling is a class that stops owing its
-// trigger. So at-ceiling is decided per arm: a rung reaches a ceiling by index, an outside-the-
-// modeled-guarantee class reaches an outside-the-ladder ceiling by being that same fact, and the
-// three evidence-shortfall arms reach nothing - ignorance and a failing wall are never done.
-fn disposition_is_at_ceiling(r: GuaranteeRequirement, d: GuaranteeDisposition) -> Bool {
+// A CLASS AT ITS CEILING IS DONE; A CLASS BELOW IT OWES ITS TRIGGER; AND A CLASS WHOSE EVIDENCE
+// CONTRADICTS ITS CEILING IS NEITHER. This is the one place the requirement and the disposition
+// meet, and it is a comparison rather than a stored state: below the ceiling is a correctness gap,
+// never optional elegance (DESIGN section 4b).
+//
+// WHY IT IS THREE-VALUED AND NOT A PREDICATE. An index comparison alone answers the wrong question,
+// because OutsideTheLadder is index 0 and everything is >= 0. The three evidence-shortfall arms were
+// fixed first -- an unmeasured, below-floor or frontier class reaches no ceiling, whatever the
+// ceiling is -- and that left the FOURTH arm with the same leak: a class MEASURED ON THE LADDER
+// against a ceiling that says the class sits BESIDE the ladder read as at-ceiling, so a climbing
+// class stopped owing its next-rung trigger on the strength of a ceiling its own evidence falsifies.
+//
+// The two facts disagree, and neither side may quietly win. Reporting done hides a climbable class;
+// reporting below-ceiling hides that the CEILING is the thing now known to be wrong -- a requirement
+// declaring a class outside the modeled guarantee, contradicted by a measurement putting it on the
+// ladder, is a requirement to rewrite, not a trigger to chase. So the disagreement is named and
+// carries the measured rung, which is the evidence the repair needs (DESIGN section 5: a failure arm
+// refuses, it does not widen).
+type CeilingStanding
+  = AtCeiling
+  | BelowCeiling
+  | CeilingContradictedByEvidence { measured: GuaranteeRung }
+
+// A CLASS DECLARED OUTSIDE THE MODELED GUARANTEE MEETS A CEILING THAT SAYS THE SAME THING, and
+// meets nothing else: against a ceiling naming a real rung, an outside-the-guarantee class has not
+// reached it -- it is the class nobody modeled, which is a gap and not an arrival.
+fn standing_for_outside_modeled(r: GuaranteeRequirement) -> CeilingStanding {
+  if guarantee_rung_index(r: r.ceiling) == guarantee_rung_index(r: OutsideTheLadder) {
+    AtCeiling
+  } else {
+    BelowCeiling
+  }
+}
+
+fn ceiling_standing(r: GuaranteeRequirement, d: GuaranteeDisposition) -> CeilingStanding {
   guarantee_disposition_fold(d: d, fold: GuaranteeDispositionFold {
-    unmeasured: false
-    below_floor: false
-    frontier_accepted: false
-    on_ladder: fn(rung) { guarantee_rung_index(r: rung) >= guarantee_rung_index(r: r.ceiling) }
-    outside_modeled: guarantee_rung_index(r: r.ceiling) == guarantee_rung_index(r: OutsideTheLadder)
+    unmeasured: BelowCeiling
+    below_floor: BelowCeiling
+    frontier_accepted: BelowCeiling
+    on_ladder: fn(rung) {
+      if guarantee_rung_index(r: r.ceiling) == guarantee_rung_index(r: OutsideTheLadder) {
+        CeilingContradictedByEvidence { measured: rung }
+      } else {
+        if guarantee_rung_index(r: rung) >= guarantee_rung_index(r: r.ceiling) {
+          AtCeiling
+        } else {
+          BelowCeiling
+        }
+      }
+    }
+    outside_modeled: standing_for_outside_modeled(r: r)
   })
 }

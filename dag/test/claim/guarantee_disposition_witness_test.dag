@@ -43,8 +43,13 @@ import gunbc.guarantee_measurement {
   below_floor_cause,
   class_disposition,
   disposition_for_path,
-  disposition_is_at_ceiling,
+  AtCeiling,
+  BelowCeiling,
+  CeilingContradictedByEvidence,
+  ceiling_standing,
   disposition_is_below_floor,
+  disposition_is_frontier,
+  disposition_is_unmeasured,
   fold_dispositions,
   measurement_revision_eq,
   path_evidence_from_receipts,
@@ -300,17 +305,23 @@ fn requirement_at(ceiling: GuaranteeRung) -> GuaranteeRequirement {
 // BELOW THE CEILING IS A CORRECTNESS GAP, and it is a comparison against the requirement rather
 // than a state anyone stored.
 test fn a_rung_below_its_ceiling_is_not_at_ceiling() -> Bool {
-  !disposition_is_at_ceiling(
+  match ceiling_standing(
     r: requirement_at(ceiling: StructurallyGuaranteed),
     d: OnLadder { rung: MechanicallyPreventable }
-  )
+  ) {
+    BelowCeiling => true
+    _ => false
+  }
 }
 
 test fn a_rung_at_its_ceiling_is_at_ceiling() -> Bool {
-  disposition_is_at_ceiling(
+  match ceiling_standing(
     r: requirement_at(ceiling: MechanicallyPreventable),
     d: OnLadder { rung: MechanicallyPreventable }
-  )
+  ) {
+    AtCeiling => true
+    _ => false
+  }
 }
 
 // THE RED FOR THE INDEX-COMPARISON READING OF AT-CEILING. OutsideTheLadder is index 0 and every
@@ -318,25 +329,40 @@ test fn a_rung_at_its_ceiling_is_at_ceiling() -> Bool {
 // done against an outside-the-ladder ceiling - and a class at its ceiling stops owing its trigger.
 // These are the three arms that must never reach a ceiling, whatever the ceiling is.
 test fn a_below_floor_class_is_not_at_an_outside_the_ladder_ceiling() -> Bool {
-  !disposition_is_at_ceiling(r: requirement_at(ceiling: OutsideTheLadder), d: BelowFloor)
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: BelowFloor) {
+    BelowCeiling => true
+    _ => false
+  }
 }
 
 test fn an_unmeasured_class_is_not_at_an_outside_the_ladder_ceiling() -> Bool {
-  !disposition_is_at_ceiling(r: requirement_at(ceiling: OutsideTheLadder), d: Unmeasured)
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: Unmeasured) {
+    BelowCeiling => true
+    _ => false
+  }
 }
 
 test fn a_frontier_class_is_not_at_an_outside_the_ladder_ceiling() -> Bool {
-  !disposition_is_at_ceiling(r: requirement_at(ceiling: OutsideTheLadder), d: FrontierAccepted)
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: FrontierAccepted) {
+    BelowCeiling => true
+    _ => false
+  }
 }
 
 // THE ARM THAT DOES REACH IT: a class outside the modeled guarantee against a ceiling that says the
 // class is outside the modeled guarantee is the one honest way an index-0 ceiling is met.
 test fn an_outside_modeled_class_is_at_an_outside_the_ladder_ceiling() -> Bool {
-  disposition_is_at_ceiling(r: requirement_at(ceiling: OutsideTheLadder), d: OutsideModeledGuarantee)
+  match ceiling_standing(r: requirement_at(ceiling: OutsideTheLadder), d: OutsideModeledGuarantee) {
+    AtCeiling => true
+    _ => false
+  }
 }
 
 test fn an_outside_modeled_class_is_not_at_a_rung_ceiling() -> Bool {
-  !disposition_is_at_ceiling(r: requirement_at(ceiling: Mitigatable), d: OutsideModeledGuarantee)
+  match ceiling_standing(r: requirement_at(ceiling: Mitigatable), d: OutsideModeledGuarantee) {
+    BelowCeiling => true
+    _ => false
+  }
 }
 
 // THE SHARED ELIMINATOR IS THE ONE THE PREDICATES ANSWER THROUGH: a disposition selects exactly one
@@ -528,10 +554,13 @@ test fn an_empty_disposition_set_is_unmeasured() -> Bool {
 // THE CONSEQUENCE, asserted where it bites rather than only at the fold: an unmeasured class is not
 // at its ceiling, whatever the ceiling is, so the trigger stays owed.
 test fn a_class_with_no_evidence_still_owes_its_trigger() -> Bool {
-  !disposition_is_at_ceiling(
+  match ceiling_standing(
     r: requirement_at(ceiling: OutsideTheLadder),
     d: class_disposition(evidence: [])
-  )
+  ) {
+    BelowCeiling => true
+    _ => false
+  }
 }
 
 // THE OTHER SIDE, so the repair does not swallow the honest case: a class whose paths are all
@@ -540,5 +569,36 @@ test fn a_classified_outside_class_is_still_outside() -> Bool {
   match fold_dispositions(dispositions: [OutsideModeledGuarantee, OutsideModeledGuarantee]) {
     OutsideModeledGuarantee => true
     _ => false
+  }
+}
+
+
+// THE FOURTH ARM OF THE AT-CEILING LEAK, and the red is that it used to report DONE. A class
+// MEASURED on the ladder against a requirement declaring the class OUTSIDE the ladder is two facts
+// that contradict each other: the index comparison said at-ceiling, because OutsideTheLadder is
+// index 0 and every rung clears it, so a climbing class stopped owing its next-rung trigger on the
+// strength of a ceiling its own evidence falsifies. Neither side may quietly win -- reporting done
+// hides a climbable class, reporting below-ceiling hides that the CEILING is what is now known to
+// be wrong -- so the disagreement is named and carries the rung that falsified it.
+test fn a_measured_rung_against_an_off_ladder_ceiling_is_a_contradiction() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: OutsideTheLadder),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    CeilingContradictedByEvidence { measured: m } => m == MechanicallyPreventable
+    _ => false
+  }
+}
+
+// AND THE CONTRADICTION IS NOT A BACK DOOR TO DONE: it is its own arm, so a caller folding the
+// standing cannot read it as at-ceiling by omission.
+test fn a_contradicted_ceiling_is_not_at_ceiling() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: OutsideTheLadder),
+    d: OnLadder { rung: Mitigatable }
+  ) {
+    AtCeiling => false
+    BelowCeiling => false
+    CeilingContradictedByEvidence { measured: _ } => true
   }
 }
