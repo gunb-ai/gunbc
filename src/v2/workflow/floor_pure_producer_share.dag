@@ -409,6 +409,15 @@ import v2.std.collection { List }
 // the three test files> [witness] lines, and this run's [floor-shared-fill] ledger, which must
 // show the eight fills landing at preparation with disposition=Stored and the former interrupted
 // claims serving hits.
+// THE THREE ACCUMULATOR-GATE SNIPPETS AT THE TAIL OF THE WARM LIST are admitted on the same
+// measured ground as the parse rows, one stage further down the pipeline. Their module re-derived
+// the whole front end -- language model, tokenize, parse, normalize -- once per claim over a
+// four-line snippet. The instrument is claim_batch over that module's four witnesses in a single
+// remote dispatch: the three source-path rows against door_root_roster_accepts_clean_inferred_tree,
+// which reaches the same gate area from a node fixture and pays no front end. The gap between those
+// two figures is the quantity these rows delete. The seam is the NORMALIZED tree rather than the
+// parse tree because no witness in that module names a front-end stage as its subject; the
+// reasoning is stated where the producers are declared.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -436,7 +445,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.where_refinement_clause_parse.where_refinement_bare_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
-  "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed"
+  "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
+  "v2.test.long.accumulator_copy_compile_gate.quad_normalized",
+  "v2.test.long.accumulator_copy_compile_gate.identity_normalized",
+  "v2.test.long.accumulator_copy_compile_gate.unregistered_combiner_normalized"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
