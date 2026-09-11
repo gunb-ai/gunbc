@@ -10380,7 +10380,14 @@ Rc::new(InferResult {
                                 }
                             }
                         };
-                        let arg_infer_results = arg_call.results.clone();
+                        let arg_infer_results = variant_tag_reference_argument_results(
+                            func_name.clone(),
+                            crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
+                                call_target.clone(),
+                            ),
+                            arg_call.results.clone(),
+                            scope.clone(),
+                        );
                         let call_subst = arg_call.subst.clone();
                         let typed_args = Rc::new({
                             let mut __result = Vec::new();
@@ -13589,10 +13596,75 @@ pub fn sole_constructor_construction_diags(
 pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier.".to_string()
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn variant_tag_reference_argument_results(
+    func_name: String,
+    callee_is_body_binding: bool,
+    results: Rc<Vec<Rc<ArgInferResult>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ArgInferResult>>> {
+    if (((func_name.clone() != "discriminant".to_string()) || callee_is_body_binding.clone())
+        || ((results.clone().len() as i64) != 1))
+    {
+        results.clone()
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for air in results.iter().cloned() {
+                __result.push({
+                    let arg = crate::v1_std_core::arg_value(air.typed_arg.clone());
+                    match (*arg.expr_data.clone()).clone() {
+                        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                            if ((arg.children.clone().len() as i64) != 0) {
+                                air.clone()
+                            } else {
+                                match crate::v1_std_core::record_lit_type_name_at(
+                                    arg.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    Some(tn) => {
+                                        if (variant_owner_node(scope.clone(), tn.clone())
+                                            != std::option::Option::None)
+                                        {
+                                            Rc::new(ArgInferResult {
+                                                typed_arg: air.typed_arg.clone(),
+                                                diagnostics: Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for d in air.diagnostics.clone().iter().cloned()
+                                                    {
+                                                        if match (*d.diagnostic.clone()).clone() {
+                                                            CompilerDiagnostic::MissingField {
+                                                                type_name: t,
+                                                                ..
+                                                            } => (t.clone() != tn.clone()),
+                                                            _ => true,
+                                                        } {
+                                                            __result.push(d);
+                                                        }
+                                                    }
+                                                    __result
+                                                }),
+                                            })
+                                        } else {
+                                            air.clone()
+                                        }
+                                    }
+                                    std::option::Option::None => air.clone(),
+                                }
+                            }
+                        }
+                        _ => air.clone(),
+                    }
+                });
+            }
+            __result
+        })
+    }
 }
 
 pub fn presence_check_census_gate_note() -> String {
