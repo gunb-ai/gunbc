@@ -45,11 +45,21 @@ commit capital without it.
 | `artifacts/bmc/mtcollins1-hw-census.txt` | 247,849 | `9ec33e27b225848e2edc7454e0ff21b9081a19396f1a7205fe99529cf842bc8f` |
 | `artifacts/bmc/mtcollins1-hw-census-sol.log` | 240,475 | `1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8` |
 | `artifacts/bmc/mtcollins1-attempt3-sol.log` | 205,441 | `c63f5014f47004dcb099c1d306d4afdc97ae20835a8f40e93dd770efb03e051d` |
-| `artifacts/bmc/mtcollins1-attempt3-srv2-side.txt` | 1,669 | `e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad` |
+| `artifacts/bmc/mtcollins1-attempt3-srv2-side.txt` **(redacted, see below)** | 1,989 | `90e6f28962d8712db5db9f2e452a6c81cd87e9bd710d25d71be18bf5eee574cd` |
 | `artifacts/bmc/mtcollins1-host-capture.txt` | 270,880 | `a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a` |
 
 Receipt module: `dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag`.
 Witness: `dag/test/claim/machine_intake/mtcollins1_memory_census_witness_test.dag`.
+
+**One artifact was redacted before publication.** `mtcollins1-attempt3-srv2-side.txt`
+recorded the BMC password literally in `ipmitool` argv on two `----ARGV` lines, and `gunbc`
+is public. Those occurrences are replaced with a marker and the file carries a header saying
+so; nothing else changed. Pre-redaction digest
+`e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad` (1,669 bytes) is recorded
+so the edit is auditable. **The redaction does not undo the publication** — the unredacted
+bytes reached a public PR branch, so the credential must be treated as disclosed. It is the
+factory default on a routable BMC; rotating it is the operator-attended `BmcSecure` step and
+was deliberately not performed by this lane.
 
 ---
 
@@ -225,8 +235,9 @@ The next reset booted the census image and produced `mtcollins1-host-capture.txt
 failing and succeeding probes, so it proves the **EFI axis** and nothing about persistence.
 `persistent` is the *wrong* intake policy — it changes all future boots — and was used for
 convenience on a machine that was not mine to leave reconfigured. `ipmitool` sets the valid
-bit itself, so the one-shot projection is `options=efiboot` alone (**not**
-`options=valid,efiboot`). **A one-shot EFI wet run is still owed.**
+bit itself, so `valid` is redundant in that request. **What argv the intake should use, and
+the one-shot/persistent policy, are the migration's to state — this record does not
+prescribe them.** A one-shot EFI wet run is still owed and belongs to the typed producer.
 
 ### 7.2 The modelling defect behind it
 
@@ -292,49 +303,30 @@ brief said "PXE netboot" and I took it literally.
 
 ---
 
-## 8. MegaRAC media state machine (firmware 0.32 only)
+## 8. Controller-side observations
 
-Recovered from the frontend **this controller serves**, `source.min.js`, not inferred from
-behaviour:
+**The decoded status enum and the readiness rule that were here have been removed.** They
+reconstructed the complete MegaRAC state machine from `source.min.js` as served by this
+controller — and that file **is not a committed artifact**. This document opens by claiming
+every number is artifact-backed or re-derived, so a table whose source was never preserved
+was the one thing in here that could not honour that claim. It was also reusable protocol
+policy, which belongs to `extdeps.bmc.megarac` keyed to a firmware identity, not to a probe
+record.
 
-| Code | Vendor rendering | Meaning |
-|---|---|---|
-| 0 | `status_0` = "~" | idle / nothing attached |
-| 100 | `status_100` | connecting / pending |
-| **1** | **"Started" + " - Connection Accepted"** | **serving — the healthy steady state** |
-| 2 | " - Connection Denied" | refusal |
-| 3 | " - Login Failed" | refusal |
-| 4 | " - MAX Session Reached" | refusal |
-| 5 | " - Permission Denied" | refusal |
-| other | "Stopped" | neither pending nor success |
+What survives is what was measured against the live controller and is backed by this
+session's own observations:
 
-`session_index` 255 renders "N/A".
-
-Measured against the live controller:
-
-```
-22:38:16.528  start-media 200
-22:38:16.973  status=100  session_index=255   connecting, no session
-22:38:28.877  status=100  session_index=0     session allocated (+12s)
-22:38:31.255  status=1    session_index=0     STARTED (+15s)
-22:42:58.259  status=1    session_index=0     still Started, 4m27s later
-```
-
-**Consequences that generalise:**
-
-- A `status != 0` readiness predicate admits `100` (merely *connecting*) **and** admits
-  2–5 (*refusals*). Only `1` may satisfy media-ready; `100` needs a bounded poll; 2–5 must
-  be distinct typed refusals; other codes need an explicit other-code arm, not a default.
-- **`(100, session_index 0)` is a normal transient**, not incoherence — session allocation
-  precedes the status flip by ~3s. A bounded poll that treats it as invalid will refuse a
-  healthy attach. The genuinely incoherent pair is `1` with `255`, never observed here.
-- **This mapping is keyed to firmware 0.32.** Nothing establishes that any other MegaRAC
-  release uses the same numbers; an uncatalogued firmware identity must refuse rather than
-  inherit the nearest profile.
+- **The attach transition, as observed.** 2026-09-10T22:38:16.528Z: status 100 with
+  `session_index` 255; `session_index` 0 at +12s with status still 100; status 1 at +15s;
+  still status 1 at +4m27s idle and throughout the boot that followed. Recorded as seen.
+  **No readiness conclusion is drawn from it here** — which status permits a reset is a
+  policy question owned by the migration, against a catalog keyed to firmware identity.
+- **`(100, session_index 0)` is a real intermediate**, not a hypothetical: session
+  allocation precedes the status flip by about three seconds.
 
 ### `PUT /api/settings/media/general` carries no verdict
 
-Three cells measured, including one not in the reviewer's table:
+Three cells measured, including one not previously listed:
 
 | HTTP | Readback | Reality |
 |---|---|---|
@@ -360,7 +352,6 @@ web/API answering again:             240–244s
 The web stack is the slow, stable one at ~4 minutes. A recovery check that gives up at 90s
 will wrongly conclude the controller is dead.
 
----
 
 ## 9. Errors I made, and what they cost
 
@@ -451,17 +442,18 @@ eliminate. It remains the blocking objection on #10965 and it is fair.
 
 ---
 
-## 11. Practical guidance for the next Mt. Collins
+## 11. What this probe does NOT prescribe
 
-1. **Set the EFI bit.** `options=efiboot`. Without it the firmware is asked to legacy-boot
-   on an architecture with no legacy path, and will quietly fall through to PXE and the
-   UEFI shell while the model reports success.
-2. **Wait for `redirection_status: 1`, not `100`.** 100 is connecting. `(100, session 0)`
-   is a normal transient.
-3. **Never read an HTTP status as a verdict on this BMC.** 500 means both applied and not
-   applied. Read back.
-4. **Budget ~4 minutes for a controller reset**, not 90 seconds, and confirm it actually
-   went *down* before polling for its return.
-5. **PXE is a dead end on this segment** unless someone stands up DHCP/TFTP; the modelled
-   diskless NFS + MegaRAC route is the working path.
-6. **Census each unit.** The rank mix is per-unit and this one is not representative.
+An earlier revision ended with a numbered operating procedure for the next Mt. Collins —
+which argv to use, which status to wait for, how long to budget. **That has been removed.**
+A probe record that also prescribes protocol becomes a second authority the moment the
+boot-path migration lands, and the migration is where the boot-intent product, the readiness
+predicate and their admissibility rules are being modelled properly.
+
+The observations above stand on their artifacts. The rules to draw from them are the
+migration's to state, in a carrier that can be consumed rather than read.
+
+Two things this record does assert, because they are measurements rather than policy:
+PXE is not served on this segment (§7.4), and the boot-type axis was the varied term in the
+control that booted (§7.1) — with the explicit caveat that this says nothing about
+persistence, and nothing about Attempt 3, which reached GRUB and failed at its initrd.

@@ -606,6 +606,40 @@ type MtCollins1CaptureAttemptFailure {
   why_not_retried: NonEmptyStr
 }
 
+// ONE ARTIFACT WAS ALTERED BEFORE PUBLICATION, AND THAT IS DECLARED HERE RATHER THAN DONE QUIETLY.
+// Everywhere else this module insists captured bytes are never edited, because editing a capture
+// destroys the property that makes it evidence. This is the one exception and it is not a
+// judgement call: mtcollins1-attempt3-srv2-side.txt recorded the BMC password LITERALLY in
+// ipmitool argv on two ARGV lines, and gunbc is a public repository.
+//
+// A LIVE CREDENTIAL IN PUBLIC OUTRANKS BYTE FIDELITY. The two occurrences of the password are
+// replaced with a redaction marker, a header states that the file was redacted, and nothing else
+// is touched. Both digests are recorded below so the edit is auditable: a reader can see exactly
+// that the file changed, when, and why, rather than finding a digest that silently disagrees with
+// a receipt written earlier.
+//
+// THE REDACTION DOES NOT UNDO THE PUBLICATION. These bytes existed on a public PR branch before
+// the redaction, so the credential must be treated as disclosed regardless of what this file now
+// says. Rotating it is the operator-attended BmcSecure step and is deliberately NOT performed by
+// this lane; what this row does is make the exposure impossible to overlook.
+type MtCollins1ArtifactRedaction {
+  artifact_path: NonEmptyStr
+  reason: NonEmptyStr
+  digest_before_redaction: NonEmptyStr
+  digest_after_redaction: NonEmptyStr
+  bytes_after_redaction: Int
+  residual_exposure: NonEmptyStr
+}
+
+data mtcollins1_srv2_side_redaction: MtCollins1ArtifactRedaction = MtCollins1ArtifactRedaction {
+  artifact_path: "artifacts/bmc/mtcollins1-attempt3-srv2-side.txt",
+  reason: "Two ----ARGV lines recorded `ipmitool -I lanplus -H 192.168.1.228 -U admin -P <password>` with the password literal. gunbc is public. The password occurrences are replaced with a redaction marker and a header records the edit; no other byte is changed.",
+  digest_before_redaction: "e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad",
+  digest_after_redaction: "90e6f28962d8712db5db9f2e452a6c81cd87e9bd710d25d71be18bf5eee574cd",
+  bytes_after_redaction: 1989,
+  residual_exposure: "The unredacted bytes were pushed to a public PR branch before this redaction, so the credential is DISCLOSED and redaction does not undo that. It is the factory default on a routable BMC and rotation is the operator-attended BmcSecure step, not this lane's to perform. The producer defect that caused it is that every ad-hoc ipmitool call in this session passed -P on the command line; the modelled route already uses a password file via -f, and the migration's producer must too.",
+}
+
 data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1CaptureAttemptFailure {
   attempt: 3,
   intent: "Close the subject-binding gap (dmidecode type 1/2/3), record per-section argv and exit status, and add a named memory workload with EDAC counters read before and after, so the health reading would be a load-based one rather than a snapshot.",
