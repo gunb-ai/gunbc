@@ -2,6 +2,7 @@ module test.claim.typed_remote_file_converge_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.file_access { FileTreeScope }
+import std.materialization_ladder { string_list_contains }
 import gunbc.fleet_known_hosts_anchor { SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
@@ -14,6 +15,9 @@ import gunbc.typed_remote_file_write {
   RemoteFileMode,
   RemoteFileModeOwnerReadWrite,
   RemoteFileModeOwnerReadWriteWorldRead,
+  RemoteFileAsSessionPrincipal,
+  RemoteFileViaNonInteractiveSudo,
+  remote_file_privileged_argv,
   remote_file_mode_octal,
   typed_remote_file_staging_path,
   typed_remote_file_stage_argv,
@@ -132,6 +136,40 @@ test fn the_comparison_takes_the_declared_side_from_stdin() -> Bool {
     Present { value: w } =>
       string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "-")
         && !string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "cat")
+  }
+}
+
+// ── Privilege ───────────────────────────────────────────────────────────────────────────────────
+
+// The session arm is the identity on argv, so every consumer that wrote as its own principal before
+// the privilege axis existed runs exactly the words it ran then.
+test fn the_session_principal_leaves_every_leg_as_built() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      remote_file_privileged_argv(privilege: RemoteFileAsSessionPrincipal, argv: typed_remote_file_stage_argv(write: w))
+        == typed_remote_file_stage_argv(write: w)
+        && remote_file_privileged_argv(privilege: RemoteFileAsSessionPrincipal, argv: typed_remote_file_compare_argv(write: w))
+        == typed_remote_file_compare_argv(write: w)
+  }
+}
+
+// The sudo arm is non-interactive on every leg. A bare `sudo` would prompt on a channel with no
+// terminal and hang to the step timeout instead of refusing at the leg that lacked the grant.
+test fn the_sudo_arm_prefixes_every_leg_non_interactively() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_stage_argv(write: w))
+        == concat(["/usr/bin/sudo", "-n"], typed_remote_file_stage_argv(write: w))
+        && remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_rename_argv(write: w))
+        == concat(["/usr/bin/sudo", "-n"], typed_remote_file_rename_argv(write: w))
+        && remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_compare_argv(write: w))
+        == concat(["/usr/bin/sudo", "-n"], typed_remote_file_compare_argv(write: w))
+        && !string_list_contains(
+          xs: remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_stage_argv(write: w)),
+          wanted: "-S",
+        )
   }
 }
 
@@ -258,6 +296,7 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
             context: context,
             admission: TypedRemoteFileWriteAdmitted { write: w },
             mode: RemoteFileModeOwnerReadWrite,
+            privilege: RemoteFileAsSessionPrincipal,
           ) {
             TypedRemoteFileConverged { converged: c } =>
               ((c.write.path as String) == (subject_path as String))

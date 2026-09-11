@@ -2,11 +2,15 @@ module gunbc.harness.harness_throughput
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.algebra { trim }
-import extdeps.languages.json.emit { JsonValue, JsonNumber, JsonString }
+import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
-  JsonMemberFound,
+  JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   parse_json_document, json_object_unique_member,
+}
+import gunbc.harness.harness_wire {
+  HarnessIntRead, IntRead, IntAbsent, IntDuplicated, IntNotAnObject, IntNotANumber, IntNotAnInteger,
+  harness_member_int, harness_int_read_gap,
 }
 
 // READING THE ROUND.USAGE STREAM THE HARNESS WRITES. This module sits beside the writer rather than
@@ -42,6 +46,257 @@ type HarnessRoundLedger
   = RoundsObserved { rounds: List<RoundObservation> }
   | RoundsUnobserved { reason: NonEmptyStr }
 
+// THE COUNTS ARE READ THROUGH THE WRITER'S OWN READER, AND THE `Int?` THAT USED TO STAND HERE WAS
+// THIS MODULE'S COPY OF THE CLASS THE DECODER BESIDE IT JUST REPAIRED (review 63779).
+//
+// `throughput_member_int` answered `none` for every way of not having a number -- absent,
+// duplicated, not a number, a lexeme that does not parse -- and every call site then answered `0`
+// for `none`. A stream row whose `output_tokens` could not be read therefore became a CLOCKED ROUND
+// THAT PRODUCED NOTHING: it kept its interval in the denominator, contributed zero to the
+// numerator, and the dashboard rendered a confident rate that was too low by exactly that round's
+// work. Zero is a legal token count, so nothing downstream could tell. That is
+// `gunbc.recurring_failure_mode` `unread_member_defaults_to_a_legal_value_of_its_domain` surviving
+// in the sibling reader while the module next door was being repaired for it.
+//
+// There is no second reader now: `harness_member_int` and `harness_int_read_gap` are
+// `gunbc.harness.harness_wire`'s. That module does not write the event -- `gunbc.harness.harness_turn`
+// `harness_event_round_usage` does, from counts harness_wire decoded -- but it is where the integer
+// reading of a wire member is already modelled, and one wire fact may have one reader. A second
+// `Int?` here was that reader forked.
+//
+// ABSENT IS STILL AN ANSWER FOR THE MEMBERS THAT ARE DECLARED OPTIONAL -- files_changed and
+// tool_calls, which older streams do not carry and whose absence is `not measured` rather than a
+// fault. Every other gap refuses, INCLUDING A MISSING epoch_ms, which the first version of this
+// repair still skipped: dropping an unclocked INTERIOR round keeps the endpoints' interval in the
+// denominator while removing that round's tokens from the numerator and its row from the
+// population, so three rounds of 100/200/300 spanning 1000..5000 ms with the middle round's clock
+// refused reported 75 tok/s over 2 rounds instead of 125 over 3 (side-chat review, 2026-09-11).
+// That is the same understatement the zero-default produced, reached by deletion instead of by
+// substitution. A round whose time is unknown cannot be placed in an interval-denominated
+// aggregate, so the aggregate is unavailable and says why; the remedy it names is the host clock,
+// which is a different remedy from a malformed member and therefore a different cause.
+fn throughput_optional_int(doc: JsonValue, key: String) -> OptionalIntRead {
+  match harness_member_int(doc: doc, key: key) {
+    IntRead { value: n } => OptionalIntRead { value: Present { value: n } }
+    IntAbsent => OptionalIntRead { value: none }
+    IntDuplicated => OptionalIntUnreadable { cause: throughput_gap_text(key: key, read: IntDuplicated) }
+    IntNotAnObject => OptionalIntUnreadable { cause: throughput_gap_text(key: key, read: IntNotAnObject) }
+    IntNotANumber => OptionalIntUnreadable { cause: throughput_gap_text(key: key, read: IntNotANumber) }
+    IntNotAnInteger { lexeme: lx } =>
+      OptionalIntUnreadable { cause: throughput_gap_text(key: key, read: IntNotAnInteger { lexeme: lx }) }
+  }
+}
+
+type OptionalIntRead
+  = OptionalIntRead { value: Int? }
+  | OptionalIntUnreadable { cause: String }
+
+fn throughput_gap_text(key: String, read: HarnessIntRead) -> String {
+  join(["a round.usage row ", harness_int_read_gap(key: key, read: read)], "")
+}
+
+// ONE ROW IS READ, IS UNCLOCKED, OR REFUSES -- the same three answers the block decoder gives, for
+// the same reason. Unclocked is its own arm because its REMEDY is its own -- `harness_event_round_usage`
+// emits the row deliberately when the host clock refused, so the fix is on the host rather than in
+// this stream -- but it refuses like the rest: an unplaceable round may not be deleted from an
+// interval-denominated aggregate.
+type RoundRead
+  = RoundReadOk { round: RoundObservation }
+  | RoundReadUnclocked
+  | RoundReadGap { cause: String }
+
+// THE DISCRIMINATOR IS READ, OR THE LINE IS NOT OURS, OR IT REFUSES -- and the `Bool` that used to
+// stand here collapsed the third into the second (side-chat review, 2026-09-11). A line whose
+// `type` member appeared TWICE, or was not a string, answered `false` and was skipped as if it were
+// somebody else's event, so its counts never reached the reader that refuses. That is the same
+// class one frame earlier than the counts: the gap is not in a measurement but in the test that
+// decides whether a measurement is ours to read, and a row skipped there is invisible to every
+// refusal downstream of it.
+//
+// A LINE THAT IS NOT A USAGE ROW IS NOT A GAP, and that arm has to stay: this stream carries
+// turn.started, round.usage_unavailable and whatever later writers add, by design.
+type UsageRowRead
+  = UsageRowIsOurs
+  | UsageRowIsAnotherEvent
+  | UsageRowUnreadable { cause: String }
+
+fn throughput_is_usage_row(doc: JsonValue) -> UsageRowRead {
+  match json_object_unique_member(v: doc, key: "type") {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => if s == "round.usage" { UsageRowIsOurs } else { UsageRowIsAnotherEvent }
+        _ => UsageRowUnreadable {
+          cause: "an event line carries a 'type' member that is not a string; whether it is a round.usage row is unknowable",
+        }
+      }
+    JsonMemberAbsent => UsageRowIsAnotherEvent
+    JsonMemberDuplicated => UsageRowUnreadable {
+      cause: "an event line carries 'type' more than once; whether it is a round.usage row is unknowable",
+    }
+    JsonMemberNotAnObject => UsageRowUnreadable {
+      cause: "an event line is not a JSON object, so its 'type' could not be read",
+    }
+  }
+}
+
+// THE RATE OVER A RAW STREAM IS THE RATE OVER ITS LEDGER, AND THERE IS NOW ONE FOLD RATHER THAN
+// TWO. A second accumulator walked the same lines and re-derived the same three quantities beside
+// the ledger-based form -- one concept answered twice (DESIGN section 2), free to disagree with
+// itself after any edit to either, and the place the `output_tokens` default survived longest. The
+// entry point witnesses pin is kept; what it does is decode the rows once and derive from them.
+//
+// THE REFUSAL ARMS ARE SEPARATE BECAUSE THEIR REMEDIES DIFFER. No usage rows at all means the run
+// predates this stream or never reached a response; rows present but unclocked means the host clock
+// refused and the fix is on the host; a single clocked row means the turn is still in its first
+// round and an interval does not exist yet; a row this reader cannot decode is a stream fault that
+// names its member. Collapsing these into one "unknown" would hand the reader one symbol for four
+// different situations.
+fn harness_throughput_from_events(body: String) -> HarnessThroughput {
+  harness_throughput_from_ledger(ledger: harness_round_ledger_from_events(body: body))
+}
+
+
+// THE THREE REQUIRED COUNTS ARE READ OR THE ROW REFUSES. step, input_tokens and output_tokens are
+// written by `gunbc.harness.harness_turn` `harness_event_round_usage` on every round.usage row, so
+// a row that lacks one, or carries one twice, is a stream this reader does not understand rather
+// than a round that did nothing. Answering 0 for any of them is the failure this module was
+// repaired for: for output_tokens it is a clocked round that produced nothing, which keeps its
+// interval in the denominator and drags the rate down by exactly the work it hid; for step it is a
+// mislabelled strip segment; for input_tokens it is a context reading nobody took.
+fn round_observation_of(doc: JsonValue) -> RoundRead {
+  match harness_member_int(doc: doc, key: "epoch_ms") {
+    IntAbsent => RoundReadUnclocked
+    IntRead { value: ms } => round_observation_clocked(doc: doc, ms: ms)
+    IntDuplicated => RoundReadGap { cause: throughput_gap_text(key: "epoch_ms", read: IntDuplicated) }
+    IntNotAnObject => RoundReadGap { cause: throughput_gap_text(key: "epoch_ms", read: IntNotAnObject) }
+    IntNotANumber => RoundReadGap { cause: throughput_gap_text(key: "epoch_ms", read: IntNotANumber) }
+    IntNotAnInteger { lexeme: lx } =>
+      RoundReadGap { cause: throughput_gap_text(key: "epoch_ms", read: IntNotAnInteger { lexeme: lx }) }
+  }
+}
+
+fn round_observation_clocked(doc: JsonValue, ms: Int) -> RoundRead {
+  match round_required_int(doc: doc, key: "step") {
+    RequiredIntGap { cause: c } => RoundReadGap { cause: c }
+    RequiredIntRead { value: step } =>
+      match round_required_int(doc: doc, key: "input_tokens") {
+        RequiredIntGap { cause: c } => RoundReadGap { cause: c }
+        RequiredIntRead { value: in_toks } =>
+          match round_required_int(doc: doc, key: "output_tokens") {
+            RequiredIntGap { cause: c } => RoundReadGap { cause: c }
+            RequiredIntRead { value: out_toks } =>
+              match throughput_optional_int(doc: doc, key: "files_changed") {
+                OptionalIntUnreadable { cause: c } => RoundReadGap { cause: c }
+                OptionalIntRead { value: files } =>
+                  match throughput_optional_int(doc: doc, key: "tool_calls") {
+                    OptionalIntUnreadable { cause: c } => RoundReadGap { cause: c }
+                    OptionalIntRead { value: calls } =>
+                      RoundReadOk { round: RoundObservation {
+                        step: step,
+                        input_tokens: in_toks,
+                        output_tokens: out_toks,
+                        epoch_ms: ms,
+                        files_changed: files,
+                        tool_calls: calls,
+                      } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type RequiredIntRead
+  = RequiredIntRead { value: Int }
+  | RequiredIntGap { cause: String }
+
+fn round_required_int(doc: JsonValue, key: String) -> RequiredIntRead {
+  match harness_member_int(doc: doc, key: key) {
+    IntRead { value: n } => RequiredIntRead { value: n }
+    IntAbsent => RequiredIntGap { cause: throughput_gap_text(key: key, read: IntAbsent) }
+    IntDuplicated => RequiredIntGap { cause: throughput_gap_text(key: key, read: IntDuplicated) }
+    IntNotAnObject => RequiredIntGap { cause: throughput_gap_text(key: key, read: IntNotAnObject) }
+    IntNotANumber => RequiredIntGap { cause: throughput_gap_text(key: key, read: IntNotANumber) }
+    IntNotAnInteger { lexeme: lx } =>
+      RequiredIntGap { cause: throughput_gap_text(key: key, read: IntNotAnInteger { lexeme: lx }) }
+  }
+}
+
+// THE LEDGER FOLD IS FAIL-CLOSED ACROSS THE WHOLE STREAM, for the reason the block fold in the
+// decoder is: a ledger missing the rows it could not read is a shorter run that looks complete, and
+// every projection over it -- the rate, the strip, the budget track -- would render confidently
+// from a population nobody was told had shrunk. A line that is not JSON, or is not a usage row, is
+// not a gap: this stream carries other event types and older writers' lines by design.
+// ONE LINE IS A ROW, IS NOT OURS, OR IS A GAP -- read independently of what came before it, which
+// is what lets the fold be linear. The accumulating version of this function carried the rows so
+// far and appended with `concat(rows, [r])`, COPYING the accumulator once per line: quadratic in
+// the stream length for a pass that reads each line once, the same cost-shape defect this change
+// removes in the block folds next door and authored in the same diff (review 63840). A per-line
+// read depends on nothing but its line, so the three passes below -- map, first-gap scan, flat_map
+// -- replace the carry, exactly as `harness_decode_each` does for content blocks.
+type LineRead
+  = LineIsRow { round: RoundObservation }
+  | LineIsNotOurs
+  | LineIsGap { cause: String }
+
+fn ledger_read_line(line: String) -> LineRead {
+  if trim(line) == "" {
+    LineIsNotOurs
+  } else {
+    match parse_json_document(s: line) {
+      JsonDocumentUnreadable { gap: _ } => LineIsNotOurs
+      JsonDocumentParsed { value: doc } =>
+        match throughput_is_usage_row(doc: doc) {
+          UsageRowIsAnotherEvent => LineIsNotOurs
+          UsageRowUnreadable { cause: c } => LineIsGap { cause: c }
+          UsageRowIsOurs =>
+            match round_observation_of(doc: doc) {
+              RoundReadOk { round: r } => LineIsRow { round: r }
+              RoundReadUnclocked => LineIsGap {
+                cause: "a round.usage row carries no epoch_ms; its counts belong to a time this ledger cannot place, so the rate and the strip over these rounds are unavailable rather than computed without it",
+              }
+              RoundReadGap { cause: c } => LineIsGap { cause: c }
+            }
+        }
+    }
+  }
+}
+
+// FIRST GAP WINS, IN STREAM ORDER, and it decides for the whole ledger before any row is kept --
+// the fail-closed half of the same fold. A ledger missing the rows it could not read is a shorter
+// run that looks complete.
+fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
+  let reads = map(split(s: body, delimiter: "\n"), l => ledger_read_line(line: l))
+  match fold(reads, init: none, f: (acc, r) =>
+         match acc {
+           Present { value: c } => Present { value: c }
+           Absent =>
+             match r {
+               LineIsGap { cause: c } => Present { value: c }
+               LineIsRow { round: _ } => none
+               LineIsNotOurs => none
+             }
+         }) {
+    Present { value: c } => RoundsUnobserved { reason: c as NonEmptyStr }
+    Absent => {
+      let rows = flat_map(reads, r =>
+        match r {
+          LineIsRow { round: x } => [x]
+          LineIsNotOurs => []
+          LineIsGap { cause: _ } => []
+        })
+      if list_length(items: rows) == 0 {
+        RoundsUnobserved { reason: "no clocked round.usage row in the event stream" as NonEmptyStr }
+      } else {
+        RoundsObserved { rounds: rows }
+      }
+    }
+  }
+}
+
+// THE RATE IS A FOLD OVER THE LEDGER, and it is the only one: the raw-stream entry point above
+// decodes to a ledger and calls this.
+//
 // THE FIRST ROUND'S TOKENS ARE EXCLUDED FROM THE NUMERATOR ON PURPOSE, and the reason is that they
 // were produced BEFORE the first timestamp exists. A usage row is written when a response has
 // already arrived, so the earliest clock reading marks the END of round 1's generation, not its
@@ -49,150 +304,6 @@ type HarnessRoundLedger
 // credit round 1's output to a window it did not run in and overstate the rate by exactly that
 // round -- worst at the small round counts where the dashboard is most often read. The honest
 // measure over the same rows is the tokens produced BETWEEN two readings, which is rounds 2..N.
-type ThroughputAccumulator {
-  rounds: Int
-  later_tokens: Int
-  first_ms: Int
-  last_ms: Int
-  clocked: Int
-}
-
-fn throughput_member_int(doc: JsonValue, key: String) -> Int? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } =>
-      match v {
-        JsonNumber { lexeme: lex } => parse_int(s: lex as String)
-        _ => none
-      }
-    _ => none
-  }
-}
-
-fn throughput_is_usage_row(doc: JsonValue) -> Bool {
-  match json_object_unique_member(v: doc, key: "type") {
-    JsonMemberFound { value: v } =>
-      match v {
-        JsonString { value: s } => s == "round.usage"
-        _ => false
-      }
-    _ => false
-  }
-}
-
-fn throughput_absorb_row(acc: ThroughputAccumulator, doc: JsonValue) -> ThroughputAccumulator {
-  match throughput_member_int(doc: doc, key: "epoch_ms") {
-    Absent => acc
-    Present { value: ms } => {
-      let toks = match throughput_member_int(doc: doc, key: "output_tokens") {
-        Present { value: t } => t
-        Absent => 0
-      }
-      ThroughputAccumulator {
-        rounds: acc.rounds + 1,
-        later_tokens: if acc.clocked == 0 { 0 } else { acc.later_tokens + toks },
-        first_ms: if acc.clocked == 0 { ms } else { acc.first_ms },
-        last_ms: ms,
-        clocked: acc.clocked + 1,
-      }
-    }
-  }
-}
-
-fn throughput_absorb_line(acc: ThroughputAccumulator, line: String) -> ThroughputAccumulator {
-  if trim(line) == "" {
-    acc
-  } else {
-    match parse_json_document(s: line) {
-      JsonDocumentUnreadable { gap: _ } => acc
-      JsonDocumentParsed { value: doc } =>
-        if throughput_is_usage_row(doc: doc) {
-          throughput_absorb_row(acc: acc, doc: doc)
-        } else {
-          acc
-        }
-    }
-  }
-}
-
-// THE REFUSAL ARMS ARE SEPARATE BECAUSE THEIR REMEDIES DIFFER. No usage rows at all means the run
-// predates this stream or never reached a response; rows present but unclocked means the host clock
-// refused and the fix is on the host; a single clocked row means the turn is still in its first
-// round and an interval does not exist yet. Collapsing these into one "unknown" would hand the
-// reader one symbol for three different situations.
-fn harness_throughput_from_events(body: String) -> HarnessThroughput {
-  let acc = fold(
-    split(s: body, delimiter: "\n"),
-    init: ThroughputAccumulator { rounds: 0, later_tokens: 0, first_ms: 0, last_ms: 0, clocked: 0 },
-    f: (a, line) => throughput_absorb_line(acc: a, line: line),
-  )
-  if acc.clocked == 0 {
-    ThroughputUnobserved {
-      reason: "no clocked round.usage row in the event stream" as NonEmptyStr,
-    }
-  } else if acc.clocked < 2 {
-    ThroughputUnobserved {
-      reason: "one clocked round so far; an interval needs two" as NonEmptyStr,
-    }
-  } else if acc.last_ms <= acc.first_ms {
-    ThroughputUnobserved {
-      reason: "clock did not advance between the first and last round" as NonEmptyStr,
-    }
-  } else {
-    ThroughputObserved {
-      output_tokens: acc.later_tokens,
-      elapsed_ms: acc.last_ms - acc.first_ms,
-      rounds: acc.rounds,
-    }
-  }
-}
-
-
-fn round_observation_of(doc: JsonValue) -> RoundObservation? {
-  match throughput_member_int(doc: doc, key: "epoch_ms") {
-    Absent => none
-    Present { value: ms } =>
-      Present { value: RoundObservation {
-        step: match throughput_member_int(doc: doc, key: "step") { Present { value: n } => n  Absent => 0 },
-        input_tokens: match throughput_member_int(doc: doc, key: "input_tokens") { Present { value: n } => n  Absent => 0 },
-        output_tokens: match throughput_member_int(doc: doc, key: "output_tokens") { Present { value: n } => n  Absent => 0 },
-        epoch_ms: ms,
-        files_changed: throughput_member_int(doc: doc, key: "files_changed"),
-        tool_calls: throughput_member_int(doc: doc, key: "tool_calls"),
-      } }
-  }
-}
-
-fn ledger_absorb_line(acc: List<RoundObservation>, line: String) -> List<RoundObservation> {
-  if trim(line) == "" {
-    acc
-  } else {
-    match parse_json_document(s: line) {
-      JsonDocumentUnreadable { gap: _ } => acc
-      JsonDocumentParsed { value: doc } =>
-        if throughput_is_usage_row(doc: doc) {
-          match round_observation_of(doc: doc) {
-            Present { value: r } => concat(acc, [r])
-            Absent => acc
-          }
-        } else {
-          acc
-        }
-    }
-  }
-}
-
-fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
-  let rounds = fold(split(s: body, delimiter: "\n"), init: [], f: (a, line) => ledger_absorb_line(acc: a, line: line))
-  if list_length(items: rounds) == 0 {
-    RoundsUnobserved { reason: "no clocked round.usage row in the event stream" as NonEmptyStr }
-  } else {
-    RoundsObserved { rounds: rounds }
-  }
-}
-
-// THE RATE IS A FOLD OVER THE LEDGER. This is the same derivation the accumulator below performs
-// over the raw stream, re-based on the decoded rows so the two cannot disagree; the stream-based
-// form is kept as the entry point existing witnesses pin.
 fn harness_throughput_from_ledger(ledger: HarnessRoundLedger) -> HarnessThroughput {
   match ledger {
     RoundsUnobserved { reason: r } => ThroughputUnobserved { reason: r }
@@ -247,6 +358,23 @@ type RoundSegment {
   kind: RoundSegmentKind
 }
 
+// THE TWO ORDER-DEPENDENT FOLDS BUILD WITH `list_push`, NOT `concat(acc, [x])`, and the difference
+// is measured rather than assumed (review 63840). Both carry state a per-element read cannot have --
+// the previous round and the last measured file count here, a running elapsed sum in the playback
+// fold -- so neither reduces to the map/scan/flat_map shape the ledger and the block folds use. The
+// append is what had to change instead.
+//
+// THE REASON IS A COST SHAPE, NOT A CITED MEASUREMENT. `concat` and `list_push` reach different
+// arms of the interpreter: `list_push` appends one element to the carrier, while `concat` takes its
+// argument as a whole list and goes through the vector's general CONCATENATION path once per step,
+// which is the more expensive of the two per element. A one-off timing of the two folds confirmed
+// it and is NOT an instrument -- nothing here re-derives it, no entry point cites it, and a
+// committed benchmark existing only to be named would be a declaration with no consumer. What is
+// durable is the shape, and the shape is what the choice rests on.
+//
+// AND THE PRIMITIVE-COPY COUNTERS DO NOT SEE THIS. They report zero entries copied for BOTH,
+// because they count free-monoid materialization of the ARGUMENT rather than the work on the
+// receiver, so an auditor who reaches for them concludes there is no cost to find.
 type SegmentFold {
   previous: RoundObservation?
   last_measured: Int?
@@ -279,12 +407,12 @@ fn segment_fold_step(acc: SegmentFold, r: RoundObservation) -> SegmentFold {
       SegmentFold {
         previous: Present { value: r },
         last_measured: match r.files_changed { Present { value: n } => Present { value: n }  Absent => acc.last_measured },
-        segments: concat(acc.segments, [RoundSegment {
+        segments: acc.segments.list_push(RoundSegment {
           step: r.step,
           duration_ms: r.epoch_ms - p.epoch_ms,
           output_tokens: r.output_tokens,
           kind: round_segment_kind(now: r.files_changed, last_measured: acc.last_measured, tool_calls: r.tool_calls),
-        }]),
+        }),
       }
   }
 }
@@ -337,7 +465,7 @@ fn round_playback_step(acc: PlaybackFold, seg: RoundSegment, total: Int, playbac
   let shown = if scaled < round_playback_floor_ms { round_playback_floor_ms } else { scaled }
   PlaybackFold {
     elapsed: acc.elapsed + seg.duration_ms,
-    out: concat(acc.out, [ RoundPlayback { segment: seg, delay_ms: acc.elapsed * playback_ms / total, duration_ms: shown } ]),
+    out: acc.out.list_push(RoundPlayback { segment: seg, delay_ms: acc.elapsed * playback_ms / total, duration_ms: shown }),
   }
 }
 

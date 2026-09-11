@@ -40,11 +40,12 @@ import gunbc.witness_floor_workflow {
   RunningSupersessionPolicy,
   NeverSupersedeRunning,
   SupersedeRunningForEvent,
-  supersession_event_expression,
+  github_event_name_equals,
   witness_floor_concurrency_policy,
   witness_floor_running_supersession_policy,
   concurrency_of_policy
 }
+import extdeps.github.expressions { interpolate }
 import extdeps.github.actions {
   ConcurrencySpec,
   ConcurrencyScalar,
@@ -640,7 +641,7 @@ test fn w_running_cancel_four_cell_through_the_producer() -> Bool {
     CancelInProgressExpression { expression: _ } => false
   }
   let safe_cancel = match cancel_in_progress_of_policy(policy: safe) {
-    CancelInProgressExpression { expression: e } => e == supersession_event_expression(event: "pull_request")
+    CancelInProgressExpression { expression: e } => e == interpolate(expression: github_event_name_equals(event: "pull_request"))
     CancelInProgressBool { value: _ } => false
   }
   unproven_is_never
