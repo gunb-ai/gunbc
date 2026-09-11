@@ -5,7 +5,7 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
-  census_key_count,
+  census_count_at_key,
   censuses_differ_by_exactly_the_target_key
 }
 import std.types { String, Bool, Int }
@@ -45,7 +45,7 @@ fn census_of(source: String) -> CompileDiagnosticCensus {
 fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
   match census_of(source: source) {
     CensusObserved { rows: rows } =>
-      census_key_count(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
+      census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
@@ -190,8 +190,8 @@ test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
 // sides would cancel in the differential above and read as agreement -- the sentinel key is carried
 // into the key set precisely so it cannot hide there, and this arm names it.
 test fn both_arms_of_the_differential_actually_compiled() -> Bool {
-  (census_key_count(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: forged_reading_source)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
-    && (census_key_count(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+  (census_count_at_key(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: forged_reading_source)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+    && (census_count_at_key(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
 }
 
 // PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (DESIGN 3c).

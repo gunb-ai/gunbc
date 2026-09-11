@@ -132,9 +132,16 @@ fn census_total_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
 // the authority for a form does not make the form reusable; the function does, and its home is the
 // module that owns the rule rather than any battery that consumes it.
 //
-// COUNTS ARE SUMMED, NEVER TALLIED AS ROWS. census_key_count delegates to census_total_count for
+// COUNTS ARE SUMMED, NEVER TALLIED AS ROWS. census_count_at_key delegates to census_total_count for
 // exactly the reason stated above it: a class occurring twice is two occurrences.
-fn census_key_count(
+//
+// THE NAME IS DELIBERATELY NOT THE ONE IT REPLACES. The receipt this was lifted out of called its
+// local copy census_key_count, and homing it under that same spelling would have REBOUND a name
+// already authored on both sides -- which namespace-wave-admission classifies as TargetChanged and
+// refuses until admitted, correctly: a spelling that keeps its text and changes which declaration it
+// admits is invisible to a reader of either side alone. A fresh spelling makes the move a deletion
+// and an addition rather than a silent rebind, which is what it actually is.
+fn census_count_at_key(
   rows: List<CompileDiagnosticCensusRow>,
   diagnostic_class: String,
   subject_name: String,
@@ -155,8 +162,8 @@ fn census_key_delta(
   red: List<CompileDiagnosticCensusRow>,
   green: List<CompileDiagnosticCensusRow>
 ) -> Int {
-  let in_red = census_key_count(rows: red, diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking)
-  let in_green = census_key_count(rows: green, diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking)
+  let in_red = census_count_at_key(rows: red, diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking)
+  let in_green = census_count_at_key(rows: green, diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking)
   in_red - in_green
 }
 
@@ -179,8 +186,8 @@ fn censuses_differ_by_exactly_the_target_key(
   target_class: String,
   target_subject: String
 ) -> Bool {
-  let target_in_red = census_key_count(rows: red, diagnostic_class: target_class, subject_name: target_subject, blocking: true)
-  let target_in_green = census_key_count(rows: green, diagnostic_class: target_class, subject_name: target_subject, blocking: true)
+  let target_in_red = census_count_at_key(rows: red, diagnostic_class: target_class, subject_name: target_subject, blocking: true)
+  let target_in_green = census_count_at_key(rows: green, diagnostic_class: target_class, subject_name: target_subject, blocking: true)
   ((target_in_red - target_in_green) == 1)
     && red |> all(r => census_key_delta(r: r, red: red, green: green) == census_expected_delta(r: r, target_class: target_class, target_subject: target_subject))
     && green |> all(r => census_key_delta(r: r, red: red, green: green) == census_expected_delta(r: r, target_class: target_class, target_subject: target_subject))

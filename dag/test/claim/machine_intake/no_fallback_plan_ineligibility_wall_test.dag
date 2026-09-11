@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
   census_blocking_rows,
   census_rows_of_class,
   census_total_count,
-  census_key_count,
+  census_count_at_key,
   censuses_differ_by_exactly_the_target_key
 }
 import v2.std.optional { Absent, Present }
@@ -124,7 +124,7 @@ test fn an_eligible_standing_cannot_be_placed_in_a_plans_ineligible_arm() -> Boo
       census_total_count(
         rows: census_rows_of_class(rows: census_blocking_rows(rows: red.rows), wanted: target_class)
       ) == 1
-        && census_key_count(
+        && census_count_at_key(
           rows: red.rows,
           diagnostic_class: target_class,
           subject_name: target_subject,
