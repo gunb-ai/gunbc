@@ -11,6 +11,8 @@ import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl, concat_frontier_row_groups }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
 
 // DEEPSEEK-V4.1-FLASH, as its own extdeps authority because it is an independently versioned
@@ -242,115 +244,127 @@ fn deepseek_v4_1_flash_fact(decl_name: NonEmptyStr) -> DeclarationRef {
   }
 }
 
-type DeepseekV41DeclaredFrontier {
-  lane: NonEmptyStr
-  trigger: NonEmptyStr
-  facts: List<DeclarationRef>
+fn deepseek_v4_1_flash_frontier_rows(
+  decl_names: List<NonEmptyStr>,
+  reason: String,
+  dissolution: DissolutionCondition,
+) -> List<FrontierRow> {
+  map(decl_names, n => frontier_row_decl(
+    ref: deepseek_v4_1_flash_fact(decl_name: n),
+    reason: reason,
+    dissolution: dissolution,
+  ))
 }
 
-data deepseek_v4_1_flash_frontier_dsv41_1: DeepseekV41DeclaredFrontier = DeepseekV41DeclaredFrontier {
-  lane: "DSV41-1 loyal-ram-346 registry probe" as NonEmptyStr,
-  trigger: "a serving-image probe that asks whether DeepseekV41ForCausalLM is registered, then binds the config those weights require" as NonEmptyStr,
-  facts: [
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_revision" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_revision_committed" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_config_path" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_architecture_class" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_model_type" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_quant_method" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_quant_activation_scheme" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_quant_scale_fmt" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_expert_dtype" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_weight_block_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_hidden_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_num_hidden_layers" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_num_attention_heads" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vocab_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_n_routed_experts" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_n_shared_experts" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_num_experts_per_tok" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_sliding_window" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_index_topk" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_candidate_topk_blocks" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_candidate_block_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_num_nextn_predict_layers" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dspark_block_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dspark_n_routed_experts" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dspark_num_experts_per_tok" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dspark_markov_rank" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dspark_noise_token_id" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dspark_target_layer_ids" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_kv_source_layer_ids" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_config_declares_kv_cache_dtype" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_inference_compresses_kv_as_fp4" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_inference_model_path" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vision_num_hidden_layers" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vision_hidden_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vision_patch_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vision_max_image_tokens" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_image_token_id" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_accepts_image_input" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vllm_tokenizer_mode" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vllm_tool_call_parser" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_vllm_reasoning_parser" as NonEmptyStr),
+data deepseek_v4_1_flash_frontier_dsv41_1: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_revision" as NonEmptyStr,
+    "deepseek_v4_1_flash_revision_committed" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_architecture_class" as NonEmptyStr,
+    "deepseek_v4_1_flash_model_type" as NonEmptyStr,
+    "deepseek_v4_1_flash_quant_method" as NonEmptyStr,
+    "deepseek_v4_1_flash_quant_activation_scheme" as NonEmptyStr,
+    "deepseek_v4_1_flash_quant_scale_fmt" as NonEmptyStr,
+    "deepseek_v4_1_flash_expert_dtype" as NonEmptyStr,
+    "deepseek_v4_1_flash_weight_block_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_hidden_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_hidden_layers" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_attention_heads" as NonEmptyStr,
+    "deepseek_v4_1_flash_vocab_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_n_routed_experts" as NonEmptyStr,
+    "deepseek_v4_1_flash_n_shared_experts" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_experts_per_tok" as NonEmptyStr,
+    "deepseek_v4_1_flash_sliding_window" as NonEmptyStr,
+    "deepseek_v4_1_flash_index_topk" as NonEmptyStr,
+    "deepseek_v4_1_flash_candidate_topk_blocks" as NonEmptyStr,
+    "deepseek_v4_1_flash_candidate_block_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_nextn_predict_layers" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_block_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_n_routed_experts" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_num_experts_per_tok" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_markov_rank" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_noise_token_id" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_target_layer_ids" as NonEmptyStr,
+    "deepseek_v4_1_flash_kv_source_layer_ids" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_declares_kv_cache_dtype" as NonEmptyStr,
+    "deepseek_v4_1_flash_inference_compresses_kv_as_fp4" as NonEmptyStr,
+    "deepseek_v4_1_flash_inference_model_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_num_hidden_layers" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_hidden_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_patch_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_max_image_tokens" as NonEmptyStr,
+    "deepseek_v4_1_flash_image_token_id" as NonEmptyStr,
+    "deepseek_v4_1_flash_accepts_image_input" as NonEmptyStr,
+    "deepseek_v4_1_flash_vllm_tokenizer_mode" as NonEmptyStr,
+    "deepseek_v4_1_flash_vllm_tool_call_parser" as NonEmptyStr,
+    "deepseek_v4_1_flash_vllm_reasoning_parser" as NonEmptyStr,
   ],
-}
+  reason: "DSV41-1 loyal-ram-346 serving-image probe binds this config fact",
+  dissolution: unbound_dissolution(description: "a serving-image probe that asks whether DeepseekV41ForCausalLM is registered, then binds the config those weights require"),
+)
 
-data deepseek_v4_1_flash_frontier_dsv41_2: DeepseekV41DeclaredFrontier = DeepseekV41DeclaredFrontier {
-  lane: "DSV41-2 crisp-crane-661 serving_deployment_selection" as NonEmptyStr,
-  trigger: "ArtifactFootprint.FootprintReportedExternally rows keyed at this revision, until FootprintObservedOnFleet exists" as NonEmptyStr,
-  facts: [
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_payload_footprint" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_payload_total" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_index_total_size" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_tree_file_bytes" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_shard_count" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_safetensors_index_path" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_payload_footprint_standing" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_footprint_unread_on_fleet" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_card_reported_parameters" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_context_length" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_native_context_length" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_yarn_factor" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_yarn_scaled_positions" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_declares_no_output_ceiling" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_config_declares_encoder_decoder_split" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_engram" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_config_declares_engram_off_accelerator" as NonEmptyStr),
+data deepseek_v4_1_flash_frontier_dsv41_2: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_safetensors_payload_footprint" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_payload_total" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_index_total_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_tree_file_bytes" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_shard_count" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_index_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_payload_footprint_standing" as NonEmptyStr,
+    "deepseek_v4_1_flash_footprint_unread_on_fleet" as NonEmptyStr,
+    "deepseek_v4_1_flash_card_reported_parameters" as NonEmptyStr,
+    "deepseek_v4_1_flash_context_length" as NonEmptyStr,
+    "deepseek_v4_1_flash_native_context_length" as NonEmptyStr,
+    "deepseek_v4_1_flash_yarn_factor" as NonEmptyStr,
+    "deepseek_v4_1_flash_yarn_scaled_positions" as NonEmptyStr,
+    "deepseek_v4_1_flash_declares_no_output_ceiling" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_declares_encoder_decoder_split" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_declares_engram_off_accelerator" as NonEmptyStr,
   ],
-}
+  reason: "DSV41-2 crisp-crane-661 serving_deployment_selection consumes this fit/window fact",
+  dissolution: unbound_dissolution(description: "ArtifactFootprint.FootprintReportedExternally rows keyed at this revision, until FootprintObservedOnFleet exists"),
+)
 
-data deepseek_v4_1_flash_frontier_harness_wire: DeepseekV41DeclaredFrontier = DeepseekV41DeclaredFrontier {
-  lane: "harness-wire (not yet dispatched)" as NonEmptyStr,
-  trigger: "a harness-reasoning-wire arm that speaks this encoder rather than DeepseekV4ReasoningMode" as NonEmptyStr,
-  facts: [
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_encoder_path" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_encoder_has_no_jinja_chat_template" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_encoder_thinking_mode_wire" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_thinking_start_token" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_thinking_end_token" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_image_placeholder" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_encoder_prefill" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_named_effort_wire" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_named_effort_budget" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_named_effort_values" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_default_named_effort" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_budget_is_admissible" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_effort_preamble" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_effort_is_rendered" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dsml_token" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dsml_tool_calls_block_name" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dsml_invoke_tag_name" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dsml_parameter_tag_name" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_dsml_tool_calls_open" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_standalone_tool_role" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_tools_force_reasoning_retention" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_missing_closer_under_thinking_is_invalid_format" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_chat_reasoning_field" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_system_token" as NonEmptyStr),
-    deepseek_v4_1_flash_fact(decl_name: "deepseek_v4_1_flash_mid_conversation_system_messages_supported" as NonEmptyStr),
+data deepseek_v4_1_flash_frontier_harness_wire: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_encoder_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_encoder_has_no_jinja_chat_template" as NonEmptyStr,
+    "deepseek_v4_1_flash_encoder_thinking_mode_wire" as NonEmptyStr,
+    "deepseek_v4_1_flash_thinking_start_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_thinking_end_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_image_placeholder" as NonEmptyStr,
+    "deepseek_v4_1_flash_encoder_prefill" as NonEmptyStr,
+    "deepseek_v4_1_flash_named_effort_wire" as NonEmptyStr,
+    "deepseek_v4_1_flash_named_effort_budget" as NonEmptyStr,
+    "deepseek_v4_1_flash_named_effort_values" as NonEmptyStr,
+    "deepseek_v4_1_flash_default_named_effort" as NonEmptyStr,
+    "deepseek_v4_1_flash_budget_is_admissible" as NonEmptyStr,
+    "deepseek_v4_1_flash_effort_preamble" as NonEmptyStr,
+    "deepseek_v4_1_flash_effort_is_rendered" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_tool_calls_block_name" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_invoke_tag_name" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_parameter_tag_name" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_tool_calls_open" as NonEmptyStr,
+    "deepseek_v4_1_flash_standalone_tool_role" as NonEmptyStr,
+    "deepseek_v4_1_flash_tools_force_reasoning_retention" as NonEmptyStr,
+    "deepseek_v4_1_flash_missing_closer_under_thinking_is_invalid_format" as NonEmptyStr,
+    "deepseek_v4_1_flash_chat_reasoning_field" as NonEmptyStr,
+    "deepseek_v4_1_flash_system_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_mid_conversation_system_messages_supported" as NonEmptyStr,
   ],
-}
+  reason: "harness-wire arm speaks this encoder rather than DeepseekV4ReasoningMode",
+  dissolution: unbound_dissolution(description: "a harness-reasoning-wire arm that speaks this encoder rather than DeepseekV4ReasoningMode"),
+)
+
+data deepseek_v4_1_flash_frontier: List<FrontierRow> = concat_frontier_row_groups(groups: [
+  deepseek_v4_1_flash_frontier_dsv41_1,
+  deepseek_v4_1_flash_frontier_dsv41_2,
+  deepseek_v4_1_flash_frontier_harness_wire,
+])
 
 // ===========================================================================================
 // ENCODER, transcribed from encoding/encoding.py at the pinned revision. The release ships no

@@ -2,6 +2,8 @@ module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
 
 import std.types { Bool, String }
 import std.measure { token_count, token_count_value, token_count_remaining_in_window, byte_size_count }
+import std.roster_frontier { frontier_rows_well_formed, frontier_rows_keyed_roster_build }
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import extdeps.huggingface.hub { hub_blob_url, hub_repo_tree_api_url, hub_repo_https_uri }
 import extdeps.uri { uri_wire }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -9,8 +11,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
   extdeps_external_authority_anchor,
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_yarn_scaled_positions,
-  deepseek_v4_1_flash_kv_source_layer_ids, deepseek_v4_1_flash_dspark_target_layer_ids,
-  deepseek_v4_1_flash_engram,
+  deepseek_v4_1_flash_frontier,
   deepseek_v4_1_flash_safetensors_payload_footprint, deepseek_v4_1_flash_safetensors_payload_total,
   deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_tree_file_bytes,
   DeepseekV41EncoderChat, DeepseekV41EncoderThinking,
@@ -48,11 +49,12 @@ test fn remaining_window_saturates_at_zero() -> Bool {
     && token_count_value(t: token_count_remaining_in_window(window: window, used: token_count(count: 101))) == 0
 }
 
-test fn config_layer_id_arrays_match_the_transcribed_lists() -> Bool {
-  deepseek_v4_1_flash_kv_source_layer_ids == [2, 8, 14, 20]
-    && deepseek_v4_1_flash_dspark_target_layer_ids == [37, 38, 39]
-    && deepseek_v4_1_flash_engram.layer_ids == [1, 14]
-    && deepseek_v4_1_flash_engram.unpadded_embeddings == [384006168, 384016682]
+test fn declared_frontier_is_well_formed_and_uniquely_keyed() -> Bool {
+  frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier)
+    && match frontier_rows_keyed_roster_build(rows: deepseek_v4_1_flash_frontier) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
 }
 
 test fn payload_partition_sums_to_the_index_total_and_is_strictly_below_tree_file_size() -> Bool {
