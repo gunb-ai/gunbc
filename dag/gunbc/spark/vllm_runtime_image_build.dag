@@ -5,6 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
 import std.nat { Nat }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
@@ -222,19 +223,36 @@ data vllm_image_repository: NonEmptyStr = "gunbc-vllm-dsv41-gb10" as NonEmptyStr
 // identity below; see the key.
 data v41_gb10_torch_cuda_arch_list: List<NonEmptyStr> = ["12.1" as NonEmptyStr]
 
-// MEASURED, NOT CHOSEN BY FEEL. The build host carries 20 cores and, with the serving pair's engine
-// resident, about 13 GiB of free RAM; upstream's own GH200 note records ~15 GiB at max_jobs=66, and
-// the memory a build holds scales with how many compilations are in flight. Six jobs of two nvcc
-// threads is what fits beside a resident engine rather than beside nothing.
+// HOW MUCH OF A HOST A BUILD MAY TAKE IS A POLICY ROW, NOT A MEASUREMENT, and an earlier version of
+// this annotation transcribed one. It carried the build host's core count and free memory and
+// upstream's documented figure for a different machine, three numbers copied into prose with no
+// producer named -- which is the §6 tell exactly, and they rot the moment any of the three changes
+// with nobody touching this file.
+//
+// WHAT IS CITEABLE IS UPSTREAM'S OWN RECIPE, and it is already a declaration:
+// extdeps.vllm.source_build's aarch64 release row carries the parallelism upstream passes on a
+// machine dedicated to the build. The rows below are this fleet's DEPARTURE from it, chosen low
+// because a Spark is not a dedicated builder -- what shares the host is the fleet's business, not
+// upstream's -- and they are inputs to a policy rather than readings of anything.
+//
+// WHAT WOULD RE-DERIVE THE HOST FACTS, if a reader wants them: spark_build_host_reachability_wet
+// reaches an admissible host over the modeled route, and a capacity question belongs there as a
+// second leg rather than as a sentence here.
 data v41_build_max_jobs: Nat = 6
-data v41_build_nvcc_threads: Nat = 2
+
+// nvcc_threads COUNTS HARDWARE THREADS, and this row is the fleet's own policy value rather than a
+// restatement of upstream's ARG -- so it carries the unit std.measure already models, the same way
+// extdeps.ci_runner's published runner sizes carry it for vcpus. The bare Nat stays on
+// VllmContainerBuildRecipe, where the field IS upstream's ARG at the cited-spec boundary; the
+// conversion happens once, at the call that builds the recipe.
+data v41_build_nvcc_threads: HardwareThreadCount = hardware_thread_count(count: 2)
 
 fn v41_gb10_recipe() -> VllmContainerBuildRecipe {
   vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
     max_jobs: v41_build_max_jobs,
-    nvcc_threads: v41_build_nvcc_threads,
+    nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
 }
 

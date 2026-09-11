@@ -1160,6 +1160,25 @@ fn fleet_converge_spark_bootstrap_step() -> Step {
 // agent plus the per-target administrator credential materialized to one file -- so the three cannot
 // drift on how a Spark is reached or authenticated. The entry converges the promoted fabric groups'
 // vLLM units, workers before heads.
+fn fleet_converge_spark_serving_apply_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark pair serving apply (promoted fabric groups' vLLM units over the password session, workers before heads)" },
+    id: Present { value: "spark_serving_apply" },
+    run: gunbc_ci_spark_serving_apply_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_serving_apply_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 // A MODE, NOT A JOB. This is a step inside the existing dispatch-only fleet job, gated by the same
 // mode conditional every other spark_* step uses, so it costs nothing on a push and adds no standing
 // claim on a runner -- which is the bar the job roster is closed to growth against. It shares the
@@ -1184,25 +1203,6 @@ fn fleet_converge_spark_runtime_image_probe_step() -> Step {
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_runtime_image_probe_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
-  }
-}
-
-fn fleet_converge_spark_serving_apply_step() -> Step {
-  RunStep {
-    name: Present { value: "Spark pair serving apply (promoted fabric groups' vLLM units over the password session, workers before heads)" },
-    id: Present { value: "spark_serving_apply" },
-    run: gunbc_ci_spark_serving_apply_invoke(),
-    shell: none,
-    env: Present {
-      value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
-        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
-      ]
-    },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_spark_serving_apply_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }

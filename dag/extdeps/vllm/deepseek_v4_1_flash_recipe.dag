@@ -120,6 +120,12 @@ fn v41_flash_hardware_verified(hardware: NonEmptyStr) -> Bool {
 // which point that lane's frontier rows become imports and these declarations acquire their readers.
 // The rows the witnesses already exercise are the ones a reader can check today; the rest are the
 // figures that lane asked for, in the shape it asked for them.
+// AND THE PAGE SAYS DOCKER IS THE ONLY ROUTE: "No pip wheel serves this architecture, so the Install
+// block only offers Docker." That stood as a String row nothing read -- the same defect this module
+// just deleted one declaration earlier for the fit statement, which is how a class gets fixed at one
+// instance and left standing at the next. Its decidable content is that the image below is not one
+// install option among several; it is the only one the publisher offers, which is why a reference
+// that does not resolve is a hard stop for a consumer rather than an inconvenience.
 data v41_flash_documented_image: NonEmptyStr = "vllm/vllm-openai:deepseekv41-flash" as NonEmptyStr
 data v41_flash_documented_engine_floor: NonEmptyStr = "vLLM 0.30.0+" as NonEmptyStr
-data v41_flash_documented_install_note: NonEmptyStr = "No pip wheel serves this architecture, so the Install block only offers Docker" as NonEmptyStr
+
