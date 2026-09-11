@@ -816,10 +816,9 @@ fn belt_persist_spawn_origin_for_instance(
 // turn, the provider process. An earlier ask against instance.repo_root is NOT the same
 // observation: the controller tree and the admitted-base worktree can disagree, which is
 // the #11021 class (the guard protects a different object than the harm travels through).
-// belt_spawn_oracle_pin_standing is the fold over a caller-supplied observation set; it is
-// not a controller-tree gate. Observing the exact admitted Git object before enqueue, and
-// POST /dispatch ending at a durable intent the belt then consumes, are the same boundary.
-// Verify-side validation_oracle_gate is unchanged.
+// belt_spawn_oracle_pin_standing is the declared-frontier fold for that boundary (trigger
+// on BeltSpawnOraclePinStanding); it is not a controller-tree gate and is not the live
+// spawn caller. Verify-side validation_oracle_gate is unchanged.
 type AttemptOraclePinCapture
   = OraclePinRecorded {
       identity: ContentHash,
@@ -1022,10 +1021,18 @@ fn belt_oracle_pin_not_observable_reason(tree: String) -> String {
   ], "")
 }
 
-// Standing over a caller-supplied observation set for a named tree. Spawn's wall is the
-// attempt-worktree capture after worktree-add (worktree and branch already exist; seat and
-// provider have not). The admitted-base-before-enqueue gate should pass observations of
-// those Git objects into this fold.
+// BeltSpawnOraclePinStanding / belt_spawn_oracle_pin_standing are DECLARED FRONTIER, not
+// dangling. The production spawn path no longer calls this fold: the controller-tree caller
+// was deleted because it was not the same object as the attempt-worktree pin (#11021).
+// Live spawn refuses via belt_attempt_oracle_pin_capture_for_instance after worktree-add.
+// NAMED CONSUMER: the admitted-base-before-enqueue gate on POST /dispatch (same boundary as
+// durable intent: admit-or-refuse, then the belt consumes the intent and does worktree/pin/seat/spawn).
+// TRIGGER: a production fold that is on that POST /dispatch or belt-intent-admission path
+// calls belt_spawn_oracle_pin_standing with observations of the exact admitted-base Git
+// objects (not instance.repo_root, not a post-worktree filesystem read of a tree created
+// for the attempt). A witness that constructs OracleMissing / OracleFound and calls this
+// fold does not satisfy the trigger. Re-binding spawn to instance.repo_root does not
+// satisfy it either.
 
 type BeltSpawnOraclePinStanding
   = SpawnOraclePinAdmitted
