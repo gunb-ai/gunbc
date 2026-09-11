@@ -8358,6 +8358,10 @@ mod seed_executable_digest_spelling_tests {
 pub const DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT: &str = "fixtures/dag_artifact_identity/subject";
 pub const DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT: &str = "fixtures/dag_artifact_identity/perturbed";
 pub const DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME: &str = "registry_order_specimen.dag";
+/// The declaration the perturbed arm adds and the subject does not have. The positive control
+/// asserts THIS KEY's presence and absence, rather than inferring the added declaration from the
+/// two artifacts merely differing.
+pub const DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION: &str = "item_quebec";
 pub const DAG_ARTIFACT_BASENAME: &str = "dag-artifact.json";
 
 /// The minimum number of registry keys the subject artifact must carry for the equality half to
@@ -8518,6 +8522,29 @@ pub fn run_dag_artifact_identity() -> Result<DagArtifactIdentityOutcome, String>
              subject -- the equality half above is then satisfied by an emitter blind to its \
              input, which is a control that cannot go red",
             DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT
+        ));
+    }
+
+    // THE ADDED DECLARATION IS ASSERTED, NOT INFERRED FROM THE BYTES DIFFERING. The two arms are
+    // two files, so they differ in their module name as well as in the declaration, and
+    // `serialize_node_record` emits names and spans -- which means byte inequality alone would
+    // hold even if `item_quebec` never reached the artifact at all, and the control would claim a
+    // sensitivity it had not established (review 64007, gunbc#11084, and the objection is
+    // correct). These two arms name the declaration and check both directions of its membership,
+    // so the positive control is discriminating for the thing it claims to protect rather than
+    // for any difference whatsoever.
+    if !perturbed.contains(DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION) {
+        findings.push(format!(
+            "the perturbed artifact does not carry `{DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION}` -- \
+             the declaration the perturbed arm adds never reached the emitted bytes, so the two \
+             artifacts differing says nothing about the emitter's sensitivity to a real change"
+        ));
+    }
+    if first.contains(DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION) {
+        findings.push(format!(
+            "the SUBJECT artifact already carries `{DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION}` -- \
+             the two arms are then not one declaration apart, and the positive control's subject \
+             is not what it says it is"
         ));
     }
 
