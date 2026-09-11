@@ -1290,6 +1290,23 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
     }
 }
 
+/// The per-claim cost population indexed by identity, built ONCE for the whole gate.
+///
+/// THE SCAN THIS REPLACES WAS A QUADRATIC FOLD, and it is fixed here rather than excused by the
+/// realized n. `find` over the cost rows inside the loop over newly enrolled identities is
+/// `enrolled x executed` string comparisons — 11 x 3,667 on the run that lands this gate, which is
+/// nothing, and that is exactly the argument DESIGN section 6's bare-minimum-cost rule refuses to
+/// accept: "n is small here" is not a time-stable fact, because the enrolled set is whatever a
+/// future change enrols and the executed set grows with the corpus.
+fn claim_cost_by_identity(
+    claim_cost: &[crate::cli_run::WitnessExecutionOccurrence],
+) -> HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> {
+    claim_cost
+        .iter()
+        .map(|row| (row.identity.as_str(), row))
+        .collect()
+}
+
 /// The standing of ONE newly enrolled identity, from the run's own per-claim cost population.
 ///
 /// THE ABSENT CASE IS A LOOKUP MISS AND IS NOT A ZERO. An identity this run planned but never
@@ -1298,10 +1315,10 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
 /// the absorbing fallback DESIGN section 5 forbids in its most ordinary costume.
 pub(crate) fn enrolment_margin_standing_for(
     identity: &str,
-    claim_cost: &[crate::cli_run::WitnessExecutionOccurrence],
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     budget_ms: u64,
 ) -> EnrolmentMarginStanding {
-    let Some(row) = claim_cost.iter().find(|r| r.identity == identity) else {
+    let Some(row) = claim_cost.get(identity) else {
         return EnrolmentMarginStanding::NotMeasured {
             cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
         };
@@ -8012,9 +8029,10 @@ pub fn run_required_floor(
     // silent claim that it enrols nothing.
     if let Some(newly_enrolled) = newly_enrolled_witnesses {
         let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
+        let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let mut refused: Vec<ChangedWitnessBlocker> = Vec::new();
         for identity in &newly_enrolled {
-            let standing = enrolment_margin_standing_for(identity, &outcome.claim_cost, budget_ms);
+            let standing = enrolment_margin_standing_for(identity, &cost_by_identity, budget_ms);
             eprintln!(
                 "[enrolment-margin] identity={identity} standing={} {}",
                 standing.cause_or_admitted(),
