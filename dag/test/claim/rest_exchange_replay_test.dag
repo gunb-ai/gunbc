@@ -1,6 +1,6 @@
 module test.claim.rest_exchange_replay_test
 
-import std.types { Bool, String, List, GET }
+import std.types { Bool, String, List, GET, Int }
 import std.content_hash { Fnv1a64Structural }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
@@ -203,6 +203,130 @@ test fn rest_replay_sibling_operation_fixture_cannot_satisfy_subject() -> Bool {
       s: witness_diagnostic_rendered_reason(diagnostic: diagnostic),
       pattern: "missing exact REST replay fixture"
     )
+  }
+}
+
+test fn rest_root_array_200_inhabits_list_payload() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "RootArray",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "[1,2,3]" }
+      }
+    )]),
+    subject: fn(_scope) { test.RestReplay.RootArray() }
+  )
+  match result {
+    WitnessReturned { value } => value.pulls == [1, 2, 3] && match value.observed {
+      RestOk => true
+      _ => false
+    }
+    WitnessRefused { diagnostic } => false
+  }
+}
+
+test fn rest_root_file_200_inhabits_object_payload() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "RootFile",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "{\"encoding\":\"base64\",\"content\":\"aGVsbG8=\"}" }
+      }
+    )]),
+    subject: fn(_scope) { test.RestReplay.RootFile() }
+  )
+  match result {
+    WitnessReturned { value } => match value.observed {
+      RestOk => true
+      _ => false
+    }
+    WitnessRefused { diagnostic } => false
+  }
+}
+
+test fn rest_root_page_200_inhabits_object_payload() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "RootPage",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "{\"incomplete_results\":false,\"items\":[]}" }
+      }
+    )]),
+    subject: fn(_scope) { test.RestReplay.RootPage() }
+  )
+  match result {
+    WitnessReturned { value } => match value.observed {
+      RestOk => true
+      _ => false
+    }
+    WitnessRefused { diagnostic } => false
+  }
+}
+
+test fn rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "RootArray",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "{\"pulls\":null}" }
+      }
+    )]),
+    subject: fn(_scope) { test.RestReplay.RootArray() }
+  )
+  match result {
+    WitnessReturned { value } => match value.observed {
+      RestBodyUndecodable { status, cause } =>
+        status == 200 && string_contains(s: cause, pattern: "did not inhabit")
+      RestOk => false
+      _ => false
+    }
+    WitnessRefused { diagnostic } => false
+  }
+}
+
+test fn rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "Observe",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "{\"other\":\"accepted\"}" }
+      }
+    )]),
+    subject: fn(_scope) { test.RestReplay.Observe() }
+  )
+  match result {
+    WitnessReturned { value } => match value.observed {
+      RestBodyUndecodable { status, cause } =>
+        status == 200 && string_contains(s: cause, pattern: "did not inhabit")
+      RestOk => false
+      _ => false
+    }
+    WitnessRefused { diagnostic } => false
+  }
+}
+
+test fn rest_200_absent_optional_from_path_stays_rest_ok() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "OptionalObserve",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "{\"message\":\"accepted\"}" }
+      }
+    )]),
+    subject: fn(_scope) { test.RestReplay.OptionalObserve() }
+  )
+  match result {
+    WitnessReturned { value } => value.message == "accepted" && match value.observed {
+      RestOk => true
+      _ => false
+    }
+    WitnessRefused { diagnostic } => false
   }
 }
 
