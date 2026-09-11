@@ -4,7 +4,6 @@ import std.types { String, Bool, List }
 import std.access { AccessDecision }
 import std.effect_grant {
   Verb, Read, Write,
-  filesystem_position,
   NamespacePosition,
   RealTransport,
   LifecycleByConvention,
@@ -60,8 +59,10 @@ data materialization_store_frame: Frame = Frame {
 
 data materialization_store_durable_root_path: String = "/var/lib/gunbc/materialization-store"
 
-data materialization_store_durable_root: NamespacePosition = filesystem_position(
-  path: ["var", "lib", "gunbc", "materialization-store"]
+// DERIVED from the path, never restated as segments (review 63898): the grant root and the
+// admission target are the same projection of one datum, so they cannot drift apart.
+data materialization_store_durable_root: NamespacePosition = absolute_path_position(
+  path: materialization_store_durable_root_path
 )
 
 fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
