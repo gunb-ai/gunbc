@@ -2924,7 +2924,12 @@ pub(crate) fn floor_prepared_inventory_digest() -> Option<String> {
     })
 }
 
-/// ONE RENDERING FOR ONE STATE, for every numeric field of the heartbeat sample. A reading that
+/// The one spelling of "this reading would not read" on the `[floor-phase]` key=value lines that
+/// still carry a sampled field. The heartbeat no longer uses it: its unreadable arms carry a cause
+/// through `render_heartbeat_line_mirror` (2026-09-11).
+const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+
+/// ONE RENDERING FOR ONE STATE, for every numeric field a `[floor-phase]` line samples. A reading that
 /// would not read is the sentinel; a reading that read is its number. There is no third answer,
 /// and no field renders itself, so "fabricate a zero for this one field" is a change to a line
 /// that names the field -- which is what makes it detectable rather than a silent substitution.
@@ -2950,14 +2955,34 @@ pub(crate) fn floor_statm_rss_kb() -> Option<u64> {
         .map(|pages| pages * KB_PER_PAGE)
 }
 
-pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
-    // ONE SENTINEL FOR ONE STATE. The cgroup and vmstat readers below answer `na` when their
-    // file will not read; these three answered a fabricated `0`, so `rss_kb=0` rendered
-    // identically whether the process held no resident pages -- which a live process cannot --
-    // or `/proc/self/statm` was unreadable. Those are different facts with opposite remedies,
-    // and this is the instrument that exists to settle a memory contradiction, so a zero it
-    // invented is worse here than anywhere else in the line. Same `na` convention now, and the
-    // cpu pair is all-or-nothing because a half-read stat cannot be summed.
+/// ONE BEAT'S READINGS, TYPED, EACH `None` MEANING "THIS SOURCE DID NOT READ" and never zero.
+/// Authority: `gunbc.observation_ci_render` `HeartbeatSample` -- this is the seed-side twin of
+/// that record, at the grain the seed reads its sources: one `/proc/self/stat` read feeds `cpu_ms`
+/// and `major_faults` together (a half-read stat cannot be summed, so the pair is all-or-nothing),
+/// `/proc/self/statm` feeds `rss_bytes`, `memory.current`, `memory.events` and
+/// `memory.events.local` are three files, and `/proc/vmstat` is one. The rendering is
+/// `render_heartbeat_line_mirror`; nothing here formats.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct FloorResourceSample {
+    pub cpu_ms: Option<u64>,
+    pub major_faults: Option<u64>,
+    pub rss_bytes: Option<u64>,
+    pub cgroup_charge_bytes: Option<u64>,
+    /// `(high, max)` from `memory.events`, read together because they are one file.
+    pub cgroup_events: Option<(u64, u64)>,
+    pub cgroup_local_high_events: Option<u64>,
+    /// `(pswpin, pgmajfault)` from `/proc/vmstat`, read together because they are one file.
+    pub host_vmstat: Option<(u64, u64)>,
+}
+
+pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> FloorResourceSample {
+    // ONE ABSENT ANSWER FOR ONE STATE. The cgroup and vmstat readers below answer `None` when
+    // their file will not read; an earlier shape of this sampler answered a fabricated `0` for
+    // three of these, so `rss_kb=0` rendered identically whether the process held no resident
+    // pages -- which a live process cannot -- or `/proc/self/statm` was unreadable. Those are
+    // different facts with opposite remedies, and this is the instrument that exists to settle a
+    // memory contradiction, so a zero it invented is worse here than anywhere else in the line.
+    // The cpu pair is all-or-nothing because a half-read stat cannot be summed.
     let stat = std::fs::read_to_string("/proc/self/stat").ok();
     let f: Vec<&str> = stat
         .as_deref()
@@ -2970,34 +2995,33 @@ pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
     let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok());
     let hz = 100u64;
-    let na = || FLOOR_SAMPLE_UNREADABLE.to_string();
-    let cpu_ms = floor_sampled_field(match (tick(11), tick(12)) {
-        (Some(utime), Some(stime)) => {
-            Some(((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms))
-        }
-        _ => None,
-    });
-    let majflt = floor_sampled_field(tick(9));
-    let rss_kb = floor_sampled_field(floor_statm_rss_kb());
+    let (cpu_ms, major_faults) = match (tick(11), tick(12), tick(9)) {
+        (Some(utime), Some(stime), Some(majflt)) => (
+            Some(((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms)),
+            Some(majflt),
+        ),
+        _ => (None, None),
+    };
+    let rss_bytes = floor_statm_rss_kb().map(|kb| kb * 1024);
     // THE CGROUP CHARGE AND THE THROTTLE EVENTS, on every beat, because the runs that most need
     // them are the ones that never reach an exit line. `floor_cgroup_envelope` reports the full
-    // picture at entry; these three carry the parts that CHANGE, so a killed run still leaves
-    // behind what its envelope was doing when it died.
+    // picture at entry; these carry the parts that CHANGE, so a killed run still leaves behind
+    // what its envelope was doing when it died.
     //
-    // rss_kb and cur_kb are DIFFERENT COUNTERS and are printed side by side so they are never
-    // silently substituted for one another: RSS is this process's resident anonymous + mapped
-    // pages, while memory.current is the cgroup's total charge including page cache and every
-    // other process in it. Comparing RSS against a cgroup limit is what produced the standing
-    // contradiction this instrument exists to settle — a CI run observed at 14.69 GiB RSS,
-    // above a declared 14.00 GiB max, that was not killed and ran 151 minutes more.
+    // rss and the cgroup charge are DIFFERENT COUNTERS and are printed side by side so they are
+    // never silently substituted for one another: RSS is this process's resident anonymous +
+    // mapped pages, while memory.current is the cgroup's total charge including page cache and
+    // every other process in it. Comparing RSS against a cgroup limit is what produced the
+    // standing contradiction this instrument exists to settle — a CI run observed at 14.69 GiB
+    // RSS, above a declared 14.00 GiB max, that was not killed and ran 151 minutes more.
     //
-    // ev_high/ev_max are the reclaim and kill counters for THIS level. Nonzero ev_high is
-    // throttling actually happening rather than inferred from a declared row; both zero beside
-    // a death means the ceiling that killed it was somewhere else.
+    // high/max are the reclaim and kill counters for THIS level. Nonzero high is throttling
+    // actually happening rather than inferred from a declared row; both zero beside a death
+    // means the ceiling that killed it was somewhere else.
     //
-    // READ THE LEAF, NOT THE ROOT. These three fields first shipped reading
-    // `/sys/fs/cgroup/{name}` directly, and on CI they printed `na` on every single beat for a
-    // four-hour run: the runner's leaf is
+    // READ THE LEAF, NOT THE ROOT. These fields first shipped reading `/sys/fs/cgroup/{name}`
+    // directly, and on CI they printed unreadable on every single beat for a four-hour run: the
+    // runner's leaf is
     // `/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv2-03.service`,
     // the root holds no `memory.current` this process may read, and the fallback fired every
     // time. The entry snapshot walked the path correctly while the sampler that runs
@@ -3008,31 +3032,27 @@ pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // are the same directory and the hardcoded path was accidentally correct. A degenerate
     // topology validated an instrument that had no chance of working anywhere else, which is why
     // the path is now taken from the same place `floor_cgroup_envelope` takes it.
-    let cg = |name: &str, idx: usize| -> String {
-        std::fs::read_to_string(format!("{}/{name}", floor_cgroup_dir()))
-            .ok()
-            .and_then(|s| {
-                if idx == usize::MAX {
-                    s.trim().parse::<u64>().ok().map(|v| (v / 1024).to_string())
-                } else {
-                    s.lines()
-                        .nth(idx)
-                        .and_then(|l| l.split_whitespace().nth(1).map(|v| v.to_string()))
-                }
-            })
-            .unwrap_or_else(na)
+    let cg_file =
+        |name: &str| std::fs::read_to_string(format!("{}/{name}", floor_cgroup_dir())).ok();
+    let cg_count = |name: &str| cg_file(name).and_then(|s| s.trim().parse::<u64>().ok());
+    let cg_event = |body: &str, idx: usize| {
+        body.lines()
+            .nth(idx)
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse::<u64>().ok())
     };
-    let cur_kb = cg("memory.current", usize::MAX);
-    let ev_high = cg("memory.events", 1);
-    let ev_max = cg("memory.events", 2);
+    let cgroup_charge_bytes = cg_count("memory.current");
+    let cgroup_events =
+        cg_file("memory.events").and_then(|body| Some((cg_event(&body, 1)?, cg_event(&body, 2)?)));
     // The LOCAL counter beside the hierarchical one, on every beat. `memory.events` at this
-    // level already includes everything its descendants generated, so `ev_high` rising says
-    // "something in this subtree was throttled" and cannot say it was us. `ev_local_high` is
+    // level already includes everything its descendants generated, so `high` rising says
+    // "something in this subtree was throttled" and cannot say it was us. `local high` is
     // the same event restricted to this exact cgroup, and the pair is the only way to separate
     // our own reclaim from a neighbour's. Carried per beat rather than only in the periodic
     // envelope because a killed run keeps only what was already printed, and this is the field
     // the neighbour-pressure hypothesis is decided on.
-    let ev_local_high = cg("memory.events.local", 1);
+    let cgroup_local_high_events =
+        cg_file("memory.events.local").and_then(|body| cg_event(&body, 1));
     // HOST-WIDE SWAP-IN, because the fault storm has no local cause and this is what decides
     // whether it has ANY cause belonging to this fold.
     //
@@ -3067,25 +3087,29 @@ pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // host-level swap is precisely the thing a cgroup-scoped counter cannot see. That is also
     // why the leaf's PSI reading of 0.00% is not evidence of a quiet machine — it is this
     // cgroup's stall time, not the host's.
-    let vm = |key: &str| -> String {
-        std::fs::read_to_string("/proc/vmstat")
-            .ok()
-            .and_then(|s| {
-                s.lines().find_map(|l| {
-                    l.strip_prefix(key)
-                        .and_then(|r| r.strip_prefix(' '))
-                        .map(|v| v.trim().to_string())
-                })
+    let vmstat = std::fs::read_to_string("/proc/vmstat").ok();
+    let vm = |key: &str| -> Option<u64> {
+        vmstat.as_deref().and_then(|s| {
+            s.lines().find_map(|l| {
+                l.strip_prefix(key)
+                    .and_then(|r| r.strip_prefix(' '))
+                    .and_then(|v| v.trim().parse::<u64>().ok())
             })
-            .unwrap_or_else(na)
+        })
     };
-    let pswpin = vm("pswpin");
-    let pgmajfault = vm("pgmajfault");
-    format!(
-        "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} \
-         ev_high={ev_high} ev_max={ev_max} ev_local_high={ev_local_high} \
-         pswpin={pswpin} pgmajfault={pgmajfault}"
-    )
+    let host_vmstat = match (vm("pswpin"), vm("pgmajfault")) {
+        (Some(swap_in), Some(major)) => Some((swap_in, major)),
+        _ => None,
+    };
+    FloorResourceSample {
+        cpu_ms,
+        major_faults,
+        rss_bytes,
+        cgroup_charge_bytes,
+        cgroup_events,
+        cgroup_local_high_events,
+        host_vmstat,
+    }
 }
 
 /// THIS PROCESS'S OWN CGROUP DIRECTORY — the single answer both readers use.
@@ -9334,22 +9358,27 @@ pub(crate) struct FloorStallWindow {
     pub self_user_cpu_ms: u64,
 }
 
-/// Pure renderer, separated from the `/proc` read so the treadmill case is authorable in a test.
-/// `None` for either counter renders the sentinel rather than a fabricated zero, on the same
-/// all-or-nothing rule as the cpu pair above: a share computed from half a reading is not a share.
-pub(crate) fn floor_stall_metric_fields(
+/// THE STALL WINDOW AS THE REFUSAL AUTHORITY'S OWN OBSERVATION, or `None` when either counter did
+/// not read. `None` renders the sentinel rather than a fabricated zero, on the same all-or-nothing
+/// rule as the cpu pair above: a share computed from half a reading is not a share, and a zero
+/// share is the most severe reading the line can carry, so fabricating one manufactures a stall.
+/// A zero-wall window is likewise `None`: a rate over no wall is not a rate. The rendering is
+/// `render_heartbeat_line_mirror`, which projects this through `memory_governor`'s stall mirrors
+/// -- the same two functions `memory_stall_verdict` consumes -- so the printed rate and share
+/// cannot drift from the refusal's.
+pub(crate) fn floor_stall_window_observation(
     window_wall_ms: u64,
     major_faults_in_window: Option<u64>,
     self_user_cpu_ms_in_window: Option<u64>,
-) -> String {
+) -> Option<crate::memory_governor::MemoryStallObservation> {
     let (Some(faults), Some(user_cpu_ms)) = (major_faults_in_window, self_user_cpu_ms_in_window)
     else {
-        return format!(
-            "stall_majflt_per_min={} stall_user_cpu_share_bp={}",
-            FLOOR_SAMPLE_UNREADABLE, FLOOR_SAMPLE_UNREADABLE
-        );
+        return None;
     };
-    let observation = crate::memory_governor::MemoryStallObservation {
+    if window_wall_ms == 0 {
+        return None;
+    }
+    Some(crate::memory_governor::MemoryStallObservation {
         window_wall_ms,
         major_faults_in_window: faults,
         self_user_cpu_ms_in_window: user_cpu_ms,
@@ -9358,12 +9387,7 @@ pub(crate) fn floor_stall_metric_fields(
         // a stand-in for an unread counter.
         cache_evictions_in_window: 0,
         cache_readmissions_in_window: 0,
-    };
-    format!(
-        "stall_majflt_per_min={} stall_user_cpu_share_bp={}",
-        crate::memory_governor::memory_stall_major_faults_per_minute(&observation),
-        crate::memory_governor::memory_stall_self_cpu_share_basis_points(&observation)
-    )
+    })
 }
 
 #[cfg(test)]
@@ -9387,14 +9411,28 @@ mod floor_stall_metric_tests {
         let utime_ms = 480u64; // 0.8% of 60s
         let stime_ms = 20_400u64; // 34% of 60s
 
-        let line = floor_stall_metric_fields(window_ms, Some(faults), Some(utime_ms));
-        assert!(
-            line.contains("stall_majflt_per_min=178795"),
-            "rate must come from the refusal's own mirror: {line}"
+        let stall = floor_stall_window_observation(window_ms, Some(faults), Some(utime_ms))
+            .expect("both counters read");
+        assert_eq!(
+            crate::memory_governor::memory_stall_major_faults_per_minute(&stall),
+            178_795,
+            "rate must come from the refusal's own mirror"
+        );
+        assert_eq!(
+            crate::memory_governor::memory_stall_self_cpu_share_basis_points(&stall),
+            80,
+            "0.8% of wall is 80 basis points"
+        );
+        let line = crate::cli_run::render_heartbeat_line_mirror(
+            window_ms,
+            "typecheck",
+            &FloorResourceSample::default(),
+            Some(&stall),
+            false,
         );
         assert!(
-            line.contains("stall_user_cpu_share_bp=80"),
-            "0.8% of wall is 80 basis points: {line}"
+            line.ends_with("stall 178795 faults/min at 0.8% user cpu"),
+            "the rendered clause is the refusal's two figures: {line}"
         );
 
         // WHAT THIS TEST DOES AND DOES NOT ESTABLISH, measured rather than asserted.
@@ -9402,7 +9440,7 @@ mod floor_stall_metric_tests {
         // It establishes the QUANTITY: 80 basis points is utime alone, and the control below
         // shows that the number the heartbeat used to print for the same window is 3480, on the
         // other side of the refusal's floor. That assertion has an authorable red -- feed this
-        // renderer utime+stime and it fails.
+        // producer utime+stime and it fails.
         //
         // IT DOES NOT ESTABLISH SINGLE AUTHORITY, AND TWO MUTATIONS PROVE IT CANNOT.
         // Replacing both mirror calls with an inline copy of their arithmetic left this test
@@ -9435,24 +9473,26 @@ mod floor_stall_metric_tests {
         );
     }
 
-    /// A window that reads only one of the two counters renders the sentinel for BOTH figures.
-    /// A share derived from half a reading is not a share, and a fabricated zero here would read
-    /// as the most severe possible stall -- the direction that manufactures a refusal.
+    /// A window that reads only one of the two counters, or has no wall, is no observation at
+    /// all, and renders its cause for BOTH figures. A share derived from half a reading is not a
+    /// share, and a fabricated zero here would read as the most severe possible stall -- the
+    /// direction that manufactures a refusal.
     #[test]
-    fn a_half_read_window_renders_the_sentinel_rather_than_a_share() {
-        let only_faults = floor_stall_metric_fields(60_000, Some(1), None);
-        let only_cpu = floor_stall_metric_fields(60_000, None, Some(1));
-        for line in [&only_faults, &only_cpu] {
-            assert!(
-                line.contains(&format!(
-                    "stall_user_cpu_share_bp={FLOOR_SAMPLE_UNREADABLE}"
-                )),
-                "{line}"
-            );
-            assert!(
-                line.contains(&format!("stall_majflt_per_min={FLOOR_SAMPLE_UNREADABLE}")),
-                "{line}"
-            );
-        }
+    fn a_half_read_window_renders_the_cause_rather_than_a_share() {
+        assert_eq!(floor_stall_window_observation(60_000, Some(1), None), None);
+        assert_eq!(floor_stall_window_observation(60_000, None, Some(1)), None);
+        assert_eq!(floor_stall_window_observation(0, Some(1), Some(1)), None);
+        let line = crate::cli_run::render_heartbeat_line_mirror(
+            60_000,
+            "",
+            &FloorResourceSample::default(),
+            None,
+            false,
+        );
+        assert!(
+            line.ends_with("stall unreadable (stall counters unreadable)"),
+            "{line}"
+        );
+        assert!(!line.contains("stall 0"), "{line}");
     }
 }
