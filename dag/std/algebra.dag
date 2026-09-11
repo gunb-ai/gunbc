@@ -384,10 +384,13 @@ fn structured_cost_operands(c: StructuredCost) -> List<String> {
 // operands at once, so projecting one would have to round -- and a rounded rank presented as the
 // operation's shape is the fabricated answer this whole authority exists to prevent. The absent
 // arm is the vocabulary gap stated out loud, not a failure to compute.
+// Rank 1 is LOGARITHMIC in the operand, and CostShape has no spelling for it. Projecting it as
+// ShapeConstant would report a cost that grows as one that does not -- the rounded rank presented
+// as the operation's shape that the annotation above forbids, committed inside the function that
+// forbids it. It answers absent, like every other cost CostShape cannot say.
 fn shape_for_single_operand_rank(rank: Int) -> CostShape? {
   match rank {
     0 => Present { value: ShapeConstant }
-    1 => Present { value: ShapeConstant }
     2 => Present { value: ShapeLinearScan }
     3 => Present { value: ShapeSortBody }
     _ => none

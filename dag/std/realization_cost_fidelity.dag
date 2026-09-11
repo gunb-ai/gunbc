@@ -37,6 +37,31 @@ import std.logic { Bool }
 // gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization is
 // exactly what happens when the two are conflated.
 //
+// WHO CONSUMES THIS, AND WHEN — A DECLARED FRONTIER, STATED HERE AND NOT ONLY IN A PULL REQUEST
+// (DESIGN section 3c). As landed, the only executing consumer of this module is its own witness,
+// `test.claim.realization_cost_fidelity_witness`, which exercises every arm of the join over
+// authored costs. That is deliberately NOT enough on its own, and the honest classification is the
+// middle one: a named consumer landing in a named later change.
+//
+// THE CONSUMER: the compile-obligation census's realization-cost-fidelity row — the row the census
+// currently reports as having no home — joined per (primitive, target) through
+// `realization_cost_fidelity_rows`, with `count_cost_fidelity_findings`,
+// `count_cost_fidelity_unmeasured` and `count_cost_model_unmigrated` as its three reported
+// populations. THE ROUTE: the census entry point folds `std.primitive_identity`'s modeled costs
+// against `RealizationCostFact` rows measured from the emitted compiler, and reports the rows.
+//
+// THE TRIGGER, and it is a capability rather than an artifact: the emitted compiler being
+// measurable per primitive, so a realized cost is an OBSERVATION rather than an assertion. Until
+// that holds there are deliberately no `RealizationCostFact` rows in the tree, because authoring a
+// realized cost by hand is exactly the fabricated fact this authority exists to catch — the model
+// and the realization would then agree by construction, which is the failure this join is built to
+// make impossible. A second, smaller trigger retires `ModeledCostNotStructured` independently: the
+// migration of `std.primitives` contract costs into `StructuredCost`.
+//
+// WHAT THAT MEANS FOR A READER OF A GREEN RUN TODAY: this module can state a divergence and has
+// never been asked about a real one. Its arms are proven against authored costs, and the population
+// it will judge does not exist yet.
+
 // WHY IT COMPARES PER OPERAND. The motivating divergence is not a rank regression: a contract
 // declaring work over both operands against a realization charging one of them is two costs of the
 // SAME rank that disagree about WHICH operand they read. A comparison that reduced each side to a

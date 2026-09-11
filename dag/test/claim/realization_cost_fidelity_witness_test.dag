@@ -8,9 +8,11 @@ module test.claim.realization_cost_fidelity_witness
 import std.algebra {
   CostTerm,
   LinearInOperand,
+  LogarithmicInOperand,
   LinearithmicInOperand,
   StructuredCost,
   ShapeLinearScan,
+  ShapeSortBody,
   structured_cost_rank_in_operand,
   structured_cost_to_shape,
 }
@@ -176,4 +178,35 @@ test fn measured_target_reports_the_finding() -> Bool {
     ],
   )
   count_cost_fidelity_findings(rows: rows) == 1 && count_cost_fidelity_unmeasured(rows: rows) == 0
+}
+
+// THE PROJECTION MAY NOT ROUND, and this is the control for the one place it did: a cost
+// LOGARITHMIC in its single operand has no CostShape spelling, so the projection must answer
+// absent. Reporting it as ShapeConstant would say a cost that grows does not grow -- inside the
+// function whose own annotation forbids exactly that. Kept beside the accepted cases so the
+// distinction is executed rather than asserted.
+test fn logarithmic_cost_has_no_shape_and_does_not_round_to_constant() -> Bool {
+  match structured_cost_to_shape(
+    c: StructuredCost { terms: [CostTerm { factors: [LogarithmicInOperand { operand: "n" }] }] }
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The neighbouring ranks still project, so the absent arm above is a statement about the
+// vocabulary rather than a projection that gave up.
+test fn linear_and_sorting_single_operand_costs_still_project() -> Bool {
+  match structured_cost_to_shape(
+    c: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] }
+  ) {
+    Absent => false
+    Present { value: linear } =>
+      match structured_cost_to_shape(
+        c: StructuredCost { terms: [CostTerm { factors: [LinearithmicInOperand { operand: "n" }] }] }
+      ) {
+        Absent => false
+        Present { value: sorting } => linear == ShapeLinearScan && sorting == ShapeSortBody
+      }
+  }
 }
