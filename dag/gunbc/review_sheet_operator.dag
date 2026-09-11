@@ -10,7 +10,6 @@ import std.human_intervention {
   DischargedAt,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
 import gunbc.gcp_service_enablement {
   ServiceEnablementDesire,
   ServiceDesiredEnabled,
@@ -267,12 +266,5 @@ fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
             tenancy: buyer_review_account_tenancy,
           )
       }
-  }
-}
-
-fn fleet_secrets_wif_is_not_assumed_live() -> Bool {
-  match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
-    NoDischargeSiteModeled => true
-    DischargedAt { evidence: _ } => false
   }
 }
