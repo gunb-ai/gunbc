@@ -6113,6 +6113,14 @@ pub fn run_required_floor(
     let mut scope_build_split = crate::cli_run::ScopeBuildSplit::default();
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
+    // THE DISTINCT POPULATION, which the summed total cannot express: `names_total` adds one
+    // scope's count to the next, so a name claimed in 300 scopes is counted 300 times. The set a
+    // rename campaign has to dissolve is this one — name to the claimants that spell it, unioned
+    // across every scope that reached them — plus how many scopes each name is ambiguous in,
+    // which is what ranks the offenders.
+    let mut ambiguous_claimants: BTreeMap<String, BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
+    let mut ambiguous_scope_count: BTreeMap<String, usize> = BTreeMap::new();
     let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
@@ -6146,10 +6154,17 @@ pub fn run_required_floor(
             scope_build_split.accumulate(&built.build_split);
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
-            if built.ambiguous_bare_names > 0 {
+            if !built.ambiguous_bare_names.is_empty() {
                 scopes_with_ambiguity += 1;
-                ambiguous_total += built.ambiguous_bare_names;
-                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names);
+                ambiguous_total += built.ambiguous_bare_names.len();
+                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names.len());
+                for row in built.ambiguous_bare_names.iter() {
+                    *ambiguous_scope_count.entry(row.name.clone()).or_insert(0) += 1;
+                    ambiguous_claimants
+                        .entry(row.name.clone())
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
             }
             current_scope = Some((claim.module_path.clone(), built));
         }
@@ -6955,9 +6970,58 @@ pub fn run_required_floor(
     // reference closure never donates a colliding name and the flat registry is adequate in
     // practice; anything else sizes the terminal per-module-environment correction.
     eprintln!(
-        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
-        scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max
+        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={} \
+         names_distinct={}",
+        scopes_with_ambiguity,
+        scope_constructions,
+        ambiguous_total,
+        ambiguous_max,
+        ambiguous_claimants.len()
     );
+    // AND THE NAMES THEMSELVES. `names_total` sizes the population and names nothing in it, so
+    // it can size a campaign and cannot be the campaign's input. Layer 2 of this class is a
+    // refusal landed together with the rename or qualification of every site it would refuse;
+    // these lines ARE that site list, one per distinct name, carrying every claimant and the
+    // kinds they claim it as. Not truncated to a top-N: a census whose tail is elided is an
+    // allow-list with extra steps, and the refusal this feeds admits none.
+    {
+        let mut kind_histogram: BTreeMap<String, usize> = BTreeMap::new();
+        let mut ranked: Vec<(&String, &BTreeSet<(String, &'static str)>)> =
+            ambiguous_claimants.iter().collect();
+        // Scope count descending, then the name, so the ordering is a function of the census and
+        // not of a map's iteration.
+        ranked.sort_by(|a, b| {
+            let a_scopes = ambiguous_scope_count.get(a.0).copied().unwrap_or(0);
+            let b_scopes = ambiguous_scope_count.get(b.0).copied().unwrap_or(0);
+            b_scopes.cmp(&a_scopes).then_with(|| a.0.cmp(b.0))
+        });
+        for (name, claimants) in ranked.iter() {
+            let mut kinds: Vec<&'static str> = claimants.iter().map(|(_, k)| *k).collect();
+            kinds.sort_unstable();
+            kinds.dedup();
+            let signature = kinds.join("+");
+            *kind_histogram.entry(signature.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-name] name={name} scopes={} kinds={signature} \
+                 claimants={sites}",
+                ambiguous_scope_count.get(*name).copied().unwrap_or(0)
+            );
+        }
+        let mix = kind_histogram
+            .iter()
+            .map(|(signature, count)| format!("{signature}={count}"))
+            .collect::<Vec<String>>()
+            .join(" ");
+        // The kind mix, folded from the same rows rather than tallied beside them. A signature
+        // mixing `data` with `fn` is the dangerous shape — it crosses the evaluator's kind
+        // dispatch — and one that is `fn+fn` is the common shape that merely picks a body.
+        eprintln!("[floor-bare-name-ambiguity-kinds] {mix}");
+    }
     // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
     // the mean cost of a scope that cost anything; a scope whose modules were all resident from
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the

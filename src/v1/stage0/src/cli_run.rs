@@ -39708,6 +39708,49 @@ impl ScopeBuildSplit {
     }
 }
 
+/// ONE AMBIGUOUS BARE NAME AND THE DECLARATIONS THAT CLAIM IT, carried rather than counted.
+///
+/// The count alone sizes the population; it cannot name a single site, so it cannot be acted on.
+/// Layer 2 of this class is a REFUSAL landed together with the rename or qualification of every
+/// site it would refuse, and that set is exactly this list — the count answers "how many", the
+/// list answers "which", and only the second is a census a deletion can be planned from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbiguousBareName {
+    pub name: String,
+    /// Every module OUTSIDE the authored region that declares this bare name, with the kind it
+    /// declares it as, sorted and deduped. The kind is carried because the two failure shapes
+    /// are not equally dangerous: a `data`/`fn` homonym crosses the evaluator's kind dispatch,
+    /// while `fn`/`fn` across two modules merely picks the wrong body.
+    pub claimants: Vec<(String, &'static str)>,
+}
+
+impl AmbiguousBareName {
+    /// The distinct kinds claiming this name, sorted and joined with `+` — the grouping key the
+    /// floor's kind histogram folds over, derived from the claimants rather than authored beside
+    /// them.
+    pub fn kind_signature(&self) -> String {
+        let mut kinds: Vec<&'static str> = self.claimants.iter().map(|(_, k)| *k).collect();
+        kinds.sort_unstable();
+        kinds.dedup();
+        kinds.join("+")
+    }
+}
+
+/// The stable spelling of an item kind for the ambiguity census. `Debug` would do as bytes and
+/// would silently re-spell every census line if a variant were renamed, so the projection is
+/// written once here.
+pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -> &'static str {
+    use crate::v1_compiler_infer_items::ItemKind;
+    match kind {
+        ItemKind::FnItem => "fn",
+        ItemKind::FuncItem => "func",
+        ItemKind::TypeItem => "type",
+        ItemKind::DataItem => "data",
+        ItemKind::ServiceItem => "service",
+        ItemKind::OtherItem => "other",
+    }
+}
+
 pub struct PreparedClaimScope {
     /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
     /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
@@ -39746,7 +39789,7 @@ pub struct PreparedClaimScope {
     /// genuinely undecided residue: a bare reference to a name the referring module neither
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
-    pub ambiguous_bare_names: usize,
+    pub ambiguous_bare_names: Vec<AmbiguousBareName>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
     /// grain the terminal correction has to choose between. The floor already reports what a
     /// scope COSTS in resident bytes (`[floor-scope-cost]`) and how many it built, and neither
@@ -40360,8 +40403,8 @@ fn claim_scope_for_with_memos(
     // Which module won each bare name, and whether it won inside the authored region. A later
     // module claiming a name already won OUTSIDE that region is the ambiguous case: two
     // transitively-reached declarations spell the same and nothing the author wrote ranks them.
-    let mut winner_of: HashMap<String, (String, bool)> = HashMap::new();
-    let mut ambiguous: HashSet<String> = HashSet::new();
+    let mut winner_of: HashMap<String, (String, bool, &'static str)> = HashMap::new();
+    let mut ambiguous: BTreeMap<String, BTreeSet<(String, &'static str)>> = BTreeMap::new();
     {
         let module_by_name: HashMap<&str, &Rc<v1_compiler_compile::TypedModule>> = modules
             .iter()
@@ -40380,21 +40423,26 @@ fn claim_scope_for_with_memos(
             // the registry underneath it stops being ambiguous.
             for (_identity, info) in module.item_registry.iter() {
                 let name = &info.name;
+                let kind = item_kind_census_label(&info.kind);
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());
-                        winner_of.insert(name.clone(), (module_name.clone(), authored));
+                        winner_of.insert(name.clone(), (module_name.clone(), authored, kind));
                     }
                     // Already claimed by this same module — one module's own registry, not a
                     // collision between two.
-                    Some((winner, _)) if winner == module_name => {}
+                    Some((winner, _, _)) if winner == module_name => {}
                     // Already won inside the authored region: the author's imports rank it and
                     // precedence has settled it. Ordinary shadowing, not ambiguity.
-                    Some((_, true)) => {}
+                    Some((_, true, _)) => {}
                     // Won outside it, and now claimed again from outside it. Nothing the author
-                    // wrote decides between these two spellings.
-                    Some((_, false)) => {
-                        ambiguous.insert(name.clone());
+                    // wrote decides between these two spellings. BOTH sides are recorded, not
+                    // just the loser: a census that named only the newcomer could not say what
+                    // it collided with, and the rename that dissolves the site needs both.
+                    Some((held_module, false, held_kind)) => {
+                        let claimants = ambiguous.entry(name.clone()).or_default();
+                        claimants.insert((held_module.clone(), *held_kind));
+                        claimants.insert((module_name.clone(), kind));
                     }
                 }
             }
@@ -40428,7 +40476,13 @@ fn claim_scope_for_with_memos(
         indexes,
         module_count,
         scope_identity,
-        ambiguous_bare_names: ambiguous.len(),
+        ambiguous_bare_names: ambiguous
+            .into_iter()
+            .map(|(name, claimants)| AmbiguousBareName {
+                name,
+                claimants: claimants.into_iter().collect(),
+            })
+            .collect(),
         build_split: ScopeBuildSplit {
             order_nanos,
             registry_nanos,
