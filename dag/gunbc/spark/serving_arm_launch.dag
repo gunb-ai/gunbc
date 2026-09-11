@@ -7,7 +7,7 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq, render_ipv4_address 
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_tool_call_parser, glm_5_3_flash_vllm_reasoning_parser,
-  glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_engine_ready_timeout_seconds,
+  glm_5_3_flash_vllm_engine_ready_timeout_seconds,
   glm_5_3_flash_gb10_sparse_indexer_max_logits_mb,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
@@ -360,7 +360,7 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "--max-model-len", to_string(glm_native_max_model_len),
     "--max-num-batched-tokens", to_string(glm_native_max_num_batched_tokens),
     "--max-num-seqs", to_string(glm_native_max_num_seqs),
-    "--kv-cache-dtype", glm_5_3_flash_vllm_kv_cache_dtype_wire as String,
+    "--kv-cache-dtype", glm_native_kv_cache_dtype_wire as String,
     "--gpu-memory-utilization", render_utilization_fraction(basis_points: utilization_basis_points),
     "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
     "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
@@ -369,6 +369,41 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "--port", to_string(glm_native_serve_port),
   ], concat(arm_quantization_argv(row: crow), arm_headless_argv(node: node)))
 }
+
+// ── THIS IMAGE CANNOT HOLD AN FP8 KV CACHE FOR THIS CHECKPOINT, AND THE CHECKPOINT SAYS WHY ────
+//
+// UPSTREAM'S WIRE VALUE IS `fp8` AND PASSING IT KILLED THE LEADER (attempt 8, 2026-09-11). Everything
+// before that point worked: exclusivity held, the memory envelope was admitted on all four ranks, the
+// headless split brought the followers up without the collective_rpc assertion, and rank zero loaded its
+// weights in 524 seconds. Then:
+//
+//     RuntimeError: concat_and_cache_mla, cache_kernels.cu:928,
+//                   pe_dim must be 64 for fp8_ds_mla
+//
+// THE FLAG IS NOT THE LAYOUT, WHICH extdeps.zhipu.glm_5_3_flash ALREADY WARNS ABOUT. We pass `fp8`; the
+// engine DERIVES `fp8_ds_mla` from the architecture it finds and selects its MLA-sparse kernel for it. So
+// this is not a wrong value being passed -- it is the engine choosing a kernel that this checkpoint cannot
+// satisfy.
+//
+// AND THE CHECKPOINT IS DECISIVE ABOUT WHY. Read from its own config.json: `mla_use_nope: true` with
+// `qk_rope_head_dim: 0`, against `qk_nope_head_dim: 256`, `kv_lora_rank: 512`, `v_head_dim: 256`. The
+// positional-embedding dimension the kernel requires to be 64 is ZERO here, because GLM-5.3-Flash's MLA is
+// the NoPE variant. 64 is DeepSeek's rope dim; that kernel was written for DeepSeek's layout. This is not a
+// version gap that a newer image closes -- it is a shape mismatch between a checkpoint and a kernel.
+//
+// SO THE ARM REQUESTS `auto` AND LETS THE ENGINE KEEP ITS UNQUANTISED KV PATH. The cost is close to nothing
+// on this arm and that is measured rather than hoped: a full 262,144-token window needs roughly 1.4 GiB of
+// KV for the whole group, because 34 of the 45 layers are linear-attention and only 11 are MLA with a
+// 512-wide latent. Trading fp8 KV for a working kernel spends about a gigabyte to gain a launch.
+//
+// THIS IS AN ARM FACT AND NOT AN UPSTREAM ONE, which is why it lives here rather than in extdeps. Upstream's
+// row says what the publisher recommends for this model; this row says what THIS IMAGE will accept for it on
+// THIS hardware. Overwriting the extdeps value would assert that the publisher is wrong, which the evidence
+// does not support -- a different backend, or one whose MLA kernel handles pe_dim 0, would take `fp8` happily.
+//
+// DISSOLUTION TRIGGER: an image whose MLA fp8 path accepts a zero positional-embedding dimension, at which
+// point this row deletes and the arm consumes the upstream wire value again.
+data glm_native_kv_cache_dtype_wire: NonEmptyStr = "auto" as NonEmptyStr
 
 // ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────
 //
