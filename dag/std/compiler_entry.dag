@@ -1,5 +1,7 @@
 module std.compiler_entry
 
+import std.types { Int, Bool }
+
 // WHICH MODULE IS THE COMPILER PIPELINE ENTRY IS A FACT ABOUT THE MODULE, CARRIED BY IT.
 //
 // The emitter used to answer that question by comparing a module's authored name against the
@@ -35,13 +37,82 @@ module std.compiler_entry
 // SourceRootEvalDriver -- the repository test-execution route. The rendered main reads a universe
 // of qualified test identities (module path + declaration name, one per line) and the declared
 // source roots, builds the SourceRootIngest itself (the filesystem read is the host boundary the
-// driver owns), then hands the whole ingest to the pipeline: assemble, resolve, infer ONCE, and
-// per universe member resolve the named declaration and Eval its body, reporting one typed
-// verdict row per member. This is the driver the required-v2-native CI lane executes; its
-// contract is that every universe member reaches exactly one terminal observation, never a
-// silent remainder.
+// driver owns), then hands the whole ingest to the pipeline: assemble the context ONCE, prepare
+// (resolve + infer) once per unique module, and per universe member Eval the named declaration,
+// reporting one typed verdict row per member. This is the driver the required-v2-native CI lane
+// executes; its contract is that every universe member reaches exactly one terminal observation,
+// never a silent remainder. The process re-derives its own exclusive wall partition on stderr
+// as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: exclusive
+// load / context / prepare / eval over parent_span_nanos) plus one `[native-prepare]` line per
+// unique module. Re-run the emitted binary over a universe file to re-derive the numbers.
 
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
+
+// THE NATIVE DRIVER'S EXCLUSIVE WALL PARTITION. claim_batch prints `[cost-partition]` over
+// resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
+// single-threaded wall. The grains are the driver's own (load / context / prepare / eval), not
+// a restatement of the resolve-split rows: context is the once-per-process ingest fold,
+// prepare is resolve+infer per unique module, eval is per identity. The law is the same
+// exclusive-sum law: exclusive rows must not exceed parent_span_nanos, and the remainder
+// (parent minus exclusive) must sit inside the declared tolerance or the receipt is not a
+// partition. Re-derive by running the emitted binary; these rows are the type of that
+// stderr JSON, not a second ledger.
+
+type NativeDriverExclusiveRows {
+  load: Int
+  context: Int
+  prepare: Int
+  eval: Int
+}
+
+type NativeDriverCostAccounting
+  = NativeDriverCostReconciled { residual_nanos: Int, tolerance_nanos: Int }
+  | NativeDriverCostOverAttributed { sum_exclusive_nanos: Int, parent_span_nanos: Int }
+  | NativeDriverCostRemainderExceedsTolerance { residual_nanos: Int, tolerance_nanos: Int }
+
+// Fifty milliseconds. The sample run's remainder was ~10 ms of Instant/print overhead around
+// the four exclusive windows; a remainder larger than this is unattributed driver work, not
+// a rounding crumb.
+data native_driver_cost_remainder_tolerance_nanos: Int = 50000000
+
+fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Int {
+  rows.load + rows.context + rows.prepare + rows.eval
+}
+
+fn native_driver_cost_account(
+  parent_span_nanos: Int,
+  exclusive: NativeDriverExclusiveRows,
+  tolerance_nanos: Int
+) -> NativeDriverCostAccounting {
+  let sum = native_driver_exclusive_sum(rows: exclusive)
+  if sum > parent_span_nanos {
+    NativeDriverCostOverAttributed {
+      sum_exclusive_nanos: sum,
+      parent_span_nanos: parent_span_nanos
+    }
+  } else {
+    let residual = parent_span_nanos - sum
+    if residual > tolerance_nanos {
+      NativeDriverCostRemainderExceedsTolerance {
+        residual_nanos: residual,
+        tolerance_nanos: tolerance_nanos
+      }
+    } else {
+      NativeDriverCostReconciled {
+        residual_nanos: residual,
+        tolerance_nanos: tolerance_nanos
+      }
+    }
+  }
+}
+
+fn native_driver_cost_is_reconciled(verdict: NativeDriverCostAccounting) -> Bool {
+  match verdict {
+    NativeDriverCostReconciled { residual_nanos: _, tolerance_nanos: _ } => true
+    NativeDriverCostOverAttributed { sum_exclusive_nanos: _, parent_span_nanos: _ } => false
+    NativeDriverCostRemainderExceedsTolerance { residual_nanos: _, tolerance_nanos: _ } => false
+  }
+}
