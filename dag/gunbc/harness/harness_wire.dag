@@ -265,6 +265,11 @@ fn harness_token_count_of(n: Int) -> TokenCount {
   token_count(count: nat_magnitude(a: n))
 }
 
+// THE TWO WILDCARDS INSIDE ARE OVER HarnessIntRead, NOT OVER A LOOKUP, and they forward the read
+// itself to harness_int_read_gap, which names every non-read arm by outcome -- absent, duplicated,
+// not-an-object, not-a-number, not-an-integer. So the sentence a refusal here produces is specific
+// even though the match is not; this is the one shape the wildcard sweep (review 63850) leaves
+// standing, because the arms are enumerated one call away rather than collapsed.
 fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> HarnessUsageRead {
   match json_object_unique_member(v: doc, key: "usage") {
     JsonMemberFound { value: u } => {
@@ -284,7 +289,6 @@ fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> 
                   output_tokens: harness_token_count_of(n: ov),
                 }
               }
-            // Over HarnessIntRead, whose every non-read arm harness_int_read_gap names by outcome.
             _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
           }
         _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
@@ -463,12 +467,13 @@ fn harness_decode_each(els: List<JsonValue>, decode: fn(JsonValue) -> HarnessBlo
   }
 }
 
+// THE WILDCARD BELOW IS OVER THE VALUE'S TYPE, NOT OVER A LOOKUP, which is why it survives the
+// sweep that wrote every lookup's arms out (review 63850): duplicated and not-an-object were
+// already decided by the lookup that PRODUCED this value and cannot reach here, so "not an array"
+// is the only fact left to state.
 fn harness_decode_blocks(v: JsonValue) -> HarnessBlocksRead {
   match v {
     JsonArray { elements: els } => harness_decode_each(els: els, decode: e => harness_decode_block(v: e))
-    // The wildcard here is over the VALUE's type, not over a lookup: duplicated and not-an-object
-    // were decided by the lookup that produced this value and never reach it, so "not an array" is
-    // the only fact left to state.
     _ => BlocksUnreadable { cause: "the response content member is not an array of content blocks" }
   }
 }
@@ -913,13 +918,14 @@ fn harness_chat_message_text(msg: JsonValue) -> HarnessBlocksRead {
   }
 }
 
+// THE INNER WILDCARD IS OVER THE VALUE'S TYPE: the lookup's three non-found outcomes are the arms
+// at the bottom of this match, so a duplicated tool_calls member never reaches "is not an array".
 fn harness_chat_message_calls(msg: JsonValue) -> HarnessBlocksRead {
   match json_object_unique_member(v: msg, key: "tool_calls") {
     JsonMemberFound { value: tc } =>
       match tc {
         JsonArray { elements: es } =>
           harness_decode_each(els: es, decode: e => harness_chat_tool_call_block(v: e))
-        // Over the value's type, not the lookup: the three non-found outcomes are the arms below.
         _ => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
       }
     JsonMemberAbsent => BlocksRead { blocks: [] }
