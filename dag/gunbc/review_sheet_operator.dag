@@ -101,7 +101,31 @@ type WorkspaceDomainSharingPolicy
   | DomainSharingForbidsExternalPrincipals
   | DomainSharingAllowsServiceAccountShare
 
-data buyer_review_workspace_domain_sharing: WorkspaceDomainSharingPolicy = DomainSharingPolicyUnobserved
+// Operator read, 2026-09-11: Drive sharing is the three-way OFF / allowlisted domains / ON.
+// A writer SA is <name>@<project>.iam.gserviceaccount.com, outside gunb.ai, so an Editor grant
+// is this setting, not a GCP one. ON admits that grant. Allowlisted domains would not, unless
+// gserviceaccount.com were allowlisted wholesale — broader than one principal, so not a near-miss.
+// Warn-on-external-share and guest-account sub-options were not read; this arm does not depend on
+// them. ON also permits anyone-with-the-link; if the setting is tightened, the surviving route is
+// an in-domain Shared Drive with the SA as a member, or domain-wide delegation, not an external
+// principal share.
+type BuyerReviewWorkspaceSharingReading {
+  policy: WorkspaceDomainSharingPolicy
+  read_on: NonEmptyStr
+  source: NonEmptyStr
+  quoted_selection: NonEmptyStr
+}
+
+data buyer_review_workspace_sharing_reading: BuyerReviewWorkspaceSharingReading = {
+  policy: DomainSharingAllowsServiceAccountShare,
+  read_on: "2026-09-11" as NonEmptyStr,
+  source: "Google Admin console, Apps > Google Workspace > Drive and Docs > Sharing settings, applied at gunb.ai" as NonEmptyStr,
+  quoted_selection: "ON - Files owned by users or shared drives in gunb.ai can be shared outside of gunb.ai" as NonEmptyStr,
+}
+
+fn buyer_review_workspace_domain_sharing() -> WorkspaceDomainSharingPolicy {
+  buyer_review_workspace_sharing_reading.policy
+}
 
 fn intervention_is_discharged(intervention: HumanIntervention) -> Bool {
   match intervention.completion_evidence {
@@ -262,7 +286,7 @@ fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
             spreadsheet: buyer_review_spreadsheet,
             serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: sa),
             share: share_intervention_for_spreadsheet(spreadsheet: buyer_review_spreadsheet, writer: sa),
-            sharing_policy: buyer_review_workspace_domain_sharing,
+            sharing_policy: buyer_review_workspace_domain_sharing(),
             tenancy: buyer_review_account_tenancy,
           )
       }
