@@ -13,20 +13,28 @@ module tools.scm_acceptance_binary
 //
 // TWO SEPARATE HOLES, and closing only the first leaves the instrument lying in a subtler way.
 //
-// FRESHNESS is closed by asking Cargo. `materialize_artifact_wet` runs the build with structured
-// messages, selects the executable from Cargo's own `compiler-artifact` output rather than from a
-// conventional path, and digests exactly the path Cargo reported. A convention-derived path can
-// hold a stale binary while every presence check stays honestly green, which is why that authority
-// exists and why this module consumes it instead of comparing timestamps or re-deriving a path.
+// CONVENTION-PATH SUBSTITUTION is closed by asking Cargo -- and that is narrower than the
+// "freshness" this paragraph used to claim. The build runs with structured messages and the
+// executable is selected from Cargo's own `compiler-artifact` output, so the retained source is THE
+// FILE CARGO REPORTED FOR THIS INVOCATION rather than whatever happens to sit at a conventional
+// path. That defeats a stale binary occupying `target/release/gunbc` while every presence check
+// stays honestly green. It does NOT establish that the build was local or consumed the current
+// worktree -- the paragraph further down says so, and these two claims contradicted each other in
+// one file until external review said so.
 //
-// THE IMMUTABLE SPEND closes the second, and it is the one that is easy to miss because the first
-// looks sufficient. `target/release/gunbc` is a MUTABLE path. Digesting it at mint time says what
+// RETAINED, ATTEMPT-OWNED SPEND closes the second -- not an IMMUTABLE one, which is what this
+// paragraph used to call it. Nothing here makes a filesystem path immutable; that is exactly why
+// `ScmBinaryStanding` exists and re-observes the file before every scenario spends it. What the
+// copy buys is a private name and a removed race, not immutability. `target/release/gunbc` is a
+// MUTABLE path. Digesting it at mint time says what
 // the bytes were THEN; any concurrent `cargo build` -- another session on this host, a later step of
 // this same run -- replaces those bytes afterwards, and the carrier would still hold a digest that
 // was true when minted and false when spent, while different children executed different programs
 // under one receipt. So the reported executable is COPIED into an attempt-owned directory, the
 // destination is digested INDEPENDENTLY, the two digests must agree, and the carrier is minted over
-// the DESTINATION. Every child then spends a path nothing else knows the name of.
+// the DESTINATION. Every child then spends a path nothing else knows the name of -- which narrows
+// who can replace it, and does not stop anyone who learns the name, so the standing check at spend
+// is the other half of this and not a belt-and-braces addition.
 //
 // WHY THIS IS NOT A CROSS-DISPATCH RECEIPT. It would be convenient to accept `{path, digest}` from
 // an environment variable, a CLI argument, or a file a previous CI job left behind. That is exactly
@@ -56,8 +64,11 @@ module tools.scm_acceptance_binary
 // as `Exec format error` inside the first scenario's first child, presented as a scenario failure --
 // blaming the SCM code for an artifact that was never runnable here.
 //
-// So the last acquisition step RUNS the retained artifact (`--version`, which must succeed if it can
-// execute at all) and refuses as `ScmAcceptanceBinaryNotRunnableHere` when it cannot. This is not
+// So the last acquisition step RUNS the retained artifact and refuses when that invocation fails.
+// THE REFUSAL NAMES WHAT WAS OBSERVED, NOT A CAUSE IT DID NOT MEASURE: an earlier wording rendered
+// this as "build and execution must share an architecture", which is the measured cause in one
+// container and not what the probe establishes -- a binary that loads perfectly and exits nonzero
+// reaches the same arm. Asserting the architecture would be diagnosing from a sample of one. This is not
 // hypothetical: in this container `cargo` resolves to a shim that dispatches remotely to a
 // linux/amd64 runner while the session itself is arm64, so an instrument that trusted the executable
 // bit would acquire a binary guaranteed to fail. `IsExecutable` answers a MODE BIT; it does not
@@ -97,8 +108,12 @@ import std.content_hash { Sha512Digest }
 import std.types { Bool, String, FilePath }
 
 // SEALED, AND THE SEAL IS ONLY AS STRONG AS ITS ROUTES. There is exactly one producer below,
-// `acquire_scm_acceptance_binary`, and it takes NO arguments -- nothing a caller supplies can
-// influence which bytes end up in the carrier, so there is no argument to forge.
+// `acquire_scm_acceptance_binary`, and it takes NO arguments. That closes EXPLICIT path and digest
+// substitution -- there is no argument to forge -- and it is not the same as "nothing a caller
+// supplies can influence which bytes end up in the carrier", which is what this said before.
+// `PATH`, the worktree, Cargo configuration, the toolchain and the environment remain AMBIENT
+// inputs, and in this container the first of those is the whole story: `cargo` resolves to a
+// remote-dispatching shim. Zero arguments is a statement about the CALL, not about the world.
 // THE HOLD DIRECTORY IS PART OF THE CARRIER because the artifact must OUTLIVE its acquisition --
 // every scenario spends it -- so acquisition cannot clean up after itself on the success path the
 // way it does on every refusal path. An earlier revision cleaned only the refusals and therefore
@@ -221,8 +236,8 @@ fn retain_observed_artifact(source: String, source_digest: Sha512Digest, hold: S
             } else {
               ArtifactNotRunnable {
                 detail: concat(
-                  "the retained artifact does not execute on this host -- it built and digested, but ",
-                  concat(probe.stderr, " -- build and execution must share an architecture"),
+                  "the retained artifact was built and digested, but invoking it with --version failed: ",
+                  probe.stderr,
                 ),
               }
             }
@@ -283,9 +298,9 @@ fn cargo_selection_detail(selection: CargoArtifactSelection) -> String {
   }
 }
 
-// THE ONE PRODUCTION ROOT. Zero arguments, so nothing a caller supplies can influence which bytes
-// reach the carrier, and the `ScmAcceptanceBinary { .. }` construction below is the ONLY one in this
-// module. It composes the exported pieces of `gunbc.self_host_artifact_materialization` rather than
+// THE ONE PRODUCTION ROOT. Zero arguments, so no caller-supplied path or digest can reach the
+// carrier (ambient inputs still can -- see the header), and the `ScmAcceptanceBinary { .. }`
+// construction below is the ONLY one in this module. It composes the exported pieces of `gunbc.self_host_artifact_materialization` rather than
 // its convenience wrapper, because the wrapper drops two things this instrument needs: Cargo's
 // STDERR on a build failure (the evidence separating a compiler error from a transport failure) and
 // the TYPED selection cause.
