@@ -44,8 +44,16 @@ test fn the_fleet_recipe_diverges_from_upstream_only_in_the_arch_list_and_parall
 // THE REASON A BUILD IS NEEDED AT ALL, ASSERTED RATHER THAN ASSUMED: neither upstream recipe targets
 // 12.1, so no image built from either can carry sm_121 kernels, and 12.1 is nonetheless an
 // architecture upstream's own build system accepts.
+// THE SUBJECT ARCHITECTURE IS PINNED HERE, and the literal is grounded rather than copied from the
+// declaration it checks: GB10 reports compute capability (12, 1) from torch.cuda.get_device_capability
+// inside every container probed on spark-a3ee, and this lane's own probe re-derives it on every run
+// (it prints COMPUTE_CAPABILITY before it asks anything else), so a build targeting anything else is
+// building for hardware the fleet does not have. 🟡 dissolve-on: replaced by a join to
+// gunbc.spark.serving_runtime_capability_probe gb10_observed_compute_capability when #11016 lands,
+// which is the declared home for that measurement.
 test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> Bool {
-  !string_contains(s: vllm_07b75534_default_recipe.torch_cuda_arch_list as String, pattern: "12.1")
+  (v41_gb10_torch_cuda_arch_list as String) == "12.1"
+    && !string_contains(s: vllm_07b75534_default_recipe.torch_cuda_arch_list as String, pattern: "12.1")
     && !string_contains(s: vllm_07b75534_aarch64_release_recipe.torch_cuda_arch_list as String, pattern: "12.1")
     && vllm_cuda_arch_supported(arch: v41_gb10_torch_cuda_arch_list)
     && v41_recipe_arch_is_buildable()
