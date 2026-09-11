@@ -1678,38 +1678,6 @@ pub struct TransitionAdmission {
 /// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
 /// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
 /// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
-/// mutation_status_is_commit_ambiguous stranded caller (2026-09-10, gunbc#10945). main was RED on
-/// the declarations check: `gunbc.cloudflare.r2_token_mint_run` imported that spelling from
-/// `gunbc.secret_provision_actuator`, which declares no such name, so the base bound it to NOTHING.
-/// NEITHER CONTRIBUTING CHANGE IS WRONG IN ISOLATION and the row says so because a wrong attribution
-/// here would outlive the defect: #10925 wrote that import line at 23598caecca when the fn WAS
-/// declared in `secret_provision_actuator`, and #10923 then deleted the fn at 4024a3a5bdb, rehoming
-/// it to `extdeps.transports.rest` (rest.dag:111) and leaving one edge pointing at the old address.
-/// The defect exists only in their composition — a stranded caller. #10923's floor concluded
-/// 09:50:11Z, four hours before #10925 landed at 13:48:36Z, so the verdict that would have caught the
-/// stranding was computed against a base that did not yet contain the importer it was about to
-/// strand. Not a race: a concluded verdict, correct about the world it measured, and that world no
-/// longer existed at merge time.
-///
-/// The repair points the import at the one module that declares the name, which this module already
-/// imported. Required floor run 34497494076 measured parse 0 and declarations 0 — the break is gone —
-/// and refused adjudication on exactly this one binding delta, `base {} -> head
-/// {extdeps.transports.rest}`, classified `NewPoolCoincidenceResolution`.
-///
-/// THE CLASSIFICATION IS WRONG AND THIS ROW ADMITS IT ANYWAY. By the 2026-08-27 operator ruling in
-/// `gunbc.compiler_frontend_program_interlock`, an author writing the import that resolves a name the
-/// module was ALREADY SPELLING is `AuthoredReferenceResolution`, which auto-admits; that ruling was
-/// made after the wall refused gunbc#9485, a one-line import repair. This is that case exactly. It
-/// lands in the coincidence arm because `locally_authored_claim_added` decides authorship with
-/// `names_leaf`, which reads `c.members` and never `c.target`: base names the leaf (wrong module),
-/// head names it (right module), so `names_leaf(head) && !names_leaf(base)` is false. The predicate
-/// sees a name appearing where it was ABSENT, never a name whose SOURCE changed. The incentive
-/// inversion is what makes this a defect rather than a rough edge: a REDUNDANT blanket import would
-/// have tripped the `blanket_targets` branch and auto-admitted, so the wall is easier to satisfy by
-/// writing worse code. Escalated rather than worked around; admit was ruled, with the predicate fix
-/// to land separately against a green main — repairing a wall in the same motion that asks it for an
-/// exception would make the exception look bought by the fix.
-///
 /// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
 /// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
 /// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
@@ -1730,6 +1698,14 @@ pub struct TransitionAdmission {
 /// The resting state is empty again as of this change. Empty is not permissive: a run with a real
 /// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
 /// admission.
+///
+/// TWENTY-FIRST DISSOLUTION (2026-09-11). Main authored one row back into the empty roster for
+/// gunbc#10956 (the `surveyed_runner_catalogs` rehome from `gunbc.runner_shape_census` to
+/// `gunbc.runner_provider_survey`), with the trigger "this row goes when #10956 merges". #10956
+/// merged as 9fa591ceb2, so the base now authors the spelling in its new home and the delta is no
+/// longer producible: the row is CONSUMED. This change touches the roster, so it is the toucher the
+/// rule charges, and the row is deleted in the merge that brought it here rather than left for the
+/// wall to name as due.
 /// THE v2-NATIVE ROUTE'S MODULE SPLITS, 2026-09-11. Four facts moved to modules below their
 /// readers so the route could carry its own admission and its own discovery authority without a
 /// cycle and without dragging a policy closure into the emitted crate:

@@ -1634,6 +1634,16 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the measurement this document exists to scope is taken and its answer is acted on: the host boot script that starts every production micro-VM on Mt. Collins acquires an authoring home, at which point the central finding -- that one home is modeled and the other is outside the corpus entirely -- is false and the document deletes with this bind. Registered at subject grain: the bound declarations are the two carriers whose movement would make its framing wrong -- FCI-3, whose exit predicate the receipted zero-byte-credential launch violates and whose displacement this document prices, and the host image store, whose resilient:false standing is what makes the unauthored actuation a single-copy risk rather than merely an untidy one. It is deliberately bound to NEITHER the FCI-2 module NOR the failure-mode row this analysis continues, because both are authored on the unmerged #10674 and a bind to a symbol that does not resolve is the citation defect this document was already corrected for once. When #10674 lands, the failure-mode row is the natural third work to add here.") },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci-per-job-microvm-migration",
+    primary_work: DeclarationRef { module_path: "gunbc.runner_attempt_launch", decl_name: "host_boot_cutover_frontier", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "toolchain_filesystem_probe_dissolution_condition", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.runner.runner_host_image_placeability", decl_name: "host_image_placeability_standing", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "NAMED CONSUMER: the operator cutover that binds host_boot_cutover_frontier and points gunbc plus gunbc-private required jobs at per-attempt microVM labels. TRIGGER: that capability -- Y execs at host boot, host image built from Y, and selected_ci_runner_target no longer names the shared-filesystem fleet slot for those jobs -- which is also when toolchain_filesystem_probe_dissolution_condition may fire on the microVM arm. SUFFICIENT FOR deleting this bind and docs/plans/ci-per-job-microvm-migration.md together. NOT satisfied by this plan existing, by BMC HTTPS answering, or by Y remaining shadow.") },
+  },
 ]
 
 type HandAuthoredDocBindsPopulation
