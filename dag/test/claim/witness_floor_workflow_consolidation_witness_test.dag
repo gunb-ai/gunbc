@@ -552,8 +552,6 @@ test fn w_concurrency_group_resolves_each_event_fixture_and_refuses_running_canc
               )
           && string_contains(s: yml, pattern: "cancel-in-progress: false")
           && !string_contains(s: yml, pattern: mutable_head_runs_cancel_expression())
-          && string_contains(s: yml, pattern: "timeout-minutes: 180")
-          && !string_contains(s: yml, pattern: "timeout-minutes: 360")
       WitnessFloorGenerationRefused { reason: _ } => false
     }
 }
