@@ -444,8 +444,23 @@ type NativeRouteMalformedControl
 // admission can refuse it by name: a receipt that cannot say how fallback was closed has not
 // closed it. The empty-string arm is refused alongside the absent arm: a control whose identity
 // names nothing is not an observation.
+//
+// A ROUTE THAT IS NOT PRESENT CANNOT BE FALLEN BACK TO, and the harness must not REQUIRE the old
+// route to exist so that it can move it (operator design review 2026-09-11, C5). Withdrawal is one
+// way to close the fallback and presence-at-the-window is not a precondition of the contract, so
+// the absent case is its own OBSERVATION rather than a refusal: the harness records the path it
+// looked for and that nothing was there for the whole spawn window.
+//
+// THIS IS NOT THE ANCESTRY LANE'S ARM AND MUST NOT BE READ AS IT. OldRouteNotPresentAtWindow says
+// only that this path held no file while the native spawns ran; the stronger property — no v1
+// emitter or interpreter reachable at all, the closure admitted by native ancestry — is
+// OldRouteAbsentByConstruction, which the native ancestry acquisition lane introduces together
+// with the producer that establishes it. DISSOLVE-ON: that lane lands and every consumer of this
+// arm can assert the stronger fact instead, at which point this arm deletes rather than being
+// relabelled.
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
+  | OldRouteNotPresentAtWindow { expected_executable: String }
   | OldRouteFalsifierArmed { falsifier_identity: String }
   | OldRouteControlAbsent
 
@@ -758,6 +773,7 @@ fn native_route_malformed_control_holds(receipt: NativeRouteReceipt) -> Bool {
 fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   match receipt.old_route_control {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
+    OldRouteNotPresentAtWindow { expected_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
     OldRouteControlAbsent => false
   }

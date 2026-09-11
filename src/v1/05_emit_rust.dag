@@ -16755,7 +16755,8 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 // derived and the receipt judged INSIDE this binary (v2.compiler.compile native_lane_run), and
 // the only thing the host still supplies is what this process cannot observe of itself: the
 // identities of the seed that emitted it, of the closure and of its own executable, the
-// executable that was withdrawn to close the fallback, and the malformed specimen run's verdict.
+// how the old route's fallback was closed - withdrawn, or absent at that path for the whole
+// window - and the malformed specimen run's verdict.
 //
 // TWO NAMED MODES, EACH FAIL-CLOSED. `adjudicate <host-facts.tsv> <source-root>...` is the lane:
 // it ingests the roots, derives the v2.test.* universe with the floor's own per-file producer,
@@ -16793,7 +16794,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use std::rc::Rc;", "\n",
       "\n",
       "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};", "\n",
-      "use ", crate_name, "::gunbc_witness_v2_native_route::NativeRouteMalformedControl;", "\n",
+      "use ", crate_name, "::gunbc_witness_v2_native_route::\{NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{native_lane_run, native_test_context_from_ingest, NativeLaneHostFacts\};", "\n",
       "use ", crate_name, "::v2_compiler_source_authority::\{source_root_for_storage_path, DagSourceReadWitness\};", "\n",
       "use ", crate_name, "::v2_std_artifact::\{Artifact, ArtifactKind\};", "\n",
@@ -16905,13 +16906,27 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            reason: malformed_reason,", "\n",
       "        \}", "\n",
       "    \};", "\n",
+      "    let old_route_disposition = host_fact(&facts, \"old_route_disposition\");", "\n",
+      "    let old_route_executable = host_fact(&facts, \"old_route_executable\");", "\n",
+      "    let old_route_control = match old_route_disposition.as_str() \{", "\n",
+      "        \"withdrawn\" => NativeRouteOldRouteControl::OldRouteWithdrawn \{", "\n",
+      "            withdrawn_executable: old_route_executable,", "\n",
+      "        \},", "\n",
+      "        \"not_present_at_window\" => NativeRouteOldRouteControl::OldRouteNotPresentAtWindow \{", "\n",
+      "            expected_executable: old_route_executable,", "\n",
+      "        \},", "\n",
+      "        other => \{", "\n",
+      "            eprintln!(\"REFUSED: old_route_disposition names no control this route can record: \{other\} -- expected withdrawn or not_present_at_window\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
       "    NativeLaneHostFacts \{", "\n",
       "        tested_tree: host_fact(&facts, \"tested_tree\"),", "\n",
       "        preparation_seed_identity: host_fact(&facts, \"preparation_seed_identity\"),", "\n",
       "        emitted_closure_identity: host_fact(&facts, \"emitted_closure_identity\"),", "\n",
       "        executable_path: host_fact(&facts, \"executable_path\"),", "\n",
       "        executable_identity: host_fact(&facts, \"executable_identity\"),", "\n",
-      "        withdrawn_executable: host_fact(&facts, \"withdrawn_executable\"),", "\n",
+      "        old_route_control: Rc::new(old_route_control),", "\n",
       "        malformed_control: Rc::new(malformed_control),", "\n",
       "    \}", "\n",
       "\}", "\n",

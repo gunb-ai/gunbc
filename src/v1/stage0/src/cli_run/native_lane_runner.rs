@@ -7,6 +7,16 @@
 //! `gunbc.rung_drop` `v2_native_route_off_the_merge_path`, whose restoration trigger is a required
 //! native-route job designed against an operator-agreed contract rather than this one re-added.
 //!
+//! WHAT THIS ROUTE CLAIMS, AND WHAT IT DOES NOT. It claims NATIVE UNIVERSE DERIVATION, NATIVE
+//! EVALUATION, NATIVE RECEIPT CONSTRUCTION AND NATIVE ADMISSION over a SEED-PREPARED COMPILER
+//! ARTIFACT. It does NOT claim to be interpreter-free end to end, and must not be described that
+//! way while `prepare_emitted_compiler` below calls `compile_entry_emission` in the v1 process
+//! (operator design review 2026-09-11, C1). The seed is never the ordinary miss path: the intended
+//! ancestry is one genesis (V1SeedEmitter -> NativeGeneration0) and thereafter only
+//! V2EmitterNative(N) -> N+1, with a missing native ancestor a typed refusal. Replacing the call
+//! below is the native ancestry acquisition lane's subject, not this one's; nothing here forecloses
+//! it.
+//!
 //! THE SEED PREPARES; THE EMITTED COMPILER DECIDES. This harness emits the compiler closure once,
 //! builds it with cargo, withdraws the old-route CLI, and spawns the emitted binary — twice: once
 //! in `census` mode over the malformed specimen's scratch root, and once in `adjudicate` mode over
@@ -17,14 +27,15 @@
 //! (`v2.compiler.compile` `native_lane_run`).
 //!
 //! WHAT THIS MODULE NO LONGER DOES, AND WHY THE DELETION IS THE POINT. It used to bracket the
-//! lane with the v1 interpreter on both ends: a Wet interpreter context folding
+//! route with the v1 interpreter on both ends: a Wet interpreter context folding
 //! `discover_floor_rows_for_source` over ~5300 sources to derive the universe (~4 minutes
 //! interpreted), and a second context evaluating the admission authority over a receipt built
 //! here as interpreter `Value`s. The lane's whole claim is that the emitted compiler answers, so
 //! both brackets are deleted rather than kept as a fallback (DESIGN section 3: a replacement
 //! migration cuts at the root; a surviving X is an attractor). If the emitted closure cannot
 //! carry the admission the emission refuses by name — there is no interpreted arm to fall back
-//! to.
+//! to. The one v1 evaluation left in the route is the PREPARATION above, and it is named rather
+//! than counted as absent.
 //!
 //! WHAT THE OLD-ROUTE CONTROL PROVES HERE, AND WHAT IT DOES NOT. The verdicts are the spawned
 //! binary's own stdout, so the execution route is a process boundary, not a call convention.
@@ -199,26 +210,46 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
 
 /// THE OLD-ROUTE WITHDRAWAL, AS A GUARD SO A REFUSAL PATH CANNOT SKIP THE RESTORE. The seed's
 /// `gunbc` binary — the old compiler/interpreter route's CLI — is renamed out of the way before
-/// the first native spawn and restored when the guard drops, on every exit path. The receipt
-/// records the withdrawn executable's path; the window is what admission's control clause names.
+/// the first native spawn and restored when the guard drops, on every exit path.
+///
+/// ITS ABSENCE IS AN OBSERVATION, NOT A REFUSAL (operator design review 2026-09-11, C5). This
+/// harness used to REQUIRE the old route to exist so that it could move it, which made a property
+/// of the developer's target directory a precondition of the route's contract — and reads exactly
+/// backwards, since a route that is not there is one the spawns could not have reached. The guard
+/// therefore carries which control held, and the receipt records the authority's own arm:
+/// `OldRouteWithdrawn` when a file was moved aside, `OldRouteNotPresentAtWindow` when the path
+/// held nothing for the whole spawn window. Neither claims the stronger
+/// `OldRouteAbsentByConstruction` — no v1 emitter or interpreter reachable at all — which the
+/// native ancestry acquisition lane introduces with the producer that can establish it.
 struct OldRouteWithdrawalGuard {
     original: PathBuf,
-    withdrawn: PathBuf,
+    withdrawn: Option<PathBuf>,
+}
+
+/// Which old-route control the window actually held, as the two host-fact rows the emitted binary
+/// decodes into the authority's coproduct.
+struct OldRouteControlFacts {
+    disposition: &'static str,
+    executable: String,
 }
 
 fn withdraw_old_route(workspace: &Path) -> Result<OldRouteWithdrawalGuard, String> {
     let original = workspace.join("target").join("release").join("gunbc");
+    if !original.is_file() {
+        eprintln!(
+            "v2-native-route: old route not present at {} for the spawn window (nothing to \
+             withdraw; the receipt records the path it looked for)",
+            original.display()
+        );
+        return Ok(OldRouteWithdrawalGuard {
+            original,
+            withdrawn: std::option::Option::None,
+        });
+    }
     let withdrawn = workspace
         .join("target")
         .join("release")
         .join("gunbc.withdrawn-v2-native");
-    if !original.is_file() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=OldRouteWithdrawalImpossible — {} is not a file; the \
-             control cannot withdraw what is absent",
-            original.display()
-        ));
-    }
     std::fs::rename(&original, &withdrawn).map_err(|e| {
         format!(
             "V2-NATIVE REFUSAL cause=OldRouteWithdrawalImpossible — renaming {}: {e}",
@@ -231,13 +262,31 @@ fn withdraw_old_route(workspace: &Path) -> Result<OldRouteWithdrawalGuard, Strin
     );
     Ok(OldRouteWithdrawalGuard {
         original,
-        withdrawn,
+        withdrawn: Some(withdrawn),
     })
+}
+
+impl OldRouteWithdrawalGuard {
+    fn control_facts(&self) -> OldRouteControlFacts {
+        match &self.withdrawn {
+            Some(_) => OldRouteControlFacts {
+                disposition: "withdrawn",
+                executable: self.original.display().to_string(),
+            },
+            std::option::Option::None => OldRouteControlFacts {
+                disposition: "not_present_at_window",
+                executable: self.original.display().to_string(),
+            },
+        }
+    }
 }
 
 impl Drop for OldRouteWithdrawalGuard {
     fn drop(&mut self) {
-        if let Err(e) = std::fs::rename(&self.withdrawn, &self.original) {
+        let Some(withdrawn) = self.withdrawn.as_ref() else {
+            return;
+        };
+        if let Err(e) = std::fs::rename(withdrawn, &self.original) {
             eprintln!(
                 "v2-native-route: WARNING — restoring the old route failed ({}): {e}",
                 self.original.display()
@@ -401,7 +450,7 @@ fn write_host_facts(
     path: &Path,
     tested_tree: &str,
     preparation: &EmittedPreparation,
-    withdrawn_executable: &str,
+    old_route: &OldRouteControlFacts,
     malformed_control: &(String, String),
 ) -> Result<(), String> {
     let rows = [
@@ -415,7 +464,8 @@ fn write_host_facts(
             preparation.closure_identity.as_str(),
         ),
         ("executable_identity", preparation.binary_identity.as_str()),
-        ("withdrawn_executable", withdrawn_executable),
+        ("old_route_disposition", old_route.disposition),
+        ("old_route_executable", old_route.executable.as_str()),
         ("malformed_control_path", malformed_control.0.as_str()),
         ("malformed_control_reason", malformed_control.1.as_str()),
     ];
@@ -449,7 +499,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // 2. THE OLD ROUTE IS WITHDRAWN for the whole spawn window (census and adjudication alike);
     // the guard restores it on every exit path.
     let withdrawal = withdraw_old_route(&workspace)?;
-    let withdrawn_executable = withdrawal.original.display().to_string();
+    let old_route = withdrawal.control_facts();
 
     // 3. THE MALFORMED CONTROL, FIRST, because its observed refusal is a host fact the
     // adjudicating run records in the receipt. The same binary in `census` mode over the
@@ -492,7 +542,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         &facts_file,
         &tested_tree,
         &preparation,
-        &withdrawn_executable,
+        &old_route,
         &malformed_control,
     )?;
 

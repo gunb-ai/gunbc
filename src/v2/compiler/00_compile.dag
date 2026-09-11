@@ -8,7 +8,7 @@ import gunbc.witness_v2_native_route {
   NativeRouteModuleSource,
   NativeRouteReceipt,
   NativeRouteTestIdentity,
-  OldRouteWithdrawn,
+  NativeRouteOldRouteControl,
   native_route_admission,
   native_route_admission_summary,
   native_route_admitted,
@@ -1025,8 +1025,12 @@ fn native_test_eval_one(
 // THE LANE'S OWN ADJUDICATION — DERIVED UNIVERSE, OBSERVED POPULATION, JUDGED RECEIPT.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// WHAT MOVED HERE, AND WHY IT COULD NOT STAY IN THE SEED. The v2-native route's claim is that the
-// EMITTED compiler answers, not the seed. Until this section existed the lane was
+// WHAT MOVED HERE, AND WHAT THE ROUTE THEREFORE CLAIMS. The claim is NATIVE UNIVERSE DERIVATION,
+// NATIVE EVALUATION, NATIVE RECEIPT CONSTRUCTION AND NATIVE ADMISSION over a SEED-PREPARED COMPILER
+// ARTIFACT — not an interpreter-free process end to end, which would be false while the v1 process
+// emits the compiler this fold runs inside (operator design review 2026-09-11). What moved is every
+// SEMANTIC decision; what remains in v1 is the preparation of the artifact, named rather than
+// counted as absent, and owned by the native ancestry acquisition lane. Until this section existed the lane was
 // interpreter-bracketed on both ends: the seed folded the floor's discovery producer over every
 // source through the v1 interpreter to derive the universe (~4 minutes interpreted), and then
 // evaluated native_route_admission through the interpreter to judge the receipt — so the lane
@@ -1378,18 +1382,24 @@ fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
 
 // ── the receipt, minted and judged inside the route ────────────────────────────────────────
 //
-// THE HOST FACTS ARE THE ONLY THING THE ROUTE CANNOT OBSERVE OF ITSELF: which seed emitted the
-// closure, what the closure's and the executable's content identities are, which executable was
-// withdrawn to close the fallback, and what the malformed specimen's own run observed. They are
+// THE HOST FACTS ARE THE ONLY THING THE ROUTE CANNOT OBSERVE OF ITSELF: which seed PREPARED the
+// compiler artifact, what the closure's and the executable's content identities are, HOW the old
+// route's fallback was closed, and what the malformed specimen's own run observed. They are
 // received as data and recorded verbatim; every other field of the receipt is this process's own
 // observation, and the admission that judges it is the authority's, evaluated here.
+//
+// THE OLD-ROUTE CONTROL ARRIVES AS THE AUTHORITY'S OWN COPRODUCT rather than as a path plus an
+// assumption about what the host did with it. The harness withdrew an executable, or found none at
+// the path for the whole window; both are observations and the authority names both, so the host
+// cannot report one while the other held (operator design review 2026-09-11, C5: the harness must
+// not REQUIRE the old route to exist so that it can move it).
 type NativeLaneHostFacts {
   tested_tree: String
   preparation_seed_identity: String
   emitted_closure_identity: String
   executable_path: String
   executable_identity: String
-  withdrawn_executable: String
+  old_route_control: NativeRouteOldRouteControl
   malformed_control: NativeRouteMalformedControl
 }
 
@@ -1423,7 +1433,7 @@ fn native_lane_receipt(
     false_control: controls.false_control,
     true_control: controls.true_control,
     malformed_control: facts.malformed_control,
-    old_route_control: OldRouteWithdrawn { withdrawn_executable: facts.withdrawn_executable }
+    old_route_control: facts.old_route_control
   }
 }
 
