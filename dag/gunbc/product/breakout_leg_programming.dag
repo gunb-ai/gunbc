@@ -1,0 +1,201 @@
+module product.breakout_leg_programming
+
+import std.nat { Nat }
+import std.types { Bool, List, NonEmptyStr }
+import std.human_intervention {
+  HumanIntervention, HumanInterventionIdentity, ProvisioningHumanBurden, DeviceOnce,
+  NoDischargeSiteModeled,
+}
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
+import extdeps.transceiver.sff_8636 {
+  ComplianceUnderstood, ComplianceUnspecified, ComplianceCodeUnmodelled,
+  sff8636_interpret_extended_compliance,
+}
+import extdeps.transceiver.fs_145681 { FsBreakoutCablePart }
+import product.cable_order_admission { CableLinkRequirement }
+
+// WHAT IT COSTS THIS FLEET, BY HAND, TO USE A GENERIC BREAKOUT WHERE A DUAL-COMPATIBILITY ONE WAS NOT
+// ORDERED.
+//
+// A generic QSFP-DD breakout's legs arrive coded for a switch, and the ConnectX-7 reads that coding
+// as a 50G ceiling (gunbc.spark.fabric_switch_observed). The remedy is a person with an FS BOX V4
+// programmer re-flashing every leg. extdeps.transceiver.fs_145681 is the part that makes the remedy
+// unnecessary. This module states the burden and derives when it is owed, so buying the part shows
+// up as a burden that disappears rather than as a note that someone once said so.
+//
+// THE FREQUENCY IS DeviceOnce, AND THE DEVICE IS THE LEG. std.human_intervention prices a step once
+// for the fleet, once per device, or on every provision, and multiplies the second by a device
+// count. The re-flash is paid once per leg -- each leg has its own EEPROM, is programmed on its own,
+// and stays programmed across every later provision of the host it serves -- and it recurs for every
+// leg of every generic cable bought. FleetOnce would price eight re-flashes as one; EveryProvision
+// would charge a re-flash on each boot. So the intervention's subject names the leg as the device it
+// is counted against, and that count is the number of generic legs in the plant, not the number of
+// machines.
+//
+// THIS IS NOT AN ACTUATION MODEL. The FS BOX is a hand tool and the procedure is a person's; nothing
+// here drives a programmer, and nothing here orders a cable.
+
+// ================= THE PROCEDURE, AS FS STATED IT =================
+//
+// Four properties FS confirmed for the FS BOX V4 on 2026-09-11. They are typed rather than written
+// into a sentence because two of them change what kind of operation this is. RECOVERABILITY IS THE
+// DIFFERENCE BETWEEN RISKY AND TEDIOUS: an interrupted or failed write leaves a leg that can be
+// re-flashed, not a bricked one, so a failure costs a repeat of the same step rather than a
+// replacement cable. The instruction below is derived from these fields so that it cannot say
+// something the fields do not.
+//
+// EVERY PROPERTY RESTS ON VENDOR CORRESPONDENCE. The standing says so, and names what would ground it.
+// FS gave no figure for the duration, only the phrase "a few minutes" per leg, so it is carried in
+// FS's words: a number would be invented.
+type LegProgrammingProcedure {
+  tool: NonEmptyStr
+  legs_programmable_individually: Bool
+  requires_disconnect_from_both_ends: Bool
+  interrupted_write_recoverable: Bool
+  duration_per_leg: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data fs_box_v4_leg_programming: LegProgrammingProcedure = LegProgrammingProcedure {
+  tool: "FS BOX V4" as NonEmptyStr,
+  legs_programmable_individually: true,
+  requires_disconnect_from_both_ends: true,
+  interrupted_write_recoverable: true,
+  duration_per_leg: "a few minutes" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "FS's published FS BOX V4 user guide stating per-leg programming of QSFP56 breakout legs, disconnection from both ends, and recovery by re-flash after an interrupted write; until then these four properties rest on FS sales correspondence of 2026-09-11" as NonEmptyStr
+  },
+}
+
+fn leg_programming_instruction(procedure: LegProgrammingProcedure) -> NonEmptyStr {
+  concat(
+    if procedure.requires_disconnect_from_both_ends {
+      "Disconnect the cable from BOTH ends (switch and every NIC) before programming. "
+    } else {
+      "The cable may stay connected while programming. "
+    },
+    concat(
+      if procedure.legs_programmable_individually {
+        "Program each QSFP56 leg on its own with the FS BOX V4, writing the NVIDIA (ETH) coding. "
+      } else {
+        "Program the whole assembly at once with the FS BOX V4, writing the NVIDIA (ETH) coding. "
+      },
+      concat(
+        if procedure.interrupted_write_recoverable {
+          "If a write is interrupted or fails, re-flash that leg: it is not bricked. "
+        } else {
+          "An interrupted write may destroy the leg: stop and contact FS before retrying. "
+        },
+        concat("FS states each leg takes ", concat(procedure.duration_per_leg, ".")),
+      ),
+    ),
+  )
+}
+
+fn breakout_leg_programming_intervention(procedure: LegProgrammingProcedure) -> HumanIntervention {
+  HumanIntervention {
+    identity: "breakout-leg-nvidia-eth-reprogram" as HumanInterventionIdentity,
+    frequency: DeviceOnce,
+    subject: "each QSFP56 leg of a generic-coded QSFP-DD breakout serving a ConnectX-7",
+    instruction: leg_programming_instruction(procedure: procedure),
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// ================= THE CODING THE RE-FLASH WRITES =================
+//
+// WHETHER THE RE-FLASH WOULD HELP AT ALL IS DECIDED BY OUR DECODER, NOT BY THE VENDOR'S WORD. The
+// operator asked FS whether the NVIDIA (ETH) coding file changes the field that decides the rate,
+// rather than only vendor name and OUI. FS answered that byte 192 goes from 0x0B to 0x40. That
+// answer is a claim; what 0x40 MEANS is extdeps.transceiver.sff_8636's to say, and its
+// sff8636_interpret_extended_compliance reads 64 as 50GBASE-CR, 100GBASE-CR2 and 200GBASE-CR4, all
+// unconditional. So the claim is carried as a raw byte with its standing, and the plan below asks
+// the decoder whether it attests the requirement -- a vendor email cannot put a mode on the list.
+//
+// FS also confirmed byte 140 stays 0xFF and byte 222 stays 0x6A. Those are already what the observed
+// leg receipt in gunbc.spark.fabric_switch_observed holds, and the re-flash leaves them alone, so
+// they are not restated here.
+//
+// THIS IS NOT AN OBSERVATION. No leg has been read after a re-flash; the observing layer is
+// product.cable_leg_observation and it acquires a row when one is.
+type VendorAssertedLegCoding {
+  coding_profile: NonEmptyStr
+  extended_compliance_code: Nat
+  standing: CitedFigureStanding
+}
+
+data fs_nvidia_eth_leg_coding: VendorAssertedLegCoding = VendorAssertedLegCoding {
+  coding_profile: "NVIDIA (ETH)" as NonEmptyStr,
+  extended_compliance_code: 64,
+  standing: TranscribedUncited {
+    read_obligation: "an EEPROM read (ethtool -m <dev> raw on) of a leg after an NVIDIA (ETH) re-flash, showing byte 192 at 0x40; until then the value rests on FS sales correspondence of 2026-09-11" as NonEmptyStr
+  },
+}
+
+fn vendor_coding_attests(coding: VendorAssertedLegCoding, required: LinkMode) -> Bool {
+  match sff8636_interpret_extended_compliance(code: coding.extended_compliance_code) {
+    ComplianceUnderstood { code: c, modes: ms } =>
+      match filter(ms, a => link_mode_eq(a: a.mode, b: required)).first() {
+        Present { value: hit } => true
+        Absent => false
+      }
+    ComplianceUnspecified { code: c } => false
+    ComplianceCodeUnmodelled { code: c } => false
+  }
+}
+
+// ================= HOW A CABLE IS SOURCED, AND WHAT THAT OWES =================
+//
+// THE GENERIC ARM CARRIES THE CODING IT WILL BE RE-FLASHED TO, because a plan to re-flash to a coding
+// that does not attest the requirement is not a burden, it is a dead end -- and saying so is the
+// line-stop DESIGN section 5 asks for, rather than an intervention that would leave the leg at 50G.
+type BreakoutCableSourcing
+  = SourcedDualCompatible { part: FsBreakoutCablePart }
+  | SourcedGenericForReprogramming { listing: ExternalAuthority, target: VendorAssertedLegCoding }
+
+type BreakoutProgrammingPlan
+  = ProgrammingBurden { burden: ProvisioningHumanBurden }
+  | ReprogrammingTargetDoesNotAttest { required: LinkMode, target: VendorAssertedLegCoding }
+
+fn sourcing_owes_reprogramming(s: BreakoutCableSourcing) -> Bool {
+  match s {
+    SourcedDualCompatible { part: p } => p.factory_coded_for_both_ends == false
+    SourcedGenericForReprogramming { listing: l, target: t } => true
+  }
+}
+
+fn sourcing_dead_ends(s: BreakoutCableSourcing, required: LinkMode) -> List<VendorAssertedLegCoding> {
+  match s {
+    SourcedDualCompatible { part: p } => []
+    SourcedGenericForReprogramming { listing: l, target: t } =>
+      if vendor_coding_attests(coding: t, required: required) { [] } else { [t] }
+  }
+}
+
+// The burden a cable plant owes. The intervention is DeviceOnce against the leg, so it appears once
+// in the burden whether one generic cable or ten are in the plant -- the leg count is the multiplier
+// std.human_intervention applies, not a reason to repeat the row.
+fn plant_programming_burden(
+  plant: List<BreakoutCableSourcing>,
+  procedure: LegProgrammingProcedure,
+) -> ProvisioningHumanBurden {
+  match filter(plant, s => sourcing_owes_reprogramming(s: s)).first() {
+    Absent => ProvisioningHumanBurden { interventions: [] }
+    Present { value: owing } =>
+      ProvisioningHumanBurden { interventions: [breakout_leg_programming_intervention(procedure: procedure)] }
+  }
+}
+
+fn breakout_programming_plan(
+  plant: List<BreakoutCableSourcing>,
+  requirement: CableLinkRequirement,
+  procedure: LegProgrammingProcedure,
+) -> BreakoutProgrammingPlan {
+  match flat_map(plant, s => sourcing_dead_ends(s: s, required: requirement.required_mode)).first() {
+    Present { value: t } =>
+      ReprogrammingTargetDoesNotAttest { required: requirement.required_mode, target: t }
+    Absent =>
+      ProgrammingBurden { burden: plant_programming_burden(plant: plant, procedure: procedure) }
+  }
+}
