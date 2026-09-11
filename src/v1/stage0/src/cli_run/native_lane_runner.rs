@@ -229,7 +229,7 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
         warning_count,
     };
     eprintln!(
-        "required-ci: v2-native emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
+        "v2-native-route: emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
          exit_status={exit_status} warning_count={warning_count} rustc={}",
         build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
     );
@@ -319,6 +319,33 @@ fn withdraw_old_route(workspace: &Path) -> Result<OldRouteWithdrawalGuard, Strin
 }
 
 impl OldRouteWithdrawalGuard {
+    /// THE NOT-PRESENT ARM IS A CLAIM ABOUT A WINDOW, SO IT IS CHECKED AT BOTH ENDS (review
+    /// 64075). The withdrawn arm HOLDS the path closed: the rename is what makes "the old route
+    /// was unreachable while the spawns ran" true, and the guard restores it afterwards. The
+    /// not-present arm holds nothing, so a single `is_file()` before the spawns is evidence about
+    /// t0 and the receipt clause reads it as evidence about the whole window -- and a binary that
+    /// materializes mid-run (a concurrent build, a cache landing) would green the one control
+    /// whose entire job is to prove the native route could not have fallen back. DESIGN section 4d:
+    /// an inference is not promoted to a deduction. So the window is re-read after the last spawn
+    /// and a path that became occupied REFUSES the run rather than widening the arm to mean
+    /// "absent at some point" (section 5: a failure arm refuses, never widens). This does not
+    /// collapse the two arms: withdrawal still closes the window by construction, and this one is
+    /// an observation checked at both of its ends.
+    fn verify_window_stayed_closed(&self) -> Result<(), String> {
+        if self.withdrawn.is_some() {
+            return Ok(());
+        }
+        if self.original.is_file() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=OldRouteAppearedDuringWindow — {} held no file when the \
+                 spawn window opened and holds one now, so the receipt cannot record \
+                 not_present_at_window: the old route was reachable for part of the window",
+                self.original.display()
+            ));
+        }
+        Ok(())
+    }
+
     fn control_facts(&self) -> OldRouteControlFacts {
         match &self.withdrawn {
             Some(_) => OldRouteControlFacts {
@@ -651,8 +678,13 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let mut args = vec!["adjudicate".to_string(), facts_file.display().to_string()];
     args.extend(source_roots.iter().cloned());
     let run = run_native_binary(&preparation.binary_path, &args);
+    // The window closes here, so this is where the not-present arm is re-read. Taken BEFORE the
+    // guard drops, because dropping it restores the withdrawn file and would make the path
+    // occupied again for the other arm.
+    let window = withdrawal.verify_window_stayed_closed();
     drop(withdrawal);
     eprintln!("v2-native-route: old route restored");
+    window?;
     let run = run?;
     if run.terminal.mode != "adjudicate" {
         return Err(format!(
@@ -676,7 +708,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // with route integration, not here.
     let (cgroup_current, cgroup_peak) = super::p1_cohort::p1_cohort_cgroup_memory();
     eprintln!(
-        "required-ci: v2-native telemetry peak_rss_bytes={:?} rss_bytes={:?} cgroup_current_bytes={cgroup_current:?} \
+        "v2-native-route: telemetry peak_rss_bytes={:?} rss_bytes={:?} cgroup_current_bytes={cgroup_current:?} \
          cgroup_peak_bytes_slot_lifetime={cgroup_peak:?} wall_s={}",
         super::peak_rss_vhwm_bytes(),
         super::current_rss_bytes(),

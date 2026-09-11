@@ -1303,6 +1303,7 @@ fn green_receipt_with_old_route_control(control: NativeRouteOldRouteControl) -> 
     file_refusals: green_receipt().file_refusals,
     false_control: green_receipt().false_control,
     true_control: green_receipt().true_control,
+    emitted_build: green_receipt().emitted_build,
     malformed_control: green_receipt().malformed_control,
     old_route_control: control
   }

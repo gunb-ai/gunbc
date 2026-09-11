@@ -452,6 +452,17 @@ type NativeRouteMalformedControl
 // the absent case is its own OBSERVATION rather than a refusal: the harness records the path it
 // looked for and that nothing was there for the whole spawn window.
 //
+// HOW THE WINDOW CLAIM IS ESTABLISHED, because the arm asserts a property of an INTERVAL while a
+// filesystem test answers about an INSTANT (review 64075). The withdrawn arm closes its window by
+// CONSTRUCTION: the rename holds the path empty and the guard restores it after the last spawn.
+// This arm holds nothing, so it is established by reading the path at BOTH ENDS -- before the
+// first spawn and after the last, the second read taken before the guard drops -- and a path that
+// became occupied in between REFUSES the run (OldRouteAppearedDuringWindow) instead of widening
+// the arm to mean "absent at some point". A single read before the spawns would be evidence about
+// t0 presented as evidence about the window, which is exactly the inference-promoted-to-deduction
+// DESIGN section 4d forbids, on the one clause whose whole job is to show no fallback was
+// reachable.
+//
 // THIS IS NOT THE ANCESTRY LANE'S ARM AND MUST NOT BE READ AS IT. OldRouteNotPresentAtWindow says
 // only that this path held no file while the native spawns ran; the stronger property — no v1
 // emitter or interpreter reachable at all, the closure admitted by native ancestry — is

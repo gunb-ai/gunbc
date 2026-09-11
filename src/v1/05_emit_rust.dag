@@ -16788,17 +16788,21 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 // malformed host facts, an unwalkable source root.
 //
 // THE PHASE COSTS ARE EMITTED HERE BECAUSE THE SUBSTRATE HAS NO CLOCK. The `.dag` folds decide
-// everything and can time nothing, so the rendered main enters each priced step itself and commits
-// one `[cost-partition]` line on STDERR as that step finishes — the same tag, field set and
-// accounting law (`parent_span_nanos == sum_exclusive_nanos + remainder_nanos`) the host helper
-// uses, so a cancelled run keeps the phases already committed rather than losing them with the
-// terminal marker. The four names are exact: universe_derivation, module_preparation,
-// identity_evaluation, receipt_admission, plus one module_bundle line per module as it finishes.
-// identity_evaluation is the SUM OF native_lane_identity_row AND NOTHING ELSE — not ingest, not
-// resolve, not infer — because that is the number the profile lane prices. Reading the roots, the
-// discovery/closure derivation and the front-end fold each get their OWN exclusive row
-// (source_load, universe_derivation, test_context) rather than riding as a field on a neighbour,
-// so no fold's number silently contains someone else's cost.
+// everything and can time nothing, so the rendered main times each priced step itself and prints
+// ONE `[native-cost-partition]` line on STDERR when the run ends. THE ROWS ARE NOT RE-LISTED HERE:
+// they are the row set `std.compiler_entry` `NativeDriverExclusiveRows` carries, and the verdict is
+// `native_driver_cost_account` over that set, so a list in this prose would be a second spelling
+// that rots the moment a driver gains a phase — the reason that type's own docstring gives for
+// naming the grain once, and the reason this annotation previously named four phases the receipt
+// does not have (review 64075). `remainder_nanos` is the residual the accounting returns, and is
+// null on the over-attributed arm rather than a clamped zero.
+//
+// WHAT EACH ROW MUST NOT SILENTLY CONTAIN is worth stating here, because it is a property of THIS
+// main rather than of the type: the eval row is the SUM OF `native_lane_identity_row` AND NOTHING
+// ELSE — not ingest, not resolve, not infer — because that is the number the profile lane prices;
+// and reading the roots, the discovery-and-closure derivation and the front-end fold each enter
+// their own row rather than riding as a field on a neighbour, so no fold's number silently
+// contains someone else's cost.
 //
 // THE PREPARE-REFUSAL FAN-OUT AND THE CONTEXT RECLASSIFICATION are no longer rendered here or
 // performed by the host: both are the same per-module decision and live in the `.dag` fold this
@@ -17088,7 +17092,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let head = std::env::var(\"GITHUB_SHA\").unwrap_or_else(|_| \"local\".to_string());", "\n",
       "    let facts = read_host_facts(facts_path);", "\n",
       "", "\n",
-      "    // source_load: reading the declared roots off disk. Its own exclusive row rather than a", "\n",
+      "    // the load row: reading the declared roots off disk. Its own exclusive row rather than a", "\n",
       "    // field on another phase, so the IO is never mixed into a fold's number.", "\n",
       "    let load_started = now_nanos();", "\n",
       "    let reads = read_ingest(source_roots);", "\n",
@@ -17138,7 +17142,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let universe_nanos = now_nanos().saturating_sub(universe_started);", "\n",
       "", "\n",
-      "    // test_context: the front-end fold -- tokenize, parse, normalize -- over the CLOSURE only.", "\n",
+      "    // the context row: the front-end fold -- tokenize, parse, normalize -- over the CLOSURE only.", "\n",
       "    let context_started = now_nanos();", "\n",
       "    let context = match &*native_test_context_from_ingest(closure_ingest) \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
@@ -17149,8 +17153,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \};", "\n",
       "    let context_nanos = now_nanos().saturating_sub(context_started);", "\n",
       "", "\n",
-      "    // module_preparation and identity_evaluation, entered separately per module so the profile", "\n",
-      "    // lane's first number -- identity_evaluation.wall_nanos -- is the sum of native_lane_identity_row", "\n",
+      "    // the prepare and eval rows, entered separately per module so the number the profile", "\n",
+      "    // lane prices -- the eval row -- is the sum of native_lane_identity_row", "\n",
       "    // and nothing else: not ingest, not resolve, not infer.", "\n",
       "    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();", "\n",
       "    let mut prepare_total_nanos: u128 = 0;", "\n",
