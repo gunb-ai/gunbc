@@ -9417,11 +9417,14 @@ mod closure_edge_demand_tests {
         ]);
         let index = fixture.index();
         for source in index.source_files.values() {
+            let input_table = index.intern_table.borrow().clone();
             let (production, _) =
                 parse_module_heads_for_pool_census(&index, source.clone()).unwrap();
+            let updated_table = index.intern_table.replace(input_table);
             let ((_, _), (heads, _)) = census_heads_both_readings(&index, source);
-            // Compare the same heads parse reading. Full parsing mints additional body
-            // occurrences, so its allocator ordinals are not a cross-reading identity.
+            index.intern_table.replace(updated_table);
+            // Same heads reading and same incoming intern/occurrence snapshot. Whole
+            // Node equality cannot compare independent allocator histories as structure.
             assert_eq!(
                 heads.unwrap(),
                 production,
