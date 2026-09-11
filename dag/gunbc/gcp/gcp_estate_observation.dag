@@ -249,7 +249,7 @@ data observed_github_pool: ObservedWifPool = ObservedWifPool {
 data observed_gunbai_auto_github_pool: ObservedWifPool = ObservedWifPool {
   project_number: unread_project_number_314501921854 as String,
   pool_id: github_pool_id,
-  display_name: "GitHub Actions pool",
+  display_name: "GitHub Actions Pool",
   disabled: false,
 }
 
@@ -302,6 +302,59 @@ data observed_secrets_github_pool_provider: ObservedWifProvider = ObservedWifPro
   provider_id: "github" as NonEmptyStr,
   issuer_uri: "https://token.actions.githubusercontent.com",
   attribute_condition: "assertion.repository_owner=='https:'",
+}
+
+data copied_malformed_github_pool_attribute_condition: String = "assertion.repository_owner=='https:'"
+
+data observed_gunb_ci_github_provider: ObservedWifProvider = ObservedWifProvider {
+  project_number: gunb_ci_project_number,
+  pool_id: github_pool_id,
+  provider_id: "github" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_condition: copied_malformed_github_pool_attribute_condition,
+}
+
+data observed_gunb_test_github_provider: ObservedWifProvider = ObservedWifProvider {
+  project_number: gunb_test_project_number,
+  pool_id: github_pool_id,
+  provider_id: "github" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_condition: copied_malformed_github_pool_attribute_condition,
+}
+
+type CopiedMalformedGithubPoolCondition
+  = IdenticalWrongStringInThreePools {
+      condition: String
+      instance_project_numbers: List<String>
+      escaped_project_number: String
+    }
+
+fn copied_malformed_github_pool_condition() -> CopiedMalformedGithubPoolCondition {
+  IdenticalWrongStringInThreePools {
+    condition: copied_malformed_github_pool_attribute_condition,
+    instance_project_numbers: [
+      fleet_secrets_project_number,
+      gunb_ci_project_number,
+      gunb_test_project_number,
+    ],
+    escaped_project_number: unread_project_number_314501921854 as String,
+  }
+}
+
+fn copied_malformed_condition_has_three_instances() -> Bool {
+  match copied_malformed_github_pool_condition() {
+    IdenticalWrongStringInThreePools {
+      condition: c,
+      instance_project_numbers: ns,
+      escaped_project_number: escaped,
+    } =>
+      c == observed_secrets_github_pool_provider.attribute_condition
+        && observed_gunb_ci_github_provider.attribute_condition == c
+        && observed_gunb_test_github_provider.attribute_condition == c
+        && observed_gunbai_auto_github_provider.attribute_condition != c
+        && ns.length() == 3
+        && escaped == unread_project_number_314501921854 as String
+  }
 }
 
 fn secrets_github_pool_legacy_principal_set_member() -> String {
@@ -358,16 +411,17 @@ fn github_pool_generation_hypothesis() -> FederationGenerationHypothesis {
 }
 
 fn secrets_github_pool_condition_is_the_malformed_one() -> Bool {
-  match github_pool_generation_hypothesis() {
-    GithubPoolIsPriorGenerationUngrounded {
-      auto_github_pool_condition: auto_c,
-      secrets_github_pool_condition: secrets_c,
-      modeled_github_actions_condition: _,
-    } =>
-      (secrets_c).contains("repository_owner=='https:'")
-        && (auto_c).contains(legacy_federated_repo)
-        && !(auto_c).contains("https:")
-  }
+  copied_malformed_condition_has_three_instances()
+    && match github_pool_generation_hypothesis() {
+      GithubPoolIsPriorGenerationUngrounded {
+        auto_github_pool_condition: auto_c,
+        secrets_github_pool_condition: secrets_c,
+        modeled_github_actions_condition: _,
+      } =>
+        (secrets_c).contains("repository_owner=='https:'")
+          && (auto_c).contains(legacy_federated_repo)
+          && !(auto_c).contains("https:")
+    }
 }
 
 data observed_ci_secrets_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
@@ -391,11 +445,77 @@ data observed_secrets_ci_integration_tests_legacy_binding: ObservedPrincipalSetB
   pool_project_number: Present { value: fleet_secrets_project_number },
 }
 
+data observed_workspace_admin_legacy_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
+  account: gunbai_ci_workspace_admin_sa_email,
+  role: role_iam_workload_identity_user,
+  member: Present { value: gunbai_auto_legacy_principal_set_member() },
+  pool_project_number: Present { value: unread_project_number_314501921854 as String },
+}
+
 data observed_fleet_cloud_convergence_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
   account: fleet_cloud_convergence_sa_email,
   role: role_iam_workload_identity_user,
   member: Present { value: github_wif_principal_set() },
   pool_project_number: Present { value: fleet_secrets_project_number },
+}
+
+type ObservedSaKeyListing {
+  key_id: String
+  created_at: String
+  expires_at: String
+  disabled: Bool
+}
+
+data observed_workspace_admin_key_listings: List<ObservedSaKeyListing> = [
+  ObservedSaKeyListing {
+    key_id: "8e110efbbc81c8a779f61e8e81faefaba97672d4",
+    created_at: "2026-05-27T19:09:29Z",
+    expires_at: "2027-05-27T19:09:29Z",
+    disabled: false,
+  },
+  ObservedSaKeyListing {
+    key_id: "4d701b4fd4461aaafe369e4a7eadc3ba78364257",
+    created_at: "2026-05-27T19:09:29Z",
+    expires_at: "2027-05-27T19:09:29Z",
+    disabled: false,
+  },
+]
+
+type SaKeyManagementStanding
+  = UserVersusSystemManagedUnread {
+      listed_without_managed_by_filter: Bool
+      shared_create_timestamp: Bool
+      one_year_validity: Bool
+    }
+
+fn workspace_admin_key_management_is_unread() -> SaKeyManagementStanding {
+  UserVersusSystemManagedUnread {
+    listed_without_managed_by_filter: true,
+    shared_create_timestamp: true,
+    one_year_validity: true,
+  }
+}
+
+fn workspace_admin_has_no_gunb_ci_project_roles() -> Bool {
+  true
+}
+
+data gap_workspace_admin_user_managed_keys: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "gunbai-ci-workspace-admin@gunb-ci/keys?managed-by=user" as NonEmptyStr,
+  cause: "keys list without --managed-by returned two keys with identical createTime and one-year validity, which may be Google-managed signing keys or user-managed material; they are not recorded as downloadable credentials",
+  discharge: "gcloud iam service-accounts keys list --managed-by=user --iam-account=gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
+data gap_workspace_admin_domain_wide_delegation: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "gunbai-ci-workspace-admin@gunb-ci/workspace-domain-wide-delegation" as NonEmptyStr,
+  cause: "no gunb-ci project roles does not mean unprivileged; Workspace power would be domain-wide delegation on the SA client ID, invisible to every IAM read",
+  discharge: "Google Workspace admin-console read of domain-wide delegation for this service account client ID, not a gcloud command",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
 }
 
 data gap_token_creator_binding_members: EstateCoverageGap = EstateCoverageGap {
@@ -411,15 +531,6 @@ data gap_pool_creation_timestamps: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "workloadIdentityPools/createTime" as NonEmptyStr,
   cause: "pool createTime is unread on every observed pool; project createTime is observed only for gunbai-auto",
   discharge: "iam workloadIdentityPools.get createTime on each observed pool",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
-}
-
-data gap_gunbai_secrets_enabled_services_partial: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/gunbai-secrets/services" as NonEmptyStr,
-  cause: "enabled-service read on gunbai-secrets was a three-name filter (iamcredentials, secretmanager, sts), not a complete list",
-  discharge: "gcloud services list --enabled --project=gunbai-secrets",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -612,9 +723,33 @@ data gunb_ci_enabled_service_ids: List<NonEmptyStr> = [
   "telemetry.googleapis.com" as NonEmptyStr,
 ]
 
-data gunbai_secrets_enabled_service_ids_partial: List<NonEmptyStr> = [
+data gunbai_secrets_enabled_service_ids: List<NonEmptyStr> = [
+  "analyticshub.googleapis.com" as NonEmptyStr,
+  "bigquery.googleapis.com" as NonEmptyStr,
+  "bigqueryconnection.googleapis.com" as NonEmptyStr,
+  "bigquerydatapolicy.googleapis.com" as NonEmptyStr,
+  "bigquerydatatransfer.googleapis.com" as NonEmptyStr,
+  "bigquerymigration.googleapis.com" as NonEmptyStr,
+  "bigqueryreservation.googleapis.com" as NonEmptyStr,
+  "bigquerystorage.googleapis.com" as NonEmptyStr,
+  "cloudapis.googleapis.com" as NonEmptyStr,
+  "cloudtrace.googleapis.com" as NonEmptyStr,
+  "compute.googleapis.com" as NonEmptyStr,
+  "dataform.googleapis.com" as NonEmptyStr,
+  "dataplex.googleapis.com" as NonEmptyStr,
+  "datastore.googleapis.com" as NonEmptyStr,
+  "iam.googleapis.com" as NonEmptyStr,
   "iamcredentials.googleapis.com" as NonEmptyStr,
+  "logging.googleapis.com" as NonEmptyStr,
+  "monitoring.googleapis.com" as NonEmptyStr,
+  "oslogin.googleapis.com" as NonEmptyStr,
   "secretmanager.googleapis.com" as NonEmptyStr,
+  "servicemanagement.googleapis.com" as NonEmptyStr,
+  "serviceusage.googleapis.com" as NonEmptyStr,
+  "sql-component.googleapis.com" as NonEmptyStr,
+  "storage-api.googleapis.com" as NonEmptyStr,
+  "storage-component.googleapis.com" as NonEmptyStr,
+  "storage.googleapis.com" as NonEmptyStr,
   "sts.googleapis.com" as NonEmptyStr,
 ]
 
@@ -821,16 +956,20 @@ fn gunbai_auto_sts_inert_is_not_established() -> Bool {
 }
 
 type SheetsCallingStrategy
-  = CreatePurposeScopedProject { none_of_three_has_sheets: Bool }
+  = UnchosenCreateOrAdoptAndRepair {
+      none_of_three_has_sheets: Bool
+      no_candidate_is_clean: Bool
+    }
 
 fn sheets_calling_strategy() -> SheetsCallingStrategy {
-  CreatePurposeScopedProject { none_of_three_has_sheets: none_of_the_three_sandboxes_has_sheets() }
+  UnchosenCreateOrAdoptAndRepair {
+    none_of_three_has_sheets: none_of_the_three_sandboxes_has_sheets(),
+    no_candidate_is_clean: true,
+  }
 }
 
-fn sheets_calling_strategy_is_create_not_adopt() -> Bool {
-  match sheets_calling_strategy() {
-    CreatePurposeScopedProject { none_of_three_has_sheets: ok } => ok
-  }
+fn sheets_home_is_unchosen_because_no_candidate_is_clean() -> Bool {
+  none_of_the_three_sandboxes_has_sheets()
 }
 
 fn observed_project_roster_count(census: GcpEstateCensus) -> Int {
@@ -846,10 +985,12 @@ fn observed_project_roster_count(census: GcpEstateCensus) -> Int {
   )
 }
 
-// Secrets is custody. Convergence SA lives there so it cannot close the API-surface project.
-// gunb-test is a deranked scratch project (two SAs, one a default). gunb-ci leads on evidence
-// (STS, WIF pool, operational runner fleet, a Workspace-admin-named SA) and is not Selected:
-// that SA's display name says Test Account, and its pool provider condition is unread.
+// Secrets is refused as Sheets API surface because custody and API surface should be
+// separated in the target state, not because the project is currently narrow: it already
+// runs compute, bigquery, dataplex, datastore, and storage, and is a narrowing candidate.
+// gunb-test is deranked scratch. No Sheets home candidate is clean (three github-pool
+// providers share the copied malformed condition; workspace-admin holds no project roles
+// and is impersonable only from gunbai-auto's pool). Not Selected.
 type SheetsCallingHome
   = SheetsCallingHomeUnresolved {
       refused_api_surface_project: GcpProjectId
@@ -861,59 +1002,55 @@ type SheetsCallingHome
     }
 
 type SheetsEvidenceLead
-  = GunbCiLeadsOnEvidenceNotSelected {
-      leading_project: GcpProjectId
+  = NoCandidateIsClean {
       workspace_admin: ServiceAccountEmail
-      display_name_is_test_account: Bool
-      provider_condition_unread: Bool
+      workspace_admin_impersonable_from_auto_legacy_pool: Bool
+      gunb_ci_provider_malformed: Bool
       deranked_scratch_project: GcpProjectId
-      displaced_name_lead: GcpProjectId
+      secrets_blast_radius_already_broad: Bool
       selected: Bool
     }
 
 fn sheets_evidence_lead() -> SheetsEvidenceLead {
-  GunbCiLeadsOnEvidenceNotSelected {
-    leading_project: gunb_ci_project_id,
+  NoCandidateIsClean {
     workspace_admin: gunbai_ci_workspace_admin_sa_email,
-    display_name_is_test_account: workspace_admin_display_name_says_test(),
-    provider_condition_unread: true,
+    workspace_admin_impersonable_from_auto_legacy_pool: true,
+    gunb_ci_provider_malformed: true,
     deranked_scratch_project: gunb_test_project_id,
-    displaced_name_lead: gunbai_auto_project_id,
+    secrets_blast_radius_already_broad: true,
     selected: false,
   }
 }
 
 fn sheets_leading_candidate_is_not_selected() -> Bool {
   match sheets_evidence_lead() {
-    GunbCiLeadsOnEvidenceNotSelected {
-      leading_project: lead,
+    NoCandidateIsClean {
       workspace_admin: admin,
-      display_name_is_test_account: test_label,
-      provider_condition_unread: unread_cond,
+      workspace_admin_impersonable_from_auto_legacy_pool: from_auto,
+      gunb_ci_provider_malformed: ci_malformed,
       deranked_scratch_project: scratch,
-      displaced_name_lead: former,
+      secrets_blast_radius_already_broad: broad,
       selected: selected,
     } =>
-      lead == gunb_ci_project_id
-        && admin == gunbai_ci_workspace_admin_sa_email
-        && test_label
-        && unread_cond
+      admin == gunbai_ci_workspace_admin_sa_email
+        && from_auto
+        && ci_malformed
         && scratch == gunb_test_project_id
-        && former == gunbai_auto_project_id
+        && broad
         && !selected
-        && gunbai_auto_lacks_sts_while_ci_and_test_have_it()
+        && copied_malformed_condition_has_three_instances()
+        && sheets_home_is_unchosen_because_no_candidate_is_clean()
   }
 }
 
 fn gunb_test_is_deranked_scratch_not_a_sheets_candidate() -> Bool {
   match sheets_evidence_lead() {
-    GunbCiLeadsOnEvidenceNotSelected {
-      leading_project: _,
+    NoCandidateIsClean {
       workspace_admin: _,
-      display_name_is_test_account: _,
-      provider_condition_unread: _,
+      workspace_admin_impersonable_from_auto_legacy_pool: _,
+      gunb_ci_provider_malformed: _,
       deranked_scratch_project: scratch,
-      displaced_name_lead: _,
+      secrets_blast_radius_already_broad: _,
       selected: selected,
     } => scratch == gunb_test_project_id && !selected
   }
@@ -996,33 +1133,6 @@ fn gunbai_auto_is_not_selected_as_sheets_home() -> Bool {
   }
 }
 
-data gap_gunb_ci_github_pool_providers: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/477326212498/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
-  cause: "gunb-ci github-pool is observed ACTIVE; provider ids and attribute conditions are unread",
-  discharge: "iam.googleapis.com list providers on pool github-pool in gunb-ci",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
-}
-
-data gap_gunb_test_github_pool_providers: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/895190113964/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
-  cause: "gunb-test github-pool is observed ACTIVE; provider ids and attribute conditions are unread",
-  discharge: "iam.googleapis.com list providers on pool github-pool in gunb-test",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
-}
-
-data gap_workspace_admin_iam_roles_keys_refs: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com/iam-roles-keys-refs" as NonEmptyStr,
-  cause: "display name is CI Workspace Admin Test Account; selecting it as the Sheets writer from the label would infer intent; IAM policy, roles held, keys, and workflow references are unread",
-  discharge: "iam getIamPolicy and get on gunbai-ci-workspace-admin, keys.list, and a workflow reference scan",
-  trusting_accounts: [],
-  trusting_role: Absent,
-  federated_repo: Absent,
-}
-
 data gap_gemini_project_beyond_identity: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "projects/gen-lang-client-0162760657/beyond-identity" as NonEmptyStr,
   cause: "Default Gemini Project identity is observed; enabled services, service accounts, and WIF pools are unread",
@@ -1055,19 +1165,20 @@ fn operator_audit_census() -> GcpEstateCensus {
       EstateObserved { value: observed_github_oidc_provider },
       EstateObserved { value: observed_secrets_github_pool_provider },
       EstateObserved { value: observed_gunbai_auto_github_provider },
+      EstateObserved { value: observed_gunb_ci_github_provider },
+      EstateObserved { value: observed_gunb_test_github_provider },
     ],
     principal_set_bindings: [
       EstateObserved { value: observed_secrets_ci_integration_tests_legacy_binding },
       EstateObserved { value: observed_ci_secrets_cross_project_binding },
       EstateObserved { value: observed_ci_iap_cross_project_binding },
       EstateObserved { value: observed_fleet_cloud_convergence_binding },
+      EstateObserved { value: observed_workspace_admin_legacy_binding },
     ],
     coverage_gaps: [
-      gap_gunb_ci_github_pool_providers,
-      gap_gunb_test_github_pool_providers,
-      gap_workspace_admin_iam_roles_keys_refs,
+      gap_workspace_admin_user_managed_keys,
+      gap_workspace_admin_domain_wide_delegation,
       gap_gemini_project_beyond_identity,
-      gap_gunbai_secrets_enabled_services_partial,
       gap_pool_creation_timestamps,
       gap_token_creator_binding_members,
     ],

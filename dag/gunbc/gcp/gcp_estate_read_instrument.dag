@@ -105,6 +105,23 @@ fn gcloud_wif_providers_list_instrument(project_id: String, pool_id: String) -> 
   }
 }
 
+fn gcloud_sa_keys_list_user_managed_instrument(email: String) -> EstateReadInstrument {
+  EstateReadInstrument {
+    identity: concat("gcloud-sa-keys-list-user-", email) as NonEmptyStr,
+    argv: [
+      "gcloud",
+      "iam",
+      "service-accounts",
+      "keys",
+      "list",
+      "--managed-by=user",
+      concat("--iam-account=", email),
+      "--format=json",
+    ],
+    refreshes: concat("user-managed key material presence for ", email) as NonEmptyStr,
+  }
+}
+
 fn gcloud_sa_get_iam_policy_instrument(email: String) -> EstateReadInstrument {
   EstateReadInstrument {
     identity: concat("gcloud-sa-get-iam-policy-", email) as NonEmptyStr,
@@ -184,6 +201,7 @@ fn sandbox_project_read_instruments() -> List<EstateReadInstrument> {
       pool_id: "github-pool",
     ),
     gcloud_sa_get_iam_policy_instrument(email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com"),
+    gcloud_sa_keys_list_user_managed_instrument(email: "gunbai-ci-workspace-admin@gunb-ci.iam.gserviceaccount.com"),
   ]
 }
 
