@@ -154,6 +154,22 @@ test fn a_capability_with_no_verdict_line_reads_unread_and_never_absent() -> Boo
     })
 }
 
+// TWO VERDICT LINES FOR ONE CAPABILITY IS NOT A PRESENT READING, and this is the arm that would have
+// caught the generator defect that produced it: a vacuous reporter call printed `=present` for the
+// architecture capability before the real answer, so a reader taking the first match would have
+// reported an unregistered architecture as registered. The generated script no longer emits the
+// vacuous line, and this asserts the reader refuses it either way -- the wall stays after the
+// producer is fixed, because it is the producer that can regress.
+test fn contradictory_verdict_lines_read_unread_rather_than_present() -> Bool {
+  let both = "VERDICT architecture-registered=present\nVERDICT architecture-registered=absent\n"
+  (match v41_capability_reading(stdout: both, capability: v41_capability_architecture) {
+    V41CapabilityUnread { capability: _, cause: _ } => true
+    V41CapabilityPresent { capability: _ } => false
+    V41CapabilityAbsent { capability: _ } => false
+  })
+    && !string_contains(s: v41_probe_script(), pattern: "report(\"architecture-registered\", ops=[], modules=[], attrs=[])")
+}
+
 // THE ARCH GATE IS CARRIED AS TWO BLOCKS AND THE DS-MLA NVFP4 SOURCE IS IN EXACTLY ONE OF THEM. This
 // is the upstream cause a measured FP4 DS-MLA absence on sm_121 points at, so it is asserted rather
 // than left as prose that could drift from the lists beside it.

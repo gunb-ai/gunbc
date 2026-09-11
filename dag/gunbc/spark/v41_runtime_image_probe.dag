@@ -162,7 +162,6 @@ fn v41_probe_script() -> String {
   join([
     "import importlib\n",
     "import importlib.util\n",
-    "import sys\n",
     "import torch\n",
     "import vllm\n",
     "import vllm._custom_ops\n",
@@ -212,7 +211,7 @@ fn v41_probe_script() -> String {
     "print(\"REGISTRY_COUNT\", len(architectures))\n",
     "for architecture in architectures:\n",
     "    print(\"REGISTERED\", architecture)\n",
-    "report(", v41_py_quote(s: v41_capability_architecture), ", ops=[], modules=[], attrs=[])\n",
+    "print(\"DETAIL\", ", v41_py_quote(s: v41_capability_architecture), ", \"registry\", ", v41_py_quote(s: v41_probe_architecture_class), ", \"present\" if ", v41_py_quote(s: v41_probe_architecture_class), " in architectures else \"absent\")\n",
     "print(\"VERDICT\", ", v41_py_quote(s: v41_capability_architecture),
     " + \"=\" + (\"present\" if ", v41_py_quote(s: v41_probe_architecture_class), " in architectures else \"absent\"))\n",
     v41_py_capability_call(label: v41_capability_fp4_weight, surface: v41_fp4_weight_surface),
@@ -253,17 +252,33 @@ type V41CapabilityReading
   | V41CapabilityAbsent { capability: NonEmptyStr }
   | V41CapabilityUnread { capability: NonEmptyStr, cause: String }
 
-// A CAPABILITY IS READ FROM THE LINE THE SCRIPT PRINTED FOR IT, AND FROM NOTHING ELSE. Neither arm
-// is a default: a probe whose output carries no VERDICT line for a capability is UNREAD, never
+// A CAPABILITY IS READ FROM THE LINE THE SCRIPT PRINTED FOR IT, AND FROM NOTHING ELSE.
+//
+// CONTRADICTION READS UNREAD, AND THAT ARM IS NOT DEFENSIVE PROGRAMMING -- IT CAUGHT A REAL DEFECT.
+// The first generator emitted the architecture capability through the generic reporter with empty
+// symbol lists, which prints a vacuous `=present` line (a conjunction over nothing is true), and then
+// printed the real verdict beside it. A reader that took the first match it found would have reported
+// a missing architecture as present: the strongest possible false positive, in the one capability the
+// whole lane exists to establish. Both lines are now read, and disagreement is a statement that the
+// output does not say what it found rather than a coin flip between them.
+//
+// Neither arm is a default: a probe whose output carries no VERDICT line for a capability is UNREAD, never
 // absent, because a script that died before reaching a question establishes nothing about it -- the
 // same distinction gunbc.spark.serving_runtime_capability_probe draws between a measured negative and
 // a refused probe, and the one that keeps a broken probe from ranking an image out.
 fn v41_capability_reading(stdout: String, capability: NonEmptyStr) -> V41CapabilityReading {
   let present_line = join(["VERDICT ", capability as String, "=present"], "")
   let absent_line = join(["VERDICT ", capability as String, "=absent"], "")
-  if string_contains(s: stdout, pattern: present_line) {
+  let says_present = string_contains(s: stdout, pattern: present_line)
+  let says_absent = string_contains(s: stdout, pattern: absent_line)
+  if says_present && says_absent {
+    V41CapabilityUnread {
+      capability: capability,
+      cause: "the probe printed BOTH a present and an absent VERDICT line for this capability, so its output does not say what it found",
+    }
+  } else if says_present {
     V41CapabilityPresent { capability: capability }
-  } else if string_contains(s: stdout, pattern: absent_line) {
+  } else if says_absent {
     V41CapabilityAbsent { capability: capability }
   } else {
     V41CapabilityUnread { capability: capability, cause: "the probe printed no VERDICT line for this capability" }
