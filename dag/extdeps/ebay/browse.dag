@@ -11,7 +11,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.currency.currency { CurrencyCode, currency_alphabetic_code }
-import extdeps.ebay.ebay { production_api_base }
+import extdeps.ebay.ebay { production_api_base, MarketplaceEnum }
 import extdeps.ebay.errors { EbayErrorShape }
 import extdeps.ebay.inventory {
   ConditionEnum, New, LikeNew, NewOther, NewWithDefects, ManufacturerRefurbished,
@@ -549,9 +549,10 @@ fn browse_contextual_location_header(country: NonEmptyStr, postal_code: NonEmpty
 }
 
 // Both methods authorize with an application token minted by client_credentials against
-// extdeps.ebay.oauth api_scope_root. X-EBAY-C-MARKETPLACE-ID is an input rather than omitted:
-// upstream "If the marketplace ID value is invalid or missing, the default value of EBAY_US is
-// used", which is a silent substitution a caller must not rely on.
+// extdeps.ebay.oauth api_scope_root. X-EBAY-C-MARKETPLACE-ID is a required MarketplaceEnum,
+// encoded by extdeps.ebay.ebay_contracts marketplace_wire_contract: upstream "If the marketplace
+// ID value is invalid or missing, the default value of EBAY_US is used", so neither a missing nor
+// a misspelled marketplace is writable here.
 service ebay.Browse {
   config {
     endpoint: production_api_base
@@ -562,7 +563,7 @@ service ebay.Browse {
   operation SearchItemSummaries {
     input {
       access_token: Secret
-      marketplace_id: NonEmptyStr
+      marketplace_id: MarketplaceEnum
       end_user_ctx: String
       q: NonEmptyStr
       filter: String
@@ -590,7 +591,7 @@ service ebay.Browse {
   operation GetItem {
     input {
       access_token: Secret
-      marketplace_id: NonEmptyStr
+      marketplace_id: MarketplaceEnum
       end_user_ctx: String
       item_id: NonEmptyStr
     }
