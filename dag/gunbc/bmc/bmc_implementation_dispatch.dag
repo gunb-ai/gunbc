@@ -3,7 +3,7 @@ module gunbc.bmc_implementation_dispatch
 import std.types { List, NonEmptyStr, String }
 import std.credentials { FactoryLogin }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.decl_ref { DeclarationRef, NamedField }
+import std.decl_ref { DeclarationRef, decl_field_ref }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, OpenBmc }
 import extdeps.bmc.openbmc {
   HostStorageBlind,
@@ -72,6 +72,11 @@ fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHos
 // symbol cited INSIDE a string literal is unreachable from the Node tree, so unlike a
 // DeclarationRef it is not harvested by the citation checker -- it can rot with neither end touched.
 //
+// THE REFS ARE BUILT BY std.decl_ref's OWN CONSTRUCTOR, not spelled as record literals here (review
+// 63521). That module's annotation states the rule: a module needing a DeclarationRef imports the
+// constructor from the type's own module and never re-mints it. Spelling the literal inline is the
+// same re-invention DESIGN §2 forbids, one layer down from the prose leaf this arm already replaced.
+//
 // AND IT WOULD NOT HAVE SURVIVED ITS OWN FRONTIER. rotation_route_consumption_frontier promises an
 // actuator that DERIVES the rotation by calling this table; that actuator needs the operation, not
 // a description of it, so the arm would have been rewritten rather than consumed -- §6's reviewer
@@ -99,16 +104,16 @@ type BmcRotationRoute
 fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
   match family {
     OpenBmc => RotationRouteRedfishAccountService {
-      transport_operation: DeclarationRef {
-        module_path: "extdeps.bmc.http" as NonEmptyStr,
-        decl_name: "redfish.Http" as NonEmptyStr,
-        field: NamedField { field_name: "SetAccountPassword" as NonEmptyStr },
-      },
-      action_shape: DeclarationRef {
-        module_path: "extdeps.bmc.types" as NonEmptyStr,
-        decl_name: "RedfishSystemAction" as NonEmptyStr,
-        field: NamedField { field_name: "SetAccountPassword" as NonEmptyStr },
-      },
+      transport_operation: decl_field_ref(
+        module_path: "extdeps.bmc.http",
+        decl_name: "redfish.Http",
+        field_name: "SetAccountPassword",
+      ),
+      action_shape: decl_field_ref(
+        module_path: "extdeps.bmc.types",
+        decl_name: "RedfishSystemAction",
+        field_name: "SetAccountPassword",
+      ),
     }
     AmiMegaRac => RotationRouteUnavailable {
       family_note: "AMI MegaRAC serves an SP-X-style /api/ surface and no Redfish service root" as NonEmptyStr,
