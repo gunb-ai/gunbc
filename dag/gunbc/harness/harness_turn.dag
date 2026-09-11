@@ -228,9 +228,14 @@ fn harness_event_round_usage(
 
 // THE ROUND WHOSE COUNTS WERE NOT OBSERVED, WRITTEN AS ITS OWN EVENT. It is a separate type rather
 // than a round.usage with zeros for the same reason clock_refused is a separate key beside epoch_ms:
-// a reader differencing zeros computes a plausible rate from a measurement that never happened, and
-// gunbc.harness.harness_throughput already refuses a round.usage missing its output_tokens -- so
-// emitting one with fabricated counts would defeat the one reader that checks.
+// a reader differencing zeros computes a plausible rate from a measurement that never happened.
+// THE READER'S HALF OF THAT SENTENCE WAS FALSE WHEN IT WAS FIRST WRITTEN (review 63779): it claimed
+// gunbc.harness.harness_throughput already refused a round.usage missing its output_tokens, and
+// that module was in fact defaulting the count to 0, so emitting fabricated counts here would have
+// been absorbed rather than caught. It refuses now -- an unreadable required count makes the ledger
+// RoundsUnobserved with a located cause -- and that is what makes writing this event, rather than a
+// round.usage of zeros, the difference between a refusal the reader reports and a rate nobody can
+// tell is wrong.
 fn harness_event_round_usage_unavailable(step: Int, cause: String, clock: ClockUnixMillisRead) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "round.usage_unavailable")),

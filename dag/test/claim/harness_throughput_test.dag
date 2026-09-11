@@ -5,7 +5,7 @@ import gunbc.harness.harness_throughput {
   HarnessThroughput, ThroughputObserved, ThroughputUnobserved,
   harness_throughput_from_events, throughput_centi_tokens_per_second,
   throughput_rate_text, throughput_band, throughput_band_word, throughput_cell_text,
-  harness_round_ledger_from_events, round_segments, round_segment_kind_word, RoundSegment,
+  harness_round_ledger_from_events, HarnessRoundLedger, RoundsObserved, RoundsUnobserved, round_segments, round_segment_kind_word, RoundSegment,
   round_playback, round_playback_floor_ms, RoundPlayback, round_remaining_flex, harness_round_budget_steps, WriteRound, ReadRound, ReasonRound,
   ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
@@ -48,10 +48,12 @@ test fn the_first_rounds_tokens_are_not_credited_to_the_interval() -> Bool {
 }
 
 // DISCRIMINATING RED. One clocked round cannot yield an interval, and the refusal must say so
-// rather than reporting a rate over a zero-width window.
+// rather than reporting a rate over a zero-width window. The row is fully populated on purpose: a
+// fixture missing a required count would refuse for the READER's reason and this witness would
+// stop failing on the axis it names.
 test fn a_single_clocked_round_refuses_rather_than_dividing() -> Bool {
   match harness_throughput_from_events(
-    body: "{\"type\":\"round.usage\",\"step\":1,\"output_tokens\":100,\"epoch_ms\":1000}",
+    body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
   ) {
     ThroughputUnobserved { reason: _ } => true
     ThroughputObserved { output_tokens: _, elapsed_ms: _, rounds: _ } => false
@@ -62,7 +64,7 @@ test fn a_single_clocked_round_refuses_rather_than_dividing() -> Bool {
 // epoch_ms; it must not be absorbed as if it had a time.
 test fn an_unclocked_usage_row_is_not_counted_as_a_reading() -> Bool {
   match harness_throughput_from_events(
-    body: "{\"type\":\"round.usage\",\"step\":1,\"output_tokens\":100,\"clock_refused\":\"no clock\"}",
+    body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"clock_refused\":\"no clock\"}",
   ) {
     ThroughputUnobserved { reason: _ } => true
     ThroughputObserved { output_tokens: _, elapsed_ms: _, rounds: _ } => false
@@ -169,4 +171,72 @@ test fn the_unspent_budget_is_projected_at_the_mean_pace() -> Bool {
   round_remaining_flex(ledger: ledger, budget_steps: 5) == 4000
     && round_remaining_flex(ledger: ledger, budget_steps: 3) == 0
     && harness_round_budget_steps == 40
+}
+
+// A ROUND WHOSE COUNT COULD NOT BE READ IS NOT A ROUND THAT PRODUCED NOTHING (review 63779).
+//
+// These were GREEN PARSES before the repair, and green is what made them dangerous: the reader
+// answered 0 for a `round.usage` missing its `output_tokens`, so the row stayed a clocked round --
+// its interval in the denominator, nothing in the numerator -- and the cell rendered a confident
+// rate that was too low by exactly the work the unread member represented. Zero is a legal token
+// count, so no consumer could tell. The fixture below is built so the arithmetic states the harm:
+// three rounds at t=1000/3000/5000 carrying 100, 200 and 300 tokens read 125.00 tok/s, and the same
+// stream with round 3's count unreadable used to read 200 over 4000 ms -- 50.00 tok/s, a plausible
+// number for a run that was in fact producing two and a half times that.
+fn three_rounds_with_an_unreadable_count() -> String {
+  join([
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"epoch_ms\":3000}",
+    "{\"type\":\"round.usage\",\"step\":3,\"input_tokens\":30,\"epoch_ms\":5000}",
+  ], "\n")
+}
+
+fn throughput_refusal_naming(t: HarnessThroughput, fragment: String) -> Bool {
+  match t {
+    ThroughputUnobserved { reason: r } => (r as String).contains(fragment)
+    ThroughputObserved { output_tokens: _, elapsed_ms: _, rounds: _ } => false
+  }
+}
+
+test fn a_usage_row_without_output_tokens_does_not_become_a_zero_token_clocked_round() -> Bool {
+  throughput_refusal_naming(
+    t: harness_throughput_from_events(body: three_rounds_with_an_unreadable_count()),
+    fragment: "output_tokens",
+  )
+    && throughput_rate_text(t: harness_throughput_from_events(body: three_rounds_with_an_unreadable_count())) == "-- tok/s"
+}
+
+// AND THE ROW IS NOT SILENTLY DROPPED EITHER, which is the other way to make the first assertion
+// pass while still lying: a ledger missing the rows it could not read is a shorter run that looks
+// complete, and every projection over it -- rate, strip, budget track -- renders confidently from a
+// population nobody was told had shrunk.
+test fn an_unreadable_row_refuses_the_whole_ledger_rather_than_shortening_it() -> Bool {
+  match harness_round_ledger_from_events(body: three_rounds_with_an_unreadable_count()) {
+    RoundsUnobserved { reason: _ } => true
+    RoundsObserved { rounds: _ } => false
+  }
+}
+
+// A DUPLICATED COUNT IS NOT AN ABSENT ONE HERE EITHER, and the cause must say which happened: the
+// reader this module now shares with the writer separates them, and a wildcard reinstated in either
+// place would put back one sentence for two wire facts.
+test fn a_duplicated_output_tokens_member_says_duplicated() -> Bool {
+  throughput_refusal_naming(
+    t: harness_throughput_from_events(body: join([
+      "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+      "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"output_tokens\":900,\"epoch_ms\":3000}",
+    ], "\n")),
+    fragment: "duplicated",
+  )
+}
+
+// THE BOUNDARY THE REPAIR DELIBERATELY DID NOT CROSS: a member the stream DECLARES optional is
+// still absent-is-an-answer. files_changed is not carried by older writers and its absence paints
+// `unmeasured`, which the strip witness above pins; without this control the repair would read as
+// "refuse any row that is not fully populated" and would blank every historical run.
+test fn an_older_row_without_the_optional_counts_still_reads() -> Bool {
+  match harness_round_ledger_from_events(body: three_clocked_rounds()) {
+    RoundsUnobserved { reason: _ } => false
+    RoundsObserved { rounds } => list_length(items: rounds) == 3
+  }
 }
