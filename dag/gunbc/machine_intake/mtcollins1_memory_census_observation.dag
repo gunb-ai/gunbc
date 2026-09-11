@@ -361,49 +361,35 @@ data mtcollins1_connector_identification_basis: MtCollins1ConnectorIdentificatio
 // unfinished errand: without it the next reader sees "no csrow tree" and schedules another boot.
 data mtcollins1_edac_channel_map_unavailable_reason: NonEmptyStr = "ghes_edac is an error-reporting shim under ACPI APEI firmware-first mode (dmesg: \"GHES: APEI firmware first mode is enabled by APEI bit\"), not a memory-controller topology driver. It registers one synthetic controller and mirrors the SMBIOS Type 17 device list so a GHES error record has a DIMM to name. No csrow or channel node exists to read, on any boot, without a native Altra memory-controller EDAC driver that does not exist in mainline. The channel-resolved reading comes from the boot firmware's DRAM training output instead, which is carried by mtcollins1_firmware_channel_bindings and is strictly richer, naming slot-within-channel as well as controller."
 
-// ── modelling obligations this census surfaces ─────────────────────────────────────────────────
+// ── what this census does NOT license anyone to conclude ───────────────────────────────────────
 
-// A PART THIS UNIT ACTUALLY CARRIES HAS NO CATALOG ROW. extdeps.memory.sk_hynix carries
-// hma82gr7afr4n_vk_catalog and hma82gr7afr8n_vk_catalog; HMA82GR7CJR8N-VK appears nowhere in the
-// corpus. Until it has a row, no HostMemoryPopulation can be authored for this unit, because
-// MemoryPopulationRow takes a DramModuleCatalogRow and one of the three installed parts has none.
+// AN EARLIER REVISION CARRIED THREE `data` ROWS HERE describing modelling work this census
+// surfaced: a missing SK Hynix catalog row for HMA82GR7CJR8N-VK, and the missing OCP Mt. Jade
+// same-channel rank rule. They were removed on an operator ruling, and the reason generalises.
+// Nothing consumed them. A `data` row that no fold reads is a prose TODO wearing a type -- DESIGN
+// section 3c's dangling declaration and section 4c's misplaced prose at once -- and giving a TODO
+// a struct makes it look discharged while changing nothing. Work that needs doing is a lane, not a
+// row in the receipt of an unrelated observation.
 //
-// THE ROW IS NOT AUTHORED HERE, and that restraint is the point. Its properties are known to this
-// module only because the firmware and SMBIOS reported them on one machine; a catalog row is an
-// upstream fact about a part SK Hynix sells, and minting it from our own boot log would be the
-// provenance inversion DESIGN section 3 forbids — a report rendered as an upstream fact. The row
-// belongs in extdeps.memory.sk_hynix, cited to SK Hynix's own module documentation, and this
-// module's job is to say the obligation exists and what was observed.
-type MtCollins1CensusModellingObligation {
-  subject: NonEmptyStr
-  why_it_blocks: NonEmptyStr
-  observed_properties: NonEmptyStr
-  correct_home: NonEmptyStr
-}
+// WHAT REMAINS HERE IS THE PART THAT IS ACTUALLY ABOUT THIS UNIT: the readings above are a
+// POPULATION, not a REQUIREMENT, and two terms stand between them and any purchase.
+//
+// RANK. That a module added to a channel must match the rank of the module already in it is an OCP
+// Mt. Jade constraint, and no authority in this corpus carries it. So the observed 10 x 1R / 6 x 2R
+// split is what this unit HAS; what it NEEDS is not derivable here.
+//
+// CHIP WIDTH IS NOT CLOSED AT ALL, and this is the sharper trap because the observation looks like
+// it answers the question. Ampere admits both x4 and x8 devices, and no cited rule requires the
+// second module in a channel to match its peer's width. An earlier version of the probe beside
+// this module wrote the requirement as "10 x 1Rx4 + 6 x 2Rx8" -- reading widths off the installed
+// modules and presenting them as constraints on the ones to buy. That is a term nothing closes.
+//
+// SO THIS MODULE AUTHORS NO REQUIREMENT AND NO FILL VECTOR. The derivation belongs in a lane that
+// consumes cited authorities -- the Ampere connector/channel mapping, an SK Hynix catalog row for
+// every installed part, and the OCP same-channel rule -- and emits one requirement per empty
+// connector. A requirement computed that way cannot quietly acquire a term the way a hand-written
+// one did; that is the whole argument for computing it rather than writing it down.
 
-data mtcollins1_uncatalogued_part_obligation: MtCollins1CensusModellingObligation = MtCollins1CensusModellingObligation {
-  subject: "HMA82GR7CJR8N-VK, installed at connector J11 (socket 0, MCU5), serial 53BC6E37.",
-  why_it_blocks: "extdeps.memory.sk_hynix has no catalog row for it, so no MemoryPopulationRow and therefore no HostMemoryPopulation can be authored for mtcollins1 the way gunbc.fleet.fleet_intent authors srv1..srv4.",
-  observed_properties: "Reported by this unit as 16 GB, DDR4, registered, ECC, 2 ranks, x8 chip width, configured at 2666 MT/s (firmware DRAM training and SMBIOS Type 17 agree on rank, width and data rate).",
-  correct_home: "extdeps.memory.sk_hynix, cited to SK Hynix module documentation. NOT authored from this census: a catalog row minted from our own boot log would render a local report as an upstream fact.",
-}
-
-// THE SAME-CHANNEL RANK RULE IS NOT IN THE CORPUS EITHER. The purchasing decision this census was
-// commissioned to inform turns on OCP Mt. Jade's constraint that a single channel may not mix 1R
-// and 2R modules, and nothing under extdeps.ocp.mt_jade carries it. Until it does, the per-connector
-// rank requirement that follows from the bindings above is a conclusion a human is drawing from a
-// document the corpus has not modelled, and it must not be authored here as though it were derived.
-data mtcollins1_rank_mixing_rule_obligation: MtCollins1CensusModellingObligation = MtCollins1CensusModellingObligation {
-  subject: "Same-channel rank mixing constraint for Mt. Jade / Mt. Collins (no 1R and 2R on one channel).",
-  why_it_blocks: "The fill decision for the sixteen empty connectors is exactly this rule applied to mtcollins1_firmware_channel_bindings. Without the rule modelled, the required rank per empty connector cannot be DERIVED in the substrate and would have to be asserted.",
-  observed_properties: "Not an observation of this unit at all; it is an upstream platform constraint. This unit merely makes it decision-relevant by carrying a mixed 1R/2R population across its sixteen channels.",
-  correct_home: "extdeps.ocp.mt_jade, cited to the OCP Mt. Jade specification's memory population table.",
-}
-
-data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObligation> = [
-  mtcollins1_uncatalogued_part_obligation,
-  mtcollins1_rank_mixing_rule_obligation,
-]
 
 // ── the media status observation, WITHOUT the decoder ─────────────────────────────────────────
 //
@@ -423,12 +409,35 @@ data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObli
 // number. The observation therefore does not belong in an evidence PR without its bytes.
 //
 // WHAT SURVIVES HERE IS THE MEASUREMENT ALONE, because the transition itself was observed against
-// the live controller and is evidence about this unit. Attach at 2026-09-10T22:38:16.528Z: status
-// 100 with session_index 255; session_index 0 at +12s with status still 100; status 1 at +15s;
-// still 1 at +4m27s, and still 1 through the whole boot that followed. That sequence is recorded
-// as what was seen. This module draws NO conclusion from it about which status means ready — that
-// conclusion is the migration's to make, against a catalog keyed to firmware identity.
-data mtcollins1_media_transition_observed: NonEmptyStr = "Attach 2026-09-10T22:38:16.528Z: redirection_status 100 / session_index 255; +12s session_index 0, status still 100; +15s status 1; still status 1 at +4m27s and throughout the subsequent boot. Recorded as observed. No readiness conclusion is drawn here; the status-code catalog and the policy over it belong to extdeps.bmc.megarac and the boot-path migration respectively."
+// the live controller and is evidence about this unit. It is carried as SAMPLES rather than a
+// sentence: the reading is a timestamped sequence of two raw controller fields, and a prose
+// rendering of it hides the named parts a consumer would fold (DESIGN section 2 -- a String leaf
+// hiding named parts is anemic modeling; section 4c -- an event belongs in a typed carrier).
+//
+// THE STATUS AND INDEX ARE CARRIED RAW AND UNDECODED, DELIBERATELY. What any particular value
+// MEANS is an extdeps.bmc.megarac catalog keyed to a firmware identity, and the policy over it is
+// the boot-path migration's; this module draws no readiness conclusion. The decoder that used to
+// live here was removed because its source (source.min.js as served by this controller) is not a
+// committed artifact, and a sentence naming the file it came from is not a resolvable receipt.
+type MtCollins1MediaRedirectionSample {
+  offset_from_attach: Second
+  redirection_status: Nat
+  session_index: Nat
+}
+
+data mtcollins1_media_attach_observed_at: EpochMs = 1789079896528
+
+data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample> = [
+  MtCollins1MediaRedirectionSample { offset_from_attach: second(count: 0), redirection_status: 100, session_index: 255 },
+  MtCollins1MediaRedirectionSample { offset_from_attach: second(count: 12), redirection_status: 100, session_index: 0 },
+  MtCollins1MediaRedirectionSample { offset_from_attach: second(count: 15), redirection_status: 1, session_index: 0 },
+  MtCollins1MediaRedirectionSample { offset_from_attach: second(count: 267), redirection_status: 1, session_index: 0 },
+]
+
+// The last sample is +4m27s; status 1 held from there through the whole boot that followed, which
+// is a fact about duration rather than a further sample, so it is stated here and not minted as a
+// row the sequence does not contain.
+data mtcollins1_media_redirection_held_through_boot: Bool = true
 
 // ── why the second capture took five attempts, and the defect that caused it ───────────────────
 
@@ -533,6 +542,52 @@ data mtcollins1_acquisition_standing: MtCollins1AcquisitionStanding = Historical
   reusable_producer_absent: true,
 }
 
+// ── who consumes the rows this module declares, and by what route ──────────────────────────────
+
+// DESIGN section 3c REQUIRES EVERY ADDED DECLARATION TO NAME ITS CONSUMER AND ITS EXECUTING ROUTE,
+// or to be classified honestly as a declared frontier with its trigger stated beside it. Review
+// 63839 found that this module fails that test for a set of rows, and it is right: the witness
+// folds the slot and channel rows, the topology, the workload, the subject binding, the samples
+// and the standing, and reads none of the digests or the narrative receipts.
+//
+// THE DIGESTS ARE NOT DANGLING BY OVERSIGHT; THEY ARE WAITING ON A CONSUMER THAT CANNOT EXIST YET.
+// A digest's real consumer re-reads the artifact bytes and compares. That is an effect, the witness
+// is pure, and the producer that would perform it is exactly what mtcollins1_acquisition_standing
+// declares absent. So they are a frontier, and the frontier is declared rather than left implicit
+// -- a pure witness asserting "this digest row exists" would be section 3c's own tell, a witness
+// that asserts a declaration exists rather than exercising it.
+//
+// THE TRIGGER NAMES A CAPABILITY, NOT AN ARTIFACT, per section 4b(3): not "a verifier lands" but a
+// capture producer that re-derives these artifacts and adjudicates observed-versus-declared digest
+// as a typed outcome -- SUFFICIENT FOR every artifact this module declares, not merely the one it
+// is first pointed at. When that producer exists, mtcollins1_acquisition_standing becomes
+// ProducedByModelledOperation, its witness control flips red by design, and these rows acquire a
+// real consumer in the same motion.
+type MtCollins1ConsumptionFrontier {
+  declaration: DeclarationRef
+  awaited_consumer: NonEmptyStr
+  trigger_capability: NonEmptyStr
+}
+
+fn census_frontier_row(decl_name: String) -> MtCollins1ConsumptionFrontier {
+  MtCollins1ConsumptionFrontier {
+    declaration: DeclarationRef {
+      module_path: "gunbc.machine_intake_mtcollins1_memory_census_observation",
+      decl_name: decl_name,
+      field: WholeDeclaration,
+    },
+    awaited_consumer: "A modelled capture producer that re-derives the artifact and adjudicates the observed digest against the declared one as a typed outcome, rather than a reader trusting a hand-authored hash.",
+    trigger_capability: "The machine-intake capture producer capability: an operation whose stdout, stderr and exit status are redirected into attempt-owned immutable output, whose digest is computed by the same run that produced the bytes, and which is SUFFICIENT FOR every artifact this module declares -- not one verifier pointed at one file.",
+  }
+}
+
+data mtcollins1_consumption_frontier: List<MtCollins1ConsumptionFrontier> = [
+  census_frontier_row(decl_name: "mtcollins1_census_digest"),
+  census_frontier_row(decl_name: "mtcollins1_census_sol_digest"),
+  census_frontier_row(decl_name: "mtcollins1_census_evidence_manifest_digest"),
+  census_frontier_row(decl_name: "mtcollins1_host_capture_digest"),
+]
+
 data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
 
 data mtcollins1_host_capture_byte_count: ByteSize = byte_size(count: 270880)
@@ -574,7 +629,7 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
 // MEDIA DROP AND IT WAS WRONG TWICE OVER, so it is corrected rather than quietly edited.
 //
 // It read the 100 -> 1 transition as the session dying. That reading was asserted, never evidenced:
-// the transition is recorded raw at mtcollins1_media_transition_observed, and what any particular
+// the transition is recorded raw at mtcollins1_media_redirection_samples, and what any particular
 // status code MEANS is the status-code catalog's to say, not this receipt's.
 //
 // And the console refutes the drop directly. The captured sequence is GNU GRUB, then

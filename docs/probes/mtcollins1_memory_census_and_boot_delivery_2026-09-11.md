@@ -37,15 +37,21 @@ commit capital without it.
 | EDAC health | **0 corrected, 0 uncorrected**, before *and* after a named 64 GiB workload | §6 |
 | Unit binding | board serial `02030A800TEXFT02L` | host SMBIOS Type 2 **and** controller IPMI FRU |
 
-### Committed artifacts (digests verified at time of writing)
+### Committed artifacts
 
-| File | Bytes | SHA-256 |
-|---|---|---|
-| `artifacts/bmc/mtcollins1-hw-census.txt` | 247,849 | `9ec33e27b225848e2edc7454e0ff21b9081a19396f1a7205fe99529cf842bc8f` |
-| `artifacts/bmc/mtcollins1-hw-census-sol.log` | 240,475 | `1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8` |
-| `artifacts/bmc/mtcollins1-attempt3-sol.log` | 205,441 | `c63f5014f47004dcb099c1d306d4afdc97ae20835a8f40e93dd770efb03e051d` |
-| `artifacts/bmc/mtcollins1-attempt3-srv2-side.txt` | 1,669 | `e7673b74a9361453440364334d9223706284dc25d66c9f5bde1230c2ec5720ad` |
-| `artifacts/bmc/mtcollins1-host-capture.txt` | 270,880 | `a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a` |
+The five artifacts, their byte counts and their SHA-256 digests are DECLARED ROWS, not a table
+here: `mtcollins1_census_digest` / `mtcollins1_census_byte_count`, `mtcollins1_census_sol_digest` /
+`mtcollins1_census_sol_byte_count`, `mtcollins1_host_capture_digest` /
+`mtcollins1_host_capture_byte_count`, and the concatenation manifest
+`mtcollins1_census_evidence_manifest_digest`, all in the receipt module below, with the artifact
+paths beside them.
+
+An earlier revision of this file reproduced all of them as markdown, under the header "digests
+verified at time of writing" — which is the rot admission itself. A transcribed digest is
+unreachable from the thing that owns it, so the copy and the row decay independently and nobody
+touching either end finds out (DESIGN §3, one fact one place; §6, name the instrument, never
+transcribe its output). It was also one level up from the very class this PR files at
+`gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters`.
 
 Receipt module: `dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag`.
 Witness: `dag/test/claim/machine_intake/mtcollins1_memory_census_witness_test.dag`.
@@ -74,11 +80,43 @@ clocks to the common minimum, so a faster grade buys nothing unless all 32 slots
 replaced. Ampere's published "up to DDR4-3200 (2DPC)" is a ceiling, not a guarantee, and
 does not change this.
 
-**Do not multiply this unit's rank mix by twenty.** Matching each channel's existing rank
-requires **10 × 1Rx4 and 6 × 2Rx8** *for this unit*. That split is idiosyncratic — three
-different part numbers across 16 sticks, including one part that appears exactly once.
+**Do not multiply this unit's mix by twenty.** The OBSERVED population of this unit is
+10 × 1R and 6 × 2R across 16 populated connectors — a reading, carried by
+`mtcollins1_slots` and `mtcollins1_firmware_channel_bindings`. That split is idiosyncratic:
+three different part numbers across 16 sticks, including one that appears exactly once.
 Ordering ~320 modules against one sample would be ordering blind. Each unit needs its own
 census; the census ISO does one unit in a single boot.
+
+**What this record does NOT establish is the fill requirement**, and the distinction is the
+whole point of the census. Two separate gaps stand between the observed population and a
+purchase order:
+
+- **Rank.** That the module added to a channel must match the rank of the module already in
+  it is the OCP Mt. Jade same-channel rule. It is cited to no authority in this corpus — the
+  gap is recorded below — so "10 × 1R + 6 × 2R is what to buy" is an observation wearing a
+  requirement's clothes until that rule is modelled from the specification.
+- **Chip width.** An earlier revision of this section wrote the requirement as
+  **10 × 1Rx4 + 6 × 2Rx8**, reading widths off the installed modules and presenting them as
+  constraints on the ones to buy. A later revision then said the width was unresolved
+  because no cited rule closed it. **Both were wrong, in opposite directions, and the
+  authority settles it:** the OCP Mt. Jade specification's supported-mixed-configuration
+  table does constrain same-channel width — and same-channel density besides, which neither
+  revision mentioned. The rule is being modelled at `extdeps.ocp.mt_jade`; the cells are
+  that module's to state and are deliberately not reproduced here.
+
+The sequence is worth keeping rather than tidying away. The first answer was right by
+accident — it read the constraint off the sample instead of off the specification — and the
+second was wrong by being cautious about the correct conclusion for the correct reason.
+Neither was *derived*, which is why neither could be trusted, and that is the whole argument
+for the derivation lane: a requirement computed from cited authorities cannot silently
+acquire a term, or silently lose one.
+
+**A third thing the specification does NOT say, and it is the one that should be decided
+before money moves.** The same table's different-channel row affirms every mixing axis
+except rank, where it reads TBD. This unit's population mixes 1R and 2R *across* channels.
+So the specification does not affirm the configuration unit 1 is already running — it
+declines to state. That is an admission, not a permission, and a purchase premised on
+"different channels are fine" would be premised on the single cell that does not say so.
 
 ---
 
@@ -130,26 +168,20 @@ Three checks, the first decisive:
 **Not claimed:** that the board silkscreen reads "J11" at that connector. Nobody looked at
 the board; that is a photograph, not a software reading.
 
-### Per-connector table
+### Per-connector population
 
-| J | SMBIOS locator | Channel | Populated | Rank | Part | Empty partner needs |
-|---|---|---|---|---|---|---|
-| J1 | DIMM 1 | S0/MC0 | 16 GB | 1R | HMA82GR7AFR4N-VK | J2 → 1R |
-| J3 | DIMM 3 | S0/MC1 | 16 GB | 2R | HMA82GR7AFR8N-VK | J4 → 2R |
-| J5 | DIMM 5 | S0/MC2 | 16 GB | 1R | HMA82GR7AFR4N-VK | J6 → 1R |
-| J7 | DIMM 7 | S0/MC3 | 16 GB | 1R | HMA82GR7AFR4N-VK | J8 → 1R |
-| J9 | DIMM 9 | S0/MC4 | 16 GB | 2R | HMA82GR7AFR8N-VK | J10 → 2R |
-| J11 | DIMM 11 | S0/MC5 | 16 GB | 2R | **HMA82GR7CJR8N-VK** | J12 → 2R |
-| J13 | DIMM 13 | S0/MC6 | 16 GB | 1R | HMA82GR7AFR4N-VK | J14 → 1R |
-| J15 | DIMM 15 | S0/MC7 | 16 GB | 2R | HMA82GR7AFR8N-VK | J16 → 2R |
-| J17 | Socket 1 DIMM 1 | S1/MC0 | 16 GB | 1R | HMA82GR7AFR4N-VK | J18 → 1R |
-| J19 | Socket 1 DIMM 3 | S1/MC1 | 16 GB | 1R | HMA82GR7AFR4N-VK | J20 → 1R |
-| J21 | Socket 1 DIMM 5 | S1/MC2 | 16 GB | 2R | HMA82GR7AFR8N-VK | J22 → 2R |
-| J23 | Socket 1 DIMM 7 | S1/MC3 | 16 GB | 1R | HMA82GR7AFR4N-VK | J24 → 1R |
-| J25 | Socket 1 DIMM 9 | S1/MC4 | 16 GB | 1R | HMA82GR7AFR4N-VK | J26 → 1R |
-| J27 | Socket 1 DIMM 11 | S1/MC5 | 16 GB | 1R | HMA82GR7AFR4N-VK | J28 → 1R |
-| J29 | Socket 1 DIMM 13 | S1/MC6 | 16 GB | 1R | HMA82GR7AFR4N-VK | J30 → 1R |
-| J31 | Socket 1 DIMM 15 | S1/MC7 | 16 GB | 2R | HMA82GR7AFR8N-VK | J32 → 2R |
+The population is `mtcollins1_slots` (32 connector rows, J-number, SMBIOS locator, socket and
+occupancy) joined to `mtcollins1_firmware_channel_bindings` (16 rows, controller and slot-within-
+channel, part number, rank, chip width). Those two lists are INDEPENDENT READINGS — Linux dmidecode
+and the Altra boot firmware's DRAM training output — and the witness cross-joins them requiring
+exactly one agreeing slot per binding, so a drift between them goes red. A markdown third copy
+would be a fact in a second place that no check can see, which is why the table that used to sit
+here is gone rather than merely corrected.
+
+What the reader wants from a table is in those rows; what is NOT in them is the purchasing
+consequence, which is the next section and is stated as a rule rather than re-listed per slot:
+every populated connector is odd, its even partner is empty, and the OCP Mt. Jade same-channel
+rank rule requires each partner module to match the rank of the module already in its channel.
 
 The "empty partner needs" column is the OCP Mt. Jade same-channel rank rule applied to the
 measured population. **That rule is not modelled in the corpus** — nothing under

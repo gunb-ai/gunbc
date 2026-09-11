@@ -2,7 +2,7 @@ module test.claim.mtcollins1_memory_census_witness_test
 
 import std.types { Bool, Int, List, list_length }
 import std.nat { Nat }
-import std.measure { byte_size_count, hardware_thread_count_value }
+import std.measure { byte_size_count, hardware_thread_count_value, second_count }
 import gunbc.machine_intake_mtcollins1_memory_census_observation {
   HistoricalAdHocCapture,
   MtCollins1AcquisitionStanding,
@@ -14,7 +14,11 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation {
   MtCollins1SlotObservation,
   SlotEmpty,
   SlotPopulated,
+  MtCollins1ConsumptionFrontier,
+  MtCollins1MediaRedirectionSample,
   mtcollins1_acquisition_standing,
+  mtcollins1_consumption_frontier,
+  mtcollins1_media_redirection_samples,
   mtcollins1_edac_topology,
   mtcollins1_firmware_channel_bindings,
   mtcollins1_host_capture_byte_count,
@@ -180,4 +184,67 @@ fn acquisition_is_ad_hoc(a: MtCollins1AcquisitionStanding) -> Bool {
 test fn the_acquisition_is_declared_ad_hoc_while_no_producer_exists() -> Bool {
   acquisition_is_ad_hoc(a: mtcollins1_acquisition_standing)
     && byte_size_count(b: mtcollins1_host_capture_byte_count) > 0
+}
+
+
+// ── the observed media transition, folded rather than read ─────────────────────────────────────
+
+// THE SAMPLES REPLACED A PROSE SENTENCE, so this is what makes that worth doing: a sequence carried
+// as rows can be checked, and the checks below would all have been unwritable against a String.
+//
+// WHAT IS DELIBERATELY NOT ASSERTED: that any status value means ready, attached, or dropped. The
+// census module carries those codes raw because the catalog that decodes them is keyed to firmware
+// identity and lives in extdeps.bmc.megarac. This test checks the SHAPE of the reading — that it is
+// a real time series with a real transition in it — and never its meaning.
+type MediaSampleScan {
+  previous_offset: Int
+  previous_status: Int
+  started: Bool
+  offsets_increase: Bool
+  a_transition_occurred: Bool
+}
+
+fn scan_media_samples(samples: List<MtCollins1MediaRedirectionSample>) -> MediaSampleScan {
+  fold(samples, init: MediaSampleScan {
+    previous_offset: 0,
+    previous_status: 0,
+    started: false,
+    offsets_increase: true,
+    a_transition_occurred: false,
+  }, f: fn(acc, x) {
+    MediaSampleScan {
+      previous_offset: second_count(s: x.offset_from_attach),
+      previous_status: x.redirection_status,
+      started: true,
+      offsets_increase: acc.offsets_increase
+        && (if acc.started { second_count(s: x.offset_from_attach) > acc.previous_offset } else { true }),
+      a_transition_occurred: acc.a_transition_occurred
+        || (if acc.started { !(x.redirection_status == acc.previous_status) } else { false }),
+    }
+  })
+}
+
+// A sequence whose offsets repeat or run backwards is a transcription error, not an observation;
+// and the reading is only evidence ABOUT A TRANSITION if it actually contains one. If a later edit
+// flattened these rows to a single repeated status, the observation would have become a snapshot
+// while still being cited as a transition, and this goes red.
+test fn the_redirection_samples_are_a_time_series_containing_a_transition() -> Bool {
+  list_length(items: mtcollins1_media_redirection_samples) == 4
+    && scan_media_samples(samples: mtcollins1_media_redirection_samples).offsets_increase
+    && scan_media_samples(samples: mtcollins1_media_redirection_samples).a_transition_occurred
+}
+
+// ── the declared frontier ──────────────────────────────────────────────────────────────────────
+
+// DESIGN section 3c admits a declaration whose consumer lands in a named later change ONLY with the
+// trigger stated beside it. That makes the frontier rows themselves a claim that can rot: a row
+// naming no consumer, or no trigger, is back to a dangling declaration wearing a label. This folds
+// them and refuses an empty one, so the admission has to keep being earned.
+fn frontier_row_is_complete(f: MtCollins1ConsumptionFrontier) -> Bool {
+  !(f.awaited_consumer == "") && !(f.trigger_capability == "") && !(f.declaration.decl_name == "")
+}
+
+test fn the_declared_frontier_names_a_consumer_and_a_trigger() -> Bool {
+  list_length(items: mtcollins1_consumption_frontier) == 4
+    && fold(mtcollins1_consumption_frontier, init: true, f: fn(acc, r) { acc && frontier_row_is_complete(f: r) })
 }
