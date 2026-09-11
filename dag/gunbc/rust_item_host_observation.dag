@@ -1286,24 +1286,10 @@ fn observe_rust_references(
   RustReferencesObserved { rows: final.rows, unattributed: final.unattributed, unscannable: final.unscannable }
 }
 
-// THE LIVE ENTRY. The selection is NOT narrowed to the namespace-claimed trees: a token-carrying
-// file under an unclaimed tree must reach the projection and refuse there (ItemDeclarationRefRefused
-// names the path), because skipping it here would make the population a silent lower bound.
-fn observe_current_rust_references_selected(tokens: List<String>, select: fn(String) -> Bool) -> RustReferenceObservation {
-  match head_rust_sources(select: select) {
-    HeadRustSourcesRefused { detail: detail } => RustReferenceHostRefused { detail: detail }
-    HeadRustSourcesRead { sources: sources, generated_repo_paths: generated_repo_paths } =>
-      observe_rust_references(sources: sources, generated_repo_paths: generated_repo_paths, tokens: tokens, rows: rust_source_namespace_rows)
-  }
-}
-
-fn observe_current_rust_references(tokens: List<String>, excluded_repo_prefix: String) -> RustReferenceObservation {
-  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { !starts_with(s: path, prefix: excluded_repo_prefix) })
-}
-
-// THE DUAL SELECTION: the population UNDER a prefix rather than outside it, for a caller whose
-// subject is the deletion set itself (which of the seed's own sites mint a manifest naming the
-// seed) rather than its consumers.
-fn observe_current_rust_references_under(tokens: List<String>, repo_prefix: String) -> RustReferenceObservation {
-  observe_current_rust_references_selected(tokens: tokens, select: fn(path) { starts_with(s: path, prefix: repo_prefix) })
-}
+// THE LIVE ROUTE IS head_rust_sources PLUS observe_rust_references, COMPOSED BY THE CALLER. The
+// census reads HEAD once and partitions the sources between its media by predicate, so no
+// single-medium live entry is kept here: one would read HEAD a second time beside the census's own
+// read, and two HeadCommit resolutions can straddle a push. The selection a caller passes to
+// head_rust_sources is NOT narrowed to the namespace-claimed trees: a token-carrying file under an
+// unclaimed tree must reach the projection and refuse there (ItemDeclarationRefRefused names the
+// path), because skipping it at selection would make the population a silent lower bound.

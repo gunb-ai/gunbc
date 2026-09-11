@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // SPLIT OUT OF self_host_v1_consumer_census_witness_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN
 // RUN. Every fn here reads v1_consumer_population(), which since the Rust reference population
 // became a produced observation reaches git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision
-// and git.Core.Show through gunbc.rust_item_host_observation observe_current_rust_references. None
+// and git.Core.Show through gunbc.rust_item_host_observation observe_rust_references over head_rust_sources. None
 // of those carries a mock_response, so under the hermetic envelope the run REFUSES rather than
 // skipping, and a refusing discovery member fails its whole batch -- the class
 // stage0_rust_host_observation_live_witness_test.dag documents. Publishing mocks is not the answer

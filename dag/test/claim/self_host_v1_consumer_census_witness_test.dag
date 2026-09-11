@@ -33,7 +33,7 @@ import test.fixture.v1_consumer_census.specimens {
 
 // THE LIVE HALF LIVES IN self_host_v1_consumer_census_live_witness_test.dag. Since the Rust
 // reference population became a produced observation (gunbc.rust_item_host_observation
-// observe_current_rust_references reaches git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision
+// head_rust_sources reaches git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision
 // and git.Core.Show), v1_consumer_population() is a live read the hermetic discovery envelope
 // REFUSES rather than skips, and a refusing discovery member fails its whole batch. The four
 // witnesses that read the live population moved there under the gunbc.ci_layer_roots exclusion row

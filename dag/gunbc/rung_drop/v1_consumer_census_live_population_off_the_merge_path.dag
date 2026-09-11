@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DROP. gunbc#11018 made the v1 consumer census's Rust reference population a PRODUCED
-// observation (gunbc.rust_item_host_observation observe_current_rust_references reads
+// observation (gunbc.rust_item_host_observation observe_rust_references over head_rust_sources reads
 // git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision and git.Core.Show), replacing four
 // hand-named crate roots -- a measurement copied from the tree, the oracle DESIGN section 5
 // refuses. The consequence this row declares: v1_consumer_population() now reaches git, the
@@ -46,9 +46,9 @@ fn v1_consumer_census_live_population_off_the_merge_path() -> RungDrop {
     declaration: TypedDeclaration {
       previous: MechanicallyPreventable,
       temporary: Mitigatable,
-      reason: ReplacementStaged { replacement: "gunbc.rust_item_host_observation observe_current_rust_references: the Rust medium of the census is a produced observation of HEAD rather than a hand list, and a produced observation reaches git, which the hermetic per-PR envelope refuses" },
+      reason: ReplacementStaged { replacement: "gunbc.rust_item_host_observation observe_rust_references over head_rust_sources: the Rust medium of the census is a produced observation of HEAD rather than a hand list, and a produced observation reaches git, which the hermetic per-PR envelope refuses" },
       population: v1_consumer_census_live_population_identities,
-      restoration_trigger: "a merge-blocking step that executes a witness reading v1_consumer_population() against the live tree -- either mock_response coverage for git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision and git.Core.Show sufficient for observe_current_rust_references to answer under the hermetic envelope with the assertions re-checked under that mock, or a wet lane on the required path that executes bin_witness_wet_entries. NOT retired by the hermetic planted-source witnesses in self_host_v1_consumer_census_witness_test.dag, which exercise the fold and not the tree; not retired by the operator instrument, which executes when a human chooses to; not retired by moving the named fns back into the hermetic file, which would fail the batch they sit in.",
+      restoration_trigger: "a merge-blocking step that executes a witness reading v1_consumer_population() against the live tree -- either mock_response coverage for git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision and git.Core.Show sufficient for observe_rust_references over head_rust_sources to answer under the hermetic envelope with the assertions re-checked under that mock, or a wet lane on the required path that executes bin_witness_wet_entries. NOT retired by the hermetic planted-source witnesses in self_host_v1_consumer_census_witness_test.dag, which exercise the fold and not the tree; not retired by the operator instrument, which executes when a human chooses to; not retired by moving the named fns back into the hermetic file, which would fail the batch they sit in.",
     }
   }
 }
