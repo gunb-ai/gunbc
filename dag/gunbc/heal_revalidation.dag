@@ -18,6 +18,11 @@ type HealOutcome
       head: CommitSha,
       author_commit_paths: List<String>
     }
+  | HealPushRefused {
+      prior_head: CommitSha,
+      healed_head: CommitSha,
+      remote_head: CommitSha
+    }
   | HealSupersededByAuthorHead {
       prior_head: CommitSha,
       healed_head: CommitSha,
@@ -94,6 +99,8 @@ fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
     HealNoChange { head } => HealRevalidationNotRequired { head: head }
     HealAuthorCommitRequired { head, author_commit_paths: _ } =>
       HealRevalidationNotRequired { head: head }
+    HealPushRefused { prior_head, healed_head: _, remote_head: _ } =>
+      HealRevalidationNotRequired { head: prior_head }
     HealSupersededByAuthorHead { prior_head, healed_head: _, remote_head: _, changed_artifacts: _ } =>
       HealRevalidationNotRequired { head: prior_head }
     HealProduced { prior_head, healed_head, changed_artifacts } =>
@@ -116,19 +123,19 @@ fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
 // is no unjudged tree created here and no repair withheld -- the successor run regenerates from
 // the successor tree, which is the only tree that matters. Exiting nonzero would render a red
 // square beside a pull request for a scheduling outcome about a revision that no longer exists,
-// which is exactly the misattribution gunbc.recurring_failure_mode
-// repair_job_red_is_attributed_to_the_content_it_repaired records as its arm one. The outcome
-// stays loud and countable as a typed, named line carrying all three revisions; it does not stay
-// loud by borrowing the channel that means "the content under review is wrong".
-//
-// THIS RETIRES ARM ONE OF THAT ROW AND NOT THE ROW. Arm two -- the designed supersede above --
-// still reports red on every heal that lands, and the row's trigger is explicit that a fix
-// covering one arm does not retire it.
+// which is the misattribution gunbc.recurring_failure_mode
+// repair_job_red_is_attributed_to_the_content_it_repaired exists to record. That row, and not this
+// annotation, carries what its arms now stand at; nothing can read a line of prose, so a status
+// asserted here would be a second and unreadable copy of a fact the row owns. The outcome stays
+// loud and countable as a typed, named line carrying all three revisions; it does not stay loud by
+// borrowing the channel that means "the content under review is wrong".
 fn prior_run_disposition(outcome: HealOutcome) -> PriorRunDisposition {
   match outcome {
     HealNoChange { head } => PriorRunStillCurrent { head: head }
     HealAuthorCommitRequired { head, author_commit_paths: _ } =>
       PriorRunStillCurrent { head: head }
+    HealPushRefused { prior_head, healed_head: _, remote_head: _ } =>
+      PriorRunStillCurrent { head: prior_head }
     HealSupersededByAuthorHead { prior_head, healed_head: _, remote_head, changed_artifacts: _ } =>
       SupersededByAuthorHead { prior_head: prior_head, remote_head: remote_head }
     HealProduced { prior_head, healed_head, changed_artifacts: _ } =>
@@ -213,18 +220,70 @@ fn heal_revalidation_admits(
   }
 }
 
-// ONE AUTHORITY FOR THE TOKEN THE JOB PRINTS. gunbc.ci_spec emits these names into shell, where a
-// coproduct arm cannot be applied to a value that only exists at runtime; without this fold the
-// spelling in the emitter would be a second name for an arm declared here. The join is executed by
-// test.claim.heal_revalidation_binding_witness, which derives the token from this match and
-// requires the emitted script to carry it -- so renaming an arm reddens the witness rather than
-// silently forking the name the log speaks.
+data heal_token_arm_probe: CommitSha = "0000000000000000000000000000000000000000"
+
+// ONE AUTHORITY FOR EVERY HealOutcome AND PriorRunDisposition ARM THE JOB PRINTS, which is not the
+// same as every word it prints: HealRepairDeclarationMissing names a step-integrity refusal that
+// belongs to the emitter's own protocol and has no arm here, and it is left alone deliberately
+// rather than dragged into this coproduct to make a tidier sentence. gunbc.ci_spec emits these names into shell,
+// and the first draft of this module claimed an arm could not be applied there because its
+// revisions exist only as shell variables. That was wrong in the same function it was written
+// against: gunbc.ci_spec already splices gunbc.heal_push_plan live_heal_push_refusal_cause_token
+// into an emitted line, so construction was available and this landed as a check beside it. The
+// tokens below are the construction -- the emitter splices these, so the name in the log is
+// PRODUCED BY the match over the arms rather than re-typed next to them, and a second name for an
+// arm is not writable in the emitter at all.
+//
+// THE PROBE REVISION IS NOT A CLAIM ABOUT ANY RUN. A token names an ARM, and every fold below
+// discards its payload, so the value handed in exists only to select the arm. It is one shared
+// zero sha rather than a plausible-looking one precisely so that a reader who finds it in a log
+// line would know the emitter, not a run, put it there -- but no fold can carry it into output.
 fn heal_outcome_token(outcome: HealOutcome) -> String {
   match outcome {
     HealNoChange { head: _ } => "HealNoChange"
     HealProduced { prior_head: _, healed_head: _, changed_artifacts: _ } => "HealProduced"
     HealAuthorCommitRequired { head: _, author_commit_paths: _ } => "HealAuthorCommitRequired"
+    HealPushRefused { prior_head: _, healed_head: _, remote_head: _ } => "HealPushRefused"
     HealSupersededByAuthorHead { prior_head: _, healed_head: _, remote_head: _, changed_artifacts: _ } =>
       "SupersededByAuthorHead"
   }
 }
+
+fn prior_run_disposition_token(disposition: PriorRunDisposition) -> String {
+  match disposition {
+    PriorRunStillCurrent { head: _ } => "PriorRunStillCurrent"
+    SupersededByHealedHead { prior_head: _, healed_head: _ } => "SupersededByHealedHead"
+    SupersededByAuthorHead { prior_head: _, remote_head: _ } => "SupersededByAuthorHead"
+  }
+}
+
+data heal_no_change_token: String = heal_outcome_token(outcome: HealNoChange { head: heal_token_arm_probe })
+
+data heal_produced_token: String = heal_outcome_token(outcome: HealProduced {
+    prior_head: heal_token_arm_probe,
+    healed_head: heal_token_arm_probe,
+    changed_artifacts: []
+  })
+
+data heal_author_commit_required_token: String = heal_outcome_token(outcome: HealAuthorCommitRequired {
+    head: heal_token_arm_probe,
+    author_commit_paths: []
+  })
+
+data heal_push_refused_token: String = heal_outcome_token(outcome: HealPushRefused {
+    prior_head: heal_token_arm_probe,
+    healed_head: heal_token_arm_probe,
+    remote_head: heal_token_arm_probe
+  })
+
+data heal_superseded_by_author_head_token: String = heal_outcome_token(outcome: HealSupersededByAuthorHead {
+    prior_head: heal_token_arm_probe,
+    healed_head: heal_token_arm_probe,
+    remote_head: heal_token_arm_probe,
+    changed_artifacts: []
+  })
+
+data superseded_by_healed_head_token: String = prior_run_disposition_token(disposition: SupersededByHealedHead {
+    prior_head: heal_token_arm_probe,
+    healed_head: heal_token_arm_probe
+  })

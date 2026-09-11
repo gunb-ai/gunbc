@@ -9,7 +9,7 @@ import gunbc.merge_admission {
 }
 import gunbc.heal_revalidation {
   HealOutcome, HealNoChange, HealProduced, HealAuthorCommitRequired,
-  HealSupersededByAuthorHead,
+  HealSupersededByAuthorHead, HealPushRefused,
   HealDispatchPending, HealDispatchAccepted, HealDispatchRefused,
   HealRevalidationNotRequired, HealRevalidationRequired, HealRevalidationCoverageObserved,
   PriorRunStillCurrent, SupersededByHealedHead, SupersededByAuthorHead,
@@ -259,5 +259,20 @@ test fn an_author_push_supersedes_the_prior_run_with_the_remote_head() -> Bool {
       prior == prior_head && remote == other_head && remote != healed_head
     SupersededByHealedHead { prior_head: _, healed_head: _ } => false
     PriorRunStillCurrent { head: _ } => false
+  }
+}
+
+// A PUSH REFUSED WHILE THE BRANCH STOOD STILL IS NOT A SUPERSEDE, and the control is the arm it is
+// one remote revision away from. Both carry three revisions and both follow a rejected push; only
+// the standing of the prior head separates them, so the witness reads that and not the rejection.
+test fn a_push_refused_at_a_standing_head_leaves_the_prior_run_current() -> Bool {
+  match prior_run_disposition(outcome: HealPushRefused {
+    prior_head: prior_head,
+    healed_head: healed_head,
+    remote_head: prior_head
+  }) {
+    PriorRunStillCurrent { head } => head == prior_head
+    SupersededByAuthorHead { prior_head: _, remote_head: _ } => false
+    SupersededByHealedHead { prior_head: _, healed_head: _ } => false
   }
 }
