@@ -42,6 +42,10 @@ fn bash_build_word_lit(text: String) -> Node {
   bash_build_word_kinded(kind: ^bash_fold_word_kind_lit, value: text)
 }
 
+fn bash_build_word_single_quoted(text: String) -> Node {
+  bash_build_word_kinded(kind: ^bash_fold_word_kind_single_quoted, value: text)
+}
+
 fn bash_build_word_var(name: String) -> Node {
   bash_build_word_kinded(kind: ^bash_fold_word_kind_var, value: name)
 }

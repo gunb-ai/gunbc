@@ -17,11 +17,13 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_cmdsubst,
   bash_build_word_concat_parts,
   bash_build_word_lit,
+  bash_build_word_single_quoted,
   bash_build_word_var,
   bash_build_with_redir_to_file,
   bash_build_with_redir_stdout_and_stderr_to_file
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
+import v2.extdeps.languages.bash { bash_single_quote }
 import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
@@ -495,7 +497,7 @@ fn wrap_command_with_floor_attempt_receipt_stmts(command: String) -> List<Node> 
                 bash_build_word_lit(text: "sh"),
                 bash_build_word_lit(text: "-e"),
                 bash_build_word_lit(text: "-c"),
-                bash_build_word_lit(text: command)
+                bash_build_word_single_quoted(text: command)
               ]
             )
           ]
@@ -660,13 +662,15 @@ fn floor_attempt_shell_program(stmts: List<Node>) -> String? {
   }
 }
 
+data floor_attempt_shell_serialize_refused: String = "printf '%s\\n' '::error title=subject::floor_attempt shell serialize refused' >&2\nexit 1\n"
+
 fn wrap_command_with_floor_attempt_receipt_outcome(command: String) -> String? {
   floor_attempt_shell_program(stmts: wrap_command_with_floor_attempt_receipt_stmts(command: command))
 }
 
-fn wrap_command_is_renderable() -> Bool {
-  match wrap_command_with_floor_attempt_receipt_outcome(command: "true") {
-    Present { value: _ } => true
+fn wrap_command_is_renderable(command: String) -> Bool {
+  match wrap_command_with_floor_attempt_receipt_outcome(command: command) {
+    Present { value: script } => string_contains(s: script, pattern: bash_single_quote(spelling: command))
     Absent => false
   }
 }
@@ -674,7 +678,7 @@ fn wrap_command_is_renderable() -> Bool {
 fn wrap_command_with_floor_attempt_receipt(command: String) -> String {
   match wrap_command_with_floor_attempt_receipt_outcome(command: command) {
     Present { value: script } => script
-    Absent => ""
+    Absent => floor_attempt_shell_serialize_refused
   }
 }
 
@@ -684,7 +688,7 @@ fn floor_attempt_receipt_finalize_script_outcome() -> String? {
 
 fn floor_attempt_receipt_finalize_is_renderable() -> Bool {
   match floor_attempt_receipt_finalize_script_outcome() {
-    Present { value: _ } => true
+    Present { value: script } => script != ""
     Absent => false
   }
 }
@@ -692,7 +696,7 @@ fn floor_attempt_receipt_finalize_is_renderable() -> Bool {
 fn floor_attempt_receipt_finalize_script() -> String {
   match floor_attempt_receipt_finalize_script_outcome() {
     Present { value: script } => script
-    Absent => ""
+    Absent => floor_attempt_shell_serialize_refused
   }
 }
 

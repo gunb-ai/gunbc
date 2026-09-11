@@ -734,6 +734,10 @@ fn bash_single_quote_spaced(spelling: String) -> String {
   apply_emit_spelling_transform(transform: bash_posix_single_quote_transform(prefix: " "), spelling: spelling)
 }
 
+fn bash_single_quote(spelling: String) -> String {
+  apply_emit_spelling_transform(transform: bash_posix_single_quote_transform(prefix: ""), spelling: spelling)
+}
+
 fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m0 = map_insert(empty_map(), ^bash_token_lit, bash_posix_single_quote_transform(prefix: ""))
   let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_posix_single_quote_transform(prefix: " "))

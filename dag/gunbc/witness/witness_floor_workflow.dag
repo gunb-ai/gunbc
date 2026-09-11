@@ -3026,12 +3026,23 @@ data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.wi
 // The 9.37 GiB peak is a cost-shape defect to root-cause (the repository already carries that lane:
 // schedule-derived per-module retention, and the carrier/interning roots), not a reason to change
 // the shape.
+fn floor_attempt_production_wraps_are_renderable() -> Bool {
+  wrap_command_is_renderable(command: witness_floor_build_script())
+    && wrap_command_is_renderable(command: build_lane_build_script())
+    && wrap_command_is_renderable(command: v2_native_lane_build_script())
+    && wrap_command_is_renderable(command: heal_generated_artifacts_build_script())
+    && wrap_command_is_renderable(command: witness_floor_run_script())
+    && wrap_command_is_renderable(command: build_lane_run_script())
+    && wrap_command_is_renderable(command: v2_native_lane_run_script())
+    && wrap_command_is_renderable(command: repo_self_clippy_command())
+}
+
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
   match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && wrap_command_is_renderable() && floor_attempt_receipt_finalize_is_renderable() {
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
         WitnessFloorGenerated {
           content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
         }
