@@ -1,18 +1,20 @@
 module gunbc.review_sheet_projection
 
 import std.types { NonEmptyStr, String, Int, List, Bool, Map }
-import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster {
   keyed_roster_build,
   KeyedRosterBuilt,
   KeyedRosterBuildDuplicateKey,
 }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
 // keyed by listing identity, every column Derived, OperatorEntered, or ListingStanding. Sheets types
 // do not live here. The Sheets realization maps a ValueRange onto ObservedSheet and binds ensure
-// over classify_review_sheet.
+// over classify_review_sheet. judgement_for_listing is the operator-column read that lane binds;
+// until it does, buyer_review_judgement_read_frontier is Scaffold.
 
 type ReviewColumnKind
   = DerivedField { source_field: NonEmptyStr }
@@ -747,19 +749,6 @@ fn conflict_reason(conflict: LocatedDerivedConflict) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
-fn classify_to_decision(classified: ReviewSheetClassification) -> UpsertDecision<ReviewSheetWritePlan> {
-  match classified {
-    ReviewSheetConverged => Noop
-    ReviewSheetNeedsWrite { plan: p } => Apply { plan: p }
-    ReviewSheetConflict { conflict: c } => Refuse { reason: conflict_reason(conflict: c) }
-    ReviewSheetUnreadable { reason: r } => Refuse { reason: r }
-  }
-}
-
-fn decide_review_sheet(observed: ObservedSheet, projection: ReviewSheetProjection) -> UpsertDecision<ReviewSheetWritePlan> {
-  classify_to_decision(classified: classify_review_sheet(observed: observed, projection: projection))
-}
-
 type JudgementRead
   = JudgementBlank
   | JudgementEntered { value: NonEmptyStr }
@@ -805,5 +794,14 @@ fn judgement_for_listing(
           }
       }
     }
+  }
+}
+
+data buyer_review_judgement_read_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_projection",
+    decl_name: "judgement_for_listing",
+    field: WholeDeclaration
   }
 }

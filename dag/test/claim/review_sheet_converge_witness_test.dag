@@ -17,10 +17,16 @@ import gunbc.review_sheet_projection {
   ObservedSheetRow,
   ReviewSheetWritePlan,
   DerivedCellWrite,
+  ReviewSheetConverged,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
   write_plan_preserves_operator_columns,
   write_plan_touches_column,
-  decide_review_sheet,
+  classify_review_sheet,
+  conflict_reason,
   judgement_for_listing,
+  buyer_review_judgement_read_frontier,
   JudgementBlank,
   JudgementEntered,
   JudgementUnreadable,
@@ -205,15 +211,17 @@ test fn converge_twice_unchanged_is_noop() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), ""]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Noop =>
-      match decide_review_sheet(observed: observed, projection: projection) {
-        Noop => true
-        Apply { plan: _ } => false
-        Refuse { reason: _ } => false
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetConverged =>
+      match classify_review_sheet(observed: observed, projection: projection) {
+        ReviewSheetConverged => true
+        ReviewSheetNeedsWrite { plan: _ } => false
+        ReviewSheetConflict { conflict: _ } => false
+        ReviewSheetUnreadable { reason: _ } => false
       }
-    Apply { plan: _ } => false
-    Refuse { reason: _ } => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
   }
 }
 
@@ -223,8 +231,8 @@ test fn converge_preserves_populated_human_column() -> Bool {
     headers: w_headers(),
     rows: [["L1", "", w_standing_observed(), "buy"]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Apply { plan: p } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && match judgement_for_listing(
           observed: observed,
@@ -237,8 +245,9 @@ test fn converge_preserves_populated_human_column() -> Bool {
           JudgementUnreadable { reason: _ } => false
         }
         && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
-    Noop => false
-    Refuse { reason: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
   }
 }
 
@@ -248,13 +257,17 @@ test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> B
     headers: w_headers(),
     rows: [["L1", "hand-edited", w_standing_observed(), ""]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Refuse { reason: r } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetConflict { conflict: c } =>
+      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=title")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=B2")
+    ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "listing=L1")
         && string_contains(s: r as String, pattern: "column=title")
         && string_contains(s: r as String, pattern: "cell=B2")
-    Noop => false
-    Apply { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
   }
 }
 
@@ -277,10 +290,10 @@ test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
       ["L1", "alpha", w_standing_observed(), "buy"],
     ],
   )
-  match decide_review_sheet(observed: sorted, projection: projection) {
-    Noop =>
-      match decide_review_sheet(observed: resorted, projection: projection) {
-        Noop =>
+  match classify_review_sheet(observed: sorted, projection: projection) {
+    ReviewSheetConverged =>
+      match classify_review_sheet(observed: resorted, projection: projection) {
+        ReviewSheetConverged =>
           match judgement_for_listing(
             observed: resorted,
             identity_column: "listing_id" as NonEmptyStr,
@@ -301,11 +314,13 @@ test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
               JudgementBlank => false
               JudgementUnreadable { reason: _ } => false
             }
-        Apply { plan: _ } => false
-        Refuse { reason: _ } => false
+        ReviewSheetNeedsWrite { plan: _ } => false
+        ReviewSheetConflict { conflict: _ } => false
+        ReviewSheetUnreadable { reason: _ } => false
       }
-    Apply { plan: _ } => false
-    Refuse { reason: _ } => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
   }
 }
 
@@ -315,8 +330,8 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), "buy"]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Apply { plan: p } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && (p.appends |> count) == 0
         && match judgement_for_listing(
@@ -334,8 +349,9 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
             && w.column == ("standing" as NonEmptyStr)
             && w.value == listing_standing_label(state: StandingGone))
         })
-    Noop => false
-    Refuse { reason: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
   }
 }
 
@@ -598,12 +614,13 @@ test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
     headers: ["listing_id", "title", "standing", "judgement", "title"],
     rows: [["L1", "alpha", w_standing_observed(), "", "hand-edit"]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Refuse { reason: r } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "duplicate header title")
         && !string_contains(s: r as String, pattern: "derived cell conflict")
-    Noop => false
-    Apply { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
   }
 }
 
@@ -613,13 +630,14 @@ test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", "Obsered", ""]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Refuse { reason: r } =>
-      string_contains(s: r as String, pattern: "listing=L1")
-        && string_contains(s: r as String, pattern: "column=standing")
-        && string_contains(s: r as String, pattern: "cell=C2")
-    Noop => false
-    Apply { plan: _ } => false
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetConflict { conflict: c } =>
+      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=standing")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=C2")
+    ReviewSheetUnreadable { reason: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
   }
 }
 
@@ -663,18 +681,19 @@ test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool 
     headers: concat(["listing_id"], a1_column_letters),
     rows: [concat(["L1"], map(a1_column_letters, n => ""))],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Refuse { reason: r } => string_contains(s: r as String, pattern: "unrepresentable A1 column index 26")
-    Noop => false
-    Apply { plan: _ } => false
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } => string_contains(s: r as String, pattern: "unrepresentable A1 column index 26")
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
   }
 }
 
 test fn absent_listing_appends_a_located_row() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "beta")])
   let observed = w_observed(headers: w_headers(), rows: [])
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Apply { plan: p } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
       (p.patches |> count) == 0
         && match p.appends |> first {
           Present { value: a } =>
@@ -707,8 +726,9 @@ test fn absent_listing_appends_a_located_row() -> Bool {
               }
           Absent => false
         }
-    Noop => false
-    Refuse { reason: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
   }
 }
 
@@ -716,8 +736,8 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "alpha")])
   let headers = ["listing_id", "standing", "title", "judgement"]
   let observed = w_observed(headers: headers, rows: [])
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Apply { plan: p } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
       match p.appends |> first {
         Present { value: a } =>
           match a.cells.skip(n: 1).first() {
@@ -760,8 +780,9 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
           }
         Absent => false
       }
-    Noop => false
-    Refuse { reason: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
   }
 }
 
@@ -773,13 +794,14 @@ test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool
     headers: w_headers(),
     rows: [["L1", "", w_standing_observed(), ""]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Refuse { reason: r } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "projection omitted derived column title")
         && string_contains(s: r as String, pattern: "listing=L1")
         && !string_contains(s: r as String, pattern: "derived cell conflict")
-    Noop => false
-    Apply { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
   }
 }
 
@@ -791,12 +813,13 @@ test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), ""]],
   )
-  match decide_review_sheet(observed: observed, projection: projection) {
-    Refuse { reason: r } =>
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "projection omitted derived column title")
         && !string_contains(s: r as String, pattern: "derived cell conflict")
-    Noop => false
-    Apply { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
   }
 }
 
@@ -809,6 +832,14 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
     Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
     Terminal { reason: _ } => false
   }
+    && match buyer_review_judgement_read_frontier {
+      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+        (b.module_path as String) == "gunbc.review_sheet_projection"
+          && (b.decl_name as String) == "judgement_for_listing"
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+      Terminal { reason: _ } => false
+    }
     && sheet_a1_range_wire(
       range: review_sheet_get_values_request(
         tab: "Review" as NonEmptyStr,
