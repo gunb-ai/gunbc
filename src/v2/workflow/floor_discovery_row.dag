@@ -20,6 +20,9 @@ import v2.workflow.floor_naming_hygiene {
 // compiler (the required-v2-native lane's universe derivation), where those three modules emit
 // Rust that does not build. One module, two facts, one of them effectful: the row half is the one
 // the compiled route needs, so it is separable and now separate.
+//
+// These typed verdicts (live-tree eligibility, sidecar suffix rules) are the authority the host's
+// own discovery realization consumes; it must not re-implement them.
 
 type FloorDiscoveryRow {
   label: String
@@ -66,5 +69,3 @@ fn floor_discovery_wire_contract_sidecar_violation(entry_path: String) -> Option
     )
   }
 }
-
-data floor_discovery_producer_note: String = "Discovery producer authority: row shape + sidecar placement decisions for the floor corpus. Host realize discovers owned-data transport rows and test fn names; this module owns the typed verdicts (live-tree eligibility, sidecar suffix rules) that cli_run.rs must not re-implement."

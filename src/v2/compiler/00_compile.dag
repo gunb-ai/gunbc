@@ -1301,7 +1301,11 @@ fn native_lane_module_named(xs: List<String>, name: String) -> Bool {
 // decide whether the budget or the graph is wrong: the budget, the frontier still unexpanded, and
 // the first module on it. The budget is rounds of breadth-first expansion, so it bounds import
 // DEPTH, not closure size; a closure finishing on exactly its last round is accepted, because the
-// empty-frontier arm is asked before the budget arm.
+// empty-frontier arm is asked before the budget arm. The value is a POLICY budget, not a
+// measurement of today's corpus: an acyclic import graph of N modules is at most N rounds deep, so
+// any budget is a statement of how deep a chain the route agrees to pay for before asking whether
+// the graph is wrong, and a real chain that deep is itself the finding. Its RED and its boundary
+// are enrolled in v2.test.v2_native_route.
 data native_lane_closure_round_budget: Int = 512
 
 fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> String {
