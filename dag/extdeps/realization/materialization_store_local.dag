@@ -122,12 +122,16 @@ fn store_marker_recognized(root: MaterializationStoreRoot, content: String) -> B
 // ---------------------------------------------------------------------------------------------
 // Transport observations -> the realization-agnostic observations.
 
+// The detail names the host's KIND beside its message (filesystem_failure_kind_name), so a
+// refusal read by a person or a later classifier carries the classification the channel made rather
+// than only the host's free text.
 fn filesystem_fault(kind: FilesystemFailureKind, error: String) -> StoreFault {
+  let detail = join([filesystem_failure_kind_name(kind: kind), ": ", error], "")
   match kind {
-    FilesystemPermissionDenied => StoreFault { class: StoreFaultUnauthorized, detail: error }
-    FilesystemNotFound => StoreFault { class: StoreFaultUnreachable, detail: error }
-    FilesystemAlreadyExists => StoreFault { class: StoreFaultUnreachable, detail: error }
-    FilesystemOtherFailure => StoreFault { class: StoreFaultUnreachable, detail: error }
+    FilesystemPermissionDenied => StoreFault { class: StoreFaultUnauthorized, detail: detail }
+    FilesystemNotFound => StoreFault { class: StoreFaultUnreachable, detail: detail }
+    FilesystemAlreadyExists => StoreFault { class: StoreFaultUnreachable, detail: detail }
+    FilesystemOtherFailure => StoreFault { class: StoreFaultUnreachable, detail: detail }
   }
 }
 

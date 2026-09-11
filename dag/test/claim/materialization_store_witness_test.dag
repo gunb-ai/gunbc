@@ -30,6 +30,7 @@ import std.materialization_object {
   encode_store_object, percent_encode_payload, percent_decode_payload,
 }
 import extdeps.filesystem.filesystem_io {
+  FilesystemPermissionDenied,
   FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemExactPathRead, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
   filesystem_exact_read, filesystem_create_new,
@@ -38,6 +39,7 @@ import extdeps.realization.materialization_store_local {
   LocalStoreOpened, LocalStoreUnavailable,
   LocalStoreNotInitialized, LocalStoreMarkerUnrecognized, LocalStoreMarkerUnavailable,
   local_store_open_decide, store_marker_content, materialization_store_local_id,
+  store_read_observation,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -361,4 +363,14 @@ test fn a_repeated_payload_line_is_refused_not_resolved() -> Bool {
   (duplicated == good) == false
     && store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: duplicated)) == "payload_repeated"
     && store_lookup_is_hit(l: lookup_present(req: bundle_req(), object: good))
+}
+
+// An unreadable object reaches the store as unavailable, and its fault carries the host's KIND by
+// name (filesystem_failure_kind_name), not only the host's free text (review 63940).
+test fn an_unreadable_object_fault_names_the_host_kind() -> Bool {
+  match store_read_observation(read: FilesystemExactPathUnreadable { path: "/s/o", kind: FilesystemPermissionDenied, error: "denied" }) {
+    StoreObjectUnavailable { fault: f } => starts_with(s: f.detail, prefix: "permission_denied: ")
+    StoreObjectPresent { content: _ } => false
+    StoreObjectAbsent => false
+  }
 }
