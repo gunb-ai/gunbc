@@ -137,20 +137,23 @@ pub fn relay_child_stderr(stderr: &[u8]) {
     }
 }
 
-fn intern_exclusive_name(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "seed_emission" => PHASE_SEED_EMISSION,
-        "cargo_build" => PHASE_CARGO_BUILD,
-        "malformed_control_run" => PHASE_MALFORMED_CONTROL_RUN,
-        "universe_derivation" => PHASE_UNIVERSE_DERIVATION,
-        "module_preparation" => PHASE_MODULE_PREPARATION,
-        "identity_evaluation" => PHASE_IDENTITY_EVALUATION,
-        "receipt_serialization" => PHASE_RECEIPT_SERIALIZATION,
-        "module_bundle" => PHASE_MODULE_BUNDLE,
-        "source_load" => PHASE_SOURCE_LOAD,
-        "test_context" => PHASE_TEST_CONTEXT,
-        _ => return None,
-    })
+fn intern_child_exclusive_name(name: &str) -> Result<&'static str, String> {
+    match name {
+        "seed_emission"
+        | "cargo_build"
+        | "malformed_control_run"
+        | "universe_derivation"
+        | "receipt_admission" => Err(format!(
+            "host exclusive row {name} is not admissible on the child path"
+        )),
+        "module_preparation" => Ok(PHASE_MODULE_PREPARATION),
+        "identity_evaluation" => Ok(PHASE_IDENTITY_EVALUATION),
+        "receipt_serialization" => Ok(PHASE_RECEIPT_SERIALIZATION),
+        "module_bundle" => Ok(PHASE_MODULE_BUNDLE),
+        "source_load" => Ok(PHASE_SOURCE_LOAD),
+        "test_context" => Ok(PHASE_TEST_CONTEXT),
+        _ => Err(format!("unknown exclusive row {name}")),
+    }
 }
 
 fn intern_observation_key(name: &str) -> Option<&'static str> {
@@ -193,8 +196,7 @@ fn render_child_phase_as_cost_partition(json_text: &str) -> Result<String, Strin
         .ok_or_else(|| "exclusive object required".to_string())?;
     let mut exclusive = Vec::new();
     for (name, nanos_v) in exclusive_obj {
-        let interned =
-            intern_exclusive_name(name).ok_or_else(|| format!("unknown exclusive row {name}"))?;
+        let interned = intern_child_exclusive_name(name)?;
         let nanos = json_u128(nanos_v).ok_or_else(|| format!("nanos for {name}"))?;
         exclusive.push(CostPartitionRow {
             name: interned,
@@ -238,7 +240,9 @@ fn render_child_phase_as_cost_partition(json_text: &str) -> Result<String, Strin
             let key =
                 intern_observation_key(k).ok_or_else(|| format!("unknown observation {k}"))?;
             observations.push((key, n));
+            continue;
         }
+        return Err(format!("unhandled value for {k}"));
     }
     partition.labels = labels;
     if let Some(files_v) = obj.get("ingested_files") {
@@ -413,9 +417,32 @@ mod tests {
         )
         .expect_err("child println clock is not host admission");
         assert!(
-            err.contains("unknown exclusive row receipt_admission"),
+            err.contains(
+                "host exclusive row receipt_admission is not admissible on the child path"
+            ),
             "{err}"
         );
+    }
+
+    #[test]
+    fn child_host_phase_exclusive_rows_are_refused() {
+        for name in [
+            "seed_emission",
+            "cargo_build",
+            "malformed_control_run",
+            "universe_derivation",
+        ] {
+            let err = render_child_phase_as_cost_partition(&format!(
+                r#"{{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{{"{name}":10}}}}"#
+            ))
+            .expect_err(name);
+            assert!(
+                err.contains(&format!(
+                    "host exclusive row {name} is not admissible on the child path"
+                )),
+                "{name}: {err}"
+            );
+        }
     }
 
     #[test]
@@ -426,5 +453,26 @@ mod tests {
         .expect("parse");
         assert!(json.contains("\"receipt_serialization\":10"));
         assert!(!json.contains("\"receipt_admission\""));
+    }
+
+    #[test]
+    fn child_unhandled_field_values_are_refused() {
+        for (json, needle) in [
+            (
+                r#"{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{"source_load":10},"flag":true}"#,
+                "unhandled value for flag",
+            ),
+            (
+                r#"{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{"source_load":10},"frac":1.5}"#,
+                "unhandled value for frac",
+            ),
+            (
+                r#"{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{"source_load":10},"neg":-1}"#,
+                "unhandled value for neg",
+            ),
+        ] {
+            let err = render_child_phase_as_cost_partition(json).expect_err(needle);
+            assert!(err.contains(needle), "{needle}: {err}");
+        }
     }
 }
