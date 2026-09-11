@@ -2,7 +2,7 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count }
+import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
@@ -236,13 +236,6 @@ fn kv_layout_policy_matching_wire(wire: NonEmptyStr) -> KvLayoutPolicy? {
 
 fn kv_wire_in_roster(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
   any(admitted, d => (d as String) == (wire as String))
-}
-
-fn kv_layout_from_sm12_admit(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> KvLayoutPolicy? {
-  match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
-    Sm12KvLayoutAdmitted { policy: k } => Present { value: k }
-    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => none
-  }
 }
 
 // THE JOIN IS PRESERVED BEFORE ANY PROFILE LIST. A miss is this standing, never Absent→[] and never
@@ -802,15 +795,14 @@ fn demand_key(d: WorkloadDemandStanding) -> String {
 
 // ── THE LOWER BOUND DISPROVES; IT CANNOT ESTABLISH ────────────────────────────────────────────
 type WeightFit
-  = WeightsNotRuledOutByLowerBound { per_rank_bytes: Nat, usable_bytes: Nat, slack_bytes: Nat }
-  | WeightsImpossibleByLowerBound { per_rank_bytes: Nat, usable_bytes: Nat }
+  = WeightsNotRuledOutByLowerBound { per_rank_bytes: ByteSize, usable_bytes: ByteSize, slack_bytes: ByteSize }
+  | WeightsImpossibleByLowerBound { per_rank_bytes: ByteSize, usable_bytes: ByteSize }
   | WeightFitUnderivable { because: NonEmptyStr }
 
-// THE SCREEN TAKES BASIS POINTS BECAUSE THE REQUEST DOES. It divided by 100 against an integral
-// percent, which could not represent the fractions this fleet's engines actually receive; the
-// arithmetic is identical, at the precision the request carries.
-fn usable_bytes_per_rank(fleet: FleetSnapshot, utilisation_basis_points: Nat) -> Nat {
-  (byte_size_count(b: fleet.bytes_per_host) * utilisation_basis_points) / 10000
+// THE SCREEN TAKES BASIS POINTS BECAUSE THE REQUEST DOES. Scale lives in std.measure; this
+// screen does not re-invent floor-fraction on ByteSize.
+fn usable_bytes_per_rank(fleet: FleetSnapshot, utilisation_basis_points: Nat) -> ByteSize {
+  measure_scale_fraction_floor(m: fleet.bytes_per_host, num: utilisation_basis_points, den: 10000)
 }
 
 // AN OMITTED FRACTION HAS NO EFFECTIVE VALUE UNTIL IT IS RESOLVED AGAINST A REVISION, so this screen
@@ -825,13 +817,13 @@ fn requested_utilisation_basis_points(r: VllmMemoryRequest) -> Nat? {
   }
 }
 
-fn weight_fit_against_envelope(fleet: FleetSnapshot, per_rank: Nat, basis_points: Nat) -> WeightFit {
+fn weight_fit_against_envelope(fleet: FleetSnapshot, per_rank: ByteSize, basis_points: Nat) -> WeightFit {
   let usable = usable_bytes_per_rank(fleet: fleet, utilisation_basis_points: basis_points)
-  if per_rank <= usable {
+  if measure_le(a: per_rank, b: usable) {
     WeightsNotRuledOutByLowerBound {
       per_rank_bytes: per_rank,
       usable_bytes: usable,
-      slack_bytes: usable - per_rank,
+      slack_bytes: byte_size(byte_size_count(b: usable) - byte_size_count(b: per_rank)),
     }
   } else {
     WeightsImpossibleByLowerBound { per_rank_bytes: per_rank, usable_bytes: usable }
@@ -840,9 +832,9 @@ fn weight_fit_against_envelope(fleet: FleetSnapshot, per_rank: Nat, basis_points
 
 // CEILING, NOT FLOOR, and it refuses zero ranks itself rather than trusting its callers to guard.
 // An exported helper whose contract depends on a guard somewhere else is a guard that will be
-// forgotten at the next call site.
-fn per_rank_bytes_ceiling(total: Nat, ranks: Nat) -> Nat? {
-  if ranks == 0 { none } else { Present { value: (total + (ranks - 1)) / ranks } }
+// forgotten at the next call site. The ceiling is std.measure's, not a second Nat formula.
+fn per_rank_bytes_ceiling(total: ByteSize, ranks: Nat) -> ByteSize? {
+  if ranks == 0 { none } else { Present { value: measure_scale_fraction_ceil(m: total, num: 1, den: ranks) } }
 }
 
 fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisionParameters) -> WeightFit {
@@ -853,7 +845,7 @@ fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisio
         because: join(["the only footprint for this artifact is externally reported and not read on this fleet, so it cannot support a feasibility verdict here: ", src as String], "") as NonEmptyStr,
       }
     FootprintObservedOnFleet { bytes: b, how: _ } =>
-      match per_rank_bytes_ceiling(total: byte_size_count(b: b), ranks: c.topology.tensor_parallel_degree) {
+      match per_rank_bytes_ceiling(total: b, ranks: c.topology.tensor_parallel_degree) {
         Absent => WeightFitUnderivable { because: "a zero tensor-parallel degree has no per-rank share" as NonEmptyStr }
         Present { value: per_rank } =>
           match requested_utilisation_basis_points(r: p.memory_request) {
@@ -1197,10 +1189,6 @@ type ServingDeploymentChoiceDomain sole_constructor {
 
 fn serving_deployment_domain(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, parameters: ServingDecisionParameters) -> ServingDeploymentChoiceDomain {
   ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: [serving_profile_ready(profile: parameters)] }
-}
-
-fn serving_deployment_domain_over(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, profiles: List<ServingDecisionParameters>) -> ServingDeploymentChoiceDomain {
-  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, profiles: map(profiles, p => serving_profile_ready(profile: p)) }
 }
 
 fn serving_deployment_domain_over_standings(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, standings: List<ServingProfileStanding>) -> ServingDeploymentChoiceDomain {
