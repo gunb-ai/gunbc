@@ -1,17 +1,19 @@
 module test.claim.self_host_v1_consumer_census_witness_test
 
-import std.types { Bool }
+import std.types { Bool, Int, List, String }
 import gunbc.replacement_cut { BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty }
 import gunbc.rust_item_host_observation {
   RustSourceNamespaceRow, rust_source_namespace_rows, rust_source_prefix_tooling,
-  rust_module_path_for_repo_path, RustModulePathProjected, RustModulePathRefused
+  rust_module_path_for_repo_path, RustModulePathProjected, RustModulePathRefused,
+  RustFileChangeInput, RustReferenceObservation, RustReferencesObserved, RustReferenceHostRefused,
+  observe_rust_references
 }
 import gunbc.v1_consumer_census {
-  v1_consumers, v1_uncitable_consumers, v1_consumer_population, v1_row_keys,
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
-  v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
+  v1_bankruptcy_transaction_admitted,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
-  v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors
+  v1_consumer_population_for, v1_reference_tokens,
+  V1ShimPopulation, V1ShimPopulationObserved, V1ShimPopulationRefused, v1_shim_population_of
 }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
@@ -21,6 +23,14 @@ import test.fixture.v1_consumer_census.specimens {
   planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population
 }
 
+// THE LIVE HALF LIVES IN self_host_v1_consumer_census_live_witness_test.dag. Since the Rust
+// reference population became a produced observation (gunbc.rust_item_host_observation
+// observe_current_rust_references reaches git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision
+// and git.Core.Show), v1_consumer_population() is a live read the hermetic discovery envelope
+// REFUSES rather than skips, and a refusing discovery member fails its whole batch. The four
+// witnesses that read the live population moved there under the gunbc.ci_layer_roots exclusion row
+// that names that file; everything here folds planted sources through the same producer.
+//
 // WHAT THIS WITNESS ESTABLISHES, AND WHAT IT DOES NOT.
 //
 // It does NOT measure the repository. The live roster in gunbc.v1_consumer_census is a hand sweep
@@ -95,56 +105,69 @@ fn live_rows_without_tooling() -> List<RustSourceNamespaceRow> {
   rust_source_namespace_rows |> filter(r => r.repo_prefix != rust_source_prefix_tooling)
 }
 
+// THE PLANTED REFERENCE POPULATION: three hand-Rust files under the tooling tree, authored here so
+// the producer's fold is exercised on inputs this file controls rather than on whatever the tree
+// happens to carry. One reaches v1_rt at file level, one through a `mod` item, one names nothing
+// and must produce no row at all -- the negative control that shows the fold is keyed on the token
+// rather than on the tree.
+fn planted_source(path: String, content: String) -> RustFileChangeInput {
+  RustFileChangeInput {
+    repo_path: path, base_content: "", head_content: content,
+    present_at_base: false, present_at_head: true, old_ranges: [], new_ranges: []
+  }
+}
+
+fn planted_sources() -> List<RustFileChangeInput> {
+  [
+    planted_source(path: "dag/gunbc/instruments/planted_use_shims/lib.rs", content: "#![allow(dead_code)]\npub use v1_compiler::v1_rt;\npub fn bridge() {}\n"),
+    planted_source(path: "dag/gunbc/instruments/planted_mod_shims/lib.rs", content: "pub mod v1_rt;\npub mod other;\n"),
+    planted_source(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs", content: "pub fn nothing_here() {}\n"),
+  ]
+}
+
+fn planted_observation(rows: List<RustSourceNamespaceRow>) -> RustReferenceObservation {
+  observe_rust_references(sources: planted_sources(), generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rows)
+}
+
+fn planted_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPopulation {
+  v1_shim_population_of(observation: planted_observation(rows: rows))
+}
+
+fn planted_row_count() -> Int {
+  match planted_observation(rows: rust_source_namespace_rows) {
+    RustReferencesObserved { rows: rs, unattributed: _, unscannable: _ } => count(rs)
+    RustReferenceHostRefused { detail: _ } => 0
+  }
+}
+
 fn the_tooling_row_decides_shim_citability() -> Bool {
-  let with = v1_shim_partition(rows: rust_source_namespace_rows)
-  let without = v1_shim_partition(rows: live_rows_without_tooling())
-  count(with.cited) == count(v1_shim_items()) && count(with.uncitable) == 0
-    && count(without.uncitable) == count(v1_shim_items()) && count(without.cited) == 0
-    && count(live_rows_without_tooling()) == count(rust_source_namespace_rows) - 1
-    && (with.cited |> all(r => starts_with(s: r.boundary.consumer.module_path as String, prefix: "v1_compiled.")))
+  match planted_partition(rows: rust_source_namespace_rows) {
+    V1ShimPopulationRefused { reason: _ } => false
+    V1ShimPopulationObserved { partition: cited_partition } =>
+      match planted_partition(rows: live_rows_without_tooling()) {
+        V1ShimPopulationRefused { reason: _ } => false
+        V1ShimPopulationObserved { partition: uncited_partition } =>
+          planted_row_count() == 2
+            && count(cited_partition.cited) == planted_row_count() && count(cited_partition.uncitable) == 0
+            && count(uncited_partition.uncitable) == planted_row_count() && count(uncited_partition.cited) == 0
+            && count(live_rows_without_tooling()) == count(rust_source_namespace_rows) - 1
+            && (cited_partition.cited |> all(r => starts_with(s: r.boundary.consumer.module_path as String, prefix: "v1_compiled.")))
+            && (cited_partition.cited |> all(r => r.boundary.consumed_old_authority.module_path as String == "v1_compiler.v1_rt"))
+      }
+  }
 }
 
 // THE POPULATION IS DERIVED FROM THE SAME PARTITION: with the row, the uncitable column is empty;
-// without it, four. Both arms stay LowerBound -- the row was necessary for Complete, not sufficient.
+// without it, every planted reference. Both arms stay LowerBound -- the row was necessary for
+// Complete, not sufficient -- and a host refusal is the Unmeasured arm, never an empty list.
 fn the_population_carries_the_partition() -> Bool {
-  count(consumer_population_uncitable(p: v1_consumer_population_for(rows: rust_source_namespace_rows))) == 0
-    && count(consumer_population_uncitable(p: v1_consumer_population_for(rows: live_rows_without_tooling()))) == count(v1_shim_items())
-    && !consumer_population_is_complete(p: v1_consumer_population_for(rows: rust_source_namespace_rows))
-    && !consumer_population_is_complete(p: v1_consumer_population_for(rows: live_rows_without_tooling()))
-}
-
-// THE LIVE TREE REFUSES, AND FOR THE REASONS THE CENSUS RECORDS. Stated as a conjunction because
-// 'the gate is false' is also what a broken gate returns: the population is a lower bound AND there
-// is at least one blocking consumer AND not every consumer blocks -- three independent facts whose
-// conjunction is what 'XL-5 has not run yet' means.
-fn the_live_transaction_refuses_for_recorded_reasons() -> Bool {
-  !consumer_population_is_complete(p: v1_consumer_population())
-    && v1_blocking_consumer_count() > 0
-    && v1_blocking_consumer_count() < v1_consumer_member_count()
-}
-
-// THE GATE ITSELF, EXECUTED ON THE LIVE POPULATION. The assertion above establishes the reasons;
-// this one establishes the verdict, and against the most generous realized population that can be
-// written -- every successor this census claims, handed to the gate as realized -- so the false
-// cannot be coming from an unrealized successor. It comes from the population being a lower bound
-// and from blocking consumers, which are the two facts XL-5's gate has not yet discharged.
-fn the_live_gate_refuses_even_with_every_successor_realized() -> Bool {
-  !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: [])
-    && !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: v1_claimed_successors(rows: v1_consumers()))
-}
-
-// THE ROSTER AND THE POPULATION NAME ONE LIST. Two declarations naming one list can disagree in
-// exactly one way -- an author filing a row and forgetting the population -- which would leave a
-// consumer recorded and unread by the gate.
-fn the_live_population_carries_the_whole_roster() -> Bool {
-  v1_every_discovered_consumer_disposed(
-      discovered: v1_row_keys(rows: v1_consumers()),
-      rows: consumer_population_rows(p: v1_consumer_population())
-    ) && v1_every_row_names_a_live_consumer(
-      discovered: v1_row_keys(rows: v1_consumers()),
-      rows: consumer_population_rows(p: v1_consumer_population())
-    )
-    && count(v1_uncitable_consumers()) == count(consumer_population_uncitable(p: v1_consumer_population()))
+  count(consumer_population_uncitable(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows)))) == 0
+    && count(consumer_population_uncitable(p: v1_consumer_population_for(observation: planted_observation(rows: live_rows_without_tooling())))) == planted_row_count()
+    && !consumer_population_is_complete(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows)))
+    && !consumer_population_is_complete(p: v1_consumer_population_for(observation: planted_observation(rows: live_rows_without_tooling())))
+    && count(consumer_population_rows(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }))) == 0
+    && count(consumer_population_uncitable(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }))) == 0
+    && !consumer_population_is_complete(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }))
 }
 
 test fn consumer_census_catches_an_undisposed_consumer() -> Bool { undisposed_consumer_is_caught() }
@@ -156,9 +179,6 @@ test fn consumer_census_admission_refuses_an_unrealized_successor() -> Bool { ad
 test fn consumer_census_boundary_census_enumerates_the_rows() -> Bool { boundary_census_enumerates_the_rows() }
 test fn consumer_census_tooling_row_decides_shim_citability() -> Bool { the_tooling_row_decides_shim_citability() }
 test fn consumer_census_population_carries_the_partition() -> Bool { the_population_carries_the_partition() }
-test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
-test fn consumer_census_live_gate_refuses_even_with_every_successor_realized() -> Bool { the_live_gate_refuses_even_with_every_successor_realized() }
-test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }
 
 // THE TOOLING TREE CARRIES THE NAME OF THE PACKAGE IT ASSEMBLES INTO. dag/gunbc/instruments/ is the
 // scaffold's rust_source_prefix_tooling; its shim crates are assembled into the `v1_compiled`

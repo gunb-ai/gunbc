@@ -15,11 +15,17 @@ import gunbc.rust_item_host_observation {
   RustItemChangeUnattributed,
   RustModulePathProjected,
   RustModulePathRefused,
+  RustReferenceRow,
+  RustReferenceObservation,
+  RustReferencesObserved,
+  RustReferenceHostRefused,
   item_declaration_ref,
   observe_live_hand_rust,
   observe_rust_item_change,
+  observe_rust_references,
   parse_hunk_header,
-  rust_module_path_for_repo_path
+  rust_module_path_for_repo_path,
+  rust_source_namespace_rows
 }
 import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
 import gunbc.seed_growth_admission {
@@ -609,5 +615,96 @@ test fn an_unobservable_change_cannot_produce_a_complete_verdict() -> Bool {
       duplicate_justifications: _,
       uncitable_items: _
     } => false
+  }
+}
+
+// THE REFERENCE-POPULATION PRODUCER, ON PLANTED SOURCES. Five files, five arms: a file-level
+// `pub use` lands on the file's own RustModule item (the crate root the census used to hand-author);
+// a reference inside an fn lands on that fn; a reference inside an unnamed macro block is a located
+// UNATTRIBUTED row rather than a dropped line; a file that names no token yields nothing; a file
+// under a tree no namespace row claims still reaches the projection and refuses THERE with its path,
+// rather than being skipped by the selection. Every count is a fold over the planted population.
+fn reference_source(path: String, content: String) -> RustFileChangeInput {
+  RustFileChangeInput {
+    repo_path: path, base_content: "", head_content: content,
+    present_at_base: false, present_at_head: true, old_ranges: [], new_ranges: []
+  }
+}
+
+data reference_tokens: List<String> = ["v1_rt"]
+
+fn reference_sources() -> List<RustFileChangeInput> {
+  [
+    reference_source(path: "dag/gunbc/instruments/planted_use_shims/lib.rs", content: "#![allow(dead_code)]\npub use v1_compiler::v1_rt;\n"),
+    reference_source(path: "dag/gunbc/instruments/planted_fn_shims/lib.rs", content: "pub fn bridge() -> u32 {\n    v1_rt::answer()\n}\n"),
+    reference_source(path: "dag/gunbc/instruments/planted_macro_shims/lib.rs", content: "use std::cell::RefCell;\n\nthread_local! {\n    static RT: RefCell<u32> = RefCell::new(v1_rt::seed());\n}\n"),
+    reference_source(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs", content: "pub fn nothing_here() -> u32 {\n    1\n}\n"),
+    reference_source(path: "fixtures/planted_unclaimed/lib.rs", content: "pub use v1_compiler::v1_rt;\n"),
+  ]
+}
+
+fn reference_observation() -> RustReferenceObservation {
+  observe_rust_references(sources: reference_sources(), generated_repo_paths: [], tokens: reference_tokens, rows: rust_source_namespace_rows)
+}
+
+fn reference_rows() -> List<RustReferenceRow> {
+  match reference_observation() {
+    RustReferencesObserved { rows: rs, unattributed: _, unscannable: _ } => rs
+    RustReferenceHostRefused { detail: _ } => []
+  }
+}
+
+fn reference_row_for(path: String) -> List<RustReferenceRow> {
+  reference_rows() |> filter(r => (r.item.repo_path as String) == path)
+}
+
+fn reference_row_projects_to(path: String, module_path: String, decl_name: String) -> Bool {
+  reference_row_for(path: path) |> any(r => match r.projection {
+    ItemDeclarationRefProjected { ref: x } => (x.module_path as String) == module_path && (x.decl_name as String) == decl_name
+    ItemDeclarationRefUncitable { item_key: _, detail: _ } => false
+    ItemDeclarationRefRefused { item_key: _, detail: _ } => false
+  })
+}
+
+test fn a_file_level_reference_lands_on_the_files_own_module_item() -> Bool {
+  count(reference_row_for(path: "dag/gunbc/instruments/planted_use_shims/lib.rs")) == 1
+    && reference_row_projects_to(path: "dag/gunbc/instruments/planted_use_shims/lib.rs", module_path: "v1_compiled.planted_use_shims.lib", decl_name: "lib")
+    && (reference_row_for(path: "dag/gunbc/instruments/planted_use_shims/lib.rs") |> all(r => r.line == 2 && r.token == "v1_rt"))
+}
+
+test fn a_reference_inside_an_item_lands_on_that_item() -> Bool {
+  count(reference_row_for(path: "dag/gunbc/instruments/planted_fn_shims/lib.rs")) == 1
+    && reference_row_projects_to(path: "dag/gunbc/instruments/planted_fn_shims/lib.rs", module_path: "v1_compiled.planted_fn_shims.lib", decl_name: "bridge")
+}
+
+test fn a_reference_inside_a_macro_block_is_a_located_unattributed_row_not_a_dropped_line() -> Bool {
+  match reference_observation() {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { rows: _, unattributed: u, unscannable: un } =>
+      count(un) == 0
+        && count(u) == 1
+        && (u |> all(x => x.repo_path == "dag/gunbc/instruments/planted_macro_shims/lib.rs" && x.line == 4 && x.token == "v1_rt"))
+        && count(reference_row_for(path: "dag/gunbc/instruments/planted_macro_shims/lib.rs")) == 0
+  }
+}
+
+test fn a_file_naming_no_token_yields_no_row() -> Bool {
+  count(reference_row_for(path: "dag/gunbc/instruments/planted_clean_shims/lib.rs")) == 0
+}
+
+test fn a_reference_under_an_unclaimed_tree_refuses_at_the_projection_rather_than_being_skipped() -> Bool {
+  count(reference_row_for(path: "fixtures/planted_unclaimed/lib.rs")) == 1
+    && (reference_row_for(path: "fixtures/planted_unclaimed/lib.rs") |> all(r => match r.projection {
+         ItemDeclarationRefRefused { item_key: _, detail: _ } => true
+         ItemDeclarationRefProjected { ref: _ } => false
+         ItemDeclarationRefUncitable { item_key: _, detail: _ } => false
+       }))
+}
+
+// THE POPULATION IS KEYED ON THE TOKEN, NOT THE TREE: the same sources with no token yield nothing.
+test fn the_reference_population_is_empty_under_an_empty_token_list() -> Bool {
+  match observe_rust_references(sources: reference_sources(), generated_repo_paths: [], tokens: [], rows: rust_source_namespace_rows) {
+    RustReferencesObserved { rows: rs, unattributed: u, unscannable: un } => count(rs) == 0 && count(u) == 0 && count(un) == 0
+    RustReferenceHostRefused { detail: _ } => false
   }
 }

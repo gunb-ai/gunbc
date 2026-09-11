@@ -1,0 +1,80 @@
+module test.claim.self_host_v1_consumer_census_live_witness_test
+
+import std.types { Bool }
+import gunbc.rust_item_host_observation { RustReferencesObserved, RustReferenceHostRefused }
+import gunbc.v1_consumer_census {
+  v1_consumers, v1_uncitable_consumers, v1_consumer_population, v1_row_keys,
+  v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer,
+  v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
+  consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
+  v1_shim_partition_over, v1_current_rust_references, v1_claimed_successors
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// SPLIT OUT OF self_host_v1_consumer_census_witness_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN
+// RUN. Every fn here reads v1_consumer_population(), which since the Rust reference population
+// became a produced observation reaches git.Inspect.HeadCommit, git.Inspect.ListTreePathsAtRevision
+// and git.Core.Show through gunbc.rust_item_host_observation observe_current_rust_references. None
+// of those carries a mock_response, so under the hermetic envelope the run REFUSES rather than
+// skipping, and a refusing discovery member fails its whole batch -- the class
+// stage0_rust_host_observation_live_witness_test.dag documents. Publishing mocks is not the answer
+// for the same reason it was reverted there: a census whose population is a constant asserts
+// nothing about the tree.
+//
+// WHAT IS LOST, STATED: before the split these three assertions were on the per-PR floor -- but
+// they were reading a hand-authored list, so what the floor checked was that the list still said
+// what it said. The executing consumer of the live population is now the operator's instrument:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count
+// and locally this file runs as
+//   claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag --functions <fn,...>
+// The bin_witness_wet_entries enrolment names the same four fns and, as gunbc.ci_layer_roots
+// excl_bin_wet_reason records, that roster has had no executing consumer since 2026-08-15.
+
+// THE LIVE PRODUCER ANSWERS, AND ANSWERS WITH REFERENCES: the tree's own hand Rust outside the
+// deletion set is folded, nothing is unscannable, nothing is unattributed, and every produced row
+// is cited. The count is not compared to a literal -- it is compared to the live cited column.
+fn the_live_reference_population_is_produced() -> Bool {
+  match v1_current_rust_references() {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { rows: rs, unattributed: u, unscannable: un } =>
+      count(rs) > 0 && count(un) == 0 && count(u) == 0
+        && count(v1_shim_partition_over(rows: rs, unattributed: u).cited) == count(rs)
+  }
+}
+
+// THE LIVE TREE REFUSES, AND FOR THE REASONS THE CENSUS RECORDS. Stated as a conjunction because
+// 'the gate is false' is also what a broken gate returns: the population is a lower bound AND there
+// is at least one blocking consumer AND not every consumer blocks -- three independent facts whose
+// conjunction is what 'XL-5 has not run yet' means.
+fn the_live_transaction_refuses_for_recorded_reasons() -> Bool {
+  !consumer_population_is_complete(p: v1_consumer_population())
+    && v1_blocking_consumer_count() > 0
+    && v1_blocking_consumer_count() < v1_consumer_member_count()
+}
+
+// THE GATE ITSELF, EXECUTED ON THE LIVE POPULATION, against the most generous realized population
+// that can be written -- every successor this census claims, handed to the gate as realized -- so
+// the false cannot be coming from an unrealized successor.
+fn the_live_gate_refuses_even_with_every_successor_realized() -> Bool {
+  !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: [])
+    && !v1_bankruptcy_transaction_admitted(population: v1_consumer_population(), realized: v1_claimed_successors(rows: v1_consumers()))
+}
+
+// THE ROSTER AND THE POPULATION NAME ONE LIST.
+fn the_live_population_carries_the_whole_roster() -> Bool {
+  v1_every_discovered_consumer_disposed(
+      discovered: v1_row_keys(rows: v1_consumers()),
+      rows: consumer_population_rows(p: v1_consumer_population())
+    ) && v1_every_row_names_a_live_consumer(
+      discovered: v1_row_keys(rows: v1_consumers()),
+      rows: consumer_population_rows(p: v1_consumer_population())
+    )
+    && count(v1_uncitable_consumers()) == count(consumer_population_uncitable(p: v1_consumer_population()))
+}
+
+test fn consumer_census_live_reference_population_is_produced() -> Bool { the_live_reference_population_is_produced() }
+test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
+test fn consumer_census_live_gate_refuses_even_with_every_successor_realized() -> Bool { the_live_gate_refuses_even_with_every_successor_realized() }
+test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }
