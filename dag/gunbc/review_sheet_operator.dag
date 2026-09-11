@@ -152,6 +152,7 @@ fn admit_review_sheet_operator(
   enablement: ServiceEnablementObservation,
   spreadsheet: BuyerReviewSpreadsheet,
   serviceusage_enable_iam: HumanIntervention,
+  share: HumanIntervention,
 ) -> ReviewSheetOperatorAdmission {
   match project {
     ReviewSheetGcpProjectUnresolved =>
@@ -179,8 +180,10 @@ fn admit_review_sheet_operator(
                   SpreadsheetAwaitingCreation =>
                     ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
                   SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
-                    ReviewSheetAwaitingHuman {
-                      intervention: spreadsheet_share_intervention(spreadsheet_id: id, writer: sa),
+                    if intervention_is_discharged(intervention: share) {
+                      ReviewSheetOperatorAdmitted { spreadsheet_id: id }
+                    } else {
+                      ReviewSheetAwaitingHuman { intervention: share }
                     }
                 }
             }
@@ -215,6 +218,7 @@ fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
             },
             spreadsheet: buyer_review_spreadsheet,
             serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: sa),
+            share: spreadsheet_share_intervention(spreadsheet_id: "unidentified" as NonEmptyStr, writer: sa),
           )
       }
   }
