@@ -1153,34 +1153,6 @@ fn roadmap_fleet_page() -> Fragment {
   }
 }
 
-fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?,
-  standings: RoadmapStandings, launch: LaunchHostStanding) -> Fragment {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
-      roadmap_daily_workspace_page_impl_for_accepted(
-        doc: doc,
-        merged: merged,
-        accepted_ids: [],
-        main_prefix: main_prefix,
-        attempts: attempts,
-        attempts_refused: attempts_refused,
-        standings: standings,
-        launch: launch,
-      )
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
-      roadmap_daily_workspace_page_impl_for_accepted(
-        doc: doc,
-        merged: merged,
-        accepted_ids: accepted_ids,
-        main_prefix: main_prefix,
-        attempts: attempts,
-        attempts_refused: attempts_refused,
-        standings: standings,
-        launch: launch,
-      )
-  }
-}
-
 fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding) -> Fragment {
   let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged, launch: ctx))
@@ -1286,12 +1258,27 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
   }
 }
 
+// THE ACCEPTED SET IS SUPPLIED HERE TOO, AND THAT IS WHY THE LEAK HAS NO CONSTRUCTOR LEFT.
+//
+// These two entries used to reach roadmap_daily_workspace_page_impl, which read
+// accepted_roadmap_node_ids_projection() itself. That fold was also the refusal arm of
+// roadmap_daily_workspace_page_for_projection_observed, so a caller-supplied plan that failed to
+// project rendered beside the PUBLIC accepted set (review 63317). Routing that one arm to the
+// _for_accepted form closed the route, but left the ambient-reading fold standing -- and a probe
+// cannot guard it: under the hermetic witness route the carrier read REFUSES and yields the same
+// empty set, so the defect is invisible to any witness that could be enrolled (measured: the
+// leak restored in an isolated worktree, the probe still PASSED). DESIGN 4b says a check whose RED
+// is not authorable is not a weak wall but a decoration, and 5 says prefer construction over
+// validation. So the fold is deleted rather than watched: nothing below the parameterized route
+// can name the public accepted set any more, and these two get the empty one, which is what their
+// own "the event carrier is not consulted" already claimed and did not deliver.
+
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render())
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render())
 }
 
 fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
 }
 
 // The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it.

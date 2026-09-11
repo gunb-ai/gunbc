@@ -489,25 +489,29 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 
 // ── The DAILY surface, which is where the seam leaked ───────────────────────────────────────────
 //
-// The served daily page is rendered at the belt tick and only read back at request time, so the
-// route witnesses above could not reach it and stayed green while
-// roadmap_daily_workspace_page_for_projection_observed's REFUSED arm re-read the public accepted
-// set through roadmap_daily_workspace_page_impl (review 63317). This probes that fold directly --
-// pure, no host observation -- on both arms.
+// WHAT THIS PROBE IS, AND WHAT IT IS NOT. It is a composition check over
+// roadmap_daily_workspace_page_for_projection_observed on both arms. It is NOT the control for the
+// leak that review 63317 found, and the first version of this block claimed it was.
 //
-// WHAT DISCRIMINATES HERE IS A COUNT, NOT A TITLE. The daily page never renders the roadmap's
-// section title, so the negative used above would be true by construction and would be decoration.
-// The public accepted set reaches this page as the v1-exit program progress count, so the count is
-// the observable the leak moves -- and it is CITED from its producers rather than transcribed, so a
-// changed finish-line roster moves the expectation with it. The caller's SECTION TITLE is
-// deliberately not asserted here: the daily page renders work rows and bands, not the roadmap's
-// section headings, so that assertion would be false for a clean render rather than a leaking one.
+// The claim was tested and it was false. With the leak deliberately restored in an isolated
+// worktree -- the refused arm routed back through the fold that read
+// accepted_roadmap_node_ids_projection() -- this witness still PASSED. The reason is structural,
+// not a weak assertion: under the hermetic witness route the carrier read REFUSES, that fold takes
+// its own refused arm, and it produces the same empty accepted set a clean render produces. No
+// input reachable from here distinguishes the two, so the RED is not authorable and no stronger
+// assertion could have made it so.
 //
-// The condition under which it discriminates, stated rather than assumed: the assertion separates a
-// leaking render from a clean one exactly where the public acceptance carrier is readable and names
-// at least one accepted finish line. Where the carrier is unreadable the pre-fix code took its own
-// refused arm and produced the same empty count, so this witness is a true statement that cannot
-// see the defect there. It is the regression control for the fix, not the discovery instrument.
+// DESIGN 4b: a check whose RED cannot be authored is not a weak wall, it is a decoration, and worse
+// than absent because it gets cited as coverage. So the defect was closed by CONSTRUCTION instead
+// (gunbc.roadmap_page: the ambient-reading fold is deleted, and every caller supplies its accepted
+// set), and this block says plainly what it still earns: that both arms render, that a refused plan
+// carries the CALLER's detail rather than an empty public roadmap, and that the v1-exit progress
+// count is the one the supplied plan implies. The count is cited from v1_finish_lines_accepted_count
+// and v1_exit_finish_lines rather than transcribed.
+//
+// The negative used on the route witnesses above would be decoration here for a second reason: the
+// daily page renders work rows and bands, never the roadmap's section headings, so its absence is
+// true of a clean render too.
 
 fn v1_exit_progress_count_text(accepted_ids: List<RoadmapNodeId>) -> String {
   join([
