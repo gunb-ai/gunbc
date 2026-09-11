@@ -42,7 +42,7 @@ import gunbc.spark.serving_deployment_selection {
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
   assessment_constraint_identities, constraint_native_quality, constraint_no_redundancy,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
-  v4_1_gb10_kv_layout, v4_1_gb10_kv_layout_authority_frontier, v4_1_publisher_fit_authority_frontier,
+  v4_1_gb10_kv_layout, v4_1_gb10_kv_layout_authority_frontier, v4_1_publisher_fit_authority_frontier, v4_1_gb10_kv_bytes_authority_frontier,
 }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
@@ -491,6 +491,8 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
     && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("supports_combination")
     && dissolution_description(condition: v4_1_gb10_kv_layout_authority_frontier).contains("auto")
     && dissolution_description(condition: v4_1_publisher_fit_authority_frontier).contains("deepseek_v4_1_flash_recipe")
+    && dissolution_description(condition: v4_1_gb10_kv_bytes_authority_frontier).contains("eight-indexer")
+    && dissolution_description(condition: v4_1_gb10_kv_bytes_authority_frontier).contains("unpadded")
     && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
     && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
       KvBytesPerTokenUnestablished { layout: k, obligation: o } =>
@@ -498,6 +500,7 @@ test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished(
           && (o as String).contains("890")
           && (o as String).contains("656")
           && (o as String).contains("allocator")
+          && (o as String).contains("not eight")
       KvBytesPerTokenNotThisSubject => false
     }
 }
