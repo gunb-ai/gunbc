@@ -18,6 +18,9 @@ import gunbc.spark.v41_published_image_observation {
   v41_published_stamped_identifier_lookup,
   PublicCommitAbsent, PublicCommitPresent, PublicCommitUnasked,
 }
+import gunbc.spark.runtime_architecture_registry_reading {
+  gunbc_vllm_dsv41_gb10_registry_reading,
+}
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
@@ -672,6 +675,8 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
             (g as String) == "07b75534651a0dd584c6f3be75d8c62fb8426397"
           VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => false
         }
+        && (v4_1_runtime_vllm_gb10_lead.image as String)
+          == (gunbc_vllm_dsv41_gb10_registry_reading.image_reference as String)
     ServingFieldUnestablished { causes: _ } => false
   }
 }

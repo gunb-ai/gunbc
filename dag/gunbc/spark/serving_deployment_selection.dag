@@ -45,6 +45,9 @@ import gunbc.spark.v41_published_image_observation {
   v41_published_stamped_identifier_lookup,
   public_commit_lookup_wire,
 }
+import gunbc.spark.runtime_architecture_registry_reading {
+  gunbc_vllm_dsv41_gb10_registry_reading,
+}
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
 
 // ── ONE MODEL IN, A DEPLOYMENT SHAPE OR AN OBLIGATION OUT ─────────────────────────────────────
@@ -414,12 +417,11 @@ data serving_parameters_current: ServingDecisionParameters = serving_decision_pa
   runtime: spark_runtime,
 )
 
-// V4.1 RUNTIME DOMAIN. The existing fleet image is unvalidated for V4.1. vLLM
-// 07b75534651a0dd584c6f3be75d8c62fb8426397 has a V4.1 NVIDIA implementation and an SM12 path; a
-// pinned GB10 build is the lead, not a silent reuse of spark_runtime. SGLang preview images are
-// for larger accelerators only. llama.cpp #28696 is conversion-only -- not a candidate.
+// V4.1 fallback runtime: image identity is the local digest on gunbc_vllm_dsv41_gb10_registry_reading
+// (never pushed). Kernel probe receipts for that digest live in serving_runtime_capability_probe
+// (v41_gb10_source_build_probe). The published arm64 image is a separate RuntimeRevision.
 data v4_1_runtime_vllm_gb10_lead: RuntimeRevision = runtime_revision(
-  image: "GB10 fallback image built from public vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397 (route B, #11022; built, not adopted: the operator chose the published image). Its TORCH_CUDA_ARCH_LIST of 12.1 names a REQUESTED build target, not compiled kernels; kernel presence is established only by #11022's in-image probe receipt. recipes.vllm.ai lists h200/gb200/gb300/mi350x only" as NonEmptyStr,
+  image: gunbc_vllm_dsv41_gb10_registry_reading.image_reference,
   vllm_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
 )
 
