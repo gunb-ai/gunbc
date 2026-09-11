@@ -61,6 +61,14 @@ data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequ
 // reader sees it: it names a local PATH gap in the vocabulary of a remote session failure, so it
 // reads as "the host rejected us". gunbc.fleet_bootstrap_principal_session now refuses BEFORE the
 // invocation with a cause naming the binary; this roster is the fact that refusal is derived from.
+//
+// TWO CONSUMERS, ONE POPULATION. gunbc.bmc_fan_converge asks this same roster, having previously
+// hand-rolled shell.PosixCommandV.Check against the literal "sshpass" -- a second authority for
+// this fact. It belongs here rather than in a BMC-specific roster because it is the same
+// obligation: that leg reaches the BMC through extdeps.bmc.openbmc_password_ssh_transport, whose
+// argv also begins `sshpass -d 0 ssh`. "Executes a password-session leg" is the membership test,
+// and it is about the TRANSPORT the runner must be able to spawn, not about which fleet the far
+// side belongs to.
 data password_session_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
   HostCliEnrollmentRequirement {
     tool: sshpass_cli_tool.name,
