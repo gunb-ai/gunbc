@@ -2,7 +2,8 @@ module test.claim.ebay_browse_witness
 
 import std.types { Bool, String, List }
 import v2.std.algebra { for_all, filter }
-import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
+import std.roster_frontier { FrontierRow, FrontierSubject, DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
+import std.decl_ref { decl_ref }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd, Eur, currency_alphabetic_code }
@@ -113,8 +114,21 @@ test fn witness_browse_search_page_admission_holds_the_published_bounds() -> Boo
 
 test fn witness_browse_frontier_rows_are_well_formed_and_in_the_census() -> Bool {
   frontier_rows_well_formed(rows: ebay_browse_frontier_rows)
-    && length(ebay_browse_frontier_rows) == 3
+    && for_all(xs: w_browse_expected_frontier_subjects(), predicate: fn(want) {
+      length(filter(xs: ebay_browse_frontier_rows, predicate: fn(row) { frontier_subject_eq(a: row.subject, b: want) })) == 1
+    })
+    && for_all(xs: ebay_browse_frontier_rows, predicate: fn(row) {
+      length(filter(xs: w_browse_expected_frontier_subjects(), predicate: fn(want) { frontier_subject_eq(a: row.subject, b: want) })) == 1
+    })
     && for_all(xs: ebay_browse_frontier_rows, predicate: fn(row) {
       any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
     })
+}
+
+fn w_browse_expected_frontier_subjects() -> List<FrontierSubject> {
+  [
+    DeclSubject { ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "browse_production_access") },
+    DeclSubject { ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "BrowseItem") },
+    DeclSubject { ref: decl_ref(module_path: "extdeps.ebay.browse", decl_name: "BrowseSearchPagedCollection") },
+  ]
 }
