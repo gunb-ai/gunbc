@@ -81,8 +81,6 @@ import extdeps.github.expressions {
   Github,
   Needs,
   interpolate,
-  serialize_expression,
-  default_expression_spellings,
   Expression,
   FunctionCall,
   Format,
@@ -247,10 +245,6 @@ fn github_event_name_equals(event: String) -> Expression {
     left: ContextAccess { context: Github, path: ["event_name"] },
     right: StringLiteral { value: event }
   }
-}
-
-fn github_event_name_equals_expr(event: String) -> String {
-  serialize_expression(expression: github_event_name_equals(event: event))
 }
 
 fn gha_format_prefix(prefix: String, arg: Expression) -> Expression {
