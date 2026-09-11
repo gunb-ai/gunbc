@@ -1,6 +1,7 @@
 module test.claim.rust_item_host_observation_witness_test
 
 import gunbc.rust_item_host_observation {
+  RustObservedTree,
   HunkRangeParsed,
   HunkRangeRefused,
   ItemDeclarationRefProjected,
@@ -52,6 +53,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.algebra { any, length, list_map }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data planted_observed_tree: RustObservedTree = RustObservedTree { revision: "0000000000000000000000000000000000000001", tree: "0000000000000000000000000000000000000002" }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -646,12 +649,12 @@ fn reference_sources() -> List<RustFileChangeInput> {
 }
 
 fn reference_observation() -> RustReferenceObservation {
-  observe_rust_references(sources: reference_sources(), generated_repo_paths: [], tokens: reference_tokens, rows: rust_source_namespace_rows)
+  observe_rust_references(observed_at: planted_observed_tree, sources: reference_sources(), generated_repo_paths: [], tokens: reference_tokens, rows: rust_source_namespace_rows)
 }
 
 fn reference_rows() -> List<RustReferenceRow> {
   match reference_observation() {
-    RustReferencesObserved { rows: rs, unattributed: _, unscannable: _ } => rs
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: _, unscannable: _ } => rs
     RustReferenceHostRefused { detail: _ } => []
   }
 }
@@ -682,7 +685,7 @@ test fn a_reference_inside_an_item_lands_on_that_item() -> Bool {
 test fn a_reference_inside_a_macro_block_is_a_located_unattributed_row_not_a_dropped_line() -> Bool {
   match reference_observation() {
     RustReferenceHostRefused { detail: _ } => false
-    RustReferencesObserved { rows: _, unattributed: u, unscannable: un } =>
+    RustReferencesObserved { observed_at: _, rows: _, unattributed: u, unscannable: un } =>
       count(un) == 0
         && count(u) == 1
         && (u |> all(x => x.repo_path == "dag/gunbc/instruments/planted_macro_shims/lib.rs" && x.line == 4 && x.token == "v1_rt"))
@@ -723,8 +726,8 @@ test fn a_reference_under_an_unclaimed_tree_refuses_at_the_projection_rather_tha
 
 // THE POPULATION IS KEYED ON THE TOKEN, NOT THE TREE: the same sources with no token yield nothing.
 test fn the_reference_population_is_empty_under_an_empty_token_list() -> Bool {
-  match observe_rust_references(sources: reference_sources(), generated_repo_paths: [], tokens: [], rows: rust_source_namespace_rows) {
-    RustReferencesObserved { rows: rs, unattributed: u, unscannable: un } => count(rs) == 0 && count(u) == 0 && count(un) == 0
+  match observe_rust_references(observed_at: planted_observed_tree, sources: reference_sources(), generated_repo_paths: [], tokens: [], rows: rust_source_namespace_rows) {
+    RustReferencesObserved { observed_at: _, rows: rs, unattributed: u, unscannable: un } => count(rs) == 0 && count(u) == 0 && count(un) == 0
     RustReferenceHostRefused { detail: _ } => false
   }
 }

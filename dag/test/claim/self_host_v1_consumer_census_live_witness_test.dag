@@ -40,9 +40,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 fn the_live_reference_population_is_produced() -> Bool {
   match v1_current_rust_references() {
     RustReferenceHostRefused { detail: _ } => false
-    RustReferencesObserved { rows: rs, unattributed: u, unscannable: un } =>
+    RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rs, unattributed: u, unscannable: un } =>
       count(rs) > 0 && count(un) == 0 && count(u) == 0
-        && count(v1_shim_partition_over(rows: rs, unattributed: u).cited) == count(rs)
+        && count(v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rs, unattributed: u).cited) == count(rs)
   }
 }
 
@@ -76,7 +76,7 @@ fn the_live_gate_refuses_even_with_every_successor_realized() -> Bool {
 fn the_live_seed_link_join_is_observed_and_the_roster_is_current() -> Bool {
   match v1_minted_manifest_join() {
     MintedManifestJoinUnobserved { reason: _ } => false
-    MintedManifestJoined { produced: p, undisposed_sites: _, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
+    MintedManifestJoined { observed_at: _, produced: p, undisposed_sites: _, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
       count(p) > 0 && count(uc) > 0 && count(b) == 0 && count(c) == 0 && count(d) == 0 && count(e) == 0
   }
 }
