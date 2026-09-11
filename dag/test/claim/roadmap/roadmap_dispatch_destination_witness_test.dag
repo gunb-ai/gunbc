@@ -1,0 +1,156 @@
+module test.claim.roadmap_dispatch_destination_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import extdeps.github.github { Repository }
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, NodeSizing, Sized, Unsized,
+  IntricacyHigh, VolumeMedium, PrsMerged,
+}
+import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified, OperatorExclusive, ExternalLead, CalendarObservation,
+  ExecutionContract, PathsAllowed, PathsUnrestricted, PublicWorktreeLayout,
+  PinnedPublicPlusLocalRoot, PathOutOfScope, PathsAdmitted,
+  GunbcClaimValidation, ClaimSourceRootLayout,
+  contract_closure, ContractNotAgentWork, OperatorExclusiveMode, ExternalLeadMode,
+  CalendarObservationMode, ContractDeclaresNoValidation,
+  attempt_paths_admitted, claim_source_root_args, validation_operation_command,
+  DispatchHostEnvironment, CapabilityRealization, GunbcClaimRunnerCapability,
+  non_agent_work_mode_label,
+}
+import gunbc.ensure { EnsureObserveOnly }
+import gunbc.roadmap_dispatch_destination {
+  node_dispatch_destination, DispatchDestinationResolved, DispatchDestinationMissing,
+}
+import gunbc.roadmap_belt_actuate {
+  belt_publication_subject_for_node,
+  WorktreeHeadObservation,
+  worktree_head_observation_of,
+  BeltExecOutcome, ExecOk,
+}
+import gunbc.roadmap_publish { PublicationSubjectObserved, PublicationSubjectUnobserved }
+import std.types { CommitSha }
+
+fn dest_nid(s: String) -> RoadmapNodeId { s }
+
+fn node_with_repo(id: String, repo: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_DESTINATIONWITNESS00000001" as RoadmapNodeIdentity,
+    node: dest_nid(s: id),
+    line: DerivableLine { prs: [1], title: id, description: "" },
+    carriers: [],
+    sizing: Sized {
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      repo: repo,
+      acceptance: PrsMerged,
+    },
+    execution: ExecutionContractUnspecified,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+data dest_head: CommitSha = "1111111111111111111111111111111111111111"
+
+fn observed_head() -> WorktreeHeadObservation {
+  worktree_head_observation_of(outcome: ExecOk { stdout: (dest_head as String) })
+}
+
+test fn a_non_public_destination_does_not_publish_to_gunbc() -> Bool {
+  let node = node_with_repo(id: "private-dest-node", repo: "example/other")
+  match belt_publication_subject_for_node(
+    node: node,
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/private-dest-node-afeedfacefeedface",
+    base_branch: "main" as NonEmptyStr,
+    head: observed_head(),
+  ) {
+    PublicationSubjectUnobserved { reason: _ } => false
+    PublicationSubjectObserved { subject } =>
+      subject.repository.full_name != gunbc_repository.full_name
+        && subject.repository.full_name == "example/other"
+        && subject.repository.private
+        && subject.repository.owner == "example"
+        && subject.repository.name == "other"
+  }
+}
+
+test fn a_public_gunbc_node_still_publishes_to_gunbc() -> Bool {
+  let node = node_with_repo(id: "public-dest-node", repo: "gunbc")
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason: _ } => false
+    DispatchDestinationResolved { repository } =>
+      repository.full_name == gunbc_repository.full_name
+        && !repository.private
+  }
+}
+
+test fn allowed_paths_refuse_a_touched_path_outside_the_prefixes() -> Bool {
+  match attempt_paths_admitted(
+    scope: PathsAllowed {
+      prefixes: ["dag/gunbc/roadmap/" as FilePath],
+    },
+    touched: ["src/v1/stage0/src/cli_run.rs" as FilePath],
+  ) {
+    PathsAdmitted => false
+    PathOutOfScope { path } => (path as String) == "src/v1/stage0/src/cli_run.rs"
+  }
+}
+
+test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool {
+  match contract_closure(contract: OperatorExclusive) {
+    ContractNotAgentWork { mode: OperatorExclusiveMode } =>
+      non_agent_work_mode_label(mode: OperatorExclusiveMode) == "operator-exclusive"
+    ContractDeclaresNoValidation => false
+    ContractClosesNothing => false
+    ContractCloses { validations: _ } => false
+    ContractNotAgentWork { mode: _ } => false
+  }
+}
+
+test fn external_lead_and_calendar_refuse_as_their_own_modes() -> Bool {
+  match contract_closure(contract: ExternalLead) {
+    ContractNotAgentWork { mode: ExternalLeadMode } =>
+      match contract_closure(contract: CalendarObservation) {
+        ContractNotAgentWork { mode: CalendarObservationMode } => true
+        ContractDeclaresNoValidation => false
+        ContractClosesNothing => false
+        ContractCloses { validations: _ } => false
+        ContractNotAgentWork { mode: _ } => false
+      }
+    ContractDeclaresNoValidation => false
+    ContractClosesNothing => false
+    ContractCloses { validations: _ } => false
+    ContractNotAgentWork { mode: _ } => false
+  }
+}
+
+test fn unspecified_is_still_a_different_cause_from_operator_exclusive() -> Bool {
+  match contract_closure(contract: ExecutionContractUnspecified) {
+    ContractDeclaresNoValidation =>
+      match contract_closure(contract: OperatorExclusive) {
+        ContractNotAgentWork { mode: OperatorExclusiveMode } => true
+        ContractDeclaresNoValidation => false
+        ContractClosesNothing => false
+        ContractCloses { validations: _ } => false
+        ContractNotAgentWork { mode: _ } => false
+      }
+    ContractClosesNothing => false
+    ContractCloses { validations: _ } => false
+    ContractNotAgentWork { mode: _ } => false
+  }
+}
+
+test fn private_layout_validation_composes_both_roots() -> Bool {
+  let args = claim_source_root_args(
+    layout: PinnedPublicPlusLocalRoot { public_prefix: "public" as NonEmptyStr },
+  )
+  join(args, " ") == "--source-root public/dag --source-root public/src/v2 --source-root dag"
+}
+
+test fn public_layout_validation_stays_two_roots() -> Bool {
+  join(claim_source_root_args(layout: PublicWorktreeLayout), " ")
+    == "--source-root dag --source-root src/v2"
+}

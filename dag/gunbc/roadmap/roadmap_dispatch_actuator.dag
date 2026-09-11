@@ -178,17 +178,13 @@ import gunbc.roadmap_verification_receipt {
 import gunbc.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.roadmap_dispatch_destination {
+  node_has_dispatch_destination,
+}
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
-
-data dispatch_repo: String = "gunbc"
-
-// PROJECTION of gunbc.host_layout.srv1_dispatch_worktree_root — the single path authority shared
-// with the live_deploy membership that provisions the directory (DESIGN §3; its former private copy
-// deleted, belt-B lane 2026-07-20).
 
 data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
 data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
@@ -844,6 +840,21 @@ fn dispatch_attempt_launch_path_for_instance(
       attempt_key: attempt_key,
     ),
     "/launch-identity.json",
+  ], "")
+}
+
+fn dispatch_attempt_spawn_origin_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/spawn-destination.json",
   ], "")
 }
 
@@ -2766,10 +2777,7 @@ fn node_in_ready(node_id: RoadmapNodeId, ready: List<RoadmapNode>) -> Bool {
 }
 
 fn node_repo_supported(node: RoadmapNode) -> Bool {
-  match node.sizing {
-    Sized { repo, intricacy: _, volume: _, acceptance: _ } => repo == dispatch_repo
-    Unsized => false
-  }
+  node_has_dispatch_destination(node: node)
 }
 
 fn dispatch_permitted_from_selection(
@@ -2801,7 +2809,7 @@ fn classify_dispatch_request_for_process_fingerprint(
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
     if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
+      DispatchRefused { reason: "the node has no dispatch destination" as NonEmptyStr }
     } else {
       let scope = dispatch_tmux_session_scope_for_process_fingerprint(
         node_id: node.node,
@@ -2852,7 +2860,7 @@ fn classify_dispatch_request(
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
     if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
+      DispatchRefused { reason: "the node has no dispatch destination" as NonEmptyStr }
     } else {
       match selection {
         DispatchActuatorSelectionRefused { reason } =>

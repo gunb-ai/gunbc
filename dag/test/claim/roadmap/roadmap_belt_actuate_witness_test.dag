@@ -26,6 +26,7 @@ import gunbc.roadmap_publish {
 }
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
+import gunbc.repository { gunbc_repository }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
@@ -146,7 +147,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchOperatorExclusive, LaunchExternalLead, LaunchCalendarObservation, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchSessionsObserved,
@@ -706,10 +707,13 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 22
+  belt_dispatch_label_band_rows().length() == 25
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
+    && band_key_for_label(label: "operator_exclusive") == "fail"
+    && band_key_for_label(label: "external_lead") == "fail"
+    && band_key_for_label(label: "calendar_observation") == "fail"
     && band_key_for_label(label: "size_missing") == "fail"
     && band_key_for_label(label: "review_required") == "fail"
     && band_key_for_label(label: "node_superseded") == "fail"
@@ -771,6 +775,9 @@ fn d4_wire_contract_labels() -> List<String> {
     "review_required",
     "size_missing",
     "execution_contract_missing",
+    "operator_exclusive",
+    "external_lead",
+    "calendar_observation",
     "dependencies_blocked",
     "observe_refused",
     "already_live",
@@ -1867,6 +1874,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
         stderr: "not a git repository",
       },
     ),
+    repository: gunbc_repository,
   )
   let observed = belt_publication_subject_for(
     node_id: "belt-pub-node",
@@ -1876,6 +1884,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
     head: worktree_head_observation_of(
       outcome: ExecOk { stdout: (belt_pub_head as String) },
     ),
+    repository: gunbc_repository,
   )
   subject_key(observation: missing) == ""
     && subject_key(observation: observed) == (belt_pub_head as String)

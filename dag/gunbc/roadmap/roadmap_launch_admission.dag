@@ -7,7 +7,8 @@ import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
 import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_is_sized, node_unmet_parent_ids }
 import gunbc.roadmap_execution_contract {
-  ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses,
+  ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses, ContractNotAgentWork,
+  OperatorExclusiveMode, ExternalLeadMode, CalendarObservationMode,
   contract_closure,
 }
 import gunbc.roadmap_authority {
@@ -215,6 +216,9 @@ type LaunchRefusal
   | LaunchReviewRequired
   | LaunchSizeMissing
   | LaunchExecutionContractMissing { reason: String }
+  | LaunchOperatorExclusive
+  | LaunchExternalLead
+  | LaunchCalendarObservation
   | LaunchDependenciesBlocked { blockers: List<String> }
   | LaunchSessionsUnobservable { reason: String }
   | LaunchAlreadyLive { session_name: String }
@@ -247,6 +251,9 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "review_required"
     LaunchSizeMissing => "size_missing"
     LaunchExecutionContractMissing { reason: _ } => "execution_contract_missing"
+    LaunchOperatorExclusive => "operator_exclusive"
+    LaunchExternalLead => "external_lead"
+    LaunchCalendarObservation => "calendar_observation"
     LaunchDependenciesBlocked { blockers: _ } => "dependencies_blocked"
     LaunchSessionsUnobservable { reason: _ } => "observe_refused"
     LaunchAlreadyLive { session_name: _ } => "already_live"
@@ -272,6 +279,9 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "node's implementation evidence is in review; acceptance, not a relaunch, is the next step"
     LaunchSizeMissing => "node is unsized; a launch needs intricacy, volume, repo and acceptance"
     LaunchExecutionContractMissing { reason } => reason
+    LaunchOperatorExclusive => "operator-exclusive: this work is not for an agent"
+    LaunchExternalLead => "external-lead: this work is not for an agent"
+    LaunchCalendarObservation => "calendar-observation: this work is not for an agent"
     LaunchDependenciesBlocked { blockers } => join(["dependencies not closed: ", join(blockers, ", ")], "")
     LaunchSessionsUnobservable { reason } => join(["live session set could not be observed: ", reason], "")
     LaunchAlreadyLive { session_name } => join(["attempt already live in ", session_name], "")
@@ -297,6 +307,9 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchReviewRequired,
     LaunchSizeMissing,
     LaunchExecutionContractMissing { reason: "r" },
+    LaunchOperatorExclusive,
+    LaunchExternalLead,
+    LaunchCalendarObservation,
     LaunchDependenciesBlocked { blockers: ["p"] },
     LaunchSessionsUnobservable { reason: "r" },
     LaunchAlreadyLive { session_name: "s" },
@@ -730,6 +743,12 @@ fn launch_gate_contract(node: RoadmapNode) -> LaunchGateVerdict {
         GateRefused { refusal: LaunchExecutionContractMissing {
           reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit a launch",
         } }
+      ContractNotAgentWork { mode } =>
+        match mode {
+          OperatorExclusiveMode => GateRefused { refusal: LaunchOperatorExclusive }
+          ExternalLeadMode => GateRefused { refusal: LaunchExternalLead }
+          CalendarObservationMode => GateRefused { refusal: LaunchCalendarObservation }
+        }
       ContractCloses { validations: _ } => GatePassed
     }
   }

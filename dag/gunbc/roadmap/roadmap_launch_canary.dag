@@ -4,7 +4,16 @@ import std.types { String, NonEmptyStr, FilePath, List }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest }
 import gunbc.roadmap_status { TicketFields }
-import gunbc.roadmap_execution_contract { WorkItemExecutionContract, gunbc_claim_execution_contract }
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract,
+  ExecutionContract,
+  ExecutionContractUnspecified,
+  OperatorExclusive,
+  ExternalLead,
+  CalendarObservation,
+  PathsAllowed,
+  gunbc_claim_execution_contract,
+}
 
 // THE TWO-NODE CANARY OF THE ROADMAP LAUNCH MVP, DECLARED INERT (RLM-0 of
 // docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap_authority: the
@@ -50,18 +59,29 @@ data roadmap_launch_canary_oracle_entry: FilePath = "dag/test/manual/roadmap_lau
 data roadmap_launch_canary_oracle_function: NonEmptyStr = "roadmap_launch_canary_oracle_completed" as NonEmptyStr
 
 fn roadmap_launch_canary_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  match gunbc_claim_execution_contract(
     entry: roadmap_launch_canary_oracle_entry,
     function: roadmap_launch_canary_oracle_function,
-  )
+  ) {
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots } =>
+      ExecutionContract {
+        validations: validations,
+        extra_capabilities: extra_capabilities,
+        path_scope: PathsAllowed { prefixes: roadmap_launch_canary_allowed_change_paths },
+        source_roots: source_roots,
+      }
+    ExecutionContractUnspecified => gunbc_claim_execution_contract(
+      entry: roadmap_launch_canary_oracle_entry,
+      function: roadmap_launch_canary_oracle_function,
+    )
+    OperatorExclusive => OperatorExclusive
+    ExternalLead => ExternalLead
+    CalendarObservation => CalendarObservation
+  }
 }
 
-// THE ONE ALLOWED CHANGED PATH. Recorded as a typed row because the brief fixes it as part of
-// the contract, and recorded as a FINDING because gunbc.roadmap_execution_contract has no field
-// for it: a WorkItemExecutionContract names validations and capabilities, nothing about the extent
-// of the change it admits, so no consumer today refuses an attempt that touches a second path.
-// Its consumer is RLM-5's publication refusal ("extra path" falsifier); until that lands this row
-// is declared scope, not an enforced wall, and the plan's serial gating is what keeps that honest.
+// THE ONE ALLOWED CHANGED PATH. The canary execution contract now carries this list as
+// PathsAllowed, so an attempt that touches a second path refuses at attempt_paths_admitted.
 data roadmap_launch_canary_allowed_change_paths: List<FilePath> = [
   "dag/gunbc/roadmap/roadmap_launch_canary_sentinel.dag" as FilePath,
 ]

@@ -6,6 +6,8 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContractUnspecified,
   ExecutionContract,
+  PathsUnrestricted,
+  PublicWorktreeLayout,
   ValidationOperation,
   GunbcClaimValidation,
   ContractClosure,
@@ -80,7 +82,7 @@ test fn the_two_lab_instances_really_do_straddle_the_transport_split() -> Bool {
 // have collapsed them and taken dispatch_environment's located diagnostics with it.
 
 fn empty_contract() -> WorkItemExecutionContract {
-  ExecutionContract { validations: [], extra_capabilities: [] }
+  ExecutionContract { validations: [], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
 }
 
 fn one_validation_contract() -> WorkItemExecutionContract {

@@ -1,0 +1,147 @@
+module gunbc.roadmap_dispatch_destination
+
+import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.algebra { trim }
+import extdeps.github.github { Repository }
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
+
+// A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
+// TODAY it is read from NodeSizing.repo. When eager-gull-33 lands, RoadmapNode.sizing becomes
+// RoadmapNode.dispatch: WorkItemDispatch = NotDispatchable | Dispatchable { repo, acceptance },
+// and destination_from_sizing's match is the one mechanical rewrite (Sized/Unsized ->
+// Dispatchable/NotDispatchable). The resolver itself does not change.
+//
+// THIS MODULE NAMES NO PRIVATE REPOSITORY. A node whose work lives elsewhere supplies its
+// own Repository value via the repo slug; the public authority only knows gunbc_repository.
+
+type DispatchDestination
+  = DispatchDestinationResolved { repository: Repository }
+  | DispatchDestinationMissing { reason: NonEmptyStr }
+
+fn gunbc_destination_slug_matches(repo: String) -> Bool {
+  repo == gunbc_repository.name || repo == gunbc_repository.full_name
+}
+
+fn repository_from_owner_name(owner: String, name: String) -> Repository {
+  Repository {
+    owner: owner,
+    name: name,
+    full_name: join([owner, "/", name], ""),
+    private: true,
+    default_branch: gunbc_repository.default_branch,
+  }
+}
+
+fn repository_from_repo_slug(repo: String) -> DispatchDestination {
+  let slug = trim(repo)
+  if slug == "" {
+    DispatchDestinationMissing {
+      reason: "the node declares an empty destination slug, so there is no repository to publish to" as NonEmptyStr,
+    }
+  } else if gunbc_destination_slug_matches(repo: slug) {
+    DispatchDestinationResolved { repository: gunbc_repository }
+  } else {
+    let parts = split(s: slug, delimiter: "/")
+    if count(parts) != 2 {
+      DispatchDestinationMissing {
+        reason: join([
+          "destination slug ",
+          slug,
+          " is not owner/name, so it cannot become a publication repository",
+        ], "") as NonEmptyStr,
+      }
+    } else {
+      match first(parts) {
+        Absent =>
+          DispatchDestinationMissing {
+            reason: join([
+              "destination slug ",
+              slug,
+              " is not owner/name, so it cannot become a publication repository",
+            ], "") as NonEmptyStr,
+          }
+        Present { value: owner_raw } =>
+          match first(parts.skip(n: 1)) {
+            Absent =>
+              DispatchDestinationMissing {
+                reason: join([
+                  "destination slug ",
+                  slug,
+                  " is not owner/name, so it cannot become a publication repository",
+                ], "") as NonEmptyStr,
+              }
+            Present { value: name_raw } => {
+              let owner = trim(owner_raw)
+              let name = trim(name_raw)
+              if owner == "" || name == "" {
+                DispatchDestinationMissing {
+                  reason: join([
+                    "destination slug ",
+                    slug,
+                    " has an empty owner or name",
+                  ], "") as NonEmptyStr,
+                }
+              } else {
+                DispatchDestinationResolved {
+                  repository: repository_from_owner_name(owner: owner, name: name),
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn destination_from_sizing(sizing: NodeSizing) -> DispatchDestination {
+  match sizing {
+    Unsized =>
+      DispatchDestinationMissing {
+        reason: "the node is unsized, so it has no destination repository" as NonEmptyStr,
+      }
+    Sized { repo, intricacy: _, volume: _, acceptance: _ } =>
+      repository_from_repo_slug(repo: repo)
+  }
+}
+
+fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
+  destination_from_sizing(sizing: node.sizing)
+}
+
+fn node_has_dispatch_destination(node: RoadmapNode) -> Bool {
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationResolved { repository: _ } => true
+    DispatchDestinationMissing { reason: _ } => false
+  }
+}
+
+// Recorded at spawn so an attempt can later say which repository and which exact base
+// revision it was branched from. The instance's dispatch_base_ref is a name; the SHA
+// is the fact.
+
+type DispatchSpawnOrigin {
+  repository: Repository
+  base_ref: NonEmptyStr
+  base_sha: NonEmptyStr
+}
+
+fn dispatch_spawn_origin_json_members(origin: DispatchSpawnOrigin) -> List<String> {
+  [
+    join(["\"repository\":\"", origin.repository.full_name, "\""], ""),
+    join(["\"private\":", if origin.repository.private { "true" } else { "false" }], ""),
+    join(["\"base_ref\":\"", origin.base_ref as String, "\""], ""),
+    join(["\"base_sha\":\"", origin.base_sha as String, "\""], ""),
+  ]
+}
+
+fn dispatch_spawn_origin_json(origin: DispatchSpawnOrigin) -> String {
+  join(["{", join(dispatch_spawn_origin_json_members(origin: origin), ","), "}"], "")
+}
+
+data dispatch_spawn_origin_basename: String = "spawn-destination.json"
+
+fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
+  origin.repository.full_name == gunbc_repository.full_name
+    && origin.repository.private == gunbc_repository.private
+}

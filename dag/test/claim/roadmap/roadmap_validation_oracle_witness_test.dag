@@ -51,6 +51,8 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
+  PathsUnrestricted,
+  PublicWorktreeLayout,
   GunbcClaimValidation,
   CargoTestValidation,
   ModeledValidationCommand,
@@ -125,6 +127,8 @@ fn oracle_contract() -> WorkItemExecutionContract {
       },
     ],
     extra_capabilities: [],
+    path_scope: PathsUnrestricted,
+    source_roots: PublicWorktreeLayout,
   }
 }
 
@@ -441,6 +445,8 @@ test fn cargo_test_validation_refuses_as_unpinnable() -> Bool {
     contract: ExecutionContract {
       validations: [CargoTestValidation { filter: "roadmap_" as NonEmptyStr }],
       extra_capabilities: [],
+      path_scope: PathsUnrestricted,
+      source_roots: PublicWorktreeLayout,
     },
     observations: [],
     pin_recorded: true,

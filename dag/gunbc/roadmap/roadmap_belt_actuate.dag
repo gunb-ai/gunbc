@@ -46,7 +46,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchOperatorExclusive, LaunchExternalLead, LaunchCalendarObservation, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
@@ -107,6 +107,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_key_path_for_instance,
   dispatch_attempt_admission_path_for_instance,
   dispatch_attempt_launch_path_for_instance,
+  dispatch_attempt_spawn_origin_path_for_instance,
   dispatch_attempt_events_path_for_instance,
   dispatch_attempt_spawn_failure_path_for_instance,
   dispatch_attempt_oracle_identity_path_for_instance,
@@ -231,6 +232,10 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
+  OperatorExclusive,
+  ExternalLead,
+  CalendarObservation,
+  ClaimSourceRootLayout,
   ValidationOperation,
   ModeledValidationCommand,
   validation_operation_command,
@@ -308,6 +313,14 @@ import gunbc.roadmap_verification_receipt { verification_file_evidence_for, Veri
   verification_directory_segment,
 }
 import extdeps.github.github { Repository }
+import gunbc.roadmap_dispatch_destination {
+  DispatchDestinationResolved,
+  DispatchDestinationMissing,
+  node_dispatch_destination,
+  DispatchSpawnOrigin,
+  dispatch_spawn_origin_json,
+  dispatch_spawn_origin_basename,
+}
 import gunbc.roadmap_validation_oracle {
   ValidationOracleRef,
   OracleObservation,
@@ -329,6 +342,9 @@ import gunbc.roadmap_validation_oracle {
   ValidationCommandRefused,
   ValidationChangeWindowRefused,
   ValidationContractUnspecified,
+  ValidationOperatorExclusive,
+  ValidationExternalLead,
+  ValidationCalendarObservation,
   validation_oracle_scopes,
   validation_oracle_observe_from_source,
   validation_oracle_set_observe,
@@ -697,7 +713,15 @@ fn belt_attempt_state_initialize_for_instance(
             detail: "the not-run validation receipt could not be written beside the attempt; without it a later unreadable receipt is indistinguishable from an absent one, which is the conflation this initialization exists to remove",
           }
         } else if pin_persisted {
-          AttemptStateInitialized
+          match belt_persist_spawn_origin_for_instance(
+            instance: instance,
+            node: node,
+            attempt_key: attempt_key,
+          ) {
+            SpawnOriginRecorded => AttemptStateInitialized
+            SpawnOriginRecordFailed { step, detail } =>
+              AttemptStateInitializationFailed { step: step, detail: detail }
+          }
         } else {
           AttemptStateInitializationFailed {
             step: "attempt-oracle-pin-persist",
@@ -712,7 +736,65 @@ fn belt_attempt_state_initialize_for_instance(
       }
     }
   }
+}
+}
+
+type SpawnOriginRecord
+  = SpawnOriginRecorded
+  | SpawnOriginRecordFailed { step: String, detail: String }
+
+fn belt_persist_spawn_origin_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+) -> SpawnOriginRecord {
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason } =>
+      SpawnOriginRecordFailed {
+        step: "spawn-destination",
+        detail: reason as String,
+      }
+    DispatchDestinationResolved { repository } => {
+      let worktree = dispatch_worktree_path_for_instance(
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+      )
+      match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+        WorktreeHeadUnobserved { reason } =>
+          SpawnOriginRecordFailed {
+            step: "spawn-base-sha",
+            detail: join([
+              "spawn refuses to proceed without recording the base SHA: ",
+              reason,
+            ], ""),
+          }
+        WorktreeHeadObserved { revision } => {
+          let origin = DispatchSpawnOrigin {
+            repository: repository,
+            base_ref: instance.dispatch_base_ref,
+            base_sha: revision as NonEmptyStr,
+          }
+          let write = Filesystem.Write(
+            path: dispatch_attempt_spawn_origin_path_for_instance(
+              instance: instance,
+              node_id: node.node,
+              attempt_key: attempt_key,
+            ),
+            content: dispatch_spawn_origin_json(origin: origin),
+          )
+          if write.success {
+            SpawnOriginRecorded
+          } else {
+            SpawnOriginRecordFailed {
+              step: "spawn-destination-write",
+              detail: write.error,
+            }
+          }
+        }
+      }
     }
+  }
 }
 
 // The pin is captured from the FRESHLY CREATED WORKTREE before the provider spawns — the only
@@ -4153,13 +4235,24 @@ fn belt_workflow_progress_for_attempt_ref(
       instance: instance,
       worktree: worktree,
     )
-    let publication_subject = belt_publication_subject_for(
-      node_id: attempt.node_id,
-      attempt_key: current_key,
-      branch: branch,
-      base_branch: dispatch_base_branch(instance: instance),
-      head: head,
-    )
+    let publication_subject = match belt_lookup_node(node_id: attempt.node_id) {
+      AuthorityProjectionRefused { detail } =>
+        PublicationSubjectUnobserved {
+          reason: concat("roadmap authority projection refused: ", detail),
+        }
+      NodeMissing =>
+        PublicationSubjectUnobserved {
+          reason: "the roadmap authority declares no node with this id, so there is no publication destination",
+        }
+      NodeFound { node } =>
+        belt_publication_subject_for_node(
+          node: node,
+          attempt_key: current_key,
+          branch: branch,
+          base_branch: dispatch_base_branch(instance: instance),
+          head: head,
+        )
+    }
     let verification_selection = match head {
       WorktreeHeadUnobserved { reason } =>
         SelectionUnaddressable { cause: reason }
@@ -4737,6 +4830,7 @@ fn belt_run_validation_operations(
   worktree: String,
   oracle_identity: ContentHash,
   diff_window_path: String?,
+  source_roots: ClaimSourceRootLayout,
 ) -> BeltValidationRun {
   fold(
     validations,
@@ -4756,6 +4850,7 @@ fn belt_run_validation_operations(
           match validation_operation_command(
             validation: validation,
             environment: instance.execution_environment,
+            source_roots: source_roots,
           ) {
             Absent =>
               BeltValidationRun {
@@ -5242,13 +5337,29 @@ fn belt_verify_run_and_persist(
                 cause: ValidationContractUnspecified,
               },
             }
-          ExecutionContract { validations, extra_capabilities: _ } =>
+          OperatorExclusive =>
+            BeltValidationRun {
+              executions: [],
+              verdict: ValidationRefused { cause: ValidationOperatorExclusive },
+            }
+          ExternalLead =>
+            BeltValidationRun {
+              executions: [],
+              verdict: ValidationRefused { cause: ValidationExternalLead },
+            }
+          CalendarObservation =>
+            BeltValidationRun {
+              executions: [],
+              verdict: ValidationRefused { cause: ValidationCalendarObservation },
+            }
+          ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots } =>
             belt_run_validation_operations(
               instance: instance,
               validations: validations,
               worktree: worktree,
               oracle_identity: identity,
               diff_window_path: diff_window_path,
+              source_roots: source_roots,
             )
         }
     }
@@ -6233,6 +6344,9 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchReviewRequired => BandFail
     LaunchSizeMissing => BandFail
     LaunchExecutionContractMissing { reason: _ } => BandFail
+    LaunchOperatorExclusive => BandFail
+    LaunchExternalLead => BandFail
+    LaunchCalendarObservation => BandFail
     LaunchDependenciesBlocked { blockers: _ } => BandFail
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => BandFail
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail
@@ -6444,6 +6558,7 @@ fn belt_publication_subject_for(
   branch: String,
   base_branch: NonEmptyStr,
   head: WorktreeHeadObservation,
+  repository: Repository,
 ) -> PublicationSubjectObservation {
   match head {
     WorktreeHeadUnobserved { reason } =>
@@ -6463,13 +6578,35 @@ fn belt_publication_subject_for(
           subject: RoadmapPublicationSubject {
             node_id: node_id,
             attempt_key: attempt_key,
-            repository: gunbc_repository,
+            repository: repository,
             branch: branch as NonEmptyStr,
             expected_base: base_branch,
             expected_head: revision as CommitSha,
           },
         }
       }
+  }
+}
+
+fn belt_publication_subject_for_node(
+  node: RoadmapNode,
+  attempt_key: String,
+  branch: String,
+  base_branch: NonEmptyStr,
+  head: WorktreeHeadObservation,
+) -> PublicationSubjectObservation {
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason } =>
+      PublicationSubjectUnobserved { reason: reason as String }
+    DispatchDestinationResolved { repository } =>
+      belt_publication_subject_for(
+        node_id: node.node as String,
+        attempt_key: attempt_key,
+        branch: branch,
+        base_branch: base_branch,
+        head: head,
+        repository: repository,
+      )
   }
 }
 
@@ -7052,8 +7189,20 @@ fn belt_publish_attempt_for_instance(
     node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: attempt_key,
   )
-  match belt_publication_subject_for(
-    node_id: node_id,
+  match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail } =>
+      PublishDeferred {
+        node_id: node_id,
+        reason: concat("roadmap authority projection refused: ", detail),
+      }
+    NodeMissing =>
+      PublishDeferred {
+        node_id: node_id,
+        reason: "the roadmap authority declares no node with this id, so there is no publication destination",
+      }
+    NodeFound { node } =>
+  match belt_publication_subject_for_node(
+    node: node,
     attempt_key: attempt_key,
     branch: dispatch_branch_name(
       node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
@@ -7155,6 +7304,7 @@ fn belt_publish_attempt_for_instance(
       }
     }
   }
+}
 }
 
 fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPassOutcome {

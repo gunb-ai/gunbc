@@ -140,7 +140,7 @@ fn rlm_workflow_file_path() -> String {
 // is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
-data rlm1_contract_digest_frozen: String = "20ca8a8cde2f7e84"
+data rlm1_contract_digest_frozen: String = "df693f20bfe92df2"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."

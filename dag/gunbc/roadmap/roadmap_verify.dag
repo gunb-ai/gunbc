@@ -13,10 +13,13 @@ import gunbc.roadmap_execution_contract {
   ModeledValidationCommand,
   validation_operation_command,
   modeled_validation_command_wire,
+  ClaimSourceRootLayout,
+  contract_source_roots,
   ContractClosure,
   ContractDeclaresNoValidation,
   ContractClosesNothing,
   ContractCloses,
+  ContractNotAgentWork,
   contract_closure,
 }
 import gunbc.roadmap_dashboard_instance {
@@ -205,10 +208,12 @@ fn verification_run_one(
   instance: HostDashboardInstance,
   workdir: FilePath,
   validation: ValidationOperation,
+  source_roots: ClaimSourceRootLayout,
 ) -> VerificationOutcome {
   match validation_operation_command(
     validation: validation,
     environment: instance.execution_environment,
+    source_roots: source_roots,
   ) {
     Absent =>
       VerificationRefused {
@@ -256,6 +261,7 @@ fn verification_fold(
   instance: HostDashboardInstance,
   workdir: FilePath,
   validations: List<ValidationOperation>,
+  source_roots: ClaimSourceRootLayout,
 ) -> VerificationOutcome {
   fold(
     validations,
@@ -268,6 +274,7 @@ fn verification_fold(
             instance: instance,
             workdir: workdir,
             validation: validation,
+            source_roots: source_roots,
           ) {
             VerificationPassed { node_id: _, validations_run: _ } =>
               VerificationPassed { node_id: n, validations_run: ran + 1 }
@@ -288,12 +295,14 @@ fn verify_contract(
   match contract_closure(contract: contract) {
     ContractDeclaresNoValidation => VerificationUnbound { node_id: node_id }
     ContractClosesNothing => VerificationUnbound { node_id: node_id }
+    ContractNotAgentWork { mode: _ } => VerificationUnbound { node_id: node_id }
     ContractCloses { validations } =>
       verification_fold(
         node_id: node_id,
         instance: instance,
         workdir: workdir,
         validations: validations,
+        source_roots: contract_source_roots(contract: contract),
       )
   }
 }
@@ -413,6 +422,7 @@ fn first_closing_validation(
   match contract_closure(contract: contract) {
     ContractDeclaresNoValidation => none
     ContractClosesNothing => none
+    ContractNotAgentWork { mode: _ } => none
     ContractCloses { validations } => first(validations)
   }
 }
@@ -435,6 +445,7 @@ fn verify_attempt(
       match validation_operation_command(
         validation: validation,
         environment: instance.execution_environment,
+        source_roots: contract_source_roots(contract: node.execution),
       ) {
         Absent =>
           AttemptVerified {

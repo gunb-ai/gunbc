@@ -46,6 +46,9 @@ import gunbc.v1_deletion_plan {
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   ExecutionContract,
+  OperatorExclusive,
+  ExternalLead,
+  CalendarObservation,
   GunbcClaimValidation,
   CargoTestValidation,
   CargoFmtValidation,
@@ -693,7 +696,13 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
     && edge_exists(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine")
     && match bound_execution_contract_for(id: "2-scm-p1-proof-kernel") {
       ExecutionContractUnspecified => false
-      ExecutionContract { validations, extra_capabilities } =>
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+      OperatorExclusive => false
+      ExternalLead => false
+      CalendarObservation => false
+      ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
         count(validations) == 1
           && count(extra_capabilities) == 0
           && validations |> any(validation => match validation {
@@ -713,7 +722,10 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
 test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool {
   match bound_execution_contract_for(id: "namespace-reference-derived-closure") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
@@ -730,7 +742,10 @@ test fn witness_namespace_reference_derived_closure_has_discriminating_contract(
 test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Bool {
   match bound_execution_contract_for(id: "v2-emitter-direct-rust-door") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
@@ -777,7 +792,10 @@ fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
 test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool {
   match bound_execution_contract_for(id: "shell-typed-invocation") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
   }
 }
 
@@ -793,11 +811,29 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
   all(
     nodes() |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
-        ExecutionContract { validations: _, extra_capabilities: _ } => true
+        OperatorExclusive => false
+        ExternalLead => false
+        CalendarObservation => false
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+      OperatorExclusive => false
+      ExternalLead => false
+      CalendarObservation => false
+        ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } => true
       }),
     n => match n.execution {
         ExecutionContractUnspecified => false
-        ExecutionContract { validations, extra_capabilities: _ } => count(validations) > 0
+        OperatorExclusive => false
+        ExternalLead => false
+        CalendarObservation => false
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+      OperatorExclusive => false
+      ExternalLead => false
+      CalendarObservation => false
+        ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) > 0
       },
   )
 }
@@ -805,7 +841,10 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
 test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
   match bound_execution_contract_for(id: "v1-test-migration") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
@@ -822,11 +861,20 @@ test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
   match bound_execution_contract_for(id: "observation-raw-print-retirement") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
   }
     && match bound_execution_contract_for(id: "shell-typed-invocation") {
       ExecutionContractUnspecified => false
-      ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    OperatorExclusive => false
+    ExternalLead => false
+    CalendarObservation => false
+      OperatorExclusive => false
+      ExternalLead => false
+      CalendarObservation => false
+      ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
     }
 }
 

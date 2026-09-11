@@ -349,7 +349,10 @@ fn validation_oracle_scopes(
 ) -> List<OraclePinScope> {
   match contract {
     ExecutionContractUnspecified => []
-    ExecutionContract { validations, extra_capabilities: _ } =>
+    OperatorExclusive => []
+    ExternalLead => []
+    CalendarObservation => []
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       map(validations, v => validation_oracle_scope(validation: v))
   }
 }
@@ -444,6 +447,9 @@ fn validation_oracle_set_observe(
 
 type ValidationRefusalCause
   = ValidationContractUnspecified
+  | ValidationOperatorExclusive
+  | ValidationExternalLead
+  | ValidationCalendarObservation
   | ValidationOracleUnpinnable {
       validation_label: String,
       reason: String,
@@ -640,7 +646,13 @@ fn validation_oracle_gate(
   match contract {
     ExecutionContractUnspecified =>
       ValidationOracleGateRefused { cause: ValidationContractUnspecified }
-    ExecutionContract { validations: _, extra_capabilities: _ } =>
+    OperatorExclusive =>
+      ValidationOracleGateRefused { cause: ValidationOperatorExclusive }
+    ExternalLead =>
+      ValidationOracleGateRefused { cause: ValidationExternalLead }
+    CalendarObservation =>
+      ValidationOracleGateRefused { cause: ValidationCalendarObservation }
+    ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       match validation_oracle_scopes(contract: contract)
         |> filter(s => match s {
           OraclePinnable { oracle: _ } => false
@@ -748,6 +760,9 @@ fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusa
 fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified => "contract-unspecified"
+    ValidationOperatorExclusive => "operator-exclusive"
+    ValidationExternalLead => "external-lead"
+    ValidationCalendarObservation => "calendar-observation"
     ValidationOracleUnpinnable { validation_label: _, reason: _ } =>
       "oracle-unpinnable"
     ValidationOracleMissing { entry: _, function: _, detail: _ } =>
@@ -771,6 +786,12 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified =>
       "the node declares no execution contract, so there is no validation to run"
+    ValidationOperatorExclusive =>
+      "operator-exclusive: this work is not for an agent"
+    ValidationExternalLead =>
+      "external-lead: this work is not for an agent"
+    ValidationCalendarObservation =>
+      "calendar-observation: this work is not for an agent"
     ValidationOracleUnpinnable { validation_label, reason } =>
       join([
         "declared validation ",
@@ -835,6 +856,12 @@ fn validation_refusal_cause_decode(
 ) -> ValidationRefusalCause? {
   if cause_kind == "contract-unspecified" {
     Present { value: ValidationContractUnspecified }
+  } else if cause_kind == "operator-exclusive" {
+    Present { value: ValidationOperatorExclusive }
+  } else if cause_kind == "external-lead" {
+    Present { value: ValidationExternalLead }
+  } else if cause_kind == "calendar-observation" {
+    Present { value: ValidationCalendarObservation }
   } else if cause_kind == "command-unrealized" {
     Present { value: ValidationCommandUnrealized }
   } else if cause_kind == "pin-receipt-unreadable" {
