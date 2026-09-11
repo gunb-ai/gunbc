@@ -36,7 +36,6 @@ import extdeps.memory.types {
   dram_data_word_width,
 }
 import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
-import extdeps.cpu.ampere_altra_memory_controller { altra_memory_max_data_rate }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
 import gunbc.memory_provisioning {
   FullChannel,
@@ -132,10 +131,6 @@ fn min_rate(a: MegatransfersPerSecond, b: MegatransfersPerSecond) -> Megatransfe
   )
 }
 
-fn altra_cited_rated_rate(context: MemoryElectricalContext) -> MegatransfersPerSecond {
-  min_rate(a: context.max_data_rate, b: altra_memory_max_data_rate)
-}
-
 // The deepest ceiling any row applies to this rank count. A fold over the table, not a literal
 // ladder, so a third derating row is data, not a new branch — and the table above is genuinely the
 // authority for the numbers.
@@ -155,11 +150,11 @@ fn cited_channel_clock(
   rank_count: Nat,
 ) -> MegatransfersPerSecond {
   if dimms_per_channel <= 1 {
-    altra_cited_rated_rate(context: context)
+    context.max_data_rate
   } else {
     ceiling_for_ranks(
       table: context.two_dpc_ceilings,
-      rated: altra_cited_rated_rate(context: context),
+      rated: context.max_data_rate,
       rank_count: rank_count,
     )
   }
