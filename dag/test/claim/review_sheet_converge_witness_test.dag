@@ -2,7 +2,7 @@ module test.claim.review_sheet_converge_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { Noop, Apply, Refuse }
-import gunbc.ensure { EnsureMayApply }
+import gunbc.ensure { EnsureMayApply, EnsureObserveOnly }
 import gunbc.review_sheet_projection {
   ReviewColumn,
   ReviewColumnKind,
@@ -37,7 +37,6 @@ import gunbc.review_sheet_projection {
 import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
-  review_sheet_from_readback,
   value_ranges_from_write_plan,
   ReadbackObserved,
   ReadbackUnreadable,
@@ -312,7 +311,7 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
 test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
-  match review_sheet_from_readback(range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
     Apply { plan: p } =>
       match p.patches |> first {
         Present { value: w } =>
@@ -336,13 +335,51 @@ test fn ensure_over_unchanged_readback_is_noop() -> Bool {
   let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
   match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
     Noop =>
-      match review_sheet_from_readback(range: range, projection: projection) {
+      match review_sheet_ensure(policy: EnsureObserveOnly, range: range, projection: projection) {
         Noop => true
         Apply { plan: _ } => false
         Refuse { reason: _ } => false
       }
     Apply { plan: _ } => false
     Refuse { reason: _ } => false
+  }
+}
+
+test fn observe_only_does_not_emit_a_write_plan() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
+  let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
+  match review_sheet_ensure(policy: EnsureObserveOnly, range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "derived region differs")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn column_major_readback_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "Review!A1:D4",
+    majorDimension: Present { value: "COLUMNS" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "column-major")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn foreign_major_dimension_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "Review!A1:D4",
+    majorDimension: Present { value: "DIAGONAL" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "foreign majorDimension")
+    Noop => false
+    Apply { plan: _ } => false
   }
 }
 
@@ -359,7 +396,7 @@ test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
   match observed_read {
     ReadbackUnreadable { reason: _ } => false
     ReadbackObserved { observed: observed, tab: _ } =>
-      match review_sheet_from_readback(range: range, projection: projection) {
+      match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
         Noop =>
           match judgement_for_listing(
             observed: observed,
@@ -384,7 +421,7 @@ test fn readback_not_a1_anchored_refuses() -> Bool {
     majorDimension: Present { value: "ROWS" },
     values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
   }
-  match review_sheet_from_readback(range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "not A1-anchored")
     Noop => false
     Apply { plan: _ } => false
@@ -398,7 +435,7 @@ test fn unqualified_readback_range_refuses() -> Bool {
     majorDimension: Present { value: "ROWS" },
     values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
   }
-  match review_sheet_from_readback(range: range, projection: projection) {
+  match review_sheet_ensure(policy: EnsureMayApply, range: range, projection: projection) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "unqualified A1 range")
     Noop => false
     Apply { plan: _ } => false
@@ -631,7 +668,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
   match live_sheets_transport_frontier {
     Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
       (b.module_path as String) == "gunbc.review_sheet_sheets"
-        && (b.decl_name as String) == "review_sheet_from_readback"
+        && (b.decl_name as String) == "review_sheet_ensure"
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
     Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
     Terminal { reason: _ } => false
