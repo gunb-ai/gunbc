@@ -1,0 +1,51 @@
+set -eu
+B=/var/tmp/gunbc-hostimage
+K=$B/linux-6.12.108
+BUILD_ID="${BUILD_ID:-dev}"
+
+# ---- initramfs tree -------------------------------------------------------------------------
+rm -rf $B/irfs
+mkdir -p $B/irfs
+cp /bin/busybox $B/irfs/busybox
+sed "s/@@BUILD_ID@@/$BUILD_ID/" $B/initramfs/init > $B/irfs/init
+chmod +x $B/irfs/init $B/irfs/busybox
+FC=$B/release-v1.16.1-aarch64/firecracker-v1.16.1-aarch64
+JL=$B/release-v1.16.1-aarch64/jailer-v1.16.1-aarch64
+sed -e "s|@BUSYBOX@|$B/irfs/busybox|" -e "s|@INIT@|$B/irfs/init|" -e "s|@UDHCPC@|$B/udhcpc.script|" \
+    -e "s|@FIRECRACKER@|$FC|" -e "s|@JAILER@|$JL|" \
+    $B/initramfs.spec.in > $B/irfs/spec
+
+# ---- kernel config --------------------------------------------------------------------------
+cd $K
+make -s ARCH=arm64 defconfig
+
+# The measured requirements from gunbc.runner.runner_host_hardware_observation, plus the host
+# virtualization surface Firecracker needs. Built IN, not modular: the runner host should have no
+# reason to load kernel code after boot.
+./scripts/config \
+  --enable  EFI --enable EFI_STUB --enable ACPI \
+  --enable  IGB --disable IGB_HWMON \
+  --enable  KVM --enable VIRTUALIZATION \
+  --enable  TUN --enable BRIDGE --enable VETH \
+  --enable  DEVTMPFS --enable DEVTMPFS_MOUNT \
+  --enable  TMPFS --enable PROC_FS --enable SYSFS \
+  --enable  BLK_DEV_INITRD \
+  --enable  ISO9660_FS --enable BLK_DEV_SR --enable SCSI --enable BLK_DEV_SD \
+  --enable  USB_XHCI_HCD --enable USB_STORAGE --enable SQUASHFS \
+  --enable  SERIAL_AMBA_PL011 --enable SERIAL_AMBA_PL011_CONSOLE \
+  --enable  SERIAL_8250 --enable SERIAL_8250_CONSOLE \
+  --enable  HW_RANDOM --enable HW_RANDOM_ARM_SMCCC_TRNG \
+  --enable  NAMESPACES --enable NET_NS --enable PID_NS --enable USER_NS \
+  --enable  CGROUPS --enable MEMCG --enable CGROUP_SCHED \
+  --enable  SECCOMP --enable SECCOMP_FILTER \
+  --set-str CMDLINE "console=ttyS0,115200 console=ttyAMA0,115200 earlycon" \
+  --enable  CMDLINE_EXTEND \
+  --set-str INITRAMFS_SOURCE "$B/irfs/spec" \
+  --disable MODULES
+
+make -s ARCH=arm64 olddefconfig
+
+# ---- build ----------------------------------------------------------------------------------
+make -s ARCH=arm64 -j"$(nproc)" Image
+
+ls -la $K/arch/arm64/boot/Image
