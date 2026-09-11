@@ -25,6 +25,7 @@ import v2.compiler.self_host.generation {
   GeneratedArtifactIdentity,
   GenerationIdentity,
   ObservedArtifactDigest,
+  generation_identity_agrees,
   observed_artifact_digest
 }
 import v2.compiler.self_host.ancestry {
@@ -50,11 +51,8 @@ import v2.compiler.self_host.ancestry {
   SucceedsNative,
   acquire_native_ancestor,
   admit_genesis,
-  ancestor_identity_still_current,
-  native_generation_admitted,
   native_generation_mint_admission,
   native_generation_producer,
-  recurring_producer_is_native_only,
   successor_names_its_ancestor
 }
 
@@ -119,6 +117,19 @@ data anc_native_closure: RealizedEmitterClosure = RealizedEmitterClosure {
 
 data anc_interpreted_closure: RealizedEmitterClosure = RealizedEmitterClosure {
   emitter_module_paths: ["v2.compiler.emit", "v2.compiler.translate"]
+}
+
+// The v1 SEED INTERPRETER with no emitter beside it. This closure names no emit_rust and no
+// v2.compiler.emit, so every emitter clause passes it; what disqualifies it is that the seed
+// executed at all on the recurring path.
+data anc_seed_interpreter_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+  emitter_module_paths: ["v1_compiler.v1_interpreter"]
+}
+
+// NAMES NOTHING. Every clause of the closure wall is a negative question, and an empty closure
+// satisfies all of them vacuously.
+data anc_empty_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+  emitter_module_paths: []
 }
 
 data anc_remap: BuildPathTreatment = BuildPathRemapped {
@@ -240,7 +251,11 @@ fn anc_good_successor() -> Optional<NativeGeneration> {
 fn anc_admitted(g: Optional<NativeGeneration>) -> Bool {
   match g {
     Absent => false
-    Present { value: v } => native_generation_admitted(g: v)
+    Present { value: v } =>
+      match native_generation_mint_admission(g: v) {
+        NativeGenerationAdmitted => true
+        NativeGenerationRefused { cause: _ } => false
+      }
   }
 }
 
@@ -274,13 +289,6 @@ fn anc_producer_is(g: Optional<NativeGeneration>, expected: EmitterProducer) -> 
   }
 }
 
-fn anc_recurring_producer_native_only(g: Optional<NativeGeneration>) -> Bool {
-  match g {
-    Absent => false
-    Present { value: v } => recurring_producer_is_native_only(g: v)
-  }
-}
-
 // THE PRODUCER PROJECTION REUSES THE EXISTING AUTHORITY and never mints a second one.
 // Genesis projects V1SeedEmitter; generation N + 1 projects V2EmitterNative(N) and is
 // neither of the other two producers.
@@ -292,8 +300,11 @@ test fn producer_projection_is_seed_for_genesis_and_native_for_successor() -> Bo
     )
     && !anc_producer_is(g: anc_good_successor(), expected: V1SeedEmitter)
     && !anc_producer_is(g: anc_good_successor(), expected: V2EmitterInterpreted)
-    && anc_recurring_producer_native_only(g: anc_good_successor())
-    && anc_recurring_producer_native_only(g: anc_good_genesis())
+    && !anc_producer_is(g: anc_good_genesis(), expected: V2EmitterInterpreted)
+    && !anc_producer_is(
+      g: anc_good_successor(),
+      expected: V2EmitterNative { generation: 1 }
+    )
 }
 
 // DISCRIMINATING RED 1 — the seed on the recurring path. The identical successor, moved onto
@@ -329,6 +340,54 @@ test fn successor_whose_closure_reaches_the_interpreter_is_refused() -> Bool {
     ),
     cause: ^ancestry_successor_closure_reaches_interpreter
   )
+}
+
+// DISCRIMINATING RED 2b — the v1 SEED INTERPRETER on the recurring path. The closure names no
+// emitter at all, so it passes both emitter clauses; it is refused because interpreting the
+// program that produced the bytes is producing them, and C1 admits only the prior native
+// generation. Without this clause a successor could be produced by running the seed.
+test fn successor_whose_closure_reaches_the_seed_interpreter_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_seed_interpreter_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_successor_closure_reaches_seed_interpreter
+  )
+}
+
+// DISCRIMINATING RED 2c — THE VACUOUS CLOSURE. This is the sharpest red in the file, because it
+// is the one state in which every other clause of the wall REPORTS CLEAN: a closure naming
+// nothing reaches no seed, no seed interpreter and no interpreted emitter, so before this
+// clause existed it minted an admitted native generation and the route-level
+// OldRouteAbsentByConstruction control would have greened on it. Absence of evidence read as
+// evidence of absence, which DESIGN section 5 forbids by name.
+test fn successor_whose_closure_names_nothing_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_empty_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_successor_closure_empty
+  )
+}
+
+// POSITIVE CONTROL FOR THE TWO CLAUSES ABOVE, stated separately from the general successor
+// positive so that a wall which refused every closure could not pass them. The real native
+// closure names three modules, none of them the seed, the seed interpreter or the interpreted
+// emitter, and it is ADMITTED.
+test fn the_real_native_closure_is_still_admitted() -> Bool {
+  anc_admitted(g: anc_good_successor())
 }
 
 // DISCRIMINATING RED 3 — a green build is not a verified ancestor.
@@ -591,10 +650,10 @@ test fn ancestor_identity_moving_on_an_axis_is_no_longer_current() -> Bool {
   match anc_good_genesis() {
     Absent => false
     Present { value: a } =>
-      ancestor_identity_still_current(ancestor: a, observed_now: a.identity)
-        && !ancestor_identity_still_current(
-          ancestor: a,
-          observed_now: anc_identity(artifact: anc_artifact(hex: anc_other_hex))
+      generation_identity_agrees(left: a.identity, right: a.identity)
+        && !generation_identity_agrees(
+          left: a.identity,
+          right: anc_identity(artifact: anc_artifact(hex: anc_other_hex))
         )
   }
 }
