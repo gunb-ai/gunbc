@@ -73,11 +73,17 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE USER DATA THE CLAUSE IS ABOUT, AS EBAY ITSELF IDENTIFIES A USER TO BE DELETED. A deletion
-// notification's data object carries exactly these fields: "username -- the publicly known eBay
-// user ID", "userId -- the immutable identifier of the eBay user", "eiasToken -- another
-// identifier used for an eBay user". A consumer deciding whether it holds eBay user data joins its
-// persisted field names against these.
+// HOW A DELETION NOTIFICATION IDENTIFIES ITS SUBJECT, AND NOTHING MORE. Its data object carries
+// exactly these fields: "username -- the publicly known eBay user ID", "userId -- the immutable
+// identifier of the eBay user", "eiasToken -- another identifier used for an eBay user". They name
+// WHICH user is to be deleted, so a consumer parsing a notification resolves its subject through
+// them.
+//
+// THEY DO NOT DELIMIT THE OBLIGATION, and reading them that way would be a classifier that renaming
+// defeats: data stored as "seller_account" carries the same meaning under a different name, and
+// contact or transaction records about the identified user contain none of these three names at
+// all. The obligation is over data ASSOCIATED WITH the identified user. Deciding which persisted
+// data that covers is a semantic question this module deliberately leaves unresolved.
 data account_deletion_user_identifier_fields: List<NonEmptyStr> = ["username", "userId", "eiasToken"]
 
 data ebay_account_deletion_frontier_rows: List<FrontierRow> = [
@@ -111,9 +117,9 @@ data ebay_account_deletion_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_user_identifier_fields"),
-    reason: "the notification's user-identifier field names are joined against persisted field names by a consumer outside the public closure",
+    reason: "no public entry parses a deletion notification; the subject-identifier names are read by a consumer outside this closure",
     dissolution: unbound_dissolution(
-      description: "dissolves when an executing gunbc entry refuses a persisted artifact whose field names intersect account_deletion_user_identifier_fields; a witness that the list exists does not fire this"
+      description: "dissolves when an executing gunbc entry parses a marketplace account deletion notification and resolves its subject through these fields; a witness that the list exists does not fire this, and neither does a field-name intersection used as a compliance classifier, which this list does not support"
     )
   ),
 ]
