@@ -18,7 +18,7 @@ population against the J-slot table — landing as one held-unit receipt module.
 recredentialing was explicitly **not** in scope and was not attempted.
 
 The commercial weight sits on the DIMM census: it is the due diligence gating a
-~320-module fleet RAM purchase across 20 units, and the operator had said they would not
+fleet RAM purchase the operator had said they would not
 commit capital without it.
 
 ---
@@ -70,22 +70,30 @@ should govern credentials in captures generally is not this record's to state.
 
 ---
 
-## 3. The two purchasing conclusions
+## 3. What this unit's evidence supports, and where its authority stops
 
-Both were carried to the operator and accepted.
+**THE SCOPE LINE FIRST, because an earlier revision of this section crossed it.** This is a
+record of ONE machine. It can establish that machine's population and the compatibility
+consequences that follow from it against cited authority. It cannot establish a fleet
+roster, a fleet-wide module order, or a DDR generation and rate to buy for machines nobody
+has looked at — those are a procurement decision over a population this document has not
+observed, and an earlier revision stated two of them as settled conclusions. They are
+narrowed here rather than deleted, because the reasoning is sound at unit scope and it is
+the scope that was wrong.
 
-**Buy DDR4-2666, not 3200.** Every installed module is a 2666 part running at 2666.
-Modules added to fill the empty slots share channels with the existing ones, and DDR4
-clocks to the common minimum, so a faster grade buys nothing unless all 32 slots are
-replaced. Ampere's published "up to DDR4-3200 (2DPC)" is a ceiling, not a guarantee, and
-does not change this.
+**This unit is uniformly DDR4-2666.** Every installed module is a 2666 part running at
+2666. Modules added to fill this machine's empty partners share channels with the existing
+ones, and DDR4 clocks to the common minimum, so a faster grade buys this machine nothing
+unless all 32 of its connectors are replaced. Ampere's published "up to DDR4-3200 (2DPC)"
+is a ceiling, not a guarantee. Whether the same holds for any other machine is a fact about
+that machine, which is what its own census is for.
 
-**Do not multiply this unit's mix by twenty.** The OBSERVED population of this unit is
-10 × 1R and 6 × 2R across 16 populated connectors — a reading, carried by
-`mtcollins1_slots` and `mtcollins1_firmware_channel_bindings`. That split is idiosyncratic:
-three different part numbers across 16 sticks, including one that appears exactly once.
-Ordering ~320 modules against one sample would be ordering blind. Each unit needs its own
-census; the census ISO does one unit in a single boot.
+**This unit's mix is idiosyncratic, which is an argument against extrapolating from it.**
+The OBSERVED population is 10 × 1R and 6 × 2R across 16 populated connectors — a reading,
+carried by `mtcollins1_slots` and `mtcollins1_firmware_channel_bindings` — spread over three
+part numbers, one of which appears exactly once. A sample with that shape is evidence that
+machines vary, not a template to multiply. Each machine needs its own census, and the census
+ISO does one in a single boot.
 
 **What this record does NOT establish is the fill requirement**, and the distinction is the
 whole point of the census. Two separate gaps stand between the observed population and a
@@ -183,10 +191,11 @@ consequence, which is the next section and is stated as a rule rather than re-li
 every populated connector is odd, its even partner is empty, and the OCP Mt. Jade same-channel
 rank rule requires each partner module to match the rank of the module already in its channel.
 
-The "empty partner needs" column is the OCP Mt. Jade same-channel rank rule applied to the
-measured population. **That rule is not modelled in the corpus** — nothing under
-`extdeps.ocp.mt_jade` carries it — so the column is a human conclusion from a document the
-repository has not modelled, and the receipt deliberately does not author it as derived.
+When this was first written, that rule was **not** modelled anywhere in the corpus, so the
+fill consequence was a human conclusion from an unmodelled document and the receipt
+deliberately refused to author it as derived. That gap is now closed: `extdeps.ocp.mt_jade`
+`memory_mixing` carries the specification's own table, and the receipt resolves each empty
+partner against it rather than restating it here.
 
 Serials, manufacturer and configured speed for all 32 connectors are in the committed
 capture.
@@ -464,10 +473,14 @@ where they can be consumed rather than read.
 - SOL is unreliable on this controller: it closed mid-POST at 22:45:53 and later delivered
   nothing at all while still accepting keystrokes. Treat it as diagnostic only; the
   delivered image's own receipt landing is a sturdier execution authority.
-- `HMA82GR7CJR8N-VK` has no catalog row in `extdeps.memory.sk_hynix`, which blocks a
-  `HostMemoryPopulation` for this unit. Deliberately not minted from our own boot log —
-  that would render a local report as an upstream fact.
-- OCP Mt. Jade same-channel rank rule not modelled in `extdeps.ocp.mt_jade`.
+- ~~`HMA82GR7CJR8N-VK` has no catalog row~~ — **closed.** Landed by #11066 from SK hynix
+  Rev. 1.7 / Aug. 2019, not from our boot log.
+- ~~OCP Mt. Jade same-channel rank rule not modelled~~ — **closed.** Landed by #11068 from
+  the specification, preserving all four of its verdict states.
+- Cross-channel **rank** mixing is `TBD` in that specification, and this unit runs it. A
+  survey of the Altra datasheets, Platform HW Design Spec, Dec 2025 AVL, both Getting
+  Started Guides, four third-party Altra boards and the OCP index found nothing that
+  resolves it either way, so it will not be closed from documents.
 - Twice this session my PR was blocked by `IMPORT-MEMBER-ABSENT` defects on `main` that
   someone else introduced (the colo rename; #10977's fabric imports). The floor lane
   catches them, but only after they are on main and blocking every branch.

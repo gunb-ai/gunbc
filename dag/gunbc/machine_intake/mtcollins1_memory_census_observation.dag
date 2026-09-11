@@ -12,6 +12,21 @@ import std.measure {
 }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.ocp.mt_jade.memory_mixing {
+  MtJadeDimmMixingAxis,
+  MtJadeDimmMixingPlacement,
+  MtJadeMixedDimmSupport,
+  MixingUndetermined,
+  Mixing1rAnd2r,
+  MixingX4AndX8,
+  DifferentDensity,
+  SameChannel,
+  DifferentChannel,
+  MixedDimmSupportResolved,
+  MixedDimmSupportUnmodelled,
+  MixedDimmSupportAmbiguous,
+  mt_jade_mixed_dimm_support,
+}
 
 // THE HOST-SIDE MEMORY CENSUS OF MT. COLLINS UNIT 1, read from Linux running ON THE MACHINE across
 // two captures, 2026-09-10T20:02:36Z and 2026-09-11T01:26:50Z.
@@ -371,6 +386,67 @@ data mtcollins1_connector_identification_basis: MtCollins1ConnectorIdentificatio
 // option. Recording the negative WITH its mechanism is the difference between a fact and an
 // unfinished errand: without it the next reader sees "no csrow tree" and schedules another boot.
 data mtcollins1_edac_channel_map_unavailable_reason: NonEmptyStr = "ghes_edac is an error-reporting shim under ACPI APEI firmware-first mode (dmesg: \"GHES: APEI firmware first mode is enabled by APEI bit\"), not a memory-controller topology driver. It registers one synthetic controller and mirrors the SMBIOS Type 17 device list so a GHES error record has a DIMM to name. No csrow or channel node exists to read, on any boot, without a native Altra memory-controller EDAC driver that does not exist in mainline. The channel-resolved reading comes from the boot firmware's DRAM training output instead, which is carried by mtcollins1_firmware_channel_bindings and is strictly richer, naming slot-within-channel as well as controller."
+
+// ── the observation resolved against upstream authority ────────────────────────────────────────
+
+// UNTIL TODAY THIS MODULE COULD ONLY NAME ITS GAPS. The part at J11 had no catalog row, and the
+// same-channel mixing rule was in nobody's corpus, so the receipt recorded both as obligations and
+// refused to author either from its own boot log. Both authorities landed -- gunbc#11066 from SK
+// hynix Rev. 1.7, gunbc#11068 from the OCP Mt. Jade specification -- so the receipt now RESOLVES
+// against them. That is the whole point of having kept the observation and the rule apart: the
+// join becomes possible without anything being re-typed.
+//
+// WHAT IS DELIBERATELY NOT BUILT HERE: a fill requirement or a purchase vector. This module
+// resolves THIS UNIT's observations against cited rules. Turning sixteen per-connector
+// requirements into an order is a decision over a population this module has not observed.
+type MtCollins1PartnerRequirement {
+  empty_connector: Nat
+  peer_connector: Nat
+  peer_part_number: NonEmptyStr
+  rank_mixing_in_channel: MtJadeMixedDimmSupport
+  width_mixing_in_channel: MtJadeMixedDimmSupport
+  density_mixing_in_channel: MtJadeMixedDimmSupport
+}
+
+fn mtcollins1_mixing_verdict(placement: MtJadeDimmMixingPlacement, axis: MtJadeDimmMixingAxis) -> MtJadeMixedDimmSupport {
+  match mt_jade_mixed_dimm_support(placement: placement, axis: axis) {
+    MixedDimmSupportResolved { cell: c } => c.support
+    MixedDimmSupportUnmodelled { query: _ } => MixingUndetermined
+    MixedDimmSupportAmbiguous { query: _ } => MixingUndetermined
+  }
+}
+
+// THE VERDICTS ARE THE SPECIFICATION'S OWN, CARRIED WHOLE. Same-channel rank, width and density
+// each read MixingNotSupported, which is what makes each empty partner's required rank, width and
+// density equal to its peer's -- a CONSEQUENCE of a cited rule rather than a preference read off
+// the installed modules. The states are not collapsed to a Bool on the way through: a cell that
+// said MixingNotPreferred or MixingUndetermined would arrive here saying so, which is the defect
+// filed at gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission.
+fn mtcollins1_same_channel_verdict(axis: MtJadeDimmMixingAxis) -> MtJadeMixedDimmSupport {
+  mtcollins1_mixing_verdict(placement: SameChannel, axis: axis)
+}
+
+fn mtcollins1_partner_requirement(b: MtCollins1FirmwareChannelBinding, peer_connector: Nat) -> MtCollins1PartnerRequirement {
+  MtCollins1PartnerRequirement {
+    empty_connector: peer_connector + 1,
+    peer_connector: peer_connector,
+    peer_part_number: b.part_number,
+    rank_mixing_in_channel: mtcollins1_same_channel_verdict(axis: Mixing1rAnd2r),
+    width_mixing_in_channel: mtcollins1_same_channel_verdict(axis: MixingX4AndX8),
+    density_mixing_in_channel: mtcollins1_same_channel_verdict(axis: DifferentDensity),
+  }
+}
+
+// THE CONFIGURATION THIS UNIT ALREADY RUNS IS NOT AFFIRMED BY ITS OWN PLATFORM SPECIFICATION, and
+// that is recorded as a first-class reading rather than left for a reader to notice. Sixteen
+// channels carry a mix of 1R and 2R modules ACROSS channels; the specification's different-channel
+// row answers every other axis Supported and answers rank with MixingUndetermined -- its TBD.
+//
+// The machine boots and its EDAC counters are clean under load. That is evidence THIS SPECIMEN
+// EXECUTES. It is not evidence that the authority affirms the arrangement, and substituting the
+// first for the second is exactly the trap this row exists to keep open rather than close.
+
+data mtcollins1_cross_channel_rank_mixing_standing: MtJadeMixedDimmSupport = mtcollins1_mixing_verdict(placement: DifferentChannel, axis: Mixing1rAnd2r)
 
 // ── what this census does NOT license anyone to conclude ───────────────────────────────────────
 

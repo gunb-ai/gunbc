@@ -2,6 +2,20 @@ module test.claim.mtcollins1_memory_census_witness_test
 
 import std.types { Bool, Int, List, list_length }
 import std.nat { Nat }
+import extdeps.memory.sk_hynix {
+  hma82gr7afr4n_vk_catalog,
+  hma82gr7afr8n_vk_catalog,
+  hma82gr7cjr8n_vk_catalog,
+}
+import extdeps.memory.types { DramModuleCatalogRow }
+import extdeps.ocp.mt_jade.memory_mixing {
+  MtJadeMixedDimmSupport,
+  MixingSupported,
+  MixingNotSupported,
+  MixingNotPreferred,
+  MixingUndetermined,
+}
+import std.measure { bit_width_count }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelPopulationRole,
   MtCollinsChannelPopulationRoleStanding,
@@ -24,7 +38,10 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation {
   MtCollins1ConsumptionFrontier,
   MtCollins1MediaRedirectionSample,
   MtCollins1ConnectorIdentificationBasis,
+  MtCollins1PartnerRequirement,
   mtcollins1_acquisition_standing,
+  mtcollins1_cross_channel_rank_mixing_standing,
+  mtcollins1_partner_requirement,
   mtcollins1_census_observed_at,
   mtcollins1_connector_identification_basis,
   mtcollins1_edac_clean_at_capture,
@@ -408,8 +425,9 @@ test fn the_one_of_sixteen_discriminator_the_identification_rests_on_still_exist
 // executed join from drifting apart -- a basis that cited one authority while the test folded
 // another would be a sentence about work nobody did.
 //
-// WHAT THIS IS NOT: the discriminating check. That is
-// the_observed_channels_carry_the_connectors_ampere_assigns_them, which folds the rows. An earlier
+// WHAT THIS IS NOT: the discriminating check. Those are
+// every_observed_channel_resolves_to_exactly_one_upstream_role and
+// firmware_channel_map_agrees_with_the_smbios_slot_table, which fold the rows. An earlier
 // version of this file had ONLY the string comparison and presented it as the discriminating
 // witness; review 63939 caught that, and the distinction is kept explicit here so the weaker check
 // cannot be mistaken for the stronger one again.
@@ -419,4 +437,100 @@ fn basis_citation_names_the_folded_authority(basis: MtCollins1ConnectorIdentific
 
 test fn the_identification_basis_cites_the_authority_this_witness_folds() -> Bool {
   basis_citation_names_the_folded_authority(basis: mtcollins1_connector_identification_basis)
+}
+
+
+// ── the observation resolved against the catalogs, not merely against itself ───────────────────
+
+// THE CROSS-JOIN ABOVE PROVES TWO LOCAL TRANSCRIPTIONS AGREE, which is worth having and is not
+// enough: edit the same part number in BOTH lists and it stays green. That is the substitution this
+// section closes. Each observed part must resolve to a MANUFACTURER CATALOG ROW, and the row's
+// rank and chip width must equal what the firmware independently reported -- so a part number
+// changed on both local sides now has to survive contact with SK hynix's own datasheet figures.
+fn catalog_agrees_with_binding(c: DramModuleCatalogRow, b: MtCollins1FirmwareChannelBinding) -> Bool {
+  c.part_number == b.part_number
+    && c.rank_count == b.rank_count
+    && bit_width_count(w: c.chip_width) == bit_width_count(w: b.chip_width)
+}
+
+fn catalog_row_for_binding_count(b: MtCollins1FirmwareChannelBinding, rows: List<DramModuleCatalogRow>) -> Int {
+  fold(rows, init: 0, f: fn(acc, c) { if catalog_agrees_with_binding(c: c, b: b) { acc + 1 } else { acc } })
+}
+
+data mtcollins1_installed_catalog_rows: List<DramModuleCatalogRow> = [
+  hma82gr7afr4n_vk_catalog,
+  hma82gr7afr8n_vk_catalog,
+  hma82gr7cjr8n_vk_catalog,
+]
+
+// EVERY INSTALLED MODULE RESOLVES TO EXACTLY ONE CATALOG ROW that agrees with it on rank and
+// width. Exactly one, never at least one: two rows agreeing would mean the catalog cannot tell
+// this unit's parts apart, which would make the population ambiguous rather than merely
+// unverified.
+test fn every_observed_module_resolves_to_one_manufacturer_catalog_row() -> Bool {
+  fold(mtcollins1_firmware_channel_bindings, init: true, f: fn(acc, b) {
+    acc && catalog_row_for_binding_count(b: b, rows: mtcollins1_installed_catalog_rows) == 1
+  })
+}
+
+fn bindings_of_part(part: NonEmptyStr) -> Int {
+  fold(mtcollins1_firmware_channel_bindings, init: 0, f: fn(acc, b) { if b.part_number == part { acc + 1 } else { acc } })
+}
+
+// THE POPULATION BY CATALOG IDENTITY: ten AFR4N, five AFR8N, one CJR8N. This is the census's
+// headline claim stated as an identity join rather than a count of anonymous sticks, and the
+// sixteen must be exactly accounted for -- a substitution that swapped one part for another in
+// both local lists would change these three numbers even though the cross-join stayed green.
+test fn the_population_by_catalog_identity_accounts_for_all_sixteen() -> Bool {
+  bindings_of_part(part: hma82gr7afr4n_vk_catalog.part_number) == 10
+    && bindings_of_part(part: hma82gr7afr8n_vk_catalog.part_number) == 5
+    && bindings_of_part(part: hma82gr7cjr8n_vk_catalog.part_number) == 1
+    && list_length(items: mtcollins1_firmware_channel_bindings) == 16
+}
+
+// ── the fill consequence, derived from the specification rather than from the sample ───────────
+
+fn mixing_is_forbidden(support: MtJadeMixedDimmSupport) -> Bool {
+  match support {
+    MixingNotSupported => true
+    MixingSupported => false
+    MixingNotPreferred => false
+    MixingUndetermined => false
+  }
+}
+
+fn requirement_is_peer_determined(r: MtCollins1PartnerRequirement) -> Bool {
+  mixing_is_forbidden(support: r.rank_mixing_in_channel)
+    && mixing_is_forbidden(support: r.width_mixing_in_channel)
+    && mixing_is_forbidden(support: r.density_mixing_in_channel)
+    && r.empty_connector == r.peer_connector + 1
+}
+
+// EACH EMPTY PARTNER'S RANK, WIDTH AND DENSITY ARE FIXED BY ITS PEER BECAUSE THE SPECIFICATION
+// FORBIDS MIXING THEM IN ONE CHANNEL -- not because the installed modules happen to have those
+// values. If OCP ever relaxed a same-channel cell, this goes red and the fill consequence stops
+// being determined, which is the correct outcome rather than a silently unchanged requirement.
+test fn every_empty_partner_is_determined_by_its_channel_peer() -> Bool {
+  fold(mtcollins1_firmware_channel_bindings, init: true, f: fn(acc, b) {
+    acc && fold(population_roles(standing: mt_collins_channel_population_roles), init: true, f: fn(inner, r) {
+      if role_covers_binding(r: r, b: b) {
+        inner && requirement_is_peer_determined(r: mtcollins1_partner_requirement(b: b, peer_connector: r.connector_used_at_one_dpc))
+      } else {
+        inner
+      }
+    })
+  })
+}
+
+// AND THE UNIT'S EXISTING CROSS-CHANNEL ARRANGEMENT IS NOT AFFIRMED. This asserts the TBD is still
+// a TBD: if a later specification revision resolved that cell either way, this goes red and the
+// purchase question it gates gets revisited, instead of the corpus quietly carrying a stale
+// non-affirmation. It is a control that is SUPPOSED to flip.
+test fn cross_channel_rank_mixing_remains_unaffirmed_by_the_specification() -> Bool {
+  match mtcollins1_cross_channel_rank_mixing_standing {
+    MixingUndetermined => true
+    MixingSupported => false
+    MixingNotSupported => false
+    MixingNotPreferred => false
+  }
 }
