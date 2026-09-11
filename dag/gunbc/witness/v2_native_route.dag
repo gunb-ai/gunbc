@@ -1,6 +1,6 @@
 module gunbc.witness_v2_native_route
 
-import v2.std.algebra { any, filter, fold_list, is_empty, length, list_snoc_item }
+import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -12,7 +12,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestFileRefusal
 }
 import v2.workflow.compile_door_cause_ownership {
-  DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup
+  CauseLane, DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup, known_frontier_causes
 }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
@@ -676,6 +676,41 @@ fn native_route_file_refusals_attributed(receipt: NativeRouteReceipt) -> Bool {
       Absent => true
     }
   })
+}
+
+// THE FILE REFUSALS' COMPOSITION, COUNTED BY THE RECEIPT RATHER THAN BY A READER. The clause
+// above only says every fatal reason is OWNED; it says nothing about how the population divides
+// among the owners, and that division is the question the closure-scoped ingest is asked (which
+// rostered frontier causes the universe's own import closure actually carries, and how many files
+// each). One row per fatal-grain row of the ownership table, in table order, zeros included: a cause
+// whose count falls to zero is the evidence its flip_trigger fired, so an omitted zero would hide
+// exactly the change worth seeing. The rows sum to the receipt's file refusals whenever
+// native_route_file_refusals_attributed holds, because that clause is what makes every refusal
+// land on some row. Consumer: the emitted route's terminal line (`file_refusal_tally`).
+type NativeRouteCauseTally {
+  cause: Symbol
+  lane: CauseLane
+  file_refusals: Int
+}
+
+fn native_route_file_refusal_tally(receipt: NativeRouteReceipt) -> List<NativeRouteCauseTally> {
+  fold_list(
+    xs: known_frontier_causes,
+    empty: [],
+    cons: fn(acc, row) {
+      match row.grain {
+        HeadGrain => acc
+        FatalGrain =>
+          list_snoc_item(xs: acc, item: NativeRouteCauseTally {
+            cause: row.cause,
+            lane: row.lane,
+            file_refusals: count_where(xs: receipt.file_refusals, predicate: fn(fr) {
+              fr.fatal_reason == row.cause
+            })
+          })
+      }
+    }
+  )
 }
 
 // THE HEAD REASON IS NOT DEAD RECEIPT DATA. rejected_with_pending prepends the non-fatal

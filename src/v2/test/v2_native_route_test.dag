@@ -25,7 +25,9 @@ import gunbc.witness_v2_native_route {
   required_v2_native_job_name,
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
   native_route_admission_summary,
-  native_route_live_control_module
+  native_route_live_control_module,
+  NativeRouteCauseTally,
+  native_route_file_refusal_tally
 }
 import v2.compiler.compile {
   NativeLaneSourceFacts,
@@ -52,7 +54,7 @@ import v2.compiler.native_test_vocabulary {
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.collection { List }
-import v2.std.algebra { length }
+import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
@@ -1287,4 +1289,37 @@ test fn a_closure_finishing_on_its_last_round_is_accepted() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: closure, diagnostics: _ } => native_lane_module_named(xs: closure, name: "v2.std.logic")
   }
+}
+
+// ── the file refusals' composition ─────────────────────────────────────────────────────────
+//
+// THE TALLY COUNTS AT FATAL GRAIN, ONCE. `resolve_reason_unbound_symbol` is owned at BOTH grains in
+// the cause table, so a tally that walked every row would count its refusal twice and the rows
+// would sum past the receipt's population; the sum row below is what discriminates that. The two
+// per-cause rows discriminate a tally that counted rows instead of refusals, or matched on the
+// head reason.
+fn native_route_tally_probe() -> List<NativeRouteCauseTally> {
+  native_route_file_refusal_tally(receipt: receipt_over(
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: [
+      file_refusal_row(path: ^tally_a, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_b, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_c, head: ^resolve_reason_unbound_symbol, fatal: ^resolve_reason_unbound_symbol)
+    ]
+  ))
+}
+
+fn native_route_tally_count_for(rows: List<NativeRouteCauseTally>, cause: Symbol) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, row) {
+    if row.cause == cause { acc + row.file_refusals } else { acc }
+  })
+}
+
+test fn the_refusal_tally_counts_each_refusal_once_at_fatal_grain() -> Bool {
+  let rows = native_route_tally_probe()
+  (native_route_tally_count_for(rows: rows, cause: ^parse_g0_tokens_remain) == 2)
+  && (native_route_tally_count_for(rows: rows, cause: ^resolve_reason_unbound_symbol) == 1)
+  && (fold_list(xs: rows, empty: 0, cons: fn(acc, row) { acc + row.file_refusals }) == 3)
 }
