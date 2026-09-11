@@ -485,7 +485,7 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
 // wrapper-retention diagnostics only because the DATA declaration's interior re-entered
 // dispatch. Preserving the shell after the child fold keeps the production identity later
 // consumers (fold_lowering's fn_literal search) still find, and does not emit retention.
-// The other four are safe by what they ARE -- type syntax with no Behavior to lower to. field_init
+// Type syntax is safe by what it IS -- no Behavior to lower to. field_init
 // and the function-value shells are safe by WHEN this dispatch reaches them: normalize_node_ctx
 // folds children first and passes the FOLDED node to body_lower_finish_for_normalize. There is a
 // live path in that same function where dispatch sees an UNFOLDED node -- the deferred arm passes
