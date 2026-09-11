@@ -17,6 +17,7 @@ import v2.workflow.compile_door_ledger {
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import std.content_hash { ContentHash }
 import gunbc.host_budget_source {
   HostBudgetObservation, HostBudgetObserved, host_budget_source_bounds_this_process, host_budget_source_label
 }
@@ -132,6 +133,65 @@ fn native_route_reference_for(
 type NativeRouteMemberRow {
   identity: NativeRouteTestIdentity
   verdict: NativeTestVerdict
+  provenance: NativeRouteVerdictProvenance
+}
+
+// WHERE EACH VERDICT CAME FROM, PER IDENTITY (operator ruling 2026-09-11 via fierce-lark-661):
+// the native run IS a materialization. A test verdict is a pure computation keyed by (compiler
+// identity, test identity, dependency-closure digest), and a replacement job may SERVE a verdict
+// from a provider (std.artifact_store / std.materialization_provider, ArtifactRequest by
+// ContentHash) instead of executing it. A receipt whose rows cannot say which happened would
+// let a served verdict pass as an executed one and the reverse, so every row names its
+// provenance, and every provenance names the tested tree it is a verdict FOR: admission refuses a
+// row whose tree is not the receipt's, which is what stops a provider serving a verdict minted
+// for another head into this receipt.
+//
+// DECLARED FRONTIER: the closure_digest on VerdictMaterialized is a ContentHash THIS PRODUCER DOES
+// NOT COMPUTE. The per-identity dependency-closure digest is a separate, compiler-side lane
+// (after D4); when its type lands in std/ this field consumes it, and until then the producer
+// mints VerdictExecuted only. The field exists now so the receipt's shape does not change again
+// under the train, and so the counts below have a constructor for the served arm. Trigger: the
+// compiler-side per-identity dependency-closure digest, sufficient for keying an ArtifactRequest.
+type NativeRouteVerdictProvenance
+  = VerdictExecuted { tested_tree: String }
+  | VerdictMaterialized { tested_tree: String, closure_digest: ContentHash }
+
+fn native_route_provenance_tree(p: NativeRouteVerdictProvenance) -> String {
+  match p {
+    VerdictExecuted { tested_tree: t } => t
+    VerdictMaterialized { tested_tree: t, closure_digest: _ } => t
+  }
+}
+
+// THE HIT/MISS COUNTS, DERIVED FROM THE ROWS, never accumulated beside them (the census rule):
+// materialized is the provider's hits, executed its misses.
+type NativeRouteServing {
+  materialized: Int
+  executed: Int
+}
+
+fn native_route_serving(rows: List<NativeRouteMemberRow>) -> NativeRouteServing {
+  fold_list(
+    xs: rows,
+    empty: NativeRouteServing { materialized: 0, executed: 0 },
+    cons: fn(acc, row) {
+      match row.provenance {
+        VerdictExecuted { tested_tree: _ } =>
+          NativeRouteServing { materialized: acc.materialized, executed: acc.executed + 1 }
+        VerdictMaterialized { tested_tree: _, closure_digest: _ } =>
+          NativeRouteServing { materialized: acc.materialized + 1, executed: acc.executed }
+      }
+    }
+  )
+}
+
+fn native_route_serving_summary(receipt: NativeRouteReceipt) -> String {
+  let serving = native_route_serving(rows: receipt.population)
+  concat(
+    "served materialized=", to_string(serving.materialized),
+    " executed=", to_string(serving.executed),
+    " of ", to_string(length(xs: receipt.population))
+  )
 }
 
 // THE MODULE → SOURCE-PATH RELATION, OVER THE UNIVERSE'S OWN MODULES. A Context-stage row is a
@@ -582,6 +642,7 @@ type NativeRouteAdmissionRefusalCause
   | MemoryBoundUnobservedOnHost
   | MemoryBoundNotEnforced
   | MemoryBoundBelowRequirement
+  | ProvenanceTreeMismatch
 
 type NativeRouteAdmission
   = NativeRouteAdmitted
@@ -891,6 +952,13 @@ fn native_route_memory_budget_summary(receipt: NativeRouteReceipt) -> String {
   }
 }
 
+// Every row's verdict is a verdict FOR the receipt's tree, whether executed here or served.
+fn native_route_provenance_bound_to_tree(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: receipt.population, predicate: fn(row) {
+    native_route_provenance_tree(p: row.provenance) != receipt.tested_tree
+  })
+}
+
 fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
   let expected_red = floor_expected_red_roster()
   let route_gap = floor_route_gap_roster()
@@ -927,7 +995,8 @@ fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
     NativeRouteClauseCheck { holds: native_route_emitted_build_clean(receipt: receipt), cause: EmittedBuildNotClean },
     NativeRouteClauseCheck { holds: native_route_memory_bound_observed(receipt: receipt), cause: MemoryBoundUnobservedOnHost },
     NativeRouteClauseCheck { holds: native_route_memory_bound_enforced(receipt: receipt), cause: MemoryBoundNotEnforced },
-    NativeRouteClauseCheck { holds: native_route_memory_bound_covers_requirement(receipt: receipt), cause: MemoryBoundBelowRequirement }
+    NativeRouteClauseCheck { holds: native_route_memory_bound_covers_requirement(receipt: receipt), cause: MemoryBoundBelowRequirement },
+    NativeRouteClauseCheck { holds: native_route_provenance_bound_to_tree(receipt: receipt), cause: ProvenanceTreeMismatch }
   ]
   let causes = fold_list(
     xs: checks,
@@ -973,6 +1042,7 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     MemoryBoundUnobservedOnHost => "memory_bound_unobserved_on_host"
     MemoryBoundNotEnforced => "memory_bound_not_enforced"
     MemoryBoundBelowRequirement => "memory_bound_below_requirement"
+    ProvenanceTreeMismatch => "provenance_tree_mismatch"
   }
 }
 
