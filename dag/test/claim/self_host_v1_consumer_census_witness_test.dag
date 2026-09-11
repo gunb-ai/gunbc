@@ -17,7 +17,7 @@ import gunbc.v1_consumer_census {
   V1BlockingCount, V1BlockingCounted, V1BlockingUnmeasured, v1_blocking_count_of,
   V1ShimPopulation, V1ShimPopulationObserved, V1ShimPopulationRefused, v1_shim_population_of,
   consumer_disposition_blocks,
-  v1_claimed_successors,
+  v1_row_keys,
   v1_rows_undecided, v1_undecided_row_count, v1_deletion_worklist, v1_worklist_is_a_permutation,
   v1_worklist_leading_unjudged_count, v1_worklist_leads_with_the_unjudged,
   v1_blocking_consumers, v1_native_lane_consumers, v1_native_lane_row_count,
