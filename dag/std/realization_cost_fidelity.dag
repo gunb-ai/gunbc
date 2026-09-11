@@ -63,8 +63,25 @@ import std.logic { Bool }
 // that holds there are deliberately no `RealizationCostFact` rows in the tree, because authoring a
 // realized cost by hand is exactly the fabricated fact this authority exists to catch — the model
 // and the realization would then agree by construction, which is the failure this join is built to
-// make impossible. A second, smaller trigger retires `ModeledCostNotStructured` independently: the
-// migration of `std.primitives` contract costs into `CostBound`.
+// make impossible. A second, smaller trigger retires `ModeledCostNotStructured` independently, and
+// it is stated at the grain of what this module actually duplicates rather than at the grain that
+// sounded adjacent: `std.primitive_identity` `PrimitiveCostFact` already keys a modeled cost on
+// `PrimitiveIdentity` and stores it as a `CostShape`, which is the COARSE projection of the
+// structured form `ModeledCostBoundFact` carries. Those are two carriers for one fact at two
+// grains, the fork is real, and naming only the `std.primitives` contract-cost strings understated
+// it -- a loss sentence about one carrier under a trigger about another, which is the grain
+// mismatch DESIGN section 4b(3) names as the review tell.
+//
+// WHY THE CUT IS NOT MECHANICAL, stated because the obvious repair looks like a substitution and is
+// not one. Migrating `PrimitiveCostFact.cost` to `CostBound` and deriving the coarse rank through
+// `cost_bound_to_shape` would close the fork -- but the six populated rows record a shape and NO
+// PARAMETER, and every `CostBound` constructor needs one. The parameter is load-bearing here, not
+// decoration: `param_axis_comparison` keys on it and `param_union` matches it across the modeled
+// and realized sides, so an invented name produces a spurious axis and a fabricated verdict.
+// Recovering each row's real parameter from its primitive is modelling per primitive, not a
+// rewrite, and doing it by pattern-substitution would manufacture exactly the kind of fact this
+// authority exists to catch. The cut is therefore named here and sequenced separately rather than
+// performed inside a change that cannot establish its inputs.
 //
 // WHAT THAT MEANS FOR A READER OF A GREEN RUN TODAY: this module can state a divergence and has
 // never been asked about a real one. Its arms are proven against authored costs, and the population
@@ -462,113 +479,95 @@ fn realization_cost_fidelity_rows(
   }
 }
 
-fn cost_fidelity_is_finding(fidelity: CostFidelity) -> Bool {
+// ONE MAPPING FROM ARM TO REPORTED POPULATION, AND EVERY COUNT READS IT. This replaced six
+// near-identical nine-arm matches that differed only in which arm incremented -- six independent
+// sources for one fact ("which reported population does this row belong to"), so a seventh arm had
+// to be classified correctly six times by hand. I know the cost of that shape exactly, because I
+// added the seventh arm and the substrate made me touch four folds here and twelve matches in the
+// witnesses; the exhaustiveness check caught every one, which is what kept it correct and is NOT
+// the same as it being right (DESIGN section 2: net concepts must not grow by re-invention).
+//
+// THE PARTITION IS NOW TOTAL BY CONSTRUCTION rather than by six coincidences: every arm maps to
+// exactly one population, so the counts cannot overlap and cannot leave an arm uncounted. Nothing
+// established that before -- the previous folds could each have skipped the same arm and no
+// assertion would have noticed, which is why the witness now asserts the counts sum to the row
+// count rather than checking each in isolation.
+type CostFidelityPopulation
+  = PopulationPreserved
+  | PopulationFinding
+  | PopulationBodyDependent
+  | PopulationNotOrderable
+  | PopulationContradicted
+  | PopulationUnmeasured
+  | PopulationUnmigrated
+
+fn cost_fidelity_population(fidelity: CostFidelity) -> CostFidelityPopulation {
   match fidelity {
-    CostShapePreserved => false
-    RealizationSlowerThanModeled => true
-    RealizationFasterThanModeled => true
-    RealizationDivergesByOperand => true
-    RealizationCostBodyDependent => false
-    CostGrowthNotOrderable => false
-    RealizationCostUnknown => false
-    RealizationCostFactsContradict { count: _ } => true
-    ModeledCostNotStructured => false
+    CostShapePreserved => PopulationPreserved
+    RealizationSlowerThanModeled => PopulationFinding
+    RealizationFasterThanModeled => PopulationFinding
+    RealizationDivergesByOperand => PopulationFinding
+    RealizationCostBodyDependent => PopulationBodyDependent
+    CostGrowthNotOrderable => PopulationNotOrderable
+    RealizationCostFactsContradict { count: _ } => PopulationContradicted
+    RealizationCostUnknown => PopulationUnmeasured
+    ModeledCostNotStructured => PopulationUnmigrated
   }
 }
 
-fn count_cost_fidelity_findings(rows: List<RealizationCostFidelityRow>) -> Int {
-  rows |> fold(init: 0, f: fn(acc, row) {
-    if cost_fidelity_is_finding(fidelity: row.fidelity) { acc + 1 } else { acc }
+type CostFidelityCounts {
+  preserved: Int
+  findings: Int
+  body_dependent: Int
+  not_orderable: Int
+  contradicted: Int
+  unmeasured: Int
+  unmigrated: Int
+}
+
+fn cost_fidelity_counts(rows: List<RealizationCostFidelityRow>) -> CostFidelityCounts {
+  rows |> fold(init: CostFidelityCounts {
+    preserved: 0, findings: 0, body_dependent: 0,
+    not_orderable: 0, contradicted: 0, unmeasured: 0, unmigrated: 0,
+  }, f: fn(acc, row) {
+    match cost_fidelity_population(fidelity: row.fidelity) {
+      PopulationPreserved => CostFidelityCounts { preserved: acc.preserved + 1, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationFinding => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings + 1, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationBodyDependent => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent + 1, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationNotOrderable => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable + 1, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationContradicted => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted + 1, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationUnmeasured => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured + 1, unmigrated: acc.unmigrated }
+      PopulationUnmigrated => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated + 1 }
+    }
   })
+}
+
+// THE NAMED COUNTS STAY AS THE CONSUMER SURFACE, derived from the one fold rather than re-spelling
+// the mapping. The census reads them by name, and a caller that wants the whole partition in one
+// pass reads cost_fidelity_counts directly.
+fn count_cost_fidelity_findings(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).findings
 }
 
 fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int {
-  rows |> fold(init: 0, f: fn(acc, row) {
-    match row.fidelity {
-      RealizationCostUnknown => acc + 1
-      CostShapePreserved => acc
-      RealizationSlowerThanModeled => acc
-      RealizationFasterThanModeled => acc
-      RealizationDivergesByOperand => acc
-      RealizationCostBodyDependent => acc
-      CostGrowthNotOrderable => acc
-      RealizationCostFactsContradict { count: _ } => acc
-      ModeledCostNotStructured => acc
-    }
-  })
+  cost_fidelity_counts(rows: rows).unmeasured
 }
 
-// A MEASURED-BUT-UNDECIDED ROW MUST APPEAR IN A REPORTED POPULATION, or the arm that exists to stop
-// an undecided answer being read as preserved becomes an answer nobody reads at all. It is not a
-// finding (nothing is established about which side is worse), not unmeasured (both costs are known),
-// and not unmigrated (both are structured), so it is its own count -- the fourth population the
-// consumer reports.
 fn count_cost_body_dependent(rows: List<RealizationCostFidelityRow>) -> Int {
-  rows |> fold(init: 0, f: fn(acc, row) {
-    match row.fidelity {
-      RealizationCostBodyDependent => acc + 1
-      RealizationCostUnknown => acc
-      RealizationCostFactsContradict { count: _ } => acc
-      CostShapePreserved => acc
-      RealizationSlowerThanModeled => acc
-      RealizationFasterThanModeled => acc
-      RealizationDivergesByOperand => acc
-      CostGrowthNotOrderable => acc
-      ModeledCostNotStructured => acc
-    }
-  })
+  cost_fidelity_counts(rows: rows).body_dependent
 }
 
-// A BOUND THIS READING CANNOT ORDER IS A FIFTH REPORTED POPULATION. An arm that no count reports is
-// an answer nobody reads -- the defect one round earlier in this module -- so the arm and its
-// population land together.
-// THE CONTRADICTED-KEY POPULATION IS COUNTED LIKE EVERY OTHER ARM, because an arm no fold reports
-// is an answer nobody reads. It counts keys whose facts disagree -- not keys nobody measured, which
-// is RealizationCostUnknown and a different obligation.
 fn count_cost_facts_contradicted(rows: List<RealizationCostFidelityRow>) -> Int {
-  rows |> fold(init: 0, f: fn(acc, row) {
-    match row.fidelity {
-      RealizationCostFactsContradict { count: _ } => acc + 1
-      CostGrowthNotOrderable => acc
-      RealizationCostBodyDependent => acc
-      RealizationCostUnknown => acc
-      CostShapePreserved => acc
-      RealizationSlowerThanModeled => acc
-      RealizationFasterThanModeled => acc
-      RealizationDivergesByOperand => acc
-      ModeledCostNotStructured => acc
-    }
-  })
+  cost_fidelity_counts(rows: rows).contradicted
 }
 
 fn count_cost_not_orderable(rows: List<RealizationCostFidelityRow>) -> Int {
-  rows |> fold(init: 0, f: fn(acc, row) {
-    match row.fidelity {
-      CostGrowthNotOrderable => acc + 1
-      RealizationCostBodyDependent => acc
-      RealizationCostUnknown => acc
-      RealizationCostFactsContradict { count: _ } => acc
-      CostShapePreserved => acc
-      RealizationSlowerThanModeled => acc
-      RealizationFasterThanModeled => acc
-      RealizationDivergesByOperand => acc
-      ModeledCostNotStructured => acc
-    }
-  })
+  cost_fidelity_counts(rows: rows).not_orderable
 }
 
 fn count_cost_model_unmigrated(rows: List<RealizationCostFidelityRow>) -> Int {
-  rows |> fold(init: 0, f: fn(acc, row) {
-    match row.fidelity {
-      ModeledCostNotStructured => acc + 1
-      RealizationCostUnknown => acc
-      RealizationCostFactsContradict { count: _ } => acc
-      CostShapePreserved => acc
-      RealizationSlowerThanModeled => acc
-      RealizationFasterThanModeled => acc
-      RealizationDivergesByOperand => acc
-      RealizationCostBodyDependent => acc
-      CostGrowthNotOrderable => acc
-    }
-  })
+  cost_fidelity_counts(rows: rows).unmigrated
 }
+
+
+

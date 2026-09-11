@@ -45,6 +45,7 @@ import std.realization_cost_fidelity {
   StructuredPrimitiveDuplicated,
   UnstructuredPrimitiveDuplicated,
   count_cost_facts_contradicted,
+  cost_fidelity_counts,
   RealizationCostUnknown,
   RealizationDivergesByOperand,
   RealizationFasterThanModeled,
@@ -662,4 +663,25 @@ test fn a_disjoint_partition_still_reports_rows() -> Bool {
       facts: [],
     )
   ) == "rows"
+}
+
+// THE PARTITION IS TOTAL, AND NOTHING ASSERTED THAT BEFORE. Six independent counting folds could
+// each have skipped the same arm and every population assertion would still have passed, because
+// each checked its own count in isolation and none checked that they exhaust the rows. One
+// classifier makes the partition total by construction; this asserts it by execution, over a row
+// set built to land in several populations at once.
+test fn the_reported_populations_exhaust_the_rows() -> Bool {
+  let rows = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [
+      ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") },
+    ],
+    unstructured: [probe_primitive_b],
+    target: InterpreterHost,
+    facts: [
+      RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: cost_nlogn(param: "n") },
+    ],
+  ))
+  let c = cost_fidelity_counts(rows: rows)
+  c.preserved + c.findings + c.body_dependent + c.not_orderable + c.contradicted + c.unmeasured + c.unmigrated
+    == count(rows)
 }
