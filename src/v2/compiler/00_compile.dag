@@ -52,7 +52,7 @@ import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compi
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -188,6 +188,25 @@ type LensGateWitness {
   witness: Witness<Node>
 }
 
+// THE COVERAGE RECEIPT IS A DECLARED FRONTIER, AND THIS IS ITS TRIGGER (DESIGN section 3c).
+// The JOIN is consumed by execution in this change -- validate_then_compile refuses a compile whose
+// coverage is not closed, which is the gate. The receipt CARRIED here is a different declaration
+// with a different consumer, and today nothing outside this module reads it. Naming the census as a
+// consumer without a trigger would be the half-classification section 3c refuses, so the trigger is
+// stated as the capability rather than as an artifact:
+//
+//   CONSUMER: self-host promotion admission -- the candidate and successor coverage fields on
+//   SelfHostCandidate, where promotion refuses BY NAME on a lens that did not run.
+//   ROUTE: the candidate compile path runs through validate_then_compile, so the receipt this field
+//   carries is what admission reads rather than re-deriving; re-deriving it there would be a second
+//   authority on which lenses ran (DESIGN section 3).
+//   TRIGGER: the promotion path routing its candidate through this door and refusing on a named
+//   uncovered lens -- sufficient that a candidate cannot be promoted without its coverage having
+//   been observed on the same compile that produced it.
+//
+// If that capability does not land, this field is redundant work and the honest move is to DELETE
+// it rather than to keep it: the refusal above is already the gate, and a receipt nobody reads is
+// section 2's redundant work however well shaped it is.
 type Validated<T> {
   value: T
   lens_witnesses: List<LensGateWitness>
