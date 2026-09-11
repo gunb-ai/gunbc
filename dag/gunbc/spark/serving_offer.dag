@@ -11,6 +11,8 @@ import product.fabric.provider_route { ProviderRoute }
 import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire }
+import gunbc.spark.dgx_procurement { OperatorAllocation }
+import gunbc.spark.first_party_serving { spark_first_party_route, spark_fleet_site_allocation }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
 }
@@ -109,18 +111,42 @@ type SparkServingReadiness
 // THE NEARBY NAME THAT IS NOT THIS ONE: gunbc.spark.serving_deployment_selection
 // serving_topology_region is a DecisionRegion from the Pareto vocabulary -- a region of a decision
 // field, not a place a machine sits. Reusing it here would be one name for two concepts.
+// THE THIRD ARM IS WHERE THE SPARKS ACTUALLY SIT, AND IT IS A SEPARATE ARM PRECISELY SO THAT
+// NOBODY HAS TO TRUST AN ANNOTATION. A unit the operator owns and physically holds has no possible
+// observer of its site: there is no vendor to ask and no API to read, because the site is what the
+// operator says it is. The honest carrier for that is an ATTRIBUTABLE ALLOCATION -- decider, date,
+// basis -- which is what gunbc.spark.dgx_procurement OperatorAllocation already is, and which
+// gunbc.spark.first_party_serving fills for every Spark unit from the operator's 2026-09-11
+// assertion. Putting it in the observed arm would have relabelled an allocation as a measurement,
+// and the divergence (DESIGN section 3b) would then have been readable only in prose; as its own
+// arm, every consumer that cares can tell the two apart by matching, and the offer records which
+// kind of fact its region rests on.
 type SparkServingRoute
   = ServingRouteObserved { route: ProviderRoute }
+  | ServingRouteOperatorAsserted { route: ProviderRoute, allocation: OperatorAllocation }
   | ServingRouteRegionUnobserved { obligation: NonEmptyStr }
 
-// THE SINGLE PLACE THE STALL IS RECORDED, so the observer replaces one declaration rather than
-// every call site. Restoration trigger: a producer that OBSERVES which site a serving host sits in
-// and returns ServingRouteObserved. Until then every spark serving offer refuses to bind, which is
-// a live capability withdrawn deliberately (operator ruling, 2026-09-09) rather than a defect.
+// THE SINGLE PLACE THE STANDING IS RECORDED, which is why the 2026-09-11 restoration replaced one
+// declaration rather than every call site -- the same property that made the withdrawal cheap.
+//
+// THE OBLIGATION ROW SURVIVES THE RESTORATION AND IS NOT DEAD. It is the refusal a caller reaches
+// when it has no allocation and no observation to offer, it is what the binder reports for that
+// arm, and test.claim.spark.spark_serving_offer_route_witness_test still drives the binder with it.
+// Deleting it would delete the only spelling of "this route's region rests on nothing".
 data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no producer observes which region a serving host sits in, so the offer's ProviderRoute cannot be constructed and the offer does not bind"
 
+// WITHDRAWN 2026-09-09, RESTORED 2026-09-11 ON AN ASSERTION RATHER THAN AN OBSERVATION. The
+// withdrawal was right: what it refused was a region nobody had established. What changed is not
+// that somebody measured one -- for self-hosted units nobody ever can -- but that the operator
+// stated where the units are, dated and attributable, and gunbc.spark.first_party_serving carries
+// that statement as an OperatorAllocation over every Spark unit. The standing therefore selects the
+// asserted arm, and the route it carries is the first-party one: provider us, service the pair
+// serving deployment, region the allocation itself.
 fn spark_serving_route_standing() -> SparkServingRoute {
-  ServingRouteRegionUnobserved { obligation: spark_serving_route_region_obligation }
+  ServingRouteOperatorAsserted {
+    route: spark_first_party_route(),
+    allocation: spark_fleet_site_allocation.allocation,
+  }
 }
 
 type SparkOfferBinding<P>
@@ -159,8 +185,38 @@ fn bind_spark_serving_offer<P>(
   match route {
     ServingRouteRegionUnobserved { obligation: why } =>
       SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
+    ServingRouteOperatorAsserted { route: asserted, allocation: _ } =>
+      bind_spark_serving_offer_on_route(
+        principal: principal, executor: executor, launch: launch, model: model,
+        trust_domain: trust_domain, isolation: isolation, seats: seats,
+        readiness: readiness, route: asserted,
+      )
     ServingRouteObserved { route: r0 } =>
-    match readiness {
+      bind_spark_serving_offer_on_route(
+        principal: principal, executor: executor, launch: launch, model: model,
+        trust_domain: trust_domain, isolation: isolation, seats: seats,
+        readiness: readiness, route: r0,
+      )
+  }
+}
+
+// THE TWO ROUTE-BEARING ARMS BIND THROUGH ONE BODY, so an offer built from an asserted site and one
+// built from an observed site cannot drift apart. What distinguishes them is entirely upstream --
+// which arm a producer could honestly construct -- and nothing downstream of the route treats them
+// differently, because a ProviderRoute is a ProviderRoute once it exists. Duplicating the binder
+// per arm would have been the fork that lets exactly that stop being true.
+fn bind_spark_serving_offer_on_route<P>(
+  principal: P,
+  executor: P,
+  launch: VllmEndpointProcessLaunch,
+  model: NonEmptyStr,
+  trust_domain: TrustDomainRef,
+  isolation: IsolationProfile,
+  seats: Int,
+  readiness: SparkServingReadiness,
+  route: ProviderRoute,
+) -> SparkOfferBinding<P> {
+  match readiness {
       ServingUnobserved { obligation: why } =>
         SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
       ServingObserved { ready_at: at, receipt: r } =>
@@ -168,7 +224,7 @@ fn bind_spark_serving_offer<P>(
           bound: SparkOfferProjection {
             offer: SupplierOffer {
               id: FabricIdentity { principal: principal, key: spark_serving_offer_key(launch: launch) },
-              route: r0,
+              route: route,
               executor: executor,
               shape: spark_serving_shape(),
               capabilities: spark_serving_capability(model: model),
@@ -183,6 +239,5 @@ fn bind_spark_serving_offer<P>(
             launch: launch,
           },
         }
-    }
   }
 }

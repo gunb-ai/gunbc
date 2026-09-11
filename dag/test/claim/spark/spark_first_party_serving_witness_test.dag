@@ -1,0 +1,133 @@
+module test.claim.spark.spark_first_party_serving_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route { CompliancePostureRevision }
+import product.fabric.provider_admission {
+  ProviderUseScope, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  refusal_reason, admit_provider_use,
+}
+import gunbc.spark.first_party_serving {
+  spark_first_party_use_scope, spark_first_party_admission,
+  spark_first_party_sanction_roster, spark_first_party_route_facts, spark_first_party_posture,
+  spark_sanctions_disposition, spark_export_disposition, spark_prohibited_use_disposition,
+}
+
+// WHAT THESE ROWS ARE FOR. gunbc.spark.first_party_serving admits exactly one use of the Spark
+// serving route -- gunbc serving gunbc, on our own material, on operator-owned hardware -- and the
+// operator's assertion behind it is explicitly "for now". "For now" is only worth writing down if
+// something EXECUTES it, so the refusal rows below are the substance of this file and the admitted
+// row is the control that stops them from being satisfied by a producer that refuses everything.
+
+fn t_demand() -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "harness-turn-demand-1" as DemandKey }
+}
+
+fn t_work() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "harness-turn-work-1" as WorkKey }
+}
+
+fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "group-a@http://192.168.1.225:30000@1" as OfferKey }
+}
+
+// THE THIRD-PARTY SCOPE IS THE SAME SCOPE WITH ONE FIELD CHANGED, which is what makes the refusal
+// below discriminating: it differs from the admitted scope ONLY in who the customer is, so a
+// producer that admitted it would be admitting a customer profile no posture sanctions.
+fn t_third_party_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.spark_first_party_serving_witness_test", decl_name: "t_third_party_profile")
+}
+
+fn t_third_party_scope() -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: t_demand(),
+    work: t_work(),
+    customer_profile: t_third_party_profile(),
+    data_handling_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_own_data_handling_profile"),
+    agreement: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
+    prohibited_use_disposition: spark_prohibited_use_disposition(),
+    sanctions_disposition: spark_sanctions_disposition(),
+    export_disposition: spark_export_disposition(),
+  }
+}
+
+// POSITIVE CONTROL. The first-party scope admits, and the permit carries the route and posture it
+// was admitted under rather than merely existing.
+test fn the_first_party_scope_admits_and_the_permit_names_its_posture() -> Bool {
+  match spark_first_party_admission(
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseDenied { decision: _, cause: _ } => false
+    ProviderUseAdmitted { permit: p } =>
+      declaration_ref_eq(a: p.route.region, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation"))
+        && declaration_ref_eq(a: p.posture.authority, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"))
+  }
+}
+
+// THE STOP CONDITION, EXECUTED. The three programs are recorded as CLEARED because
+// admit_provider_use requires that to mint, and the danger is that a reader takes them for
+// determinations somebody made. This row asserts what the permit actually carries: each evidence
+// reference names the declaration stating the program is NOT ENGAGED under first-party self-use.
+// If anyone later swaps one for a clearance row, this goes red.
+test fn every_use_program_evidence_names_the_not_engaged_declaration() -> Bool {
+  match spark_first_party_admission(
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseDenied { decision: _, cause: _ } => false
+    ProviderUseAdmitted { permit: p } =>
+      count(filter(p.evidence.sanctions_evidence, e =>
+        declaration_ref_eq(a: e, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_sanctions_not_engaged")))) == 1
+        && count(filter(p.evidence.export_evidence, e =>
+          declaration_ref_eq(a: e, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_export_not_engaged")))) == 1
+        && count(filter(p.evidence.prohibited_use_evidence, e =>
+          declaration_ref_eq(a: e, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_prohibited_use_not_engaged")))) == 1
+  }
+}
+
+// THE ARM IS READ THROUGH refusal_reason, WHICH IS THE MODULE'S OWN EXHAUSTIVE DERIVATION, rather
+// than through a ten-arm match copied into this file. A second copy of that match is the same
+// coproduct restated in a test, and it rots the day an arm is added; refusal_reason is derived from
+// the cause by an exhaustive match in the module that owns it, so a new arm forces an edit there.
+// What it costs is the payload -- these rows assert WHICH arm refused, not what it carried -- and
+// that is enough here, because each red below differs from the admitted control in exactly one
+// input, so no other arm can produce it.
+
+// RED -- "IT IS JUST SERVING US FOR NOW" IS ENFORCED BY EXECUTION. A use whose customer is anybody
+// but us reaches the same producer and is refused, and the refusal names the unsupported profile so
+// the remedy is the right one: get that profile sanctioned under a posture, not widen this one.
+test fn a_non_first_party_use_refuses_as_unsupported() -> Bool {
+  match spark_first_party_admission(scope: t_third_party_scope(), offer: t_offer()) {
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "customer scope unsupported"
+  }
+}
+
+// RED -- RE-POSTURING MAKES THE STANDING SANCTION STALE RATHER THAN CARRYING IT OVER. This is the
+// other half of "for now": the sanction roster is bound to the 2026-09-11 first-party revision, so
+// evaluating the SAME first-party use under a later active posture refuses. It calls
+// admit_provider_use directly with our own roster and facts, because the producer above pins the
+// active posture by design -- the thing under test is the roster's binding, not the pin.
+fn t_later_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+    revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.spark.serving-someone-else.later" as NonEmptyStr)),
+  }
+}
+
+test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
+  match admit_provider_use(
+    roster: spark_first_party_sanction_roster(),
+    facts: spark_first_party_route_facts(),
+    active: t_later_posture(),
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+    decision_receipt: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  ) {
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "posture stale"
+  }
+}

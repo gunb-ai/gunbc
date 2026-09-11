@@ -1,0 +1,367 @@
+module gunbc.spark.first_party_serving
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.placement_supply { SiteIdentity, HostIdentity }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
+  DownstreamProviderPopulation, NoDownstreamProviders,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  DispositionStanding, DispositionCleared, admit_provider_use,
+}
+import gunbc.spark.dgx_procurement { OperatorAllocation }
+import gunbc.fleet_physical_inventory { operator_site }
+import gunbc.fleet_intent_network {
+  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+}
+
+// ── WHY A SERVING ROUTE EXISTS AT ALL NOW, AND WHAT KIND OF FACT IT RESTS ON ──────────────────
+//
+// gunbc.spark.serving_offer refused every offer because its ProviderRoute needs a region and
+// nothing OBSERVES which region a serving host sits in. That refusal was correct for a rented
+// route: where someone else's machine sits is a fact about someone else's estate, and inventing it
+// is the fabricated placement the fabric exists to prevent.
+//
+// A SELF-HOSTED UNIT IS THE CASE WHERE NO OBSERVER CAN EXIST, AND THAT IS A STATED DIVERGENCE
+// (DESIGN section 3b) RATHER THAN A REGION SOMEBODY MEASURED. There is no third party to ask and no
+// vendor API to read: the site of a machine the operator owns and physically holds is what the
+// operator says it is. So the standing this module supplies is an ATTRIBUTABLE ALLOCATION -- a
+// decider, a date and a basis -- carried in the same OperatorAllocation gunbc.spark.dgx_procurement
+// already uses for the slot join, and for the same reason it gives there: recording a commitment as
+// an observation would present it as recoverable evidence rather than as something someone said.
+// gunbc.spark.serving_offer keeps the two APART STRUCTURALLY, in two arms of SparkServingRoute, so
+// no reader has to take this paragraph's word for which one they are holding.
+//
+// THE SITE IS NOT MINTED HERE, AND THAT IS THE SECOND HALF OF THE POINT. The operator's premises
+// already have one authority -- gunbc.fleet_physical_inventory operator_site -- and
+// gunbc.fleet_site_locale records that minting a second SiteIdentity for this exact place was
+// already done once and reverted as the section 3 nickname failure. The operator's 2026-09-11
+// assertion NAMES that site (his NYC home) and scopes every Spark unit to it; it does not introduce
+// a place the corpus did not already carry. The NEARBY NAME THAT IS NOT THIS ONE:
+// gunbc.spark.serving_deployment_selection serving_topology_region is a Pareto DecisionRegion -- a
+// region of a decision field, not a place a machine sits.
+
+// SCOPED TO THE UNITS, NOT TO THE RACK. "Outside the rack" is a per-asset residence fact that
+// product.placement_supply RackResidence owns; what this row states is the SITE, which is the fact
+// a route needs. The units are listed rather than summarized as "all sparks" because a roster that
+// names itself cannot be checked, and a unit added later must be an edit someone makes deliberately.
+type SparkFleetSiteAllocation {
+  site: SiteIdentity
+  units: List<HostIdentity>
+  allocation: OperatorAllocation
+}
+
+// "RIGHT NOW" IS LOAD-BEARING AND IS CARRIED BY decided_on RATHER THAN BY A CAVEAT. When the units
+// move into the rack that is a NEW allocation row with a later date, never an edit to this one --
+// the same discipline dgx_procurement's superseded-address note states: a dated row that disagrees
+// with the present is a dated row, not a stale one, and rewriting it would present a 2026-09-11
+// decision as though it had been taken on facts that did not exist yet.
+data spark_fleet_site_allocation: SparkFleetSiteAllocation = SparkFleetSiteAllocation {
+  site: operator_site,
+  units: [
+    operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+    operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+  ],
+  allocation: OperatorAllocation {
+    decided_by: "operator (2026-09-11): 'srv5, 6, and all the sparks sit outside the rack right now, but in my NYC home'",
+    decided_on: "2026-09-11",
+    basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. It names the site the corpus already carries as gunbc.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale already records as America/New_York, rather than introducing a second name for one place. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
+  },
+}
+
+// ── THE PROVIDER IS US, WHICH IS THE ONE MODELING CALL THIS MODULE MAKES ──────────────────────
+//
+// A ProviderRoute is provider x service x region and all three are cited declarations. For a rented
+// route the provider anchor lives in extdeps, because an independently governed upstream owns its
+// own facts. Self-hosted serving has no such upstream: the hardware is the operator's, the engine
+// runs on our own site, and the turn is served by us to us. vLLM and the served weights remain
+// upstream facts and keep their extdeps homes -- they are what the service RUNS, not who provides
+// it -- and borrowing one of their vendor anchors as the provider would invert the layering that
+// product.fabric.provider_route fixes deliberately: extdeps carries facts about the provider, and
+// whether we are willing and authorised to use them is a fact about US (operator ruling 2026-09-11).
+//
+// So the provider anchor is declared here, in our layer, and it is the principal the harness
+// already places work under.
+type FirstPartyServingAuthority {
+  principal: NonEmptyStr
+  basis: NonEmptyStr
+}
+
+data gunbc_first_party_serving_provider: FirstPartyServingAuthority = FirstPartyServingAuthority {
+  principal: "gunbc",
+  basis: "For self-hosted Spark serving the provider is gunbc itself: the units are operator-owned, they sit at the operator's own site, and the engine is run by us. This is the same principal gunbc.harness.harness_seat already passes as the fabric principal, so the route names the party that is actually serving rather than an upstream vendor whose software happens to be running.",
+}
+
+// THE SERVICE IS THE DEPLOYMENT WE ALREADY DECLARE, cited rather than re-coined: the thing being
+// offered on this route is the Spark pair serving deployment, whose single authority is
+// gunbc.spark.pair_serving_desired. A fresh service anchor beside it would be a second name for it.
+fn spark_first_party_service_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.spark.pair_serving_desired", decl_name: "spark_pair_serving_desired")
+}
+
+fn spark_first_party_provider_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "gunbc_first_party_serving_provider")
+}
+
+// THE REGION IS THE ALLOCATION, NOT THE SITE ROW, and that is deliberate. Citing operator_site alone
+// would name a place while dropping the only thing that makes the claim honest -- who said the units
+// are there, and when. A route's region reference is read by auditors reconstructing why a turn was
+// admitted, and this one leads them straight to the assertion it rests on.
+fn spark_first_party_region_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation")
+}
+
+fn spark_first_party_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: spark_first_party_provider_ref(),
+    service: spark_first_party_service_ref(),
+    region: spark_first_party_region_ref(),
+  }
+}
+
+// ── THE POSTURE: FIRST-PARTY SELF-USE, AND WHAT ENDS IT ───────────────────────────────────────
+//
+// "FOR NOW" IS LOAD-BEARING AND IS NOT MODELED HERE, because it is already modeled: a sanction is
+// per posture revision by construction, and product.fabric.provider_admission refuses a sanction
+// evaluated under a superseded revision as PostureRevisionStale. Serving anybody else is a
+// materially different contract subject, so it is a NEW posture revision that makes every sanction
+// under this one stale -- not an extra profile quietly added to the roster below. That is why the
+// staleness_condition field is a field of the posture rather than a sentence in an annotation: no
+// Accepted program reads an annotation (DESIGN 4c), and every consumer of this row reads this.
+type FirstPartySelfUsePosture {
+  assertion: OperatorAllocation
+  serves: NonEmptyStr
+  data_subject: NonEmptyStr
+  hardware_custody: NonEmptyStr
+  staleness_condition: NonEmptyStr
+}
+
+data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
+  assertion: OperatorAllocation {
+    decided_by: "operator (2026-09-11): 'it is just serving us for now'",
+    decided_on: "2026-09-11",
+    basis: "The operator asserts that the Spark serving groups serve gunbc itself and nobody else as of this date. Attributable assertion, not a measurement: who the served turns are for is a fact about our intent, which no probe can read off a running engine.",
+  },
+  serves: "gunbc itself. Every turn placed on this route originates inside this repository's own harness and control plane; no turn is served to any party outside gunbc and none crosses an organisational or national boundary.",
+  data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it.",
+  hardware_custody: "operator-owned and operator-held. There is no third-party agreement governing this route because there is no third party: no hosting contract, no processor, and no service terms stand between us and the hardware.",
+  staleness_condition: "SERVING ANYONE ELSE ENDS THIS POSTURE. A turn served to a party outside gunbc, or any third-party material processed on this route, is a materially different contract subject and requires a NEW CompliancePostureRevision; every RouteScopeSanction below is bound to THIS revision, so it goes stale through product.fabric.provider_admission PostureRevisionStale rather than silently carrying over. Nothing here may be widened to cover another customer profile by adding a roster row under this revision.",
+}
+
+// The revision is the hash of the statement's identity as a named revision, not of the row's bytes.
+// A statement change that does not move this tag is the hazard, and it is the reason the posture's
+// own staleness_condition names re-posturing rather than editing: the authority reference below
+// points at the row, so an auditor re-derives what was evaluated by reading it.
+data spark_first_party_posture: CompliancePostureRevision = CompliancePostureRevision {
+  authority: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.spark.first-party-self-use.2026-09-11" as NonEmptyStr)),
+}
+
+// ── THE PROFILES THE SANCTION IS WRITTEN OVER ─────────────────────────────────────────────────
+//
+// Each is a declared row because RouteScopeSanction and ProviderUseScope compare them by
+// declaration reference: a profile spelled as a branded string would let a scope and a sanction
+// agree by spelling while meaning different things, which is exactly the magic-string failure the
+// route type was built to remove.
+type FirstPartyUseProfile {
+  label: NonEmptyStr
+  basis: NonEmptyStr
+}
+
+data spark_first_party_customer_profile: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "first-party-self",
+  basis: "The customer is gunbc. The only consumer of turns placed on this route is this repository's own harness and control plane, so there is no customer relationship on this route at all.",
+}
+
+data spark_own_data_handling_profile: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "own-data",
+  basis: "Our own material only, on operator-owned hardware at the operator's own site. No customer data, no third-party data, and no transfer to any other party.",
+}
+
+data spark_operator_owned_hardware_agreement: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "operator-owned-hardware",
+  basis: "The agreement authority for this route is the operator's ownership of the hardware. There is no third-party contract to present because there is no third party; this row is what the scope names so that an agreement is a cited authority rather than an empty field.",
+}
+
+// ── THE THREE USE PROGRAMS, AND WHY EACH READS 'NOT ENGAGED' RATHER THAN 'CLEARED' ────────────
+//
+// This is the point the whole wall exists to protect, so it is stated in the VALUES and not only
+// here. admit_provider_use requires the prohibited-use, sanctions and export dispositions to be
+// DispositionCleared before a permit mints, and the tempting way to satisfy that is to write three
+// clearances -- which would be fabricated legal findings, the fail-open this gate closes. Nobody has
+// run a screening, no determination has been made, and none is claimed.
+//
+// WHAT IS ACTUALLY TRUE is narrower and is what each row below says: under first-party self-use
+// these programs have NO SUBJECT. Nothing is supplied to any party, nothing is exported, and nothing
+// crosses a border, because the turn begins and ends inside gunbc on hardware gunbc's operator owns
+// at a site in the operator's own home. The evidence each disposition carries is THIS POSTURE
+// DECLARATION and nothing else, so a reader following the reference arrives at the statement "not
+// engaged, because first-party self-use" rather than at a clearance somebody appears to have issued.
+// The moment the posture changes -- the moment a turn is served to anyone else -- these rows stop
+// describing the route, which is why they cite the posture that goes stale rather than standing on
+// their own.
+type UseProgramStanding {
+  program: NonEmptyStr
+  engagement: NonEmptyStr
+  basis: NonEmptyStr
+}
+
+data spark_prohibited_use_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "prohibited use",
+  engagement: "NOT ENGAGED under first-party self-use. This is not a review or a determination; no prohibited-use assessment has been performed.",
+  basis: "The route serves gunbc's own turns to gunbc. There is no user, customer or counterparty whose use could be governed, so the program has no subject here. It acquires one the moment gunbc.spark.first_party_serving spark_first_party_use_posture is superseded by serving anyone else, at which point this row no longer describes the route.",
+}
+
+data spark_sanctions_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "sanctions",
+  engagement: "NOT ENGAGED under first-party self-use. This is NOT a sanctions determination and no screening was performed against any list.",
+  basis: "Nothing is supplied, sold or made available to any party outside gunbc on this route: the turn is served on operator-owned hardware at the operator's own site to gunbc itself. With no counterparty there is no party to screen, so the program has no subject here. It acquires one the moment gunbc.spark.first_party_serving spark_first_party_use_posture is superseded by serving anyone else, at which point this row no longer describes the route.",
+}
+
+data spark_export_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "export control",
+  engagement: "NOT ENGAGED under first-party self-use. This is NOT an export determination, classification or licence finding.",
+  basis: "Nothing leaves gunbc and nothing crosses a national boundary on this route: the units sit at one site, the operator's NYC home (gunbc.spark.first_party_serving spark_fleet_site_allocation), and the turns begin and end inside gunbc. With no transfer and no recipient there is no export to classify, so the program has no subject here. It acquires one the moment the posture is superseded by serving anyone else or by placing a unit outside that site.",
+}
+
+fn spark_prohibited_use_disposition() -> DispositionStanding {
+  DispositionCleared {
+    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_prohibited_use_not_engaged"),
+  }
+}
+
+fn spark_sanctions_disposition() -> DispositionStanding {
+  DispositionCleared {
+    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_sanctions_not_engaged"),
+  }
+}
+
+fn spark_export_disposition() -> DispositionStanding {
+  DispositionCleared {
+    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_export_not_engaged"),
+  }
+}
+
+// ── THE SANCTION ROSTER: ONE ROW, AND ONE IS THE POINT ────────────────────────────────────────
+//
+// A roster row admits a (route, posture, customer profile, data class) tuple. There is exactly one,
+// so any other customer profile or data class on this route has no matching row and refuses as
+// CustomerScopeUnsupported or DataHandlingUnsupported -- which is how "it is just serving us for
+// now" is enforced by execution rather than by this sentence. Adding a second row to widen it is
+// the move the posture's staleness_condition forbids.
+fn spark_first_party_sanction_roster() -> List<RouteScopeSanction> {
+  [
+    RouteScopeSanction {
+      route: spark_first_party_route(),
+      posture: spark_first_party_posture,
+      customer_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_customer_profile"),
+      data_handling_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_own_data_handling_profile"),
+      requires_agreement: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
+    },
+  ]
+}
+
+// ── THE ROUTE FACTS: NINE PATHS, ALL LOCATED, NONE ABSENT ─────────────────────────────────────
+//
+// EVERY PATH IS LOCATED AT THE SAME SITE BY THE SAME ASSERTION, and no path is claimed ABSENT. The
+// tempting shortcut is to write backups or spill as ProviderPathAbsent -- "we do not back the
+// serving host up" -- and that would be a claim about our own machines that nobody has made and no
+// probe has read. What the operator's assertion DOES establish is location: whatever these paths
+// are, they terminate on operator-owned hardware at the operator's own site, because there is no
+// other estate for them to reach. So every path takes the located arm, with the site allocation as
+// its jurisdiction and the posture as its evidence, and the honest weakness of the row is that its
+// operator and jurisdiction are an allocation rather than a measurement -- which is the same stated
+// divergence the route itself carries, not a second one.
+fn spark_first_party_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: spark_first_party_provider_ref(),
+    jurisdiction: spark_first_party_region_ref(),
+    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  }
+}
+
+// NO DOWNSTREAM PROVIDERS, and this is the one place the arm is straightforwardly true rather than
+// asserted: a downstream provider is a party that processes our material on the provider's behalf,
+// and a machine we own, in a room the operator holds, has none. The evidence is the posture, because
+// that is the declaration stating the custody the claim rests on.
+fn spark_first_party_downstream() -> DownstreamProviderPopulation {
+  NoDownstreamProviders {
+    evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  }
+}
+
+fn spark_first_party_route_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: spark_first_party_route(),
+    contract_terms: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
+    data_paths: ProviderDataPathClosure {
+      execution: spark_first_party_path(),
+      durable_storage: spark_first_party_path(),
+      backups: spark_first_party_path(),
+      logs: spark_first_party_path(),
+      telemetry: spark_first_party_path(),
+      control_plane: spark_first_party_path(),
+      support_access: spark_first_party_path(),
+      administrative_access: spark_first_party_path(),
+      spill: spark_first_party_path(),
+    },
+    downstream: spark_first_party_downstream(),
+    observed_at: "2026-09-11T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.spark.first-party-route-facts.2026-09-11" as NonEmptyStr)),
+  }
+}
+
+// ── THE SCOPE AND THE ADMISSION ───────────────────────────────────────────────────────────────
+//
+// The demand and the work are PARAMETERS, never literals here. admit_provider_use seals them into
+// the permit and product.fabric.selection compares the permit against the demand and work the
+// candidate is being bound for, so a work key transcribed beside the call would refuse every real
+// placement -- and, worse, would be a work identity this module invented.
+fn spark_first_party_use_scope<P>(
+  demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>,
+) -> ProviderUseScope<P> {
+  ProviderUseScope {
+    demand: demand,
+    work: work,
+    customer_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_customer_profile"),
+    data_handling_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_own_data_handling_profile"),
+    agreement: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
+    prohibited_use_disposition: spark_prohibited_use_disposition(),
+    sanctions_disposition: spark_sanctions_disposition(),
+    export_disposition: spark_export_disposition(),
+  }
+}
+
+// THE SCOPE IS A PARAMETER RATHER THAN BUILT INSIDE, which is what makes the refusal path
+// executable: a caller bringing a scope this posture does not sanction -- another customer profile,
+// another data class -- reaches the same producer and is refused by it, instead of the refusal being
+// a state only a fixture could construct.
+//
+// DECLARED FRONTIER (DESIGN section 3c). The production consumer of this function is
+// gunbc.harness.harness_seat, which cannot call it yet: product.fabric.selection bind_candidate
+// needs a demand identity and a work identity, a WorkKey comes only from product.fabric.work
+// derive_work_key, and gunbc.serving.turn_demand serving_turn_source_obligation refuses to produce
+// the source manifest that would feed it. TRIGGER: a launch receipt that reads the exact weights,
+// tokenizer and runtime closure off a running engine, SUFFICIENT FOR gunbc.serving.turn_demand
+// serving_turn_work to return TurnWorkBound for a harness turn. Until then this producer is executed
+// by test.claim.spark.spark_first_party_serving_witness_test, which exercises both arms.
+fn spark_first_party_admission<P>(
+  scope: ProviderUseScope<P>,
+  offer: FabricIdentity<P, OfferKey>,
+) -> ProviderUseAdmission<P> {
+  admit_provider_use(
+    roster: spark_first_party_sanction_roster(),
+    facts: spark_first_party_route_facts(),
+    active: spark_first_party_posture,
+    scope: scope,
+    offer: offer,
+    decision_receipt: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  )
+}

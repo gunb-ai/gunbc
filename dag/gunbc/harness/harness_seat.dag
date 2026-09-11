@@ -271,19 +271,25 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
   HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable }
 }
 
-// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER ANY MORE, AND THE MISSING PIECE IS ADMISSION RATHER
-// THAN BINDING. A CandidateOffer now seals a ProviderUsePermit, so bind_candidate needs a
-// ProviderUseAdmission over the offer's route -- and producing one through admit_provider_use
-// requires a ProviderUseScope carrying a customer profile, a data-handling profile, an agreement
-// and three cleared dispositions. Those are compliance claims about us; there is no producer for
-// them, and writing plausible ones so the call typechecks is the fail-open this wall exists to
-// close. So the SparkOfferBound arm reports what is missing and seats nobody.
+// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER YET, AND THE MISSING PIECE HAS MOVED ONE WALL BACK.
+// Two of the three obstacles are now gone: spark_serving_route_standing carries the operator's
+// dated site allocation rather than refusing, and gunbc.spark.first_party_serving
+// spark_first_party_admission is the provider-use admission producer this note used to say did not
+// exist. What remains is the offer's OTHER seal.
 //
-// That arm is unreachable today for a second, independent reason -- spark_serving_route_standing
-// refuses above it -- and the two are deliberately separate: landing a region observer alone must
-// not silently resume seating through a path nothing admitted.
+// A CandidateOffer is sole_constructor through product.fabric.selection bind_candidate, which takes
+// a DEMAND IDENTITY and a WORK IDENTITY and compares the permit against both. A WorkKey comes from
+// exactly one place -- product.fabric.work derive_work_key, through work_for -- which needs a
+// WorkContract, which needs a SourceManifestRef; and gunbc.serving.turn_demand refuses to produce
+// one, because nothing in this repository observes the exact weights, tokenizer and runtime closure
+// a launch loaded (serving_turn_source_obligation). Minting a key beside derive_work_key would
+// fabricate the identity the fabric's deduplication and receipts are keyed on, so this arm reports
+// what is missing and seats nobody rather than inventing it.
 //
-// Restoration trigger: a provider-use admission producer for the spark serving route.
+// Restoration trigger: a launch receipt that reads the weights, tokenizer and runtime closure off a
+// running engine, SUFFICIENT FOR gunbc.serving.turn_demand serving_turn_work to return TurnWorkBound
+// for a harness turn -- at which point the demand and work identities exist, the admission producer
+// above is called with them, and bind_candidate has everything it compares.
 fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: String, launch: VllmEndpointProcessLaunch, now: EpochSecs) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
@@ -303,7 +309,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: S
         acc: acc,
         note: seat_bind_detail(
           group: group,
-          text: "the serving offer bound but no provider-use admission producer exists for its route, so it cannot become a candidate",
+          text: "the serving offer bound and its route is admissible, but a serving turn has no Work identity: nothing observes the weights, tokenizer and runtime closure a launch loaded, so gunbc.serving.turn_demand cannot bind a source manifest and product.fabric.selection bind_candidate has no work to compare the permit against",
         ),
         retryable: false,
       )
