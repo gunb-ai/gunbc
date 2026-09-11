@@ -334,6 +334,19 @@ fn harness_seat_standing(route: ServingRoute, layout: EventLogLayout, now: Epoch
 // compared by equality -- and widening that is a change to a load-bearing selection rule for a need
 // one consumer has. What this does instead is name the capability the demand ACTUALLY has, which is
 // a statement about the demand and belongs to the demand's author.
+// THE EXACT ARM IS A DECLARED FRONTIER AND HAS NO PRODUCTION CALLER TODAY, said here rather than
+// left for a reader to discover by grep. Every harness entry point passes AnyAdmittedModel, because
+// the operator's ruling is that an ordinary turn does not care which model answers it. The exact arm
+// is what keeps this a REQUIREMENT rather than a constant: with one arm, harness_required_capability
+// degenerates to a single string, the demand stops being a function of the caller, and the
+// exact-equality wall the fabric decides fungibility by becomes untestable -- the witness that proves
+// AnyAdmittedModel is not a blanket "accept anything" is written against precisely this arm.
+//
+// ITS CONSUMER AND TRIGGER: the first caller that needs a named model -- a model-comparison run
+// placing the same prompt on two routes, or a turn whose prompt is tuned to one unit's reasoning
+// wire. Until one exists this arm is exercised only by its witness, which is the honest middle state
+// of DESIGN section 3c rather than the red one; deleting it would force the next such caller to
+// re-mint the distinction, and re-minting is what that section's neighbours are about.
 type ServingModelRequirement
   = AnyAdmittedModel
   | ExactServingUnit { unit: HarnessServingUnit }

@@ -90,6 +90,11 @@ fn serving_admits_id(id: String) -> ServingModelAdmission {
 // admitted models is a route whose launch is not the single-model shape everything downstream
 // assumes, and the honest reading of that is the first admitted one plus the whole advertised list
 // carried on the refusal path when none matches.
+// THERE IS NO RENDERER HERE, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT. One stood here and
+// nothing called it: the consumer it was written for -- the not-admitted branch of
+// gunbc.harness.harness_backend harness_observe_replica -- builds its own sentence from the standing
+// it already holds, which is the arm that knows the route and the url as well as the advertised
+// list. A second renderer would have been one fact spelled twice and the less informed of the two.
 fn serving_admit_advertised(advertised: List<String>) -> ServingModelAdmission {
   fold(advertised, init: ServingModelNotAdmitted { advertised: join(advertised, ", ") }, f: (acc, id) =>
     match acc {
@@ -100,13 +105,4 @@ fn serving_admit_advertised(advertised: List<String>) -> ServingModelAdmission {
           ServingModelNotAdmitted { advertised: _ } => ServingModelNotAdmitted { advertised: a }
         }
     })
-}
-
-fn serving_model_admission_wire(a: ServingModelAdmission) -> String {
-  match a {
-    ServingModelAdmitted { id: i, unit: u } =>
-      join([i as String, " (", harness_serving_unit_wire(unit: u) as String, ")"], "")
-    ServingModelNotAdmitted { advertised: a0 } =>
-      join(["no admitted model among: ", a0], "")
-  }
 }
