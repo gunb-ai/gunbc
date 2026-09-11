@@ -799,7 +799,7 @@ fn ground_posix_principal(
       PrincipalAllocationConflicted { occurrence: occ, first: f, more: m }
     AccountAllocated { allocation: a } =>
       match observation {
-        Absent => PrincipalUnobserved
+        Absent => PrincipalUnobserved { allocation: a }
         Present { value: o } =>
           if o.occurrence.host != a.occurrence.host {
             PrincipalDrifted {

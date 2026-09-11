@@ -28,8 +28,12 @@ import gunbc.roadmap_site_surface_render {
   healthz_body_from_surface_artifacts,
   healthz_body_with_release_identity,
 }
-import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
-import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
+import gunbc.roadmap_authority {
+  expected_roadmap_md_for_projection,
+  RoadmapAuthorityProjection, roadmap_authority_projection,
+  authored_merged_prs,
+}
+import gunbc.roadmap_spawner { roadmap_dispatch_file_content_for_projection }
 import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
 import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
 import gunbc.fleet_intent_network { fleet_intent_network }
@@ -99,12 +103,26 @@ data roadmap_site_readback_script_scaffold: Disposition = Scaffold {
 // is ~18 ms for the 223 KB roadmap page and ~15 ms for the daily page, so the added per-probe cost
 // is tens of milliseconds against a poll bound in the tens of seconds.
 
+// THE PLAN IS A PARAMETER, AND THE NULLARY IS ONE BINDING OF IT. Both text bodies are projections
+// of a roadmap authority, so the fold takes the projected plan and the zero-argument form supplies
+// the public one. A caller serving a different plan -- an entry function in another repository --
+// reaches the same fold with its own projection rather than a second copy of these bodies, and a
+// plan that failed to project arrives as RoadmapAuthorityProjectionRefused and refuses through the
+// same arm the public plan would.
+fn roadmap_site_roadmap_md_body_over(plan: RoadmapAuthorityProjection) -> String {
+  expected_roadmap_md_for_projection(proj: plan)
+}
+
 fn roadmap_site_roadmap_md_body() -> String {
-  expected_roadmap_md()
+  roadmap_site_roadmap_md_body_over(plan: roadmap_authority_projection())
+}
+
+fn roadmap_site_dispatch_json_body_over(plan: RoadmapAuthorityProjection) -> String {
+  roadmap_dispatch_file_content_for_projection(proj: plan)
 }
 
 fn roadmap_site_dispatch_json_body() -> String {
-  roadmap_dispatch_file_content()
+  roadmap_site_dispatch_json_body_over(plan: roadmap_authority_projection())
 }
 
 fn roadmap_site_roadmap_md_artifact() -> SiteArtifact {

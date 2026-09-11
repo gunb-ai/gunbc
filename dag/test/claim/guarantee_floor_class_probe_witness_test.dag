@@ -24,8 +24,8 @@ import gunbc.guarantee_probe_corpus {
   floor_record_completeness_green_probe,
   floor_record_completeness_red_probe,
   floor_record_completeness_zero_field_product_control_probe,
-  floor_record_completeness_zero_field_variant_hole_probe,
-  floor_record_completeness_bare_name_hole_probe,
+  floor_record_completeness_zero_field_variant_control_probe,
+  floor_record_completeness_bare_name_control_probe,
   ExpectBlockingRefusal,
   active_probe_row,
   guarantee_probe_rows,
@@ -238,25 +238,41 @@ test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bo
     && blocking_count(source: record_completeness_zero_field_product_source, wanted: "MissingField") == 2
 }
 
-// THE SAME OMISSION ON A COPRODUCT VARIANT IS SILENT. `Circle { }` where Circle declares `radius`
-// compiles with zero diagnostics of any severity, and the declared field reads as null at runtime.
-test fn floor_record_completeness_zero_field_variant_is_still_silent() -> Bool {
-  silent_hole_holds(probe: floor_record_completeness_zero_field_variant_hole_probe, source: record_completeness_zero_field_variant_source)
-    && blocking_count(source: record_completeness_zero_field_variant_source, wanted: "MissingField") == 0
+// THE SAME OMISSION ON A COPRODUCT VARIANT REFUSES THE SAME WAY. `Circle { }` where Circle declares
+// `radius` was accepted with zero diagnostics until 2026-09-11 (the exemption that admitted it is
+// narrowed to the discriminant seam, v1.compiler.infer zero_field_variant_tag_reference_frontier_note);
+// it now refuses with exactly one MissingField, the declared field. This row was the discriminating
+// RED for that wall and stays enrolled as its regression control (DESIGN section 4b(4)).
+test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> Bool {
+  row_holds(probe: floor_record_completeness_zero_field_variant_control_probe, source: record_completeness_zero_field_variant_source)
+    && blocking_count(source: record_completeness_zero_field_variant_source, wanted: "MissingField") == 1
 }
 
-// A BARE NAME PRESENTS NO FIELD SET AT ALL, in either declaration kind, so nothing is checked.
-// BOTH KINDS GET THE FULL SILENCE CHECK, not one strong and one narrow. An earlier cut asserted
-// `silent_hole_holds` (zero diagnostics of ANY severity) on the variant source and only
-// `blocking_count(..., "MissingField") == 0` on the product one — which stays green if the product
-// bare name starts emitting some OTHER blocking diagnostic, so the row's claim to cover both kinds
-// was stronger than its assertion. That is the specification-without-execution gap DESIGN section 5
-// names: the RED for the product half was authorable and was not authored (cursor review 63461).
-test fn floor_record_completeness_bare_name_is_still_silent() -> Bool {
-  silent_hole_holds(probe: floor_record_completeness_bare_name_hole_probe, source: record_completeness_bare_name_variant_source)
-    && blocking_count(source: record_completeness_bare_name_variant_source, wanted: "MissingField") == 0
-    && silent_hole_holds(probe: floor_record_completeness_bare_name_hole_probe, source: record_completeness_bare_name_product_source)
-    && blocking_count(source: record_completeness_bare_name_product_source, wanted: "MissingField") == 0
+// A BARE NAME PRESENTS NO FIELD SET, and is judged against the declaration's field list all the
+// same, in BOTH declaration kinds: the variant owes its one field, the product owes both. The two
+// kinds reach the wall by two routes (a VariantValueBinding reference and a plain global binding),
+// so each is asserted at full strength -- one silent route would otherwise hide behind the other
+// (the same coverage lesson cursor review 63461 taught this row while it was still a hole).
+test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
+  row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_variant_source)
+    && blocking_count(source: record_completeness_bare_name_variant_source, wanted: "MissingField") == 1
+    && row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_product_source)
+    && blocking_count(source: record_completeness_bare_name_product_source, wanted: "MissingField") == 2
+}
+
+// THE RULING'S SEAM STAYS OPEN, AND NOTHING ELSE DOES. `discriminant(v: Fielded {})` is the
+// sanctioned tag-reference idiom (operator Ruling 1a, 2026-07-15) and compiles clean; the same
+// literal one expression away from that seam is a construction and refuses. Both arms are measured
+// so the exemption can neither vanish silently nor widen back into the hole it used to be.
+data tag_reference_at_discriminant_seam_source: String = "module probe_floor_tag_ref_seam\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
+data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
+
+test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool {
+  total_row_count_is_zero(census: census_of(source: tag_reference_at_discriminant_seam_source))
+}
+
+test fn floor_record_completeness_zero_field_literal_off_the_seam_refuses() -> Bool {
+  blocking_count(source: tag_reference_off_the_seam_source, wanted: "MissingField") == 1
 }
 
 test fn floor_record_completeness_green_control_is_clean() -> Bool {
@@ -312,8 +328,8 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
   }
 }
 
-// THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has just
-// grown to six, so the name would have needed editing on every enrolment while asserting nothing —
+// THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has since
+// grown to six and shrunk back to four, so the name would have needed editing on every enrolment and every climb while asserting nothing —
 // the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
 // row without declaring it here impossible. A number in the name is maintenance with no consumer.
 test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
@@ -322,8 +338,6 @@ test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
     floor_field_through_generics_hole_probe as String,
     floor_generic_instantiation_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
-    floor_record_completeness_zero_field_variant_hole_probe as String,
-    floor_record_completeness_bare_name_hole_probe as String,
   ]
   let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
   let every_hole_declared = fold(hole_ids, init: true, f: (acc, id) => acc && (declared |> filter(d => d == id) |> count) == 1

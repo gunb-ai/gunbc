@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.guard_protects_a_different_object_than_the_harm_travels_through
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data guard_protects_a_different_object_than_the_harm_travels_through: RecurringFailureMode = RecurringFailureMode {
+  identity: "guard_protects_a_different_object_than_the_harm_travels_through" as NonEmptyStr,
+
+  receipts: [
+    "**a guard exists, is correct, and guards the wrong object** (INVALID STATE: a check is present, its logic is right, it was reviewed and believed, and the object it protects is not the object the harm travels through -- head instead of bytes, instance instead of node, completion instead of spawn, criteria instead of contract. HARM: whatever reaches the unprotected object passes, and the passing guard is cited as the reason it cannot. ",
+
+    "**RECOGNITION RULE: do not ask what this guard checks. NAME THE OBJECT THIS GUARD PROTECTS, AND THE OBJECT THE HARM ACTUALLY TRAVELS THROUGH -- are they the same object?** Asked once, the question exposed every instance below. Every other question a reviewer asks -- is there a guard, is it correct, does it execute, is it enrolled -- returns YES for all four, which is why four were live at once in one corpus and none was caught by a reviewer looking for them. ",
+
+    "INSTANCE 1 (2026-09-11, gunbc.fabric_event_log event_log_append). Guarded: the partition HEAD, by --force-with-lease. Harm travelled through: the published object's BYTES, hashed from a scratch path every writer on the host shared, so a concurrent clobber published git's empty blob and a completed foreign write published another writer's event under this writer's admitted append, with a grant minted from it. Rung found at: SILENT WRONGNESS for the foreign-bytes arm, mitigatable for the empty arm (the reader's decode refusal). Repair and a mechanism row (identity_hashed_from_a_shared_mutable_path) in gunbc#10991, open when this row was filed. ",
+
+    "INSTANCE 2 (2026-09-11, gunbc.roadmap_belt_actuate belt_publication_subject_for). Guarded: a publication subject fixed per dashboard INSTANCE. Harm travelled through: the NODE, whose work may belong in a private repository, so such a node would have published to the public one. Rung found at: mitigatable -- found before any such node published. Repair in gunbc#11014, open when this row was filed. ",
+
+    "INSTANCE 3 (2026-09-11, the validation-oracle pin). Guarded: the attempt at COMPLETION, where an unobservable oracle refuses correctly (checked three ways with a positive control). Harm travelled through: SPAWN, where an attempt whose oracle cannot be observed still takes a worktree, a branch, a seat and a model turn to produce output that cannot verify by construction. Rung found at: mitigatable -- the refusal fired, after the cost was paid. Repair in gunbc#11014, open when this row was filed. ",
+
+    "INSTANCE 4 (2026-09-11, gunbc-private#60, attempt identity). Guarded: the CRITERIA DIGEST. Harm travelled through: the admitted CONTRACT, so a moved base, a changed grant or a different oracle would have rejoined an older attempt under the same identity. Rung found at: silent wrongness. Closed by carrying and comparing the whole contract. ",
+
+    "PRIOR INSTANCES ALREADY ROSTERED, which this row generalizes rather than renames: enforcement_gate_positioned_after_the_effect_it_guards is the TIME-subject case (the verdict is right, the effect happens before anything branches on it -- instance 3's shape), and authority_merges_unprotected_while_its_projection_is_guarded is the FILE-subject case (the merge driver guards the regenerable projection, not the unrecoverable authority). Those rows keep their own mechanisms and receipts; this one carries the question that finds all of them. ",
+
+    "ATTAINABLE CEILING FOR THE CLASS: MITIGATABLE, and the reason is decidability, not effort. Whether a guard names the wrong subject depends on WHICH OBJECT THE HARM TRAVELS THROUGH, and that is the harm model -- a modeling judgement the source does not carry in general. A check can see a guard and an effect; it cannot see which of the effect's inputs the author meant to protect. So the class-wide wall is a reviewer asking the recognition question, which DESIGN section 3b places at mitigation. ",
+
+    "WHERE IT CAN CLIMB, PER DOMAIN, which is the more useful half: once a domain carries BOTH the guard's subject and the effect's subject as typed facts, the comparison becomes decidable for that domain. For content-addressed publication (instance 1) the effect's subject is the id of the value in hand, and an operation whose text form has no path constructor removes the gap by construction. For a compare-and-set, std.durable_compare_and_set CasExpectation could name every datum the guarded transition publishes rather than only the ref it replaces. For identities (instance 4), an identity type built from the whole admitted contract leaves nothing outside it. Each is a per-domain climb; none lifts the class. ",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a YesIsADefect review criterion that asks the recognition question of every guard a change adds or moves, derived by gunbc.roadmap.roadmap_review_criteria from a DefectReview part on the gunbc.design_argument DesignRow that owns it -- so that the question is put by the roster rather than by whichever reviewer happens to think of it. It is a DEFECT question, not a conformance one: a guard protecting the wrong object has no admissible stated-divergence arm, so a three-valued ConformanceReview would be the wrong verdict algebra as well as the wrong producer, since only the section 3b proposition derives its parts from conformance_domains. Which DesignRow owns the part -- a new part of the fail-closed proposition or a proposition of its own -- is a design decision this ledger row does not settle. A criterion that asks whether a guard EXISTS or is CORRECT does not satisfy this trigger: all four instances pass both. ",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fabric_event_log", decl_name: "event_log_append", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_subject_for", field: WholeDeclaration },
+  ],
+}
