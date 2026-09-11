@@ -1,0 +1,201 @@
+module test.claim.machine_intake.boot_control_grounding_witness_test
+
+import std.types { Bool, Int, String }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootCdrom,
+  IpmiBootLegacy,
+  IpmiBootPersistent,
+  IpmiBootSelection,
+  aarch64_uefi_once_boot_selection,
+}
+import gunbc.machine_intake_oob_boot_handoff {
+  BootReadbackConfirmed,
+  BootReadbackFirmwareModeMismatch,
+  BootReadbackFlagInvalid,
+  BootReadbackPersistenceMismatch,
+  BootReadbackSelectorMismatch,
+  boot_readback_verdict,
+}
+import gunbc.machine_intake_megarac_media_attach {
+  PresentedMediaConnecting,
+  PresentedMediaConnectionDenied,
+  PresentedMediaIdle,
+  PresentedMediaLoginFailed,
+  PresentedMediaMaxSessionReached,
+  PresentedMediaPermissionDenied,
+  PresentedMediaReady,
+  PresentedMediaSessionIndexUnavailable,
+  PresentedMediaStopped,
+  presented_media_standing,
+  start_media_body,
+}
+import gunbc.compile_diagnostic_census {
+  CensusNotRunnable,
+  CensusObserved,
+  census_rows_of_class,
+  census_total_count,
+  compile_dag_diagnostic_census,
+}
+
+fn valid_cd_efi_once_readback() -> String {
+  "Boot Flag Valid\nOptions apply to only next boot\nBIOS EFI boot\nBoot Device Selector : Force Boot from CD/DVD"
+}
+
+test fn all_four_boot_axes_confirm() -> Bool {
+  let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  match boot_readback_verdict(readback: valid_cd_efi_once_readback(), selection: selection) {
+    BootReadbackConfirmed => true
+    _ => false
+  }
+}
+
+test fn legacy_beside_cdrom_refuses_as_mode_mismatch() -> Bool {
+  let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  match boot_readback_verdict(
+    readback: "Boot Flag Valid\nOptions apply to only next boot\nBIOS PC Compatible (legacy) boot\nBoot Device Selector : Force Boot from CD/DVD",
+    selection: selection,
+  ) {
+    BootReadbackFirmwareModeMismatch => true
+    _ => false
+  }
+}
+
+test fn persistent_beside_one_shot_refuses() -> Bool {
+  let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  match boot_readback_verdict(
+    readback: "Boot Flag Valid\nOptions apply to all future boots\nBIOS EFI boot\nBoot Device Selector : Force Boot from CD/DVD",
+    selection: selection,
+  ) {
+    BootReadbackPersistenceMismatch => true
+    _ => false
+  }
+}
+
+test fn invalid_flag_dominates_matching_other_axes() -> Bool {
+  let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  match boot_readback_verdict(
+    readback: "Boot Flag Invalid\nOptions apply to only next boot\nBIOS EFI boot\nBoot Device Selector : Force Boot from CD/DVD",
+    selection: selection,
+  ) {
+    BootReadbackFlagInvalid => true
+    _ => false
+  }
+}
+
+test fn wrong_selector_refuses() -> Bool {
+  let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  match boot_readback_verdict(
+    readback: "Boot Flag Valid\nOptions apply to only next boot\nBIOS EFI boot\nBoot Device Selector : Force PXE",
+    selection: selection,
+  ) {
+    BootReadbackSelectorMismatch => true
+    _ => false
+  }
+}
+
+test fn typed_aarch64_selection_emits_efi_once_without_persistent() -> Bool {
+  let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  selection.options_wire == "options=efiboot"
+    && selection.expected_mode_rendering == "BIOS EFI boot"
+    && selection.expected_persistence_rendering == "Options apply to only next boot"
+}
+
+fn status_body(status: String, session_index: String) -> String {
+  join([
+    "[{\"image_name\":\"census.iso\",\"media_type\":1,\"session_index\":",
+    session_index,
+    ",\"redirection_status\":",
+    status,
+    "}]",
+  ], "")
+}
+
+test fn status_zero_is_idle() -> Bool {
+  match presented_media_standing(body: status_body(status: "0", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaIdle => true
+    _ => false
+  }
+}
+
+test fn status_one_with_bound_session_is_ready() -> Bool {
+  match presented_media_standing(body: status_body(status: "1", session_index: "0"), image_name: "census.iso") {
+    PresentedMediaReady { session_index: idx } => idx == "0"
+    _ => false
+  }
+}
+
+test fn status_one_with_na_session_refuses() -> Bool {
+  match presented_media_standing(body: status_body(status: "1", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaSessionIndexUnavailable => true
+    _ => false
+  }
+}
+
+test fn status_one_hundred_is_connecting_not_ready() -> Bool {
+  match presented_media_standing(body: status_body(status: "100", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaConnecting { session_index: idx } => idx == "255"
+    _ => false
+  }
+}
+
+test fn status_two_is_connection_denied() -> Bool {
+  match presented_media_standing(body: status_body(status: "2", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaConnectionDenied => true
+    _ => false
+  }
+}
+
+test fn status_three_is_login_failed() -> Bool {
+  match presented_media_standing(body: status_body(status: "3", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaLoginFailed => true
+    _ => false
+  }
+}
+
+test fn status_four_is_max_session_reached() -> Bool {
+  match presented_media_standing(body: status_body(status: "4", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaMaxSessionReached => true
+    _ => false
+  }
+}
+
+test fn status_five_is_permission_denied() -> Bool {
+  match presented_media_standing(body: status_body(status: "5", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaPermissionDenied => true
+    _ => false
+  }
+}
+
+test fn unrecognized_status_is_stopped_not_ready() -> Bool {
+  match presented_media_standing(body: status_body(status: "17", session_index: "255"), image_name: "census.iso") {
+    PresentedMediaStopped { status: s } => s == "17"
+    _ => false
+  }
+}
+
+test fn start_encoder_always_carries_image_redirection() -> Bool {
+  (start_media_body(image_name: "census.iso", image_index: "0") as String)
+    |> contains("\"image_redirection\":1")
+}
+
+fn sole_constructor_violations(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// The RED spells the exact live defect as a record literal: Aarch64 + Legacy + CD + Persistent.
+// IpmiBootSelection is a sole-constructor record, so the cross-module construction must refuse.
+data forged_legacy_aarch64_source: String = "module probe_legacy_aarch64_boot\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootCdrom, IpmiBootLegacy, IpmiBootPersistent }\nimport extdeps.toolchain.types { Aarch64 }\nfn forged() -> IpmiBootSelection { IpmiBootSelection { architecture: Aarch64, device: IpmiBootCdrom, firmware_mode: IpmiBootLegacy, persistence: IpmiBootPersistent, device_wire: \\\"cdrom\\\", options_wire: \\\"options=persistent\\\", expected_flag_rendering: \\\"Boot Flag Valid\\\", expected_device_rendering: \\\"Force Boot from CD/DVD\\\", expected_mode_rendering: \\\"BIOS PC Compatible (legacy) boot\\\", expected_persistence_rendering: \\\"Options apply to all future boots\\\" } }\n"
+
+test fn legacy_cdrom_on_aarch64_is_unconstructible() -> Bool {
+  sole_constructor_violations(source: forged_legacy_aarch64_source) >= 1
+}
+
+data sanctioned_aarch64_source: String = "module probe_sanctioned_aarch64_boot\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }\nfn legal() -> Bool { let selection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom) true }\n"
+
+test fn sanctioned_aarch64_constructor_remains_clean() -> Bool {
+  sole_constructor_violations(source: sanctioned_aarch64_source) == 0
+}
