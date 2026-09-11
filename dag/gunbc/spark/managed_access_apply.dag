@@ -9,8 +9,14 @@ import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh { ssh_public_key_line }
-import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
-import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.fleet_bootstrap_principal_session {
+  exec_as_fleet_principal_with_stdin,
+  BootstrapCredentialFileHeld,
+  BootstrapCredentialNotHeld,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
+}
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -26,8 +32,6 @@ import gunbc.fleet_known_hosts_anchor {
   portable_remote_word,
   PortableRemoteWord,
   portable_remote_words,
-  shape_fleet_ssh_exec,
-  shape_fleet_ssh_password_exec,
 }
 import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -164,6 +168,14 @@ fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> NonEmpt
   join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as NonEmptyStr
 }
 
+// THE PASSWORD SESSION IS NO LONGER CHOSEN HERE, IT IS DERIVED. This leg was already correct --
+// it is where the password-session shape was first got right -- but it got there by naming
+// shape_fleet_ssh_password_exec itself, and a fact that each call site states for itself is a fact
+// three call sites can disagree about. They did: the grant installer named the KEY shaper for this
+// same principal. gunbc.fleet_bootstrap_principal_session now derives the session from
+// admin_principal, and this lane supplies only WHERE its credential is -- the owner-only file it
+// materialized, rather than the runner's environment, because this is the operator-workstation
+// entry and no job prelude wrote one for it.
 fn privileged_leg(
   context: FleetSshExecutionContext,
   host: String,
@@ -174,25 +186,25 @@ fn privileged_leg(
 ) -> SparkApplyOutcome {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
-    Present { value: words } => {
-      let r = password_file_ssh_exec_portable_words_with_stdin(
-        password_file: admin_credential_file,
-        client_args: shape_fleet_ssh_password_exec(
-          context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-            principal: admin_principal as NonEmptyStr,
-          },
-          words: words,
-        ),
+    Present { value: words } =>
+      match exec_as_fleet_principal_with_stdin(
+        context: context,
+        target: SshTarget {
+          endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+          principal: admin_principal as NonEmptyStr,
+        },
+        words: words,
         stdin_payload: join([admin_credential as String, "\n", script, "\n"], ""),
-      )
-      if r.success {
-        ApplyConverged { detail: trim(s: r.stdout) }
-      } else {
-        ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        credential: BootstrapCredentialFileHeld { path: admin_credential_file },
+      ) {
+        FleetPrincipalLegRefused { cause: why } => ApplyRefused { cause: why as String }
+        FleetPrincipalLegRan { session: _, result: r } =>
+          if r.success {
+            ApplyConverged { detail: trim(s: r.stdout) }
+          } else {
+            ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+          }
       }
-    }
   }
 }
 
@@ -207,6 +219,9 @@ fn privileged_leg(
 // key-only. Deliberately a separate connection under a different principal rather than a check run
 // from inside the privileged session: a privileged session can read /etc/passwd and conclude the
 // account exists, which is not the same claim as the account accepting an authentication.
+// The managed principal resolves to the KEY session through the same derivation, so the proof leg
+// says which account it is testing and the transport follows from that -- rather than the leg
+// naming a shaper that happens to match the account the caller passed.
 fn managed_principal_leg(
   context: FleetSshExecutionContext,
   host: String,
@@ -215,24 +230,25 @@ fn managed_principal_leg(
 ) -> SparkApplyOutcome {
   match portable_remote_words(raws: raw_words) {
     Absent => ApplyRefused { cause: "non-portable remote word" }
-    Present { value: words } => {
-      let r = ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_fleet_ssh_exec(
-          context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-            principal: managed_principal as NonEmptyStr,
-          },
-          words: words,
-        ),
+    Present { value: words } =>
+      match exec_as_fleet_principal_with_stdin(
+        context: context,
+        target: SshTarget {
+          endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+          principal: managed_principal as NonEmptyStr,
+        },
+        words: words,
         stdin_payload: "",
-      )
-      if r.success {
-        ApplyConverged { detail: trim(s: r.stdout) }
-      } else {
-        ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        credential: BootstrapCredentialNotHeld,
+      ) {
+        FleetPrincipalLegRefused { cause: why } => ApplyRefused { cause: why as String }
+        FleetPrincipalLegRan { session: _, result: r } =>
+          if r.success {
+            ApplyConverged { detail: trim(s: r.stdout) }
+          } else {
+            ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+          }
       }
-    }
   }
 }
 

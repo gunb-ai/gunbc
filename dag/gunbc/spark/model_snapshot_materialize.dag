@@ -4,10 +4,15 @@ import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
-import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import gunbc.fleet_bootstrap_principal_session {
+  exec_as_fleet_principal_trusting_with_stdin,
+  BootstrapCredentialFileHeld,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
+}
 import extdeps.exec.command { shell_quote }
 import gunbc.fleet_known_hosts_anchor {
-  FleetOpenSshTrustPolicy, SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
+  FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
 }
 import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
@@ -66,27 +71,30 @@ type SparkRemoteRun
 // ONE REMOTE EXECUTION, AND THE TWO FAILURES IT KEEPS APART. "the ssh leg never landed" and "the
 // command ran and exited non-zero" are different facts with different remedies, and collapsing them
 // is what would make an unreachable host read as a corrupt download.
+// THE SESSION IS DERIVED, NOT NAMED HERE. This leg was already a password leg and stays one;
+// what changed is that gunbc.fleet_bootstrap_principal_session derives that from the principal,
+// so this module and the grant installer can no longer disagree about how briansrls is reached.
 fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => RemoteUnreachable { cause: "the remote invocation is not expressible as portable remote words" }
     Present { value: words } =>
       match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
         Absent => RemoteUnreachable { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") }
-        Present { value: endpoint } => {
-          let r = password_file_ssh_exec_portable_words_with_stdin(
-            password_file: ctx.admin_credential_file,
-            client_args: shape_fleet_ssh_password_exec_trusting(
-              trust: ctx.trust,
-              target: SshTarget {
-                endpoint: endpoint as NonEmptyStr,
-                principal: spark_operator_bootstrap_login as NonEmptyStr,
-              },
-              words: words,
-            ),
+        Present { value: endpoint } =>
+          match exec_as_fleet_principal_trusting_with_stdin(
+            trust: ctx.trust,
+            target: SshTarget {
+              endpoint: endpoint as NonEmptyStr,
+              principal: spark_operator_bootstrap_login as NonEmptyStr,
+            },
+            words: words,
             stdin_payload: join([ctx.admin_credential as String, "\n", shell_command_line(argv: argv), "\n"], ""),
-          )
-          RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
-        }
+            credential: BootstrapCredentialFileHeld { path: ctx.admin_credential_file },
+          ) {
+            FleetPrincipalLegRefused { cause: why } => RemoteUnreachable { cause: why as String }
+            FleetPrincipalLegRan { session: _, result: r } =>
+              RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+          }
       }
   }
 }
