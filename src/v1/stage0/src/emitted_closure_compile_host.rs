@@ -524,10 +524,22 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// `src/v1/stage0` back into its dependency graph; and building any probe rebuilt the seed into
 /// the shared target directory the running `claim_executor` was executing from.
 ///
-/// THE WORKSPACE ROOT IS NO LONGER A PARAMETER, which is the construction rather than the check
-/// (DESIGN section 5): a repository path cannot be rendered into a manifest by a function that is
-/// not handed one. `stage0_foundation_runtime_dependencies` carries only registry rows, so what
-/// this renders is the emitted closure's real link set and nothing else.
+/// THE WORKSPACE ROOT IS NO LONGER A PARAMETER, and what that buys is stated exactly rather than
+/// rounded up to a wall it is not. It eliminates the LIVE PRODUCER ROUTE that minted the seed
+/// path dependency: this function is handed no repository root, and
+/// `stage0_foundation_runtime_dependencies` carries registry rows only, so nothing on the
+/// rendering path supplies one. The regression witness beside it additionally refuses a rendered
+/// `src/v1` or `v1-compiler` dependency row, which is a second, independent reader of the same
+/// output.
+///
+/// A TYPE-LEVEL REGISTRY-ONLY BOUNDARY IS NOT CLAIMED, and saying so is the point:
+/// `CargoDependency` still admits `CargoDepSource::LocalPathDep { path }`, so a local path
+/// remains AUTHORABLE here from a literal -- which is exactly how this commit's discriminating
+/// red was established, with a hardcoded `/repo/src/v1/stage0`. Calling the parameter's removal a
+/// construction that makes the seed path unwritable would be the rung inflation DESIGN 4b(1)
+/// names. Making the local-path arm unreachable for an EMITTED crate's manifest belongs to the
+/// terminal shape -- the host consuming the emission's own manifest rather than authoring a
+/// second one -- and is not done here.
 ///
 /// THE `[lib]` NAME IS THE EMITTER'S CONTRACT, NOT A SPELLING OF THE PATH. `src/lib.rs` stays
 /// cargo's default path; what must be named is the LIB TARGET's crate name, because the emitted
@@ -536,7 +548,10 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// the SourceRootEvalDriver and DirectIngestDriver mains both `use v1_compiled::…`. The package
 /// name is per-entry (one slug per probe, sharing one target dir), so without this section the
 /// lib takes the package's name and the driver main's self-references fail E0433 — measured on
-/// the required-v2-native lane's first preparation. Pipeline-free probe entries never named
+/// the first preparation of the emitted-native compiler, which was a required CI job then and is
+/// the operator-invoked `--v2-native-route` instrument since #11003 deleted that job. The two
+/// consumers of this manifest today are that instrument and the `emit-compile` phase; naming a
+/// required native lane would cite a job main no longer declares. Pipeline-free probe entries never named
 /// their crate in a `use`, so the gap was unreachable until a pipeline entry became a probe
 /// subject.
 ///
@@ -2061,12 +2076,13 @@ mod tests {
         for name in ["im", "serde", "serde_json", "stacker"] {
             assert!(manifest.contains(name), "missing dependency row {name}");
         }
-        // THE DISCRIMINATING ASSERTION OF THIS COMMIT, and it is a regression control rather
-        // than a wall: the wall is that `probe_manifest` is not handed a workspace root, so the
-        // only way back to a seed path dependency is a diff that reintroduces the parameter.
-        // A `src/v1` substring in the rendered manifest means the emitted crate's dependency
-        // graph contains the seed again, and "v2 emits itself" stops being a claim about a
-        // buildable crate.
+        // THE DISCRIMINATING ASSERTION OF THIS COMMIT, and it is a regression control, not a
+        // wall. Removing the workspace-root parameter closed the live producer route that minted
+        // the seed dependency; it did NOT make a local path unwritable here, because
+        // `CargoDepSource::LocalPathDep` still admits a literal. So this reads the rendered
+        // OUTPUT: a `src/v1` or `v1-compiler` row means the emitted crate's dependency graph
+        // contains the seed again, and "v2 emits itself" stops being a claim about a buildable
+        // crate. Its RED was executed, not assumed -- re-adding the dependency panics here.
         assert!(
             !manifest.contains("src/v1"),
             "the emitted probe crate must not depend on the seed: {manifest}"
