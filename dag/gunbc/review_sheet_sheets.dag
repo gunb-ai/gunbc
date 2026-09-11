@@ -62,8 +62,11 @@ type ReviewSheetLiveAccess
   = ReviewSheetLiveOpen { access: SheetsAccess }
   | ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorAdmission }
 
-fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
-  match fleet_review_sheet_operator_admission() {
+fn review_sheet_live_access_from(
+  admission: ReviewSheetOperatorAdmission,
+  credential: SecretRef,
+) -> ReviewSheetLiveAccess {
+  match admission {
     ReviewSheetOperatorAdmitted { spreadsheet_id: id } =>
       ReviewSheetLiveOpen { access: sheets_access(spreadsheet_id: id, credential: credential) }
     ReviewSheetAwaitingHuman { intervention: i } =>
@@ -77,6 +80,13 @@ fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
     ReviewSheetOperatorRefused { reason: r } =>
       ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorRefused { reason: r } }
   }
+}
+
+fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
+  review_sheet_live_access_from(
+    admission: fleet_review_sheet_operator_admission(),
+    credential: credential,
+  )
 }
 
 fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheet {

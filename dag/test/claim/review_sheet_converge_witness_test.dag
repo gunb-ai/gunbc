@@ -38,6 +38,7 @@ import gunbc.review_sheet_sheets {
   review_sheet_ensure,
   review_sheet_from_readback,
   review_sheet_live_access,
+  review_sheet_live_access_from,
   ReviewSheetLiveOpen,
   ReviewSheetLiveNotAdmitted,
   live_sheets_transport_frontier,
@@ -652,6 +653,8 @@ test fn writer_awaiting_identification_does_not_name_an_sa() -> Bool {
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
   ) {
     ReviewSheetEstateUnresolved { subject: s, reason: r } =>
       (s as String) == "review_sheet_writer"
@@ -672,6 +675,8 @@ test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> B
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
   ) {
     ReviewSheetNeedsApiEnable { plan: p } =>
       (p.project as String) == "fixture-api-project"
@@ -691,6 +696,8 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       (i.identity as String) == "buyer-review-spreadsheet-create"
@@ -716,6 +723,8 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       match i.frequency {
@@ -838,11 +847,81 @@ test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
   ) {
     ReviewSheetOperatorAdmitted { spreadsheet_id: sid } => sid == id
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetOperatorRefused { reason: _ } => false
+  }
+}
+
+test fn unread_workspace_sharing_policy_refuses() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_project_identified(),
+    writer: w_writer_identified(),
+    enablement: w_observed_enabled(),
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: buyer_review_workspace_domain_sharing,
+    tenancy: buyer_review_account_tenancy,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "sharing policy unread")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_project_identified(),
+    writer: w_writer_identified(),
+    enablement: w_observed_enabled(),
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingForbidsExternalPrincipals,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "forbids sharing")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+test fn admitted_admission_opens_live_access() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  let admission = admit_review_sheet_operator(
+    project: w_project_identified(),
+    writer: w_writer_identified(),
+    enablement: w_observed_enabled(),
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  )
+  match review_sheet_live_access_from(
+    admission: admission,
+    credential: SecretRef {
+      project: "custody-only",
+      secret: "unused" as NonEmptyStr,
+      version: "pending",
+      hash_state: HashPending,
+    },
+  ) {
+    ReviewSheetLiveOpen { access: a } => a.spreadsheet_id == id
+    ReviewSheetLiveNotAdmitted { admission: _ } => false
   }
 }
