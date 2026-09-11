@@ -1912,6 +1912,46 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dispatch_selection_witness",
+            in_declaration: "witness_intricacy_does_not_change_automatic_effort",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dispatch_selection_witness",
+            in_declaration: "witness_intricacy_does_not_change_automatic_effort",
+            spelling: "IntricacyLow",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dispatch_actuator",
+            in_declaration: "witness_dispatch_effort_ignores_intricacy",
+            spelling: "IntricacyHigh",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dispatch_actuator",
+            in_declaration: "witness_dispatch_effort_ignores_intricacy",
+            spelling: "IntricacyLow",
+            target: "gunbc.roadmap_sizing",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
 ];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
