@@ -65,14 +65,6 @@ import gunbc.live_deploy.readiness {
   ServiceReadyApplyEffect,
   ServiceReadyEvidence,
 }
-import gunbc.live_deploy.target_decision {
-  DeployTargetDecision,
-  DeployTargetProceed,
-  DeployTargetTerminalNoOp,
-  DeployTargetRefused,
-  deploy_target_decision_line,
-  observe_deploy_target,
-}
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -94,9 +86,8 @@ import gunbc.fleet_converge_receipt {
 }
 import gunbc.live_deploy.apply_receipt {
   LiveDeployApplyReceipt, LiveDeployFleetProvenance,
-  LiveDeployTargetDecisionLabel, LiveDeployApplyOutcome, LiveDeployReadinessOutcome,
+  LiveDeployApplyOutcome, LiveDeployReadinessOutcome,
   read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent, LiveDeployFleetProvenance,
-  DecisionProceed, DecisionTerminalNoOp, DecisionRefused,
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
@@ -528,108 +519,40 @@ fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
   )
 }
 
-// THE TARGET DECISION SITS BETWEEN THE CANDIDATE OBSERVATION AND THE PREFLIGHT, AND EACH SIDE OF
-// THAT POSITION IS FORCED. It is AFTER the candidate because ordering is a relation between two
-// revisions and one of them is the candidate; there is nothing to decide until it is named. It is
-// BEFORE the preflight because the preflight is the first step that establishes a mutation
-// credential, and a deploy that must not proceed should be stopped without one -- the decision's
-// own observations are read-only, so refusing here contacts the host twice and changes it never.
-//
-// THE THREE ARMS ARE NOT TWO. Proceed applies; refused exits nonzero with the typed cause; and a
-// SUPERSEDED target exits ZERO having mutated nothing, because the host is already in a strictly
-// better state than this run would produce and reddening main for behaving correctly is the
-// expected-red noise gunbc.live_deploy.revision's four-case note exists to prevent. The no-op is a
-// POSITIVE printed receipt naming both revisions rather than a silent return, for the reason
-// gunbc.fleet_desired_admission gives for its own no-op actions: "authorization produced nothing"
-// and "authorization said do nothing" must not render identically.
-//
-// RETRACT DELIBERATELY DOES NOT CONSULT THIS, on the same grounds the repository-transition
-// admission above states for itself: a wall that also blocked teardown would strand an operator
-// with a host they could neither converge nor take down.
+// THE ORDERING GATE IS GONE (operator ruling 2026-09-07). This entry observes the candidate and
+// hands it to the apply fold; there is no target-decision arm between those two, and a SUPERSEDED
+// ancestry relation is not an exit. Whether anything mutates is decided later, per member, by
+// gunbc.live_deploy.member_identity from observation of the host. Retract still does not consult
+// ancestry, on the same grounds the repository-transition admission above states for itself: a
+// wall that also blocked teardown would strand an operator with a host they could neither
+// converge nor take down.
 fn live_deploy_admitted_wet_with_access(access: DeployAccess) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))
     CandidateObserved { candidate: candidate } =>
-      live_deploy_decided_wet_with_access(
-        access: access,
-        candidate: candidate,
-        decision: observe_deploy_target(
-          spec: deployment_spec_srv1(),
-          transport: access.transport,
-          candidate: candidate.revision,
-        ),
-      )
+      live_deploy_candidate_wet_with_access(access: access, candidate: candidate)
   }
 }
 
-// THE NO-OP IS THE ONE ARM WHERE SUCCESS AND SILENCE WOULD BE INDISTINGUISHABLE, so it is the one
-// arm that writes. A refusal carries its line out through the nonzero exit's reason and a proceed
-// carries the whole apply behind it; a superseded run exits zero having touched nothing, and
-// without a receipt it renders exactly like a deploy that ran. gunbc.fleet_desired_admission makes
-// the same move for the same reason -- its converged and superseded outcomes are POSITIVE actions
-// rather than an absent file -- and the path written here is the one the deploy step already reads
-// back (gunbc.ci_spec gunbc_ci_live_deploy_apply_srv1_invoke receipt_rel).
-//
-// A FAILED WRITE REFUSES RATHER THAN SUCCEEDING QUIETLY. Exiting zero on an unwritten receipt would
-// restore precisely the indistinguishability the receipt exists to remove.
-//
-// THIS PATH IS SPELLED TWICE AND THE SECOND SPELLING IS DECLARED RATHER THAN LEFT SILENT.
-// gunbc.ci_spec gunbc_ci_live_deploy_apply_srv1_invoke passes the same string as its receipt_rel,
-// so one fact has two homes -- the DESIGN section 3 fork, in the small. Neither import closes it:
-// ci_spec deliberately names this entry by PATH STRING rather than importing the module, because
-// importing it would pull the whole deploy closure into the CI spec; and importing ci_spec from
-// here would make the operation depend on the workflow that invokes it, which is the layer
-// inversion section 3 forbids outright. The row is placed on the operation side to match the one
-// existing precedent in this lane, gunbc.live_deploy.deployed_tree_report
-// deployed_tree_report_receipt_path, which is the sole spelling of its own receipt for the
-// accidental reason that its entry has no CI step.
-//
-// DISSOLVES WHEN receipt placement becomes a parameter the workflow supplies rather than a literal
-// each side spells -- the same interface-versus-realization split repo_self_build_authority_note
-// records for its cargo argv: the operation states that it produces a receipt, the workflow states
-// where receipts go, and the nullary `func` entry point that currently makes that impossible is
-// what has to change first.
-data live_deploy_target_decision_receipt_path: String = "target/live-deploy-srv1-receipt.txt"
-
-fn live_deploy_terminal_no_op_receipt(line: String) -> ProcessExit {
-  let wrote = Filesystem.Write(path: live_deploy_target_decision_receipt_path, content: line)
-  if wrote.success {
-    ExitSuccess
-  } else {
-    exit_failure(
-      reason: join([
-        "live_deploy: the target decision was a terminal no-op (",
-        line,
-        ") but its receipt could not be written to ",
-        live_deploy_target_decision_receipt_path,
-        " -- refusing rather than exiting zero with nothing to show for it: ",
-        wrote.error,
-      ], ""),
-    )
-  }
-}
-
-fn live_deploy_decided_wet_with_access(
+// THE OPERATOR'S CANDIDATE IS THE CANDIDATE. There is no ordering gate in front of this any more
+// (operator ruling 2026-09-07, gunbc.live_deploy.revision carries the reasoning): the deploy no
+// longer observes the running release to decide whether it may proceed. Convergence is decided
+// where it is actually knowable -- per member, from observation of the host, by
+// gunbc.live_deploy.member_identity -- so a re-deploy at the same revision is an ordinary
+// zero-mutation plan rather than a short circuit, and a host whose tree drifted beneath an
+// unchanged announcement is repaired rather than skipped.
+fn live_deploy_candidate_wet_with_access(
   access: DeployAccess,
   candidate: CandidateRelease,
-  decision: DeployTargetDecision,
 ) -> ProcessExit {
-  match decision {
-    DeployTargetRefused { cause: _ } =>
-      exit_failure(reason: deploy_target_decision_line(decision: decision))
-    DeployTargetTerminalNoOp { note: _ } =>
-      live_deploy_terminal_no_op_receipt(line: deploy_target_decision_line(decision: decision))
-    DeployTargetProceed { note: _ } => {
-      let preflight = live_deploy_access_preflight_for(access: access)
-      if !reconciliation_converged(r: preflight) {
-        live_deploy_reconciliation_exit(r: preflight)
-      } else {
-        live_deploy_reconciliation_exit(
-          r: live_deploy_apply_srv1_with_access(access: access, candidate: candidate)
-        )
-      }
-    }
+  let preflight = live_deploy_access_preflight_for(access: access)
+  if !reconciliation_converged(r: preflight) {
+    live_deploy_reconciliation_exit(r: preflight)
+  } else {
+    live_deploy_reconciliation_exit(
+      r: live_deploy_apply_srv1_with_access(access: access, candidate: candidate)
+    )
   }
 }
 
@@ -653,8 +576,8 @@ func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
 }
 
 // The converge verb's deploy mode: the same admitted path the CI entry runs, under the operator
-// principal on the host itself. Candidate observation, target decision, preflight, mutation and
-// the readiness gate are all shared; nothing here is a second deploy.
+// principal on the host itself. Candidate observation, preflight, mutation and the readiness
+// gate are all shared; nothing here is a second deploy.
 func live_deploy_apply_srv1_operator_local_wet() -> ProcessExit {
   live_deploy_wet_with_access(access: ci_deploy_srv1_operator_local_access)
 }
@@ -678,16 +601,8 @@ func live_deploy_retract_srv1_operator_wet() -> ProcessExit {
 // RLM_APPLY_RUN_ID, RLM_PLAN_ARTIFACT_HASH) and carries it as provenance, never as eligibility; (3)
 // it mints gunbc.live_deploy.apply_receipt LiveDeployApplyReceipt after the fold returns, with one
 // independent post-apply /healthz observation and a completion instant, and writes it to the
-// artifact path the workflow uploads. A TerminalNoOp target decision is recorded as such and exits
-// nonzero HERE, unlike the plain entry: within the transaction, 'R was already running' means this
-// run installed nothing, and the join must see that rather than a converged-looking receipt.
-fn live_deploy_transaction_decision_label(decision: DeployTargetDecision) -> LiveDeployTargetDecisionLabel {
-  match decision {
-    DeployTargetProceed { note: _ } => DecisionProceed
-    DeployTargetTerminalNoOp { note: _ } => DecisionTerminalNoOp
-    DeployTargetRefused { cause: _ } => DecisionRefused
-  }
-}
+// artifact path the workflow uploads. Whether the fold installed anything is LiveDeployApplyOutcome
+// on that receipt, not a deleted target-decision label: the join reads apply_outcome.
 
 fn live_deploy_post_apply_readiness(access: DeployAccess) -> LiveDeployReadinessOutcome {
   match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: deployment_spec_srv1()), transport: access.transport) {
@@ -720,7 +635,6 @@ fn live_deploy_transaction_receipt_for(
   expected: String,
   candidate: CandidateRelease,
   candidate_tree: String,
-  decision: DeployTargetDecision,
   apply_outcome: LiveDeployApplyOutcome,
   readiness: LiveDeployReadinessOutcome,
   provenance: LiveDeployFleetProvenance,
@@ -732,7 +646,6 @@ fn live_deploy_transaction_receipt_for(
     candidate_revision: candidate.revision as String,
     candidate_surface_identity: candidate.expected_surface_identity.digest as String,
     candidate_tree_oid: candidate_tree,
-    target_decision: live_deploy_transaction_decision_label(decision: decision),
     apply_outcome: apply_outcome,
     readiness: readiness,
     provenance: provenance,
@@ -748,25 +661,12 @@ fn live_deploy_transaction_decided(
   expected: String,
   candidate: CandidateRelease,
   candidate_tree: String,
-  decision: DeployTargetDecision,
   provenance: LiveDeployFleetProvenance,
 ) -> ProcessExit {
-  match decision {
-    DeployTargetRefused { cause: _ } =>
-      live_deploy_write_transaction_receipt(
-        receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, decision: decision, apply_outcome: LiveDeployApplyNotConverged { reason: deploy_target_decision_line(decision: decision) }, readiness: LiveDeployReadinessRefused { detail: "not observed: target decision refused" }, provenance: provenance),
-        exit: exit_failure(reason: deploy_target_decision_line(decision: decision)),
-      )
-    DeployTargetTerminalNoOp { note: _ } =>
-      live_deploy_write_transaction_receipt(
-        receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, decision: decision, apply_outcome: LiveDeployApplyNotConverged { reason: "terminal no-op: this run installed nothing" }, readiness: live_deploy_post_apply_readiness(access: access), provenance: provenance),
-        exit: exit_failure(reason: join(["live_deploy transaction: TerminalNoOp — ", deploy_target_decision_line(decision: decision), "; within the RLM-2 transaction a deploy that installs nothing is not a completed dashboard deployment"], "")),
-      )
-    DeployTargetProceed { note: _ } => {
       let preflight = live_deploy_access_preflight_for(access: access)
       if !reconciliation_converged(r: preflight) {
         live_deploy_write_transaction_receipt(
-          receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, decision: decision, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
+          receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: preflight),
         )
       } else {
@@ -776,11 +676,9 @@ fn live_deploy_transaction_decided(
           NotConverged { reason: why, applied: _ } => LiveDeployApplyNotConverged { reason: why }
         }
         live_deploy_write_transaction_receipt(
-          receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, decision: decision, apply_outcome: outcome, readiness: live_deploy_post_apply_readiness(access: access), provenance: provenance),
+          receipt: live_deploy_transaction_receipt_for(run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, readiness: live_deploy_post_apply_readiness(access: access), provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: applied),
         )
-      }
-    }
   }
 }
 
@@ -802,11 +700,6 @@ fn live_deploy_transaction_admitted(access: DeployAccess, run: ActionsRunBinding
               expected: expected,
               candidate: candidate,
               candidate_tree: candidate_tree,
-              decision: observe_deploy_target(
-                spec: deployment_spec_srv1(),
-                transport: access.transport,
-                candidate: candidate.revision,
-              ),
               provenance: provenance,
             )
         }
