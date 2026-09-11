@@ -11,14 +11,19 @@ import v2.compiler.discovery_enumeration {
 }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
+  EntryLiveTreeDispositionRefused,
+  EntryLiveTreeResolved,
   FloorDiscoveryProducerResult,
   FloorDiscoveryWalkState,
   discover_floor_rows_for_source,
+  floor_discovery_append_row,
   floor_discovery_finalize,
   floor_discovery_fold_source,
   floor_discovery_merge_walk_states,
   floor_discovery_path_excluded,
+  floor_discovery_record_disposition_refusal,
   floor_discovery_record_walk_failure,
+  floor_discovery_resolve_entry_live_tree,
   floor_discovery_walk_state_zero
 }
 import v2.workflow.witness_admission { witness_row_excluded_from_discovery }

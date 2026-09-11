@@ -1142,11 +1142,13 @@ test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation()
     NativeLaneSourceFacts {
       module: "",
       path: ^src_v2_test_quiet_dag,
+      imports: [],
       discovery: empty
     },
     NativeLaneSourceFacts {
       module: "",
       path: ^headerless_test_path,
+      imports: [],
       discovery: enrolled
     }
   ]) == "headerless_test_path"

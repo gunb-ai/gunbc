@@ -423,6 +423,15 @@ fn run_native_binary(binary: &Path, args: &[String]) -> Result<NativeRunOutput, 
         )
     })?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    // THE CHILD'S STDERR IS RELAYED, NOT SWALLOWED. The spawned binary commits its per-phase
+    // `[cost-partition]` receipt lines to stderr as each phase finishes, precisely so a cancelled
+    // run keeps the phases it already paid for; `Command::output` buffers them, so without this
+    // relay the route's own cost receipt would exist inside the child and reach nobody. Written
+    // through before the verdict is decided, so a refusal path still carries the phases that led
+    // to it.
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        eprintln!("{line}");
+    }
     match parse_native_run_output(&stdout) {
         Ok(parsed) => Ok(parsed),
         Err(parse_cause) => Err(format!(
