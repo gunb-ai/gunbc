@@ -854,9 +854,12 @@ pub(crate) fn new_multi_entry_index_shell(
         pool_parse: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
+        #[cfg(any(test, feature = "interp_test_witness"))]
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
+        closure_name_censuses: RefCell::new(HashMap::new()),
+        bare_reference_admission: RefCell::new(None),
         live_read_manifest: RefCell::new(None),
     }
 }

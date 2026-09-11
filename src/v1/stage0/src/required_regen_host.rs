@@ -7317,7 +7317,7 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
 }
 
 /// The seed's closure edges, module to module, off the SAME edge index the regen's closure walk
-/// uses (`both_closure_edge_index`: dotted references, which include every import line, plus bare
+/// uses (`whole_pool_closure_edge_index`: dotted references, which include every import line, plus bare
 /// references) -- one authority for "what pulls what", read here in reverse. A file the index
 /// names but cannot map to a module is a refusal: an edge dropped silently would shrink the bound.
 pub fn regen_module_edges(
@@ -7334,7 +7334,7 @@ pub fn regen_module_edges(
         })
         .collect();
     let index = super::build_multi_entry_index(&abs_roots);
-    let edge_index = super::both_closure_edge_index(&index)?;
+    let edge_index = super::whole_pool_closure_edge_index(&index)?;
     let mut module_of_path: HashMap<String, String> = HashMap::new();
     let mut modules: BTreeSet<String> = BTreeSet::new();
     for (module, source) in index.source_files.iter() {
