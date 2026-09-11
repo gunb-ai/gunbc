@@ -78,29 +78,33 @@ fn non_empty_contains_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   }
 }
 
-// THE FRONT END IS PAID ONCE, NOT ONCE PER CLAIM, AND THE SOURCE PATH IS KEPT. Each of the three
-// claims below re-derived dag_language_model plus tokenize, parse and normalize over its own
-// four-line snippet in its own evaluation frame, so the identical front end was rebuilt three
-// times and charged three times against the 500ms per-claim ceiling. MEASURED (claim_batch over
-// this module's four witnesses, one BuildBuddy dispatch, 2026-09-11): the three source-path rows
-// sit at 534-680ms of CPU while door_root_roster_accepts_clean_inferred_tree -- same gate area,
-// hand-built node fixture, no front end -- is 50ms. The spread across three DIFFERENT snippets is
-// ~150ms on a ~530ms base, so the base is the front end itself and not the snippets, and the
-// ledger row is not a defective witness beside healthy ones: it is the one 80ms above its nearest
-// sibling. Re-derive with that instrument rather than trusting these numbers.
+// THE FRONT END IS THE PER-CLAIM COST HERE, AND THE SHARE THAT WOULD NET IT IS WITHDRAWN UNTIL THE
+// SERVED VALUE SURVIVES CONSUMPTION. MEASURED (claim_batch over this module's four witnesses, one
+// BuildBuddy dispatch, 2026-09-11): the three source-path rows cost 534-680ms of CPU against a 500ms
+// per-claim ceiling, while door_root_roster_accepts_clean_inferred_tree -- same gate area, hand-built
+// node fixture, no front end -- costs 50ms. Three DIFFERENT four-line snippets spread ~150ms over a
+// ~530ms base, so the base is the front end itself and not the snippets, and the ledger row that
+// trips first is only 80ms above its nearest sibling. Re-derive with that instrument.
 //
-// WHY SHARING AND NOT A FIXTURE. Moving the ledger assertion onto a hand-built tree would buy the
-// budget by trading what the witness proves -- ledger behaviour on a tree the real front end
-// produced -- which DESIGN section 4b(1) prices as a rung drop rather than a cost fix. Sharing
-// changes nothing about what executes: the same source is tokenized, parsed and normalized by the
-// same pipeline, once, and every claim branches on the same product.
+// THE SHARE WAS TRIED AND IT NETTED THE COST EXACTLY AS INTENDED: enrolled WARM in
+// v2.workflow.floor_pure_producer_share, the floor stored all three producers during strict
+// preparation (disposition=Stored, 868ms, 496ms and 571ms of front end paid outside every per-claim
+// budget), which is the diagnosis confirmed by execution rather than by argument.
 //
-// WHY THE SEAM IS THE NORMALIZED TREE, where v2.test.claim.parse.d1_declaration_grammar_parse
-// shares one stage earlier at the parse tree. That module keeps normalize per claim because some
-// of its claims NAME normalize as their subject, and a shared normalize would stop them executing
-// the stage they claim. No witness here names any front-end stage: all three branch on the
-// normalized root and assert about accumulator_copy_compile_gate, so the whole front end is
-// upstream of every subject in this file and the honest seam is its output.
+// AND THEN ALL THREE CLAIMS FAILED ON THE SERVED VALUE: `no field 'kind' on type 'NormalizedTree'`,
+// three witnesses that pass when each claim derives its own tree. That is the SAME error claim_batch
+// reports for this module under its own preparation, which had read as an instrument quirk while the
+// floor was green; the two observations together say it is not about the instrument but about a
+// normalized tree produced OUTSIDE the frame that consumes it. Enrolling these rows therefore trades
+// a budget refusal for three failing witnesses, which is strictly worse, so the rows are withdrawn
+// and the producers below stay as plain helpers -- each claim calls one and derives its own tree,
+// exactly as before.
+//
+// WHAT THE ROWS RETURN ON, stated as a capability rather than an artifact: a normalized tree that
+// survives the cross-claim serve boundary, so that the value a claim is handed is the value it would
+// have derived. Until then the per-claim front end stands, and the budget question it raises is a
+// budget question rather than a witness question -- no witness here should be moved onto a fixture
+// to buy it, because that trades what these witnesses prove.
 fn quad_normalized() -> NormalizedProbe {
   normalized_of(source: quad_snippet)
 }
