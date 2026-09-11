@@ -162,6 +162,18 @@ data ancestry_read_back_unperformed: String = "native generation mint refused: R
 
 data ancestry_read_back_diverged: String = "native generation mint refused: the artifact reported an identity that is not the digest observed of the bytes that were built"
 
+// RESTORED. These two rows were deleted by the clause move in 714b77f3 — an edit that sliced
+// between two anchors and took everything between them, including these — and their absence was
+// invisible for two pushes because every control asserting them stayed GREEN. That is the real
+// lesson and it is recorded here rather than in a commit message: `^name` mints a Symbol from
+// arbitrary text, so `cause: ^x` compares SPELLINGS, not declarations. A control asserting a
+// refusal cause therefore cannot tell a declared row from a typo or from a row someone deleted,
+// and the strongest-looking evidence in this module — a refusal matched by name — was the
+// weakest against exactly the failure that occurred. Caught by review 64013, not by the suite.
+data ancestry_build_path_unresolved: String = "native generation mint refused: BuildPathUnresolved leaves an input the six generation axes do not name, so the artifact axis cannot falsify anything"
+
+data ancestry_successor_build_path_pinned: String = "native generation mint refused: BuildPathPinned is admissible only for the one-time genesis; a recurring generation's artifact is acquired as an ancestor and must not depend on the directory it was built in"
+
 data ancestry_genesis_closure_omits_seed: String = "native generation mint refused: GenesisFromSeed names the seed as producer, so v1.compiler.emit_rust must be reachable in its realized closure — a genesis that did not run the seed is not a genesis"
 
 type NativeGenerationMintAdmission
@@ -192,12 +204,18 @@ fn read_back_agrees(
   }
 }
 
-// The whole native-producer closure wall in one place: the recurring step may reach
-// NEITHER the seed emitter NOR the interpreted emitter. Those are two distinct causes
-// rather than one "not native" verdict, because they have different remedies — a seed
-// reach means the migration never happened, an interpreter reach means the wrong v2 route
-// was composed — and collapsing them is the state-space conflation DESIGN section 5 names.
+// BUILD PATH IS ADMITTED ASYMMETRICALLY, and the asymmetry is the whole content of this fold.
+// A one-time genesis runs on one host and nothing cross-host consumes its artifact, so pinning
+// the directory is honest there. A RECURRING generation's artifact is acquired as an ancestor
+// by a later generation, so an unremapped build path leaves an input the six generation axes do
+// not name — the artifact axis stops being able to falsify anything precisely where it is load
+// bearing. Unresolved is admitted for neither.
 //
+// This annotation previously described the native-producer CLOSURE wall, which decides nothing
+// about build paths and has since moved to
+// v2.compiler.self_host.emitter_producer_provenance v2_emitter_closure_admission. An annotation
+// left attached to a fold it no longer describes is worse than none, because it is read as
+// documentation of the code beneath it (review 64013).
 fn build_path_admission(
   treatment: BuildPathTreatment,
   genesis: Bool

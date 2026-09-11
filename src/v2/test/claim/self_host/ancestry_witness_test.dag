@@ -32,7 +32,30 @@ import v2.compiler.self_host.generation {
   generation_identity_agrees,
   observed_artifact_digest
 }
+// EVERY CAUSE ROW THIS FILE ASSERTS IS IMPORTED BY NAME, and that is a wall rather than tidiness.
+// `^x` mints a Symbol from arbitrary text, so `cause: ^x` compares SPELLINGS: before this import
+// list existed, two cause rows were deleted from the module by an unrelated edit and every
+// control asserting them stayed GREEN across two pushes, because a refusal spelled
+// "ancestry_build_path_unresolved" matches a literal of the same spelling whether or not any
+// declaration by that name exists (review 64013). Importing the rows makes each assertion depend
+// on the DECLARATION: a deleted or renamed row now fails to resolve at import and the file goes
+// red at typecheck, instead of passing against a string. Construction over validation, DESIGN
+// section 5 — the spelling check is still there, but it can no longer be the only thing holding.
 import v2.compiler.self_host.ancestry {
+  ancestor_generation_is_not_the_one_expected,
+  ancestry_artifact_not_materialized,
+  ancestry_build_path_unresolved,
+  ancestry_genesis_closure_omits_seed,
+  ancestry_producer_execution_is_not_the_named_ancestor,
+  ancestry_read_back_diverged,
+  ancestry_read_back_unperformed,
+  ancestry_succession_candidate_is_genesis,
+  ancestry_succession_parent_artifact_mismatch,
+  ancestry_succession_parent_generation_mismatch,
+  ancestry_successor_build_path_pinned,
+  ancestry_successor_not_parent_plus_one,
+  genesis_already_executed,
+  genesis_candidate_is_not_a_genesis,
   BuildPathPinned,
   BuildPathRemapped,
   BuildPathUnresolved,
