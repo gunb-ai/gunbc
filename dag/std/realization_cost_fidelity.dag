@@ -2,9 +2,11 @@ module std.realization_cost_fidelity
 
 import std.algebra {
   CostShape,
+  Ordering,
   StructuredCost,
+  operand_growth_order,
+  structured_cost_growth_in_operand,
   structured_cost_operands,
-  structured_cost_rank_in_operand,
   structured_cost_to_shape,
 }
 import std.pareto {
@@ -15,7 +17,7 @@ import std.pareto {
   Equivalent,
   Incomparable,
   LowerIsBetter,
-  axis_comparison_int,
+  axis_comparison,
   dominance_of_comparisons,
 }
 import std.primitive_identity { RealizationTarget, primitive_identity_eq }
@@ -100,16 +102,32 @@ type ModeledStructuredCostFact {
   cost: StructuredCost
 }
 
-fn cost_realization_target_slug(target: RealizationTarget) -> String {
-  match target {
-    InterpreterHost => "interpreter_host"
-    EmitRust => "emit_rust"
-    EmitTypeScript => "emit_typescript"
-  }
-}
-
+// EQUALITY ON A CLOSED COPRODUCT IS A MATCH, NOT A STRING COMPARE. An earlier revision minted a
+// slug per arm and compared the slugs, which is a second naming scheme for arms the type already
+// names (DESIGN section 3) — and it fails silently in the direction that matters: add a fourth
+// target and the match below stops compiling, while a slug table would have answered "not equal"
+// for the new arm against itself the moment someone forgot a row.
 fn realization_target_eq(left: RealizationTarget, right: RealizationTarget) -> Bool {
-  cost_realization_target_slug(target: left) == cost_realization_target_slug(target: right)
+  match left {
+    InterpreterHost =>
+      match right {
+        InterpreterHost => true
+        EmitRust => false
+        EmitTypeScript => false
+      }
+    EmitRust =>
+      match right {
+        InterpreterHost => false
+        EmitRust => true
+        EmitTypeScript => false
+      }
+    EmitTypeScript =>
+      match right {
+        InterpreterHost => false
+        EmitRust => false
+        EmitTypeScript => true
+      }
+  }
 }
 
 fn operand_union(modeled: StructuredCost, realized: StructuredCost) -> List<String> {
@@ -134,10 +152,12 @@ fn operand_axis_comparisons(
 ) -> List<AxisComparison> {
   operand_union(modeled: modeled, realized: realized) |> fold(init: [], f: fn(acc, o) {
     concat(
-      [axis_comparison_int(
+      [axis_comparison(
         goal: LowerIsBetter,
-        a: structured_cost_rank_in_operand(c: realized, operand: o),
-        b: structured_cost_rank_in_operand(c: modeled, operand: o),
+        value_order: operand_growth_order(
+          a: structured_cost_growth_in_operand(c: realized, operand: o),
+          b: structured_cost_growth_in_operand(c: modeled, operand: o),
+        ),
       )],
       acc,
     )

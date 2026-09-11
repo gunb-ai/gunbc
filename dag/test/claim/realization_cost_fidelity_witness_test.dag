@@ -13,7 +13,8 @@ import std.algebra {
   StructuredCost,
   ShapeLinearScan,
   ShapeSortBody,
-  structured_cost_rank_in_operand,
+  structured_cost_growth_in_operand,
+  operand_growth_order,
   structured_cost_to_shape,
 }
 import std.realization_cost_fidelity {
@@ -34,6 +35,7 @@ import std.realization_cost_fidelity {
 import std.primitive_identity { EmitRust, InterpreterHost }
 import std.primitive_projection { PrimitiveIdentity }
 import std.types { Bool, List }
+import std.algebra { Equal, Greater, Less }
 
 // concat as std.primitives declares it: work in both operands.
 fn concat_modeled_cost() -> StructuredCost {
@@ -73,8 +75,14 @@ test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
   match structured_cost_to_shape(c: concat_modeled_cost()) {
     Present { value: _ } => false
     Absent =>
-      structured_cost_rank_in_operand(c: concat_modeled_cost(), operand: "right")
-        == structured_cost_rank_in_operand(c: concat_realized_cost(), operand: "right")
+      match operand_growth_order(
+        a: structured_cost_growth_in_operand(c: concat_modeled_cost(), operand: "right"),
+        b: structured_cost_growth_in_operand(c: concat_realized_cost(), operand: "right"),
+      ) {
+        Equal => true
+        Less => false
+        Greater => false
+      }
   }
 }
 
@@ -185,6 +193,59 @@ test fn measured_target_reports_the_finding() -> Bool {
 // absent. Reporting it as ShapeConstant would say a cost that grows does not grow -- inside the
 // function whose own annotation forbids exactly that. Kept beside the accepted cases so the
 // distinction is executed rather than asserted.
+// THE COLLISION CONTROL. Two logarithmic factors over one operand is log-squared, and a single
+// linear factor is n. An earlier revision summed per-factor ranks, which made both score 2 — so a
+// realization that turned log-squared work into linear work compared EQUAL, and the module whose
+// purpose is to refuse a fabricated equality produced one. Growth is carried as (degree, logs) now,
+// ordered lexicographically, so n strictly beats (log n)^k for every k.
+test fn log_squared_and_linear_do_not_collide() -> Bool {
+  match cost_fidelity_of(
+    modeled: StructuredCost {
+      terms: [CostTerm {
+        factors: [LogarithmicInOperand { operand: "n" }, LogarithmicInOperand { operand: "n" }]
+      }]
+    },
+    realized: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] },
+  ) {
+    RealizationSlowerThanModeled => true
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// The same collision seen through the projection: log-squared is a growth CostShape cannot say, so
+// it must answer absent rather than ShapeLinearScan.
+test fn log_squared_has_no_shape() -> Bool {
+  match structured_cost_to_shape(
+    c: StructuredCost {
+      terms: [CostTerm {
+        factors: [LogarithmicInOperand { operand: "n" }, LogarithmicInOperand { operand: "n" }]
+      }]
+    }
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A term that is a product of two linear factors over one operand is QUADRATIC in it, which
+// CostShape also cannot say — the same refusal from the other direction.
+test fn quadratic_in_one_operand_has_no_shape() -> Bool {
+  match structured_cost_to_shape(
+    c: StructuredCost {
+      terms: [CostTerm {
+        factors: [LinearInOperand { operand: "n" }, LinearInOperand { operand: "n" }]
+      }]
+    }
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 test fn logarithmic_cost_has_no_shape_and_does_not_round_to_constant() -> Bool {
   match structured_cost_to_shape(
     c: StructuredCost { terms: [CostTerm { factors: [LogarithmicInOperand { operand: "n" }] }] }

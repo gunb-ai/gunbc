@@ -326,12 +326,55 @@ type StructuredCost {
   terms: List<CostTerm>
 }
 
-fn cost_factor_rank(f: CostFactor) -> Int {
+// GROWTH IN ONE OPERAND IS TWO NUMBERS, NOT ONE, and collapsing them to one is lossy in a way that
+// fabricates answers. A cost in an operand has the form n^degree * (log n)^logs, and a single
+// ordinal cannot carry both: an earlier revision summed per-factor ranks (constant 0, log 1, linear
+// 2, linearithmic 3) within a term, which made log(n)*log(n) and n both score 2 -- so log-squared
+// and linear compared EQUAL, a divergence reported as preserved, in the module whose whole purpose
+// is to refuse exactly that. The pair is carried instead, and its order is lexicographic on
+// (degree, logs), which is the true order of those functions: n beats (log n)^k for every k.
+type OperandGrowth {
+  degree: Int
+  logs: Int
+}
+
+fn cost_factor_growth(f: CostFactor) -> OperandGrowth {
   match f {
-    ConstantFactor => 0
-    LogarithmicInOperand { operand: _ } => 1
-    LinearInOperand { operand: _ } => 2
-    LinearithmicInOperand { operand: _ } => 3
+    ConstantFactor => OperandGrowth { degree: 0, logs: 0 }
+    LogarithmicInOperand { operand: _ } => OperandGrowth { degree: 0, logs: 1 }
+    LinearInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 0 }
+    LinearithmicInOperand { operand: _ } => OperandGrowth { degree: 1, logs: 1 }
+  }
+}
+
+fn operand_growth_zero() -> OperandGrowth {
+  OperandGrowth { degree: 0, logs: 0 }
+}
+
+// A TERM IS A PRODUCT, so the exponents ADD -- separately, which is the whole point. Two linear
+// factors over one operand are quadratic in it; two log factors are log-squared; and those are
+// different facts that now have different values.
+fn operand_growth_multiply(a: OperandGrowth, b: OperandGrowth) -> OperandGrowth {
+  OperandGrowth { degree: a.degree + b.degree, logs: a.logs + b.logs }
+}
+
+fn operand_growth_order(a: OperandGrowth, b: OperandGrowth) -> Ordering {
+  if a.degree < b.degree {
+    Less
+  } else {
+    if a.degree > b.degree {
+      Greater
+    } else {
+      if a.logs < b.logs { Less } else { if a.logs > b.logs { Greater } else { Equal } }
+    }
+  }
+}
+
+fn operand_growth_max(a: OperandGrowth, b: OperandGrowth) -> OperandGrowth {
+  match operand_growth_order(a: a, b: b) {
+    Less => b
+    Equal => a
+    Greater => a
   }
 }
 
@@ -344,23 +387,21 @@ fn cost_factor_operand(f: CostFactor) -> String? {
   }
 }
 
-// THE RANK OF A COST IN ONE OPERAND is the largest rank any single term reaches in that operand,
-// summing the factors WITHIN a term because a term is a product: a term carrying two linear factors
-// over the same operand is quadratic in it, and reporting the max of the two would lose exactly the
-// blow-up the number exists to expose.
-fn cost_term_rank_in_operand(t: CostTerm, operand: String) -> Int {
-  t.factors |> fold(init: 0, f: fn(acc, f) {
+// THE GROWTH OF A COST IN ONE OPERAND is the largest growth any single term reaches in it,
+// multiplying the factors WITHIN a term because a term is a product.
+fn cost_term_growth_in_operand(t: CostTerm, operand: String) -> OperandGrowth {
+  t.factors |> fold(init: operand_growth_zero(), f: fn(acc, f) {
     match cost_factor_operand(f: f) {
       Absent => acc
-      Present { value: o } => if o == operand { acc + cost_factor_rank(f: f) } else { acc }
+      Present { value: o } =>
+        if o == operand { operand_growth_multiply(a: acc, b: cost_factor_growth(f: f)) } else { acc }
     }
   })
 }
 
-fn structured_cost_rank_in_operand(c: StructuredCost, operand: String) -> Int {
-  c.terms |> fold(init: 0, f: fn(acc, t) {
-    let r = cost_term_rank_in_operand(t: t, operand: operand)
-    if r > acc { r } else { acc }
+fn structured_cost_growth_in_operand(c: StructuredCost, operand: String) -> OperandGrowth {
+  c.terms |> fold(init: operand_growth_zero(), f: fn(acc, t) {
+    operand_growth_max(a: acc, b: cost_term_growth_in_operand(t: t, operand: operand))
   })
 }
 
@@ -384,16 +425,20 @@ fn structured_cost_operands(c: StructuredCost) -> List<String> {
 // operands at once, so projecting one would have to round -- and a rounded rank presented as the
 // operation's shape is the fabricated answer this whole authority exists to prevent. The absent
 // arm is the vocabulary gap stated out loud, not a failure to compute.
-// Rank 1 is LOGARITHMIC in the operand, and CostShape has no spelling for it. Projecting it as
-// ShapeConstant would report a cost that grows as one that does not -- the rounded rank presented
-// as the operation's shape that the annotation above forbids, committed inside the function that
-// forbids it. It answers absent, like every other cost CostShape cannot say.
-fn shape_for_single_operand_rank(rank: Int) -> CostShape? {
-  match rank {
-    0 => Present { value: ShapeConstant }
-    2 => Present { value: ShapeLinearScan }
-    3 => Present { value: ShapeSortBody }
-    _ => none
+// CostShape CAN SAY EXACTLY THREE OF THESE GROWTHS and no others: constant, linear, and
+// linearithmic in a single operand. A logarithmic cost, a quadratic one, a log-squared one — each
+// is a real growth CostShape has no spelling for, and each answers absent rather than being rounded
+// to the nearest thing it can say. That is the same refusal the two-operand case makes, applied
+// within one operand.
+fn shape_for_operand_growth(growth: OperandGrowth) -> CostShape? {
+  if growth.degree == 0 && growth.logs == 0 {
+    Present { value: ShapeConstant }
+  } else {
+    if growth.degree == 1 && growth.logs == 0 {
+      Present { value: ShapeLinearScan }
+    } else {
+      if growth.degree == 1 && growth.logs == 1 { Present { value: ShapeSortBody } } else { none }
+    }
   }
 }
 
@@ -406,7 +451,7 @@ fn structured_cost_to_shape(c: StructuredCost) -> CostShape? {
       match operands.first() {
         Absent => none
         Present { value: only } =>
-          shape_for_single_operand_rank(rank: structured_cost_rank_in_operand(c: c, operand: only))
+          shape_for_operand_growth(growth: structured_cost_growth_in_operand(c: c, operand: only))
       }
     } else {
       none
