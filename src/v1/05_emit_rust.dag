@@ -11134,6 +11134,13 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
 // THE TEST IS EQUALITY WITH THE PRODUCER'S OWN VALUE, not a prefix sniff on the rendered text: one
 // authority produces this string, so asking whether the expression IS that value is decidable. A
 // second grounded pre-shared arm would need its own row here rather than widening this one.
+//
+// THIS IS BELOW ITS CEILING AND THE CLASS ROW SAYS SO. The guard RECOVERS a structural fact — this
+// child already rendered the shared carrier — by comparing rendered target text, which is decidable
+// but string-keyed. The class and its trigger are rostered as an occurrence of
+// gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target: NEXT-RUNG TRIGGER is the
+// emitter carrying sharing as a property of the RENDERED EXPRESSION rather than of the type alone,
+// sufficient that no site can wrap an already-shared value however many grounded producers exist.
 fn rust_expr_is_grounded_shared_value(expr: String) -> Bool {
   expr == emit_freemonoid_empty_rc_value()
 }
