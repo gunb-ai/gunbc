@@ -126,22 +126,34 @@ replacement-migration doctrine does **not** apply here, and a proposal to "move 
 fabric control plane" would be a regression, because it would fuse a settling subject with a
 non-settling one under one root and force serving to carry money reservation it has no payer for.
 
-## 5. Findings handed on, not fixed here
+## 5. Findings, filed rather than parked
 
-1. **`FabricGroup` is three things.** `gunbc.spark.fabric_switch_observed::FabricGroup` is a closed
-   two-variant enum keyed by physical cage (`fabric_group_cage`), and it is simultaneously the
-   network-topology group, the serving-group identity, and the **seat pool partition key**
-   (`harness_seat_partition`). A sibling lane is making the router enroll both groups and take
-   whatever model a group advertises; the moment a third group or a second model per cage exists,
-   this closed enum is the growth surface that refuses. Flagged, not blocked — it does not affect
-   this ruling, and the correct fix is a separate serving-group identity distinct from cage
-   topology.
-2. **The word "fabric" carries two meanings** in the corpus: compute fabric (`gunbc.fabric_*`) and
-   network fabric (`gunbc.spark.fabric_rail_*`, `fabric_switch_*`, `fabric_reach`). This is a §3
-   meaning fork on a naming surface. Both are long-standing and neither is wrong in isolation;
-   recording it here so the next reader of `gunbc.spark.fabric_*` does not conclude spark already
-   has a control plane.
-3. **Serving cost axes are asserted, not measured** — declared drop
-   `gunbc.rung_drop.serving_cost_axes_asserted_unmeasured`, already rostered. Named here because
-   this ruling leans on serving supplying the shared cost axes; it supplies their *shape*
-   honestly and their *values* under a declared drop.
+An earlier draft of this section carried two newly-discovered defect classes as prose bullets. That
+was itself the failure DESIGN §4b names — "Membership is the directory of those files, not a second
+hand-appended list" — and the bullets carried no rung, ceiling or trigger, so §4b(2) was
+unsatisfied. They are now filed, and this section cites the symbols rather than restating them.
+
+1. **`FabricGroup` carries three subjects on one cage discriminant.** Filed as a second form of
+   `gunbc.recurring_failure_mode.meaning_fork` — the referent varying by *consumer* rather than by
+   hidden state — with its invalid state, harm, recognition rule, rung (mitigatable), derived
+   ceiling (structurally impossible) and next trigger on the row, and `FabricGroup`,
+   `fabric_group_cage` and `harness_seat_partition` as its evidence. It was folded into that
+   existing authority rather than minted as a new row, because §3 asks for one home per concept and
+   `state_space_conflation` sets the corpus precedent for widening a class with a second form.
+
+   Why it matters here: a sibling lane is enrolling a second serving group and wants
+   model-agnostic routing, which is the "second model per cage" case arriving early. The silent arm
+   is the dangerous one — a serving group that is not cage-shaped partitions the **seat pool** by
+   the wrong key, and two tenants hold a lease each believes is exclusive.
+
+2. **The word "fabric" meaning both compute fabric and network interconnect — withdrawn, not
+   filed.** I proposed this as a §3 meaning fork and it does not qualify under that class's own
+   scoping rule: one spelling in two explicitly distinct module scopes is legitimate reuse. The
+   near-miss is recorded on the `meaning_fork` row so the next reader does not re-propose it. What
+   is real at that boundary is finding 1 — a *type* crossing it — not the adjective sitting on both
+   sides.
+
+3. **Serving cost axes are asserted, not measured** — the already-rostered declared drop
+   `gunbc.rung_drop.serving_cost_axes_asserted_unmeasured`. Named because this ruling leans on
+   serving supplying the shared cost axes: it supplies their *shape* honestly and their *values*
+   under that drop.
