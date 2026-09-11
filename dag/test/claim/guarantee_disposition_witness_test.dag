@@ -631,3 +631,49 @@ test fn a_contradicted_ceiling_is_not_at_ceiling() -> Bool {
     CeilingContradictedByEvidence { measured: _ } => true
   }
 }
+
+
+// ---- THE THREE-WAY COMPARISON AT A FINITE CEILING ----
+
+// THE RED THIS REPLACES WAS `>=`, AND IT RETIRED AN OBLIGATION THAT WAS STILL OWED. A class whose
+// requirement declares it can reach only Mitigatable, measured at MechanicallyPreventable, read as
+// AtCeiling -- and a class at its ceiling stops owing its next-rung trigger. So an UNDERSTATED
+// ceiling silently closed a class that had already climbed past it, which is the same
+// two-facts-disagree shape as the off-ladder case and was left in the one arm I had convinced
+// myself was handled. The evidence is not the doubtful half: DESIGN section 4b calls the ceiling
+// DERIVED, so a measurement above it falsifies the derivation and the requirement is what needs
+// rewriting.
+test fn a_rung_above_a_finite_ceiling_contradicts_it() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: Mitigatable),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    CeilingContradictedByEvidence { measured: m } => m == MechanicallyPreventable
+    _ => false
+  }
+}
+
+// EXACTLY AT A FINITE CEILING IS STILL DONE. Without this, the repair above could have been made by
+// answering the contradiction for everything at or above, which would refuse every class that
+// actually reached its ceiling -- the opposite failure, and just as wrong.
+test fn a_rung_exactly_at_a_finite_ceiling_is_at_ceiling() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: MechanicallyPreventable),
+    d: OnLadder { rung: MechanicallyPreventable }
+  ) {
+    AtCeiling => true
+    _ => false
+  }
+}
+
+// BELOW A FINITE CEILING STILL OWES ITS TRIGGER, which is the ordinary case the other two must not
+// disturb.
+test fn a_rung_below_a_finite_ceiling_still_owes_its_trigger() -> Bool {
+  match ceiling_standing(
+    r: requirement_at(ceiling: StructurallyGuaranteed),
+    d: OnLadder { rung: Mitigatable }
+  ) {
+    BelowCeiling => true
+    _ => false
+  }
+}

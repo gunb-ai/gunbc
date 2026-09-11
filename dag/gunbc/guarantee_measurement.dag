@@ -669,6 +669,31 @@ type CeilingStanding
 // A CLASS DECLARED OUTSIDE THE MODELED GUARANTEE MEETS A CEILING THAT SAYS THE SAME THING, and
 // meets nothing else: against a ceiling naming a real rung, an outside-the-guarantee class has not
 // reached it -- it is the class nobody modeled, which is a gap and not an arrival.
+// THE COMPARISON IS THREE-WAY BECAUSE THE THREE ANSWERS ARE THREE DIFFERENT FACTS, and collapsing
+// ABOVE into AT is the leak this replaces. `>=` read a class measured ABOVE its declared ceiling as
+// AtCeiling, and AtCeiling means the class stops owing its next-rung trigger -- so an understated
+// ceiling silently retired a class that had already climbed past it. DESIGN section 4b calls the
+// ceiling DERIVED rather than aspirational, which is exactly what a measurement above it falsifies:
+// the evidence is not the thing to doubt, the ceiling is, and the repair is to rewrite the
+// requirement rather than to chase a trigger.
+//
+// ONE RULE REPLACES TWO. The outside-the-ladder case needed its own branch only while the
+// comparison was two-valued; OutsideTheLadder is index 0 and every real rung outranks it, so a
+// class measured on the ladder against an off-ladder ceiling is just the ABOVE case and reaches the
+// same contradiction through the same arithmetic. Its control stays enrolled -- section 4b(4) keeps
+// the evidence when the production handling dissolves.
+fn standing_for_measured_rung(measured: GuaranteeRung, ceiling: GuaranteeRung) -> CeilingStanding {
+  if guarantee_rung_index(r: measured) < guarantee_rung_index(r: ceiling) {
+    BelowCeiling
+  } else {
+    if guarantee_rung_index(r: measured) == guarantee_rung_index(r: ceiling) {
+      AtCeiling
+    } else {
+      CeilingContradictedByEvidence { measured: measured }
+    }
+  }
+}
+
 fn standing_for_outside_modeled(r: GuaranteeRequirement) -> CeilingStanding {
   if guarantee_rung_index(r: r.ceiling) == guarantee_rung_index(r: OutsideTheLadder) {
     AtCeiling
@@ -682,17 +707,7 @@ fn ceiling_standing(r: GuaranteeRequirement, d: GuaranteeDisposition) -> Ceiling
     unmeasured: BelowCeiling
     below_floor: BelowCeiling
     frontier_accepted: BelowCeiling
-    on_ladder: fn(rung) {
-      if guarantee_rung_index(r: r.ceiling) == guarantee_rung_index(r: OutsideTheLadder) {
-        CeilingContradictedByEvidence { measured: rung }
-      } else {
-        if guarantee_rung_index(r: rung) >= guarantee_rung_index(r: r.ceiling) {
-          AtCeiling
-        } else {
-          BelowCeiling
-        }
-      }
-    }
+    on_ladder: fn(rung) { standing_for_measured_rung(measured: rung, ceiling: r.ceiling) }
     outside_modeled: standing_for_outside_modeled(r: r)
   })
 }
