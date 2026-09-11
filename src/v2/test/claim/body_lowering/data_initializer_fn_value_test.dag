@@ -12,7 +12,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the child fold, same door as field_init.
 //
 // The two data-record claims stay off floor_cost_debt so they remain ordinary-floor
-// regression controls for the classifier widening (review 63356).
+// regression controls for the classifier widening (review 63356). They were enrolled
+// on censored_chunk_04 after D4's floor-of-record interrupt (review 63588) and
+// restored after #11032.
 
 fn normalize_outcome(src: String) -> String {
   body_lowering_normalize_outcome(src: src, file: ^data_initializer_fn_value_subject)
