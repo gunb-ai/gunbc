@@ -9919,18 +9919,35 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(v);
     }
 
+    // A refused cast names the DECLARED source type the typechecker admitted, beside the runtime
+    // carrier the interpreter actually holds. Printing only the carrier made `Nat as Int` read as
+    // "cannot cast Int to Int" -- a diagnostic that could not name what it rejected.
+    let refused = |v: &Value, target: &str| InterpError::TypeError {
+        msg: cast_refusal_message(&source_name, v.type_label(), target),
+    };
+
+    // The "Int"/"Float" arms convert between runtime CARRIERS, so a value already on the target's
+    // carrier is an identity cast whatever its declared type: Nat (grounded onto Int by the numeric
+    // tower, std.coercion grounded_primitive_coproduct_identities), Milliseconds, Octet, Int8, ...
+    // The carrier is the authority here, not a kernel-name comparison: Nat's grounding is not an
+    // alias chain (`type Nat = CommutativeSemiring<Magnitude>`), so a name walk cannot reach Int.
+    // This sheds a BRAND, never a UNIT: `Milliseconds = Int where brand(..)` already flows into any
+    // Int position without a cast, so `as Int` removes nothing a position enforced. A unit-bearing
+    // type is a `std.measure` Measure, carried as a Record, and still refuses here.
+    //
+    // Cast admissibility is decided ONLY here: validate_cast abstains whenever either side is
+    // outside std.coercion's dag_cast_rules domain, so this runtime arm is the sole wall, and
+    // std.coercion admits `Int as Nat` and `Bool as Int` while this fold refuses both.
     match target_name.as_str() {
         "Float" => match val {
+            Value::Float(n) => Ok(Value::Float(n)),
             Value::Int(n) => Ok(Value::Float(n as f64)),
-            v => Err(InterpError::TypeError {
-                msg: format!("cannot cast {} to Float", v.type_label()),
-            }),
+            v => Err(refused(&v, "Float")),
         },
         "Int" => match val {
+            Value::Int(n) => Ok(Value::Int(n)),
             Value::Float(n) => Ok(Value::Int(n as i64)),
-            v => Err(InterpError::TypeError {
-                msg: format!("cannot cast {} to Int", v.type_label()),
-            }),
+            v => Err(refused(&v, "Int")),
         },
         "String" => match val {
             Value::Int(n) => Ok(str_value(n.to_string())),
@@ -9940,13 +9957,20 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             // Corpus wire/debug casts for structured values — not the blanket Display
             // fallback that silently stringified List/Map (§5 fabricated plausible output).
             Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
-            v => Err(InterpError::TypeError {
-                msg: format!("cannot cast {} to String", v.type_label()),
-            }),
+            v => Err(refused(&v, "String")),
         },
-        t => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", val.type_label(), t),
-        }),
+        t => Err(refused(&val, t)),
+    }
+}
+
+fn cast_refusal_message(declared_source: &str, carrier: &str, target: &str) -> String {
+    if declared_source.is_empty() || declared_source == carrier {
+        format!("cannot cast {} to {}", carrier, target)
+    } else {
+        format!(
+            "cannot cast {} (runtime carrier {}) to {}",
+            declared_source, carrier, target
+        )
     }
 }
 
