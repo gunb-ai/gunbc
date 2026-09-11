@@ -151,6 +151,19 @@ fn an_unknown_token_refuses_rather_than_borrowing_the_first_authority() -> Bool 
   }
 }
 
+// TWO LINES, ONE RELATION: a crate root naming v1_rt on two file-level `use` lines is one consumer
+// of one authority, not two -- the produced grain is the line, the census grain is consumer x
+// authority. (A `pub mod v1_rt;` beside a `pub use` is NOT this case: the scan mints the mod as
+// its own item, so that is two consumers.)
+fn two_lines_naming_one_authority_are_one_consumer() -> Bool {
+  let twice = [planted_source(path: "dag/gunbc/instruments/planted_twice_shims/lib.rs", content: "pub use v1_compiler::v1_rt;\npub use v1_compiler::v1_rt as rt;\n")]
+  match observe_rust_references(sources: twice, generated_repo_paths: [], tokens: v1_reference_tokens(), rows: rust_source_namespace_rows) {
+    RustReferenceHostRefused { detail: _ } => false
+    RustReferencesObserved { rows: rs, unattributed: u, unscannable: _ } =>
+      count(rs) == 2 && count(v1_shim_partition_over(rows: rs, unattributed: u).cited) == 1
+  }
+}
+
 fn planted_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPopulation {
   v1_shim_population_of(observation: planted_observation(rows: rows))
 }
@@ -210,6 +223,7 @@ test fn consumer_census_boundary_census_enumerates_the_rows() -> Bool { boundary
 test fn consumer_census_tooling_row_decides_shim_citability() -> Bool { the_tooling_row_decides_shim_citability() }
 test fn consumer_census_population_carries_the_partition() -> Bool { the_population_carries_the_partition() }
 test fn consumer_census_unknown_token_refuses_rather_than_borrowing_an_authority() -> Bool { an_unknown_token_refuses_rather_than_borrowing_the_first_authority() }
+test fn consumer_census_two_lines_naming_one_authority_are_one_consumer() -> Bool { two_lines_naming_one_authority_are_one_consumer() }
 
 // THE TOOLING TREE CARRIES THE NAME OF THE PACKAGE IT ASSEMBLES INTO. dag/gunbc/instruments/ is the
 // scaffold's rust_source_prefix_tooling; its shim crates are assembled into the `v1_compiled`

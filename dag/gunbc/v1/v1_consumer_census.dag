@@ -8,6 +8,7 @@ import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.process { ProcessExit, ExitFailure }
 import gunbc.replacement_cut {
   BoundaryConsumer, BoundaryCensus, ConsumersEnumerated,
   ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
@@ -304,7 +305,7 @@ data producer_cargo_manifest_graph: DiscoveryProducer = discovery_producer(
 // outside v1_deletion_set_prefix, consumed by v1_consumer_population().
 data producer_rust_bridge_edge: DiscoveryProducer = discovery_producer(
   instrument: "hand-Rust items outside src/v1 whose text names a v1 reference token, folded by gunbc.rust_item_host_observation observe_current_rust_references and projected through item_declaration_ref_in",
-  command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count",
+  command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count_report",
   source_revision: v1_census_revision,
   source_tree_hex: v1_census_tree,
 )
@@ -665,12 +666,33 @@ fn v1_shim_unattributed_row(u: RustReferenceUnattributed) -> V1UncitableConsumer
   }
 }
 
+// THE PRODUCED GRAIN IS THE LINE; THE CENSUS GRAIN IS CONSUMER x AUTHORITY. One item may name the
+// same authority on several lines -- a crate root carrying two file-level `use` lines for v1_rt --
+// and each line is one produced row. Filing each as a consumer
+// would count one relation twice in the blocking column and carry a duplicate key into refusal
+// one. So the fold joins to the census's key: a cited row whose v1_row_key is already present is
+// the same relation seen again, and an uncitable row is likewise keyed on its item and detail.
+fn v1_shim_cited_absent(acc: List<V1ConsumerRow>, row: V1ConsumerRow) -> Bool {
+  !(acc |> any(r => v1_row_key(r: r) == v1_row_key(r: row)))
+}
+
+fn v1_shim_uncitable_absent(acc: List<V1UncitableConsumer>, row: V1UncitableConsumer) -> Bool {
+  !(acc |> any(r => r.item_key == row.item_key && r.refusal_detail == row.refusal_detail))
+}
+
+fn v1_shim_join_to_census_grain(p: V1ShimPartition) -> V1ShimPartition {
+  V1ShimPartition {
+    cited: fold_list(xs: p.cited, empty: [], cons: fn(acc, r) { if v1_shim_cited_absent(acc: acc, row: r) { list_snoc_item(xs: acc, item: r) } else { acc } }),
+    uncitable: fold_list(xs: p.uncitable, empty: [], cons: fn(acc, r) { if v1_shim_uncitable_absent(acc: acc, row: r) { list_snoc_item(xs: acc, item: r) } else { acc } })
+  }
+}
+
 fn v1_shim_partition_over(rows: List<RustReferenceRow>, unattributed: List<RustReferenceUnattributed>) -> V1ShimPartition {
   let attributed = fold_list(xs: rows, empty: V1ShimPartition { cited: [], uncitable: [] }, cons: fn(acc, row) { v1_shim_absorb_row(acc: acc, row: row) })
-  V1ShimPartition {
+  v1_shim_join_to_census_grain(p: V1ShimPartition {
     cited: attributed.cited,
     uncitable: list_append(left: attributed.uncitable, right: unattributed |> map(u => v1_shim_unattributed_row(u: u)))
-  }
+  })
 }
 
 type V1ShimPopulation
@@ -940,6 +962,14 @@ fn v1_blocking_counted(p: ConsumerPopulation) -> V1BlockingCount {
 // population reads as "unmeasured: <reason>" and never as a number.
 fn v1_blocking_consumer_count() -> V1BlockingCount {
   v1_blocking_count_of(p: v1_consumer_population())
+}
+
+// THE INSTRUMENT AS A RUN ENTRY: `gunbc run` maps only a ProcessExit to an exit code, so the
+// count is rendered into the reason of a deliberate ExitFailure -- the run is a report, not a
+// verdict, and a report that exited 0 would read as "nothing blocks". An unmeasured population
+// renders as its reason, never as a number.
+func v1_blocking_consumer_count_report() -> ProcessExit {
+  ExitFailure { code: 1, reason: v1_blocking_count_rendered(c: v1_blocking_consumer_count()) }
 }
 
 fn v1_blocking_count_rendered(c: V1BlockingCount) -> String {
