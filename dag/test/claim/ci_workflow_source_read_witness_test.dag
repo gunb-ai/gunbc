@@ -1,7 +1,7 @@
 module test.claim.ci_workflow_source_read_witness_test
 
 import std.logic { Bool }
-import std.types { Int, String, Secret }
+import std.types { CommitSha, Int, String, Secret }
 import std.measure { byte_size }
 import extdeps.github.code_search {
   CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
@@ -207,10 +207,11 @@ test fn an_unread_file_never_becomes_an_identity() -> Bool {
     HitReadRefused { repository_full_name, path, performance } => false
   }
   let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: unknown_encoding_response)) {
+    HitFileUnreadable { repository_full_name, path, cause } =>
+      repository_full_name == "llvm/llvm-project"
     HitCanonicalized { identity } => false
-    HitFileUnreadable { repository_full_name, path, cause } => true
-    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => true
-    HitRefNotExact { repository_full_name, path, ref, cause } => true
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
   }
   oversized_refused && unknown_encoding_refused
@@ -367,7 +368,6 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
         RepositoryDiffersFromHit { hit_repository, read_repository } => read_repository == "biomejs/biome"
         other => false
       }
-    HitCanonicalized { identity } => false
     HitFileUnreadable { repository_full_name, path, cause } => false
     HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
@@ -443,7 +443,6 @@ test fn a_response_naming_another_file_never_becomes_an_identity() -> Bool {
           response_path == ".github/workflows/main.yml"
         other => false
       }
-    HitCanonicalized { identity } => false
     HitFileUnreadable { repository_full_name, path, cause } => false
     HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
