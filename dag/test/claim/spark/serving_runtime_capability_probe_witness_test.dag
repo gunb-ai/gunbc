@@ -1,0 +1,357 @@
+module test.claim.spark.serving_runtime_capability_probe_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.spark.serving_arm {
+  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused, ServingRuntimeRow,
+  Glm53Exl3_205, Glm53NativeFp8, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3,
+  SingleSparkTp1, SparkPairTp2, FourSparkTp4,
+  serving_arm_admits, runtime_registers, serving_runtime_row, runtime_reading_is_current,
+  gitcommit90_sm121_exl3_row, gunbc_sparkrun_ds4_row,
+}
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import gunbc.spark.runtime_architecture_registry_reading {
+  ArchitectureRegistryReading, registry_reading_for, spark_architecture_registry_readings,
+  reading_applies_to,
+}
+
+import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
+import extdeps.docker.images.xomoxcc_dgx_spark_sglang { xomoxcc_dgx_spark_sglang_pinned_reference }
+import gunbc.spark.serving_runtime_capability_probe {
+  RuntimeCapabilityProbeRow, sparkrun_vllm_ds4_gb10_probe,
+  RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, MlaKvCacheLayoutAdmitted,
+  Csa2CompressorKernels, DSparkSpeculator,
+  KernelProbeOutcome, KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused,
+  KernelProbeSymbolUngrounded, CapabilityProbeSymbol, ProbeSymbolGrounded, ProbeSymbolAwaitingRoster,
+  v41_unprobed_capabilities, v41_missing_capabilities,
+  runtime_kernel_capability_label,
+  V41RuntimeVerdict, V41RuntimeMissing, V41RuntimeIncompletelyProbed,
+  RuntimeCandidateDisposition, CandidateProbed, CandidateNotProbed,
+  V41ServingProfile, V41SpeculativeDecode, V41BaselineDecode, v41_serving_profile_label,
+  CapabilityOutcomeLookup, OutcomeFound, OutcomeUnrecorded, OutcomeConflicted,
+  V41RuntimePrerequisitesPresent, gb10_observed_compute_capability, probe_row_matches,
+  v41_sm121_capability_probe_rows, v41_sm121_runtime_candidates, v41_runtime_verdict,
+  v41_images_with_prerequisites, capability_outcome, v41_required_capabilities,
+  v41_sm121_build_obligation, v41_capability_probe_symbol,
+}
+
+// THE ARCHITECTURE SET IS ASKED BY MEMBERSHIP AND THE TWO RUNTIMES ANSWER DIFFERENTLY, which is the
+// discriminating pair: a membership test that always said true, or a set that had silently become
+// the same for both images, would fail here rather than pass quietly.
+test fn each_runtime_answers_the_membership_question_from_its_own_measured_registry() -> Bool {
+  runtime_registers(rrow: gitcommit90_sm121_exl3_row, architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr)
+    && !runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr)
+    && runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: "DeepseekV4ForCausalLM" as NonEmptyStr)
+    && !runtime_registers(rrow: gitcommit90_sm121_exl3_row, architecture: deepseek_v4_1_flash_architecture_class)
+    && !runtime_registers(rrow: gunbc_sparkrun_ds4_row, architecture: deepseek_v4_1_flash_architecture_class)
+}
+
+// THE REFUSAL THE SET REPLACED A BOOL WITH STILL FIRES, AND IT NAMES THE ARCHITECTURE IT LOOKED FOR.
+// The pre-change field could only refuse GLM on the DeepSeek image; the cause text is asserted here
+// because a refusal that named the wrong architecture would be indistinguishable from a correct one
+// by the verdict arm alone.
+test fn the_deepseek_image_still_refuses_the_glm_checkpoint_and_names_the_architecture() -> Bool {
+  match serving_arm_admits(checkpoint: Glm53Exl3_205, runtime: GunbcSparkrunVllmDs4Gb10, topology: SingleSparkTp1) {
+    ServingArmAdmitted => false
+    ServingArmRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "does not register Glm5NextForConditionalGeneration")
+  }
+}
+
+// AND THE ADMISSION THAT MUST SURVIVE THE CHANGE: the community image plus the EXL3 checkpoint on one
+// Spark was admitted before the membership rewrite and has to stay admitted, or the rewrite tightened
+// the wall by accident rather than generalising it.
+test fn the_community_image_still_admits_the_exl3_checkpoint_on_one_spark() -> Bool {
+  match serving_arm_admits(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1) {
+    ServingArmAdmitted => true
+    ServingArmRefused { cause: _ } => false
+  }
+}
+
+// THE FOOTPRINT WALL IS UNTOUCHED BY THE ARCHITECTURE WALL, asserted on the tuple where the
+// architecture registers and the weights do not fit: if the membership rewrite had swallowed the
+// second wall this would read as admitted.
+test fn an_architecture_the_runtime_registers_still_fails_the_footprint_wall() -> Bool {
+  match serving_arm_admits(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1) {
+    ServingArmAdmitted => false
+    ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "does not fit the topology")
+  }
+}
+
+// NO IMAGE PROBED ON A GB10 ADMITS DEEPSEEK V4.1, and this is the sweep's standing rather than a
+// statement about images in general -- the candidate roster it folds over is what makes that
+// denominator readable. The day an image does admit it, this witness goes red and that is the signal.
+test fn no_probed_image_admits_deepseek_v41_on_this_compute_capability() -> Bool {
+  length(v41_images_with_prerequisites(rows: v41_sm121_capability_probe_rows(), candidates: v41_sm121_runtime_candidates, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)) == 0
+}
+
+// THE VERDICT FOR THE PRODUCTION IMAGE NAMES THE CAPABILITIES THAT WERE MEASURED MISSING, and it is
+// deliberately NOT all five. Four were asked with symbols that exist upstream and came back absent;
+// the FP4 KV-cache question was asked with names that are not registered ops, so it measured nothing
+// and is unprobed. An earlier revision of this witness asserted all five were missing and passed,
+// which is what a blind instrument buys you: a confident count over one reading that was never taken.
+test fn the_production_image_is_missing_the_four_capabilities_that_were_actually_asked() -> Bool {
+  let rows = v41_sm121_capability_probe_rows()
+  let image = sparkrun_vllm_ds4_gb10_pinned_reference()
+  let missing = v41_missing_capabilities(rows: rows, image_reference: image, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)
+  let unprobed = v41_unprobed_capabilities(rows: rows, image_reference: image, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)
+  match v41_runtime_verdict(rows: rows, image_reference: image, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode) {
+    V41RuntimePrerequisitesPresent { image_reference: _, profile: _, remaining: _ } => false
+    V41RuntimeIncompletelyProbed { image_reference: _, unprobed: _ } => false
+    V41RuntimeMissing { image_reference: _, missing: m } =>
+      length(m) == 4
+        && length(missing) + length(unprobed) == length(v41_required_capabilities(profile: V41SpeculativeDecode))
+        && any(unprobed, u => u as String == "mla-kv-cache-layout-admitted")
+        && !any(missing, x => x as String == "mla-kv-cache-layout-admitted")
+  }
+}
+
+// AN UNGROUNDED SYMBOL MUST NEVER READ AS A MEASURED ABSENCE. This is the wall over the defect that
+// produced this revision: the fold that answers "what is missing" and the fold that answers "what
+// was never really asked" must disagree about this capability, on every image where it was asked
+// with a name that cannot exist. If someone re-types those rows back to KernelObservedAbsent to make
+// a count tidy, this goes red.
+test fn a_capability_asked_with_an_unauthored_symbol_is_unprobed_and_never_missing() -> Bool {
+  all(v41_sm121_capability_probe_rows(), r =>
+    match r.outcome {
+      KernelProbeSymbolUngrounded { roster: ro, defect: d } =>
+        length(ro as String) != 0
+          && length(d as String) != 0
+          && any(v41_unprobed_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: r.image.image_reference, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode),
+                 u => u as String == runtime_kernel_capability_label(c: r.capability))
+          && !any(v41_missing_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: r.image.image_reference, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode),
+                  x => x as String == runtime_kernel_capability_label(c: r.capability))
+      KernelObservedPresent { symbol: _ } => true
+      KernelObservedAbsent { symbol: _ } => true
+      KernelProbeRefused { reason: _ } => true
+    })
+}
+
+// AND THE OBLIGATION MUST NOT HAND THE BUILD LANE A SYMBOL WE INVENTED. The capability whose roster
+// has not landed carries a frontier naming that roster, not a corrected spelling of our own: one
+// upstream name, one home.
+test fn the_capability_without_a_landed_roster_carries_a_frontier_not_a_spelling() -> Bool {
+  match v41_capability_probe_symbol(c: MlaKvCacheLayoutAdmitted) {
+    ProbeSymbolGrounded { symbol: _ } => false
+    ProbeSymbolAwaitingRoster { roster: ro, trigger: t } =>
+      ro as String == "extdeps.vllm.deepseek_v4_1_sm12" && length(t as String) != 0
+  }
+}
+
+// A REFUSED PROBE IS NOT A MISSING CAPABILITY. The SGLang image answers the registry question and
+// refuses the other four, so its four vLLM-vocabulary questions must read as unprobed while its one
+// measured negative reads as missing -- the distinction the outcome type exists for.
+test fn a_refused_probe_reads_as_unprobed_and_never_as_a_measured_absence() -> Bool {
+  match capability_outcome(
+    rows: v41_sm121_capability_probe_rows(),
+    image_reference: xomoxcc_dgx_spark_sglang_pinned_reference(),
+    capability: DSparkSpeculator,
+    device: gb10_observed_compute_capability,
+  ) {
+    OutcomeUnrecorded => false
+    OutcomeConflicted { distinct_answers: _ } => false
+    OutcomeFound { outcome: o } =>
+      match o {
+        KernelProbeRefused { reason: _ } => true
+        KernelObservedPresent { symbol: _ } => false
+        KernelObservedAbsent { symbol: _ } => false
+        KernelProbeSymbolUngrounded { roster: _, defect: _ } => false
+      }
+  }
+}
+
+// THE BUILD OBLIGATION ASKS FOR EXACTLY WHAT THE PROBE ASKED, which is the property that makes it a
+// specification rather than a wish: if a capability were added to the probe and not to the
+// obligation, a build could be declared discharged while one of the five questions was never put to
+// it. Asserted as an identity join over the required list, not a count.
+test fn the_build_obligation_requires_every_capability_the_probe_asks() -> Bool {
+  length(v41_sm121_build_obligation.required) == length(v41_required_capabilities(profile: V41SpeculativeDecode))
+    && all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
+         any(v41_sm121_build_obligation.required, r =>
+           runtime_kernel_capability_label(c: r) == runtime_kernel_capability_label(c: c)))
+    && all(v41_sm121_build_obligation.required, r =>
+         match v41_capability_probe_symbol(c: r) {
+           ProbeSymbolGrounded { symbol: sym } => length(sym as String) != 0
+           ProbeSymbolAwaitingRoster { roster: ro, trigger: _ } => length(ro as String) != 0
+         })
+}
+
+// EVERY IMAGE THE ROSTER CALLS PROBED HAS A READING WITH A HOST AND A DATE ON IT. This is the join
+// that keeps "probed" from being a label: a candidate could be marked CandidateProbed while no
+// receipt of that digest existed anywhere, and the sweep's denominator would then count an image
+// nobody read. Asserted against the reading roster by image reference, not by counting either side.
+test fn every_candidate_marked_probed_has_a_registry_reading() -> Bool {
+  all(v41_sm121_runtime_candidates, c =>
+    match c.disposition {
+      CandidateNotProbed { reason: _ } => true
+      CandidateProbed { image_reference: ref } =>
+        match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: ref) {
+          Absent => false
+          Present { value: r } =>
+            length(r.host as String) != 0 && length(r.observed_at as String) != 0 && length(r.instrument as String) != 0
+        }
+    })
+}
+
+// A READING MUST NAME THE DIGEST THE ARM WOULD LAUNCH, and the two runtime rows agree today. This is
+// the repin control: the moment an image module is repinned without a new registry probe, the arm's
+// desired reference stops matching the reading's frozen observed reference and this goes red. It is
+// asserted through the arm's own predicate rather than by comparing strings here, so the witness
+// fails exactly when the admission path would stop being entitled to its evidence.
+test fn every_runtime_row_reading_was_taken_inside_the_image_the_row_names() -> Bool {
+  all([GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3], r =>
+    match serving_runtime_row(r: r) {
+      Absent => false
+      Present { value: rrow } => runtime_reading_is_current(rrow: rrow)
+    })
+}
+
+// AND A READING TAKEN INSIDE A DIFFERENT DIGEST MUST NOT APPLY. The discriminating half of the same
+// wall: without it, `runtime_reading_is_current` could be a predicate that answers true for anything.
+test fn a_reading_does_not_apply_to_a_digest_it_was_not_taken_in() -> Bool {
+  all(spark_architecture_registry_readings, r =>
+    reading_applies_to(r: r, desired_reference: r.image_reference)
+      && !reading_applies_to(r: r, desired_reference: "ghcr.io/example/not-the-image@sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr))
+}
+
+// THE CAPABILITY LOOKUP IS KEYED ON THE HARDWARE, so a reading taken on one compute capability can
+// never answer for another. Every row in this module is sm_121; asking the same questions at sm_100
+// must find nothing rather than reuse them.
+test fn a_reading_from_one_compute_capability_does_not_answer_for_another() -> Bool {
+  let other = GpuComputeCapability { vendor: nvidia, major: 10, minor: 0 }
+  all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
+    match capability_outcome(
+      rows: v41_sm121_capability_probe_rows(),
+      image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+      capability: c,
+      device: other,
+    ) {
+      OutcomeUnrecorded => true
+      OutcomeFound { outcome: _ } => false
+      OutcomeConflicted { distinct_answers: _ } => false
+    })
+    && length(v41_missing_capabilities(
+         rows: v41_sm121_capability_probe_rows(),
+         image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+         device: other,
+         profile: V41SpeculativeDecode)) == 0
+}
+
+// TWO READINGS THAT DISAGREE ARE NOT A VALUE TO PICK BETWEEN. Fed one subject's row twice with
+// opposite outcomes, the lookup must report the conflict rather than resolve it by list order -- and
+// the conflict must count as unprobed, never as a measured absence. The fixture list is local: the
+// lookup is a pure fold over whatever rows it is handed, so this exercises the real function without
+// putting a fabricated row anywhere near the module's own roster.
+fn w_conflict_row(outcome: KernelProbeOutcome) -> RuntimeCapabilityProbeRow {
+  RuntimeCapabilityProbeRow {
+    image: sparkrun_vllm_ds4_gb10_probe,
+    host: "controlled fixture: this witness asserts the lookup's behaviour on disagreeing rows, and nothing here was observed" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "fixture" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: outcome,
+  }
+}
+
+test fn disagreeing_readings_of_one_subject_conflict_rather_than_last_wins() -> Bool {
+  let disagreeing = [
+    w_conflict_row(outcome: KernelObservedPresent { symbol: "fixture" as NonEmptyStr }),
+    w_conflict_row(outcome: KernelObservedAbsent { symbol: "fixture" as NonEmptyStr }),
+  ]
+  let subject = sparkrun_vllm_ds4_gb10_probe.image_reference
+  match capability_outcome(rows: disagreeing, image_reference: subject, capability: Fp4WeightKernels, device: gb10_observed_compute_capability) {
+    OutcomeConflicted { distinct_answers: n } =>
+      n == 2
+        && !any(v41_missing_capabilities(rows: disagreeing, image_reference: subject, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode),
+                x => x as String == "fp4-weight-kernels")
+        && any(v41_unprobed_capabilities(rows: disagreeing, image_reference: subject, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode),
+               u => u as String == "fp4-weight-kernels")
+    OutcomeFound { outcome: _ } => false
+    OutcomeUnrecorded => false
+  }
+}
+
+// AND THE SAME LOOKUP MUST STILL ANSWER WHEN THE ROWS AGREE, or the conflict arm above would be
+// satisfied by a function that never finds anything.
+test fn agreeing_readings_of_one_subject_answer_rather_than_conflict() -> Bool {
+  let agreeing = [
+    w_conflict_row(outcome: KernelObservedAbsent { symbol: "fixture" as NonEmptyStr }),
+    w_conflict_row(outcome: KernelObservedAbsent { symbol: "fixture" as NonEmptyStr }),
+  ]
+  match capability_outcome(rows: agreeing, image_reference: sparkrun_vllm_ds4_gb10_probe.image_reference, capability: Fp4WeightKernels, device: gb10_observed_compute_capability) {
+    OutcomeFound { outcome: o } =>
+      match o {
+        KernelObservedAbsent { symbol: _ } => true
+        KernelObservedPresent { symbol: _ } => false
+        KernelProbeRefused { reason: _ } => false
+        KernelProbeSymbolUngrounded { roster: _, defect: _ } => false
+      }
+    OutcomeConflicted { distinct_answers: _ } => false
+    OutcomeUnrecorded => false
+  }
+}
+
+// DSPARK IS A PROFILE'S REQUIREMENT, NOT THE HARDWARE'S. The baseline profile must not require the
+// speculator, and the speculative profile must; a list that did not vary would let a deployment
+// choice masquerade as a capability verdict.
+test fn the_speculator_is_required_by_the_speculative_profile_alone() -> Bool {
+  any(v41_required_capabilities(profile: V41SpeculativeDecode), c => runtime_kernel_capability_label(c: c) == "dspark-speculator")
+    && !any(v41_required_capabilities(profile: V41BaselineDecode), c => runtime_kernel_capability_label(c: c) == "dspark-speculator")
+    && length(v41_required_capabilities(profile: V41BaselineDecode)) + 1 == length(v41_required_capabilities(profile: V41SpeculativeDecode))
+}
+
+// A REPINNED IMAGE MUST FIND NO CAPABILITY ROWS. The capability receipts name the digest they were
+// executed in, frozen; the candidate roster names what the fleet intends to run. A repin separates
+// the two, and the lookup must then find NOTHING rather than serve the old image's kernel answers
+// under the new digest's name -- an inherited absence would rule out an image nobody looked inside.
+// The repinned reference here is a fixture: no such digest exists, which is precisely the point.
+test fn a_repinned_digest_finds_no_capability_rows_and_reads_as_unprobed() -> Bool {
+  let repinned = "aidendle94/sparkrun-vllm-ds4-gb10@sha256:2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr
+  all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
+    match capability_outcome(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, capability: c, device: gb10_observed_compute_capability) {
+      OutcomeUnrecorded => true
+      OutcomeFound { outcome: _ } => false
+      OutcomeConflicted { distinct_answers: _ } => false
+    })
+    && length(v41_missing_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode)) == 0
+    && length(v41_unprobed_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode))
+         == length(v41_required_capabilities(profile: V41SpeculativeDecode))
+    && match v41_runtime_verdict(rows: v41_sm121_capability_probe_rows(), image_reference: repinned, device: gb10_observed_compute_capability, profile: V41SpeculativeDecode) {
+         V41RuntimeIncompletelyProbed { image_reference: _, unprobed: _ } => true
+         V41RuntimePrerequisitesPresent { image_reference: _, profile: _, remaining: _ } => false
+         V41RuntimeMissing { image_reference: _, missing: _ } => false
+       }
+}
+
+// AND THE PROBE SUBJECTS THEMSELVES ARE THE OBSERVED DIGESTS, not whatever the image modules point at
+// today. Asserted by the join that must hold while nothing has been repinned: every capability row's
+// subject is a digest some reading was taken in. If a probe row's subject were derived from a live
+// pin, a repin would break this -- which is the alarm, not a nuisance.
+test fn every_capability_row_names_a_digest_some_reading_was_taken_in() -> Bool {
+  all(v41_sm121_capability_probe_rows(), r =>
+    match registry_reading_for(readings: spark_architecture_registry_readings, image_reference: r.image.image_reference) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+// A DEVICE KEY WITHOUT THE VENDOR IS NOT A DEVICE. AMD's (12, 1) is gfx121 and NVIDIA's is sm_121 --
+// unrelated hardware that a major/minor comparison alone would have matched. No AMD row exists here,
+// which is exactly why the omission was invisible; the question is asked anyway.
+test fn a_same_numbered_device_from_another_vendor_finds_nothing() -> Bool {
+  let amd_1201 = GpuComputeCapability { vendor: amd, major: 12, minor: 1 }
+  all(v41_required_capabilities(profile: V41SpeculativeDecode), c =>
+    match capability_outcome(
+      rows: v41_sm121_capability_probe_rows(),
+      image_reference: sparkrun_vllm_ds4_gb10_probe.image_reference,
+      capability: c,
+      device: amd_1201,
+    ) {
+      OutcomeUnrecorded => true
+      OutcomeFound { outcome: _ } => false
+      OutcomeConflicted { distinct_answers: _ } => false
+    })
+    && length(v41_missing_capabilities(rows: v41_sm121_capability_probe_rows(), image_reference: sparkrun_vllm_ds4_gb10_probe.image_reference, device: amd_1201, profile: V41SpeculativeDecode)) == 0
+}

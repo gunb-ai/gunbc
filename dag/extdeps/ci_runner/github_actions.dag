@@ -5,8 +5,12 @@ import std.nat { Nat }
 import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.ci_runner.types {
+  CatalogSnapshot,
   EntitlementUnstated,
+  label_catalog_of_shapes,
+  RunnerLabelCatalog,
   RunnerCatalogAvailability,
   QuotedWithoutBasis,
   RunnerShapeRow,
@@ -86,3 +90,25 @@ data github_actions_runner_catalog: RunnerCatalogAvailability = RunnerShapesCite
     github_actions_shape(label: "ubuntu-latest-96core", architecture: X86_64, vcpus: 96, quoted_numeral: 384),
   ],
 }
+
+// THE LABEL ROSTER FOR THIS MODULE'S OWN PAGE, AND NOTHING BEYOND IT.
+//
+// This module's authority is the larger-runners reference, so its label catalog is exactly the
+// projection of the sized rows above. THE STANDARD GitHub-hosted LABELS ARE NOT RE-AUTHORED HERE:
+// extdeps.github.hosted_runners already owns them, keyed by extdeps.github.actions RunnerLabel
+// with the visibility axis this module's RunnerShapeRow lacks, and it says in its own words that
+// the label vocabulary is spelled once and "never a free string beside it". Enrolling that
+// catalog is gunbc.runner_provider_survey's job, because joining two upstream authorities is
+// consumer-layer work and not something either upstream module may do to the other.
+data github_actions_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-08-18T00:00:00Z",
+  declared_scope: "The sized ubuntu-latest-Ncore larger-runner families only, from the larger-runners reference cited above. The STANDARD GitHub-hosted labels are not in this catalog and are not missing from it: they are owned by extdeps.github.hosted_runners and enrolled separately. Self-hosted labels are in no vendor catalog and never will be - a self-hosted label is named by the repository that registered it, so a miss on one is not a coverage gap.",
+}
+
+data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.github_actions", decl_name: "github_actions_label_catalog"),
+  provider: github_actions_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
+  snapshot: github_actions_catalog_snapshot,
+  availability: github_actions_runner_catalog,
+)
