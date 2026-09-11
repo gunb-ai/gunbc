@@ -24,13 +24,15 @@ import gunbc.witness_v2_native_route {
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   required_v2_native_job_name,
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
-  native_route_admission_summary
+  native_route_admission_summary,
+  native_route_live_control_module
 }
 import v2.compiler.compile {
   NativeLaneSourceFacts,
   NativeLaneUniverse,
   NativeLaneUniverseModule,
   native_lane_closure_modules,
+  native_lane_closure_round_budget,
   native_lane_module_named,
   native_lane_declared_module_name,
   native_lane_unowned_row_path
@@ -48,6 +50,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestFileRefusal
 }
 import v2.std.optional { Absent, Optional, Present }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.collection { List }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
@@ -1243,14 +1246,45 @@ fn closure_probe_facts() -> List<NativeLaneSourceFacts> {
   ]
 }
 
+fn native_lane_closure_budget_probe(budget: Int) -> Outcome<List<String>> {
+  native_lane_closure_modules(facts: closure_probe_facts(), universe: closure_probe_universe(), budget: budget)
+}
+
 test fn the_closure_holds_what_the_universe_needs() -> Bool {
-  let closure = native_lane_closure_modules(facts: closure_probe_facts(), universe: closure_probe_universe())
-  native_lane_module_named(xs: closure, name: "v2.test.subject")
-  && native_lane_module_named(xs: closure, name: "v2.std.logic")
-  && native_lane_module_named(xs: closure, name: native_route_live_control_module)
+  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } =>
+      native_lane_module_named(xs: closure, name: "v2.test.subject")
+      && native_lane_module_named(xs: closure, name: "v2.std.logic")
+      && native_lane_module_named(xs: closure, name: native_route_live_control_module)
+  }
 }
 
 test fn a_module_no_universe_member_imports_is_outside_the_closure() -> Bool {
-  let closure = native_lane_closure_modules(facts: closure_probe_facts(), universe: closure_probe_universe())
-  !native_lane_module_named(xs: closure, name: "v2.unrelated.outsider")
+  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } =>
+      !native_lane_module_named(xs: closure, name: "v2.unrelated.outsider")
+  }
+}
+
+// THE BUDGET'S DISCRIMINATING PAIR (review 63719). The probe's closure is two rounds deep: the
+// seeds expand to `v2.std.logic` in round one, and round two finds nothing new. A budget of one
+// round leaves `v2.std.logic` on the frontier, and the walk must REFUSE the derivation by its typed
+// reason rather than answer with the seeds it had seen — that truncated answer would still hold
+// `v2.test.subject`, so a walk that absorbed the exhaustion passes every membership row above and
+// fails only this one. A budget of exactly two rounds is the boundary: the frontier is empty when
+// the fuel runs out, and the closure is accepted.
+test fn an_exhausted_closure_budget_refuses_the_derivation() -> Bool {
+  match native_lane_closure_budget_probe(budget: 1) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_closure_budget_exhausted
+  }
+}
+
+test fn a_closure_finishing_on_its_last_round_is_accepted() -> Bool {
+  match native_lane_closure_budget_probe(budget: 2) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } => native_lane_module_named(xs: closure, name: "v2.std.logic")
+  }
 }

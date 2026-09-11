@@ -27,6 +27,7 @@ import v2.workflow.floor_discovery_source_authority {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
+import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { infer, InferredTree }
@@ -1121,7 +1122,7 @@ fn native_lane_declared_imports(content: String) -> List<String> {
       if starts_with(s: trimmed, prefix: "import ") {
         let rest = trim(substring(s: trimmed, start: 7, end: string_length(s: trimmed)))
         let name = floor_discovery_first_token_before_space(seg: rest)
-        if name == "" { acc } else { concat(acc, [name]) }
+        if name == "" { acc } else { list_snoc_item(xs: acc, item: name) }
       } else {
         acc
       }
@@ -1141,7 +1142,7 @@ fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFa
     xs: ingest,
     empty: [],
     cons: fn(acc, read) {
-      concat(acc, [NativeLaneSourceFacts {
+      list_snoc_item(xs: acc, item: NativeLaneSourceFacts {
         module: native_lane_declared_module_name(content: read.source.carried),
         path: read.compilation_unit,
         imports: native_lane_declared_imports(content: read.source.carried),
@@ -1149,7 +1150,7 @@ fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFa
           repo_path: symbol_lexeme(sym: read.compilation_unit),
           content: read.source.carried
         )
-      }])
+      })
     }
   )
 }
@@ -1174,7 +1175,7 @@ fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<
     let declarations = fold_list(
       xs: facts.discovery.rows,
       empty: [],
-      cons: fn(acc, row) { concat(acc, [row.function]) }
+      cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
     )
     if length(xs: declarations) == 0 {
       []
@@ -1227,7 +1228,7 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
     )
   }
   match floor_discovery_finalize_source_outcomes(
-    outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { concat(acc, [f.discovery]) })
+    outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.discovery) })
   ) {
     FloorDiscoveryRefused { reason: reason } =>
       native_lane_refused(reason: ^native_lane_universe_derivation_refused, detail: reason)
@@ -1235,7 +1236,13 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
       let modules = fold_list(
         xs: facts,
         empty: [],
-        cons: fn(acc, f) { concat(acc, native_lane_universe_module_for_source(facts: f)) }
+        cons: fn(acc, f) {
+          fold_list(
+            xs: native_lane_universe_module_for_source(facts: f),
+            empty: acc,
+            cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }
+          )
+        }
       )
       outcome_accepted(value: NativeLaneUniverse {
         modules: modules,
@@ -1243,20 +1250,20 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
           xs: modules,
           empty: [],
           cons: fn(acc, m) {
-            concat(acc, fold_list(
+            fold_list(
               xs: m.declarations,
-              empty: [],
+              empty: acc,
               cons: fn(inner, d) {
-                concat(inner, [NativeRouteTestIdentity { module: m.module, declaration: d }])
+                list_snoc_item(xs: inner, item: NativeRouteTestIdentity { module: m.module, declaration: d })
               }
-            ))
+            )
           }
         ),
         module_sources: fold_list(
           xs: modules,
           empty: [],
           cons: fn(acc, m) {
-            concat(acc, [NativeRouteModuleSource { module: m.module, path: m.path }])
+            list_snoc_item(xs: acc, item: NativeRouteModuleSource { module: m.module, path: m.path })
           }
         )
       })
@@ -1286,28 +1293,66 @@ fn native_lane_module_named(xs: List<String>, name: String) -> Bool {
   contains(xs: xs, item: name, eq: fn(a, b) { a == b })
 }
 
+// THE WALK'S BUDGET IS A REFUSAL, NEVER A TRUNCATION (review 63719, DESIGN section 5). The
+// reachable set decides what the front end is given, so a walk that stopped early and answered
+// with what it had seen would hand the route a narrowed ingest whose missing modules surface only
+// as unexplained resolve refusals downstream — the absorbing arm in its narrowing form. Exhaustion
+// therefore refuses the whole universe derivation, and the refusal carries what a reader needs to
+// decide whether the budget or the graph is wrong: the budget, the frontier still unexpanded, and
+// the first module on it. The budget is rounds of breadth-first expansion, so it bounds import
+// DEPTH, not closure size; a closure finishing on exactly its last round is accepted, because the
+// empty-frontier arm is asked before the budget arm.
+data native_lane_closure_round_budget: Int = 512
+
+fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> String {
+  let first = match frontier {
+    Empty => ""
+    Cons { head: h, tail: _ } => h
+  }
+  concat(
+    "import-closure walk exhausted its budget of ",
+    integer_int_to_decimal_string(value: budget),
+    " rounds with ",
+    integer_int_to_decimal_string(value: length(xs: frontier)),
+    " module(s) still unexpanded, first: ",
+    first
+  )
+}
+
 fn native_lane_module_reachable(
   facts: List<NativeLaneSourceFacts>,
   frontier: List<String>,
   seen: List<String>,
-  fuel: Int
-) -> List<String> {
-  if fuel <= 0 {
-    seen
-  } else if is_empty(xs: frontier) {
-    seen
+  fuel: Int,
+  budget: Int
+) -> Outcome<List<String>> {
+  if is_empty(xs: frontier) {
+    outcome_accepted(value: seen)
+  } else if fuel <= 0 {
+    native_lane_refused(
+      reason: ^native_lane_closure_budget_exhausted,
+      detail: native_lane_closure_exhausted_detail(budget: budget, frontier: frontier)
+    )
   } else {
     let next = fold_list(
       xs: frontier,
       empty: [],
       cons: fn(acc, needed) {
-        concat(acc, fold_list(
+        fold_list(
           xs: facts,
-          empty: [],
+          empty: acc,
           cons: fn(inner, f) {
-            if f.module == needed { concat(inner, f.imports) } else { inner }
+            if f.module == needed {
+              fold_list(
+                xs: f.imports,
+                empty: inner,
+                cons: fn(grown, imported) { list_snoc_item(xs: grown, item: imported) }
+              )
+            } else {
+              inner
+            }
           }
-        ))
+        )
       }
     )
     let unseen = fold_list(
@@ -1317,15 +1362,20 @@ fn native_lane_module_reachable(
         if native_lane_module_named(xs: seen, name: candidate) || native_lane_module_named(xs: acc, name: candidate) {
           acc
         } else {
-          concat(acc, [candidate])
+          list_snoc_item(xs: acc, item: candidate)
         }
       }
     )
     native_lane_module_reachable(
       facts: facts,
       frontier: unseen,
-      seen: concat(seen, unseen),
-      fuel: fuel - 1
+      seen: fold_list(
+        xs: unseen,
+        empty: seen,
+        cons: fn(acc, m) { list_snoc_item(xs: acc, item: m) }
+      ),
+      fuel: fuel - 1,
+      budget: budget
     )
   }
 }
@@ -1333,22 +1383,23 @@ fn native_lane_module_reachable(
 // The seed set is every universe module plus the module the authority's live-verdict controls live
 // in: the controls are executed by this route, so their own closure is part of what it needs.
 fn native_lane_closure_seed_modules(universe: NativeLaneUniverse) -> List<String> {
-  concat(
-    fold_list(
+  list_snoc_item(
+    xs: fold_list(
       xs: universe.modules,
       empty: [],
-      cons: fn(acc, m) { concat(acc, [m.module]) }
+      cons: fn(acc, m) { list_snoc_item(xs: acc, item: m.module) }
     ),
-    [native_route_live_control_module]
+    item: native_route_live_control_module
   )
 }
 
 fn native_lane_closure_modules(
   facts: List<NativeLaneSourceFacts>,
-  universe: NativeLaneUniverse
-) -> List<String> {
+  universe: NativeLaneUniverse,
+  budget: Int
+) -> Outcome<List<String>> {
   let seeds = native_lane_closure_seed_modules(universe: universe)
-  native_lane_module_reachable(facts: facts, frontier: seeds, seen: seeds, fuel: 512)
+  native_lane_module_reachable(facts: facts, frontier: seeds, seen: seeds, fuel: budget, budget: budget)
 }
 
 // The ingest restricted to that closure, in the order the reads arrived. A source whose header
@@ -1408,12 +1459,12 @@ fn native_lane_ingest_receipt(
     ingested_paths: fold_list(
       xs: ingest,
       empty: [],
-      cons: fn(acc, read) { concat(acc, [symbol_lexeme(sym: read.compilation_unit)]) }
+      cons: fn(acc, read) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: read.compilation_unit)) }
     ),
     scanned_paths: fold_list(
       xs: facts,
       empty: [],
-      cons: fn(acc, f) { concat(acc, [symbol_lexeme(sym: f.path)]) }
+      cons: fn(acc, f) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: f.path)) }
     )
   }
 }
@@ -1436,21 +1487,19 @@ fn native_lane_ingest_matches_closure(
       acc && (declared != "") && native_lane_module_named(xs: receipt.closure_modules, name: declared)
     }
   )
+  let ingested_modules = fold_list(
+    xs: ingest,
+    empty: [],
+    cons: fn(acc, read) {
+      list_snoc_item(xs: acc, item: native_lane_declared_module_name(content: read.source.carried))
+    }
+  )
   let every_declared_closure_module_ingested = fold_list(
     xs: facts,
     empty: true,
     cons: fn(acc, f) {
       if native_lane_module_named(xs: receipt.closure_modules, name: f.module) {
-        acc && native_lane_module_named(
-          xs: fold_list(
-            xs: ingest,
-            empty: [],
-            cons: fn(inner, read) {
-              concat(inner, [native_lane_declared_module_name(content: read.source.carried)])
-            }
-          ),
-          name: f.module
-        )
+        acc && native_lane_module_named(xs: ingested_modules, name: f.module)
       } else {
         acc
       }
@@ -1524,11 +1573,11 @@ fn native_lane_module_preparation(
           xs: entry.declarations,
           empty: [],
           cons: fn(acc, d) {
-            concat(acc, [native_lane_member_row(
+            list_snoc_item(xs: acc, item: native_lane_member_row(
               module: entry.module,
               declaration: d,
               verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
-            )])
+            ))
           }
         )
       }
@@ -1543,14 +1592,14 @@ fn native_lane_module_preparation(
               xs: entry.declarations,
               empty: [],
               cons: fn(acc, decl) {
-                concat(acc, [native_lane_member_row(
+                list_snoc_item(xs: acc, item: native_lane_member_row(
                   module: entry.module,
                   declaration: decl,
                   verdict: NativeTestRefused {
                     stage: NativeTestStagePrepare,
                     reason: native_test_fatal_reason(d: d)
                   }
-                )])
+                ))
               }
             )
           }
@@ -1653,7 +1702,7 @@ fn native_lane_receipt(
     universe: universe.identities,
     module_source_index: universe.module_sources,
     population: population,
-    file_refusals: fold_list(xs: context.file_refusals, empty: [], cons: fn(acc, fr) { concat(acc, [fr]) }),
+    file_refusals: context.file_refusals,
     false_control: controls.false_control,
     true_control: controls.true_control,
     malformed_control: facts.malformed_control,
