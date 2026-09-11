@@ -7,13 +7,29 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
-// vLLM'S RECIPE PAGE FOR DEEPSEEK-V4.1-FLASH, as its own authority because recipes.vllm.ai is
-// independently versioned from both the Hub weights and the vLLM engine-args shape. Parser and
-// tokenizer-mode strings are vLLM names, not DeepSeek config.json keys.
+// vLLM'S RECIPE FOR DEEPSEEK-V4.1-FLASH, as its own authority because recipes.vllm.ai is independently
+// versioned from both the Hub weights and the vLLM engine-args shape. Parser and tokenizer-mode
+// strings are vLLM names, not DeepSeek config.json keys. The live recipes.vllm.ai page is mutable;
+// the cited edition is vllm-project/recipes at the commit below, path
+// models/deepseek-ai/DeepSeek-V4.1-Flash.yaml.
+data vllm_recipe_deepseek_v4_1_flash_source_repository: NonEmptyStr = "github.com/vllm-project/recipes" as NonEmptyStr
+data vllm_recipe_deepseek_v4_1_flash_revision: NonEmptyStr = "798d4ed3885fa2e9b812a43d19fe057769af2399" as NonEmptyStr
+data vllm_recipe_deepseek_v4_1_flash_source_path: NonEmptyStr = "models/deepseek-ai/DeepSeek-V4.1-Flash.yaml" as NonEmptyStr
+
+fn vllm_recipe_deepseek_v4_1_flash_source_blob_locator() -> NonEmptyStr {
+  join([
+    vllm_recipe_deepseek_v4_1_flash_source_repository as String,
+    "/blob/",
+    vllm_recipe_deepseek_v4_1_flash_revision as String,
+    "/",
+    vllm_recipe_deepseek_v4_1_flash_source_path as String,
+  ], "") as NonEmptyStr
+}
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
-    locator: "recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash",
+    locator: vllm_recipe_deepseek_v4_1_flash_source_blob_locator(),
   }
 }
 
@@ -33,14 +49,28 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
+fn vllm_recipe_deepseek_v4_1_flash_fact(decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef {
+    module_path: "extdeps.vllm.recipe_deepseek_v4_1_flash" as NonEmptyStr,
+    decl_name: decl_name,
+    field: WholeDeclaration,
+  }
+}
+
 data vllm_recipe_deepseek_v4_1_flash_frontier: List<FrontierRow> = [
   frontier_row_decl(
-    ref: DeclarationRef {
-      module_path: "extdeps.vllm.recipe_deepseek_v4_1_flash" as NonEmptyStr,
-      decl_name: "vllm_recipe_deepseek_v4_1_flash_tokenizer_mode" as NonEmptyStr,
-      field: WholeDeclaration,
-    },
-    reason: "DSV41-1 launch argv binds the recipe tokenizer mode and parsers",
-    dissolution: unbound_dissolution(description: "a serving-image probe that launches with these recipe flags against DeepseekV41ForCausalLM"),
+    ref: vllm_recipe_deepseek_v4_1_flash_fact(decl_name: "vllm_recipe_deepseek_v4_1_flash_tokenizer_mode" as NonEmptyStr),
+    reason: "DSV41-1 launch argv binds the recipe tokenizer mode",
+    dissolution: unbound_dissolution(description: "a serving-image probe that launches with --tokenizer-mode against DeepseekV41ForCausalLM"),
+  ),
+  frontier_row_decl(
+    ref: vllm_recipe_deepseek_v4_1_flash_fact(decl_name: "vllm_recipe_deepseek_v4_1_flash_tool_call_parser" as NonEmptyStr),
+    reason: "DSV41-1 launch argv binds the recipe tool-call parser",
+    dissolution: unbound_dissolution(description: "a serving-image probe that launches with --tool-call-parser against DeepseekV41ForCausalLM"),
+  ),
+  frontier_row_decl(
+    ref: vllm_recipe_deepseek_v4_1_flash_fact(decl_name: "vllm_recipe_deepseek_v4_1_flash_reasoning_parser" as NonEmptyStr),
+    reason: "DSV41-1 launch argv binds the recipe reasoning parser",
+    dissolution: unbound_dissolution(description: "a serving-image probe that launches with --reasoning-parser against DeepseekV41ForCausalLM"),
   ),
 ]

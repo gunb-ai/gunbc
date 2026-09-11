@@ -1,9 +1,14 @@
 module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, List, NonEmptyStr }
 import std.measure { token_count, token_count_value, token_count_remaining_in_window, byte_size_count }
-import std.roster_frontier { frontier_rows_well_formed, frontier_rows_keyed_roster_build }
+import std.roster_frontier {
+  FrontierRow,
+  frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
+  fold_frontier_expiry, frontier_expiry_clean,
+}
 import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
 import extdeps.huggingface.hub { hub_blob_url, hub_repo_tree_api_url, hub_repo_https_uri }
 import extdeps.uri { uri_wire }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -12,14 +17,19 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_license_path, deepseek_v4_1_flash_license_spdx,
   extdeps_external_authority_anchor,
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_yarn_scaled_positions,
-  deepseek_v4_1_flash_frontier,
+  deepseek_v4_1_flash_frontier, deepseek_v4_1_flash_frontier_dsv41_1,
+  deepseek_v4_1_flash_frontier_dsv41_2, deepseek_v4_1_flash_frontier_harness_wire,
   deepseek_v4_1_flash_safetensors_payload_footprint, deepseek_v4_1_flash_safetensors_payload_total,
   deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_tree_file_bytes,
   DeepseekV41EncoderChat, DeepseekV41EncoderThinking,
   DeepseekV41EffortLow, DeepseekV41EffortHigh, DeepseekV41EffortMax,
   deepseek_v4_1_flash_encoder_prefill, deepseek_v4_1_flash_thinking_start_token,
   deepseek_v4_1_flash_thinking_end_token, deepseek_v4_1_flash_named_effort_budget,
+  deepseek_v4_1_flash_named_effort_wire, deepseek_v4_1_flash_default_named_effort,
   deepseek_v4_1_flash_budget_is_admissible, deepseek_v4_1_flash_effort_is_rendered,
+  deepseek_v4_1_flash_effort_preamble, deepseek_v4_1_flash_system_token,
+  deepseek_v4_1_flash_engram, deepseek_v4_1_flash_kv_source_layer_ids,
+  deepseek_v4_1_flash_dspark_target_layer_ids,
   deepseek_v4_1_flash_dsml_tool_calls_block_name, deepseek_v4_1_flash_dsml_tool_calls_open,
   deepseek_v4_1_flash_dsml_token,
 }
@@ -53,12 +63,38 @@ test fn remaining_window_saturates_at_zero() -> Bool {
     && token_count_value(t: token_count_remaining_in_window(window: window, used: token_count(count: 101))) == 0
 }
 
-test fn declared_frontier_is_well_formed_and_uniquely_keyed() -> Bool {
-  frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier)
+fn flash_decl_key(decl_name: String) -> String {
+  declaration_ref_display_key(ref: DeclarationRef {
+    module_path: "extdeps.deepseek.deepseek_v4_1_flash" as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  })
+}
+
+fn frontier_keys_contain(rows: List<FrontierRow>, decl_name: String) -> Bool {
+  let want = flash_decl_key(decl_name: decl_name)
+  any(frontier_path_subjects(rows: rows), k => k == want)
+}
+
+test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() -> Bool {
+  let expiry = fold_frontier_expiry(rows: deepseek_v4_1_flash_frontier, present_decls: [])
+  frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_1)
+    && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_2)
+    && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_harness_wire)
     && match frontier_rows_keyed_roster_build(rows: deepseek_v4_1_flash_frontier) {
       KeyedRosterBuilt { rows: _ } => true
       KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
     }
+    && frontier_expiry_clean(report: expiry)
+    && expiry.pending_count == 0
+    && expiry.fired_still_present_count == 0
+    && expiry.unbound_count != 0
+    && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_1, decl_name: "deepseek_v4_1_flash_architecture_class")
+    && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_engram")
+    && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_1, decl_name: "deepseek_v4_1_flash_engram")
+    && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_harness_wire, decl_name: "deepseek_v4_1_flash_effort_preamble")
+    && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_harness_wire, decl_name: "deepseek_v4_1_flash_system_token")
+    && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_system_token")
 }
 
 test fn payload_partition_sums_to_the_index_total_and_is_strictly_below_tree_file_size() -> Bool {
@@ -74,10 +110,31 @@ test fn named_effort_is_ordered_and_the_budget_interval_is_closed() -> Bool {
       > deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortHigh)
     && deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortHigh)
       > deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortLow)
+    && (deepseek_v4_1_flash_named_effort_wire(e: DeepseekV41EffortLow) as String) == "low"
+    && (deepseek_v4_1_flash_named_effort_wire(e: DeepseekV41EffortHigh) as String) == "high"
+    && (deepseek_v4_1_flash_named_effort_wire(e: DeepseekV41EffortMax) as String) == "max"
+    && deepseek_v4_1_flash_named_effort_budget(e: deepseek_v4_1_flash_default_named_effort)
+      == deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortHigh)
     && deepseek_v4_1_flash_budget_is_admissible(budget: 1)
     && deepseek_v4_1_flash_budget_is_admissible(budget: 100)
     && !deepseek_v4_1_flash_budget_is_admissible(budget: 0)
     && !deepseek_v4_1_flash_budget_is_admissible(budget: 101)
+}
+
+test fn engram_layers_overlap_kv_source_and_not_dspark_targets() -> Bool {
+  any(deepseek_v4_1_flash_engram.layer_ids, id => any(deepseek_v4_1_flash_kv_source_layer_ids, k => k == id))
+    && !any(deepseek_v4_1_flash_engram.layer_ids, id => any(deepseek_v4_1_flash_dspark_target_layer_ids, k => k == id))
+}
+
+test fn effort_preamble_names_the_budget_and_system_token_is_not_a_think_marker() -> Bool {
+  let high = deepseek_v4_1_flash_effort_preamble(budget: 75)
+  let low = deepseek_v4_1_flash_effort_preamble(budget: 50)
+  high != low
+    && string_contains(s: high, pattern: "75")
+    && string_contains(s: high, pattern: "range 1-100")
+    && (deepseek_v4_1_flash_system_token as String) != (deepseek_v4_1_flash_thinking_start_token as String)
+    && (deepseek_v4_1_flash_system_token as String) != (deepseek_v4_1_flash_thinking_end_token as String)
+    && string_contains(s: deepseek_v4_1_flash_system_token as String, pattern: "System")
 }
 
 test fn effort_renders_only_on_thinking_at_index_zero() -> Bool {

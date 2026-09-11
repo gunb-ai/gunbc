@@ -168,7 +168,6 @@ fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
 // NO OUTPUT CEILING IN CONFIG.JSON. The card's sampling table is not this module's authority.
 // Remaining room in a window after input is `std.measure` `token_count_remaining_in_window`, not a
 // product fact.
-data deepseek_v4_1_flash_declares_no_output_ceiling: Bool = true
 
 // ===========================================================================================
 // FOOTPRINT FROM THE SAFETENSORS INDEX, not from the card. The card self-contradicts (552B
@@ -319,7 +318,6 @@ data deepseek_v4_1_flash_frontier_dsv41_2: List<FrontierRow> = deepseek_v4_1_fla
     "deepseek_v4_1_flash_native_context_length" as NonEmptyStr,
     "deepseek_v4_1_flash_yarn_factor" as NonEmptyStr,
     "deepseek_v4_1_flash_yarn_scaled_positions" as NonEmptyStr,
-    "deepseek_v4_1_flash_declares_no_output_ceiling" as NonEmptyStr,
     "deepseek_v4_1_flash_config_declares_encoder_decoder_split" as NonEmptyStr,
     "deepseek_v4_1_flash_engram" as NonEmptyStr,
     "deepseek_v4_1_flash_config_declares_engram_off_accelerator" as NonEmptyStr,
@@ -339,7 +337,6 @@ data deepseek_v4_1_flash_frontier_harness_wire: List<FrontierRow> = deepseek_v4_
     "deepseek_v4_1_flash_encoder_prefill" as NonEmptyStr,
     "deepseek_v4_1_flash_named_effort_wire" as NonEmptyStr,
     "deepseek_v4_1_flash_named_effort_budget" as NonEmptyStr,
-    "deepseek_v4_1_flash_named_effort_values" as NonEmptyStr,
     "deepseek_v4_1_flash_default_named_effort" as NonEmptyStr,
     "deepseek_v4_1_flash_budget_is_admissible" as NonEmptyStr,
     "deepseek_v4_1_flash_effort_preamble" as NonEmptyStr,
@@ -426,10 +423,6 @@ fn deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41NamedEffort) -> Nat {
     DeepseekV41EffortMax => 100
   }
 }
-
-data deepseek_v4_1_flash_named_effort_values: List<NonEmptyStr> = [
-  "low" as NonEmptyStr, "high" as NonEmptyStr, "max" as NonEmptyStr,
-]
 
 data deepseek_v4_1_flash_default_named_effort: DeepseekV41NamedEffort = DeepseekV41EffortHigh
 
