@@ -1,0 +1,234 @@
+module extdeps.google.sheets
+
+import std.types { NonEmptyStr, String, Int, List, Secret, Bool, HttpMethod, AuthScheme }
+import extdeps.transports.rest { RestOutcome }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest"
+  }
+}
+
+data sheets_values_get_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/get"
+  }
+}
+
+data sheets_values_batch_update_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/batchUpdate"
+  }
+}
+
+data sheets_quota_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/limits"
+  }
+}
+
+data sheets_oauth_scope_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/scopes"
+  }
+}
+
+data google_sheets_api: NonEmptyStr = "Google Sheets API"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.google.sheets",
+      decl_name: "google_sheets_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    sheets_values_get_citation,
+    sheets_values_batch_update_citation,
+    sheets_quota_citation,
+    sheets_oauth_scope_citation
+  ]
+}
+
+data sheets_api_version: NonEmptyStr = "v4"
+
+data sheets_api_base: NonEmptyStr = "https://sheets.googleapis.com/v4"
+
+data sheets_spreadsheets_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/spreadsheets"
+
+data sheets_spreadsheets_readonly_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/spreadsheets.readonly"
+
+data sheets_read_requests_per_minute_per_project: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_sheets" as NonEmptyStr,
+  scope: "read_requests_per_project" as NonEmptyStr,
+  requests: 300,
+  period: PerMinute
+}
+
+data sheets_write_requests_per_minute_per_project: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_sheets" as NonEmptyStr,
+  scope: "write_requests_per_project" as NonEmptyStr,
+  requests: 300,
+  period: PerMinute
+}
+
+data sheets_requests_per_minute_per_user: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_sheets" as NonEmptyStr,
+  scope: "requests_per_user" as NonEmptyStr,
+  requests: 60,
+  period: PerMinute
+}
+
+data sheets_rate_limits: List<UpstreamRateLimit> = [
+  sheets_read_requests_per_minute_per_project,
+  sheets_write_requests_per_minute_per_project,
+  sheets_requests_per_minute_per_user
+]
+
+data sheets_read_quota_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.google.sheets",
+    decl_name: "sheets_read_requests_per_minute_per_project",
+    field: WholeDeclaration
+  },
+  authority: sheets_quota_citation
+}
+
+type SheetsMajorDimension = DimensionRows | DimensionColumns
+
+fn sheets_major_dimension_wire(d: SheetsMajorDimension) -> String {
+  match d {
+    DimensionRows => "ROWS"
+    DimensionColumns => "COLUMNS"
+  }
+}
+
+type SheetsValueInputOption = InputRaw | InputUserEntered
+
+fn sheets_value_input_option_wire(o: SheetsValueInputOption) -> String {
+  match o {
+    InputRaw => "RAW"
+    InputUserEntered => "USER_ENTERED"
+  }
+}
+
+type SpreadsheetId = NonEmptyStr where brand("SpreadsheetId")
+
+type A1Range = NonEmptyStr where brand("A1Range")
+
+type SheetsError {
+  code: Int
+  message: String
+  status: String
+}
+
+type ValueRange {
+  range: String
+  majorDimension: String?
+  values: List<List<String>>?
+}
+
+data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ValueRange" },
+      JsonPending { field: "values[][] number-or-bool cells" }
+    ],
+    trigger: "a consumer needs unformatted numeric or boolean cells rather than FORMATTED_VALUE strings"
+  }
+]
+
+type BatchUpdateValuesRequest {
+  valueInputOption: String
+  data: List<ValueRange>
+  includeValuesInResponse: Bool?
+}
+
+type BatchUpdateValuesResponse {
+  spreadsheetId: String
+  totalUpdatedRows: Int?
+  totalUpdatedColumns: Int?
+  totalUpdatedCells: Int?
+  totalUpdatedSheets: Int?
+  responses: List<ValueRange>?
+}
+
+service sheets.Spreadsheets {
+  config {
+    endpoint: sheets_api_base
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation GetValues {
+    input {
+      access_token: Secret
+      spreadsheet_id: String
+      range: String
+    }
+    output {
+      range: String from "range"
+      major_dimension: String from "majorDimension"
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/spreadsheets/\{spreadsheet_id\}/values/\{range\}"
+    }
+    response {
+      200 => ValueRange
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+
+  operation BatchUpdateValues {
+    input {
+      access_token: Secret
+      spreadsheet_id: String
+      value_input_option: String
+      data: Json
+      include_values_in_response: Bool = false
+    }
+    output {
+      spreadsheet_id: String from "spreadsheetId"
+      total_updated_cells: Int from "totalUpdatedCells"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}/values:batchUpdate",
+      body: {
+        valueInputOption: value_input_option,
+        data: data,
+        includeValuesInResponse: include_values_in_response
+      }
+    }
+    response {
+      200 => BatchUpdateValuesResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+}
