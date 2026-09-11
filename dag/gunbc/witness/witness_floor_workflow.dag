@@ -82,6 +82,7 @@ import gunbc.ci_failure_class {
   floor_attempt_receipt_finalize_script,
   floor_attempt_receipt_finalize_is_renderable,
   floor_attempt_receipt_filename,
+  floor_attempt_command_log_filename,
   floor_attempt_receipt_output_name,
   floor_attempt_receipt_step_id,
 }
@@ -1118,12 +1119,23 @@ fn floor_attempt_receipt_finalize_step() -> Step {
 }
 
 fn floor_attempt_receipt_upload_step() -> Step {
-  witness_floor_tsv_upload_step(
-    step_name: "Upload the floor attempt receipt",
-    artifact_name: floor_attempt_receipt_artifact_name(),
-    path: floor_attempt_receipt_filename,
-    condition: "always()"
-  )
+  UsesStep {
+    name: Present { value: "Upload the floor attempt receipt and command log" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: floor_attempt_receipt_artifact_name())),
+        kv(key: "path", value: yaml_string(s: join([floor_attempt_receipt_filename, floor_attempt_command_log_filename], "\n"))),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+        kv(key: "retention-days", value: yaml_int(n: 14)),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
 }
 
 fn floor_attempt_receipt_bound_steps() -> List<WitnessFloorBoundStep> {

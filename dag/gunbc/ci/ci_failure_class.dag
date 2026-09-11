@@ -19,14 +19,15 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_single_quoted,
   bash_build_word_var,
+  bash_build_with_redir,
   bash_build_with_redir_to_file,
-  bash_build_with_redir_stdout_and_stderr_to_file
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
 }
+import gunbc.memory_stall_refusal { memory_stall_refusal_page_thrash_class_name }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
@@ -87,7 +88,7 @@ fn infra_signature_match_substring(sig: InfraSignature) -> String {
     ClusteredOutOfMemoryKill => "Out of memory: Killed process"
     CommandInvokedCannotExecute => "command invoked cannot execute"
     CommandNotFound => "command not found"
-    MemoryStallRefusedPageThrash => "MemoryStallRefusedPageThrash"
+    MemoryStallRefusedPageThrash => memory_stall_refusal_page_thrash_class_name
     ClassWireOnly => "ClassWireOnly"
   }
 }
@@ -272,7 +273,7 @@ fn infra_signature_wire(sig: InfraSignature) -> String {
     ClusteredOutOfMemoryKill => "ClusteredOutOfMemoryKill"
     CommandInvokedCannotExecute => "CommandInvokedCannotExecute"
     CommandNotFound => "CommandNotFound"
-    MemoryStallRefusedPageThrash => "MemoryStallRefusedPageThrash"
+    MemoryStallRefusedPageThrash => memory_stall_refusal_page_thrash_class_name
     ClassWireOnly => "ClassWireOnly"
   }
 }
@@ -488,28 +489,37 @@ fn wrap_command_with_floor_attempt_receipt_stmts(command: String) -> List<Node> 
   concat(
     [
       bash_build_assign_lit(name: "GUNBC_FLOOR_LOG", text: floor_attempt_command_log_filename),
-      bash_build_with_redir_stdout_and_stderr_to_file(
-        inner: bash_build_subshell_from_stmts(
-          stmts: [
-            bash_build_command_with_words(
-              words: [
-                bash_build_word_lit(text: "sh"),
-                bash_build_word_lit(text: "-e"),
-                bash_build_word_lit(text: "-c"),
-                bash_build_word_single_quoted(text: command)
-              ]
-            )
-          ]
-        ),
-        path: bash_build_word_var(name: "GUNBC_FLOOR_LOG")
-      ),
-      bash_build_assign(name: "GUNBC_FLOOR_EXIT", value: bash_build_word_var(name: "?")),
       bash_build_command_with_words(
         words: [
-          bash_build_word_lit(text: "cat"),
-          bash_build_word_var(name: "GUNBC_FLOOR_LOG")
+          bash_build_word_lit(text: "set"),
+          bash_build_word_lit(text: "-o"),
+          bash_build_word_lit(text: "pipefail")
         ]
-      )
+      ),
+      bash_build_pipe(
+        left: bash_build_with_redir(
+          inner: bash_build_subshell_from_stmts(
+            stmts: [
+              bash_build_command_with_words(
+                words: [
+                  bash_build_word_lit(text: "sh"),
+                  bash_build_word_lit(text: "-e"),
+                  bash_build_word_lit(text: "-c"),
+                  bash_build_word_single_quoted(text: command)
+                ]
+              )
+            ]
+          ),
+          redir: ^bash_production_fold_redir_stderr_to_stdout
+        ),
+        right: bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "tee"),
+            bash_build_word_var(name: "GUNBC_FLOOR_LOG")
+          ]
+        )
+      ),
+      bash_build_assign(name: "GUNBC_FLOOR_EXIT", value: bash_build_word_var(name: "?"))
     ],
     concat(
       floor_attempt_receipt_write_stmts(),
