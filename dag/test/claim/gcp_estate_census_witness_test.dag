@@ -40,10 +40,13 @@ import gunbc.gcp_estate_observation {
   gunb_test_is_enumerated_not_selected,
   sheets_calling_home,
   SheetsCallingHomeUnresolved,
-  sheets_api_service_id,
   gunb_test_sheets_is_absent,
-  gunb_test_enabled_service_ids,
-  observed_project_roster_count,
+  census_observed_project_roster_is_the_named_set,
+  census_wif_provider_roster_is_the_named_set,
+  census_sa_roster_is_the_named_set,
+  gunbai_auto_services_are_distinctive_not_a_count,
+  gunb_ci_services_are_distinctive_not_a_count,
+  gunb_test_services_are_distinctive_not_a_count,
   gunbai_auto_is_not_selected_as_sheets_home,
   gap_workspace_admin_domain_wide_delegation,
   gap_workspace_admin_workflow_refs,
@@ -66,7 +69,6 @@ import gunbc.gcp_estate_observation {
   none_of_the_three_sandboxes_has_sheets,
   gunbai_auto_is_the_only_pool_host_without_sts,
   sheets_home_is_create_purpose_scoped_unminted,
-  gunbai_secrets_enabled_service_ids,
   gunbai_secrets_enabled_services_are_closed,
   copied_malformed_condition_has_three_instances,
   copied_malformed_instance_count_in_census,
@@ -78,8 +80,10 @@ import gunbc.gcp_estate_observation {
   observed_secrets_github_pool_provider,
   observed_github_oidc_provider,
   observed_gunbai_auto_github_provider,
-  gunbai_auto_enabled_service_ids,
-  gunb_ci_enabled_service_ids,
+  gunbai_ci_workspace_admin_sa_email,
+  secrets_ci_integration_tests_sa_email,
+  gunb_ci_project_number,
+  project_number_from_sa_email,
   sheets_leading_candidate_is_not_selected,
   gunbai_auto_lacks_sts_while_ci_and_test_have_it,
   gunb_test_is_deranked_scratch_not_a_sheets_candidate,
@@ -91,7 +95,9 @@ import gunbc.gcp_estate_observation {
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
   census_edges,
-  census_cross_project_binding_count,
+  census_has_cross_project_binding_for_account,
+  census_has_same_project_pool_binding_for_account,
+  census_cross_project_account_project_number,
   edge_is_cross_project,
   edge_is_unparsed_principal_set,
 }
@@ -133,6 +139,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn sa_email_derives_gunbai_secrets_and_operator_prose_slipped() -> Bool {
   project_id_from_sa_email_is_gunbai_secrets(email: fleet_cloud_convergence_sa_email)
     && project_id_from_sa_email_is_gunbai_secrets(email: gunbai_ci_secrets_sa_email)
+    && match project_number_from_sa_email(email: gunbai_ci_workspace_admin_sa_email) {
+      Present { value: n } => n == gunb_ci_project_number
+      Absent => false
+    }
     && operator_prose_disagrees_with_sa_derived_project_id()
     && operator_prose_project_name_slip as String != fleet_secrets_gcp_project as String
 }
@@ -164,7 +174,7 @@ test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
   copied_malformed_condition_and_auto_escaped_well_formed()
     && observed_secrets_github_pool_provider.provider_id as String == "github"
     && observed_github_oidc_provider.provider_id as String == "github-oidc"
-    && operator_audit_census().wif_providers.length() == 5
+    && census_wif_provider_roster_is_the_named_set(census: operator_audit_census())
     && copied_malformed_condition_has_three_instances()
 }
 
@@ -238,12 +248,31 @@ test fn principal_set_parser_extracts_cross_project_number() -> Bool {
 
 test fn census_edges_make_the_cross_project_bindings_loud() -> Bool {
   let census = operator_audit_census()
-  census_cross_project_binding_count(census: census) == 3
-    && fold(
-      census_edges(census: census),
-      init: false,
-      f: fn(acc, e) { acc || edge_is_cross_project(edge: e) },
+  census_has_cross_project_binding_for_account(census: census, account: gunbai_ci_secrets_sa_email)
+    && census_has_cross_project_binding_for_account(census: census, account: gunbai_ci_iap_sa_email)
+    && census_has_cross_project_binding_for_account(
+      census: census,
+      account: gunbai_ci_workspace_admin_sa_email,
     )
+    && census_has_same_project_pool_binding_for_account(
+      census: census,
+      account: fleet_cloud_convergence_sa_email,
+    )
+    && census_has_same_project_pool_binding_for_account(
+      census: census,
+      account: secrets_ci_integration_tests_sa_email,
+    )
+    && !census_has_cross_project_binding_for_account(
+      census: census,
+      account: fleet_cloud_convergence_sa_email,
+    )
+    && match census_cross_project_account_project_number(
+      census: census,
+      account: gunbai_ci_workspace_admin_sa_email,
+    ) {
+      Present { value: n } => n == gunb_ci_project_number
+      Absent => false
+    }
 }
 
 test fn desired_pool_is_noop_provider_unread_binding_absent() -> Bool {
@@ -286,7 +315,7 @@ test fn editing_an_attribute_condition_changes_the_census_identity() -> Bool {
   let after = census_with_observed_provider(provider: fixture_oidc_wide)
   census_measured_fingerprint_eq(left: before, right: before)
     && !census_measured_fingerprint_eq(left: before, right: after)
-    && copied_malformed_instance_count_in_census(census: operator_audit_census()) == 3
+    && copied_malformed_condition_has_three_instances()
     && copied_malformed_instance_count_in_census(census: after) == 0
 }
 
@@ -366,7 +395,7 @@ test fn sheets_calling_home_is_unresolved_and_does_not_default_to_secrets() -> B
 test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   let census = operator_audit_census()
   gunb_test_is_enumerated_not_selected(census: census)
-    && observed_project_roster_count(census: census) == 5
+    && census_observed_project_roster_is_the_named_set(census: census)
     && gunb_test_sheets_is_absent()
     && gunb_test_has_sts()
     && none_of_the_three_sandboxes_has_sheets()
@@ -374,12 +403,11 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && !gunbai_auto_has_sts()
     && gunb_ci_has_sts()
     && gunbai_auto_is_the_only_pool_host_without_sts()
-    && gunbai_auto_enabled_service_ids.length() == 32
-    && gunb_ci_enabled_service_ids.length() == 40
-    && gunb_test_enabled_service_ids.length() == 27
-    && gunbai_secrets_enabled_service_ids.length() == 27
+    && gunbai_auto_services_are_distinctive_not_a_count()
+    && gunb_ci_services_are_distinctive_not_a_count()
+    && gunb_test_services_are_distinctive_not_a_count()
     && gunbai_secrets_enabled_services_are_closed()
-    && census.service_accounts.length() == 25
+    && census_sa_roster_is_the_named_set(census: census)
     && custody_sas_with_no_wif_bindings(census: census)
     && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
     && !census_subject_is_named_gap(census: census, subject: "gunbai-ci-workspace-admin@gunb-ci/keys?managed-by=user")

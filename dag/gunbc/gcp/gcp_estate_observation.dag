@@ -359,6 +359,10 @@ fn copied_malformed_instance_count_in_census(census: GcpEstateCensus) -> Int {
   )
 }
 
+fn string_in_list(items: List<String>, wanted: String) -> Bool {
+  fold(items, init: false, f: fn(acc, n) { acc || n == wanted })
+}
+
 fn copied_malformed_condition_has_three_instances() -> Bool {
   match copied_malformed_github_pool_condition() {
     IdenticalWrongStringInThreePools {
@@ -367,7 +371,9 @@ fn copied_malformed_condition_has_three_instances() -> Bool {
       escaped_project_number: escaped,
     } =>
       copied_malformed_instance_count_in_census(census: operator_audit_census()) == ns.length()
-        && ns.length() == 3
+        && string_in_list(items: ns, wanted: fleet_secrets_project_number)
+        && string_in_list(items: ns, wanted: gunb_ci_project_number)
+        && string_in_list(items: ns, wanted: gunb_test_project_number)
         && escaped == gunbai_auto_project_number
         && observed_gunbai_auto_github_provider.attribute_condition != c
   }
@@ -834,6 +840,26 @@ data gunbai_auto_project_id: GcpProjectId = "gunbai-auto"
 
 data gunb_ci_project_id: GcpProjectId = "gunb-ci"
 
+fn project_number_from_sa_email(email: ServiceAccountEmail) -> String? {
+  match project_id_from_sa_email(email: email) {
+    Absent => none
+    Present { value: id } =>
+      if id == fleet_secrets_gcp_project {
+        Present { value: fleet_secrets_project_number }
+      } else if id == gunb_ci_project_id {
+        Present { value: gunb_ci_project_number }
+      } else if id == gunbai_auto_project_id {
+        Present { value: gunbai_auto_project_number }
+      } else if id == gunb_test_project_id {
+        Present { value: gunb_test_project_number }
+      } else if id == observed_gemini_project.project_id {
+        Present { value: to_string(observed_gemini_project.project_number) }
+      } else {
+        none
+      }
+  }
+}
+
 data sheets_api_service_id: NonEmptyStr = "sheets.googleapis.com"
 
 data gunb_test_enabled_service_ids: List<NonEmptyStr> = [
@@ -921,6 +947,8 @@ fn gunbai_auto_enables_service(service: NonEmptyStr) -> Bool {
   )
 }
 
+data compute_api_service_id: NonEmptyStr = "compute.googleapis.com"
+
 data sts_api_service_id: NonEmptyStr = "sts.googleapis.com"
 
 fn gunb_ci_enables_service(service: NonEmptyStr) -> Bool {
@@ -978,10 +1006,11 @@ fn gunbai_secrets_enabled_services_standing() -> EnabledServicesReadStanding {
 
 fn gunbai_secrets_enabled_services_are_closed() -> Bool {
   match gunbai_secrets_enabled_services_standing() {
-    ClosedUnfiltered { project_id: p, ids: ids } =>
+    ClosedUnfiltered { project_id: p, ids: _ } =>
       p == fleet_secrets_gcp_project
-        && ids.length() == 27
         && !gunbai_secrets_enables_service(service: sheets_api_service_id)
+        && gunbai_secrets_enables_service(service: sts_api_service_id)
+        && gunbai_secrets_enables_service(service: compute_api_service_id)
   }
 }
 
@@ -1044,17 +1073,157 @@ fn sheets_home_is_create_purpose_scoped_unminted() -> Bool {
   }
 }
 
-fn observed_project_roster_count(census: GcpEstateCensus) -> Int {
+fn observed_project_number_is_named(number: String) -> Bool {
+  number == fleet_secrets_project_number
+    || number == gunbai_auto_project_number
+    || number == gunb_ci_project_number
+    || number == gunb_test_project_number
+    || number == to_string(observed_gemini_project.project_number)
+}
+
+fn named_projects_are_observed_in_census(census: GcpEstateCensus) -> Bool {
+  census_subject_is_observed_project_number(census: census, number: fleet_secrets_project_number)
+    && census_subject_is_observed_project_number(census: census, number: gunbai_auto_project_number)
+    && census_subject_is_observed_project_number(census: census, number: gunb_ci_project_number)
+    && census_subject_is_observed_project_number(census: census, number: gunb_test_project_number)
+    && census_subject_is_observed_project_number(
+      census: census,
+      number: to_string(observed_gemini_project.project_number),
+    )
+}
+
+fn every_census_observed_project_is_named(census: GcpEstateCensus) -> Bool {
   fold(
     census.projects,
-    init: 0,
+    init: true,
     f: fn(acc, row) {
       match row {
         EstateUnread { gap: _ } => acc
-        EstateObserved { value: _ } => acc + 1
+        EstateObserved { value: p } =>
+          acc && observed_project_number_is_named(number: to_string(p.project_number))
       }
     },
   )
+}
+
+fn census_observed_project_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
+  named_projects_are_observed_in_census(census: census)
+    && every_census_observed_project_is_named(census: census)
+}
+
+fn wif_provider_identity_eq(left: ObservedWifProvider, right: ObservedWifProvider) -> Bool {
+  left.project_number == right.project_number
+    && left.pool_id == right.pool_id
+    && left.provider_id == right.provider_id
+}
+
+fn census_contains_wif_provider(census: GcpEstateCensus, wanted: ObservedWifProvider) -> Bool {
+  fold(
+    census.wif_providers,
+    init: false,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } =>
+          acc || wif_provider_identity_eq(left: p, right: wanted)
+      }
+    },
+  )
+}
+
+fn named_wif_provider_is_on_roster(provider: ObservedWifProvider) -> Bool {
+  wif_provider_identity_eq(left: provider, right: observed_github_oidc_provider)
+    || wif_provider_identity_eq(left: provider, right: observed_secrets_github_pool_provider)
+    || wif_provider_identity_eq(left: provider, right: observed_gunbai_auto_github_provider)
+    || wif_provider_identity_eq(left: provider, right: observed_gunb_ci_github_provider)
+    || wif_provider_identity_eq(left: provider, right: observed_gunb_test_github_provider)
+}
+
+fn every_census_wif_provider_is_named(census: GcpEstateCensus) -> Bool {
+  fold(
+    census.wif_providers,
+    init: true,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } => acc && named_wif_provider_is_on_roster(provider: p)
+      }
+    },
+  )
+}
+
+fn named_wif_providers_are_in_census(census: GcpEstateCensus) -> Bool {
+  census_contains_wif_provider(census: census, wanted: observed_github_oidc_provider)
+    && census_contains_wif_provider(census: census, wanted: observed_secrets_github_pool_provider)
+    && census_contains_wif_provider(census: census, wanted: observed_gunbai_auto_github_provider)
+    && census_contains_wif_provider(census: census, wanted: observed_gunb_ci_github_provider)
+    && census_contains_wif_provider(census: census, wanted: observed_gunb_test_github_provider)
+}
+
+fn census_wif_provider_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
+  named_wif_providers_are_in_census(census: census)
+    && every_census_wif_provider_is_named(census: census)
+}
+
+fn census_contains_named_sa_email(census: GcpEstateCensus, email: ServiceAccountEmail) -> Bool {
+  fold(
+    census.service_accounts,
+    init: false,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: sa } => acc || sa.email == email
+      }
+    },
+  )
+}
+
+fn named_sa_email_is_on_roster(email: ServiceAccountEmail) -> Bool {
+  fold(
+    all_observed_named_service_accounts(),
+    init: false,
+    f: fn(acc, sa) { acc || sa.email == email },
+  )
+}
+
+fn every_census_sa_is_on_named_rosters(census: GcpEstateCensus) -> Bool {
+  fold(
+    census.service_accounts,
+    init: true,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: sa } => acc && named_sa_email_is_on_roster(email: sa.email)
+      }
+    },
+  )
+}
+
+fn named_sas_are_in_census(census: GcpEstateCensus) -> Bool {
+  fold(
+    all_observed_named_service_accounts(),
+    init: true,
+    f: fn(acc, sa) { acc && census_contains_named_sa_email(census: census, email: sa.email) },
+  )
+}
+
+fn census_sa_roster_is_the_named_set(census: GcpEstateCensus) -> Bool {
+  every_census_sa_is_on_named_rosters(census: census)
+    && named_sas_are_in_census(census: census)
+}
+
+fn gunbai_auto_services_are_distinctive_not_a_count() -> Bool {
+  !gunbai_auto_has_sts()
+    && !gunbai_auto_has_sheets()
+    && gunbai_auto_enables_service(service: compute_api_service_id)
+}
+
+fn gunb_ci_services_are_distinctive_not_a_count() -> Bool {
+  gunb_ci_has_sts() && !gunb_ci_has_sheets()
+}
+
+fn gunb_test_services_are_distinctive_not_a_count() -> Bool {
+  gunb_test_has_sts() && gunb_test_sheets_is_absent()
 }
 
 // Secrets is refused as Sheets API surface because custody and API surface should be

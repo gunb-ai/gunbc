@@ -12,7 +12,7 @@ import gunbc.gcp_estate_observation {
   PrincipalSetCitesProject,
   PrincipalSetUnparsed,
   MemberIsNotAPrincipalSet,
-  fleet_secrets_project_number,
+  project_number_from_sa_email,
 }
 
 // Real acyclic order, as edges, not a list with an ordering convention:
@@ -156,16 +156,26 @@ fn observed_binding_edges(census: GcpEstateCensus) -> List<GcpEstateEdge> {
       match row {
         EstateUnread { gap: _ } => acc
         EstateObserved { value: b } =>
-          acc
-            |> list_push(BindingDependsOnAccount {
-              account: b.account,
-              role: b.role,
-              member: b.member,
-            })
-            |> list_push(binding_pool_edge(
-              binding: b,
-              account_project_number: fleet_secrets_project_number,
-            ))
+          match project_number_from_sa_email(email: b.account) {
+            Absent =>
+              acc
+                |> list_push(BindingDependsOnAccount {
+                  account: b.account,
+                  role: b.role,
+                  member: b.member,
+                })
+            Present { value: account_project } =>
+              acc
+                |> list_push(BindingDependsOnAccount {
+                  account: b.account,
+                  role: b.role,
+                  member: b.member,
+                })
+                |> list_push(binding_pool_edge(
+                  binding: b,
+                  account_project_number: account_project,
+                ))
+          }
       }
     },
   )
@@ -183,12 +193,73 @@ fn census_edges(census: GcpEstateCensus) -> List<GcpEstateEdge> {
   )
 }
 
-fn census_cross_project_binding_count(census: GcpEstateCensus) -> Int {
+fn census_has_cross_project_binding_for_account(
+  census: GcpEstateCensus,
+  account: ServiceAccountEmail,
+) -> Bool {
   fold(
     census_edges(census: census),
-    init: 0,
+    init: false,
     f: fn(acc, e) {
-      if edge_is_cross_project(edge: e) { acc + 1 } else { acc }
+      match e {
+        BindingDependsOnCrossProjectPool {
+          account: a,
+          account_project_number: _,
+          pool_project_number: _,
+          member: _,
+        } => acc || a == account
+        _ => acc
+      }
+    },
+  )
+}
+
+fn census_has_same_project_pool_binding_for_account(
+  census: GcpEstateCensus,
+  account: ServiceAccountEmail,
+) -> Bool {
+  fold(
+    census_edges(census: census),
+    init: false,
+    f: fn(acc, e) {
+      match e {
+        BindingDependsOnSameProjectPool {
+          account: a,
+          pool_project_number: _,
+          member: _,
+        } => acc || a == account
+        _ => acc
+      }
+    },
+  )
+}
+
+fn census_cross_project_account_project_number(
+  census: GcpEstateCensus,
+  account: ServiceAccountEmail,
+) -> String? {
+  fold(
+    census_edges(census: census),
+    init: none,
+    f: fn(acc, e) {
+      match acc {
+        Present { value: n } => Present { value: n }
+        Absent =>
+          match e {
+            BindingDependsOnCrossProjectPool {
+              account: a,
+              account_project_number: n,
+              pool_project_number: _,
+              member: _,
+            } =>
+              if a == account {
+                Present { value: n }
+              } else {
+                none
+              }
+            _ => none
+          }
+      }
     },
   )
 }
