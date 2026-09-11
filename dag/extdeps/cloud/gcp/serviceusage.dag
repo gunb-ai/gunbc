@@ -93,14 +93,13 @@ service gcp.ServiceUsage {
   }
 }
 
+// REST v1 services.State: STATE_UNSPECIFIED | DISABLED | ENABLED
+// (cloud.google.com/service-usage/docs/reference/rest/v1/services#State). GetService still
+// projects the JSON string; this sum is the closed set, and from_wire is Absent on anything else.
 type GcpServiceUsageState
   = ServiceUsageStateUnspecified
   | ServiceUsageStateDisabled
   | ServiceUsageStateEnabled
-
-// REST v1 services.State: STATE_UNSPECIFIED | DISABLED | ENABLED
-// (cloud.google.com/service-usage/docs/reference/rest/v1/services#State). GetService still
-// projects the JSON string; this sum is the closed set, and from_wire is Absent on anything else.
 
 fn gcp_service_usage_state_wire(s: GcpServiceUsageState) -> String {
   match s {
