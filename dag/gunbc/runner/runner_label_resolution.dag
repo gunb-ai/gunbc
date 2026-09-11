@@ -64,6 +64,17 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // this repository never modelled at all. The snapshot's declared_scope is what a reader consults
 // for the second; separating them mechanically needs a vendor-side family recognizer homed in
 // each provider's own module, which is this class's next-rung trigger and is not built here.
+// THREE WAYS TO REFUSE A MULTIPLICITY, AND THEY HAVE THREE OWNERS. A label appearing twice in ONE
+// catalog is a defect in that provider module's projection of its own published surface. A label
+// claimed by TWO catalogs is a defect in gunbc.runner_provider_survey's roster. A match on another
+// CI system's selection surface is neither - it is a caller asking a resource_class value as a
+// runs-on question, and the repair is at the call site.
+//
+// All three were once one arm. AcrossCatalogs was the name, which was simply false for the
+// same-catalog case, and the owner and the repair lived in the cause prose - so a consumer could
+// not route them and the witnesses had to read English to tell them apart. That is the meaning
+// fork DESIGN section 3 names: one name, two materially different contracts.
+//
 // A CALLER CATEGORY ERROR IS NOT A ROSTER DEFECT, which is why the last arm below exists. A match
 // on the wrong selection surface means somebody asked a resource_class value as a runs-on question
 // and the repair is at the CALL SITE; ambiguity means two surveyed catalogs both carry a label and
@@ -88,7 +99,12 @@ type RunnerLabelResolution
       snapshots_consulted: List<CatalogSnapshot>
       cause: NonEmptyStr
     }
-  | RunnerLabelAmbiguousAcrossCatalogs {
+  | RunnerLabelDuplicatedWithinCatalog {
+      label: String
+      matches: List<LabelMatch>
+      cause: NonEmptyStr
+    }
+  | RunnerLabelClaimedByTwoCatalogs {
       label: String
       matches: List<LabelMatch>
       cause: NonEmptyStr
@@ -184,16 +200,20 @@ fn resolve_from_matches(
         " matches come from a catalog whose labels are written in a different CI system's configuration key, so they are not runs-on values and cannot answer a runs-on question."], ""),
     }
   } else if count(matches) > 1 {
-    RunnerLabelAmbiguousAcrossCatalogs {
-      label: label,
-      matches: matches,
-      cause: if matches_share_one_catalog(matches: matches) {
-        join(["the label '", label, "' appears ", to_string(count(matches)),
-          " times in ONE catalog's rows. That is a defect in that provider's own projection rather than in the roster: its published surface was read into duplicate rows, and the repair belongs to that module."], "")
-      } else {
-        join(["the label '", label, "' is carried by ", to_string(count(matches)),
-          " DIFFERENT surveyed catalogs. One label on one selection surface is one authority's fact, so there is no answer to give: taking either row would make the result depend on which catalog is enrolled first in gunbc.runner_provider_survey. The repair is to the roster - remove the label from every catalog but the one that owns it."], "")
-      },
+    if matches_share_one_catalog(matches: matches) {
+      RunnerLabelDuplicatedWithinCatalog {
+        label: label,
+        matches: matches,
+        cause: join(["the label '", label, "' appears ", to_string(count(matches)),
+          " times in the rows of ONE catalog. That is a defect in that provider module's projection of its own published surface - the page was read into duplicate rows - and the repair belongs to that module rather than to the roster."], ""),
+      }
+    } else {
+      RunnerLabelClaimedByTwoCatalogs {
+        label: label,
+        matches: matches,
+        cause: join(["the label '", label, "' is carried by ", to_string(count(matches)),
+          " DIFFERENT surveyed catalogs. One label on one selection surface is one authority's fact, so there is no answer to give: taking either row would make the result depend on which catalog is enrolled first. The repair is to gunbc.runner_provider_survey's roster, not to any provider module."], ""),
+      }
     }
   } else if count(matches) > 0 {
     let hit = first(matches)
@@ -337,7 +357,8 @@ fn resolution_cause(r: RunnerLabelResolution) -> NonEmptyStr {
     RunnerLabelResolved { row, snapshot } => "resolved"
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => cause
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => cause
-    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => cause
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => cause
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => cause
     RunnerLabelWrongSelectionSurface { label, matches, cause } => cause
   }
 }
@@ -347,7 +368,8 @@ fn resolution_label(r: RunnerLabelResolution) -> String {
     RunnerLabelResolved { row, snapshot } => row.label
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => label
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => label
-    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => label
+    RunnerLabelDuplicatedWithinCatalog { label, matches, cause } => label
+    RunnerLabelClaimedByTwoCatalogs { label, matches, cause } => label
     RunnerLabelWrongSelectionSurface { label, matches, cause } => label
   }
 }
