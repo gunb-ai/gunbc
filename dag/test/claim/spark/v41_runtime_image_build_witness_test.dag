@@ -9,7 +9,7 @@ import extdeps.vllm.source_build {
   vllm_recipe_targeting, vllm_cuda_arch_supported,
 }
 import extdeps.vllm.deepseek_v4_1_sm12 {
-  v41_fp4_weight_surface, v41_csa2_surface, v41_dspark_surface,
+  v41_fp4_weight_surface, v41_fp4_kv_cache_surface, v41_csa2_surface, v41_dspark_surface,
   v41_sm12_demand_symbols, v41_sm12_kv_cache_dtype_admitted,
   v41_fp4_sm120_block, v41_fp4_sm100_block,
 }
@@ -159,4 +159,24 @@ test fn the_ds_mla_nvfp4_kernels_are_listed_only_in_the_sm100_block() -> Bool {
     && block_lists_source(sources: v41_fp4_sm120_block.sources, needle: "nvfp4_scaled_mm_sm120_kernels.cu")
     && string_contains(s: v41_fp4_sm120_block.arch_set as String, pattern: "12.0f")
     && string_contains(s: v41_fp4_sm100_block.defines as String, pattern: "ENABLE_NVFP4_SM100")
+}
+
+// THE FP4-KV OPERATOR ROSTER IS THE CORRECTION ITSELF, so it is asserted rather than left to be read.
+// The three names the build obligation originally carried -- concat_and_cache_ds_mla_nvfp4,
+// indexer_k_quant_and_cache_fp4, nvfp4_ds_mla_cache -- are not registered operators at this revision,
+// and a probe that asked for them recorded a false absence in every image. What IS registered is
+// below, namespace-qualified, because torch.ops._C and torch.ops._C_cache_ops are different lookups.
+fn roster_contains(symbols: List<NonEmptyStr>, needle: String) -> Bool {
+  fold(symbols, init: false, f: (acc, s) => acc || (s as String) == needle)
+}
+
+test fn the_fp4_kv_roster_carries_the_registered_operators_and_not_the_names_that_do_not_exist() -> Bool {
+  let ops = v41_fp4_kv_cache_surface.torch_operators
+  roster_contains(symbols: ops, needle: "_C_cache_ops.concat_and_cache_mla")
+    && roster_contains(symbols: ops, needle: "_C_cache_ops.indexer_k_quant_and_cache")
+    && !roster_contains(symbols: ops, needle: "concat_and_cache_ds_mla_nvfp4")
+    && !roster_contains(symbols: ops, needle: "indexer_k_quant_and_cache_fp4")
+    && !roster_contains(symbols: ops, needle: "nvfp4_ds_mla_cache")
+    && roster_contains(symbols: v41_fp4_weight_surface.torch_operators, needle: "_C.cutlass_scaled_fp4_mm")
+    && !roster_contains(symbols: v41_fp4_weight_surface.torch_operators, needle: "_C.scaled_fp4_quant")
 }

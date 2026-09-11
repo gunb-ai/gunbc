@@ -292,3 +292,25 @@ data v41_sm12_kv_page_alignment_bytes: NonEmptyStr = "576" as NonEmptyStr
 // Publishing a half-derived per-token number here is how a per-layer stride gets compared against a
 // whole-model figure and a ratio comes out of two different units.
 data v41_sm12_kv_per_token_bytes_formula: NonEmptyStr = "per owning layer: state_content_bytes / tokens_per_state, where tokens_per_state is that layer's compress_ratio; whole-model bytes per token is that summed over the layers that own a cache, plus the indexer and sliding-window specs" as NonEmptyStr
+
+// CSA2 -- the V4.1 compressed sparse attention path. Pure python at this revision, so an image built
+// from this tree carries it whatever architectures were compiled, which is exactly why it is a
+// separate capability from the kernel ones: it cannot be lost to an arch gate, and a probe that
+// lumped it in with them would let a python file answer for a cubin.
+data v41_csa2_surface: VllmCompiledSurface = VllmCompiledSurface {
+  torch_operators: [],
+  python_modules: [
+    "vllm.models.deepseek_v4_1.compressor" as NonEmptyStr,
+    "vllm.models.deepseek_v4_1.sparse_mla" as NonEmptyStr,
+  ],
+}
+
+// The DSpark speculator, likewise python: the model-side module and the v1 worker's spec-decode arm.
+// Both are asked, because the model half can exist in a tree whose worker half does not.
+data v41_dspark_surface: VllmCompiledSurface = VllmCompiledSurface {
+  torch_operators: [],
+  python_modules: [
+    "vllm.models.deepseek_v4_1.nvidia.dspark" as NonEmptyStr,
+    "vllm.v1.worker.gpu.spec_decode.dspark" as NonEmptyStr,
+  ],
+}
