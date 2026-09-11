@@ -478,10 +478,25 @@ fn floor_attempt_receipt_write_stmts() -> List<Node> {
   )
 }
 
+// GitHub Actions RunStep with `shell: none` invokes `bash -e {0}`. Errexit plus `set -o pipefail`
+// would abort the step on a failing pipeline before GUNBC_FLOOR_EXIT is assigned and before
+// floor_attempt_receipt_write_stmts run, so finalize would publish class=unobserved on the
+// failure path this wrap exists to classify. Disable ambient errexit first; the inner `sh -e -c`
+// still fails the command; pipefail still puts the pipeline status in $?; then write and exit.
+fn wrap_disable_github_errexit_stmt() -> Node {
+  bash_build_command_with_words(
+    words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "+e")
+    ]
+  )
+}
+
 fn wrap_command_with_floor_attempt_receipt_stmts(command: String) -> List<Node> {
   concat(
     [
       bash_build_assign_lit(name: "GUNBC_FLOOR_LOG", text: floor_attempt_command_log_filename),
+      wrap_disable_github_errexit_stmt(),
       bash_build_command_with_words(
         words: [
           bash_build_word_lit(text: "set"),
