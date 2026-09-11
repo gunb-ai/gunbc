@@ -15,7 +15,7 @@ import extdeps.ebay.browse {
   BrowsePriceAtMost, BrowseBuyingOptionsAnyOf, BrowseConditionAnyOf, BrowseDeliveryCountry,
   BrowseFilterRendered, BrowseFilterEmptyValueSet, BrowseFilterConditionHasNoId,
   browse_render_filters, browse_contextual_location_header,
-  browse_search_page_admission, ebay_browse_frontier_rows, BrowseSearchPageAdmitted, BrowseSearchLimitOutOfRange,
+  browse_search_page_admission, ebay_browse_frontier_rows, browse_search_limit_default, BrowseSearchPageAdmitted, BrowseSearchLimitOutOfRange,
   BrowseSearchOffsetNotAPageBoundary, BrowseSearchBeyondResultWindow
 }
 
@@ -103,7 +103,8 @@ test fn witness_browse_rate_limit_is_five_thousand_per_day_and_enrolled() -> Boo
 }
 
 test fn witness_browse_search_page_admission_holds_the_published_bounds() -> Bool {
-  (match browse_search_page_admission(limit: 200, offset: 9800) { BrowseSearchPageAdmitted { limit: _, offset: _ } => true  _ => false })
+  (match browse_search_page_admission(limit: browse_search_limit_default, offset: 0) { BrowseSearchPageAdmitted { limit: l, offset: _ } => l == 50  _ => false })
+    &&   (match browse_search_page_admission(limit: 200, offset: 9800) { BrowseSearchPageAdmitted { limit: _, offset: _ } => true  _ => false })
     && (match browse_search_page_admission(limit: 201, offset: 0) { BrowseSearchLimitOutOfRange { limit: l } => l == 201  _ => false })
     && (match browse_search_page_admission(limit: 200, offset: 150) { BrowseSearchOffsetNotAPageBoundary { limit: _, offset: o } => o == 150  _ => false })
     && (match browse_search_page_admission(limit: 200, offset: 10000) { BrowseSearchBeyondResultWindow { limit: _, offset: o } => o == 10000  _ => false })

@@ -133,6 +133,8 @@ data ebay_browse_frontier_rows: List<FrontierRow> = [
 // so an upstream 400 is never the first place a bad page is noticed.
 data browse_search_limit_max: Int = 200
 
+data browse_search_limit_default: Int = 50
+
 data browse_search_result_window: Int = 10000
 
 type BrowseSearchPageAdmission
@@ -564,7 +566,7 @@ service ebay.Browse {
       end_user_ctx: String
       q: NonEmptyStr
       filter: String
-      limit: Int = browse_search_limit_max
+      limit: Int = browse_search_limit_default
       offset: Int = 0
     }
     output {
