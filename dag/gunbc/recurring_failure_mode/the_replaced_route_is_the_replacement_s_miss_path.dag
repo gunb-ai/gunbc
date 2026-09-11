@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.the_replaced_route_is_the_replacement_s_miss_path
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data the_replaced_route_is_the_replacement_s_miss_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_replaced_route_is_the_replacement_s_miss_path" as NonEmptyStr,
+
+  receipts: [
+    "the replaced route is the replacement's miss path (X is scheduled for deletion, and Y's cache-miss, cold-start, first-run or not-yet-built arm resolves to X; every Y execution therefore executes X, the migration reports as progressing, and X's removal date is unreachable because nothing ever stops depending on it)",
+    "THE INSTANCE, gunbc 2026-09-11, operator design-review ruling C1. The native v2 compiler's acquisition path — prepare_emitted_compiler in the v2-native route harness — answered 'the emitted compiler is not present' by running the v1 seed in-process to emit it, then building that. Read as one execution it is correct and honestly receipted: the seed is named, the receipt records it, and nothing is fabricated. Read as a migration it is the defect, because the arm is not a step in getting off the seed, it IS the seed's standing production role wearing the name of a fallback. Every miss re-derives from v1; a miss is the ordinary case for a compiler nobody has built yet; so the seed executes on every ordinary run of the route whose entire purpose is to retire it. ",
+    "WHY IT IS NOT MERELY AN ABSORBING FALLBACK, which is the neighbouring class. absorbing_fallback widens an ANSWER when precision is unavailable, and its harm is that the deficit stops being counted. Here the answer is precise and the receipt is accurate; what widens is the LIFETIME of the thing being replaced. The harm is therefore not a lost signal but a lost terminus: DESIGN section 3's replacement-migration doctrine requires X's authority to end in one motion, and an X reachable from Y's miss path has no motion in which that can happen — Y is not a replacement at all, it is a cache in front of X. The tell is textual and cheap: a route named for the new producer whose not-present arm names the old one. ",
+    "THE REMEDY IS A CONSTRUCTOR RULE, not a policy preference: the ancestry relation between producer and produced artifact must have no constructor by which the retired producer is reached on the recurring path, so a missing or unverified ancestor has nothing to resolve to except a typed refusal naming what it expected. v2.compiler.self_host.ancestry models exactly two arms — a one-time GenesisFromSeed carrying its own deletion trigger, and the recurring SucceedsNative(N) -> N+1 — and NativeAncestorAcquisition's missing and unverified arms carry no producer at all. A Bool such as used_seed would have recorded the same fact while leaving both routes writable on either value, which is the carrier-without-a-wall shape this class keeps reappearing as. ",
+    "THE CEILING AND WHERE THIS INSTANCE SITS. The class is decidable and fully modelled at the relation grain, so its attainable ceiling is structural impossibility: with no seed-reaching constructor on the recurring arm, the invalid state has no inhabitant. What is currently at a lower rung is the HOST route, which still calls the seed emitter until the acquisition surface replaces that call — so the honest reading today is that the relation is at rung 4 and the realization is at rung 1, and the class's rung is the minimum across its paths, which is the realization's. The next-rung trigger is the capability named by v2.compiler.self_host.ancestry genesis_migration_deletion_trigger. ",
+  ],
+
+  evidence: [],
+}
