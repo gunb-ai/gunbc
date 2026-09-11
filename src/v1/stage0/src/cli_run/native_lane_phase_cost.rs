@@ -11,9 +11,16 @@
 //! clocks; this host re-renders them as `[cost-partition]` so parent and child share one
 //! record shape on one stream.
 //!
-//! Named host phases (operator roster for #10940's next run):
-//! `seed_emission`, `cargo_build`, `malformed_control_run`, `universe_derivation`,
-//! `module_preparation`, `identity_evaluation`, `receipt_admission`.
+//! Named host phases (cancel-surviving `commit_phase` lines):
+//! `seed_emission`, `cargo_build`, `universe_derivation`, `malformed_control_run`,
+//! `receipt_admission`. Those lines carry `labels.head` (`GITHUB_SHA`, else `local`)
+//! and `labels.phase` equal to the exclusive row name.
+//! Child exclusive rows on `module_bundle` / `binary_parent` (not host phase lines):
+//! `source_load`, `test_context`, `module_preparation`, `identity_evaluation`,
+//! `receipt_serialization`. The profile number for #10940 is
+//! `exclusive.identity_evaluation` on the `binary_parent` `[cost-partition]` line
+//! (`basis` `source_root_eval_driver_main_wall`), joined by `labels.head` — not
+//! `phase: identity_evaluation` `wall_nanos`.
 //! Nested child grain: `module_bundle` (prepare-once-per-module plus the identities inside it).
 //! Child exclusive `receipt_serialization` is println/serde of an observation, not host
 //! `receipt_admission` (workspace resolve + admission join).
@@ -66,7 +73,7 @@ pub fn render_committed_phase(clock: &PhaseClock, observations: &[(&str, u128)])
     let children_cpu_nanos = children_cpu_nanos()
         .unwrap_or(0)
         .saturating_sub(clock.children_cpu);
-    let partition = exclusive_cost_partition_from_rows(
+    let mut partition = exclusive_cost_partition_from_rows(
         BASIS,
         wall_nanos,
         vec![CostPartitionRow {
@@ -75,6 +82,10 @@ pub fn render_committed_phase(clock: &PhaseClock, observations: &[(&str, u128)])
         }],
         Vec::new(),
     );
+    partition.labels = vec![
+        ("phase".to_string(), clock.phase.to_string()),
+        ("head".to_string(), committed_head()),
+    ];
     let mut obs: Vec<(&str, u128)> = vec![
         ("cpu_nanos", cpu_nanos),
         ("children_cpu_nanos", children_cpu_nanos),
@@ -94,6 +105,10 @@ pub fn commit_phase(clock: PhaseClock, observations: &[(&str, u128)]) {
         "{COST_PARTITION_TAG} {}",
         render_committed_phase(&clock, observations)
     );
+}
+
+fn committed_head() -> String {
+    std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string())
 }
 
 pub fn relay_child_stderr(stderr: &[u8]) {
@@ -325,6 +340,14 @@ mod tests {
         assert!(
             !line.contains("edge_index_construction"),
             "fabricated zeros would look measured: {line}"
+        );
+        assert!(
+            line.contains("\"phase\":\"cargo_build\""),
+            "host line must name the phase as a label, not only as the exclusive row: {line}"
+        );
+        assert!(
+            line.contains("\"head\":\"local\"") || line.contains("\"head\":\""),
+            "host cancel-surviving lines must join on GITHUB_SHA (local when unset): {line}"
         );
     }
 
