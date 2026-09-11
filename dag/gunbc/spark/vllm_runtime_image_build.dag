@@ -444,6 +444,12 @@ func converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, 
 // from another run, built from a different context -- was returned as though this lane had built it
 // from that revision. The tag is a name, and a name is not provenance.
 //
+// THE ADOPTED ARM IS FOR AN IMAGE THIS LANE BUILT AND FOUND AGAIN, NOT FOR A PUBLISHED ONE. A pull of
+// somebody else's image is not a build with unestablished provenance; it is not a build at all, and
+// an earlier revision minted one of these for it -- attaching a recipe and a build key to a pull, so
+// the receipt printed a fallback key beside a published digest. That mint is deleted: the probe's
+// outcome carries a reference and the digest the daemon reported, and nothing else.
+//
 // SO PROVENANCE IS ITS OWN FIELD AND IT HAS AN UNESTABLISHED ARM. A build this run performed and read
 // back carries BuiltByThisRun and the recipe genuinely describes it. An image found already carrying
 // the tag carries AdoptedUnderExpectedTag: the digest is real and the recipe is what WOULD have been
@@ -467,21 +473,6 @@ type VllmImageIdentity sole_constructor {
   requested_from: VllmSourceRevision
   build_key: ContentHash
   provenance: VllmImageProvenance
-}
-
-// THE MINT FOR AN IMAGE THIS LANE DID NOT BUILD. The identity record is sole_constructor precisely so
-// provenance cannot be assembled beside the wall rather than through it -- so adopting a published
-// image is an explicit, named act with its arm fixed at AdoptedUnderExpectedTag, not a caller filling
-// in a field. The digest is the one the daemon reported for the reference, which is why the caller
-// must have read it back before it can call this at all.
-fn vllm_adopted_image_identity(reference: NonEmptyStr, digest: NonEmptyStr, r: VllmContainerBuildRecipe) -> VllmImageIdentity {
-  VllmImageIdentity {
-    tag: reference,
-    local_config_digest: digest,
-    requested_from: r.source,
-    build_key: vllm_image_build_key(r: r),
-    provenance: AdoptedUnderExpectedTag,
-  }
 }
 
 type VllmImageBuild

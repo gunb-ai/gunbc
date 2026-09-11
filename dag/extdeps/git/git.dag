@@ -845,7 +845,7 @@ fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
 // the daemon. A provenance claim about what was built cannot rest on a status that cannot see part of
 // the context, so the ignored set is included and any output at all refuses.
 fn git_status_porcelain_args(repository_dir: String) -> List<String> {
-  ["-C", repository_dir, "status", "--porcelain", "--ignored"]
+  ["-C", repository_dir, "status", "--porcelain", "--ignored", "--untracked-files=all"]
 }
 
 fn git_status_porcelain_command(repository_dir: String) -> ArgvCommand {

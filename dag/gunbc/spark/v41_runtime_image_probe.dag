@@ -1,6 +1,6 @@
 module gunbc.spark.v41_runtime_image_probe
 
-import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
@@ -8,7 +8,6 @@ import std.nat { Nat }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli { docker_run_ephemeral_command, docker_image_pull_command, docker_image_digest_command }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   VllmCompiledSurface,
@@ -23,32 +22,31 @@ import gunbc.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity,
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
+  fleet_openssh_trust_policy_of,
 }
 import gunbc.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
   fleet_ssh_credential_verification_refusal_reason,
 }
-import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
-import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint, spark_reach_path_wire }
-import gunbc.typed_argv_exec {
-  TypedArgvExecConverged, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh,
-}
-import gunbc.typed_remote_file_write {
-  RemoteFileMode, RemoteFileModeOwnerReadWriteWorldRead,
-  TypedRemoteFileConvergence, TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
-  typed_remote_file_write_seal, converge_typed_remote_file,
-}
-import gunbc.file_access { FileTreeScope }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
+  SnapshotAcquisitionExecutor, HostCli,
 }
-import gunbc.spark.vllm_runtime_image_build {
-  VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
-  SparkBuildHostAdmitted, SparkBuildHostRefused, admit_spark_build_host,
-  vllm_build_root, v41_gb10_recipe, vllm_image_tag, vllm_adopted_image_identity,
-  converge_vllm_runtime_image,
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
 }
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  probe_agent_credential_verification,
+  SparkConvergeTargetSelection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused, spark_converge_target_selection,
+}
+import gunbc.spark.fabric_reach { ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
+import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
 //
@@ -65,6 +63,24 @@ import gunbc.spark.vllm_runtime_image_build {
 // files that exist. A hand-written probe script is a second spelling of that roster, and a second
 // spelling is how a probe comes to ask for a symbol upstream never defined -- which reads as a
 // measured absence in every image and makes the obligation undischargeable by construction.
+//
+// 🟡 dissolve-on: v41_probe_script -- THIS FUNCTION ASSEMBLES A PYTHON PROGRAM AS TEXT, and that is a
+// hand-written foreign medium standing beside extdeps.languages.python, which is this corpus's
+// authority for Python surface syntax. It is marked rather than silently tolerated because the
+// largest foreign-language blob in this lane should not be the one carrier without a stated exit.
+// WHY THAT AUTHORITY DOES NOT DISSOLVE IT TODAY: extdeps.languages.python is a TARGET MODEL -- a table
+// of keywords, container templates and method spellings that the compiler's generic emitter consumes
+// to translate THIS repository's declarations into Python. The content here is not a declaration this
+// repository owns; it is reflection over a foreign runtime's import table and operator registry
+// (importlib.util.find_spec, getattr(torch.ops, ...), a vendor classmethod's keyword arguments). There
+// is nothing in .dag to emit FROM, so routing it through that emitter today would mean first minting
+// .dag declarations for symbols whose whole point is that we do not own them.
+// DISSOLVES WHEN a modeled foreign-reflection surface exists -- "does this runtime resolve this name",
+// "what does this predicate answer", expressible as .dag and emitted through the existing Python
+// target -- at which point this function becomes a fold over the same roster it already folds over,
+// and the text stops being authored here. The precedent for the interim shape is
+// gunbc.instruments.emit_host_fixtures, which carries Python, Go and TypeScript program text as
+// declared strings for the same reason: a small program shipped to a foreign runtime.
 //
 // PYTHON IS THE IRREDUCIBLE KERNEL HERE, and it is worth saying why it is not the unmodeled
 // realization DESIGN §6 warns about. The question is "does this Python runtime resolve this name",
@@ -121,24 +137,12 @@ data v41_probe_architecture_class: NonEmptyStr = "DeepseekV41ForCausalLM" as Non
 
 // ── THE SCRIPT ────────────────────────────────────────────────────────────────────────────────
 
-data v41_probe_script_name: NonEmptyStr = "v41_capability_probe.py" as NonEmptyStr
-
-fn v41_probe_script_path() -> NonEmptyStr {
-  join([vllm_build_root() as String, "/", v41_probe_script_name as String], "") as NonEmptyStr
-}
-
 // PATH-RESOLVED, DELIBERATELY. An absolute interpreter path would be a claim about the filesystem of
 // an image this repository built but has not read, and the image's own PATH is what its vLLM
 // installation was configured against -- the same reasoning extdeps.tools.mkdir records for a host
 // nobody has observed. A missing python3 is then a plain spawn failure, which reads as a refused
 // probe rather than as a capability the image lacks.
 data v41_probe_interpreter: NonEmptyStr = "python3" as NonEmptyStr
-// WORLD-READABLE BECAUSE THE READER IS A CONTAINER. The script is written by the operator login and
-// read by a process inside the container, which runs as root but through a read-only bind mount; an
-// owner-only mode is the right default for a credential and the wrong one for a file whose whole
-// purpose is to be read by something else.
-data v41_probe_script_mode: RemoteFileMode = RemoteFileModeOwnerReadWriteWorldRead
-
 fn v41_py_quote(s: NonEmptyStr) -> String {
   join(["\"", s as String, "\""], "")
 }
@@ -319,24 +323,6 @@ fn v41_probe_script() -> String {
 // and the reading has to be about the digest the build produced. `--rm` removes the container, so the
 // probe leaves the host exactly as it found it.
 //
-// THE SHORT `-v` MOUNT SPELLING IS NOT A STYLE CHOICE. `--mount` separates its fields with commas,
-// and a comma is outside the portable-word allowlist this transport enforces, so a `--mount`
-// argument is refused before it reaches the host; extdeps.docker.cli docker_short_mount_flag renders
-// the CLI's own documented short form of the same mount.
-fn v41_probe_mounts() -> List<DockerMount> {
-  [BindMount { host_path: vllm_build_root() as FilePath, container_path: vllm_build_root() as FilePath, readonly: true }]
-}
-
-fn v41_probe_command(image: NonEmptyStr) -> ArgvCommand {
-  docker_run_ephemeral_command(
-    image: image,
-    gpus_all: true,
-    mounts: v41_probe_mounts(),
-    entrypoint: v41_probe_interpreter,
-    argv: [v41_probe_script_path() as String],
-  )
-}
-
 type V41CapabilityReading
   = V41CapabilityPresent { capability: NonEmptyStr }
   | V41CapabilityAbsent { capability: NonEmptyStr }
@@ -467,60 +453,20 @@ fn v41_capability_reading_line(r: V41CapabilityReading) -> String {
   }
 }
 
+// WHAT A PROBE READ IS ABOUT: A REFERENCE AND THE DIGEST THE DAEMON REPORTED FOR IT. Nothing else.
+// An earlier revision carried a whole VllmImageIdentity here, which meant a PULL-ONLY operation
+// arrived with a recipe and a build key attached -- fields describing a build nobody requested, and
+// the receipt printed that fallback key beside a published image. AdoptedUnderExpectedTag said the
+// source equality was unestablished, which was true and beside the point: the problem was not a weak
+// claim about a build, it was a build request manufactured where there was none.
 type V41ProbeOutcome
-  = V41ProbeRead { image: VllmImageIdentity, stdout: String, readings: List<V41CapabilityReading> }
+  = V41ProbeRead { reference: NonEmptyStr, observed_digest: NonEmptyStr, stdout: String, readings: List<V41CapabilityReading> }
   | V41ProbeRefused { step: NonEmptyStr, cause: String }
-
-func converge_v41_probe_script(target: SshTarget, context: FleetSshExecutionContext) -> TypedRemoteFileConvergence
-  uses net: Network
-{
-  converge_typed_remote_file(
-    target: target,
-    context: context,
-    admission: typed_remote_file_write_seal(
-      path: v41_probe_script_path() as FilePath,
-      content: v41_probe_script(),
-      allowed_scope: FileTreeScope { root_path: vllm_build_root() },
-    ),
-    mode: v41_probe_script_mode,
-  )
-}
-
-func v41_probe_image(target: SshTarget, context: FleetSshExecutionContext, identity: VllmImageIdentity) -> V41ProbeOutcome
-  uses net: Network
-{
-  match converge_v41_probe_script(target: target, context: context) {
-    TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
-      V41ProbeRefused { step: join(["probe-script-", st], "") as NonEmptyStr, cause: why }
-    TypedRemoteFileConverged { converged: _ } =>
-      match typed_argv_exec_over_fleet_ssh(
-        target: target,
-        context: context,
-        argv: argv_words(command: v41_probe_command(image: identity.local_config_digest)),
-      ) {
-        TypedArgvExecRefused { reason: why } => V41ProbeRefused { step: "probe-run" as NonEmptyStr, cause: why }
-        TypedArgvExecConverged { result: r } =>
-          if !r.success {
-            V41ProbeRefused {
-              step: "probe-run" as NonEmptyStr,
-              cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], ""),
-            }
-          } else {
-            let out = r.stdout
-            V41ProbeRead {
-              image: identity,
-              stdout: out,
-              readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: c)),
-            }
-          }
-      }
-  }
-}
 
 fn v41_probe_all_present(o: V41ProbeOutcome) -> Bool {
   match o {
     V41ProbeRefused { step: _, cause: _ } => false
-    V41ProbeRead { image: _, stdout: _, readings: rs } =>
+    V41ProbeRead { reference: _, observed_digest: _, stdout: _, readings: rs } =>
       fold(rs, init: true, f: (acc, r) =>
         match r {
           V41CapabilityPresent { capability: _ } => acc
@@ -533,9 +479,9 @@ fn v41_probe_all_present(o: V41ProbeOutcome) -> Bool {
 fn v41_probe_body(o: V41ProbeOutcome) -> String {
   match o {
     V41ProbeRefused { step: st, cause: why } => join(["probe REFUSED step=", st as String, " cause=", why, "\n"], "")
-    V41ProbeRead { image: i, stdout: out, readings: rs } =>
+    V41ProbeRead { reference: ref, observed_digest: digest, stdout: out, readings: rs } =>
       join([
-        join(["probed image tag=", i.tag as String, " local_config_digest=", i.local_config_digest as String, " build_key=", serialize_content_hash(hash: i.build_key) as String, "\n"], ""),
+        join(["probed reference=", ref as String, " observed_digest=", digest as String, "\n"], ""),
         join(map(rs, r => v41_capability_reading_line(r: r)), ""),
         "--- probe stdout ---\n",
         out,
@@ -543,9 +489,6 @@ fn v41_probe_body(o: V41ProbeOutcome) -> String {
       ], "")
   }
 }
-
-data v41_probe_attempt_raw: String = "v41-runtime-image-probe"
-data v41_probe_receipt_path: String = "target/v41-runtime-image-probe-receipt.txt"
 
 // THE PROBE CONVERGES THE IMAGE FIRST, and that is convergence rather than a second build: the build
 // entry and this one ask the same question -- does an image with this tag exist -- and an image that
@@ -555,58 +498,6 @@ data v41_probe_receipt_path: String = "target/v41-runtime-image-probe-receipt.tx
 // host=<identity>`, admitted against the derived roster before anything else runs. A probe is
 // read-only, but "which member may this lane reach" is still a fleet decision rather than a property
 // of the question being asked.
-func v41_runtime_image_probe_wet(host: String) -> ProcessExit
-  uses net: Network
-{
-  let now = clock_now_probed_at()
-  match admit_spark_build_host(raw: host) {
-    SparkBuildHostRefused { cause: why } => exit_failure(reason: why)
-    SparkBuildHostAdmitted { host: probe_host } =>
-  match fleet_ssh_attempt_identity(raw: v41_probe_attempt_raw) {
-    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
-    Present { value: attempt } =>
-      match probe_agent_credential_verification(attempt: attempt) {
-        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
-          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
-        FleetSshCredentialDerivationRefused { cause: cause } =>
-          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
-        FleetSshCredentialVerified { binding: binding } => {
-          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
-            Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
-            Present { value: context } =>
-              match spark_reach_endpoint(host: probe_host, path: ReachManagementLan) {
-                Absent => exit_failure(reason: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", probe_host as String], ""))
-                Present { value: endpoint } => {
-                  let target = SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_managed_executor_login as NonEmptyStr }
-                  let outcome = match converge_vllm_runtime_image(target: target, context: context, r: v41_gb10_recipe()) {
-                    VllmImageBuildRefused { step: st, cause: why } => V41ProbeRefused { step: st, cause: why }
-                    VllmImageBuilt { identity: i, already_present: _ } => v41_probe_image(target: target, context: context, identity: i)
-                  }
-                  let body = join([
-                    join(["v41 runtime image probe probed_at=", probed_at_word(reading: now) as String, " host=", probe_host as String, " endpoint=", endpoint, "\n"], ""),
-                    known_hosts_materialization_receipt(outcome: materialization),
-                    join(["credential ", fleet_ssh_credential_locus_label(binding: binding), " public_material_identity=", serialize_content_hash(hash: fleet_ssh_credential_identity(binding: binding)) as String, "\n"], ""),
-                    join(["subject tag=", vllm_image_tag(r: v41_gb10_recipe()) as String, "\n"], ""),
-                    v41_probe_body(o: outcome),
-                  ], "")
-                  let w = Filesystem.Write(path: v41_probe_receipt_path, content: body)
-                  if !w.success {
-                    exit_failure(reason: join(["v41 runtime image probe receipt write failed: ", w.error], ""))
-                  } else if v41_probe_all_present(o: outcome) {
-                    ExitSuccess
-                  } else {
-                    exit_failure(reason: join(["the built image does not carry every required capability:\n", body], ""))
-                  }
-                }
-              }
-          }
-        }
-      }
-  }
-  }
-}
-
 // ── THE READINGS THIS LANE TOOK ───────────────────────────────────────────────────────────────
 //
 // EXECUTED, NOT PREDICTED. Every row below was produced by the generated script above running inside
@@ -827,7 +718,8 @@ func v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmpty
               Absent => {
                 let out = v41_privileged_stdout(run: probe_run)
                 V41ProbeRead {
-                  image: vllm_adopted_image_identity(reference: reference, digest: digest as NonEmptyStr, r: v41_gb10_recipe()),
+                  reference: reference,
+                  observed_digest: digest as NonEmptyStr,
                   stdout: out,
                   readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: c)),
                 }
@@ -837,5 +729,91 @@ func v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmpty
         }
       }
     }
+  }
+}
+
+// ── THE ROUTE-A ENTRY, RUN WHERE THE CREDENTIAL LIVES ─────────────────────────────────────────
+//
+// NOT `--arg host=`, AND THE DIFFERENCE IS NOT ERGONOMIC. This entry runs as a fleet-converge MODE on
+// the pinned runner, where the Spark administrator credential is materialized inside the boundary --
+// so the host comes from the same SPARK_CONVERGE_TARGET the other spark_* modes read, resolved
+// against gunbc.spark.credential_workflow's administrator roster rather than against a spelled pair.
+// That roster is an identity join with procurement, which is why it is the one place enrollment is
+// decided and why a target it does not carry REFUSES instead of fanning out.
+//
+// OBSERVE-ONLY IS A REFUSAL HERE. spark_converge_target_selection admits an absent target as
+// "every enrolled Spark, observing only" for readers that legitimately sweep; this entry PULLS a 9.6
+// GB image and starts a container, so an unset target must stop rather than pick.
+data v41_probe_ci_attempt_raw: String = "v41-runtime-image-probe-ci"
+data v41_probe_ci_receipt_path: String = "target/v41-published-image-probe-receipt.txt"
+
+fn v41_probe_ci_body(at: String, host: NonEmptyStr, reference: NonEmptyStr, outcome: V41ProbeOutcome) -> String {
+  join([
+    join(["v41 published image probe probed_at=", at, " host=", host as String, " reference=", reference as String, "\n"], ""),
+    v41_probe_body(o: outcome),
+  ], "")
+}
+
+func v41_published_image_probe_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode pulls an image and starts a container on ONE host, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_published_image_probe_ci: ", c], ""))
+        ExecutorReachKnown { short_hostname: executor, path: path } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } =>
+              match fleet_ssh_attempt_identity(raw: v41_probe_ci_attempt_raw) {
+                Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                Present { value: attempt } => {
+                  let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                  match fleet_openssh_trust_policy_of(outcome: materialization) {
+                    Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                    Present { value: trust } =>
+                      match with_materialized_ssh_key_file(
+                        identity_file_name: "gunbc-v41-published-image-probe-admin-password" as NonEmptyStr,
+                        secret_bytes: administrator as Secret,
+                        use: fn(file) {
+                          v41_probe_published_image(
+                            ctx: SparkMaterializeContext {
+                              host: target_host,
+                              trust: trust,
+                              path: path,
+                              admin_credential: administrator as Secret,
+                              admin_credential_file: file,
+                              executor: HostCli,
+                            },
+                            reference: v41_published_arm64_reference(),
+                          )
+                        },
+                      ) {
+                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                        MaterializedSshKeyFileBracketCompleted { value: outcome } => {
+                          let body = join([
+                            v41_probe_ci_body(at: probed_at_word(reading: now) as String, host: target_host as NonEmptyStr, reference: v41_published_arm64_reference(), outcome: outcome),
+                            join(["executor=", executor, "\n"], ""),
+                            known_hosts_materialization_receipt(outcome: materialization),
+                          ], "")
+                          let w = Filesystem.Write(path: v41_probe_ci_receipt_path, content: body)
+                          if !w.success {
+                            exit_failure(reason: join(["v41 published image probe receipt write failed: ", w.error], ""))
+                          } else if v41_probe_all_present(o: outcome) {
+                            ExitSuccess
+                          } else {
+                            exit_failure(reason: join(["the published image does not carry every required capability:\n", body], ""))
+                          }
+                        }
+                      }
+                  }
+                }
+              }
+          }
+      }
   }
 }

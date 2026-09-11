@@ -293,10 +293,13 @@ test fn the_built_image_has_one_measured_absence_and_one_unasked_question() -> B
     })
 }
 
-// THE PUBLISHED IMAGE ANSWERS THE QUESTION OUR BUILD COULD NOT, AND THE TWO FACTS THAT EXPLAIN WHY
-// ARE ASSERTED TOGETHER: it carries a registry entry for the architecture, and it is built from a
-// revision that is not in the public repository. Either alone would be a curiosity; together they say
-// the gap is wiring held outside public main rather than anything about this fleet's build.
+// TWO READINGS, JOINED, AND NEITHER OF THEM IS A STATEMENT ABOUT WHERE THE PUBLISHED IMAGE CAME FROM.
+// Its registry.py carries the architecture entry; the identifier its distribution name is stamped
+// with is not a commit the public repository has. An earlier version of this comment used the pair to
+// conclude the image is "built from a revision the public repository does not have" -- which a
+// setuptools-scm stamp and a failed lookup cannot establish, and which is the inference the readings
+// themselves were narrowed to stop making. The gap between the two images is not explained here; it
+// is observed, at the grain observed.
 test fn the_published_image_registers_the_architecture_and_its_stamp_is_not_a_public_commit() -> Bool {
   v41_published_registers_architecture(architecture: "DeepseekV41ForCausalLM" as NonEmptyStr)
     && !v41_published_registers_architecture(architecture: "DeepseekV4ForCausalLM" as NonEmptyStr)
@@ -423,14 +426,18 @@ test fn an_unasked_question_is_not_a_measured_absence() -> Bool {
     && fold(v41_image_unread_capabilities(), init: false, f: (acc, c) => acc || (c as String) == (v41_capability_fp4_support as String))
 }
 
-// THE DIRTY CHECK MUST SEE THE IGNORED SET, because a docker build context is not the tracked set. At
+// THE DIRTY CHECK MUST SEE THE IGNORED SET AND NAME ITS UNTRACKED MODE, because a docker build context
+// is not the tracked set AND the default untracked mode is configurable. `status` honours
+// `status.showUntrackedFiles`; reproduced in an isolated repository at `no`, `--porcelain --ignored`
+// returned EMPTY for a plain untracked file that docker would ship. Naming the mode makes the answer a
+// property of the command rather than of whatever configuration a host carries. At
 // the pinned revision `.gitignore` carries `**/generated/**` and `.dockerignore` does not, so a file
 // under any `generated/` directory is invisible to a plain `git status --porcelain` and is shipped to
 // the daemon anyway. The argv is asserted rather than the behaviour because the behaviour is git's.
 test fn the_dirty_check_asks_for_the_ignored_set_too() -> Bool {
   let words = argv_words(command: git_status_porcelain_command(repository_dir: "/tmp/x"))
   let line = join(words, " ")
-  string_contains(s: line, pattern: "status --porcelain --ignored")
+  string_contains(s: line, pattern: "status --porcelain --ignored --untracked-files=all")
     && string_contains(s: line, pattern: "-C /tmp/x")
 }
 
