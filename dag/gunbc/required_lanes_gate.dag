@@ -531,7 +531,7 @@ fn required_lanes_refusal_stmts(
       ),
       then_stmts: [
         required_lanes_error_stmt(
-          text: "::error title=environment::a required lane refused because the runner environment could not execute the toolchain; this is not a defect in the diff. Fetch the gunbc-floor-outcome artifact for this run id and attempt BEFORE re-running (",
+          text: "::error title=environment::a required lane refused for an environmental cause, not a defect in the diff. Fetch the gunbc-floor-outcome artifact for this run id and attempt BEFORE re-running (",
           lanes: lanes,
           mechanism_var: mechanism_var,
           attribution_var: attribution_var

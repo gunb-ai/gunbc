@@ -438,14 +438,6 @@ fn lane_subject_receipt_is_structural(receipt: LaneSubjectReceipt) -> Bool {
   }
 }
 
-fn floor_environment_interruption() -> EvaluationInterruption {
-  EvaluationInterruption {
-    mechanism: MechanismEstablished { kind: ToolchainIdentityLost },
-    attribution: EvaluationSubstrate,
-    evidence: floor_outcome_wire_infra
-  }
-}
-
 fn floor_rendered_verdict_with_receipts(
   standing: FloorHeadStanding,
   build: FloorLaneTerminal,
@@ -465,7 +457,7 @@ fn floor_rendered_verdict_with_receipts(
           standing: s,
           build: b,
           floor: f,
-          interruption: floor_environment_interruption()
+          interruption: i
         }
       } else {
         AttemptStandsRed { standing: s, build: b, floor: f, interruption: i }

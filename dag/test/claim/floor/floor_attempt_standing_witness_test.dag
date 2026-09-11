@@ -395,6 +395,14 @@ test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool {
   )
   floor_rendered_verdict_name(verdict: env) == floor_rendered_verdict_environment_name
     && floor_rendered_verdict_blocks(verdict: env) == true
+    && match env {
+      AttemptStandsEnvironment { standing: _, build: _, floor: _, interruption: i } =>
+        floor_evaluation_mechanism_name(mechanism: i.mechanism)
+          == floor_mechanism_unestablished_name
+          && floor_evaluation_attribution_name(attribution: i.attribution)
+            == floor_attribution_unestablished_name
+      _ => false
+    }
     && floor_rendered_verdict_name(verdict: still_red) == floor_rendered_verdict_red_name
     && floor_rendered_verdict_name(verdict: mixed) == floor_rendered_verdict_red_name
     && floor_rendered_verdict_name(verdict: cancelled) == floor_rendered_verdict_unestablished_name
@@ -421,6 +429,8 @@ test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool {
         && string_contains(s: yml, pattern: "attribution=")
         && string_contains(s: yml, pattern: floor_mechanism_workflow_cancelled_name) == false
         && string_contains(s: yml, pattern: "\"$VERDICT\" '=' 'stands-red'")
+        && string_contains(s: yml, pattern: "could not execute the toolchain") == false
+        && string_contains(s: yml, pattern: "an environmental cause")
     WitnessFloorGenerationRefused => false
   }
 }
