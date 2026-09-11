@@ -13,6 +13,7 @@ import gunbc.v1_consumer_census {
   v1_bankruptcy_transaction_admitted,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
   v1_consumer_population_for, v1_reference_tokens,
+  V1BlockingCount, V1BlockingCounted, V1BlockingUnmeasured, v1_blocking_count_of,
   V1ShimPopulation, V1ShimPopulationObserved, V1ShimPopulationRefused, v1_shim_population_of
 }
 import test.fixture.v1_consumer_census.specimens {
@@ -168,6 +169,14 @@ fn the_population_carries_the_partition() -> Bool {
     && count(consumer_population_rows(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }))) == 0
     && count(consumer_population_uncitable(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }))) == 0
     && !consumer_population_is_complete(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" }))
+    && match v1_blocking_count_of(p: v1_consumer_population_for(observation: RustReferenceHostRefused { detail: "planted host refusal" })) {
+         V1BlockingUnmeasured { reason: r } => string_contains(s: r, pattern: "planted host refusal")
+         V1BlockingCounted { blocking: _, members: _ } => false
+       }
+    && match v1_blocking_count_of(p: v1_consumer_population_for(observation: planted_observation(rows: rust_source_namespace_rows))) {
+         V1BlockingCounted { blocking: b, members: m } => b > 0 && b <= m
+         V1BlockingUnmeasured { reason: _ } => false
+       }
 }
 
 test fn consumer_census_catches_an_undisposed_consumer() -> Bool { undisposed_consumer_is_caught() }
