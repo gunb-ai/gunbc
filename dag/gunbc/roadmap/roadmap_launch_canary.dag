@@ -80,8 +80,12 @@ fn roadmap_launch_canary_execution_contract() -> WorkItemExecutionContract {
   }
 }
 
-// THE ONE ALLOWED CHANGED PATH. The canary execution contract now carries this list as
-// PathsAllowed, so an attempt that touches a second path refuses at attempt_paths_admitted.
+// THE ONE ALLOWED CHANGED PATH, DECLARED ON THE CONTRACT AS PathsAllowed. attempt_paths_admitted
+// is the verdict over a caller-supplied touched set. The live belt verify arm still binds
+// path_scope: _ and does not observe a path census (GitExactDiffWindow is identity-only;
+// git.Core.DiffNameStatus is in the argv-expression residue). This is declared scope, not an
+// enforced wall, until a name-status observation over the exact diff window is the input to
+// that fold.
 data roadmap_launch_canary_allowed_change_paths: List<FilePath> = [
   "dag/gunbc/roadmap/roadmap_launch_canary_sentinel.dag" as FilePath,
 ]

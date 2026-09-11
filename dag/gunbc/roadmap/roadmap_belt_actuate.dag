@@ -320,7 +320,6 @@ import gunbc.roadmap_dispatch_destination {
   destination_github_repository,
   DispatchSpawnOrigin,
   dispatch_spawn_origin_json,
-  dispatch_spawn_origin_basename,
 }
 import gunbc.roadmap_validation_oracle {
   ValidationOracleRef,

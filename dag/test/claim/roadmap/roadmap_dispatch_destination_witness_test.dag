@@ -136,6 +136,30 @@ test fn allowed_paths_refuse_a_touched_path_outside_the_prefixes() -> Bool {
   }
 }
 
+test fn allowed_paths_do_not_admit_a_sibling_that_only_shares_a_string_prefix() -> Bool {
+  match attempt_paths_admitted(
+    scope: PathsAllowed {
+      prefixes: ["dag/foo" as FilePath],
+    },
+    touched: ["dag/foobar/secret.dag" as FilePath],
+  ) {
+    PathsAdmitted => false
+    PathOutOfScope { path } => (path as String) == "dag/foobar/secret.dag"
+  }
+}
+
+test fn allowed_paths_admit_a_path_under_the_prefix_directory() -> Bool {
+  match attempt_paths_admitted(
+    scope: PathsAllowed {
+      prefixes: ["dag/foo" as FilePath],
+    },
+    touched: ["dag/foo/ok.dag" as FilePath],
+  ) {
+    PathsAdmitted => true
+    PathOutOfScope { path: _ } => false
+  }
+}
+
 test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool {
   match contract_closure(contract: OperatorExclusive) {
     ContractNotAgentWork { mode: OperatorExclusiveMode } =>

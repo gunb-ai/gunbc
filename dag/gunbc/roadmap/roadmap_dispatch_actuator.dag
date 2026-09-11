@@ -180,6 +180,7 @@ import gunbc.roadmap_provider_events {
 }
 import gunbc.roadmap_dispatch_destination {
   node_has_dispatch_destination,
+  dispatch_spawn_origin_basename,
 }
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
@@ -854,7 +855,8 @@ fn dispatch_attempt_spawn_origin_path_for_instance(
       node_id: node_id,
       attempt_key: attempt_key,
     ),
-    "/spawn-destination.json",
+    "/",
+    dispatch_spawn_origin_basename,
   ], "")
 }
 

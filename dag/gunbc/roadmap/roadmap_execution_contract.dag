@@ -366,13 +366,23 @@ fn contract_path_scope(contract: WorkItemExecutionContract) -> AttemptPathScope 
   }
 }
 
+fn allowed_prefix_boundary(prefix: String) -> String {
+  if ends_with(s: prefix, suffix: "/") {
+    prefix
+  } else {
+    join([prefix, "/"], "")
+  }
+}
+
 fn path_has_allowed_prefix(path: FilePath, prefixes: List<FilePath>) -> Bool {
   any(
     prefixes,
-    prefix =>
-      path as String == prefix as String
-        || starts_with(s: path as String, prefix: join([prefix as String, "/"], ""))
-        || starts_with(s: path as String, prefix: prefix as String),
+    prefix => {
+      let declared = prefix as String
+      let observed = path as String
+      observed == declared
+        || starts_with(s: observed, prefix: allowed_prefix_boundary(prefix: declared))
+    },
   )
 }
 
