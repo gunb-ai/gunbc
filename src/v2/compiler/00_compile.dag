@@ -3,6 +3,7 @@ module v2.compiler.compile
 import std.compiler_entry { CompilerEntryDriver, SourceRootEvalDriver }
 import gunbc.witness_v2_native_route {
   NativeRouteAdmission,
+  NativeRouteEmittedBuild,
   NativeRouteMalformedControl,
   NativeRouteMemberRow,
   NativeRouteModuleSource,
@@ -1670,7 +1671,10 @@ fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
 //
 // THE HOST FACTS ARE THE ONLY THING THE ROUTE CANNOT OBSERVE OF ITSELF: which seed PREPARED the
 // compiler artifact, what the closure's and the executable's content identities are, HOW the old
-// route's fallback was closed, and what the malformed specimen's own run observed. They are
+// route's fallback was closed, what the malformed specimen's own run observed, and how the
+// compiler artifact was BUILT (the spawn's argv, flags, bound compiler, rustc identity, status
+// and warning count -- NativeRouteEmittedBuild, observed by the host at the cargo spawn this
+// process is the product of, so by construction not observable from inside it). They are
 // received as data and recorded verbatim; every other field of the receipt is this process's own
 // observation, and the admission that judges it is the authority's, evaluated here.
 //
@@ -1687,6 +1691,7 @@ type NativeLaneHostFacts {
   executable_identity: String
   old_route_control: NativeRouteOldRouteControl
   malformed_control: NativeRouteMalformedControl
+  emitted_build: NativeRouteEmittedBuild
 }
 
 fn native_lane_receipt(
@@ -1710,6 +1715,7 @@ fn native_lane_receipt(
     false_control: controls.false_control,
     true_control: controls.true_control,
     malformed_control: facts.malformed_control,
-    old_route_control: facts.old_route_control
+    old_route_control: facts.old_route_control,
+    emitted_build: facts.emitted_build
   }
 }

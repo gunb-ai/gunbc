@@ -22,6 +22,7 @@ import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_plan 
 import gunbc.plans.discrete_cost_derivation { discrete_cost_derivation_plan }
 import gunbc.plans.floor_claim_cost_distribution { floor_claim_cost_distribution_plan }
 import gunbc.plans.v2_complexity_capability_parity { v2_complexity_capability_parity_plan }
+import gunbc.plans.joint_incompatibility_claim_join { joint_incompatibility_claim_join_plan }
 
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
@@ -44,5 +45,6 @@ data batch_g_plans: List<Plan> = [
   deploy_convergence_observed_side_plan,
   v2_corpus_self_host_plan,
   import_namespace_program_plan,
-  floor_claim_cost_distribution_plan
+  floor_claim_cost_distribution_plan,
+  joint_incompatibility_claim_join_plan
 ]

@@ -14,7 +14,7 @@ import gunbc.v1_consumer_census {
   V1ConsumerRow, DiscoveryProducer,
   V1LiteralSignature, v1_literal_signatures, v1cd_module_path_from,
   discovery_producer_unobserved,
-  v1_row_key, v1cc_boundary, v1_consumers, v1_consumers_undisposed
+  v1_row_key, v1cc_boundary, v1_consumer_population, consumer_population_rows, v1_consumers_undisposed
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -227,7 +227,7 @@ fn v1_discovery_keys() -> List<String> {
 // somebody has to write, and until they do the cutover is refused by construction.
 
 fn v1_discovery_undisposed() -> List<String> {
-  v1_consumers_undisposed(discovered: v1_discovery_keys(), rows: v1_consumers())
+  v1_consumers_undisposed(discovered: v1_discovery_keys(), rows: consumer_population_rows(p: v1_consumer_population()))
 }
 
 // WHY THIS GATE IS NOT AN ENROLLED WITNESS, and the reason is MEASURED rather than assumed. It WAS

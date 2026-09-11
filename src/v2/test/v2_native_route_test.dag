@@ -21,6 +21,7 @@ import gunbc.witness_v2_native_route {
   NativeRouteOldRouteControl, OldRouteWithdrawn, OldRouteNotPresentAtWindow,
   OldRouteFalsifierArmed, OldRouteControlAbsent,
   NativeRouteReceipt,
+  NativeRouteEmittedBuild,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   required_v2_native_job_name,
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
@@ -29,6 +30,7 @@ import gunbc.witness_v2_native_route {
   NativeRouteCauseTally,
   native_route_file_refusal_tally
 }
+import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
 import v2.compiler.compile {
   NativeLaneSourceFacts,
   NativeLaneUniverse,
@@ -101,6 +103,31 @@ fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFile
   NativeTestFileRefusal { path: path, head_reason: head, fatal_reason: fatal }
 }
 
+// The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
+// lane (read from the same row admission compares against, so the fixture cannot drift from the
+// authority), rustc's identity, status 0, no warning header.
+fn clean_emitted_build() -> NativeRouteEmittedBuild {
+  NativeRouteEmittedBuild {
+    cargo_argv: ["cargo", "build", "--release", "--manifest-path", "/emitted/Cargo.toml"],
+    rustflags: repo_self_warning_denial_rustflags(),
+    compiler_path: "/toolchain/bin/rustc",
+    rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); host: aarch64-unknown-linux-gnu",
+    exit_status: 0,
+    warning_count: 0
+  }
+}
+
+fn emitted_build_with(rustflags: String, rustc_identity: String, exit_status: Int, warning_count: Int) -> NativeRouteEmittedBuild {
+  NativeRouteEmittedBuild {
+    cargo_argv: clean_emitted_build().cargo_argv,
+    rustflags: rustflags,
+    compiler_path: clean_emitted_build().compiler_path,
+    rustc_identity: rustc_identity,
+    exit_status: exit_status,
+    warning_count: warning_count
+  }
+}
+
 // A receipt with every well-formedness field recorded and both live controls observed; the
 // universe, module-source index, population and file-refusal populations are the arguments
 // under test.
@@ -127,7 +154,8 @@ fn receipt_over(
       path: "target/v2-native-lane/malformed-control-root/poison.dag",
       reason: ^tokenize_lex_e1_unterminated_string
     },
-    old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" }
+    old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" },
+    emitted_build: clean_emitted_build()
   }
 }
 
@@ -450,7 +478,8 @@ test fn the_wrong_job_name_is_refused() -> Bool {
     false_control: green_receipt().false_control,
     true_control: green_receipt().true_control,
     malformed_control: green_receipt().malformed_control,
-    old_route_control: green_receipt().old_route_control
+    old_route_control: green_receipt().old_route_control,
+    emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -473,7 +502,8 @@ test fn an_unrecorded_tested_tree_is_refused() -> Bool {
     false_control: green_receipt().false_control,
     true_control: green_receipt().true_control,
     malformed_control: green_receipt().malformed_control,
-    old_route_control: green_receipt().old_route_control
+    old_route_control: green_receipt().old_route_control,
+    emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -496,7 +526,8 @@ test fn an_unrecorded_preparation_seed_is_refused() -> Bool {
     false_control: green_receipt().false_control,
     true_control: green_receipt().true_control,
     malformed_control: green_receipt().malformed_control,
-    old_route_control: green_receipt().old_route_control
+    old_route_control: green_receipt().old_route_control,
+    emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -519,7 +550,8 @@ test fn an_unrecorded_emitted_closure_is_refused() -> Bool {
     false_control: green_receipt().false_control,
     true_control: green_receipt().true_control,
     malformed_control: green_receipt().malformed_control,
-    old_route_control: green_receipt().old_route_control
+    old_route_control: green_receipt().old_route_control,
+    emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -543,7 +575,8 @@ test fn an_unrecorded_route_identity_is_refused() -> Bool {
     false_control: base.false_control,
     true_control: base.true_control,
     malformed_control: base.malformed_control,
-    old_route_control: base.old_route_control
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
   }
   let no_identity = NativeRouteReceipt {
     job: base.job,
@@ -559,7 +592,8 @@ test fn an_unrecorded_route_identity_is_refused() -> Bool {
     false_control: base.false_control,
     true_control: base.true_control,
     malformed_control: base.malformed_control,
-    old_route_control: base.old_route_control
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: no_path),
@@ -926,7 +960,8 @@ test fn a_missing_false_control_is_refused() -> Bool {
     false_control: Absent,
     true_control: base.true_control,
     malformed_control: base.malformed_control,
-    old_route_control: base.old_route_control
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -950,7 +985,8 @@ test fn a_passed_false_control_is_refused() -> Bool {
     false_control: Present { value: NativeTestPassed },
     true_control: base.true_control,
     malformed_control: base.malformed_control,
-    old_route_control: base.old_route_control
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -974,7 +1010,8 @@ test fn a_missing_true_control_is_refused() -> Bool {
     false_control: base.false_control,
     true_control: Absent,
     malformed_control: base.malformed_control,
-    old_route_control: base.old_route_control
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -998,7 +1035,8 @@ test fn a_falsified_true_control_is_refused() -> Bool {
     false_control: base.false_control,
     true_control: Present { value: NativeTestReturnedFalse },
     malformed_control: base.malformed_control,
-    old_route_control: base.old_route_control
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -1022,7 +1060,8 @@ test fn an_accepted_malformed_specimen_is_refused() -> Bool {
     false_control: base.false_control,
     true_control: base.true_control,
     malformed_control: MalformedSpecimenAccepted,
-    old_route_control: base.old_route_control
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
@@ -1046,12 +1085,95 @@ test fn an_absent_old_route_control_is_refused() -> Bool {
     false_control: base.false_control,
     true_control: base.true_control,
     malformed_control: base.malformed_control,
-    old_route_control: OldRouteControlAbsent
+    old_route_control: OldRouteControlAbsent,
+    emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt),
     cause_name: "old_route_control_never_installed"
   )
+}
+
+// ── admission: the emitted build ───────────────────────────────────────────────────────────
+
+fn receipt_with_build(build: NativeRouteEmittedBuild) -> NativeRouteReceipt {
+  let base = green_receipt()
+  NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control,
+    emitted_build: build
+  }
+}
+
+test fn an_unbound_compiler_is_refused() -> Bool {
+  let base = clean_emitted_build()
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_with_build(
+      build: NativeRouteEmittedBuild {
+        cargo_argv: base.cargo_argv,
+        rustflags: base.rustflags,
+        compiler_path: "",
+        rustc_identity: base.rustc_identity,
+        exit_status: base.exit_status,
+        warning_count: base.warning_count
+      }
+    )),
+    cause_name: "emitted_build_compiler_unbound"
+  )
+  && !native_route_admission_refused_with(
+    admission: native_route_admission(receipt: green_receipt()),
+    cause_name: "emitted_build_compiler_unbound"
+  )
+}
+
+test fn an_unrecorded_rustc_identity_is_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_with_build(
+      build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "", exit_status: 0, warning_count: 0)
+    )),
+    cause_name: "emitted_build_rustc_unrecorded"
+  )
+}
+
+// THE DENIAL IS COMPARED BY EQUALITY: an inherited empty RUSTFLAGS and a RUSTFLAGS carrying the
+// denial beside something else are both a different build environment from the one the receipt
+// claims, and both refuse by the same name.
+test fn rustflags_without_the_exact_denial_are_refused() -> Bool {
+  let inherited_none = native_route_admission(receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: "", rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 0)
+  ))
+  let widened = native_route_admission(receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: concat(repo_self_warning_denial_rustflags(), " -C opt-level=3"), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 0)
+  ))
+  native_route_admission_refused_with(admission: inherited_none, cause_name: "emitted_build_warnings_not_denied")
+  && native_route_admission_refused_with(admission: widened, cause_name: "emitted_build_warnings_not_denied")
+  && !native_route_admission_refused_with(
+    admission: native_route_admission(receipt: green_receipt()),
+    cause_name: "emitted_build_warnings_not_denied"
+  )
+}
+
+test fn a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused() -> Bool {
+  let warned = native_route_admission(receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 1)
+  ))
+  let failed = native_route_admission(receipt: receipt_with_build(
+    build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 101, warning_count: 0)
+  ))
+  native_route_admission_refused_with(admission: warned, cause_name: "emitted_build_not_clean")
+  && native_route_admission_refused_with(admission: failed, cause_name: "emitted_build_not_clean")
 }
 
 // ── admission: the fold collects every violated clause ─────────────────────────────────────
@@ -1071,7 +1193,8 @@ test fn one_red_run_names_every_violated_clause() -> Bool {
     false_control: Absent,
     true_control: Absent,
     malformed_control: MalformedSpecimenAccepted,
-    old_route_control: OldRouteControlAbsent
+    old_route_control: OldRouteControlAbsent,
+    emitted_build: NativeRouteEmittedBuild { cargo_argv: [], rustflags: "", compiler_path: "", rustc_identity: "", exit_status: 101, warning_count: 2 }
   })
   native_route_admission_refused_with(admission: admission, cause_name: "job_name_mismatch")
   && native_route_admission_refused_with(admission: admission, cause_name: "tested_tree_unrecorded")
@@ -1085,6 +1208,10 @@ test fn one_red_run_names_every_violated_clause() -> Bool {
   && native_route_admission_refused_with(admission: admission, cause_name: "true_control_not_observed")
   && native_route_admission_refused_with(admission: admission, cause_name: "malformed_control_accepted_by_route")
   && native_route_admission_refused_with(admission: admission, cause_name: "old_route_control_never_installed")
+  && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_rustc_unrecorded")
+  && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_compiler_unbound")
+  && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_warnings_not_denied")
+  && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_not_clean")
 }
 
 test fn the_admission_summary_names_every_violated_clause() -> Bool {
@@ -1102,8 +1229,9 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
     false_control: Absent,
     true_control: Absent,
     malformed_control: MalformedSpecimenAccepted,
-    old_route_control: OldRouteControlAbsent
-  })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed"
+    old_route_control: OldRouteControlAbsent,
+    emitted_build: NativeRouteEmittedBuild { cargo_argv: [], rustflags: "", compiler_path: "", rustc_identity: "", exit_status: 101, warning_count: 2 }
+  })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed, emitted_build_rustc_unrecorded, emitted_build_compiler_unbound, emitted_build_warnings_not_denied, emitted_build_not_clean"
 }
 
 // THE DERIVED UNIVERSE'S TWO PRE-JOIN FACTS, JUDGED HERE BECAUSE THE ROUTE NOW OWNS THEM. Both

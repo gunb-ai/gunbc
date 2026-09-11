@@ -73,6 +73,19 @@ struct EmittedPreparation {
     binary_identity: String,
     closure_identity: String,
     seed_identity: String,
+    build: EmittedBuildObserved,
+}
+
+/// The emitted compiler's build as the receipt records it — mirror of
+/// `gunbc.witness_v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
+/// spawn that ran or the toolchain that answered, never composed from what was intended.
+struct EmittedBuildObserved {
+    cargo_argv: Vec<String>,
+    rustflags: String,
+    compiler_path: String,
+    rustc_identity: String,
+    exit_status: i64,
+    warning_count: i64,
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -171,6 +184,13 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
          rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
     );
+    // The invocation resolves and binds the one compiler the build runs under and takes its
+    // identity from the crate's own directory; a compiler that cannot be resolved or named is
+    // a refusal before the build is paid for.
+    let invocation =
+        super::emitted_closure_compile_host::probe_cargo_invocation(&crate_dir, &workspace)
+            .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
+    let rustc = invocation.rustc_identity.clone();
     let verdict = super::emitted_closure_compile_host::run_cargo(
         &crate_dir,
         &workspace,
@@ -178,10 +198,41 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — {}",
-            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict)
+            "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — {} (argv={:?} RUSTFLAGS={:?} rustc={rustc})",
+            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
+            invocation.argv,
+            invocation.rustflags,
         ));
     }
+    // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
+    // below are the run's own; a verdict of any other shape refused above.
+    let (exit_status, warning_count) = match &verdict {
+        super::emitted_closure_compile_host::CargoVerdict::Completed {
+            status,
+            warning_count,
+            ..
+        } => (i64::from(*status), *warning_count as i64),
+        other => {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — verdict admitted as compiled \
+                 is not a completed run: {}",
+                super::emitted_closure_compile_host::cargo_verdict_summary(other)
+            ))
+        }
+    };
+    let build = EmittedBuildObserved {
+        cargo_argv: invocation.argv,
+        rustflags: invocation.rustflags,
+        compiler_path: invocation.compiler_path,
+        rustc_identity: rustc,
+        exit_status,
+        warning_count,
+    };
+    eprintln!(
+        "required-ci: v2-native emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
+         exit_status={exit_status} warning_count={warning_count} rustc={}",
+        build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
+    );
     let binary_path = workspace.join("target").join("release").join(
         super::emitted_closure_compile_host::probe_package_name(NATIVE_COMPILE_ENTRY),
     );
@@ -205,6 +256,7 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
         binary_identity,
         closure_identity,
         seed_identity,
+        build,
     })
 }
 
@@ -462,32 +514,69 @@ fn write_host_facts(
     old_route: &OldRouteControlFacts,
     malformed_control: &(String, String),
 ) -> Result<(), String> {
-    let rows = [
-        ("tested_tree", tested_tree),
+    let build = &preparation.build;
+    let executable_path = preparation.binary_path.display().to_string();
+    let mut rows: Vec<(String, &str)> = vec![
+        ("tested_tree".to_string(), tested_tree),
         (
-            "preparation_seed_identity",
+            "preparation_seed_identity".to_string(),
             preparation.seed_identity.as_str(),
         ),
         (
-            "emitted_closure_identity",
+            "emitted_closure_identity".to_string(),
             preparation.closure_identity.as_str(),
         ),
-        ("executable_identity", preparation.binary_identity.as_str()),
-        ("old_route_disposition", old_route.disposition),
-        ("old_route_executable", old_route.executable.as_str()),
-        ("malformed_control_path", malformed_control.0.as_str()),
-        ("malformed_control_reason", malformed_control.1.as_str()),
+        ("executable_path".to_string(), executable_path.as_str()),
+        (
+            "executable_identity".to_string(),
+            preparation.binary_identity.as_str(),
+        ),
+        ("old_route_disposition".to_string(), old_route.disposition),
+        (
+            "old_route_executable".to_string(),
+            old_route.executable.as_str(),
+        ),
+        (
+            "malformed_control_path".to_string(),
+            malformed_control.0.as_str(),
+        ),
+        (
+            "malformed_control_reason".to_string(),
+            malformed_control.1.as_str(),
+        ),
     ];
+    // THE EMITTED BUILD CROSSES AS ROWS TOO: the six facts of NativeRouteEmittedBuild
+    // (gunbc.witness_v2_native_route) are the host's own spawn observations, so they are host
+    // facts by the same rule as the identities above. The argv is one row per word under a
+    // length row, because a word is opaque bytes and the TSV grammar has one value per key --
+    // no separator is smuggled into a value.
+    let argv_len = build.cargo_argv.len().to_string();
+    let exit_status = build.exit_status.to_string();
+    let warning_count = build.warning_count.to_string();
+    rows.push(("cargo_argv_len".to_string(), argv_len.as_str()));
+    for (index, word) in build.cargo_argv.iter().enumerate() {
+        rows.push((format!("cargo_argv_{index}"), word.as_str()));
+    }
+    rows.push(("rustflags".to_string(), build.rustflags.as_str()));
+    rows.push(("compiler_path".to_string(), build.compiler_path.as_str()));
+    rows.push(("rustc_identity".to_string(), build.rustc_identity.as_str()));
+    rows.push(("exit_status".to_string(), exit_status.as_str()));
+    rows.push(("warning_count".to_string(), warning_count.as_str()));
     let mut text = String::new();
-    for (key, value) in rows {
+    for (key, value) in &rows {
+        // A value carrying the row grammar's own delimiters would be read back as a different
+        // row set by the binary; refuse here rather than let the decoder refuse a fact that
+        // was never the one written.
+        if value.contains('\t') || value.contains('\n') {
+            return Err(format!(
+                "host fact {key} carries a tab or newline and cannot cross as one TSV row: {value:?}"
+            ));
+        }
         text.push_str(key);
         text.push('\t');
         text.push_str(value);
         text.push('\n');
     }
-    text.push_str("executable_path\t");
-    text.push_str(&preparation.binary_path.display().to_string());
-    text.push('\n');
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("creating {}: {e}", parent.display()))?;
@@ -498,6 +587,7 @@ fn write_host_facts(
 /// The lane's one phase. Green exactly when the emitted binary's own admission admitted the
 /// receipt it minted; every earlier failure is a located refusal that stops the line.
 pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
+    let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     let tested_tree = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
 
@@ -574,6 +664,23 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     eprintln!(
         "v2-native-route: universe={} population={} file_refusals={}",
         run.terminal.universe, run.terminal.rows, run.terminal.file_refusals
+    );
+
+    // REALIZATION TELEMETRY, ON ITS OWN LINE AND ON NO RECEIPT FIELD: this host process's peak
+    // RSS and current RSS (process-scoped -- the emitted binary and the rustc children cargo
+    // spawned are not in it; the binary's own figures ride its [native-cost-partition] line),
+    // the slot cgroup's memory.current/memory.peak (peak spans the runner service's lifetime,
+    // not this run), and the lane's wall. It re-derives the run's cost; it decides nothing.
+    // Resource preflight (predicted critical path and memory envelope against
+    // gunbc.runner_slot_allocation's slot rows) is std.realization cost vocabulary and lands
+    // with route integration, not here.
+    let (cgroup_current, cgroup_peak) = super::p1_cohort::p1_cohort_cgroup_memory();
+    eprintln!(
+        "required-ci: v2-native telemetry peak_rss_bytes={:?} rss_bytes={:?} cgroup_current_bytes={cgroup_current:?} \
+         cgroup_peak_bytes_slot_lifetime={cgroup_peak:?} wall_s={}",
+        super::peak_rss_vhwm_bytes(),
+        super::current_rss_bytes(),
+        lane_started.elapsed().as_secs()
     );
 
     // 6. THE VERDICT IS THE AUTHORITY'S, REPORTED AS GIVEN. The summary and the admission are one

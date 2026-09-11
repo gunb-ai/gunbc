@@ -16823,7 +16823,9 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 //
 // SEMANTICS EXPRESSIBLE IN `.dag`, retained for want of a named capability each, and each retired by
 // that capability and nothing smaller:
-// - the host-facts decode (`read_host_facts`, `host_fact`): a TSV-to-record decoding authority.
+// - the host-facts decode (`read_host_facts`, `host_fact`, `host_fact_int`): a TSV-to-record
+//   decoding authority, including the emitted-build rows (NativeRouteEmittedBuild: the argv as
+//   `cargo_argv_len` plus one `cargo_argv_<i>` row per word, and two integer rows).
 //   Retires when the lane's host facts cross the boundary through a modeled decode (the ingest
 //   direction of the one grammar, DESIGN section 4) producing NativeLaneHostFacts in `.dag`, so the
 //   main hands bytes in and receives the record.
@@ -16852,7 +16854,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use std::time::Instant;", "\n",
       "\n",
       "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};", "\n",
-      "use ", crate_name, "::gunbc_witness_v2_native_route::\{NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
+      "use ", crate_name, "::gunbc_witness_v2_native_route::\{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_lane_controls, native_lane_identity_row, native_lane_module_preparation,", "\n",
       "    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,", "\n",
@@ -16943,6 +16945,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "\}", "\n",
       "\n",
+      "fn host_fact_int(facts: &std::collections::HashMap<String, String>, key: &str) -> i64 \{", "\n",
+      "    let value = host_fact(facts, key);", "\n",
+      "    match value.parse::<i64>() \{", "\n",
+      "        Ok(parsed) => parsed,", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"REFUSED: host fact \{key\} is not an integer: \{value:?\} (\{cause\})\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "\n",
       "fn read_host_facts(path: &str) -> NativeLaneHostFacts \{", "\n",
       "    let text = match std::fs::read_to_string(path) \{", "\n",
       "        Ok(text) => text,", "\n",
@@ -16993,6 +17006,23 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
+      "    // The emitted build is the host's observation of the cargo spawn this binary is the", "\n",
+      "    // product of: six rows, the argv as one row per word under a length row. A count that", "\n",
+      "    // does not parse, or an index row it promises that is missing, refuses like any other", "\n",
+      "    // missing fact; nothing is defaulted.", "\n",
+      "    let cargo_argv_len = host_fact_int(&facts, \"cargo_argv_len\");", "\n",
+      "    let mut cargo_argv: Vec<String> = Vec::new();", "\n",
+      "    for index in 0..cargo_argv_len \{", "\n",
+      "        cargo_argv.push(host_fact(&facts, &format!(\"cargo_argv_\{index\}\")));", "\n",
+      "    \}", "\n",
+      "    let emitted_build = NativeRouteEmittedBuild \{", "\n",
+      "        cargo_argv: Rc::new(cargo_argv),", "\n",
+      "        rustflags: host_fact(&facts, \"rustflags\"),", "\n",
+      "        compiler_path: host_fact(&facts, \"compiler_path\"),", "\n",
+      "        rustc_identity: host_fact(&facts, \"rustc_identity\"),", "\n",
+      "        exit_status: host_fact_int(&facts, \"exit_status\"),", "\n",
+      "        warning_count: host_fact_int(&facts, \"warning_count\"),", "\n",
+      "    \};", "\n",
       "    NativeLaneHostFacts \{", "\n",
       "        tested_tree: host_fact(&facts, \"tested_tree\"),", "\n",
       "        preparation_seed_identity: host_fact(&facts, \"preparation_seed_identity\"),", "\n",
@@ -17001,6 +17031,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        executable_identity: host_fact(&facts, \"executable_identity\"),", "\n",
       "        old_route_control: Rc::new(old_route_control),", "\n",
       "        malformed_control: Rc::new(malformed_control),", "\n",
+      "        emitted_build: Rc::new(emitted_build),", "\n",
       "    \}", "\n",
       "\}", "\n",
       "\n",
