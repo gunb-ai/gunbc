@@ -1611,7 +1611,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/lens/complexity_accumulator_copy_test.dag",
       check_fns: [
-        "red_list_append_left_is_suspect",
+        "red_list_append_right_is_suspect",
         "pure_literal_in_copied_port_is_provably_fresh"
       ],
       kind: CorpusWitnessKind,
