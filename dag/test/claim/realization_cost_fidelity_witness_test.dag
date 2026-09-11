@@ -1,0 +1,179 @@
+module test.claim.realization_cost_fidelity_witness
+
+// THE SPECIMEN IS THE FIRST WITNESS. gunbc.recurring_failure_mode
+// lens_prices_the_authority_while_the_lane_runs_the_realization measured a contract declaring work
+// over both operands against a realization charging the right one only. A cost authority that
+// cannot make that come out as a difference is a decoration, so the concat case leads here and the
+// rank-only reading is shown failing on it in the same module.
+import std.algebra {
+  CostTerm,
+  LinearInOperand,
+  LinearithmicInOperand,
+  StructuredCost,
+  ShapeLinearScan,
+  structured_cost_rank_in_operand,
+  structured_cost_to_shape,
+}
+import std.realization_cost_fidelity {
+  CostShapePreserved,
+  ModeledCostNotStructured,
+  ModeledStructuredCostFact,
+  RealizationCostFact,
+  RealizationCostUnknown,
+  RealizationDivergesByOperand,
+  RealizationFasterThanModeled,
+  RealizationSlowerThanModeled,
+  cost_fidelity_of,
+  count_cost_fidelity_findings,
+  count_cost_fidelity_unmeasured,
+  count_cost_model_unmigrated,
+  realization_cost_fidelity_rows,
+}
+import std.primitive_identity { EmitRust, InterpreterHost }
+import std.primitive_projection { PrimitiveIdentity }
+import std.types { Bool, List }
+
+// concat as std.primitives declares it: work in both operands.
+fn concat_modeled_cost() -> StructuredCost {
+  StructuredCost {
+    terms: [
+      CostTerm { factors: [LinearInOperand { operand: "left" }] },
+      CostTerm { factors: [LinearInOperand { operand: "right" }] },
+    ]
+  }
+}
+
+// concat as the realization charges it: the right operand only.
+fn concat_realized_cost() -> StructuredCost {
+  StructuredCost {
+    terms: [CostTerm { factors: [LinearInOperand { operand: "right" }] }]
+  }
+}
+
+// THE CASE THE AUTHORITY EXISTS FOR. Both costs are "linear"; a rank-only comparison calls them
+// equal. Per operand they are not: the realization does no work in the left operand, so it is
+// cheaper there and identical on the right, and the model is the thing that is wrong.
+test fn concat_model_over_prices_the_left_operand() -> Bool {
+  match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_realized_cost()) {
+    RealizationFasterThanModeled => true
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// THE DISCRIMINATOR FOR THE ABOVE, kept in the corpus rather than in a PR description: read as a
+// rank, the two costs are the same shape. This is the reading the briefed CostShape-only join would
+// have produced, and it is why the structured form had to land first.
+test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
+  match structured_cost_to_shape(c: concat_modeled_cost()) {
+    Present { value: _ } => false
+    Absent =>
+      structured_cost_rank_in_operand(c: concat_modeled_cost(), operand: "right")
+        == structured_cost_rank_in_operand(c: concat_realized_cost(), operand: "right")
+  }
+}
+
+test fn slower_realization_is_reported() -> Bool {
+  match cost_fidelity_of(
+    modeled: StructuredCost { terms: [CostTerm { factors: [LinearInOperand { operand: "n" }] }] },
+    realized: StructuredCost { terms: [CostTerm { factors: [LinearithmicInOperand { operand: "n" }] }] },
+  ) {
+    RealizationSlowerThanModeled => true
+    CostShapePreserved => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+test fn identical_costs_are_preserved() -> Bool {
+  match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_modeled_cost()) {
+    CostShapePreserved => true
+    RealizationSlowerThanModeled => false
+    RealizationFasterThanModeled => false
+    RealizationDivergesByOperand => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+// A PROVEN TRADE-OFF IS A FINDING, NOT AN ABSENCE: cheaper in one operand and dearer in another is
+// its own verdict, and collapsing it into Unknown would report "nothing to see" about two facts
+// that are both established.
+test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
+  match cost_fidelity_of(
+    modeled: StructuredCost {
+      terms: [
+        CostTerm { factors: [LinearithmicInOperand { operand: "left" }] },
+        CostTerm { factors: [LinearInOperand { operand: "right" }] },
+      ]
+    },
+    realized: StructuredCost {
+      terms: [
+        CostTerm { factors: [LinearInOperand { operand: "left" }] },
+        CostTerm { factors: [LinearithmicInOperand { operand: "right" }] },
+      ]
+    },
+  ) {
+    RealizationDivergesByOperand => true
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => false
+    RealizationFasterThanModeled => false
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+data probe_primitive_a: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fidelity_probe_a" }
+data probe_primitive_b: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fidelity_probe_b" }
+
+// A MISSING REALIZATION FACT IS THE ONLY DOOR INTO Unknown, and an un-migrated MODEL is a different
+// row again: three states that a single count would have flattened into one green.
+test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    unstructured: [probe_primitive_b],
+    target: EmitRust,
+    facts: [],
+  )
+  count_cost_fidelity_unmeasured(rows: rows) == 1
+    && count_cost_model_unmigrated(rows: rows) == 1
+    && count_cost_fidelity_findings(rows: rows) == 0
+}
+
+// A realization fact for one target says nothing about another target.
+test fn realization_fact_does_not_cross_targets() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    unstructured: [],
+    target: EmitRust,
+    facts: [
+      RealizationCostFact {
+        primitive: probe_primitive_a,
+        target: InterpreterHost,
+        cost: concat_realized_cost(),
+      },
+    ],
+  )
+  count_cost_fidelity_unmeasured(rows: rows) == 1 && count_cost_fidelity_findings(rows: rows) == 0
+}
+
+test fn measured_target_reports_the_finding() -> Bool {
+  let rows = realization_cost_fidelity_rows(
+    modeled: [ModeledStructuredCostFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
+    unstructured: [],
+    target: InterpreterHost,
+    facts: [
+      RealizationCostFact {
+        primitive: probe_primitive_a,
+        target: InterpreterHost,
+        cost: concat_realized_cost(),
+      },
+    ],
+  )
+  count_cost_fidelity_findings(rows: rows) == 1 && count_cost_fidelity_unmeasured(rows: rows) == 0
+}

@@ -1,0 +1,255 @@
+module std.realization_cost_fidelity
+
+import std.algebra {
+  Cons,
+  CostShape,
+  Empty,
+  StructuredCost,
+  structured_cost_operands,
+  structured_cost_rank_in_operand,
+  structured_cost_to_shape,
+}
+import std.pareto {
+  AxisComparison,
+  DominanceUndecided,
+  Dominated,
+  Dominates,
+  Equivalent,
+  Incomparable,
+  LowerIsBetter,
+  axis_comparison_int,
+  dominance_of_comparisons,
+}
+import std.primitive_identity { RealizationTarget, primitive_identity_eq }
+import std.primitive_projection { PrimitiveIdentity }
+import std.types { Int, List, String }
+import std.logic { Bool }
+
+// THE MODELED COST AND THE REALIZED COST ARE TWO FACTS, AND NOTHING JOINED THEM.
+//
+// std.algebra carries what the MODEL claims an operation costs. The place a realization is chosen
+// is std.primitive_identity PrimitiveRealization -- primitive, target, handler. Between them sat
+// nothing, so a declared cost could be realized slower, or faster, and neither direction had a
+// carrier able to state it. That gap is the compile-obligation census's one row WITHOUT A HOME.
+//
+// WHY IT IS NOT IN THE LENS. A lens reads a tree and judges the SOURCE. Whether a realization
+// preserves the cost its model declares is a fact about the realization, joined at the identity the
+// realization was selected under; putting it in the complexity lens would make the lens the
+// authority on a fact it cannot see (DESIGN sections 3, 3b) -- and the failure mode
+// gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization is
+// exactly what happens when the two are conflated.
+//
+// WHY IT COMPARES PER OPERAND. The motivating divergence is not a rank regression: a contract
+// declaring work over both operands against a realization charging one of them is two costs of the
+// SAME rank that disagree about WHICH operand they read. A comparison that reduced each side to a
+// rank first would return "preserved" on the specimen this authority exists for.
+
+// THE DOMINANCE ALGEBRA IS std.pareto's AND IS NOT RESTATED HERE (DESIGN section 3d: growing a
+// second decision algebra beside Pareto is the fork that law exists to prevent). One axis per
+// operand, LowerIsBetter on cost rank, and std.pareto folds the axis comparisons into a verdict --
+// including its separation of Incomparable from DominanceUndecided, which is precisely the
+// distinction a cost report must not lose.
+type CostFidelity
+  = CostShapePreserved
+  | RealizationSlowerThanModeled
+  | RealizationFasterThanModeled
+  | RealizationDivergesByOperand
+  | RealizationCostUnknown
+  | ModeledCostNotStructured
+
+// FIVE ARMS WHERE THE BRIEF ASKED FOR FOUR, and the two additions are the ones that keep the other
+// three honest. RealizationDivergesByOperand is a PROVEN TRADE-OFF -- cheaper in one operand,
+// dearer in another -- which is a finding, not an absence, and collapsing it into Unknown would be
+// the absorbing fallback (DESIGN section 5): it would read as "measured, nothing to report" while
+// meaning "measured, and the two disagree". ModeledCostNotStructured is the migration frontier: a
+// contract that has not yet stated its cost in the structured form cannot be compared at all, and
+// that is a COUNTED coverage obligation rather than a pass. RealizationCostUnknown stays reachable
+// only from a MISSING realization fact -- never as the answer to a comparison.
+
+type RealizationCostFact {
+  primitive: PrimitiveIdentity
+  target: RealizationTarget
+  cost: StructuredCost
+}
+
+type ModeledStructuredCostFact {
+  primitive: PrimitiveIdentity
+  cost: StructuredCost
+}
+
+fn cost_realization_target_slug(target: RealizationTarget) -> String {
+  match target {
+    InterpreterHost => "interpreter_host"
+    EmitRust => "emit_rust"
+    EmitTypeScript => "emit_typescript"
+  }
+}
+
+fn realization_target_eq(left: RealizationTarget, right: RealizationTarget) -> Bool {
+  cost_realization_target_slug(target: left) == cost_realization_target_slug(target: right)
+}
+
+fn operand_union(modeled: StructuredCost, realized: StructuredCost) -> List<String> {
+  let seeded = structured_cost_operands(c: modeled) |> fold(init: Empty, f: fn(acc, o) {
+    Cons { head: o, tail: acc }
+  })
+  reverse(structured_cost_operands(c: realized) |> fold(init: seeded, f: fn(acc, o) {
+    if acc |> fold(init: false, f: fn(seen, x) { seen || x == o }) {
+      acc
+    } else {
+      Cons { head: o, tail: acc }
+    }
+  }))
+}
+
+// An operand named by only one side is not skipped: its rank on the other side is 0, which is the
+// TRUE statement that the cost does not grow in it. That is what makes "declares work in both
+// operands, realizes work in one" come out as a difference rather than as a missing axis.
+fn operand_axis_comparisons(
+  modeled: StructuredCost,
+  realized: StructuredCost,
+) -> List<AxisComparison> {
+  operand_union(modeled: modeled, realized: realized) |> fold(init: Empty, f: fn(acc, o) {
+    Cons {
+      head: axis_comparison_int(
+        goal: LowerIsBetter,
+        a: structured_cost_rank_in_operand(c: realized, operand: o),
+        b: structured_cost_rank_in_operand(c: modeled, operand: o),
+      ),
+      tail: acc,
+    }
+  })
+}
+
+fn cost_fidelity_of(modeled: StructuredCost, realized: StructuredCost) -> CostFidelity {
+  match dominance_of_comparisons(
+    comparisons: operand_axis_comparisons(modeled: modeled, realized: realized)
+  ) {
+    Dominates => RealizationFasterThanModeled
+    Dominated => RealizationSlowerThanModeled
+    Equivalent => CostShapePreserved
+    Incomparable => RealizationDivergesByOperand
+    DominanceUndecided => RealizationCostUnknown
+  }
+}
+
+type RealizationCostFidelityRow {
+  primitive: PrimitiveIdentity
+  target: RealizationTarget
+  modeled: StructuredCost?
+  realized: StructuredCost?
+  fidelity: CostFidelity
+  projected_shape: CostShape?
+}
+
+fn realization_cost_for(
+  facts: List<RealizationCostFact>,
+  primitive: PrimitiveIdentity,
+  target: RealizationTarget,
+) -> StructuredCost? {
+  facts |> fold(init: none, f: fn(acc, fact) {
+    match acc {
+      Present { value: c } => Present { value: c }
+      Absent =>
+        if primitive_identity_eq(left: fact.primitive, right: primitive)
+          && realization_target_eq(left: fact.target, right: target) {
+          Present { value: fact.cost }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn realization_cost_fidelity_row(
+  modeled: ModeledStructuredCostFact,
+  target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+) -> RealizationCostFidelityRow {
+  let realized = realization_cost_for(facts: facts, primitive: modeled.primitive, target: target)
+  RealizationCostFidelityRow {
+    primitive: modeled.primitive,
+    target: target,
+    modeled: Present { value: modeled.cost },
+    realized: realized,
+    fidelity: match realized {
+      Absent => RealizationCostUnknown
+      Present { value: r } => cost_fidelity_of(modeled: modeled.cost, realized: r)
+    },
+    projected_shape: structured_cost_to_shape(c: modeled.cost),
+  }
+}
+
+// A primitive whose model has not yet been restated in the structured form gets a row too, with the
+// frontier arm. Omitting it would shrink the denominator by exactly the population that has not
+// been migrated, which is the population the frontier is about.
+fn unstructured_modeled_row(
+  primitive: PrimitiveIdentity,
+  target: RealizationTarget,
+) -> RealizationCostFidelityRow {
+  RealizationCostFidelityRow {
+    primitive: primitive,
+    target: target,
+    modeled: none,
+    realized: none,
+    fidelity: ModeledCostNotStructured,
+    projected_shape: none,
+  }
+}
+
+fn realization_cost_fidelity_rows(
+  modeled: List<ModeledStructuredCostFact>,
+  unstructured: List<PrimitiveIdentity>,
+  target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+) -> List<RealizationCostFidelityRow> {
+  let structured_rows = modeled |> fold(init: Empty, f: fn(acc, m) {
+    Cons { head: realization_cost_fidelity_row(modeled: m, target: target, facts: facts), tail: acc }
+  })
+  reverse(unstructured |> fold(init: structured_rows, f: fn(acc, p) {
+    Cons { head: unstructured_modeled_row(primitive: p, target: target), tail: acc }
+  }))
+}
+
+fn cost_fidelity_is_finding(fidelity: CostFidelity) -> Bool {
+  match fidelity {
+    CostShapePreserved => false
+    RealizationSlowerThanModeled => true
+    RealizationFasterThanModeled => true
+    RealizationDivergesByOperand => true
+    RealizationCostUnknown => false
+    ModeledCostNotStructured => false
+  }
+}
+
+fn count_cost_fidelity_findings(rows: List<RealizationCostFidelityRow>) -> Int {
+  rows |> fold(init: 0, f: fn(acc, row) {
+    if cost_fidelity_is_finding(fidelity: row.fidelity) { acc + 1 } else { acc }
+  })
+}
+
+fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int {
+  rows |> fold(init: 0, f: fn(acc, row) {
+    match row.fidelity {
+      RealizationCostUnknown => acc + 1
+      CostShapePreserved => acc
+      RealizationSlowerThanModeled => acc
+      RealizationFasterThanModeled => acc
+      RealizationDivergesByOperand => acc
+      ModeledCostNotStructured => acc
+    }
+  })
+}
+
+fn count_cost_model_unmigrated(rows: List<RealizationCostFidelityRow>) -> Int {
+  rows |> fold(init: 0, f: fn(acc, row) {
+    match row.fidelity {
+      ModeledCostNotStructured => acc + 1
+      RealizationCostUnknown => acc
+      CostShapePreserved => acc
+      RealizationSlowerThanModeled => acc
+      RealizationFasterThanModeled => acc
+      RealizationDivergesByOperand => acc
+    }
+  })
+}
