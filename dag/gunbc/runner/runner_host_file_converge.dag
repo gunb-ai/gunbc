@@ -1,0 +1,702 @@
+module gunbc.runner_host_file_converge
+
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.algebra { trim }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
+import extdeps.needrestart {
+  NeedrestartServiceSelectionOverride,
+  RestartDeferredByDefault,
+  NeedrestartUnitNamePrefixAdmitted,
+  NeedrestartUnitNamePrefixRefused,
+  needrestart_unit_name_prefix,
+  needrestart_conf_d_path,
+  needrestart_conf_d_text,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_remote_file_write {
+  RemoteFileMode,
+  RemoteFileModeOwnerReadWriteWorldRead,
+  RemoteFileViaNonInteractiveSudo,
+  RemoteFileConverged,
+  TypedRemoteFileWriteAdmission,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
+  RemoteFileComparisonReport,
+  ComparisonIdentical,
+  ComparisonDiffers,
+  ComparisonUnavailable,
+  typed_remote_file_write_seal,
+  typed_remote_file_step,
+  typed_remote_file_compare_argv,
+  classify_typed_remote_file_comparison,
+  converge_typed_remote_file,
+}
+import gunbc.runner_unit {
+  RunnerUnitLifecycleIntent,
+  gunbc_runner_lifecycle_intent,
+  runner_unit_prefix,
+  runner_unit_name_of_registration,
+}
+import gunbc.runner_unit_file { runner_unit_teardown_dropin_path, gunbc_runner_unit_teardown_dropin_text }
+import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
+import gunbc.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
+
+// THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
+// FLEET EDGE AS THE HOST'S ADMINISTRATOR.
+//
+// WHAT IT FIXES, MEASURED. apt-daily-upgrade installs security updates every morning; when one of them
+// replaces a library a runner maps (libc6 on 2026-09-11), needrestart runs `systemctl restart` over
+// every actions-runner@ unit. The live unit is `KillMode=process`, so the restart kills the listener
+// and nothing else: srv1's journal records `Unit process ... (Runner.Worker) remains running after unit
+// stopped` for the in-flight job's worker, claim_executor and gunbc, then `Found left-over process ...
+// Ignoring`, and thirteen seconds later a new listener takes a new job into the SAME _work directory.
+// The two jobs then delete each other's toolchain and checkout and share one slot's memory ceiling --
+// the vanished rustc, registry sources and toolchain components the CI floor reported that morning.
+// srv1's dpkg log shows needrestart restarting runner units on ten separate days since June.
+//
+// TWO FILES, TWO HALVES OF ONE CLASS, NEITHER SUFFICIENT ALONE.
+//   - the teardown drop-in makes ANY stop of a slot reach its whole cgroup, whoever issues it;
+//   - the needrestart deferral stops the daily upgrade from issuing that stop at all. An ephemeral
+//     runner already begins a fresh process after every job, so the upgraded library is picked up at
+//     the next job boundary without anyone restarting a slot mid-job.
+// Without the first, any other restart (an operator, a converge, the liveness reconciler) still
+// orphans. Without the second, the daily upgrade would still stop every busy slot -- loudly and
+// cleanly after the first lands, but as a wave of cancelled jobs rather than a silent corruption.
+//
+// WHO WRITES, AND WHY NOT THE CI JOB USER. Both files are evaluated by root: systemd merges the drop-in
+// and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
+// install them would let every CI job on the host, pull requests included, stage its own content and
+// become root. So the writes run over the fleet SSH edge as the declared administrator principal
+// (gunbc.runner_host_grants executor_bootstrap_principal), and the job user gains no grant.
+//
+// NOTHING HERE RESTARTS A SLOT. The drop-in takes effect at daemon-reload for every loaded unit, and a
+// running job keeps running; the next stop of that slot, from any source, reaches the whole cgroup.
+
+type RunnerHostFileReload
+  = SystemdManagerReloadRequired
+  | NoManagerReloadRequired
+
+type RunnerHostFileDesired {
+  subject: NonEmptyStr
+  path: FilePath
+  content: String
+  mode: RemoteFileMode
+  reload: RunnerHostFileReload
+}
+
+type RunnerHostFileDesiredPopulation
+  = RunnerHostFilesDesired { files: List<RunnerHostFileDesired> }
+  | RunnerHostFilesDesiredRefused { cause: NonEmptyStr }
+
+// Every desired path lives under /etc, and typed_remote_file_write refuses a path outside the scope it
+// is sealed against, so this row is the whole of what the converge may write.
+data runner_host_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" as NonEmptyStr }
+
+data runner_needrestart_conf_d_stem: NonEmptyStr = "50-gunbc-actions-runner" as NonEmptyStr
+
+fn runner_host_file_desired_population() -> RunnerHostFileDesiredPopulation {
+  match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
+    NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
+    NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
+      RunnerHostFilesDesired {
+        files: [
+          RunnerHostFileDesired {
+            subject: "runner-teardown-dropin" as NonEmptyStr,
+            path: runner_unit_teardown_dropin_path() as FilePath,
+            content: gunbc_runner_unit_teardown_dropin_text(),
+            mode: RemoteFileModeOwnerReadWriteWorldRead,
+            reload: SystemdManagerReloadRequired,
+          },
+          RunnerHostFileDesired {
+            subject: "needrestart-runner-deferral" as NonEmptyStr,
+            path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
+            content: needrestart_conf_d_text(overrides: [
+              NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
+            ]),
+            mode: RemoteFileModeOwnerReadWriteWorldRead,
+            reload: NoManagerReloadRequired,
+          },
+        ],
+      }
+  }
+}
+
+// ── The subject host ─────────────────────────────────────────────────────────────────────────────
+
+type RunnerHostFileSubject {
+  host: HostIdentity
+  target: SshTarget
+  readback_unit: NonEmptyStr
+}
+
+type RunnerHostFileSubjectAdmission
+  = RunnerHostFileSubjectAdmitted { subject: RunnerHostFileSubject }
+  | RunnerHostFileSubjectRefused { cause: String }
+
+// A host with no runner deploy row has no slots to protect and no declared administrator, and a host
+// whose deploy row names no desired slot has no unit to read the teardown back from; both refuse
+// rather than converging files nothing would consume.
+fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmission {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployUnmodeled { host: h } =>
+      RunnerHostFileSubjectRefused {
+        cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so it is not a runner host"], ""),
+      }
+    RunnerHostDeployFound { deploy: d } =>
+      if !bootstrap_principal_is_not_the_grantee(bootstrap: executor_bootstrap_principal, deploy: d) {
+        RunnerHostFileSubjectRefused {
+          cause: join(["runner_host_file_converge: the administrator principal ", executor_bootstrap_principal.login as String, " is the job user on ", host as String, ", so the account that writes root-evaluated files would be the one CI jobs run as"], ""),
+        }
+      } else {
+        match list_head(desired_runner_slot_members(deploy: d)) {
+          HeadAbsent =>
+            RunnerHostFileSubjectRefused {
+              cause: join(["runner_host_file_converge: ", host as String, " has no desired runner slot, so no unit exists to read the teardown back from"], ""),
+            }
+          HeadFound { value: m } =>
+            RunnerHostFileSubjectAdmitted {
+              subject: RunnerHostFileSubject {
+                host: host,
+                target: SshTarget {
+                  endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+                  principal: executor_bootstrap_principal.login,
+                },
+                readback_unit: runner_unit_name_of_registration(registration_name: m.instance_name),
+              },
+            }
+        }
+      }
+  }
+}
+
+// ── Observation and plan (pure) ──────────────────────────────────────────────────────────────────
+
+type RunnerHostFileStanding
+  = HostFileIdentical
+  | HostFileDiffers
+  | HostFileAbsent
+  | HostFileUnobservable { reason: String }
+
+// `test -e` answers 0 or 1 and nothing else on its own; any other exit means the test did not run.
+fn classify_host_file_presence(exit_code: Int, stderr: String) -> RunnerHostFileStanding? {
+  if exit_code == 0 {
+    none
+  } else if exit_code == 1 {
+    Present { value: HostFileAbsent }
+  } else {
+    Present { value: HostFileUnobservable { reason: join(["presence test exit=", to_string(exit_code), " ", trim(s: stderr)], "") } }
+  }
+}
+
+type RunnerHostFileAction
+  = HostFileLeaveInPlace
+  | HostFileWrite
+  | HostFileActionRefused { reason: String }
+
+fn runner_host_file_action(standing: RunnerHostFileStanding) -> RunnerHostFileAction {
+  match standing {
+    HostFileIdentical => HostFileLeaveInPlace
+    HostFileDiffers => HostFileWrite
+    HostFileAbsent => HostFileWrite
+    HostFileUnobservable { reason: r } => HostFileActionRefused { reason: r }
+  }
+}
+
+fn runner_host_file_standing_wire(standing: RunnerHostFileStanding) -> String {
+  match standing {
+    HostFileIdentical => "identical"
+    HostFileDiffers => "differs"
+    HostFileAbsent => "absent"
+    HostFileUnobservable { reason: r } => concat("unobservable ", r)
+  }
+}
+
+fn runner_host_file_action_wire(action: RunnerHostFileAction) -> String {
+  match action {
+    HostFileLeaveInPlace => "leave-in-place"
+    HostFileWrite => "write"
+    HostFileActionRefused { reason: r } => concat("REFUSED ", r)
+  }
+}
+
+type RunnerHostFilePlanned {
+  file: RunnerHostFileDesired
+  standing: RunnerHostFileStanding
+  action: RunnerHostFileAction
+}
+
+// ── The teardown read-back (pure) ────────────────────────────────────────────────────────────────
+
+type RunnerTeardownStanding
+  = TeardownEffective
+  | TeardownNotEffective { kill_mode: String, exit_type: String }
+  | TeardownUnobservable { reason: String }
+
+// THE LOADED UNIT IS THE SUBJECT, NOT THE FILE. A drop-in that landed byte-exact can still lose to a
+// later-sorted drop-in, be ignored by a systemd too old to know ExitType=, or sit unread because no
+// reload happened; `systemctl show` answers what the manager will actually do at the next stop, which
+// is the property the drop-in exists for.
+fn classify_runner_teardown(
+  kill_mode_observed: String,
+  exit_type_observed: String,
+  intent: RunnerUnitLifecycleIntent,
+) -> RunnerTeardownStanding {
+  if trim(s: kill_mode_observed) == systemd_kill_mode_wire(mode: intent.kill_mode)
+      && trim(s: exit_type_observed) == systemd_exit_type_wire(exit_type: intent.exit_type) {
+    TeardownEffective
+  } else {
+    TeardownNotEffective { kill_mode: trim(s: kill_mode_observed), exit_type: trim(s: exit_type_observed) }
+  }
+}
+
+fn runner_teardown_standing_wire(standing: RunnerTeardownStanding) -> String {
+  match standing {
+    TeardownEffective => "effective"
+    TeardownNotEffective { kill_mode: k, exit_type: e } =>
+      join(["NOT-EFFECTIVE KillMode=", k, " ExitType=", e], "")
+    TeardownUnobservable { reason: r } => concat("UNOBSERVABLE ", r)
+  }
+}
+
+// ── Remote legs ──────────────────────────────────────────────────────────────────────────────────
+
+type RunnerHostPrivilegeStanding
+  = AdministratorPrivilegeAvailable
+  | AdministratorPrivilegeRefused { reason: String }
+
+func observe_runner_host_administrator_privilege(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+) -> RunnerHostPrivilegeStanding
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: ["sudo", "-n", "true"]) {
+    TypedArgvExecRefused { reason: why } => AdministratorPrivilegeRefused { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        AdministratorPrivilegeAvailable
+      } else {
+        AdministratorPrivilegeRefused {
+          reason: join(["`sudo -n true` as ", subject.target.principal as String, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], ""),
+        }
+      }
+  }
+}
+
+fn runner_host_file_write_admission(file: RunnerHostFileDesired) -> TypedRemoteFileWriteAdmission {
+  typed_remote_file_write_seal(path: file.path, content: file.content, allowed_scope: runner_host_file_scope)
+}
+
+fn runner_host_file_standing_of_report(report: RemoteFileComparisonReport) -> RunnerHostFileStanding {
+  match report {
+    ComparisonIdentical => HostFileIdentical
+    ComparisonDiffers { reason: _ } => HostFileDiffers
+    ComparisonUnavailable { reason: r } => HostFileUnobservable { reason: r }
+  }
+}
+
+// THE PLAN'S "IDENTICAL" AND THE APPLY'S "CONVERGED" ARE ONE JUDGMENT OVER ONE LEG. The comparison is
+// typed_remote_file_write's own far-side `cmp -s -` with the declared bytes on stdin, classified by
+// its own exit vocabulary, so an observation cannot call a file converged that the write's read-back
+// would call different.
+func observe_runner_host_file(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  file: RunnerHostFileDesired,
+) -> RunnerHostFileStanding
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: ["test", "-e", file.path as String]) {
+    TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }
+    TypedArgvExecConverged { result: presence } =>
+      match classify_host_file_presence(exit_code: presence.exit_code, stderr: presence.stderr) {
+        Present { value: settled } => settled
+        Absent =>
+          match runner_host_file_write_admission(file: file) {
+            TypedRemoteFileWriteAdmissionRefused { cause: c } => HostFileUnobservable { reason: c as String }
+            TypedRemoteFileWriteAdmitted { write: w } =>
+              match typed_remote_file_step(
+                target: subject.target,
+                context: context,
+                raws: typed_remote_file_compare_argv(write: w),
+                stdin_payload: w.content,
+              ) {
+                Absent => HostFileUnobservable { reason: "comparison argv refused as non-portable under the far-side shell re-parse allowlist" }
+                Present { value: back } =>
+                  runner_host_file_standing_of_report(
+                    report: classify_typed_remote_file_comparison(write: w, compare_exit_code: back.exit_code, compare_stderr: back.stderr),
+                  )
+              }
+          }
+      }
+  }
+}
+
+func observe_runner_teardown(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+) -> RunnerTeardownStanding
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: ["systemctl", "show", "-p", "KillMode", "--value", subject.readback_unit as String]) {
+    TypedArgvExecRefused { reason: why } => TeardownUnobservable { reason: why }
+    TypedArgvExecConverged { result: k } =>
+      if !k.success {
+        TeardownUnobservable { reason: join(["systemctl show KillMode exit=", to_string(k.exit_code), " ", trim(s: k.stderr)], "") }
+      } else {
+        match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: ["systemctl", "show", "-p", "ExitType", "--value", subject.readback_unit as String]) {
+          TypedArgvExecRefused { reason: why } => TeardownUnobservable { reason: why }
+          TypedArgvExecConverged { result: e } =>
+            if !e.success {
+              TeardownUnobservable { reason: join(["systemctl show ExitType exit=", to_string(e.exit_code), " ", trim(s: e.stderr)], "") }
+            } else {
+              classify_runner_teardown(kill_mode_observed: k.stdout, exit_type_observed: e.stdout, intent: gunbc_runner_lifecycle_intent)
+            }
+        }
+      }
+  }
+}
+
+// ── Apply ────────────────────────────────────────────────────────────────────────────────────────
+
+type RunnerHostFileConvergeMode
+  = RunnerHostFilesObserveOnly
+  | RunnerHostFilesApply
+
+type RunnerHostFileOutcome
+  = HostFileLeftInPlace
+  | HostFileConvergedByWrite { converged: RemoteFileConverged }
+  | HostFileWriteRefused { step: String, reason: String }
+  | HostFileNotAttempted { reason: String }
+  | HostFileNotAppliedObserveOnly
+
+type RunnerHostFileResult {
+  planned: RunnerHostFilePlanned
+  outcome: RunnerHostFileOutcome
+}
+
+func apply_runner_host_file(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  planned: RunnerHostFilePlanned,
+) -> RunnerHostFileOutcome
+  uses net: Network
+{
+  match planned.action {
+    HostFileLeaveInPlace => HostFileLeftInPlace
+    HostFileActionRefused { reason: r } => HostFileNotAttempted { reason: r }
+    HostFileWrite =>
+      match converge_typed_remote_file(
+        target: subject.target,
+        context: context,
+        admission: runner_host_file_write_admission(file: planned.file),
+        mode: planned.file.mode,
+        privilege: RemoteFileViaNonInteractiveSudo,
+      ) {
+        TypedRemoteFileConverged { converged: c } => HostFileConvergedByWrite { converged: c }
+        TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
+      }
+  }
+}
+
+fn runner_host_file_outcome_settled(outcome: RunnerHostFileOutcome) -> Bool {
+  match outcome {
+    HostFileLeftInPlace => true
+    HostFileConvergedByWrite { converged: _ } => true
+    HostFileWriteRefused { step: _, reason: _ } => false
+    HostFileNotAttempted { reason: _ } => false
+    HostFileNotAppliedObserveOnly => false
+  }
+}
+
+fn runner_host_file_outcome_wire(outcome: RunnerHostFileOutcome) -> String {
+  match outcome {
+    HostFileLeftInPlace => "left-in-place"
+    HostFileConvergedByWrite { converged: _ } => "written-and-read-back"
+    HostFileWriteRefused { step: st, reason: why } => join(["REFUSED step=", st, " ", why], "")
+    HostFileNotAttempted { reason: why } => concat("NOT-ATTEMPTED ", why)
+    HostFileNotAppliedObserveOnly => "observe-only"
+  }
+}
+
+// A RELOAD IS OWED ONLY BY A WRITE THAT LANDED. A write refused at the rename leaves the destination
+// as it was, so reloading for it would be a manager-wide effect on behalf of a change that did not
+// happen; a file left in place owes nothing.
+fn runner_host_manager_reload_owed(results: List<RunnerHostFileResult>) -> Bool {
+  fold(results, init: false, f: (owed, r) =>
+    owed || match r.outcome {
+      HostFileConvergedByWrite { converged: _ } =>
+        match r.planned.file.reload {
+          SystemdManagerReloadRequired => true
+          NoManagerReloadRequired => false
+        }
+      HostFileLeftInPlace => false
+      HostFileWriteRefused { step: _, reason: _ } => false
+      HostFileNotAttempted { reason: _ } => false
+      HostFileNotAppliedObserveOnly => false
+    })
+}
+
+type RunnerHostManagerReload
+  = ManagerReloadNotOwed
+  | ManagerReloaded
+  | ManagerReloadRefused { reason: String }
+
+func reload_runner_host_manager(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+) -> RunnerHostManagerReload
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: ["sudo", "-n", "systemctl", "daemon-reload"]) {
+    TypedArgvExecRefused { reason: why } => ManagerReloadRefused { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        ManagerReloaded
+      } else {
+        ManagerReloadRefused { reason: join(["daemon-reload exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+      }
+  }
+}
+
+fn runner_host_manager_reload_wire(reload: RunnerHostManagerReload) -> String {
+  match reload {
+    ManagerReloadNotOwed => "not-owed"
+    ManagerReloaded => "reloaded"
+    ManagerReloadRefused { reason: why } => concat("REFUSED ", why)
+  }
+}
+
+fn runner_host_privilege_wire(privilege: RunnerHostPrivilegeStanding) -> String {
+  match privilege {
+    AdministratorPrivilegeAvailable => "available"
+    AdministratorPrivilegeRefused { reason: why } => concat("REFUSED ", why)
+  }
+}
+
+// ── The run ──────────────────────────────────────────────────────────────────────────────────────
+
+type RunnerHostFileRun {
+  subject: RunnerHostFileSubject
+  mode: RunnerHostFileConvergeMode
+  privilege: RunnerHostPrivilegeStanding
+  results: List<RunnerHostFileResult>
+  reload: RunnerHostManagerReload
+  teardown: RunnerTeardownStanding
+}
+
+func plan_runner_host_file(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  file: RunnerHostFileDesired,
+) -> RunnerHostFilePlanned
+  uses net: Network
+{
+  let standing = observe_runner_host_file(subject: subject, context: context, file: file)
+  RunnerHostFilePlanned { file: file, standing: standing, action: runner_host_file_action(standing: standing) }
+}
+
+// ORDER: privilege, observe every file, write the ones that differ, reload if a landed write owes it,
+// then read the loaded teardown back. The privilege leg runs FIRST and gates every write, so a host
+// where the declared administrator cannot sudo reports that by name instead of three identical
+// failures at the first staged leg of each file. Observation does not need privilege and still runs,
+// so an observe-only dispatch against such a host still says what WOULD be written.
+func run_runner_host_files(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  files: List<RunnerHostFileDesired>,
+  mode: RunnerHostFileConvergeMode,
+) -> RunnerHostFileRun
+  uses net: Network
+{
+  let privilege = observe_runner_host_administrator_privilege(subject: subject, context: context)
+  let planned = map(files, f => plan_runner_host_file(subject: subject, context: context, file: f))
+  let results = map(planned, p =>
+    RunnerHostFileResult {
+      planned: p,
+      outcome: match mode {
+        RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly
+        RunnerHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeRefused { reason: why } => HostFileNotAttempted { reason: concat("administrator privilege refused: ", why) }
+            AdministratorPrivilegeAvailable => apply_runner_host_file(subject: subject, context: context, planned: p)
+          }
+      },
+    })
+  let reload = if runner_host_manager_reload_owed(results: results) {
+    reload_runner_host_manager(subject: subject, context: context)
+  } else {
+    ManagerReloadNotOwed
+  }
+  RunnerHostFileRun {
+    subject: subject,
+    mode: mode,
+    privilege: privilege,
+    results: results,
+    reload: reload,
+    teardown: observe_runner_teardown(subject: subject, context: context),
+  }
+}
+
+fn runner_host_file_run_mode_wire(mode: RunnerHostFileConvergeMode) -> String {
+  match mode {
+    RunnerHostFilesObserveOnly => "observe"
+    RunnerHostFilesApply => "apply"
+  }
+}
+
+fn runner_host_file_planned_write(p: RunnerHostFilePlanned) -> Bool {
+  match p.action {
+    HostFileWrite => true
+    HostFileLeaveInPlace => false
+    HostFileActionRefused { reason: _ } => false
+  }
+}
+
+fn runner_host_file_planned_refused(p: RunnerHostFilePlanned) -> Bool {
+  match p.action {
+    HostFileActionRefused { reason: _ } => true
+    HostFileWrite => false
+    HostFileLeaveInPlace => false
+  }
+}
+
+fn runner_teardown_observed(t: RunnerTeardownStanding) -> Bool {
+  match t {
+    TeardownEffective => true
+    TeardownNotEffective { kill_mode: _, exit_type: _ } => true
+    TeardownUnobservable { reason: _ } => false
+  }
+}
+
+fn runner_teardown_effective(t: RunnerTeardownStanding) -> Bool {
+  match t {
+    TeardownEffective => true
+    TeardownNotEffective { kill_mode: _, exit_type: _ } => false
+    TeardownUnobservable { reason: _ } => false
+  }
+}
+
+// WHAT EACH MODE MAY CALL SUCCESS. Observe succeeds when it could SEE everything -- privilege probed,
+// every file classified, the loaded teardown read -- whatever it saw; drift is its finding, not its
+// failure. Apply succeeds only when the host now holds every declared file and the manager reports the
+// declared teardown. A reload refused after a landed write is a failure even though the bytes are
+// right, because the bytes are not what the manager will act on.
+fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
+  match run.mode {
+    RunnerHostFilesObserveOnly =>
+      (match run.privilege {
+        AdministratorPrivilegeAvailable => true
+        AdministratorPrivilegeRefused { reason: _ } => false
+      })
+        && !fold(run.results, init: false, f: (any, r) => any || runner_host_file_planned_refused(p: r.planned))
+        && runner_teardown_observed(t: run.teardown)
+    RunnerHostFilesApply =>
+      fold(run.results, init: true, f: (all, r) => all && runner_host_file_outcome_settled(outcome: r.outcome))
+        && (match run.reload {
+          ManagerReloadNotOwed => true
+          ManagerReloaded => true
+          ManagerReloadRefused { reason: _ } => false
+        })
+        && runner_teardown_effective(t: run.teardown)
+  }
+}
+
+fn runner_host_file_result_line(r: RunnerHostFileResult) -> String {
+  join([
+    "file ", r.planned.file.subject as String,
+    " path=", r.planned.file.path as String,
+    " standing=", runner_host_file_standing_wire(standing: r.planned.standing),
+    " action=", runner_host_file_action_wire(action: r.planned.action),
+    " outcome=", runner_host_file_outcome_wire(outcome: r.outcome),
+    "\n",
+  ], "")
+}
+
+fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
+  join([
+    "host=", run.subject.host as String,
+    " mode=", runner_host_file_run_mode_wire(mode: run.mode),
+    " principal=", run.subject.target.principal as String,
+    " endpoint=", run.subject.target.endpoint as String, "\n",
+    "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
+    join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
+    "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
+    "manager-reload=", runner_host_manager_reload_wire(reload: run.reload), "\n",
+    "teardown unit=", run.subject.readback_unit as String, " ", runner_teardown_standing_wire(standing: run.teardown), "\n",
+    "terminal=", if runner_host_file_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
+  ], "")
+}
+
+// ── The CI entries ───────────────────────────────────────────────────────────────────────────────
+
+data runner_host_file_converge_attempt_raw: String = "runner-host-file-converge-ci"
+
+data runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
+
+// ONE HOST PER RUN, NAMED BY THE DISPATCH. The fleet-converge workflow already carries the operator's
+// chosen host in FLEET_CONVERGE_EXPECTED_HOST; an unset host refuses rather than fanning a root-file
+// write across the fleet from an empty variable.
+func runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
+  uses net: Network
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: join(["runner_host_file_converge: ", v, " ", d, "; one host per run, named by the dispatch"], ""))
+    ActionsVariablePresent { value: raw_host } =>
+      match runner_host_file_subject(host: raw_host as HostIdentity) {
+        RunnerHostFileSubjectRefused { cause: c } => exit_failure(reason: c)
+        RunnerHostFileSubjectAdmitted { subject: subject } =>
+          match runner_host_file_desired_population() {
+            RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
+            RunnerHostFilesDesired { files: files } =>
+              match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
+                FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+                FleetSshContextReady { context: context, receipt: context_receipt } => {
+                  let run = run_runner_host_files(subject: subject, context: context, files: files, mode: mode)
+                  let body = join([
+                    "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+                    context_receipt,
+                    runner_host_file_run_text(run: run),
+                  ], "")
+                  let w = Filesystem.Write(path: runner_host_file_converge_receipt_path, content: body)
+                  if w.success == false {
+                    exit_failure(reason: join(["runner_host_file_converge: receipt write failed: ", w.error, "\n", body], ""))
+                  } else if runner_host_file_run_succeeded(run: run) == false {
+                    exit_failure(reason: body)
+                  } else {
+                    ExitSuccess
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+func runner_host_file_observe_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  runner_host_file_ci_wet(mode: RunnerHostFilesObserveOnly)
+}
+
+func runner_host_file_converge_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  runner_host_file_ci_wet(mode: RunnerHostFilesApply)
+}

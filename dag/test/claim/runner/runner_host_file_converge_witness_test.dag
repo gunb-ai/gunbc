@@ -1,0 +1,381 @@
+module test.claim.runner_host_file_converge_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.systemd.unit_file { ExitTypeMain, KillModeProcess, serialize_systemd_drop_in }
+import extdeps.needrestart {
+  NeedrestartUnitNamePrefixAdmitted,
+  NeedrestartUnitNamePrefixRefused,
+  needrestart_unit_name_prefix,
+  needrestart_unit_name_prefix_regex,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.runner_unit {
+  RunnerUnitLifecycleIntent,
+  gunbc_runner_lifecycle_intent,
+  gunbc_runner_listener_is_main_process,
+  lifecycle_intent_cannot_orphan,
+  runner_unit_prefix,
+  runner_unit_name_of_registration,
+}
+import gunbc.runner_unit_file {
+  runner_unit_teardown_dropin,
+  runner_unit_teardown_dropin_path,
+  gunbc_runner_unit_teardown_dropin_text,
+}
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+}
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import gunbc.runner_host_file_converge {
+  RunnerHostFileDesired,
+  RunnerHostFilesDesired,
+  RunnerHostFilesDesiredRefused,
+  runner_host_file_desired_population,
+  RunnerHostFileSubject,
+  RunnerHostFileSubjectAdmitted,
+  RunnerHostFileSubjectRefused,
+  runner_host_file_subject,
+  HostFileIdentical,
+  HostFileDiffers,
+  HostFileAbsent,
+  HostFileUnobservable,
+  classify_host_file_presence,
+  RunnerHostFileStanding,
+  HostFileLeaveInPlace,
+  HostFileWrite,
+  HostFileActionRefused,
+  runner_host_file_action,
+  RunnerHostFilePlanned,
+  RunnerHostFileResult,
+  HostFileLeftInPlace,
+  HostFileConvergedByWrite,
+  HostFileWriteRefused,
+  HostFileNotAttempted,
+  HostFileNotAppliedObserveOnly,
+  runner_host_manager_reload_owed,
+  TeardownEffective,
+  TeardownNotEffective,
+  TeardownUnobservable,
+  classify_runner_teardown,
+  RunnerHostFileRun,
+  RunnerHostFileConvergeMode,
+  RunnerTeardownStanding,
+  RunnerHostFilesObserveOnly,
+  RunnerHostFilesApply,
+  AdministratorPrivilegeAvailable,
+  AdministratorPrivilegeRefused,
+  ManagerReloadNotOwed,
+  ManagerReloaded,
+  ManagerReloadRefused,
+  runner_host_file_run_succeeded,
+  runner_host_file_write_admission,
+  run_runner_host_files,
+}
+
+// Every claim here is a function of declared rows except the route test, whose every remote leg is
+// answered by the hermetic ssh mock; nothing reads the live tree.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── The bytes, against independently authored oracles ─────────────────────────────────────────────
+
+// THE ORACLE IS WRITTEN HERE, NOT DERIVED. systemd.unit(5) drop-in grammar: a section header, one
+// directive per line, a terminating newline. If the renderer and this string ever agree because both
+// moved, the witness has become a restatement, so the literal stays literal.
+data expected_teardown_dropin_text: String = "[Service]\nExitType=cgroup\nKillMode=control-group\n"
+
+test fn the_teardown_dropin_carries_the_declared_pair_and_nothing_else() -> Bool {
+  gunbc_runner_unit_teardown_dropin_text() == expected_teardown_dropin_text
+}
+
+test fn the_teardown_dropin_lands_in_the_runner_template_dropin_directory() -> Bool {
+  (runner_unit_teardown_dropin_path() as String) == "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf"
+}
+
+// THE DISCRIMINATING RED, AS THE LIVE FLEET CARRIES IT. `KillMode=process` with systemd's default
+// `ExitType=main` is what srv1 reported on 2026-09-11. Rendering that pair through the same function
+// must produce different bytes, and the orphan predicate must refuse it, or the drop-in is a
+// decoration that would read green whatever the fleet did.
+test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
+  let live = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
+  serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: live)) != expected_teardown_dropin_text
+    && !lifecycle_intent_cannot_orphan(intent: live, listener_is_main_process: gunbc_runner_listener_is_main_process)
+    && lifecycle_intent_cannot_orphan(intent: gunbc_runner_lifecycle_intent, listener_is_main_process: gunbc_runner_listener_is_main_process)
+}
+
+// The needrestart snippet, against upstream's syntax: an assignment into the override_rc hashref,
+// keyed by a start-anchored quotemeta'd prefix, valued false so the restart is deferred. Perl `die`s
+// on a malformed conf.d file, so these bytes are not cosmetic.
+data expected_needrestart_text: String = "$nrconf\{override_rc\}->\{qr(^actions\\-runner\\@)\} = 0;\n"
+
+fn desired_content(subject: String) -> String {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => ""
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.content } else { acc })
+  }
+}
+
+fn desired_path(subject: String) -> String {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => ""
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.path as String } else { acc })
+  }
+}
+
+test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool {
+  desired_content(subject: "needrestart-runner-deferral") == expected_needrestart_text
+    && desired_path(subject: "needrestart-runner-deferral") == "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"
+}
+
+test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs } =>
+      length(fs) == 2
+        && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
+  }
+}
+
+// The deferral key is derived from the SAME prefix every slot unit name is derived from, so a rename
+// of the unit family moves both or neither.
+test fn every_slot_unit_name_begins_with_the_deferred_prefix() -> Bool {
+  starts_with(s: runner_unit_name_of_registration(registration_name: "srv1-01" as NonEmptyStr) as String, prefix: runner_unit_prefix)
+    && starts_with(s: runner_unit_name_of_registration(registration_name: "srv4-21" as NonEmptyStr) as String, prefix: runner_unit_prefix)
+}
+
+test fn quotemeta_escapes_every_non_word_character_of_the_prefix() -> Bool {
+  match needrestart_unit_name_prefix(raw: "a.b-c:d_e@f") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => false
+    NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
+      needrestart_unit_name_prefix_regex(prefix: p) == "qr(^a\\.b\\-c\\:d_e\\@f)"
+  }
+}
+
+// An empty prefix would match every service, and a character outside systemd's unit-name alphabet
+// could only come from a caller who meant something other than a unit name. Both refuse.
+test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
+  let empty = match needrestart_unit_name_prefix(raw: "") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => true
+    NeedrestartUnitNamePrefixAdmitted { prefix: _ } => false
+  }
+  let spaced = match needrestart_unit_name_prefix(raw: "actions runner") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => true
+    NeedrestartUnitNamePrefixAdmitted { prefix: _ } => false
+  }
+  let paren = match needrestart_unit_name_prefix(raw: "a)b") {
+    NeedrestartUnitNamePrefixRefused { cause: _ } => true
+    NeedrestartUnitNamePrefixAdmitted { prefix: _ } => false
+  }
+  empty && spaced && paren
+}
+
+// Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
+// would refuse at the seal rather than reaching a sudo leg.
+test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: true, f: (ok, f) => ok && match runner_host_file_write_admission(file: f) {
+        TypedRemoteFileWriteAdmitted { write: _ } => true
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+      })
+  }
+}
+
+// ── The subject ──────────────────────────────────────────────────────────────────────────────────
+
+test fn a_runner_host_admits_as_the_declared_administrator_with_a_slot_unit_to_read_back() -> Bool {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => false
+    RunnerHostFileSubjectAdmitted { subject: s } =>
+      (s.target.principal as String) == "ubuntu"
+        && (s.target.endpoint as String) == "srv1"
+        && (s.readback_unit as String) == "actions-runner@srv1-01.service"
+  }
+}
+
+test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
+  match runner_host_file_subject(host: "srv9" as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => true
+    RunnerHostFileSubjectAdmitted { subject: _ } => false
+  }
+}
+
+// ── Observation, plan and read-back judgments ────────────────────────────────────────────────────
+
+fn standing_is_absent(standing: RunnerHostFileStanding) -> Bool {
+  match standing {
+    HostFileAbsent => true
+    HostFileIdentical => false
+    HostFileDiffers => false
+    HostFileUnobservable { reason: _ } => false
+  }
+}
+
+fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
+  match standing {
+    HostFileUnobservable { reason: _ } => true
+    HostFileAbsent => false
+    HostFileIdentical => false
+    HostFileDiffers => false
+  }
+}
+
+test fn presence_zero_continues_one_is_absent_other_is_unobservable() -> Bool {
+  let continues = match classify_host_file_presence(exit_code: 0, stderr: "") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let absent = match classify_host_file_presence(exit_code: 1, stderr: "") {
+    Present { value: st } => standing_is_absent(standing: st)
+    Absent => false
+  }
+  let unobservable = match classify_host_file_presence(exit_code: 2, stderr: "test: extra argument") {
+    Present { value: st } => standing_is_unobservable(standing: st)
+    Absent => false
+  }
+  continues && absent && unobservable
+}
+
+// A failure to look plans no write: an unobservable file is refused, never overwritten on the
+// strength of not having been read.
+test fn only_a_seen_difference_or_absence_plans_a_write() -> Bool {
+  let leave = match runner_host_file_action(standing: HostFileIdentical) { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false }
+  let differs = match runner_host_file_action(standing: HostFileDiffers) { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false }
+  let absent = match runner_host_file_action(standing: HostFileAbsent) { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false }
+  let unseen = match runner_host_file_action(standing: HostFileUnobservable { reason: "permission denied" }) { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false }
+  leave && differs && absent && unseen
+}
+
+test fn the_declared_teardown_read_back_is_effective() -> Bool {
+  match classify_runner_teardown(kill_mode_observed: "control-group\n", exit_type_observed: "cgroup", intent: gunbc_runner_lifecycle_intent) {
+    TeardownEffective => true
+    TeardownNotEffective { kill_mode: _, exit_type: _ } => false
+    TeardownUnobservable { reason: _ } => false
+  }
+}
+
+// THE READ-BACK RED: srv1's live reading, and each half alone. `mixed` also reaches the whole cgroup,
+// but it is not the declared mode, and the read-back asks whether the manager holds what was declared.
+test fn the_live_reading_and_each_half_alone_are_not_effective() -> Bool {
+  let live = match classify_runner_teardown(kill_mode_observed: "process", exit_type_observed: "main", intent: gunbc_runner_lifecycle_intent) {
+    TeardownNotEffective { kill_mode: k, exit_type: e } => k == "process" && e == "main"
+    TeardownEffective => false
+    TeardownUnobservable { reason: _ } => false
+  }
+  let kill_only = match classify_runner_teardown(kill_mode_observed: "control-group", exit_type_observed: "main", intent: gunbc_runner_lifecycle_intent) {
+    TeardownNotEffective { kill_mode: _, exit_type: _ } => true
+    TeardownEffective => false
+    TeardownUnobservable { reason: _ } => false
+  }
+  let exit_only = match classify_runner_teardown(kill_mode_observed: "mixed", exit_type_observed: "cgroup", intent: gunbc_runner_lifecycle_intent) {
+    TeardownNotEffective { kill_mode: _, exit_type: _ } => true
+    TeardownEffective => false
+    TeardownUnobservable { reason: _ } => false
+  }
+  live && kill_only && exit_only
+}
+
+// ── Reload and terminal ──────────────────────────────────────────────────────────────────────────
+
+fn teardown_desired() -> RunnerHostFileDesired? {
+  match runner_host_file_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => none
+    RunnerHostFilesDesired { files: fs } =>
+      fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-teardown-dropin" { Present { value: f } } else { acc })
+  }
+}
+
+// A write refused mid-sequence changed nothing the manager reads, and a file left in place changed
+// nothing at all; neither owes a manager-wide reload.
+test fn a_reload_is_not_owed_by_a_refused_write_or_a_file_left_in_place() -> Bool {
+  match teardown_desired() {
+    Absent => false
+    Present { value: f } => {
+      let planned = RunnerHostFilePlanned { file: f, standing: HostFileDiffers, action: HostFileWrite }
+      !runner_host_manager_reload_owed(results: [
+        RunnerHostFileResult { planned: planned, outcome: HostFileWriteRefused { step: "rename", reason: "sudo: a password is required" } },
+        RunnerHostFileResult { planned: planned, outcome: HostFileLeftInPlace },
+        RunnerHostFileResult { planned: planned, outcome: HostFileNotAttempted { reason: "administrator privilege refused" } },
+        RunnerHostFileResult { planned: planned, outcome: HostFileNotAppliedObserveOnly },
+      ])
+    }
+  }
+}
+
+fn witness_subject() -> RunnerHostFileSubject? {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectAdmitted { subject: s } => Present { value: s }
+    RunnerHostFileSubjectRefused { cause: _ } => none
+  }
+}
+
+fn settled_run(mode: RunnerHostFileConvergeMode, teardown: RunnerTeardownStanding) -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      match teardown_desired() {
+        Absent => false
+        Present { value: f } =>
+          runner_host_file_run_succeeded(run: RunnerHostFileRun {
+            subject: s,
+            mode: mode,
+            privilege: AdministratorPrivilegeAvailable,
+            results: [RunnerHostFileResult {
+              planned: RunnerHostFilePlanned { file: f, standing: HostFileIdentical, action: HostFileLeaveInPlace },
+              outcome: match mode { RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly RunnerHostFilesApply => HostFileLeftInPlace },
+            }],
+            reload: ManagerReloadNotOwed,
+            teardown: teardown,
+          })
+      }
+  }
+}
+
+// Observe succeeds on a host whose teardown is NOT yet effective -- that is what it exists to report
+// -- and apply does not: a host whose files are byte-exact but whose manager still reports the old
+// pair is not converged.
+test fn observe_reports_a_live_old_teardown_while_apply_refuses_it() -> Bool {
+  settled_run(mode: RunnerHostFilesObserveOnly, teardown: TeardownNotEffective { kill_mode: "process", exit_type: "main" })
+    && !settled_run(mode: RunnerHostFilesApply, teardown: TeardownNotEffective { kill_mode: "process", exit_type: "main" })
+    && settled_run(mode: RunnerHostFilesApply, teardown: TeardownEffective)
+    && !settled_run(mode: RunnerHostFilesObserveOnly, teardown: TeardownUnobservable { reason: "systemctl show exit=1" })
+}
+
+// ── The route, over the hermetic ssh fixture ─────────────────────────────────────────────────────
+
+// THE WHOLE APPLY ROUTE RUNS: privilege leg, presence and far-side comparison for both files, then the
+// systemctl read-back. The mock answers every leg with exit 0, so both files classify identical and
+// NOTHING is written or reloaded -- and the mock's stdout is not `control-group`, so the route must end
+// refused on the read-back. A route that reported success here would be claiming a teardown no manager
+// reported.
+test fn the_apply_route_writes_nothing_already_identical_and_refuses_an_unreported_teardown() -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      match fleet_ssh_execution_context_hermetic_witness_fixture() {
+        Absent => false
+        Present { value: context } =>
+          match runner_host_file_desired_population() {
+            RunnerHostFilesDesiredRefused { cause: _ } => false
+            RunnerHostFilesDesired { files: fs } => {
+              let run = run_runner_host_files(subject: s, context: context, files: fs, mode: RunnerHostFilesApply)
+              let privileged = match run.privilege { AdministratorPrivilegeAvailable => true AdministratorPrivilegeRefused { reason: _ } => false }
+              let left = fold(run.results, init: true, f: (ok, r) => ok && match r.outcome {
+                HostFileLeftInPlace => true
+                HostFileNotAppliedObserveOnly => false
+                HostFileWriteRefused { step: _, reason: _ } => false
+                HostFileNotAttempted { reason: _ } => false
+                HostFileConvergedByWrite { converged: _ } => false
+              })
+              let not_reloaded = match run.reload { ManagerReloadNotOwed => true ManagerReloaded => false ManagerReloadRefused { reason: _ } => false }
+              let unreported = match run.teardown { TeardownNotEffective { kill_mode: _, exit_type: _ } => true TeardownEffective => false TeardownUnobservable { reason: _ } => false }
+              privileged && length(run.results) == 2 && left && not_reloaded && unreported && !runner_host_file_run_succeeded(run: run)
+            }
+          }
+      }
+  }
+}
