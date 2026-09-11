@@ -380,6 +380,7 @@ type StoreLookupRefusal
   | StoreLookupManifestUninterpretable { decode: ManifestDecode }
   | StoreLookupPayloadMissing { part: ArtifactOutputId }
   | StoreLookupPayloadUndeclared { part: ArtifactOutputId }
+  | StoreLookupPayloadRepeated { part: ArtifactOutputId }
   | StoreLookupContractRefused { lookup: ProviderLookup }
 
 type StoreLookup
@@ -394,10 +395,37 @@ fn store_payload_undeclared(manifest: ArtifactManifest, payloads: List<ArtifactP
   }
 }
 
+// A payload line repeated for one output id is corruption, refused like a repeated manifest part
+// (std.materialization_provider manifest_first_repeated) -- never resolved by taking the first copy,
+// which would serve bytes the second copy contradicts (review 63921).
+fn store_payload_repeated(payloads: List<ArtifactPayload>) -> ArtifactOutputId? {
+  match payloads |> filter(p => (payloads |> filter(q => q.id == p.id) |> count()) > 1) |> first() {
+    Present { value: p } => Present { value: p.id }
+    Absent => none
+  }
+}
+
 fn store_payload_missing(manifest: ArtifactManifest, payloads: List<ArtifactPayload>) -> ArtifactOutputId? {
   match manifest.parts |> filter(o => !(payloads |> any(p => p.id == o.id))) |> first() {
     Present { value: o } => Present { value: o.id }
     Absent => none
+  }
+}
+
+// The payload-line checks, in order: a payload for an output the manifest does not declare, a
+// payload repeated for one output, a manifest part with no payload. Each is its own typed refusal.
+fn store_payload_refusal(manifest: ArtifactManifest, payloads: List<ArtifactPayload>) -> StoreLookupRefusal? {
+  match store_payload_undeclared(manifest: manifest, payloads: payloads) {
+    Present { value: p } => Present { value: StoreLookupPayloadUndeclared { part: p } }
+    Absent =>
+      match store_payload_repeated(payloads: payloads) {
+        Present { value: p } => Present { value: StoreLookupPayloadRepeated { part: p } }
+        Absent =>
+          match store_payload_missing(manifest: manifest, payloads: payloads) {
+            Present { value: p } => Present { value: StoreLookupPayloadMissing { part: p } }
+            Absent => none
+          }
+      }
   }
 }
 
@@ -430,12 +458,9 @@ fn store_lookup_decide(
         StoreObjectMalformed { cause: cause } =>
           StoreLookupRefused { key: key, refusal: StoreLookupObjectMalformed { cause: cause } }
         StoreObjectDecoded { manifest: m, payloads: ps } =>
-          match store_payload_undeclared(manifest: m, payloads: ps) {
-            Present { value: p } => StoreLookupRefused { key: key, refusal: StoreLookupPayloadUndeclared { part: p } }
+          match store_payload_refusal(manifest: m, payloads: ps) {
+            Present { value: r } => StoreLookupRefused { key: key, refusal: r }
             Absent =>
-              match store_payload_missing(manifest: m, payloads: ps) {
-                Present { value: p } => StoreLookupRefused { key: key, refusal: StoreLookupPayloadMissing { part: p } }
-                Absent =>
                   match artifact_from_manifest(m: m) {
                     ManifestDecoded { artifact: a } => {
                       let served = provider_serve(
@@ -471,7 +496,6 @@ fn store_lookup_decide(
                     ManifestPartRepeated { kind: _, part: _ } =>
                       StoreLookupRefused { key: key, refusal: StoreLookupManifestUninterpretable { decode: artifact_from_manifest(m: m) } }
                   }
-              }
           }
       }
   }
@@ -638,6 +662,7 @@ fn store_lookup_refusal_tag(l: StoreLookup) -> String {
       StoreLookupManifestUninterpretable { decode: _ } => "manifest_uninterpretable"
       StoreLookupPayloadMissing { part: _ } => "payload_missing"
       StoreLookupPayloadUndeclared { part: _ } => "payload_undeclared"
+      StoreLookupPayloadRepeated { part: _ } => "payload_repeated"
       StoreLookupContractRefused { lookup: pl } => concat("contract_", provider_lookup_outcome_tag(l: pl))
     }
   )

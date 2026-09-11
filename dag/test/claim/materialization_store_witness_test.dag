@@ -352,3 +352,13 @@ test fn a_part_size_counts_utf8_bytes_not_code_points() -> Bool {
   payload_part(payload: ArtifactPayload { id: output_module_test_verdicts, content: "é€" }).bytes == byte_size(count: 5)
     && string_length("é€") == 2
 }
+
+// A payload line repeated for one declared output is corruption: it refuses, like a repeated manifest
+// part, instead of serving the first copy (review 63921). The same object without the duplicate hits.
+test fn a_repeated_payload_line_is_refused_not_resolved() -> Bool {
+  let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
+  let duplicated = replace(good, "\nend", join(["\npayload", output_module_test_verdicts as String, "forged\nend"], " "))
+  (duplicated == good) == false
+    && store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: duplicated)) == "payload_repeated"
+    && store_lookup_is_hit(l: lookup_present(req: bundle_req(), object: good))
+}
