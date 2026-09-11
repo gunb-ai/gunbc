@@ -72,6 +72,13 @@ data ebay_account_deletion_frontier_rows: List<FrontierRow> = [
     )
   ),
   frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_exemption_reason_label"),
+    reason: "the verbatim portal label is rendered by the consumer that records which exemption reason was filed, outside the public closure",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry renders the filed exemption reason through account_deletion_exemption_reason_label into a record or refusal an operator reads; a witness comparing the string does not fire this"
+    )
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_user_identifier_fields"),
     reason: "the notification's user-identifier field names are joined against persisted field names by a consumer outside the public closure",
     dissolution: unbound_dissolution(
