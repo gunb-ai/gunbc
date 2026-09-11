@@ -39,6 +39,8 @@ import gunbc.review_sheet_sheets {
   review_sheet_ensure,
   review_sheet_from_readback,
   value_ranges_from_write_plan,
+  ReadbackObserved,
+  ReadbackUnreadable,
   review_sheet_batch_value_input_option,
   review_sheet_live_access,
   review_sheet_live_access_from,
@@ -330,21 +332,53 @@ test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
     ["L2", "beta", w_standing_observed(), "skip"],
     ["L1", "alpha", w_standing_observed(), "buy"],
   ])
-  let observed = observed_sheet_from_value_range(range: range)
-  match review_sheet_from_readback(range: range, projection: projection) {
-    Noop =>
-      match judgement_for_listing(
-        observed: observed,
-        identity_column: "listing_id" as NonEmptyStr,
-        judgement_column: "judgement" as NonEmptyStr,
-        listing_id: "L1" as NonEmptyStr,
-      ) {
-        JudgementEntered { value: v } => (v as String) == "buy"
-        JudgementBlank => false
-        JudgementUnreadable { reason: _ } => false
+  let observed_read = observed_sheet_from_value_range(range: range)
+  match observed_read {
+    ReadbackUnreadable { reason: _ } => false
+    ReadbackObserved { observed: observed, tab: _ } =>
+      match review_sheet_from_readback(range: range, projection: projection) {
+        Noop =>
+          match judgement_for_listing(
+            observed: observed,
+            identity_column: "listing_id" as NonEmptyStr,
+            judgement_column: "judgement" as NonEmptyStr,
+            listing_id: "L1" as NonEmptyStr,
+          ) {
+            JudgementEntered { value: v } => (v as String) == "buy"
+            JudgementBlank => false
+            JudgementUnreadable { reason: _ } => false
+          }
+        Apply { plan: _ } => false
+        Refuse { reason: _ } => false
       }
+  }
+}
+
+test fn readback_not_a1_anchored_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "Review!B2:E200",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_from_readback(range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "not A1-anchored")
+    Noop => false
     Apply { plan: _ } => false
-    Refuse { reason: _ } => false
+  }
+}
+
+test fn unqualified_readback_range_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "A1:D4",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_from_readback(range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "unqualified A1 range")
+    Noop => false
+    Apply { plan: _ } => false
   }
 }
 
@@ -509,9 +543,10 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
                         ],
                         appends: [],
                       },
+                      tab: "Review" as NonEmptyStr,
                     ) |> first {
                       Present { value: vr } =>
-                        vr.range == "B2"
+                        vr.range == "Review!B2"
                           && match vr.values {
                             Present { value: rows } =>
                               match rows |> first {

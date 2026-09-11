@@ -2,7 +2,7 @@ module gunbc.review_sheet_sheets
 
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.upsert_decision { UpsertDecision }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure {
   EnsurePolicy,
   EnsureObserved,
@@ -98,6 +98,80 @@ fn review_sheet_batch_value_input_option() -> SheetsValueInputOption {
   InputUserEntered
 }
 
+fn sheet_qualified_a1(tab: NonEmptyStr, a1: NonEmptyStr) -> NonEmptyStr {
+  concat(tab as String, concat("!", a1 as String)) as NonEmptyStr
+}
+
+type A1ReadbackStanding
+  = A1ReadbackAnchored { tab: NonEmptyStr }
+  | A1ReadbackUnreadable { reason: NonEmptyStr }
+
+fn a1_start_cell(cells: String) -> String {
+  match cells.split(delimiter: ":") |> first {
+    Present { value: start } => start
+    Absent => cells
+  }
+}
+
+fn a1_readback_standing(range: String) -> A1ReadbackStanding {
+  let parts = range.split(delimiter: "!")
+  if (parts |> count) != 2 {
+    A1ReadbackUnreadable {
+      reason: concat("unqualified A1 range; BatchUpdate would hit the first tab: ", range) as NonEmptyStr
+    }
+  } else {
+    match parts.first() {
+      Absent =>
+        A1ReadbackUnreadable { reason: "A1 range missing sheet title" as NonEmptyStr }
+      Present { value: tab } =>
+        if (tab == "") || string_contains(s: tab, pattern: "'") {
+          A1ReadbackUnreadable {
+            reason: concat("A1 sheet title unreadable: ", tab) as NonEmptyStr
+          }
+        } else {
+          match parts.skip(n: 1).first() {
+            Absent =>
+              A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+            Present { value: cells } =>
+              if a1_start_cell(cells: cells) == "A1" {
+                A1ReadbackAnchored { tab: tab as NonEmptyStr }
+              } else {
+                A1ReadbackUnreadable {
+                  reason: concat(
+                    "readback not A1-anchored; write A1 would not match the compared cells: ",
+                    range,
+                  ) as NonEmptyStr
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn qualify_write_plan(plan: ReviewSheetWritePlan, tab: NonEmptyStr) -> ReviewSheetWritePlan {
+  ReviewSheetWritePlan {
+    patches: map(plan.patches, w => DerivedCellWrite {
+      listing_id: w.listing_id,
+      column: w.column,
+      a1: sheet_qualified_a1(tab: tab, a1: w.a1),
+      value: w.value,
+    }),
+    appends: plan.appends,
+  }
+}
+
+fn decision_with_sheet_qualified_a1(
+  decision: UpsertDecision<ReviewSheetWritePlan>,
+  tab: NonEmptyStr,
+) -> UpsertDecision<ReviewSheetWritePlan> {
+  match decision {
+    Noop => Noop
+    Refuse { reason: r } => Refuse { reason: r }
+    Apply { plan: p } => Apply { plan: qualify_write_plan(plan: p, tab: tab) }
+  }
+}
+
 fn value_range_from_derived_write(write: DerivedCellWrite) -> ValueRange {
   ValueRange {
     range: write.a1 as String,
@@ -106,12 +180,23 @@ fn value_range_from_derived_write(write: DerivedCellWrite) -> ValueRange {
   }
 }
 
-fn value_ranges_from_write_plan(plan: ReviewSheetWritePlan) -> List<ValueRange> {
-  plan.patches |> map(w => value_range_from_derived_write(write: w))
+fn value_ranges_from_write_plan(plan: ReviewSheetWritePlan, tab: NonEmptyStr) -> List<ValueRange> {
+  qualify_write_plan(plan: plan, tab: tab).patches |> map(w => value_range_from_derived_write(write: w))
 }
 
-fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheet {
-  match range.values {
+type ObservedSheetFromReadback
+  = ReadbackObserved { observed: ObservedSheet, tab: NonEmptyStr }
+  | ReadbackUnreadable { reason: NonEmptyStr }
+
+fn observed_data_rows(rows: List<List<String>>) -> List<ObservedSheetRow> {
+  rows |> enumerate |> filter(pair => pair.first > 0) |> map(pair => ObservedSheetRow {
+    data_index: pair.first - 1,
+    cells: pair.second,
+  })
+}
+
+fn grid_from_value_rows(values: List<List<String>>?) -> ObservedSheet {
+  match values {
     Absent => ObservedSheet { headers: [], rows: [] }
     Present { value: rows } =>
       match rows |> first {
@@ -124,21 +209,26 @@ fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheet {
   }
 }
 
-fn observed_data_rows(rows: List<List<String>>) -> List<ObservedSheetRow> {
-  rows |> enumerate |> filter(pair => pair.first > 0) |> map(pair => ObservedSheetRow {
-    data_index: pair.first - 1,
-    cells: pair.second,
-  })
+fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheetFromReadback {
+  match a1_readback_standing(range: range.range) {
+    A1ReadbackUnreadable { reason: r } => ReadbackUnreadable { reason: r }
+    A1ReadbackAnchored { tab: tab } =>
+      ReadbackObserved { observed: grid_from_value_rows(values: range.values), tab: tab }
+  }
 }
 
 fn review_sheet_from_readback(
   range: ValueRange,
   projection: ReviewSheetProjection,
 ) -> UpsertDecision<ReviewSheetWritePlan> {
-  decide_review_sheet(
-    observed: observed_sheet_from_value_range(range: range),
-    projection: projection,
-  )
+  match observed_sheet_from_value_range(range: range) {
+    ReadbackUnreadable { reason: r } => Refuse { reason: r }
+    ReadbackObserved { observed: observed, tab: tab } =>
+      decision_with_sheet_qualified_a1(
+        decision: decide_review_sheet(observed: observed, projection: projection),
+        tab: tab,
+      )
+  }
 }
 
 fn review_sheet_ensure_plan(classified: ReviewSheetClassification) -> EnsurePlan<ReviewSheetWritePlan> {
@@ -155,25 +245,32 @@ fn review_sheet_ensure(
   range: ValueRange,
   projection: ReviewSheetProjection,
 ) -> UpsertDecision<ReviewSheetWritePlan> {
-  let observed = observed_sheet_from_value_range(range: range)
-  let classified = classify_review_sheet(observed: observed, projection: projection)
-  ensure_decide(
-    policy: policy,
-    observation: EnsureObserved { evidence: observed },
-    observation_satisfies: match classified {
-      ReviewSheetConverged => true
-      ReviewSheetNeedsWrite { plan: _ } => false
-      ReviewSheetConflict { conflict: _ } => false
-      ReviewSheetUnreadable { reason: _ } => false
-    },
-    mismatch_reason: match classified {
-      ReviewSheetConverged => "derived region already equals the projection"
-      ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
-      ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
-      ReviewSheetUnreadable { reason: r } => r as String
-    },
-    plan: review_sheet_ensure_plan(classified: classified),
-  )
+  match observed_sheet_from_value_range(range: range) {
+    ReadbackUnreadable { reason: r } => Refuse { reason: r }
+    ReadbackObserved { observed: observed, tab: tab } => {
+      let classified = classify_review_sheet(observed: observed, projection: projection)
+      decision_with_sheet_qualified_a1(
+        decision: ensure_decide(
+          policy: policy,
+          observation: EnsureObserved { evidence: observed },
+          observation_satisfies: match classified {
+            ReviewSheetConverged => true
+            ReviewSheetNeedsWrite { plan: _ } => false
+            ReviewSheetConflict { conflict: _ } => false
+            ReviewSheetUnreadable { reason: _ } => false
+          },
+          mismatch_reason: match classified {
+            ReviewSheetConverged => "derived region already equals the projection"
+            ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
+            ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
+            ReviewSheetUnreadable { reason: r } => r as String
+          },
+          plan: review_sheet_ensure_plan(classified: classified),
+        ),
+        tab: tab,
+      )
+    }
+  }
 }
 
 // sunny-carp-475 binds a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter onto
