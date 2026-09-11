@@ -207,10 +207,22 @@ data observed_github_actions_pool: ObservedWifPool = ObservedWifPool {
   disabled: false,
 }
 
+data github_pool_id: NonEmptyStr = "github-pool"
+
 data observed_github_pool: ObservedWifPool = ObservedWifPool {
   project_number: fleet_secrets_project_number,
-  pool_id: "github-pool" as NonEmptyStr,
+  pool_id: github_pool_id,
   disabled: false,
+}
+
+data observed_gunbai_auto_github_pool: ObservedWifPool = ObservedWifPool {
+  project_number: unread_project_number_314501921854 as String,
+  pool_id: github_pool_id,
+  disabled: false,
+}
+
+fn github_pool_id_does_not_discriminate_project(left: ObservedWifPool, right: ObservedWifPool) -> Bool {
+  left.pool_id == right.pool_id && left.project_number != right.project_number
 }
 
 data observed_ci_secrets_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
@@ -228,9 +240,9 @@ data observed_ci_iap_cross_project_binding: ObservedPrincipalSetBinding = Observ
 }
 
 data gap_project_314501921854: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/gunbai-auto/workloadIdentityPools" as NonEmptyStr,
-  cause: "gunbai-auto (314501921854) is our org project; two secrets-project SAs federate into it; its WIF pools, providers, and attribute conditions are unread",
-  discharge: "list gunbai-auto workloadIdentityPools and each provider's attribute condition",
+  subject_identity: "projects/314501921854/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
+  cause: "gunbai-auto github-pool is observed ACTIVE; its providers and attribute conditions are unread; the pool id github-pool is shared with gunbai-secrets and does not discriminate",
+  discharge: "iam.googleapis.com list providers on projects/314501921854/.../workloadIdentityPools/github-pool and read each attribute condition",
   trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
   trusting_role: Present { value: role_iam_workload_identity_user },
   federated_repo: Present { value: legacy_federated_repo },
@@ -339,7 +351,6 @@ data gunb_test_enabled_service_ids: List<NonEmptyStr> = [
   "storage.googleapis.com" as NonEmptyStr,
   "storage-api.googleapis.com" as NonEmptyStr,
   "storage-component.googleapis.com" as NonEmptyStr,
-  "sts.googleapis.com" as NonEmptyStr,
   "telemetry.googleapis.com" as NonEmptyStr,
 ]
 
@@ -353,6 +364,66 @@ fn gunb_test_enables_service(service: NonEmptyStr) -> Bool {
 
 fn gunb_test_sheets_is_absent() -> Bool {
   !gunb_test_enables_service(service: sheets_api_service_id)
+}
+
+data sts_api_service_id: NonEmptyStr = "sts.googleapis.com"
+
+data gunbai_auto_enabled_service_count: Int = 32
+
+data gunb_ci_enabled_service_count: Int = 40
+
+data gunbai_auto_has_sts: Bool = false
+
+data gunb_ci_has_sts: Bool = true
+
+data gunbai_auto_has_sheets: Bool = false
+
+data gunb_ci_has_sheets: Bool = false
+
+fn gunb_test_sts_is_absent() -> Bool {
+  !gunb_test_enables_service(service: sts_api_service_id)
+}
+
+fn none_of_the_three_sandboxes_has_sheets() -> Bool {
+  gunb_test_sheets_is_absent() && !gunbai_auto_has_sheets && !gunb_ci_has_sheets
+}
+
+type TokenExchangeStsHypothesis
+  = TokenExchangeRequiresStsInPoolProjectUngrounded {
+      pool_project_number: String
+      pool_id: NonEmptyStr
+      sts_enabled_in_pool_project: Bool
+    }
+
+fn gunbai_auto_token_exchange_sts_hypothesis() -> TokenExchangeStsHypothesis {
+  TokenExchangeRequiresStsInPoolProjectUngrounded {
+    pool_project_number: unread_project_number_314501921854 as String,
+    pool_id: github_pool_id,
+    sts_enabled_in_pool_project: gunbai_auto_has_sts,
+  }
+}
+
+fn gunbai_auto_sts_inert_is_not_established() -> Bool {
+  match gunbai_auto_token_exchange_sts_hypothesis() {
+    TokenExchangeRequiresStsInPoolProjectUngrounded {
+      pool_project_number: _,
+      pool_id: _,
+      sts_enabled_in_pool_project: enabled,
+    } => !enabled
+  }
+}
+
+type SheetsCallingStrategy
+  = CreatePurposeScopedProject { none_of_three_has_sheets: Bool }
+
+fn sheets_calling_strategy() -> SheetsCallingStrategy {
+  CreatePurposeScopedProject { none_of_three_has_sheets: none_of_the_three_sandboxes_has_sheets() }
+}
+
+fn sheets_calling_strategy_is_create_not_adopt() -> Bool {
+  match sheets_calling_strategy() {
+    CreatePurposeScopedProject { none_of_three_has_sheets: ok } => ok
+  }
 }
 
 fn observed_project_roster_count(census: GcpEstateCensus) -> Int {
@@ -376,7 +447,8 @@ type SheetsCallingHome
       refused_writer: ServiceAccountEmail
       candidate_writer_in_secrets: ServiceAccountEmail
       kitchen_sink_project: GcpProjectId
-      unread_leading_candidate: GcpProjectId
+      pool_host_without_sts: GcpProjectId
+      sts_host_without_sheets: GcpProjectId
     }
 
 fn sheets_calling_home() -> SheetsCallingHome {
@@ -385,7 +457,8 @@ fn sheets_calling_home() -> SheetsCallingHome {
     refused_writer: fleet_automation_sa_email,
     candidate_writer_in_secrets: fleet_cloud_convergence_sa_email,
     kitchen_sink_project: gunb_test_project_id,
-    unread_leading_candidate: gunbai_auto_project_id,
+    pool_host_without_sts: gunbai_auto_project_id,
+    sts_host_without_sheets: gunb_ci_project_id,
   }
 }
 
@@ -396,7 +469,8 @@ fn sheets_calling_home_is_unresolved() -> Bool {
       refused_writer: _,
       candidate_writer_in_secrets: _,
       kitchen_sink_project: _,
-      unread_leading_candidate: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
     } => true
   }
 }
@@ -408,7 +482,8 @@ fn secrets_project_is_refused_as_sheets_api_surface() -> Bool {
       refused_writer: _,
       candidate_writer_in_secrets: _,
       kitchen_sink_project: _,
-      unread_leading_candidate: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
     } => p == fleet_secrets_gcp_project
   }
 }
@@ -420,7 +495,8 @@ fn fleet_automation_is_refused_as_sheets_writer() -> Bool {
       refused_writer: w,
       candidate_writer_in_secrets: _,
       kitchen_sink_project: _,
-      unread_leading_candidate: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
     } => w == fleet_automation_sa_email
   }
 }
@@ -433,7 +509,8 @@ fn gunb_test_is_enumerated_not_selected(census: GcpEstateCensus) -> Bool {
         refused_writer: _,
         candidate_writer_in_secrets: _,
         kitchen_sink_project: k,
-        unread_leading_candidate: _,
+        pool_host_without_sts: _,
+        sts_host_without_sheets: _,
       } => k == gunb_test_project_id
     }
 }
@@ -445,24 +522,25 @@ fn gunbai_auto_is_not_selected_as_sheets_home() -> Bool {
       refused_writer: _,
       candidate_writer_in_secrets: _,
       kitchen_sink_project: _,
-      unread_leading_candidate: c,
+      pool_host_without_sts: c,
+      sts_host_without_sheets: _,
     } => c == gunbai_auto_project_id
   }
 }
 
-data gap_gunb_ci_enabled_services: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/gunb-ci/services" as NonEmptyStr,
-  cause: "gunb-ci is in the roster; enabled services and service accounts are unread",
-  discharge: "serviceusage.services.list and iam serviceAccounts.list on gunb-ci",
+data gap_gunb_ci_service_accounts_and_pools: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunb-ci/serviceAccounts-and-pools" as NonEmptyStr,
+  cause: "gunb-ci enabled-service count is 40 including STS; service accounts and WIF pools are unread",
+  discharge: "iam serviceAccounts.list and workloadIdentityPools.list on gunb-ci",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
 }
 
-data gap_gunbai_auto_enabled_services: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/gunbai-auto/services" as NonEmptyStr,
-  cause: "gunbai-auto enabled services and service accounts are unread; a name that reads as automation is not a selection",
-  discharge: "serviceusage.services.list and iam serviceAccounts.list on gunbai-auto",
+data gap_gunbai_auto_service_accounts: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunbai-auto/serviceAccounts" as NonEmptyStr,
+  cause: "gunbai-auto enabled-service count is 32 with STS absent and Sheets absent; service accounts are unread",
+  discharge: "iam serviceAccounts.list on gunbai-auto",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -470,7 +548,7 @@ data gap_gunbai_auto_enabled_services: EstateCoverageGap = EstateCoverageGap {
 
 data gap_wif_pools_outside_secrets: EstateCoverageGap = EstateCoverageGap {
   subject_identity: "workloadIdentityPools-outside-gunbai-secrets" as NonEmptyStr,
-  cause: "whether gunb-ci, gunb-test, or gen-lang-client-0162760657 holds a WIF pool is unread; gunbai-auto WIF is a separate named gap",
+  cause: "whether gunb-ci, gunb-test, or gen-lang-client-0162760657 holds a WIF pool is unread; gunbai-auto github-pool is observed",
   discharge: "iam workloadIdentityPools.list on gunb-ci, gunb-test, and gen-lang-client-0162760657",
   trusting_accounts: [],
   trusting_role: Absent,
@@ -492,6 +570,7 @@ fn operator_audit_census() -> GcpEstateCensus {
     wif_pools: [
       EstateObserved { value: observed_github_actions_pool },
       EstateObserved { value: observed_github_pool },
+      EstateObserved { value: observed_gunbai_auto_github_pool },
     ],
     wif_providers: [],
     principal_set_bindings: [
@@ -505,8 +584,8 @@ fn operator_audit_census() -> GcpEstateCensus {
       gap_github_oidc_issuer_unrelayed,
       gap_github_pool_provider_id,
       gap_cross_project_principal_set_member,
-      gap_gunb_ci_enabled_services,
-      gap_gunbai_auto_enabled_services,
+      gap_gunb_ci_service_accounts_and_pools,
+      gap_gunbai_auto_service_accounts,
       gap_wif_pools_outside_secrets,
     ],
   }

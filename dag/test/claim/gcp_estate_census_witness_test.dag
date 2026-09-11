@@ -49,11 +49,20 @@ import gunbc.gcp_estate_observation {
   gunb_test_enabled_service_ids,
   observed_project_roster_count,
   gunbai_auto_is_not_selected_as_sheets_home,
-  gap_gunb_ci_enabled_services,
-  gap_gunbai_auto_enabled_services,
+  gap_gunb_ci_service_accounts_and_pools,
+  gap_gunbai_auto_service_accounts,
   fleet_automation_sa_email,
   gunb_test_project_id,
   gunbai_auto_project_id,
+  gunb_ci_project_id,
+  observed_gunbai_auto_github_pool,
+  github_pool_id_does_not_discriminate_project,
+  gunbai_auto_sts_inert_is_not_established,
+  gunbai_auto_has_sts,
+  gunb_ci_has_sts,
+  none_of_the_three_sandboxes_has_sheets,
+  sheets_calling_strategy_is_create_not_adopt,
+  gunb_test_sts_is_absent,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
@@ -119,7 +128,7 @@ test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
       census: census,
       subject: gap_project_314501921854.subject_identity as String,
     )
-    && (gap_project_314501921854.subject_identity as String).contains("workloadIdentityPools")
+    && (gap_project_314501921854.subject_identity as String).contains("providers")
 }
 
 test fn observed_project_is_enumerated_observed_and_not_a_gap() -> Bool {
@@ -291,13 +300,15 @@ test fn sheets_calling_home_is_unresolved_and_does_not_default_to_secrets() -> B
         refused_writer: w,
         candidate_writer_in_secrets: c,
         kitchen_sink_project: k,
-        unread_leading_candidate: u,
+        pool_host_without_sts: auto,
+        sts_host_without_sheets: ci,
       } =>
         p == fleet_secrets_gcp_project
           && w == fleet_automation_sa_email
           && c == fleet_cloud_convergence_sa_email
           && k == gunb_test_project_id
-          && u == gunbai_auto_project_id
+          && auto == gunbai_auto_project_id
+          && ci == gunb_ci_project_id
     }
 }
 
@@ -305,11 +316,22 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   let census = operator_audit_census()
   gunb_test_is_enumerated_not_selected(census: census)
     && observed_project_roster_count(census: census) == 5
-    && gunb_test_enabled_service_ids.length() == 27
     && gunb_test_sheets_is_absent()
-    && sheets_api_service_id as String == "sheets.googleapis.com"
-    && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_enabled_services.subject_identity as String)
-    && census_subject_is_named_gap(census: census, subject: gap_gunbai_auto_enabled_services.subject_identity as String)
+    && gunb_test_sts_is_absent()
+    && none_of_the_three_sandboxes_has_sheets()
+    && sheets_calling_strategy_is_create_not_adopt()
+    && !gunbai_auto_has_sts
+    && gunb_ci_has_sts
+    && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_service_accounts_and_pools.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gunbai_auto_service_accounts.subject_identity as String)
+}
+
+test fn two_github_pools_are_keyed_by_project_not_name() -> Bool {
+  github_pool_id_does_not_discriminate_project(
+    left: observed_github_pool,
+    right: observed_gunbai_auto_github_pool,
+  )
+    && gunbai_auto_sts_inert_is_not_established()
 }
 
 test fn unread_pool_rows_do_not_classify_desired_pool_as_absent() -> Bool {
