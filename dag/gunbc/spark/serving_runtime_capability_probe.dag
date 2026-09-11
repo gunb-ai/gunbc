@@ -460,7 +460,7 @@ data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
       v41_published_arm64_reference() as String,
     ], "") as NonEmptyStr,
     discovered_via: "operator-chosen route A published image; probed on srv9 by fleet-converge 34643985099" as NonEmptyStr,
-    disposition: CandidateProbed { image_reference: architecture_observation_image_reference(o: v41_published_arm64_architecture_asked) },
+    disposition: CandidateProbed { image_reference: v41_published_arm64_reference() },
   },
 ]
 

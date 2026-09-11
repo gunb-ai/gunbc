@@ -1922,12 +1922,14 @@ data gunbc_vllm_dsv41_gb10_registry_reading: ArchitectureRegistryReading = Archi
 }
 
 // THE PUBLISHED ROUTE-A IMAGE, probed on srv9 by fleet-converge 34643985099
-// (gunbc.spark.v41_runtime_image_probe v41_published_image_probe_ci_wet). The subject is the local
-// config id inspect reported, not the pull pin sha256:d84a1232... -- those are different hashes.
+// (gunbc.spark.v41_runtime_image_probe v41_published_image_probe_ci_wet). The observation is keyed on
+// the pull pin that was inside the container, frozen here the same way every dump freezes its
+// digest: a later edit of v41_published_arm64_digest must fail the join, not inherit this answer.
+// Inspect's config id is a different hash and stays a named readback, not this field.
 data v41_published_arm64_observed_config_id: NonEmptyStr = "sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040" as NonEmptyStr
 
 data v41_published_arm64_architecture_asked: ArchitectureObservation = ArchitectureAsked {
-  image_reference: v41_published_arm64_observed_config_id,
+  image_reference: "vllm/vllm-openai@sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr,
   host: srv9_gb10_host,
   observed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
   instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM. Same config id re-read by fleet-converge 34646650317 (inspect JSON, no --format)." as NonEmptyStr,
