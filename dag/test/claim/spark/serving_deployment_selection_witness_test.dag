@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, de
 import std.measure { token_count, token_count_value, basis_point }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import std.decision { HardConstraint }
+import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
@@ -529,7 +530,7 @@ test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
         && topology_in(shapes: admitted, tp: 2, replicas: 1)
         && topology_in(shapes: admitted, tp: 1, replicas: 1)
         && count(v4_1_declared_profiles) == 3
-        && (v4_1_runtime_published_arm64.image as String) == "vllm/vllm-openai:deepseekv41-flash-0909"
+        && (v4_1_runtime_published_arm64.image as String) == (v41_published_arm64_reference() as String)
         && match v4_1_runtime_published_arm64.vllm_source {
           VllmSourceRevisionUnestablished { reported_version: v, obligation: _ } =>
             (v as String) == "vllm-0.1.dev20904+g179dd0fa9"
