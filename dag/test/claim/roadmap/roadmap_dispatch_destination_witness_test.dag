@@ -24,6 +24,8 @@ import gunbc.roadmap_execution_contract {
 import gunbc.ensure { EnsureObserveOnly }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination, DispatchDestinationResolved, DispatchDestinationMissing,
+  DestinationPrivacyObserved, DestinationPrivacyUnobserved,
+  DestinationDefaultBranchObserved, DestinationDefaultBranchUnobserved,
 }
 import gunbc.roadmap_belt_actuate {
   belt_publication_subject_for_node,
@@ -81,9 +83,25 @@ test fn a_non_public_destination_does_not_publish_to_gunbc() -> Bool {
     PublicationSubjectObserved { subject } =>
       subject.repository.full_name != gunbc_repository.full_name
         && subject.repository.full_name == "example/other"
-        && subject.repository.private
         && subject.repository.owner == "example"
         && subject.repository.name == "other"
+  }
+}
+
+test fn a_named_destination_does_not_claim_privacy_or_default_branch_from_a_slug() -> Bool {
+  let node = node_with_repo(id: "private-dest-node", repo: "example/other")
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason: _ } => false
+    DispatchDestinationResolved { identity } =>
+      identity.full_name == "example/other"
+        && match identity.privacy {
+          DestinationPrivacyUnobserved =>
+            match identity.default_branch {
+              DestinationDefaultBranchUnobserved => true
+              DestinationDefaultBranchObserved { branch: _ } => false
+            }
+          DestinationPrivacyObserved { private: _ } => false
+        }
   }
 }
 
@@ -91,9 +109,18 @@ test fn a_public_gunbc_node_still_publishes_to_gunbc() -> Bool {
   let node = node_with_repo(id: "public-dest-node", repo: "gunbc")
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason: _ } => false
-    DispatchDestinationResolved { repository } =>
-      repository.full_name == gunbc_repository.full_name
-        && !repository.private
+    DispatchDestinationResolved { identity } =>
+      identity.full_name == gunbc_repository.full_name
+        && match identity.privacy {
+          DestinationPrivacyObserved { private } =>
+            !private
+              && match identity.default_branch {
+                DestinationDefaultBranchObserved { branch } =>
+                  branch == gunbc_repository.default_branch
+                DestinationDefaultBranchUnobserved => false
+              }
+          DestinationPrivacyUnobserved => false
+        }
   }
 }
 

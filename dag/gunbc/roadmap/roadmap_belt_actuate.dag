@@ -317,6 +317,7 @@ import gunbc.roadmap_dispatch_destination {
   DispatchDestinationResolved,
   DispatchDestinationMissing,
   node_dispatch_destination,
+  destination_github_repository,
   DispatchSpawnOrigin,
   dispatch_spawn_origin_json,
   dispatch_spawn_origin_basename,
@@ -761,7 +762,7 @@ fn belt_persist_spawn_origin_for_instance(
         step: "spawn-destination",
         detail: reason as String,
       }
-    DispatchDestinationResolved { repository } => {
+    DispatchDestinationResolved { identity } => {
       let worktree = dispatch_worktree_path_for_instance(
         instance: instance,
         node_id: node.node,
@@ -778,7 +779,7 @@ fn belt_persist_spawn_origin_for_instance(
           }
         WorktreeHeadObserved { revision } => {
           let origin = DispatchSpawnOrigin {
-            repository: repository,
+            identity: identity,
             base_ref: instance.dispatch_base_ref,
             base_sha: revision as NonEmptyStr,
           }
@@ -6671,14 +6672,14 @@ fn belt_publication_subject_for_node(
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason } =>
       PublicationSubjectUnobserved { reason: reason as String }
-    DispatchDestinationResolved { repository } =>
+    DispatchDestinationResolved { identity } =>
       belt_publication_subject_for(
         node_id: node.node as String,
         attempt_key: attempt_key,
         branch: branch,
         base_branch: base_branch,
         head: head,
-        repository: repository,
+        repository: destination_github_repository(identity: identity),
       )
   }
 }
