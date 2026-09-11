@@ -148,11 +148,25 @@ data foreign_repo_request: WorkflowSourceRequest = WorkflowSourceRequest {
   ref: fixture_ref,
 }
 
+// TO REACH RequestedPathDiffersFromHit THE RESPONSE MUST AGREE WITH THE REQUEST. canonicalize_hit
+// checks response-against-request BEFORE request-against-hit, so a fixture whose response also
+// differs from the request never reaches the later arm - it is caught by the earlier one and the
+// claim passes on the wrong refusal. The response below therefore carries the REQUESTED path, and
+// only the hit disagrees.
 data foreign_path_request: WorkflowSourceRequest = WorkflowSourceRequest {
   owner: "llvm",
   repo: "llvm-project",
   path: ".github/workflows/main.yml",
   ref: fixture_ref,
+}
+
+data response_agreeing_with_foreign_path_request: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  size: 5172,
+  encoding: "base64",
+  content: "ZmFrZQ==",
 }
 
 data observed_file: RepositoryFileContent = RepositoryFileContent {
@@ -360,12 +374,21 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
   }
   let foreign_path_refused = match canonicalize_hit(
     hit: fixture_hit,
-    read: WorkflowSourceObserved { request: foreign_path_request, file: observed_file },
+    read: WorkflowSourceObserved {
+      request: foreign_path_request,
+      file: response_agreeing_with_foreign_path_request,
+    },
   ) {
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
+      match disagreement {
+        RequestedPathDiffersFromHit { hit_path, requested_path } =>
+          hit_path == ".github/workflows/premerge.yaml"
+            && requested_path == ".github/workflows/main.yml"
+        other => false
+      }
     HitCanonicalized { identity } => false
-    HitFileUnreadable { repository_full_name, path, cause } => true
-    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => true
-    HitRefNotExact { repository_full_name, path, ref, cause } => true
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
   }
   let coherent_admitted = match canonicalize_hit(
