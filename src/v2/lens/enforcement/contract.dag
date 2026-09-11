@@ -260,7 +260,12 @@ data lens_contract_mandatory_tag: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: WallNow }
+  boundary: ConstructionJustification {
+    class: WallNow {
+      mechanism: SubstrateMandatoryTag,
+      authority: DeclarationRef { module_path: "v2.lens.mandatory_tag", decl_name: "MandatoryTagRegion", field: WholeDeclaration }
+    }
+  }
 }
 
 data lens_contract_extdeps_shape_transport_policy: LensContract = {

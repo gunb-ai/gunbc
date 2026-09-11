@@ -11,23 +11,48 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import gunbc.serving.turn_admission {
   ServingQueueReading, QueueDepthRead, QueueDepthUnread, GroupIdle, serving_co_tenancy,
-  ServingSeatOccupancy, NoSeatHeld, SeatsHeldForTurns, SeatOccupancyUnread, ServingGroupAdmission,
-  AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
+  serving_capacity_pressure, ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity,
+  CapacityPressureUnread,
+  ServingSeatStanding, SeatStandingRead, SeatStandingUnread, ServingGroupAdmission,
+  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
+  AdmissibleForClass, InadmissibleQualityTurnInFlight, InadmissibleGroupNotIdle,
+  InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
+  AdmissibilityUnread,
   serving_group_admission, serving_admission_detail, serving_availability, serving_transition_cost,
   serving_opportunity_cost,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
+  harness_capacity_pressure_from_body,
 }
 
 data probe_receipt: ObservationReceiptRef = "test.claim.serving.turn_admission_witness" as ObservationReceiptRef
 
+// EVERY ROW BELOW ASKS THE QUALITY-SENSITIVE QUESTION UNLESS IT SAYS OTHERWISE, which is what keeps
+// this file as the evidence it was. The law it was written against -- a turn whose stream is being
+// read requires an idle route -- is now the quality arm of a two-class relation rather than the
+// whole rule, and these controls assert that arm is unchanged in every case they already covered.
+// The tolerant arm's own positives and negatives are at test.claim.serving_routing_witness.
 fn admission_of(reading: ServingQueueReading) -> ServingGroupAdmission {
-  serving_group_admission(tenancy: serving_co_tenancy(reading: reading), seats: NoSeatHeld, receipt: probe_receipt)
+  serving_group_admission(
+    incoming: InteractiveQualitySensitive,
+    tenancy: serving_co_tenancy(reading: reading),
+    pressure: serving_capacity_pressure(reading: reading),
+    seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    ceiling: 1,
+    receipt: probe_receipt,
+  )
 }
 
-fn admission_with_seats(reading: ServingQueueReading, seats: ServingSeatOccupancy) -> ServingGroupAdmission {
-  serving_group_admission(tenancy: serving_co_tenancy(reading: reading), seats: seats, receipt: probe_receipt)
+fn admission_with_seats(reading: ServingQueueReading, seats: ServingSeatStanding) -> ServingGroupAdmission {
+  serving_group_admission(
+    incoming: InteractiveQualitySensitive,
+    tenancy: serving_co_tenancy(reading: reading),
+    pressure: serving_capacity_pressure(reading: reading),
+    seats: seats,
+    ceiling: 1,
+    receipt: probe_receipt,
+  )
 }
 
 fn metrics_body(waiting: String, running: String, start: String) -> String {
@@ -37,6 +62,10 @@ fn metrics_body(waiting: String, running: String, start: String) -> String {
     "vllm:num_requests_waiting\{model_name=\"deepseek\"} ", waiting, "\n",
     "# TYPE vllm:num_requests_running gauge\n",
     "vllm:num_requests_running\{model_name=\"deepseek\"} ", running, "\n",
+    "# HELP vllm:num_requests_waiting_by_reason Number of requests waiting, by reason.\n",
+    "# TYPE vllm:num_requests_waiting_by_reason gauge\n",
+    "vllm:num_requests_waiting_by_reason\{model_name=\"deepseek\",reason=\"capacity\"} ", waiting, "\n",
+    "vllm:num_requests_waiting_by_reason\{model_name=\"deepseek\",reason=\"other\"} 0.0\n",
     "# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n",
     "# TYPE process_start_time_seconds gauge\n",
     "process_start_time_seconds ", start, "\n",
@@ -51,14 +80,14 @@ fn metrics_body(waiting: String, running: String, start: String) -> String {
 // goes red on the collapse, and it goes red on a parser that refuses floats altogether.
 test fn positive_float_gauges_parse_exactly() -> Bool {
   match harness_queue_from_body(body: metrics_body(waiting: "4.0", running: "3.0", start: "1757200000.5")) {
-    QueueDepthRead { waiting: w, running: r } => w == 4 && r == 3
+    QueueDepthRead { waiting: w, running: r, pressure: _ } => w == 4 && r == 3
     QueueDepthUnread { obligation: _ } => false
   }
 }
 
 test fn a_zero_float_gauge_is_zero_and_not_unread() -> Bool {
   match harness_queue_from_body(body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
-    QueueDepthRead { waiting: w, running: r } => w == 0 && r == 0
+    QueueDepthRead { waiting: w, running: r, pressure: _ } => w == 0 && r == 0
     QueueDepthUnread { obligation: _ } => false
   }
 }
@@ -69,7 +98,7 @@ test fn a_zero_float_gauge_is_zero_and_not_unread() -> Bool {
 test fn a_non_integral_gauge_is_unread_rather_than_rounded() -> Bool {
   (match harness_queue_from_body(body: metrics_body(waiting: "1.5", running: "0.0", start: "1757200000.5")) {
      QueueDepthUnread { obligation: o } => string_contains(s: o as String, pattern: "not an exact count")
-     QueueDepthRead { waiting: _, running: _ } => false
+     QueueDepthRead { waiting: _, running: _, pressure: _ } => false
    })
     && (match harness_gauge_count(text: "1.5") { Absent => true  Present { value: _ } => false })
     && (match harness_gauge_count(text: "12") { Present { value: n } => n == 12  Absent => false })
@@ -85,7 +114,7 @@ test fn a_body_missing_one_gauge_reads_neither() -> Bool {
   ], "")
   match harness_queue_from_body(body: half) {
     QueueDepthUnread { obligation: o } => string_contains(s: o as String, pattern: "running-requests series")
-    QueueDepthRead { waiting: _, running: _ } => false
+    QueueDepthRead { waiting: _, running: _, pressure: _ } => false
   }
 }
 
@@ -95,8 +124,12 @@ test fn a_body_missing_one_gauge_reads_neither() -> Bool {
 // the match is exhaustive a fourth admission arm reds this file instead of defaulting quietly.
 fn t_disposition(a: ServingGroupAdmission) -> String {
   match a {
-    AdmissibleForColdPrefill { receipt: _ } => "admissible"
-    InadmissibleActiveInteractiveTurn { occupied_by: _, basis: _ } => "pending-retry"
+    AdmissibleForClass { class: _, receipt: _ } => "admissible"
+    InadmissibleQualityTurnInFlight { held: _, basis: _ } => "pending-retry"
+    InadmissibleGroupNotIdle { occupied_by: _, basis: _ } => "pending-retry"
+    InadmissibleRouteHoldingForCapacity { held: _ } => "pending-retry"
+    InadmissibleClassCeilingReached { held: _, ceiling: _ } => "pending-retry"
+    InadmissibleUnexplainedOccupancy { occupants: _, seated: _ } => "pending-retry"
     AdmissibilityUnread { obligation: _ } => "refused-measure"
   }
 }
@@ -122,27 +155,27 @@ test fn unreadable_admission_evidence_never_admits() -> Bool {
 // prefill beside a live decode whenever the alternatives look worse. Here it is refused, and the
 // refusal is RETRYABLE, because the group frees itself.
 test fn an_occupied_group_refuses_a_fresh_cold_prefill() -> Bool {
-  let a = admission_of(reading: QueueDepthRead { waiting: 0, running: 1 })
-  (match a { InadmissibleActiveInteractiveTurn { occupied_by: n, basis: _ } => n == 1  _ => false })
+  let a = admission_of(reading: QueueDepthRead { waiting: 0, running: 1, pressure: RouteAdmittingMore })
+  (match a { InadmissibleUnexplainedOccupancy { occupants: n, seated: _ } => n == 1  _ => false })
     && (t_disposition(a: a) != "admissible")
     && (t_disposition(a: a) == "pending-retry")
-    && string_contains(s: serving_admission_detail(group: FabricGroupB, admission: a), pattern: "stall a decode already being read")
+    && string_contains(s: serving_admission_detail(group: FabricGroupB, admission: a), pattern: "a turn nobody seated may be one somebody is reading")
 }
 
 // A GROUP WITH WORK WAITING IS NOT IDLE EITHER. The request admitted and waiting starts the moment
 // the engine frees, so a cold prefill placed in front of it produces the same overlap one scheduler
 // step later. A reading that looked only at the running gauge would admit here.
 test fn a_queued_group_is_not_idle() -> Bool {
-  let a = admission_of(reading: QueueDepthRead { waiting: 2, running: 0 })
-  (match a { InadmissibleActiveInteractiveTurn { occupied_by: n, basis: _ } => n == 2  _ => false })
+  let a = admission_of(reading: QueueDepthRead { waiting: 2, running: 0, pressure: RouteAdmittingMore })
+  (match a { InadmissibleUnexplainedOccupancy { occupants: n, seated: _ } => n == 2  _ => false })
     && (t_disposition(a: a) != "admissible")
 }
 
 test fn an_idle_group_is_admissible_and_a_read_zero_is_a_reading() -> Bool {
-  let a = admission_of(reading: QueueDepthRead { waiting: 0, running: 0 })
+  let a = admission_of(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore })
   (t_disposition(a: a) == "admissible")
     && (t_disposition(a: a) != "pending-retry")
-    && (match serving_co_tenancy(reading: QueueDepthRead { waiting: 0, running: 0 }) { GroupIdle => true  _ => false })
+    && (match serving_co_tenancy(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }) { GroupIdle => true  _ => false })
 }
 
 // ── NOTHING IS PLACED WHEN NOTHING IS ADMISSIBLE, AND THE TWO REASONS STAY APART ──────────────
@@ -152,7 +185,7 @@ test fn an_idle_group_is_admissible_and_a_read_zero_is_a_reading() -> Bool {
 // them would make an unreadable fleet look like a busy one.
 test fn no_admissible_group_and_the_reasons_do_not_fuse() -> Bool {
   let unread = admission_of(reading: QueueDepthUnread { obligation: "this consumer does not read the served metrics" as NonEmptyStr })
-  let busy = admission_of(reading: QueueDepthRead { waiting: 0, running: 3 })
+  let busy = admission_of(reading: QueueDepthRead { waiting: 0, running: 3, pressure: RouteAdmittingMore })
   (t_disposition(a: unread) != "admissible")
     && (t_disposition(a: busy) != "admissible")
     && (t_disposition(a: busy) == "pending-retry")
@@ -222,8 +255,8 @@ test fn an_unnameable_launch_is_not_offered() -> Bool {
 //
 // This control goes red on exactly the reading that shipped: gauges idle, one seat held, admitted.
 test fn a_held_seat_is_occupancy_even_when_the_gauges_read_zero() -> Bool {
-  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: SeatsHeldForTurns { held: 1 })
-  (match a { InadmissibleActiveInteractiveTurn { occupied_by: n, basis: _ } => n == 1  _ => false })
+  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 1, tolerant_held: 0 })
+  (match a { InadmissibleGroupNotIdle { occupied_by: n, basis: _ } => n == 1  _ => false })
     && (t_disposition(a: a) != "admissible")
     && (t_disposition(a: a) == "pending-retry")
 }
@@ -232,7 +265,7 @@ test fn a_held_seat_is_occupancy_even_when_the_gauges_read_zero() -> Bool {
 // pool that could not be read frees nobody by being waited for, so it is an obligation rather than a
 // retry.
 test fn an_unread_seat_ledger_never_admits() -> Bool {
-  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: SeatOccupancyUnread { obligation: "the partition chain could not be walked" as NonEmptyStr })
+  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingUnread { obligation: "the partition chain could not be walked" as NonEmptyStr })
   (match a { AdmissibilityUnread { obligation: o } => string_contains(s: o as String, pattern: "partition chain")  _ => false })
     && (t_disposition(a: a) != "admissible")
     && (t_disposition(a: a) != "pending-retry")
@@ -241,7 +274,53 @@ test fn an_unread_seat_ledger_never_admits() -> Bool {
 // BOTH CLOCKS CLEAR IS THE ONLY ADMITTING STATE, and the positive control says so rather than
 // leaving the two refusals above to imply it.
 test fn a_group_idle_on_both_readings_is_the_only_admitted_state() -> Bool {
-  (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: NoSeatHeld)) == "admissible")
-    && (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 2 }, seats: NoSeatHeld)) != "admissible")
-    && (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0 }, seats: SeatsHeldForTurns { held: 3 })) != "admissible")
+  (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 })) == "admissible")
+    && (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 2, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 })) != "admissible")
+    && (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 1, tolerant_held: 2 })) != "admissible")
+}
+
+// ── THE ROUTE'S OWN CAPACITY SIGNAL IS SELECTED BY LABEL, AND AN ABSENT FAMILY IS UNREAD ──────
+//
+// The capacity-reason series is one member of a family that renders one line per reason, so the
+// name-plus-brace prefix the other gauges use matches several lines at once. This control is
+// discriminating in that exact direction: the body below carries TWO reasons, and a reader that took
+// the first matching line, or refused the family for being non-unique, gives a different answer from
+// the one asserted here.
+//
+// AND AN ABSENT FAMILY REFUSES RATHER THAN READING ZERO, which is the fail-open this signal would
+// otherwise introduce: "no series" and "no pressure" are the same bytes to a careless reader, and
+// only one of them means the route said it will take more work.
+test fn the_capacity_reason_series_is_selected_by_label_and_its_absence_is_unread() -> Bool {
+  (match harness_capacity_pressure_from_body(body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
+     RouteAdmittingMore => true
+     _ => false
+   })
+    && (match harness_capacity_pressure_from_body(body: metrics_body(waiting: "3.0", running: "1.0", start: "1757200000.5")) {
+          RouteHoldingForCapacity { held: h } => h == 3
+          _ => false
+        })
+    && (match harness_capacity_pressure_from_body(body: join([
+         "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
+         "vllm:num_requests_running\{model_name=\"deepseek\"} 0.0\n",
+       ], "")) {
+          CapacityPressureUnread { obligation: o } => string_contains(s: o as String, pattern: "capacity-reason waiting series")
+          _ => false
+        })
+}
+
+// AND THE SIGNAL REACHES ADMISSION FOR THE CLASS THAT CONSULTS IT. A tolerant turn arriving at a
+// route holding requests back for capacity is refused with room left under the declared ceiling --
+// which is the half of the law a ceiling alone cannot express.
+test fn a_route_holding_for_capacity_refuses_a_tolerant_turn_with_ceiling_to_spare() -> Bool {
+  match serving_group_admission(
+    incoming: BatchQualityTolerant,
+    tenancy: GroupIdle,
+    pressure: RouteHoldingForCapacity { held: 1 },
+    seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    ceiling: 4,
+    receipt: probe_receipt,
+  ) {
+    InadmissibleRouteHoldingForCapacity { held: h } => h == 1
+    _ => false
+  }
 }

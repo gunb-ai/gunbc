@@ -328,6 +328,10 @@ fn line_is_blank(text: String) -> Bool {
   trim(s: text) == ""
 }
 
+// EXPORTED BECAUSE A SECOND READER ASKS IT: gunbc.rust_item_host_observation's reference producer
+// skips exactly the lines this scan skips, so "is this line a comment or attribute" has one
+// answer in one place. It is a LEADING test: a trailing `// ...` after code, or a `/* */` block,
+// is not recognised here, and neither reader claims otherwise.
 fn line_is_attribute_or_comment(text: String) -> Bool {
   let t = trim(s: text)
   starts_with(s: t, prefix: "#[")

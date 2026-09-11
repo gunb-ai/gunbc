@@ -20,6 +20,8 @@ import gunbc.roadmap_serve {
   roadmap_serve_invoke,
   roadmap_serve_respond,
   roadmap_serve_respond_for_instance,
+  roadmap_serve_respond_over,
+  ServedDailyBodyAuthority, DailyBodyRenderedUnderThisPlan, DailyBodyAuthorityUnknown,
   belt_dispatch_status,
 }
 import gunbc.roadmap_belt_actuate {
@@ -51,6 +53,17 @@ import extdeps.http.server {
 }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
+import gunbc.roadmap_authority {
+  RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+}
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
+import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
+import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
+import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
+import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_lines_accepted_count }
+import gunbc.roadmap_model { RoadmapNodeId }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
 // Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below
 // goes RED (nothing selects) — the discriminating direction; the production path never does this
@@ -381,4 +394,198 @@ test fn an_absent_identity_arrives_at_the_handler_as_absent() -> Bool {
   )
   string_contains(s: r.body, pattern: "identity: \n")
     && !string_contains(s: r.body, pattern: "briansrls")
+}
+
+// ── The plan authority is a parameter ───────────────────────────────────────────────────────────
+//
+// THE DISCRIMINATING DIRECTION IS THE NEGATIVE. Asserting that a caller-supplied plan appears in
+// the response would stay green if a surface under the route ALSO read the public carrier and
+// concatenated both; asserting that the public roadmap's own section title is ABSENT is what goes
+// red the moment any consumer below the parameterized fold reaches past its parameter to
+// roadmap_authority_projection(). That is the whole claim of the seam: one response, one plan.
+//
+// THE PATHS ARE CITED, NEVER SPELLED. The first cut of these witnesses typed "/roadmap.md" and
+// "/dispatch.json"; neither is a route, so all three asked an unrouted path and asserted nothing
+// (review 63317; the operator confirmed the 404s against a running instance). A witness that
+// spells its own copy of a route is a second authority for it, and it rots exactly that way. These
+// read the same declarations gunbc.roadmap_serve now builds its route table from, so a renamed
+// route moves the table and the witness together.
+
+fn caller_supplied_plan_section_title() -> String { "A plan supplied by the caller" }
+
+// The public roadmap's own section title, from gunbc.roadmap_authority active_section_for_acceptance.
+// Its presence in a response rendered over a caller-supplied plan IS the leak.
+fn public_plan_section_title() -> String { "Active deliverables" }
+
+fn caller_supplied_plan_fixture() -> RoadmapAuthorityProjection {
+  RoadmapAuthorityProjected {
+    doc: RoadmapDocument {
+      preamble: [],
+      lead_lanes: [],
+      sections: [
+        RoadmapSection { title: caller_supplied_plan_section_title(), elements: [] },
+      ],
+    },
+    accepted: [],
+  }
+}
+
+fn serve_over_plan(plan: RoadmapAuthorityProjection, path: String) -> ServeHttpResponse {
+  serve_over_plan_declaring(plan: plan, daily_body: DailyBodyRenderedUnderThisPlan, path: path)
+}
+
+fn serve_over_plan_declaring(
+  plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
+  path: String,
+) -> ServeHttpResponse {
+  roadmap_serve_respond_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: plan,
+    daily_body: daily_body,
+    method_label: "GET",
+    path: path,
+    body: "",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+test fn witness_roadmap_md_answers_from_the_supplied_plan() -> Bool {
+  let r = serve_over_plan(
+    plan: caller_supplied_plan_fixture(),
+    path: roadmap_site_roadmap_url_path as String,
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: caller_supplied_plan_section_title())
+    && !string_contains(s: r.body, pattern: public_plan_section_title())
+}
+
+test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
+  let r = serve_over_plan(
+    plan: caller_supplied_plan_fixture(),
+    path: roadmap_site_dispatch_url_path as String,
+  )
+  r.status == 200
+    && !string_contains(s: r.body, pattern: public_plan_section_title())
+}
+
+// A plan that failed to project refuses in ITS OWN vocabulary rather than serving an empty
+// roadmap: the detail the caller handed over is what the reader sees.
+test fn witness_supplied_plan_refusal_travels_to_the_wire() -> Bool {
+  let detail = "the caller's plan carrier could not be read"
+  let md = serve_over_plan(
+    plan: RoadmapAuthorityProjectionRefused { detail: detail },
+    path: roadmap_site_roadmap_url_path as String,
+  )
+  let dispatch = serve_over_plan(
+    plan: RoadmapAuthorityProjectionRefused { detail: detail },
+    path: roadmap_site_dispatch_url_path as String,
+  )
+  string_contains(s: md.body, pattern: "# roadmap unavailable")
+    && string_contains(s: md.body, pattern: detail)
+    && !string_contains(s: md.body, pattern: public_plan_section_title())
+    && string_contains(s: dispatch.body, pattern: "\"refused\": true")
+    && string_contains(s: dispatch.body, pattern: detail)
+}
+
+// A CONTROL FOR THE CONTROL. The three witnesses above are claims about the PLAN, and a wrong path
+// would make every one of them vacuous while looking identical to a pass on the negative
+// assertions. This one asks an unrouted path and requires the 404, so "the responder answered from
+// the supplied plan" stays distinguishable from "the responder never reached a handler".
+test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
+  let r = serve_over_plan(plan: caller_supplied_plan_fixture(), path: "/roadmap.md")
+  r.status == 404
+}
+
+// ── The DAILY surface, which is where the seam leaked ───────────────────────────────────────────
+//
+// WHAT THIS PROBE IS, AND WHAT IT IS NOT. It is a composition check over
+// roadmap_daily_workspace_page_for_projection_observed on both arms. It is NOT the control for the
+// leak that review 63317 found, and the first version of this block claimed it was.
+//
+// The claim was tested and it was false. With the leak deliberately restored in an isolated
+// worktree -- the refused arm routed back through the fold that read
+// accepted_roadmap_node_ids_projection() -- this witness still PASSED. The reason is structural,
+// not a weak assertion: under the hermetic witness route the carrier read REFUSES, that fold takes
+// its own refused arm, and it produces the same empty accepted set a clean render produces. No
+// input reachable from here distinguishes the two, so the RED is not authorable and no stronger
+// assertion could have made it so.
+//
+// DESIGN 4b: a check whose RED cannot be authored is not a weak wall, it is a decoration, and worse
+// than absent because it gets cited as coverage. So the defect was closed by CONSTRUCTION instead
+// (gunbc.roadmap_page: the ambient-reading fold is deleted, and every caller supplies its accepted
+// set), and this block says plainly what it still earns: that both arms render, that a refused plan
+// carries the CALLER's detail rather than an empty public roadmap, and that the v1-exit progress
+// count is the one the supplied plan implies. The count is cited from v1_finish_lines_accepted_count
+// and v1_exit_finish_lines rather than transcribed.
+//
+// The negative used on the route witnesses above would be decoration here for a second reason: the
+// daily page renders work rows and bands, never the roadmap's section headings, so its absence is
+// true of a clean render too.
+
+fn v1_exit_progress_count_text(accepted_ids: List<RoadmapNodeId>) -> String {
+  join([
+    to_string(v1_finish_lines_accepted_count(accepted: accepted_ids)),
+    " of ",
+    to_string(count(v1_exit_finish_lines())),
+    " finish lines complete",
+  ], "")
+}
+
+fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_projection_observed(
+    proj: plan,
+    attempts: [],
+    attempts_refused: none,
+    standings: StandingsUnobserved { reason: "witness render: the event carrier is not consulted" },
+    launch: launch_host_unobserved_static_render(),
+  )) {
+    EmitOk { html } => html
+    EmitRejected { reason } => reason
+  }
+}
+
+test fn witness_daily_page_answers_from_the_supplied_plan() -> Bool {
+  let projected = daily_page_html_over_plan(plan: caller_supplied_plan_fixture())
+  let refused = daily_page_html_over_plan(
+    plan: RoadmapAuthorityProjectionRefused { detail: "the caller's plan carrier could not be read" },
+  )
+  string_contains(s: projected, pattern: v1_exit_progress_count_text(accepted_ids: []))
+    && string_contains(s: refused, pattern: "the caller's plan carrier could not be read")
+    && string_contains(s: refused, pattern: v1_exit_progress_count_text(accepted_ids: []))
+}
+
+// ── The route the plan parameter CANNOT reach refuses instead of answering ───────────────────────
+//
+// DESIGN 4b puts silent wrongness outside the ladder and forbids it outright, so the plan parameter
+// may not create a path where / answers 200 from a body rendered under an authority nobody can
+// name. The agreement is a declared fact of the call, and a caller that cannot declare it is
+// refused on that ONE route (review 63390). This is the executing evidence for that arm, and for
+// its other half: refusing / must not cost the routes whose plan DOES reach them.
+
+test fn witness_undeclared_daily_body_refuses_rather_than_answering() -> Bool {
+  let r = serve_over_plan_declaring(
+    plan: caller_supplied_plan_fixture(),
+    daily_body: DailyBodyAuthorityUnknown,
+    path: roadmap_site_daily_url_path as String,
+  )
+  r.status == 503
+    && string_contains(s: r.body, pattern: "carries no identity of the authority it came from")
+    && string_contains(s: r.body, pattern: "served_observation_observe_and_write_over")
+    && string_contains(s: r.body, pattern: "a_prerendered_body_carries_no_identity_of_its_source")
+}
+
+// THE POSITIVE CONTROL, without which the refusal above is satisfiable by refusing everything: a
+// caller that cannot vouch for the daily body still gets every other route answered from its own
+// plan, and the refusal is located on / alone.
+test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
+  let md = serve_over_plan_declaring(
+    plan: caller_supplied_plan_fixture(),
+    daily_body: DailyBodyAuthorityUnknown,
+    path: roadmap_site_roadmap_url_path as String,
+  )
+  md.status == 200
+    && string_contains(s: md.body, pattern: caller_supplied_plan_section_title())
+    && !string_contains(s: md.body, pattern: public_plan_section_title())
 }

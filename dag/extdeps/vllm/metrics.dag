@@ -66,6 +66,7 @@ type VllmServingMetric
   | IterationTokensTotal
   | NumRequestsRunning
   | NumRequestsWaiting
+  | NumRequestsWaitingByReason
   | PrefixCacheQueries
   | PrefixCacheHits
   | PromptTokensTotal
@@ -80,6 +81,7 @@ fn vllm_metric_name(m: VllmServingMetric) -> NonEmptyStr {
     IterationTokensTotal => "vllm:iteration_tokens_total" as NonEmptyStr
     NumRequestsRunning => "vllm:num_requests_running" as NonEmptyStr
     NumRequestsWaiting => "vllm:num_requests_waiting" as NonEmptyStr
+    NumRequestsWaitingByReason => "vllm:num_requests_waiting_by_reason" as NonEmptyStr
     PrefixCacheQueries => "vllm:prefix_cache_queries_total" as NonEmptyStr
     PrefixCacheHits => "vllm:prefix_cache_hits_total" as NonEmptyStr
     PromptTokensTotal => "vllm:prompt_tokens_total" as NonEmptyStr
@@ -268,6 +270,43 @@ fn waiting_verdict(q: ServingQuestion) -> MetricVerdict {
   }
 }
 
+// ── THE QUEUE, SPLIT BY WHY THE REQUEST IS WAITING ────────────────────────────────────────────
+//
+// WHAT THIS SERIES IS AND WHY IT IS MODELLED SEPARATELY FROM ITS UNLABELLED SIBLING. The plain
+// waiting gauge answers "is anything queued" and nothing about why; this family carries a `reason`
+// label, and one of its values -- capacity -- is the engine saying, in its own help text, that a
+// request is waiting for SCHEDULING CAPACITY. That distinction is the difference between a queue
+// that will clear on the next step and a route that is refusing to admit more work, and an
+// admission rule that cannot tell them apart must treat every queue as the second.
+//
+// THE REASON VOCABULARY IS DELIBERATELY NOT ENUMERATED HERE. One value was read off the live group
+// A endpoint on 2026-09-11 together with its HELP line; the rest of the family was not, and a
+// closed enum written from one observation would be an invented upstream fact. So the label key and
+// the one observed value are rows, and a consumer selects BY LABEL -- never by taking the first
+// line of the family, which on a multi-reason body is whichever the exporter rendered first.
+fn waiting_by_reason_verdict(q: ServingQuestion) -> MetricVerdict {
+  match q {
+    IsThisReplicaSaturated =>
+      MetricAnswers { note: "the capacity-reason series is the engine reporting requests held back for scheduling capacity, which is a present-tense statement that this route will not take more work now; it must be selected by its reason label and is meaningless summed across reasons" as NonEmptyStr }
+    HowBusyIsThisReplica =>
+      MetricRefuses { because: "zero waiting for capacity is consistent with an idle route and with a fully loaded one that is keeping up; num_requests_running is the busyness gauge" as NonEmptyStr }
+    TokensComputedInOneEngineStep => MetricRefuses { because: "it counts requests, not tokens" as NonEmptyStr }
+    HowManyEngineStepsHaveRun => MetricRefuses { because: "it is instantaneous and carries no step history" as NonEmptyStr }
+    HowLongIsTheLongestUninterruptibleStep => MetricRefuses { because: "it carries no duration" as NonEmptyStr }
+    HowLargeAreArrivingPrompts => MetricRefuses { because: "it carries no prompt grain" as NonEmptyStr }
+    IsThePrefixCacheEffective => MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
+    IsTheEngineThrashing =>
+      MetricRefuses { because: "waiting for capacity is admission pressure, not eviction of a running sequence; num_preemptions_total is the thrash signal" as NonEmptyStr }
+  }
+}
+
+// THE LABEL THIS FAMILY IS SELECTED BY, AND THE ONE VALUE OBSERVED ON THIS FLEET. Rows rather than
+// literals at the consumer for the ordinary reason: a label key spelled at each reader is the same
+// upstream fact written N times, and the value is what makes the selection mean anything.
+data vllm_waiting_reason_label: NonEmptyStr = "reason" as NonEmptyStr
+
+data vllm_waiting_reason_capacity: NonEmptyStr = "capacity" as NonEmptyStr
+
 fn cumulative_token_verdict(q: ServingQuestion) -> MetricVerdict {
   match q {
     HowLargeAreArrivingPrompts =>
@@ -324,6 +363,7 @@ fn vllm_metric_answers(metric: VllmServingMetric, question: ServingQuestion) -> 
     IterationTokensTotal => iteration_tokens_verdict(q: question)
     NumRequestsRunning => running_verdict(q: question)
     NumRequestsWaiting => waiting_verdict(q: question)
+    NumRequestsWaitingByReason => waiting_by_reason_verdict(q: question)
     PromptTokensTotal => cumulative_token_verdict(q: question)
     GenerationTokensTotal => cumulative_token_verdict(q: question)
     PrefixCacheQueries => prefix_cache_verdict(q: question)

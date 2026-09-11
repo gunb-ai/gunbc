@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_authority }
+import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority }
 
 // OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN
 // section 3). Each receipt names the upstream declaration it is about and records what gunbc did on
@@ -89,6 +90,29 @@ data mt_jade_publisher_citation_read_receipt: SpecificationCitationReadReceipt =
 data mt_jade_ingested_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
   subject: mt_jade_reference_platform_subject_ref,
   provenance: OperatorSuppliedDocumentText {},
+}
+
+// A SECOND, INDEPENDENT READ OF THE SAME DOCUMENT, ADDED RATHER THAN REPLACING THE OPERATOR
+// HAND-OFF ABOVE. The receipts answer different questions - one says how the platform rows got
+// their text, the other says how the Table 3 rows got theirs - and collapsing them would erase the
+// only cross-check either one has. THE CROSS-CHECK IS WHAT MAKES THIS WORTH RECORDING: the capture
+// reproduces the facts the operator-supplied read already grounded (the 428 by 479.36 mm outline,
+// the ILM4926 designation, the 9FGV1006B and AST2500 part numbers), so the two artifacts are the
+// same document and not two revisions wearing one locator.
+data mt_jade_mirror_capture_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2022,
+  month: 6,
+  day: 3,
+}
+
+data mt_jade_mirror_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_jade_reference_platform_subject_ref,
+  provenance: DatedPublisherLocatorMirrorTextIngested {
+    mirror: internet_archive_mt_jade_capture_authority,
+    capture_date: mt_jade_mirror_capture_date,
+    peer_session: "silent-koi-898",
+    detail: "the publisher locator still answers 403 unauthenticated, so session silent-koi-898 fetched the dated Internet Archive capture of it - 3493299 bytes, sha256 1ca9adc18543ef4686537aaafa386fa09075f75612dd3ea57c03b7d8d438f6ae, 58 pages - and decoded its full text by zlib content-stream decompression, reading section 7.4 Table 3 from the rendered text positions rather than the flattened stream order. This is a second artifact from the publisher copy and may not match what the publisher serves today.",
+  },
 }
 
 data mt_mitchell_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {

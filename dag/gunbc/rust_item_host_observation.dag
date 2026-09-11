@@ -15,6 +15,7 @@ import gunbc.rust_item_identity {
   RustImplBlock,
   RustImplMethod,
   RustItemIdentity,
+  RustModule,
   rust_item_identity_key,
   rust_item_identity_qualified_name
 }
@@ -28,11 +29,12 @@ import gunbc.rust_item_scan {
   AttributedToFileLevel,
   AttributedToUnnamedMacroBlock,
   AttributionOutOfRange,
+  line_is_attribute_or_comment,
   scan_rust_source
 }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Bool, GitRef, Int, List, NonEmptyStr, Set, String }
+import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, Set, String }
 import v2.std.algebra { HeadAbsent, HeadFound, any, filter, fold_list, length, list_append, list_head, list_map, list_snoc_item }
 
 // TWO POPULATIONS, TWO FUNCTIONS, AND THEY MAY NOT BE COLLAPSED.
@@ -995,55 +997,318 @@ fn rust_paths_from_nul(raw: String) -> List<String> {
 // population including it would answer a question no roster row can ask. The ADDITION population is
 // not narrowed: the change observation scans whatever the diff names, and an added item under an
 // unclaimed tree REFUSES at the join rather than being skipped here.
-fn live_hand_rust_candidate_paths(tracked_paths: List<String>) -> List<String> {
-  filter(
-    xs: tracked_paths,
-    predicate: fn(path) {
-      length(xs: rust_namespace_row_for_path(repo_path: path)) > 0
-    }
-  )
+fn path_is_on_claimed_hand_rust_surface(path: String) -> Bool {
+  length(xs: rust_namespace_row_for_path(repo_path: path)) > 0
 }
 
-fn observe_current_live_hand_rust() -> LiveHandRustObservation {
+// THE HEAD SOURCES, READ ONCE PER CALLER AND SELECTED BY A CALLER-SUPPLIED PREDICATE. Two live
+// producers below need the same plumbing -- HEAD, its tree, the generated population, one Show per
+// selected path -- and differ only in WHICH paths they select: the hand-Rust surface is scoped to
+// the namespace-claimed trees, the reference population is scoped to everything outside the
+// deletion set. Sharing the read keeps that difference a predicate rather than a second copy of the
+// git conversation.
+// WHAT WAS READ CARRIES WHERE IT WAS READ. A row derived from these sources is an observation of
+// one commit and one tree, and a consumer that stamps it with anything else labels a live reading
+// as an older one; so the revision and the tree object id travel with the sources.
+type RustObservedTree {
+  revision: String
+  tree: String
+}
+
+type HeadRustSources
+  = HeadRustSourcesRead { observed_at: RustObservedTree, sources: List<RustFileChangeInput>, generated_repo_paths: List<String> }
+  | HeadRustSourcesRefused { detail: String }
+
+fn head_rust_sources(select: fn(String) -> Bool) -> HeadRustSources {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
   if !head.success || (head.sha as String) == "" {
-    LiveHandRustHostRefused { detail: "git.Inspect.HeadCommit refused or returned an empty revision" }
+    HeadRustSourcesRefused { detail: "git.Inspect.HeadCommit refused or returned an empty revision" }
   } else {
     let revision = head.sha as String
     let tree = git.Inspect.ListTreePathsAtRevision(ref: revision as GitRef, expect: ExpectSuccess)
+    let tree_id = git.Inspect.ShowTree(ref: revision as GitRef)
     if !tree.success {
-      LiveHandRustHostRefused {
+      HeadRustSourcesRefused {
         detail: git_refusal_detail(operation: "git.Inspect.ListTreePathsAtRevision(HEAD)", stderr: tree.stderr)
+      }
+    } else if !tree_id.success {
+      HeadRustSourcesRefused {
+        detail: git_refusal_detail(operation: "git.Inspect.ShowTree(HEAD)", stderr: tree_id.stderr)
       }
     } else {
       match generated_population_at(revision: revision) {
         GeneratedPopulationUnobserved { detail: detail } =>
-          LiveHandRustHostRefused {
+          HeadRustSourcesRefused {
             detail: concat(
               "the emitted stage0 population was not observed, so generated Rust cannot be told from hand Rust: ",
               detail
             )
           }
-        GeneratedPopulationObserved { repo_paths: generated_repo_paths } =>
-      observe_live_hand_rust(
-        generated_repo_paths: generated_repo_paths,
-        sources: list_map(
-          xs: live_hand_rust_candidate_paths(tracked_paths: rust_paths_from_nul(raw: tree.paths_nul)),
-          f: fn(path) {
-            let show = git.Core.Show(ref: revision as GitRef, path: path, expect: ExpectSuccess)
-            RustFileChangeInput {
-              repo_path: path,
-              base_content: "",
-              head_content: show.content,
-              present_at_base: false,
-              present_at_head: show.success,
-              old_ranges: [],
-              new_ranges: []
+        GeneratedPopulationObserved { repo_paths: generated_repo_paths } => {
+          let sources = list_map(
+            xs: filter(
+              xs: rust_paths_from_nul(raw: tree.paths_nul),
+              predicate: fn(path) {
+                select(path) && !any(xs: generated_repo_paths, predicate: fn(p) { p == path })
+              }
+            ),
+            f: fn(path) {
+              let show = git.Core.Show(ref: revision as GitRef, path: path, expect: ExpectSuccess)
+              RustFileChangeInput {
+                repo_path: path,
+                base_content: "",
+                head_content: show.content,
+                present_at_base: false,
+                present_at_head: show.success,
+                old_ranges: [],
+                new_ranges: []
+              }
             }
-          }
-        )
-      )
+          )
+          head_rust_sources_complete(
+            observed_at: RustObservedTree { revision: revision, tree: trim(s: tree_id.tree) },
+            sources: sources, generated_repo_paths: generated_repo_paths
+          )
+        }
       }
     }
   }
+}
+
+// GENERATED PATHS ARE EXCLUDED BEFORE THE Show LOOP, not after: the generated population is
+// resolved above, and reading ~200 emitted mirrors only to drop them in the consumer is one
+// git.Core.Show per file spent on nothing. The consumers keep their own generated filter -- it is
+// what makes a planted fixture honest -- but the live read never pays for it twice.
+// A PATH THE TREE LISTS BUT Show CANNOT READ REFUSES THE WHOLE READ. Every path here came from
+// HEAD's own listing, so `present_at_head: false` can only mean the read failed -- and a consumer
+// that filtered on present_at_head would drop that file silently, making the population a lower
+// bound with nothing to say so. The refusal names the paths.
+fn head_rust_sources_complete(observed_at: RustObservedTree, sources: List<RustFileChangeInput>, generated_repo_paths: List<String>) -> HeadRustSources {
+  let unread = filter(xs: sources, predicate: fn(s) { !s.present_at_head })
+  if length(xs: unread) > 0 {
+    HeadRustSourcesRefused {
+      detail: concat(
+        "git.Core.Show refused a path HEAD's tree lists: ",
+        fold_list(xs: list_map(xs: unread, f: fn(s) { s.repo_path }), empty: "", cons: fn(acc, p) { if acc == "" { p } else { concat(acc, concat(", ", p)) } })
+      )
+    }
+  } else {
+    HeadRustSourcesRead { observed_at: observed_at, sources: sources, generated_repo_paths: generated_repo_paths }
+  }
+}
+
+fn observe_current_live_hand_rust() -> LiveHandRustObservation {
+  match head_rust_sources(select: fn(path) { path_is_on_claimed_hand_rust_surface(path: path) }) {
+    HeadRustSourcesRefused { detail: detail } => LiveHandRustHostRefused { detail: detail }
+    HeadRustSourcesRead { observed_at: _, sources: sources, generated_repo_paths: generated_repo_paths } =>
+      observe_live_hand_rust(sources: sources, generated_repo_paths: generated_repo_paths)
+  }
+}
+
+// THE REFERENCE POPULATION: EVERY HAND-RUST ITEM WHOSE TEXT NAMES ONE OF THE SUPPLIED TOKENS, EACH
+// PROJECTED TO A DeclarationRef THROUGH THE SAME TABLE THE OTHER PRODUCERS USE.
+//
+// gunbc.v1_consumer_census needs "who in Rust reaches v1_rt / v1_interpreter" at consumer x
+// consumed-authority grain, and until this producer existed it answered with four hand-named crate
+// roots (v1_shim_items) -- a measurement copied from the tree, which DESIGN section 5 refuses as an
+// oracle. What was missing was not a new authority (the scan, the identity and the projection all
+// exist above) but the FOLD: take the live surface, keep the files whose text carries a token, scan
+// those, attribute every token-carrying line to the innermost item enclosing it, and project that
+// item. The tokens are a parameter because WHICH authorities are hunted is the census's fact, not
+// this module's; the deletion set is a parameter for the same reason -- a reference inside src/v1
+// is v1 consuming v1, which is the census's hole-two population and not a consumer.
+//
+// THE THREE ATTRIBUTION ARMS AND WHAT EACH BECOMES. A line inside an item projects that item. A
+// file-level line (`pub use v1_compiler::v1_rt;` at column zero, `pub mod v1_rt;`) belongs to the
+// file's own module -- the crate root for lib.rs -- which the scan does not mint as an item, so it
+// is constructed here as the RustModule item named for the file, exactly the shape the census used
+// to hand-author. A line inside an unnamed macro block or out of range is a located REFUSAL row:
+// the reference is real, an item cannot be named for it, and dropping it would be the empty-
+// observation narrow this module exists to refuse. Files whose text carries no token are not
+// scanned at all -- the containment test is a host string operation, the scan is an interpreted
+// fold, and scanning to learn what a substring test already answered is redundant work.
+type RustReferenceRow {
+  item: RustItemIdentity
+  token: String
+  line: Int
+  projection: ItemDeclarationRefProjection
+}
+
+type RustReferenceUnattributed {
+  repo_path: String
+  token: String
+  line: Int
+  detail: String
+}
+
+type RustReferenceObservation
+  = RustReferencesObserved {
+      observed_at: RustObservedTree,
+      rows: List<RustReferenceRow>,
+      unattributed: List<RustReferenceUnattributed>,
+      unscannable: List<RustFileScan>
+    }
+  | RustReferenceHostRefused { detail: String }
+
+type RustReferenceFoldState {
+  rows: List<RustReferenceRow>
+  unattributed: List<RustReferenceUnattributed>
+  unscannable: List<RustFileScan>
+}
+
+fn rust_file_stem(repo_path: String) -> String {
+  fold_list(xs: split(s: strip_rs_suffix(s: repo_path), delimiter: "/"), empty: "", cons: fn(_acc, seg) { seg })
+}
+
+fn rust_file_level_item(repo_path: String, line_count: Int) -> RustItemIdentity {
+  RustItemIdentity {
+    repo_path: repo_path as FilePath,
+    kind: RustModule,
+    name: rust_file_stem(repo_path: repo_path) as NonEmptyStr,
+    impl_subject: "",
+    enclosing_module: "",
+    start_line: 1,
+    loc: line_count
+  }
+}
+
+fn rust_item_with_key(items: List<RustItemIdentity>, key: String) -> List<RustItemIdentity> {
+  filter(xs: items, predicate: fn(item) { rust_item_identity_key(item: item) == key })
+}
+
+fn rust_reference_state_refuse(state: RustReferenceFoldState, repo_path: String, token: String, line: Int, detail: String) -> RustReferenceFoldState {
+  RustReferenceFoldState {
+    rows: state.rows,
+    unattributed: list_snoc_item(
+      xs: state.unattributed,
+      item: RustReferenceUnattributed { repo_path: repo_path, token: token, line: line, detail: detail }
+    ),
+    unscannable: state.unscannable
+  }
+}
+
+fn rust_reference_state_row(state: RustReferenceFoldState, rows: List<RustSourceNamespaceRow>, item: RustItemIdentity, token: String, line: Int) -> RustReferenceFoldState {
+  RustReferenceFoldState {
+    rows: list_snoc_item(
+      xs: state.rows,
+      item: RustReferenceRow { item: item, token: token, line: line, projection: item_declaration_ref_in(rows: rows, item: item) }
+    ),
+    unattributed: state.unattributed,
+    unscannable: state.unscannable
+  }
+}
+
+fn rust_reference_fold_line(
+  state: RustReferenceFoldState,
+  rows: List<RustSourceNamespaceRow>,
+  repo_path: String,
+  items: List<RustItemIdentity>,
+  macro_regions: List<RustMacroRegion>,
+  line_count: Int,
+  line: Int,
+  token: String
+) -> RustReferenceFoldState {
+  match attribute_scanned_line(items: items, macro_regions: macro_regions, line_count: line_count, line: line) {
+    AttributedToItem { item_key: key } =>
+      match list_head(xs: rust_item_with_key(items: items, key: key)) {
+        HeadFound { value: item } => rust_reference_state_row(state: state, rows: rows, item: item, token: token, line: line)
+        HeadAbsent =>
+          rust_reference_state_refuse(state: state, repo_path: repo_path, token: token, line: line, detail: concat("attribution named an item key the scan did not carry: ", key))
+      }
+    AttributedToFileLevel =>
+      rust_reference_state_row(state: state, rows: rows, item: rust_file_level_item(repo_path: repo_path, line_count: line_count), token: token, line: line)
+    AttributedToUnnamedMacroBlock { macro_name: m, line: _ } =>
+      rust_reference_state_refuse(state: state, repo_path: repo_path, token: token, line: line, detail: concat("inside an unnamed macro block: ", m))
+    AttributionOutOfRange { line: _, line_count: _ } =>
+      rust_reference_state_refuse(state: state, repo_path: repo_path, token: token, line: line, detail: "line is outside the scanned range")
+  }
+}
+
+type RustReferenceLineCursor {
+  line: Int
+  state: RustReferenceFoldState
+}
+
+fn rust_reference_fold_file(
+  state: RustReferenceFoldState,
+  rows: List<RustSourceNamespaceRow>,
+  tokens: List<String>,
+  repo_path: String,
+  content: String
+) -> RustReferenceFoldState {
+  match scan_rust_source(repo_path: repo_path, content: content) {
+    RustFileScanRefused { repo_path: p, line: line, line_text: text, detail: detail } =>
+      RustReferenceFoldState {
+        rows: state.rows,
+        unattributed: state.unattributed,
+        unscannable: list_snoc_item(
+          xs: state.unscannable,
+          item: RustFileScanRefused { repo_path: p, line: line, line_text: text, detail: detail }
+        )
+      }
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
+      let cursor = fold_list(
+        xs: split(s: content, delimiter: "\n"),
+        empty: RustReferenceLineCursor { line: 1, state: state },
+        cons: fn(cursor, text) {
+          RustReferenceLineCursor {
+            line: cursor.line + 1,
+            state: fold_list(
+              xs: filter(xs: tokens, predicate: fn(token) { rust_line_references_token(text: text, token: token) }),
+              empty: cursor.state,
+              cons: fn(acc, token) {
+                rust_reference_fold_line(
+                  state: acc, rows: rows, repo_path: repo_path, items: items, macro_regions: macro_regions,
+                  line_count: line_count, line: cursor.line, token: token
+                )
+              }
+            )
+          }
+        }
+      )
+      cursor.state
+    }
+  }
+}
+
+// A LEADING COMMENT IS NOT A REFERENCE. A line whose first text is `//` (or an attribute) naming a
+// token is prose about the token -- the receipt a deletion leaves behind, the doc comment above a
+// renderer that no longer renders -- and a population that counted it would report a consumer where
+// there is a sentence. The predicate is the scan's own (gunbc.rust_item_scan
+// line_is_attribute_or_comment), so this reader and the item reader skip the same lines. WHAT IT
+// DOES NOT COVER, stated because the earlier wording claimed more: a token in a TRAILING comment
+// after code, or inside a `/* */` block, is counted as a reference. That direction fails loudly --
+// the line attributes to its item and, in the census, becomes an undisposed site that blocks --
+// which is the fail-closed side of the two; a comment reader that stripped `//` from the end of a
+// line would silently drop a string literal carrying `//`.
+fn rust_line_references_token(text: String, token: String) -> Bool {
+  !line_is_attribute_or_comment(text: text) && string_contains(s: text, pattern: token)
+}
+
+fn rust_source_carries_a_token(content: String, tokens: List<String>) -> Bool {
+  any(xs: tokens, predicate: fn(token) { string_contains(s: content, pattern: token) })
+}
+
+fn observe_rust_references(
+  observed_at: RustObservedTree,
+  sources: List<RustFileChangeInput>,
+  generated_repo_paths: List<String>,
+  tokens: List<String>,
+  rows: List<RustSourceNamespaceRow>
+) -> RustReferenceObservation {
+  let final = fold_list(
+    xs: filter(
+      xs: sources,
+      predicate: fn(file_change) {
+        file_change.present_at_head
+          && !any(xs: generated_repo_paths, predicate: fn(p) { p == file_change.repo_path })
+          && rust_source_carries_a_token(content: file_change.head_content, tokens: tokens)
+      }
+    ),
+    empty: RustReferenceFoldState { rows: [], unattributed: [], unscannable: [] },
+    cons: fn(acc, file_change) {
+      rust_reference_fold_file(state: acc, rows: rows, tokens: tokens, repo_path: file_change.repo_path, content: file_change.head_content)
+    }
+  )
+  RustReferencesObserved { observed_at: observed_at, rows: final.rows, unattributed: final.unattributed, unscannable: final.unscannable }
 }

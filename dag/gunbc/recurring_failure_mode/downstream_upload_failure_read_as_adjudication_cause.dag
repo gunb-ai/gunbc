@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.downstream_upload_failure_read_as_adjudication_cause
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data downstream_upload_failure_read_as_adjudication_cause: RecurringFailureMode = RecurringFailureMode {
+  identity: "downstream_upload_failure_read_as_adjudication_cause" as NonEmptyStr,
+  receipts: [
+    "**five floor TSV uploads failing after D0-ADJUDICATE are read as the cause of the refusal, when adjudication consumes a local measurement receipt that D0-MEASURE already wrote** (INVALID STATE: the jobs API shows D0-ADJUDICATE red and then admission-roster, expected-red join, long-home agreement, per-claim cost, and cross-claim demand uploads red, so a reader infers that a missing upload is what `--adjudicate-measurement-receipt` refused over, or that the unreached-receipt fallback sealed a file the instrument never produced. Those are the opposite causal direction from the one that holds. ",
+
+    "WHAT ADJUDICATION ACTUALLY READS, named rather than reconstructed from the step title: `gunbc.witness_floor_workflow` `required_ci_measurement_receipt_path` (`required_ci_measurement_receipt.json`) written in the same job by D0-MEASURE, then published as artifact `required-ci-measurement-receipt`. `claim_executor --adjudicate-measurement-receipt` refuses a well-formed `measurement_completed` receipt WHEN IT CARRIES BLOCKERS, and refuses `measurement_unreached`. It does not read the later TSV uploads. Teaching it to accept a completed receipt that carries blockers is DESIGN section 5's escape hatch: a toggle whose only effect is to proceed as if the refusal had not fired, and it would silence every future blocker, not only these. ",
+
+    "SPECIMEN, three independent public-main `witnesses` runs on 2026-09-10/11, jobs API not `gh run view --log` (that subcommand refuses while any job in the run is still running). Run 34542819448 head 38fde6682a and run 34545094436 head e5a2605019: D0-MEASURE success, unreached-seal success, D0-PUBLISH success, D0-ADJUDICATE failure, and all five later uploads SUCCESS. Downloaded `required_ci_measurement_receipt.json` standing=`measurement_completed` with four blockers, identities `v2.test.native_decl_selection.a_nested_same_named_graft_edge_is_not_selected`, `a_sibling_modules_declaration_is_not_selected`, `an_absent_declaration_is_not_found`, `the_requested_declaration_is_selected_and_evaluated`, cause `interrupted_before_verdict`. Disposition TSV: `budget-refused-before-verdict`. That class is `shared_precondition_re_derived_once_per_claim_frame`; gunbc#10992 shared `collision_resolved` after those SHAs. ",
+
+    "SPECIMEN, run 34545333656 head ea18354add: same D0-MEASURE and D0-PUBLISH success, D0-ADJUDICATE failure, and the five TSV uploads FAILURE. Downloaded receipt standing=`measurement_completed`, one blocker identity=`<phase>`, cause TERMINAL-LEDGER REFUSAL `WireAuthorityUnresolved` while typechecking `v2.workflow.floor_terminal_ledger`: `MemoryStallRefusedPageThrash` (admitted budget 16106127360 bytes, cgroup `actions-runner@srv4-01.service`). The floor never rendered the TSVs, so upload-artifact failed. Missing uploads are a CONSEQUENCE of the stall, not the input adjudicate reads. Re-derive with `gh run download <id> -n required-ci-measurement-receipt`. ",
+
+    "THE THREE FAILURES THAT SHARED THE STEP NAME THAT NIGHT, held apart so the next reader does not collapse them. (1) native_decl_selection CPU-deadline non-verdicts -- historical after #10992. (2) MemoryStallRefusedPageThrash during terminal-ledger / `floor2_prepared_subject` typecheck -- live, intermittent; latest main failure cc439d6afa run 34604248870 is this class with no subject red; 199aee77ab is a descendant of a2ee813e06 and succeeded, so the one later subject red (`data_record_fn_literal_field_is_not_retained_holds`) is already superseded. (3) POSIX 127 on D0-ADJUDICATE when `claim_executor` was evicted mid-job -- `command_not_found_exit_cannot_distinguish_eviction_from_misnaming`, run 34562801087. Same step name, three mechanisms. ",
+
+    "BOUNDED AGAINST THE NEIGHBOURS. It is not `empty_capture_read_as_clean_result`: the receipts above were recovered as artifacts, not inferred from a zero-byte log. It is not the unreached-fallback arm of `required_ci_measurement_finalize_step`: that arm is a no-op when the JSON already exists, which it did on every named run. It is not a defect in the five upload steps. The thrash repair is not this row -- `docs/plans/ci-per-job-microvm-migration.md` refuses to treat thrash as a `--entry` compile fix, and a second lane shrinking the floor closure would be the gate-closure hole. ",
+
+    "RECOGNITION RULE: when D0-ADJUDICATE is the first red step, download `required-ci-measurement-receipt` before reading upload conclusions. If standing is `measurement_completed` with blockers, adjudication refused the floor's own blockers. If the TSV uploads are also red, ask whether those files exist on the runner; their absence follows a stall or an early refuse, it does not explain the adjudicate argv. ",
+
+    "RUNG FOUND AT: mitigatable -- the jobs API already names per-step conclusions, and the published JSON already names standing and blockers. The harm is a human causal reversal that sends the next repair at the upload steps or at the adjudicator. ",
+
+    "CEILING: mechanically preventable for repository-owned triage once a refusal that names `standing=` and `blockers=` cannot be filed without those fields being read; it is not structurally impossible, because GitHub will still list later steps as failed when their inputs were never written. ",
+
+    "NEXT-RUNG TRIGGER, A CAPABILITY AND NOT AN ARTIFACT: a required-floor triage surface that joins D0-ADJUDICATE's exit to the measurement receipt's standing and blocker identities before any upload conclusion is offered as a cause -- sufficient that a missing TSV cannot be cited as what adjudicate refused over. Until then this row is the join.)",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_ci_measurement_adjudicate_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_ci_measurement_receipt_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "witness_floor_run_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_ci_measurement_finalize_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.required_ci_measurement_shell", decl_name: "required_ci_measurement_adjudicate_stmts", field: WholeDeclaration },
+  ],
+}

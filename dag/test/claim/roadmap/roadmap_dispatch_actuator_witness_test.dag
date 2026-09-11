@@ -1027,9 +1027,11 @@ test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> 
 //
 // THE PIN IS A VENDOR IDENTIFIER, AND THAT IS THE WHOLE SCOPE OF THIS AXIS. An earlier revision
 // pinned glm-5.3-flash here and called it the live case. It is not: GLM is served by the LOCAL
-// harness backend, whose model is the single constant gunbc.harness.harness_wire
-// harness_engine_model, and nothing on that path travels through --model at all -- swapping the
-// harness engine is an edit to that constant, not a selection this carrier makes. Worse, the value
+// harness backend, whose model is bound per placement from the route that grants the seat
+// (gunbc.serving.admitted_model), and nothing on that path travels through --model at all --
+// swapping the harness engine is a serving-route fact, not a selection this carrier makes. It was a
+// single constant when this was written; the constant is gone, which strengthens the point rather
+// than weakening it. Worse, the value
 // was pinned into a CLAUDE argv, where `claude --model glm-5.3-flash` is rejected by Anthropic at
 // run time. The two CLIs can only be pointed at a local endpoint through provider-endpoint routing
 // that this corpus does not carry, so this axis selects among VENDOR models and the specimen says
