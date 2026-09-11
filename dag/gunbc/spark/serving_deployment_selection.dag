@@ -871,10 +871,17 @@ fn fleet_fits(c: DeploymentCandidate, fleet: FleetSnapshot) -> Bool {
     && hosts_consumed(c: c) <= fleet.host_count
 }
 
+fn weight_treatment_key(t: WeightTreatment) -> String {
+  match t {
+    PublishedNativeWeights => "published-native"
+    RequantisedWeights { distinction: d } => join(["requantised|", d as String], "")
+  }
+}
+
 fn fleet_admitted_topologies(fleet: FleetSnapshot) -> List<TopologyShape> {
   flat_map(nat_range_inclusive(lo: 1, hi: fleet.host_count), tp =>
     map(
-      filter(nat_range_inclusive(lo: 1, hi: fleet.host_count), r => tp * r <= fleet.host_count),
+      nat_range_inclusive(lo: 1, hi: fleet.host_count / tp),
       r => topology_shape(tensor_parallel_degree: tp, replica_count: r),
     ))
 }
@@ -1169,16 +1176,18 @@ type CombinationKey sole_constructor {
   artifact: DeclarationRef
   topology: TopologyShape
   profile_digest: String
+  treatment_digest: String
 }
 
 fn combination_key_eq(a: CombinationKey, b: CombinationKey) -> Bool {
   declaration_ref_eq(a: a.artifact, b: b.artifact)
     && topology_shape_eq(a: a.topology, b: b.topology)
     && a.profile_digest == b.profile_digest
+    && a.treatment_digest == b.treatment_digest
 }
 
 fn combination_key_render(k: CombinationKey) -> String {
-  join([declaration_ref_display_key(ref: k.artifact), "|tp", to_string(k.topology.tensor_parallel_degree), "|x", to_string(k.topology.replica_count), "|", k.profile_digest], "")
+  join([declaration_ref_display_key(ref: k.artifact), "|", k.treatment_digest, "|tp", to_string(k.topology.tensor_parallel_degree), "|x", to_string(k.topology.replica_count), "|", k.profile_digest], "")
 }
 
 type ServingDeploymentChoiceDomain sole_constructor {
@@ -1196,7 +1205,12 @@ fn serving_deployment_domain_over_standings(artifacts: List<ModelArtifact>, topo
 }
 
 fn combination_for_profile(a: ModelArtifact, t: TopologyShape, p: ServingDecisionParameters) -> CombinationKey {
-  CombinationKey { artifact: a.identity, topology: t, profile_digest: parameters_key(p: p) }
+  CombinationKey {
+    artifact: a.identity,
+    topology: t,
+    profile_digest: parameters_key(p: p),
+    treatment_digest: weight_treatment_key(t: a.weight_treatment),
+  }
 }
 
 fn combinations_for_topology(a: ModelArtifact, t: TopologyShape, profiles: List<ServingDecisionParameters>) -> List<CombinationKey> {
@@ -1212,7 +1226,12 @@ fn expected_combinations(d: ServingDeploymentChoiceDomain) -> List<CombinationKe
 }
 
 fn candidate_combination(c: DeploymentCandidate) -> CombinationKey {
-  CombinationKey { artifact: c.artifact.identity, topology: c.topology, profile_digest: parameters_key(p: c.profile) }
+  CombinationKey {
+    artifact: c.artifact.identity,
+    topology: c.topology,
+    profile_digest: parameters_key(p: c.profile),
+    treatment_digest: weight_treatment_key(t: c.artifact.weight_treatment),
+  }
 }
 
 fn key_occurrences(keys: List<CombinationKey>, k: CombinationKey) -> Nat {
@@ -1253,7 +1272,11 @@ fn serving_profile_standing_key(s: ServingProfileStanding) -> String {
 // load-bearing: a different wire or obligation is a different field even when no ready profile exists.
 fn domain_key_render(d: ServingDeploymentChoiceDomain) -> String {
   join([
-    join(map(d.artifacts, a => declaration_ref_display_key(ref: a.identity)), ","),
+    join(map(d.artifacts, a => join([
+      declaration_ref_display_key(ref: a.identity),
+      "|",
+      weight_treatment_key(t: a.weight_treatment),
+    ], "")), ","),
     "|topo",
     join(map(d.topologies, t => join(["tp", to_string(t.tensor_parallel_degree), "x", to_string(t.replica_count)], "")), ","),
     "|stand",

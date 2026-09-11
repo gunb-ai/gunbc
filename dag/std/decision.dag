@@ -878,21 +878,21 @@ fn unread_axis_gaps(entry: ParetoEntry, wanted: List<DeclarationRef>) -> List<Ax
   )
 }
 
-fn constraint_definitely_infeasible(
+fn constraint_definite_infeasibilities(
   entry: ParetoEntry,
   constraints: List<HardConstraint>,
   axes: List<SelectionAxis>,
-) -> Bool {
-  any(constraints, c =>
+) -> List<HardConstraint> {
+  flat_map(constraints, c =>
     match constraint_cmp(entry: entry, constraint: c, axes: axes) {
       Present { value: cmp } =>
         match cmp {
-          Worse => true
-          Better => false
-          Same => false
-          UndecidedOnEvidence => false
+          Worse => [c]
+          Better => []
+          Same => []
+          UndecidedOnEvidence => []
         }
-      Absent => false
+      Absent => []
     }
   )
 }
@@ -908,7 +908,7 @@ fn scan_feasibility(
   } else {
   let wanted = feasibility_unread_axes(axes: axes, constraints: constraints)
   let folded = fold(field, init: FeasibilityAccum { remaining: [], gaps: [] }, f: (acc, entry) => {
-    if constraint_definitely_infeasible(entry: entry, constraints: constraints, axes: axes) {
+    if (constraint_definite_infeasibilities(entry: entry, constraints: constraints, axes: axes) |> count) > 0 {
       acc
     } else {
     let unread = unread_axis_gaps(

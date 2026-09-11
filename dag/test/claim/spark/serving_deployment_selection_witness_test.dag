@@ -21,6 +21,7 @@ import gunbc.spark.v41_published_image_observation {
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
+  WeightTreatment, PublishedNativeWeights, RequantisedWeights,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
   ServingExecutionProfile, execution_profile_of,
@@ -407,6 +408,25 @@ fn profile_with_layout(p: ServingDecisionParameters, k: KvLayoutPolicy) -> Servi
     speculative: p.speculative,
     runtime: p.runtime,
   )
+}
+
+test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
+  let requant_art = ModelArtifact {
+    identity: artifact_deepseek_v4_flash_native.identity,
+    label: artifact_deepseek_v4_flash_native.label,
+    footprint: artifact_deepseek_v4_flash_native.footprint,
+    weight_treatment: RequantisedWeights { distinction: "identity-collision-probe" as NonEmptyStr },
+  }
+  let requant_field = serving_candidate_field(
+    identity: settled_field.identity,
+    domain: serving_deployment_domain(
+      artifacts: [requant_art],
+      topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "requant_same_id", art: requant_art, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))],
+  )
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: input_with(field: requant_field, w: established_demand))
 }
 
 test fn candidate_identity_includes_the_complete_profile() -> Bool {
