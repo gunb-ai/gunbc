@@ -8,7 +8,6 @@ import v2.std.algebra {
   HeadAbsent,
   HeadFound,
   count_where,
-  fold_list_right,
   length,
   list_head,
   list_reverse,
@@ -16,8 +15,7 @@ import v2.std.algebra {
 import v2.std.collection { Absent, Present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.decl_index { DeclFact }
-import v2.std.node { Edge, Named, Node, NodeFold, Positional, TypeNode, Atom, Conj, fold_node }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { Edge, Named, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node }
 
 type OuterRecordConstructorLexeme = String
 
@@ -62,49 +60,17 @@ fn resolve_decl_fact_by_qualified_name(
   }
 }
 
-fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexeme? {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
-      Present { value: symbol_lexeme(sym: sym) }
-    TypeNode { connective: Conj } =>
-      fold(
-        node_positional_child_targets(node: node),
-        init: Absent,
-        f: fn(acc, nested) {
-          match acc {
-            Present { value: _ } => acc
-            Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
-          }
-        }
-      )
-    _ => Absent
-  }
-}
+data authored_string_literal_edge_name: Symbol = ^authored_string_literal
 
 fn skeleton_edge_is_authored_string_literal(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^authored_string_literal
+    Named { name: nm } => nm == authored_string_literal_edge_name
     Positional => false
   }
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
-  let child_lexemes = fold(node.children, init: Empty, f: fn(acc, e) {
-    if skeleton_edge_is_authored_string_literal(e: e) {
-      acc
-    } else {
-      fold_list_right(
-        xs: node_skeleton_marshal_atom_lexemes(node: e.target),
-        empty: acc,
-        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
-      )
-    }
-  })
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
-      Cons { head: symbol_lexeme(sym: sym), tail: child_lexemes }
-    _ => child_lexemes
-  }
+  skeleton_atom_lexeme_census_fold(n: node).all_atom_lexemes
 }
 
 fn skeleton_contains_marshal_atom_lexeme(node: Node, lexeme: SkeletonMarshalAtomLexeme) -> Bool {
@@ -136,25 +102,7 @@ fn skeleton_outer_record_constructor_lexeme_count(
 }
 
 fn node_skeleton_authored_string_literals(node: Node) -> List<String> {
-  fold(node.children, init: Empty, f: fn(acc, e) {
-    let from_child = node_skeleton_authored_string_literals(node: e.target)
-    let acc_with_nested = fold_list_right(
-      xs: from_child,
-      empty: acc,
-      snoc: fn(inner, lex) { Cons { head: lex, tail: inner } }
-    )
-    concat(
-      acc_with_nested,
-      if skeleton_edge_is_authored_string_literal(e: e) {
-        match skeleton_marshal_atom_lexeme_optional(node: e.target) {
-          Present { value: lex } => Cons { head: lex, tail: Empty }
-          Absent => Empty
-        }
-      } else {
-        Empty
-      }
-    )
-  })
+  skeleton_atom_lexeme_census_fold(n: node).authored_string_lexemes
 }
 
 fn skeleton_contains_authored_string_literal(node: Node, lexeme: String) -> Bool {
@@ -203,6 +151,7 @@ fn decl_fact_skeleton_for_resolution(
 type AtomLexemeCensus {
   all_atom_lexemes: List<SkeletonMarshalAtomLexeme>
   construction_spelling_lexemes: List<SkeletonMarshalAtomLexeme>
+  authored_string_lexemes: List<String>
   self_is_atom: Bool
   self_lexeme: SkeletonMarshalAtomLexeme
 }
@@ -224,6 +173,7 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
             AtomLexemeCensus {
               all_atom_lexemes: [symbol_lexeme(sym: s)],
               construction_spelling_lexemes: Empty,
+              authored_string_lexemes: Empty,
               self_is_atom: true,
               self_lexeme: symbol_lexeme(sym: s)
             }
@@ -231,6 +181,7 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
             AtomLexemeCensus {
               all_atom_lexemes: Empty,
               construction_spelling_lexemes: Empty,
+              authored_string_lexemes: Empty,
               self_is_atom: false,
               self_lexeme: ""
             }
@@ -238,7 +189,20 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
       },
       step: fn(acc, e, child) {
         if skeleton_edge_is_authored_string_literal(e: e) {
-          acc
+          AtomLexemeCensus {
+            all_atom_lexemes: acc.all_atom_lexemes,
+            construction_spelling_lexemes: acc.construction_spelling_lexemes,
+            authored_string_lexemes: concat(
+              acc.authored_string_lexemes,
+              if child.self_is_atom {
+                Cons { head: child.self_lexeme, tail: child.authored_string_lexemes }
+              } else {
+                child.authored_string_lexemes
+              }
+            ),
+            self_is_atom: acc.self_is_atom,
+            self_lexeme: acc.self_lexeme
+          }
         } else {
           AtomLexemeCensus {
             all_atom_lexemes: concat(acc.all_atom_lexemes, child.all_atom_lexemes),
@@ -250,6 +214,7 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
                 child.construction_spelling_lexemes
               }
             ),
+            authored_string_lexemes: concat(acc.authored_string_lexemes, child.authored_string_lexemes),
             self_is_atom: acc.self_is_atom,
             self_lexeme: acc.self_lexeme
           }
@@ -271,3 +236,7 @@ data authored_non_construction_atom_lexeme_dissolve_on: DissolutionCondition = u
 data outer_record_constructor_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
 
 data skeleton_marshal_atom_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as outer_record_constructor_lexeme_dissolve_on — skeleton marshal atoms share one cited production roster rather than parallel String nicknames.")
+
+data authored_string_literal_edge_host_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Host AUTHORED_STRING_LITERAL_EDGE in data_initializer_identity.rs is the intern spelling of authored_string_literal_edge_name. Dissolve-on: that host const is emitted from this Symbol row so a rename cannot silently un-skip constructor-spelling walks.")
+
+data collect_authored_string_literals_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Host collect_authored_string_literals attaches parse-tree LitStr atoms onto the decl_facts Node for atom_identities_in_node / v1_consumer_discovery. It is not DataInitDecl.literal_fp (one SOURCE fingerprint of a top-level literal for dual-representation / effect_reach). Dissolve-on: marshal_data_initializer_projection itself interns every initializer LitStr into the typechecked Node so this attach is deleted.")

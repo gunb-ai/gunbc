@@ -610,12 +610,16 @@ fn collect_authored_string_literals(node: &Rc<Node>, out: &mut Vec<String>) {
     }
 }
 
+// Must remain the intern spelling of `v2.std.decl_facts_skeleton`
+// `authored_string_literal_edge_name`. Seed duplicate until that row emits this const.
 const AUTHORED_STRING_LITERAL_EDGE: &str = "authored_string_literal";
 
 /// Attach every authored `LitStr` in a DataItem initializer (literal, record field,
 /// list element, concat argument, string-interp fragment — the parse tree, not the
 /// typechecked projection) as named `authored_string_literal` edges. Constructor-spelling
 /// atom walks skip that label; lexeme-keyed discovery still reads the target atoms.
+/// Not `DataInitDecl.literal_fp`: that is one SOURCE fingerprint of a top-level
+/// literal. This walk exists until the typechecked projection itself carries LitStr atoms.
 pub fn with_authored_string_literals(
     ctx: &InterpContext,
     item: &Rc<Node>,
