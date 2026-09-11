@@ -517,9 +517,29 @@ fn append_cell_for_column(projection_row: ProjectionRow, column: ReviewColumn) -
   }
 }
 
+fn schema_column_named(schema: ReviewSheetSchema, name: String) -> ReviewColumn? {
+  schema.columns |> filter(c => (c.name as String) == name) |> first
+}
+
+fn append_cell_for_header(
+  projection_row: ProjectionRow,
+  schema: ReviewSheetSchema,
+  header: String,
+) -> String {
+  if header == (schema.identity_column as String) {
+    projection_row.listing_id as String
+  } else {
+    match schema_column_named(schema: schema, name: header) {
+      Present { value: column } => append_cell_for_column(projection_row: projection_row, column: column)
+      Absent => ""
+    }
+  }
+}
+
 fn append_row_for(
   projection_row: ProjectionRow,
   schema: ReviewSheetSchema,
+  headers: List<String>,
   sheet_row: Int,
 ) -> AppendListingRow {
   let derived_cols = schema.columns |> filter(c => match c.kind {
@@ -534,10 +554,11 @@ fn append_row_for(
       column: c.name,
       value: append_cell_for_column(projection_row: projection_row, column: c),
     }),
-    cells: concat(
-      [projection_row.listing_id as String],
-      map(schema.columns, c => append_cell_for_column(projection_row: projection_row, column: c)),
-    ),
+    cells: map(headers, h => append_cell_for_header(
+      projection_row: projection_row,
+      schema: schema,
+      header: h,
+    )),
   }
 }
 
@@ -619,6 +640,7 @@ fn finish_classify(
                 let row = append_row_for(
                   projection_row: pair.second,
                   schema: projection.schema,
+                  headers: observed.headers,
                   sheet_row: start_row + pair.first,
                 )
                 match append_row_a1(row: row) {
