@@ -89,21 +89,17 @@ fn skeleton_edge_is_authored_string_literal(e: Edge) -> Bool {
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
-  let child_lexemes = fold_list_right(
-    xs: node.children,
-    empty: Empty,
-    snoc: fn(acc, e) {
-      if skeleton_edge_is_authored_string_literal(e: e) {
-        acc
-      } else {
-        fold_list_right(
-          xs: node_skeleton_marshal_atom_lexemes(node: e.target),
-          empty: acc,
-          snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
-        )
-      }
+  let child_lexemes = fold(node.children, init: Empty, f: fn(acc, e) {
+    if skeleton_edge_is_authored_string_literal(e: e) {
+      acc
+    } else {
+      fold_list_right(
+        xs: node_skeleton_marshal_atom_lexemes(node: e.target),
+        empty: acc,
+        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
+      )
     }
-  )
+  })
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       Cons { head: symbol_lexeme(sym: sym), tail: child_lexemes }
@@ -147,14 +143,17 @@ fn node_skeleton_authored_string_literals(node: Node) -> List<String> {
       empty: acc,
       snoc: fn(inner, lex) { Cons { head: lex, tail: inner } }
     )
-    if skeleton_edge_is_authored_string_literal(e: e) {
-      match skeleton_marshal_atom_lexeme_optional(node: e.target) {
-        Present { value: lex } => Cons { head: lex, tail: acc_with_nested }
-        Absent => acc_with_nested
+    concat(
+      acc_with_nested,
+      if skeleton_edge_is_authored_string_literal(e: e) {
+        match skeleton_marshal_atom_lexeme_optional(node: e.target) {
+          Present { value: lex } => Cons { head: lex, tail: Empty }
+          Absent => Empty
+        }
+      } else {
+        Empty
       }
-    } else {
-      acc_with_nested
-    }
+    )
   })
 }
 
