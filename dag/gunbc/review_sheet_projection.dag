@@ -504,8 +504,7 @@ fn fold_columns_for_row(
   })
 }
 
-fn append_cell_for_column(projection_row: ProjectionRow, column: ReviewColumn) -> String {
-  let derived = derived_by_column(row: projection_row)
+fn append_cell_for_column(column: ReviewColumn, derived: Map<String, String>) -> String {
   match column.kind {
     ListingStanding => listing_standing_label(state: StandingObserved)
     OperatorEntered => ""
@@ -517,20 +516,24 @@ fn append_cell_for_column(projection_row: ProjectionRow, column: ReviewColumn) -
   }
 }
 
-fn schema_column_named(schema: ReviewSheetSchema, name: String) -> ReviewColumn? {
-  schema.columns |> filter(c => (c.name as String) == name) |> first
+fn columns_by_name(schema: ReviewSheetSchema) -> Map<String, ReviewColumn> {
+  fold(schema.columns, init: empty_map(), f: fn(acc, c) {
+    map_insert(acc, c.name as String, c)
+  })
 }
 
 fn append_cell_for_header(
-  projection_row: ProjectionRow,
-  schema: ReviewSheetSchema,
+  listing_id: NonEmptyStr,
+  identity_column: NonEmptyStr,
+  column_by_name: Map<String, ReviewColumn>,
+  derived: Map<String, String>,
   header: String,
 ) -> String {
-  if header == (schema.identity_column as String) {
-    projection_row.listing_id as String
+  if header == (identity_column as String) {
+    listing_id as String
   } else {
-    match schema_column_named(schema: schema, name: header) {
-      Present { value: column } => append_cell_for_column(projection_row: projection_row, column: column)
+    match column_by_name.lookup(header) {
+      Present { value: column } => append_cell_for_column(column: column, derived: derived)
       Absent => ""
     }
   }
@@ -540,8 +543,10 @@ fn append_row_for(
   projection_row: ProjectionRow,
   schema: ReviewSheetSchema,
   headers: List<String>,
+  column_by_name: Map<String, ReviewColumn>,
   sheet_row: Int,
 ) -> AppendListingRow {
+  let derived = derived_by_column(row: projection_row)
   let derived_cols = schema.columns |> filter(c => match c.kind {
     OperatorEntered => false
     DerivedField { source_field: _ } => true
@@ -552,11 +557,13 @@ fn append_row_for(
     sheet_row: sheet_row,
     derived: map(derived_cols, c => DerivedCell {
       column: c.name,
-      value: append_cell_for_column(projection_row: projection_row, column: c),
+      value: append_cell_for_column(column: c, derived: derived),
     }),
     cells: map(headers, h => append_cell_for_header(
-      projection_row: projection_row,
-      schema: schema,
+      listing_id: projection_row.listing_id,
+      identity_column: schema.identity_column,
+      column_by_name: column_by_name,
+      derived: derived,
       header: h,
     )),
   }
@@ -621,6 +628,7 @@ fn finish_classify(
     ReviewSheetConverged => ReviewSheetConverged
     ReviewSheetNeedsWrite { plan: p } => {
       let start_row = (observed.rows |> count) + 2
+      let column_by_name = columns_by_name(schema: projection.schema)
       let missing = projection.rows |> filter(r => match observed_by_id.lookup(r.listing_id as String) {
         Present { value: _ } => false
         Absent => true
@@ -641,6 +649,7 @@ fn finish_classify(
                   projection_row: pair.second,
                   schema: projection.schema,
                   headers: observed.headers,
+                  column_by_name: column_by_name,
                   sheet_row: start_row + pair.first,
                 )
                 match append_row_a1(row: row) {
