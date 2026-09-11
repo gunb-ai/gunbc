@@ -2,9 +2,12 @@ module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
 
 import std.types { Bool, String }
 import std.measure { token_count, token_count_value, token_count_remaining_in_window, byte_size_count }
+import extdeps.huggingface.hub { hub_blob_url, hub_repo_tree_api_url, hub_repo_https_uri }
+import extdeps.uri { uri_wire }
 import extdeps.deepseek.deepseek_v4_1_flash {
-  deepseek_v4_1_flash_revision, deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
-  deepseek_v4_1_flash_encoder_source_url, deepseek_v4_1_flash_config_source_url,
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
+  deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
+  extdeps_external_authority_anchor,
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_yarn_scaled_positions,
   deepseek_v4_1_flash_kv_source_layer_ids, deepseek_v4_1_flash_dspark_target_layer_ids,
   deepseek_v4_1_flash_engram,
@@ -21,13 +24,15 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn encoder_and_config_urls_carry_the_pin_and_paths() -> Bool {
-  let enc = deepseek_v4_1_flash_encoder_source_url()
-  let cfg = deepseek_v4_1_flash_config_source_url()
-  string_contains(s: enc, pattern: deepseek_v4_1_flash_revision as String)
-    && string_contains(s: enc, pattern: deepseek_v4_1_flash_encoder_path as String)
-    && string_contains(s: cfg, pattern: deepseek_v4_1_flash_revision as String)
-    && string_contains(s: cfg, pattern: deepseek_v4_1_flash_config_path as String)
+test fn encoder_and_config_blob_urls_are_the_hub_shape_at_this_pin() -> Bool {
+  let enc = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_encoder_path)
+  let cfg = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_config_path)
+  let tree = hub_repo_tree_api_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision)
+  (enc as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/encoding/encoding.py"
+    && (cfg as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/config.json"
+    && (tree as String) == "https://huggingface.co/api/models/deepseek-ai/DeepSeek-V4.1-Flash/tree/dba1be0a40aa45a94ad051997016db3960a90277?recursive=1"
+    && (uri_wire(uri: hub_repo_https_uri(repo: deepseek_v4_1_flash_hub_repo)) as String)
+      == (uri_wire(uri: extdeps_external_authority_anchor.uri) as String)
 }
 
 test fn yarn_factor_reproduces_the_scaled_window() -> Bool {

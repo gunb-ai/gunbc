@@ -117,9 +117,30 @@ fn hub_resolve_url(repo: HubRepoId, revision: NonEmptyStr, path_in_repo: NonEmpt
   })
 }
 
+// THE BLOB PAGE, the human-readable counterpart of hub_resolve_url. `/resolve/` is the
+// digest-addressed fetch; `/blob/` is the same repo/revision/path through the Hub's HTML view.
+fn hub_blob_url(repo: HubRepoId, revision: NonEmptyStr, path_in_repo: NonEmptyStr) -> NonEmptyStr {
+  uri_wire(uri: Uri {
+    scheme: Https,
+    locator: join([
+      "huggingface.co/", repo.path as String,
+      "/blob/", revision as String,
+      "/", path_in_repo as String,
+    ], "") as NonEmptyStr,
+  })
+}
+
+// THE REPO PAGE LOCATOR, the `huggingface.co/<path>` subject a product module cites as its Hub
+// authority rather than restating the host.
+fn hub_repo_https_uri(repo: HubRepoId) -> Uri {
+  Uri {
+    scheme: Https,
+    locator: join(["huggingface.co/", repo.path as String], "") as NonEmptyStr,
+  }
+}
+
 // THE TREE API, which is where a per-file digest manifest would be OBSERVED from. It is declared so
-// the path to the stronger guarantee is named rather than left as a gap someone has to rediscover;
-// no row in this repository consumes it yet.
+// the path to the stronger guarantee is named rather than left as a gap someone has to rediscover.
 fn hub_repo_tree_api_url(repo: HubRepoId, revision: NonEmptyStr) -> NonEmptyStr {
   uri_wire(uri: Uri {
     scheme: Https,
