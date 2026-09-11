@@ -1,0 +1,37 @@
+module gunbc.rung_drop.floor_cost_debt_censored_d1_g_parse_family
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
+
+data floor_cost_debt_censored_d1_g_parse_family: RungDrop = RungDrop {
+  identity: "floor_cost_debt_censored_d1_g_parse_family" as NonEmptyStr,
+
+  subject: "thirteen D1+G parse/normalize witnesses the required floor interrupted before a verdict at the 500ms cpu deadline",
+
+  declared: "2026-09-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_reproducer_normalizes_holds",
+      "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_refinement_clause_parses_holds",
+      "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_survives_normalize_holds",
+      "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_clause_parse_tree_carries_holds",
+      "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_well_formed_holds",
+      "v2.test.parse.d1_declaration_grammar_parse.cause_a_cache_identity_where_normalizes_holds",
+      "v2.test.parse.d1_declaration_grammar_parse.cause_a_where_control_normalizes_holds",
+      "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_survives_normalize_graft_holds",
+      "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_parses_and_is_carried_holds",
+      "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds",
+      "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_decl_survives_normalize_holds",
+      "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_decl_survives_normalize_holds",
+      "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_decl_survives_normalize_holds",
+    ],
+    restoration_trigger: "The required floor qualifies tokenize/parse/normalize of a small dag module on a fill-netted measure that is a stable property of the claim, so every identity in this population reaches a verdict under the 500ms cpu ceiling on ordinary required floors. That is the same capability gunbc.rung_drop floor_cost_claim_qualification_unavailable names, applied at this family's work shape. WHAT THIS TRIGGER IS SUFFICIENT FOR: all thirteen identities execute on every ordinary required floor and are decided by a figure that does not change between two runs of one tree. Deleting these thirteen lines from v2.workflow.floor_cost_debt, emptying the roster, or shrinking a single fixture satisfies neither arm — the first two return FloorRefused under load, and the third would buy the budget by shrinking the subject.",
+  }
+}
