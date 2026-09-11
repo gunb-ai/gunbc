@@ -1,0 +1,147 @@
+module extdeps.bmc.ipmi_boot_selection
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+
+// THE CLI SURFACE IS ipmitool's BOOT-FLAG ENCODER, not the IPMI wire itself. The IPMI 2.0
+// chassis boot parameter has separate valid, persistence and boot-type bits; ipmitool exposes
+// them through the final `options=...` argv word. The exact implementation authority is the
+// upstream source whose option table names `valid`, `persistent` and `efiboot` and whose
+// set-bootdev path sets the valid bit before writing parameter 5.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool/blob/master/lib/ipmi_chassis.c"
+  }
+}
+
+type IpmiBootDevice
+  = IpmiBootPxe
+  | IpmiBootCdrom
+
+type IpmiFirmwareBootMode
+  = IpmiBootLegacy
+  | IpmiBootEfi
+
+type IpmiBootPersistence
+  = IpmiBootOnce
+  | IpmiBootPersistent
+
+// A VALID BOOT SELECTION, NOT THREE INDEPENDENT SCALARS. This record is sole_constructor so a
+// caller cannot place Aarch64 beside Legacy or manufacture an opaque options word. The only
+// constructor currently exported is aarch64_uefi_once_boot_selection: its signature has no mode
+// or persistence parameter, hence `(Aarch64, Legacy, Cdrom)` and persistent intake overrides
+// have no source spelling at all. A future x86 legacy requirement adds a different constructor
+// here; it does not widen this one with a Boolean or raw-string escape hatch.
+//
+// The wire and read-back spellings travel with the semantic axes because they are one CLI
+// serialization. A caller selects `IpmiBootCdrom`; it never authors `cdrom`,
+// `options=efiboot`, or one of the four strings used to adjudicate parameter 5.
+type IpmiBootSelection sole_constructor {
+  architecture: Architecture
+  device: IpmiBootDevice
+  firmware_mode: IpmiFirmwareBootMode
+  persistence: IpmiBootPersistence
+  device_wire: NonEmptyStr
+  options_wire: NonEmptyStr
+  expected_flag_rendering: NonEmptyStr
+  expected_device_rendering: NonEmptyStr
+  expected_mode_rendering: NonEmptyStr
+  expected_persistence_rendering: NonEmptyStr
+}
+
+fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection {
+  match device {
+    IpmiBootPxe => IpmiBootSelection {
+      architecture: Aarch64,
+      device: IpmiBootPxe,
+      firmware_mode: IpmiBootEfi,
+      persistence: IpmiBootOnce,
+      device_wire: "pxe",
+      options_wire: "options=efiboot",
+      expected_flag_rendering: "Boot Flag Valid",
+      expected_device_rendering: "Force PXE",
+      expected_mode_rendering: "BIOS EFI boot",
+      expected_persistence_rendering: "Options apply to only next boot",
+    }
+    IpmiBootCdrom => IpmiBootSelection {
+      architecture: Aarch64,
+      device: IpmiBootCdrom,
+      firmware_mode: IpmiBootEfi,
+      persistence: IpmiBootOnce,
+      device_wire: "cdrom",
+      options_wire: "options=efiboot",
+      expected_flag_rendering: "Boot Flag Valid",
+      expected_device_rendering: "Force Boot from CD/DVD",
+      expected_mode_rendering: "BIOS EFI boot",
+      expected_persistence_rendering: "Options apply to only next boot",
+    }
+  }
+}
+
+fn ipmi_boot_device_label(device: IpmiBootDevice) -> NonEmptyStr {
+  match device {
+    IpmiBootPxe => "pxe"
+    IpmiBootCdrom => "cdrom"
+  }
+}
+
+fn ipmi_boot_mode_label(mode: IpmiFirmwareBootMode) -> NonEmptyStr {
+  match mode {
+    IpmiBootLegacy => "legacy"
+    IpmiBootEfi => "efi"
+  }
+}
+
+fn ipmi_boot_persistence_label(persistence: IpmiBootPersistence) -> NonEmptyStr {
+  match persistence {
+    IpmiBootOnce => "once"
+    IpmiBootPersistent => "persistent"
+  }
+}
+
+fn ipmi_boot_selection_label(selection: IpmiBootSelection) -> NonEmptyStr {
+  join([
+    ipmi_boot_device_label(device: selection.device) as String,
+    "/",
+    ipmi_boot_mode_label(mode: selection.firmware_mode) as String,
+    "/",
+    ipmi_boot_persistence_label(persistence: selection.persistence) as String,
+  ], "") as NonEmptyStr
+}
+
+// ONE ARGV WORD PER UPSTREAM CONCEPT. No `sh -c`, no joined command, and no caller-supplied
+// `options=` string. ipmitool receives the secret by -f exactly as extdeps.bmc.ipmi does; the
+// boot selection is projected from the sole-constructor record above.
+service diagnostic.ipmi.BootSelection {
+  operation Set {
+    input {
+      bmc_host: NonEmptyStr
+      username: NonEmptyStr
+      password_file: NonEmptyStr
+      selection: IpmiBootSelection
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell {
+      argv: [
+        "ipmitool",
+        "-H", "{bmc_host}",
+        "-I", "lanplus",
+        "-U", "{username}",
+        "-f", "{password_file}",
+        "chassis", "bootdev",
+        selection.device_wire,
+        selection.options_wire
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool typed boot selection failed"
+    }
+  }
+}
