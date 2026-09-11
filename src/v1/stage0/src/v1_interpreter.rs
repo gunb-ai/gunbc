@@ -14261,7 +14261,7 @@ fn dispatch_file(
                                 byte_count: content.len() as i64,
                                 path,
                                 error: String::new(),
-                        error_kind: String::new(),
+                                error_kind: String::new(),
                                 content,
                             })
                         }
