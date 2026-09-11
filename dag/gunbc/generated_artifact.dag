@@ -351,6 +351,17 @@ fn registry_contains(a: GeneratedArtifact) -> Bool {
 // that every name here resolves; it does not check that the name is the one the dispatch calls.
 // That second half is decidable -- a fold over artifact_generate_unadorned's match arms pairing each
 // variant with the call target it reaches -- and is this class's next-rung trigger, not a ceiling.
+//
+// WHO CONSUMES THE JOIN, AND WHEN (DESIGN section 3c, a declared frontier). Today the executing
+// consumer is test.claim.generated_artifact_producer_coverage_witness_test on the required floor,
+// which refuses a push that leaves any registry row's producer unresolvable. The census-side
+// consumer is gunbc.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
+// GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when
+// every_generated_artifact_producer_covered holds over the same pool roots its .dag-medium producer
+// folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that
+// gives the census a per-medium joined_media state (PR #10939, tools.v1_consumer_discovery); it is
+// not authored here because the census on main carries no such state yet, and adding one beside
+// that in-flight change would be the second vocabulary section 3 forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
   match a {
     WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.witness_floor_workflow", decl_name: "expected_witness_floor_yml")
