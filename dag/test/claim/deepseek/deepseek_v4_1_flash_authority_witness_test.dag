@@ -9,8 +9,10 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_native_context_length,
   deepseek_v4_1_flash_yarn_factor, deepseek_v4_1_flash_kv_source_layers,
   deepseek_v4_1_flash_safetensors_payload_footprint, deepseek_v4_1_flash_safetensors_payload_total,
-  deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_shard_count,
-  deepseek_v4_1_flash_footprint_unread_on_fleet, deepseek_v4_1_flash_config_declares_kv_cache_dtype,
+  deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_tree_file_bytes,
+  deepseek_v4_1_flash_safetensors_shard_count,
+  deepseek_v4_1_flash_footprint_unread_on_fleet, deepseek_v4_1_flash_encoder_has_no_jinja_chat_template,
+  deepseek_v4_1_flash_does_not_adopt_deepseek_recipe, deepseek_v4_1_flash_config_declares_kv_cache_dtype,
   deepseek_v4_1_flash_config_declares_engram_off_accelerator,
   deepseek_v4_1_flash_config_declares_encoder_decoder_split,
   deepseek_v4_1_flash_engram, deepseek_v4_1_flash_accepts_image_input,
@@ -69,8 +71,13 @@ test fn safetensors_payload_footprint_partitions_the_index_total() -> Bool {
     && byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_total(f: f))
       == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
     && byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size) == 510286023000
+    && byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes) == 510296708312
+    && byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)
+      > byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
     && deepseek_v4_1_flash_safetensors_shard_count == 48
     && deepseek_v4_1_flash_footprint_unread_on_fleet
+    && deepseek_v4_1_flash_encoder_has_no_jinja_chat_template
+    && deepseek_v4_1_flash_does_not_adopt_deepseek_recipe
 }
 
 test fn encoder_effort_is_numeric_and_defaults_to_high() -> Bool {
