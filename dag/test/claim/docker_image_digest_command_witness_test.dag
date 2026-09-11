@@ -1,0 +1,70 @@
+module test.claim.docker_image_digest_command_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.exec.command { argv_words }
+import extdeps.docker.cli { docker_image_digest_command }
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Controlled fixtures, not live pins: this file asserts argv SHAPE. A digest-pinned reference is
+// any repo@sha256:... word; a tagged one is any repository:tag without that at-digest form.
+data digest_pinned_fixture: NonEmptyStr = "example.invalid/repo:tag@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr
+data tagged_fixture: NonEmptyStr = "example.invalid/repo:tag" as NonEmptyStr
+
+fn digest_readback_words(image: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_digest_command(image: image))
+}
+
+fn digest_readback_filter(image: NonEmptyStr) -> String {
+  join(["--filter=reference=", image as String], "")
+}
+
+fn argv_has_exact_word(words: List<String>, want: String) -> Bool {
+  fold(words, init: false, f: (acc, w) => acc || w == want)
+}
+
+fn digest_readback_is_portable(words: List<String>) -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: words) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE RED: a digest-pinned pull is present under repo@sha256:... and invisible to docker images'
+// positional REPOSITORY[:TAG] match. Revert the command to a trailing repository word and this
+// fixture is no longer wrapped in `--filter=reference=`.
+test fn a_digest_pinned_identity_readback_filters_on_the_digest_reference() -> Bool {
+  let image = digest_pinned_fixture
+  let words = digest_readback_words(image: image)
+  argv_has_exact_word(words: words, want: digest_readback_filter(image: image))
+    && argv_has_exact_word(words: words, want: "--digests")
+    && argv_has_exact_word(words: words, want: "--quiet")
+    && argv_has_exact_word(words: words, want: "--no-trunc")
+    && !argv_has_exact_word(words: words, want: image as String)
+    && string_contains(s: image as String, pattern: "@sha256:")
+    && digest_readback_is_portable(words: words)
+}
+
+// THE CONTROL: the tagged caller (converge_vllm_image) is the same command, so absence stays an
+// empty listing rather than a second argv that would exit non-zero.
+test fn a_tagged_identity_readback_uses_the_same_filter_form() -> Bool {
+  let tag = tagged_fixture
+  let words = digest_readback_words(image: tag)
+  argv_has_exact_word(words: words, want: digest_readback_filter(image: tag))
+    && argv_has_exact_word(words: words, want: "--digests")
+    && !argv_has_exact_word(words: words, want: tag as String)
+    && !string_contains(s: tag as String, pattern: "@sha256:")
+    && digest_readback_is_portable(words: words)
+}
+
+func docker_image_digest_command_argv_witnesses() -> ProcessExit {
+  if a_digest_pinned_identity_readback_filters_on_the_digest_reference()
+    && a_tagged_identity_readback_uses_the_same_filter_form() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "docker_image_digest_command argv witnesses failed")
+  }
+}
