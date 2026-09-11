@@ -79,7 +79,7 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
     RunnerLost => "extdeps.github.ci_runner (runner shutdown signal)"
     ClusteredOutOfMemoryKill => "kernel cgroup memory.events oom_kill / systemd-oomd (cross-run clustered OOM, evidence-derived; not a log-grep roster signature)"
     CommandInvokedCannotExecute => "extdeps.process.posix_exit (POSIX.1-2017 shell status 126: command found but not executable)"
-    CommandNotFound => "extdeps.process.posix_exit (POSIX.1-2017 shell status 127: command not found)"
+    CommandNotFound => "extdeps.process.posix_exit (POSIX.1-2017 shell status 127: command not found); limitation: gunbc.ci_failure_class command_not_found_exit_cannot_distinguish_eviction_from_misnaming"
     MemoryStallRefusedPageThrash => "gunbc.host.memory_stall_refusal memory_stall_refusal_pressure_text (typed floor refusal, not a subject defect; positive control)"
   }
 }
@@ -176,6 +176,23 @@ fn posix_shell_invocation_infra(code: Int) -> InfraSignature? {
     }
   }
 }
+
+// 127 IS CLASSIFIED INFRA BECAUSE THE EXIT CODE CANNOT DISTINGUISH EVICTION FROM MISNAMING.
+//
+// CommandNotFound is also what a typo in a command name produces, and a typo is a subject
+// defect. Treating every 127 as stands-environment would absorb an authoring defect into the
+// environmental arm — the same one-arm-two-states fail-open this module exists to prevent, with
+// the arms swapped. The wrap is around commands emitted from modelled authorities, which narrows
+// the live path to "someone edited the authority and emitted a wrong binary name", not a
+// per-run hand-typed argv. That bound is not a distinguisher: the workflow is a projection, so
+// a wrong emitted name still reaches the runner as 127 and would still say environment.
+//
+// NEXT-RUNG TRIGGER: join a 127 to an independent observation that the modelled command identity was
+// present before the fail (start toolchain filesystem probe, or emit-time inhabitance of the argv
+// against a closed command roster). Until that join exists, 127 stays Infra as an honest-wide
+// arm, not because it is unambiguous. 126 (found, not executable) is outside this row.
+data command_not_found_exit_cannot_distinguish_eviction_from_misnaming: String = "POSIX 127 (CommandNotFound) is classified Infra because the exit code cannot distinguish shared-FS eviction of a modelled binary from a misspelled emitted command. A typo-induced 127 therefore currently renders as stands-environment. Narrow when a 127 can be joined to an independent observation that the modelled command identity was present at wrap start (toolchain_filesystem_probe) or that the emitted argv inhabits a closed command roster; until then do not treat 127 as an unambiguous environmental signal. 126 is not this limitation."
+
 
 fn classify_failure_exit(code: Int, reason: String) -> FloorFailureClass {
   match posix_shell_invocation_infra(code: code) {

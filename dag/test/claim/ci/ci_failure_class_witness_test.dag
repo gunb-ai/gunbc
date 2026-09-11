@@ -80,7 +80,9 @@ test fn witness_posix_shell_reserved_exits_are_infra_not_subject() -> ProcessExi
     && (posix_exit_status_decimal(code: 126) == "126")
     && string_contains(s: floor_attempt_receipt_body(exit_code: 126, outcome: classify_floor_exit(e: not_exec)), pattern: "CommandInvokedCannotExecute")
     && class_is_infra(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages"))
-    && (floor_failure_blocks_merge(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted")) == false) {
+    && (floor_failure_blocks_merge(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted")) == false)
+    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "cannot distinguish")
+    && string_contains(s: command_not_found_exit_cannot_distinguish_eviction_from_misnaming, pattern: "toolchain_filesystem_probe") {
     ExitSuccess
   } else {
     ExitFailure {
