@@ -206,6 +206,8 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
   }
 ]
 
+// Proto3 JSON omits default integers, so a zero-cell batchUpdate may omit totalUpdatedCells.
+// The operation output uses the same optionality; a required Int would refuse a legal body or mint 0.
 type BatchUpdateValuesResponse {
   spreadsheetId: String
   totalUpdatedRows: Int?
@@ -260,7 +262,7 @@ service sheets.Spreadsheets {
     }
     output {
       spreadsheet_id: String from "spreadsheetId"
-      total_updated_cells: Int from "totalUpdatedCells"
+      total_updated_cells: Int? from "totalUpdatedCells"
       outcome: RestOutcome
     }
     transport rest {
