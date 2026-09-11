@@ -14226,13 +14226,12 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`),
 // `native_lane_phase_cost` / its `commit_phase` host emissions, and the
 // `emit_source_root_eval_driver_main_rs` `[native-lane-phase]` eprintln blocks — ~900 LOC incl. tests.
-// Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
-// returns 4 while the scaffold stands (this block, the const, and its declaration test)
-// and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
-// hit count. (Stated as measured: the two older markers in this file carry a `== 1` claim
-// that is false today at 5 and 4 hits respectively, so this one reports its real count
-// rather than inheriting the convention's error.) Not a compiler_frontier `.dag` row
-// (seed-Rust, counted here not in the module census).
+// Receipt at deletion — ALL of these greps must be empty; a zero in cli_run.rs alone
+// does not retire the other files:
+//   rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs src/v1/stage0/src/cli_run/native_lane_phase_cost.rs
+//   rg -c '\[native-lane-phase\]' src/v1/05_emit_rust.dag src/v1/stage0/src/v1_compiler_emit_rust.rs
+// While the scaffold stands, the first grep is 4 in cli_run.rs (this block, the const,
+// and its declaration test) plus the marker in native_lane_phase_cost.rs.
 pub(crate) const CLI_RUN_EXCLUSIVE_COST_PARTITION_SCAFFOLD_MARKER: &str =
     "cli_run_exclusive_cost_partition_probe";
 
@@ -14736,6 +14735,13 @@ fn exclusive_partition_verdict(
 }
 
 /// The same exclusive law over caller-named rows (native-lane phases), not the resolve-stage roster.
+///
+/// `spans: 1, nested_spans: 0` is the WITHIN-line resolve-span law: one parent clock,
+/// sequential exclusive rows, no nested resolve slot. It is not a claim that other
+/// `[cost-partition]` lines on the same `labels.head` are non-nested grains. Cross-line
+/// nesting (`module_bundle` inside `binary_parent`) is carried as labels
+/// (`enclosing_phase` / `nested_grain`), not as `NestedSpanAttribution` — that refusal
+/// means a nested resolve span corrupted the stage slot, a different hazard.
 pub fn exclusive_cost_partition_from_rows(
     basis: &'static str,
     parent_span_nanos: u128,

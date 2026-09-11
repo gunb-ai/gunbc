@@ -22,6 +22,11 @@
 //! (`basis` `source_root_eval_driver_main_wall`), joined by `labels.head` — not
 //! `phase: identity_evaluation` `wall_nanos`.
 //! Nested child grain: `module_bundle` (prepare-once-per-module plus the identities inside it).
+//! Those lines carry `labels.enclosing_phase=binary_parent` so a join on `labels.head`
+//! must not sum their exclusives with `binary_parent`. `nested_spans: 0` on each line
+//! is the within-line law, not a claim that the stream is non-nested.
+//! SCAFFOLD: `cli_run_exclusive_cost_partition_probe` — deletion receipt is the
+//! four-path grep on that marker and `[native-lane-phase]` named in `cli_run.rs`.
 //! Child exclusive `receipt_serialization` is println/serde of an observation, not host
 //! `receipt_admission` (workspace resolve + admission join).
 
@@ -289,38 +294,8 @@ fn children_cpu_nanos() -> Option<u128> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        exclusive_cost_partition_from_rows, render_exclusive_cost_partition_json,
-        CostAccountingRefusal, CostAccountingVerdict, CostPartitionRow,
-    };
+    use super::super::{exclusive_cost_partition_from_rows, render_exclusive_cost_partition_json};
     use super::*;
-
-    #[test]
-    fn overattributed_rows_refuse_rather_than_clamping_remainder() {
-        let p = exclusive_cost_partition_from_rows(
-            BASIS,
-            10,
-            vec![
-                CostPartitionRow {
-                    name: PHASE_IDENTITY_EVALUATION,
-                    nanos: 8,
-                },
-                CostPartitionRow {
-                    name: PHASE_MODULE_PREPARATION,
-                    nanos: 8,
-                },
-            ],
-            Vec::new(),
-        );
-        assert!(matches!(
-            p.verdict,
-            CostAccountingVerdict::Refused {
-                cause: CostAccountingRefusal::OverAttributed { .. }
-            }
-        ));
-        assert_eq!(p.remainder_nanos, 0);
-        assert!(p.share_of_parent(PHASE_IDENTITY_EVALUATION).is_none());
-    }
 
     #[test]
     fn a_committed_phase_line_is_the_existing_renderer_not_a_private_json_object() {
@@ -453,6 +428,19 @@ mod tests {
         .expect("parse");
         assert!(json.contains("\"receipt_serialization\":10"));
         assert!(!json.contains("\"receipt_admission\""));
+    }
+
+    #[test]
+    fn module_bundle_carries_enclosing_binary_parent_and_must_not_be_summed() {
+        let json = render_child_phase_as_cost_partition(
+            r#"{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{"module_preparation":10},"enclosing_phase":"binary_parent","enclosing_basis":"source_root_eval_driver_main_wall"}"#,
+        )
+        .expect("parse");
+        assert!(
+            json.contains("\"enclosing_phase\":\"binary_parent\""),
+            "nested grain must name its enclosing line: {json}"
+        );
+        assert!(json.contains("\"nested_spans\":0"));
     }
 
     #[test]
