@@ -1,0 +1,150 @@
+module test.claim.gcp_estate_census_witness
+
+import std.types { Bool, String }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible }
+import gunbc.gcp_estate_observation {
+  operator_audit_census,
+  operator_prose_disagrees_with_sa_derived_project_id,
+  project_id_from_sa_email_is_gunbai_secrets,
+  fleet_cloud_convergence_sa_email,
+  gunbai_ci_secrets_sa_email,
+  gunbai_ci_iap_sa_email,
+  census_gap_count,
+  unread_project_gap_names_trusting_accounts,
+  gap_project_314501921854,
+  fleet_automation_has_no_principal_set_binding,
+  principal_set_pool_project_number,
+  github_pool_provider_id_is_unconfirmed,
+  observed_github_pool_provider_pasted_url_fragment,
+  operator_prose_project_name_slip,
+  unread_project_number_314501921854,
+}
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.gcp_estate_dependency {
+  census_edges,
+  census_cross_project_binding_count,
+  edge_is_cross_project,
+  BindingDependsOnCrossProjectPool,
+}
+import gunbc.gcp_estate_adoption {
+  gcp_estate_desired_roster,
+  gcp_estate_desired_github_actions_pool,
+  gcp_estate_desired_github_oidc_provider,
+  gcp_estate_desired_convergence_binding,
+  classify_desired_wif_pool,
+  classify_desired_wif_provider,
+  classify_desired_binding,
+  undeclared_findings,
+  classify_undeclared,
+  undeclared_decision_never_applies,
+  inaccessible_desired_subject,
+  drift_policy_for,
+  KindWifProvider,
+  KindEnabledService,
+  DriftApplyUpdate,
+  DriftRefuse,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn sa_email_derives_gunbai_secrets_and_operator_prose_slipped() -> Bool {
+  project_id_from_sa_email_is_gunbai_secrets(email: fleet_cloud_convergence_sa_email)
+    && project_id_from_sa_email_is_gunbai_secrets(email: gunbai_ci_secrets_sa_email)
+    && operator_prose_disagrees_with_sa_derived_project_id()
+    && operator_prose_project_name_slip as String != fleet_secrets_gcp_project as String
+}
+
+test fn unread_project_is_a_named_gap_not_an_absence() -> Bool {
+  let census = operator_audit_census()
+  census_gap_count(census: census) >= 1
+    && unread_project_gap_names_trusting_accounts(gap: gap_project_314501921854)
+    && (gap_project_314501921854.discharge as String).contains("projects.get")
+    && (gap_project_314501921854.cause as String).contains("314501921854")
+}
+
+test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
+  fleet_automation_has_no_principal_set_binding(census: operator_audit_census())
+}
+
+test fn github_pool_provider_condition_is_the_pasted_url_fragment() -> Bool {
+  observed_github_pool_provider_pasted_url_fragment.attribute_condition
+    == "assertion.repository_owner=='https:'"
+    && github_pool_provider_id_is_unconfirmed(p: observed_github_pool_provider_pasted_url_fragment)
+}
+
+test fn principal_set_parser_extracts_cross_project_number() -> Bool {
+  match principal_set_pool_project_number(
+    member: concat(
+      concat("principalSet://iam.googleapis.com/projects/", unread_project_number_314501921854 as String),
+      "/locations/global/workloadIdentityPools/x/attribute.repository/gunb-ai/gunb.ai",
+    ),
+  ) {
+    Present { value: n } => n == unread_project_number_314501921854 as String
+    Absent => false
+  }
+}
+
+test fn census_edges_make_the_cross_project_bindings_loud() -> Bool {
+  let census = operator_audit_census()
+  census_cross_project_binding_count(census: census) == 2
+    && fold(
+      census_edges(census: census),
+      init: false,
+      f: fn(acc, e) { acc || edge_is_cross_project(edge: e) },
+    )
+}
+
+test fn desired_github_actions_pool_and_oidc_provider_are_noop() -> Bool {
+  let census = operator_audit_census()
+  match classify_desired_wif_pool(desired: gcp_estate_desired_github_actions_pool(), census: census) {
+    UpsertClassification { verdict: Converged, decision: Noop } =>
+      match classify_desired_wif_provider(desired: gcp_estate_desired_github_oidc_provider(), census: census) {
+        UpsertClassification { verdict: Converged, decision: Noop } =>
+          match classify_desired_binding(desired: gcp_estate_desired_convergence_binding(), census: census) {
+            UpsertClassification { verdict: Converged, decision: Noop } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn github_pool_and_cross_project_bindings_are_undeclared_and_refused() -> Bool {
+  let census = operator_audit_census()
+  let findings = undeclared_findings(roster: gcp_estate_desired_roster(), census: census)
+  findings.length() >= 3
+    && fold(findings, init: true, f: fn(acc, f) { acc && undeclared_decision_never_applies(finding: f) })
+    && fold(
+      findings,
+      init: false,
+      f: fn(acc, f) {
+        acc || match classify_undeclared(finding: f) {
+          UpsertClassification { verdict: Conflict, decision: Refuse { reason: r } } =>
+            (r as String).contains("undeclared present")
+          _ => false
+        }
+      },
+    )
+}
+
+test fn drift_policy_is_explicit_per_kind() -> Bool {
+  match drift_policy_for(kind: KindWifProvider) {
+    DriftApplyUpdate =>
+      match drift_policy_for(kind: KindEnabledService) {
+        DriftRefuse { reason: r } => (r as String).contains("disabling")
+        DriftApplyUpdate => false
+      }
+    DriftRefuse { reason: _ } => false
+  }
+}
+
+test fn inaccessible_desired_subject_does_not_look_absent() -> Bool {
+  match inaccessible_desired_subject() {
+    UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } } =>
+      (r as String).contains("not readable")
+    _ => false
+  }
+}

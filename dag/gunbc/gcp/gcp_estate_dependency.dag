@@ -1,0 +1,168 @@
+module gunbc.gcp_estate_dependency
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import v2.std.optional { Present, Absent }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import gunbc.gcp_estate_observation {
+  GcpEstateCensus,
+  EstateObserved,
+  EstateUnread,
+  ObservedPrincipalSetBinding,
+  principal_set_pool_project_number,
+  fleet_secrets_project_number,
+}
+
+// Real acyclic order, as edges, not a list with an ordering convention:
+// project -> enabled service -> service account -> WIF pool -> provider -> IAM binding.
+// A binding depends on BOTH its service account AND the pool its principalSet names.
+// A cross-project pool edge is representable and is a distinct arm.
+
+type GcpEstateEdge
+  = ProjectHostsPool { project_number: String, pool_id: NonEmptyStr }
+  | PoolHostsProvider { project_number: String, pool_id: NonEmptyStr, provider_id: NonEmptyStr }
+  | BindingDependsOnAccount { account: ServiceAccountEmail, role: String, member: String }
+  | BindingDependsOnSameProjectPool {
+      account: ServiceAccountEmail
+      pool_project_number: String
+      member: String
+    }
+  | BindingDependsOnCrossProjectPool {
+      account: ServiceAccountEmail
+      account_project_number: String
+      pool_project_number: String
+      member: String
+    }
+
+fn binding_pool_edge(
+  binding: ObservedPrincipalSetBinding,
+  account_project_number: String,
+) -> GcpEstateEdge {
+  match binding.pool_project_number {
+    Absent =>
+      match principal_set_pool_project_number(member: binding.member) {
+        Absent => BindingDependsOnAccount {
+          account: binding.account,
+          role: binding.role,
+          member: binding.member,
+        }
+        Present { value: pool_project } =>
+          binding_pool_edge_from_numbers(
+            binding: binding,
+            account_project_number: account_project_number,
+            pool_project_number: pool_project,
+          )
+      }
+    Present { value: pool_project } =>
+      binding_pool_edge_from_numbers(
+        binding: binding,
+        account_project_number: account_project_number,
+        pool_project_number: pool_project,
+      )
+  }
+}
+
+fn binding_pool_edge_from_numbers(
+  binding: ObservedPrincipalSetBinding,
+  account_project_number: String,
+  pool_project_number: String,
+) -> GcpEstateEdge {
+  if pool_project_number == account_project_number {
+    BindingDependsOnSameProjectPool {
+      account: binding.account,
+      pool_project_number: pool_project_number,
+      member: binding.member,
+    }
+  } else {
+    BindingDependsOnCrossProjectPool {
+      account: binding.account,
+      account_project_number: account_project_number,
+      pool_project_number: pool_project_number,
+      member: binding.member,
+    }
+  }
+}
+
+fn edge_is_cross_project(edge: GcpEstateEdge) -> Bool {
+  match edge {
+    BindingDependsOnCrossProjectPool { account: _, account_project_number: _, pool_project_number: _, member: _ } => true
+    _ => false
+  }
+}
+
+fn observed_pool_edges(census: GcpEstateCensus) -> List<GcpEstateEdge> {
+  fold(
+    census.wif_pools,
+    init: [],
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } => acc |> list_push(ProjectHostsPool {
+          project_number: p.project_number,
+          pool_id: p.pool_id,
+        })
+      }
+    },
+  )
+}
+
+fn observed_provider_edges(census: GcpEstateCensus) -> List<GcpEstateEdge> {
+  fold(
+    census.wif_providers,
+    init: [],
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } => acc |> list_push(PoolHostsProvider {
+          project_number: p.project_number,
+          pool_id: p.pool_id,
+          provider_id: p.provider_id,
+        })
+      }
+    },
+  )
+}
+
+fn observed_binding_edges(census: GcpEstateCensus) -> List<GcpEstateEdge> {
+  fold(
+    census.principal_set_bindings,
+    init: [],
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: b } =>
+          acc
+            |> list_push(BindingDependsOnAccount {
+              account: b.account,
+              role: b.role,
+              member: b.member,
+            })
+            |> list_push(binding_pool_edge(
+              binding: b,
+              account_project_number: fleet_secrets_project_number,
+            ))
+      }
+    },
+  )
+}
+
+fn census_edges(census: GcpEstateCensus) -> List<GcpEstateEdge> {
+  fold(
+    observed_binding_edges(census: census),
+    init: fold(
+      observed_provider_edges(census: census),
+      init: observed_pool_edges(census: census),
+      f: fn(acc, e) { acc |> list_push(e) },
+    ),
+    f: fn(acc, e) { acc |> list_push(e) },
+  )
+}
+
+fn census_cross_project_binding_count(census: GcpEstateCensus) -> Int {
+  fold(
+    census_edges(census: census),
+    init: 0,
+    f: fn(acc, e) {
+      if edge_is_cross_project(edge: e) { acc + 1 } else { acc }
+    },
+  )
+}

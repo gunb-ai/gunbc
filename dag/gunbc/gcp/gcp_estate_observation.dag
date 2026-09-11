@@ -1,0 +1,361 @@
+module gunbc.gcp_estate_observation
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import v2.std.optional { Present, Absent }
+import extdeps.cloud.gcp.gcp {
+  GcpProjectId,
+  GcpProject,
+  GcpServiceAccount,
+  ServiceAccountEmail,
+}
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_number,
+}
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+
+// OBSERVING LAYER. These rows are receipts about a live GCP estate, not facts owned by
+// extdeps.cloud.gcp (DESIGN section 3: observations stay downstream of the observed upstream).
+//
+// THIS MODULE DOES NOT ACTUATE. It does not enable, create, bind, disable, or delete.
+
+data gcp_sa_email_domain_suffix: String = ".iam.gserviceaccount.com"
+
+data principal_set_member_prefix: String = "principalSet://iam.googleapis.com/projects/"
+
+data operator_prose_project_name_slip: NonEmptyStr = "gunbc-secrets"
+
+data operator_audit_method_identity: NonEmptyStr = "operator-readonly-audit-2026-09-11"
+
+data operator_audit_observed_at: NonEmptyStr = "2026-09-11"
+
+data unread_project_number_314501921854: NonEmptyStr = "314501921854"
+
+data gunbai_ci_secrets_sa_email: ServiceAccountEmail = "gunbai-ci-secrets@gunbai-secrets.iam.gserviceaccount.com"
+
+data gunbai_ci_iap_sa_email: ServiceAccountEmail = "gunbai-ci-iap@gunbai-secrets.iam.gserviceaccount.com"
+
+data fleet_cloud_convergence_sa_email: ServiceAccountEmail = "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com"
+
+data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
+
+data role_iam_workload_identity_user: String = "roles/iam.workloadIdentityUser"
+
+data legacy_federated_repo: String = "gunb-ai/gunb.ai"
+
+type GcpEstateSubjectKind
+  = KindProject
+  | KindEnabledService
+  | KindServiceAccount
+  | KindWifPool
+  | KindWifProvider
+  | KindIamBindingCell
+
+type GcpEstateSubject
+  = EstateProject { project_id: GcpProjectId, project_number: String }
+  | EstateEnabledService { project_id: GcpProjectId, service_id: NonEmptyStr }
+  | EstateServiceAccount { email: ServiceAccountEmail }
+  | EstateWifPool { project_number: String, pool_id: NonEmptyStr }
+  | EstateWifProvider { project_number: String, pool_id: NonEmptyStr, provider_id: NonEmptyStr }
+  | EstateIamBindingCell {
+      account: ServiceAccountEmail
+      role: String
+      member: String
+    }
+
+type EstateCoverageGap {
+  subject_identity: NonEmptyStr
+  cause: NonEmptyStr
+  discharge: NonEmptyStr
+  trusting_accounts: List<ServiceAccountEmail>
+}
+
+type GcpEstateCoverage<T>
+  = EstateObserved { value: T }
+  | EstateUnread { gap: EstateCoverageGap }
+
+type ObservedWifPool {
+  project_number: String
+  pool_id: NonEmptyStr
+  disabled: Bool
+}
+
+type ObservedWifProvider {
+  project_number: String
+  pool_id: NonEmptyStr
+  provider_id: NonEmptyStr
+  attribute_condition: String
+}
+
+type ObservedPrincipalSetBinding {
+  account: ServiceAccountEmail
+  role: String
+  member: String
+  pool_project_number: String?
+}
+
+type GcpEstateCensus {
+  method_identity: NonEmptyStr
+  observed_at: NonEmptyStr
+  projects: List<GcpEstateCoverage<GcpProject>>
+  service_accounts: List<GcpEstateCoverage<GcpServiceAccount>>
+  wif_pools: List<GcpEstateCoverage<ObservedWifPool>>
+  wif_providers: List<GcpEstateCoverage<ObservedWifProvider>>
+  principal_set_bindings: List<GcpEstateCoverage<ObservedPrincipalSetBinding>>
+  coverage_gaps: List<EstateCoverageGap>
+}
+
+fn first_slash_index(s: String, at: Int, fuel: Int) -> Int {
+  if fuel <= 0 {
+    at
+  } else if at >= string_length(s: s) {
+    at
+  } else if substring(s: s, start: at, end: at + 1) == "/" {
+    at
+  } else {
+    first_slash_index(s: s, at: at + 1, fuel: fuel - 1)
+  }
+}
+
+fn principal_set_pool_project_number(member: String) -> String? {
+  if starts_with(s: member, prefix: principal_set_member_prefix) {
+    let rest = substring(
+      s: member,
+      start: string_length(s: principal_set_member_prefix),
+      end: string_length(s: member),
+    )
+    let cut = first_slash_index(s: rest, at: 0, fuel: 32)
+    if cut <= 0 {
+      none
+    } else {
+      Present { value: substring(s: rest, start: 0, end: cut) }
+    }
+  } else {
+    none
+  }
+}
+
+fn project_id_from_sa_email(email: ServiceAccountEmail) -> GcpProjectId? {
+  sa_email_project_id_from_at(raw: email as String, at: 0, fuel: 128)
+}
+
+fn sa_email_project_id_from_at(raw: String, at: Int, fuel: Int) -> GcpProjectId? {
+  if fuel <= 0 {
+    none
+  } else if at >= string_length(s: raw) {
+    none
+  } else if substring(s: raw, start: at, end: at + 1) == "@" {
+    let host = substring(s: raw, start: at + 1, end: string_length(s: raw))
+    if ends_with(s: host, suffix: gcp_sa_email_domain_suffix) {
+      let id = substring(
+        s: host,
+        start: 0,
+        end: string_length(s: host) - string_length(s: gcp_sa_email_domain_suffix),
+      )
+      if id == "" {
+        none
+      } else {
+        Present { value: id as GcpProjectId }
+      }
+    } else {
+      none
+    }
+  } else {
+    sa_email_project_id_from_at(raw: raw, at: at + 1, fuel: fuel - 1)
+  }
+}
+
+fn project_id_from_sa_email_is_gunbai_secrets(email: ServiceAccountEmail) -> Bool {
+  match project_id_from_sa_email(email: email) {
+    Present { value: id } => id == fleet_secrets_gcp_project
+    Absent => false
+  }
+}
+
+fn operator_prose_disagrees_with_sa_derived_project_id() -> Bool {
+  operator_prose_project_name_slip as String != fleet_secrets_gcp_project as String
+}
+
+data observed_gunbai_secrets_project: GcpProject = GcpProject {
+  project_id: fleet_secrets_gcp_project,
+  project_number: 582015116396,
+  name: "gunbai-secrets",
+}
+
+data observed_fleet_cloud_convergence_sa: GcpServiceAccount = GcpServiceAccount {
+  email: fleet_cloud_convergence_sa_email,
+  unique_id: "",
+  display_name: none,
+  disabled: false,
+}
+
+data observed_gunbai_ci_secrets_sa: GcpServiceAccount = GcpServiceAccount {
+  email: gunbai_ci_secrets_sa_email,
+  unique_id: "",
+  display_name: none,
+  disabled: false,
+}
+
+data observed_gunbai_ci_iap_sa: GcpServiceAccount = GcpServiceAccount {
+  email: gunbai_ci_iap_sa_email,
+  unique_id: "",
+  display_name: none,
+  disabled: false,
+}
+
+data observed_fleet_automation_sa: GcpServiceAccount = GcpServiceAccount {
+  email: fleet_automation_sa_email,
+  unique_id: "",
+  display_name: none,
+  disabled: false,
+}
+
+data observed_github_actions_pool: ObservedWifPool = ObservedWifPool {
+  project_number: fleet_secrets_project_number,
+  pool_id: "github-actions" as NonEmptyStr,
+  disabled: false,
+}
+
+data observed_github_pool: ObservedWifPool = ObservedWifPool {
+  project_number: fleet_secrets_project_number,
+  pool_id: "github-pool" as NonEmptyStr,
+  disabled: false,
+}
+
+data observed_github_oidc_provider: ObservedWifProvider = ObservedWifProvider {
+  project_number: fleet_secrets_project_number,
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
+data observed_github_pool_provider_pasted_url_fragment: ObservedWifProvider = ObservedWifProvider {
+  project_number: fleet_secrets_project_number,
+  pool_id: "github-pool" as NonEmptyStr,
+  provider_id: "github-pool-provider-id-unconfirmed" as NonEmptyStr,
+  attribute_condition: "assertion.repository_owner=='https:'",
+}
+
+fn github_pool_provider_id_is_unconfirmed(p: ObservedWifProvider) -> Bool {
+  p.provider_id as String == "github-pool-provider-id-unconfirmed"
+}
+
+fn fleet_cloud_convergence_principal_set_member() -> String {
+  concat(
+    concat(
+      concat(principal_set_member_prefix, fleet_secrets_project_number),
+      "/locations/global/workloadIdentityPools/github-actions/attribute.repository/",
+    ),
+    "gunb-ai/gunbc",
+  )
+}
+
+fn legacy_principal_set_member_in_unread_project() -> String {
+  concat(
+    concat(
+      concat(principal_set_member_prefix, unread_project_number_314501921854 as String),
+      "/locations/global/workloadIdentityPools/",
+    ),
+    "UNREAD_POOL/attribute.repository/gunb-ai/gunb.ai",
+  )
+}
+
+data observed_convergence_wif_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
+  account: fleet_cloud_convergence_sa_email,
+  role: role_iam_workload_identity_user,
+  member: fleet_cloud_convergence_principal_set_member(),
+  pool_project_number: Present { value: fleet_secrets_project_number },
+}
+
+data observed_ci_secrets_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
+  account: gunbai_ci_secrets_sa_email,
+  role: role_iam_workload_identity_user,
+  member: legacy_principal_set_member_in_unread_project(),
+  pool_project_number: Present { value: unread_project_number_314501921854 as String },
+}
+
+data observed_ci_iap_cross_project_binding: ObservedPrincipalSetBinding = ObservedPrincipalSetBinding {
+  account: gunbai_ci_iap_sa_email,
+  role: role_iam_workload_identity_user,
+  member: legacy_principal_set_member_in_unread_project(),
+  pool_project_number: Present { value: unread_project_number_314501921854 as String },
+}
+
+data gap_project_314501921854: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/314501921854" as NonEmptyStr,
+  cause: "named by principalSet IAM bindings on gunbai-secrets service accounts; this session has no credential that can read the project",
+  discharge: "projects.get on 314501921854 plus that project's workloadIdentityPools list and each provider's attribute condition",
+  trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
+}
+
+data gap_third_legacy_sa: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "gunbai-secrets/third-sa-bound-to-gunb.ai" as NonEmptyStr,
+  cause: "operator audit stated three service accounts bound to gunb-ai/gunb.ai; two are named (gunbai-ci-secrets, gunbai-ci-iap); the third identity was not recorded",
+  discharge: "IAM policy scan of every service account in gunbai-secrets for principalSet members containing gunb-ai/gunb.ai",
+  trusting_accounts: [],
+}
+
+data gap_github_pool_provider_id: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/582015116396/locations/global/workloadIdentityPools/github-pool/providers" as NonEmptyStr,
+  cause: "operator audit recorded the provider attribute condition and not the provider resource id",
+  discharge: "iam.googleapis.com list providers on pool github-pool",
+  trusting_accounts: [],
+}
+
+fn operator_audit_census() -> GcpEstateCensus {
+  GcpEstateCensus {
+    method_identity: operator_audit_method_identity,
+    observed_at: operator_audit_observed_at,
+    projects: [EstateObserved { value: observed_gunbai_secrets_project }],
+    service_accounts: [
+      EstateObserved { value: observed_fleet_cloud_convergence_sa },
+      EstateObserved { value: observed_gunbai_ci_secrets_sa },
+      EstateObserved { value: observed_gunbai_ci_iap_sa },
+      EstateObserved { value: observed_fleet_automation_sa },
+    ],
+    wif_pools: [
+      EstateObserved { value: observed_github_actions_pool },
+      EstateObserved { value: observed_github_pool },
+    ],
+    wif_providers: [
+      EstateObserved { value: observed_github_oidc_provider },
+      EstateObserved { value: observed_github_pool_provider_pasted_url_fragment },
+    ],
+    principal_set_bindings: [
+      EstateObserved { value: observed_convergence_wif_binding },
+      EstateObserved { value: observed_ci_secrets_cross_project_binding },
+      EstateObserved { value: observed_ci_iap_cross_project_binding },
+    ],
+    coverage_gaps: [
+      gap_project_314501921854,
+      gap_third_legacy_sa,
+      gap_github_pool_provider_id,
+    ],
+  }
+}
+
+fn census_gap_count(census: GcpEstateCensus) -> Int {
+  census.coverage_gaps.length()
+}
+
+fn accounts_include(accounts: List<ServiceAccountEmail>, email: ServiceAccountEmail) -> Bool {
+  fold(accounts, init: false, f: fn(acc, a) { acc || a == email })
+}
+
+fn unread_project_gap_names_trusting_accounts(gap: EstateCoverageGap) -> Bool {
+  gap.trusting_accounts.length() == 2
+    && accounts_include(accounts: gap.trusting_accounts, email: gunbai_ci_secrets_sa_email)
+    && accounts_include(accounts: gap.trusting_accounts, email: gunbai_ci_iap_sa_email)
+}
+
+fn fleet_automation_has_no_principal_set_binding(census: GcpEstateCensus) -> Bool {
+  fold(
+    census.principal_set_bindings,
+    init: true,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: b } => acc && b.account != fleet_automation_sa_email
+      }
+    },
+  )
+}
