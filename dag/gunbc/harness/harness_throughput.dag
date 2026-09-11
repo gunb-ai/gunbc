@@ -364,14 +364,17 @@ type RoundSegment {
 // fold -- so neither reduces to the map/scan/flat_map shape the ledger and the block folds use. The
 // append is what had to change instead.
 //
-// THE INSTRUMENT, NAMED RATHER THAN TRANSCRIBED (DESIGN section 6): fold a list of n Ints both
-// ways under `claim_batch --hermetic` with `GUNBC_INTERP_STATS=1`, at n an order of magnitude
-// apart, and read the per-witness cpu line. `list_push` is linear in n; `concat(acc, [x])` is
-// superlinear and an order of magnitude worse before n is large. A transcribed pair of timings
-// would rot the moment either primitive's realization changes, and the shape is what the choice
-// rests on. READ THE TIMING, NOT THE COUNTERS: the primitive-copy counters report zero entries
-// copied for BOTH, because they count free-monoid materialization of the ARGUMENT rather than the
-// receiver clone, so an auditor who reads them concludes there is no cost to find.
+// THE REASON IS A COST SHAPE, NOT A CITED MEASUREMENT. `concat` and `list_push` reach different
+// arms of the interpreter: `list_push` appends one element to the carrier, while `concat` takes its
+// argument as a whole list and goes through the vector's general CONCATENATION path once per step,
+// which is the more expensive of the two per element. A one-off timing of the two folds confirmed
+// it and is NOT an instrument -- nothing here re-derives it, no entry point cites it, and a
+// committed benchmark existing only to be named would be a declaration with no consumer. What is
+// durable is the shape, and the shape is what the choice rests on.
+//
+// AND THE PRIMITIVE-COPY COUNTERS DO NOT SEE THIS. They report zero entries copied for BOTH,
+// because they count free-monoid materialization of the ARGUMENT rather than the work on the
+// receiver, so an auditor who reaches for them concludes there is no cost to find.
 type SegmentFold {
   previous: RoundObservation?
   last_measured: Int?
