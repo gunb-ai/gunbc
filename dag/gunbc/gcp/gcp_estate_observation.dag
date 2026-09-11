@@ -281,6 +281,93 @@ data gap_cross_project_principal_set_member: EstateCoverageGap = EstateCoverageG
   federated_repo: Present { value: legacy_federated_repo },
 }
 
+data gunb_test_project_id: GcpProjectId = "gunb-test"
+
+data sheets_api_service_id: NonEmptyStr = "sheets.googleapis.com"
+
+data secrets_project_refused_as_sheets_api_surface: NonEmptyStr = "gunbai-secrets is custody; enabling Sheets there widens what any identity in it can reach and must not be the default API surface"
+
+data fleet_automation_refused_as_sheets_writer: NonEmptyStr = "fleet-automation@ has no IAM policy bindings and its display name scopes it to fleet-automation-ssh-key only; it is not the Sheets writer"
+
+data fleet_cloud_convergence_does_not_close_sheets_project: NonEmptyStr = "fleet-cloud-convergence@ is a WIF-scoped candidate and lives in gunbai-secrets, so choosing it re-opens the project question rather than closing it"
+
+data gunb_test_is_not_an_anchor: NonEmptyStr = "gunb-test exists and once had Sheets enabled then disabled; operator refused anchoring on year-old console state; the home must be managed by .dag modeling"
+
+data other_automation_projects_unread: NonEmptyStr = "this session has no credential for cloudresourcemanager projects.list; existence of an automation-suitable project besides gunbai-secrets and gunb-test is unread, not empty"
+
+type SheetsCallingHome
+  = SheetsCallingHomeUnresolved {
+      secrets_project_refused_as_api_surface: NonEmptyStr
+      fleet_automation_refused_as_writer: NonEmptyStr
+      convergence_sa_does_not_close_project: NonEmptyStr
+      gunb_test_not_an_anchor: NonEmptyStr
+      other_projects_unread: NonEmptyStr
+    }
+
+fn sheets_calling_home() -> SheetsCallingHome {
+  SheetsCallingHomeUnresolved {
+    secrets_project_refused_as_api_surface: secrets_project_refused_as_sheets_api_surface,
+    fleet_automation_refused_as_writer: fleet_automation_refused_as_sheets_writer,
+    convergence_sa_does_not_close_project: fleet_cloud_convergence_does_not_close_sheets_project,
+    gunb_test_not_an_anchor: gunb_test_is_not_an_anchor,
+    other_projects_unread: other_automation_projects_unread,
+  }
+}
+
+fn sheets_calling_home_is_unresolved() -> Bool {
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      secrets_project_refused_as_api_surface: _,
+      fleet_automation_refused_as_writer: _,
+      convergence_sa_does_not_close_project: _,
+      gunb_test_not_an_anchor: _,
+      other_projects_unread: _,
+    } => true
+  }
+}
+
+fn secrets_project_is_refused_as_sheets_api_surface() -> Bool {
+  (secrets_project_refused_as_sheets_api_surface as String).contains("gunbai-secrets")
+    && (secrets_project_refused_as_sheets_api_surface as String).contains("must not be the default")
+}
+
+fn fleet_automation_is_refused_as_sheets_writer() -> Bool {
+  (fleet_automation_refused_as_sheets_writer as String).contains("fleet-automation@")
+    && (fleet_automation_refused_as_sheets_writer as String).contains("not the Sheets writer")
+}
+
+fn gunb_test_is_enumerated_not_selected(census: GcpEstateCensus) -> Bool {
+  census_subject_is_named_gap(census: census, subject: "projects/gunb-test")
+    && !census_subject_is_observed_project_id(census: census, project_id: gunb_test_project_id)
+}
+
+data gap_gunb_test_not_an_anchor: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunb-test" as NonEmptyStr,
+  cause: gunb_test_is_not_an_anchor,
+  discharge: "do not enable Sheets on gunb-test from this census; name a modeled automation project after projects.list, or create one as a converge target",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
+data gap_projects_list_beyond_named: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "cloudresourcemanager.projects.list" as NonEmptyStr,
+  cause: other_automation_projects_unread,
+  discharge: "cloudresourcemanager.googleapis.com projects.list; classify each id other than gunbai-secrets and gunb-test; record enabled services including sheets.googleapis.com",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
+data gap_enabled_services_unrelayed: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "serviceusage.services.list" as NonEmptyStr,
+  cause: "operator audit did not relay enabled APIs per project; Sheets enablement on any project is unread, not false",
+  discharge: "serviceusage.googleapis.com services.list on each enumerated project including gunbai-secrets and gunb-test",
+  trusting_accounts: [],
+  trusting_role: Absent,
+  federated_repo: Absent,
+}
+
 fn operator_audit_census() -> GcpEstateCensus {
   GcpEstateCensus {
     method_identity: operator_audit_method_identity,
@@ -303,6 +390,9 @@ fn operator_audit_census() -> GcpEstateCensus {
       gap_github_oidc_issuer_unrelayed,
       gap_github_pool_provider_id,
       gap_cross_project_principal_set_member,
+      gap_gunb_test_not_an_anchor,
+      gap_projects_list_beyond_named,
+      gap_enabled_services_unrelayed,
     ],
   }
 }
@@ -447,6 +537,19 @@ fn census_subject_is_named_gap(census: GcpEstateCensus, subject: String) -> Bool
     census.coverage_gaps,
     init: false,
     f: fn(acc, g) { acc || g.subject_identity as String == subject },
+  )
+}
+
+fn census_subject_is_observed_project_id(census: GcpEstateCensus, project_id: GcpProjectId) -> Bool {
+  fold(
+    census.projects,
+    init: false,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } => acc || p.project_id == project_id
+      }
+    },
   )
 }
 

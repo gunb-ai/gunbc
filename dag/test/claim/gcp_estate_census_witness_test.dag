@@ -38,6 +38,17 @@ import gunbc.gcp_estate_observation {
   census_measured_fingerprint_eq,
   ObservedWifProvider,
   observed_github_pool,
+  sheets_calling_home_is_unresolved,
+  secrets_project_is_refused_as_sheets_api_surface,
+  fleet_automation_is_refused_as_sheets_writer,
+  gunb_test_is_enumerated_not_selected,
+  sheets_calling_home,
+  SheetsCallingHomeUnresolved,
+  secrets_project_refused_as_sheets_api_surface,
+  fleet_automation_refused_as_sheets_writer,
+  sheets_api_service_id,
+  gap_projects_list_beyond_named,
+  gap_enabled_services_unrelayed,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
@@ -258,4 +269,33 @@ test fn inaccessible_desired_subject_does_not_look_absent() -> Bool {
       (r as String).contains("not readable")
     _ => false
   }
+}
+
+test fn sheets_calling_home_is_unresolved_and_does_not_default_to_secrets() -> Bool {
+  sheets_calling_home_is_unresolved()
+    && secrets_project_is_refused_as_sheets_api_surface()
+    && fleet_automation_is_refused_as_sheets_writer()
+    && (secrets_project_refused_as_sheets_api_surface as String).contains("gunbai-secrets")
+    && (fleet_automation_refused_as_sheets_writer as String).contains("not the Sheets writer")
+    && match sheets_calling_home() {
+      SheetsCallingHomeUnresolved {
+        secrets_project_refused_as_api_surface: _,
+        fleet_automation_refused_as_writer: _,
+        convergence_sa_does_not_close_project: c,
+        gunb_test_not_an_anchor: t,
+        other_projects_unread: o,
+      } =>
+        (c as String).contains("re-opens the project question")
+          && (t as String).contains("gunb-test")
+          && (o as String).contains("unread, not empty")
+    }
+}
+
+test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
+  let census = operator_audit_census()
+  gunb_test_is_enumerated_not_selected(census: census)
+    && census_subject_is_named_gap(census: census, subject: gap_projects_list_beyond_named.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_enabled_services_unrelayed.subject_identity as String)
+    && (gap_enabled_services_unrelayed.cause as String).contains("unread, not false")
+    && sheets_api_service_id as String == "sheets.googleapis.com"
 }
