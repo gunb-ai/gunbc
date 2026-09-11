@@ -38,10 +38,13 @@ import gunbc.memory_provisioning {
   asrock_altrad8ud_1l2t_geometry,
   mt_collins_per_socket_geometry,
 }
-import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority, TranscribedUncited }
+import extdeps.uri { Uri, File }
 import product.node_power_envelope {
   ChannelClockAdmitted,
   ChannelClockUnresolved,
+  RankSpecificRateMissing,
+  RankSpecificRateUncited,
   DerivationReadsHigh,
   EnvelopeAgrees,
   Gold,
@@ -145,14 +148,20 @@ data mt_collins_context: MemoryElectricalContext = MemoryElectricalContext {
 
 // WITNESS-LOCAL TABLE ONLY. These numbers are not Ampere publications and are not the retracted
 // 2933/2400 transcription. They exist so the admitted 2DPC path (a matching rank row) stays
-// executable after the production table was emptied.
+// executable after the production table was emptied. The citation names this controlled fixture,
+// never an Ampere authority: these are synthetic inputs to the derivation.
 data fixture_admitted_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
   rows: [
     TwoDpcRateCeiling { min_rank_count: 2, ceiling: megatransfers_per_second(count: 4000) },
     TwoDpcRateCeiling { min_rank_count: 4, ceiling: megatransfers_per_second(count: 2500) },
   ],
-  evidence: TranscribedUncited {
-    read_obligation: "witness fixture for the admitted 2DPC rank-row path; not an Ampere publication" as NonEmptyStr,
+  evidence: CitedToAuthority {
+    authority: ExternalAuthority {
+      uri: Uri {
+        scheme: File,
+        locator: "dag/test/claim/node_power_envelope_witness_test.dag#fixture_admitted_two_dpc_ceilings",
+      },
+    },
   },
 }
 
@@ -160,6 +169,17 @@ data fixture_admitted_two_dpc_context: MemoryElectricalContext = MemoryElectrica
   geometry: mt_collins_per_socket_geometry,
   max_data_rate: altra_memory_max_data_rate,
   two_dpc_ceilings: fixture_admitted_two_dpc_ceilings,
+}
+
+data fixture_uncited_two_dpc_context: MemoryElectricalContext = MemoryElectricalContext {
+  geometry: mt_collins_per_socket_geometry,
+  max_data_rate: altra_memory_max_data_rate,
+  two_dpc_ceilings: TwoDpcRateCeilingTable {
+    rows: fixture_admitted_two_dpc_ceilings.rows,
+    evidence: TranscribedUncited {
+      read_obligation: "fixture rank rows lack an operating-rate authority" as NonEmptyStr,
+    },
+  },
 }
 
 // A two-deep population on the Mt. Collins per-socket geometry: sixteen slots
@@ -215,10 +235,14 @@ fn two_dpc_clock_is_unresolved(rank_count: Nat) -> Bool {
     dimms_per_channel: 2,
     rank_count: rank_count,
   ) {
-    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m } =>
+    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m, cause: c } =>
       d == 2
         && r == rank_count
         && megatransfers_per_second_count(r: m) == 3200
+        && match c {
+          RankSpecificRateMissing => true
+          RankSpecificRateUncited { read_obligation: _ } => false
+        }
     ChannelClockAdmitted { rate: _ } => false
   }
 }
@@ -231,7 +255,7 @@ test fn one_dpc_admits_the_platform_capability() -> Bool {
     rank_count: 2,
   ) {
     ChannelClockAdmitted { rate: r } => megatransfers_per_second_count(r: r) == 3200
-    ChannelClockUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _ } => false
+    ChannelClockUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
   }
 }
 
@@ -244,10 +268,14 @@ test fn emptying_rank_specific_ceiling_rows_does_not_admit_an_effective_rate() -
     && two_dpc_clock_is_unresolved(rank_count: 2)
     && two_dpc_clock_is_unresolved(rank_count: 4)
     && match memory_bandwidth(context: mt_collins_context, population: sixteen_module_population) {
-      MemoryBandwidthUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m } =>
+      MemoryBandwidthUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m, cause: c } =>
         d == 2
           && r == 2
           && megatransfers_per_second_count(r: m) == 3200
+          && match c {
+            RankSpecificRateMissing => true
+            RankSpecificRateUncited { read_obligation: _ } => false
+          }
       MemoryBandwidthDerived { bandwidth: _ } => false
     }
 }
@@ -261,10 +289,14 @@ test fn a_rank_specific_ceiling_row_admits_the_capped_effective_rate() -> Bool {
     dimms_per_channel: 2,
     rank_count: 1,
   ) {
-    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m } =>
+    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m, cause: c } =>
       d == 2
         && r == 1
         && megatransfers_per_second_count(r: m) == 3200
+        && match c {
+          RankSpecificRateMissing => true
+          RankSpecificRateUncited { read_obligation: _ } => false
+        }
     ChannelClockAdmitted { rate: _ } => false
   }
     && match cited_channel_clock(
@@ -273,7 +305,7 @@ test fn a_rank_specific_ceiling_row_admits_the_capped_effective_rate() -> Bool {
       rank_count: 2,
     ) {
       ChannelClockAdmitted { rate: r } => megatransfers_per_second_count(r: r) == 3200
-      ChannelClockUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _ } => false
+      ChannelClockUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
     }
     && match cited_channel_clock(
       context: fixture_admitted_two_dpc_context,
@@ -281,7 +313,37 @@ test fn a_rank_specific_ceiling_row_admits_the_capped_effective_rate() -> Bool {
       rank_count: 4,
     ) {
       ChannelClockAdmitted { rate: r } => megatransfers_per_second_count(r: r) == 2500
-      ChannelClockUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _ } => false
+      ChannelClockUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
+    }
+}
+
+test fn uncited_rank_specific_rows_do_not_admit_an_effective_rate() -> Bool {
+  match cited_channel_clock(
+    context: fixture_uncited_two_dpc_context,
+    dimms_per_channel: 2,
+    rank_count: 2,
+  ) {
+    ChannelClockAdmitted { rate: _ } => false
+    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m, cause: c } =>
+      d == 2 && r == 2 && megatransfers_per_second_count(r: m) == 3200
+        && match c {
+          RankSpecificRateMissing => false
+          RankSpecificRateUncited { read_obligation: obligation } =>
+            obligation == "fixture rank rows lack an operating-rate authority"
+        }
+  }
+    && match memory_bandwidth(
+      context: fixture_uncited_two_dpc_context,
+      population: sixteen_module_population,
+    ) {
+      MemoryBandwidthDerived { bandwidth: _ } => false
+      MemoryBandwidthUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m, cause: c } =>
+        d == 2 && r == 2 && megatransfers_per_second_count(r: m) == 3200
+          && match c {
+            RankSpecificRateMissing => false
+            RankSpecificRateUncited { read_obligation: obligation } =>
+              obligation == "fixture rank rows lack an operating-rate authority"
+          }
     }
 }
 
@@ -350,16 +412,16 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
 test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
   match memory_bandwidth(context: altrad8ud_context, population: eight_module_population) {
     MemoryBandwidthDerived { bandwidth: b } => bandwidth_count(b: b) == 204800000000
-    MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _ } => false
+    MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
   }
 }
 
 test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
   match memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population) {
-    MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _ } => false
+    MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
     MemoryBandwidthDerived { bandwidth: single } =>
       match memory_bandwidth(context: altrad8ud_context, population: eight_module_population) {
-        MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _ } => false
+        MemoryBandwidthUnresolved { dimms_per_channel: _, rank_count: _, platform_max: _, cause: _ } => false
         MemoryBandwidthDerived { bandwidth: dual } =>
           bandwidth_count(b: single) < bandwidth_count(b: dual)
       }

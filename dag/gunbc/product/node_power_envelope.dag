@@ -27,6 +27,7 @@ import std.measure {
 }
 import extdeps.external_authority {
   CitedFigureStanding,
+  CitedToAuthority,
   TranscribedUncited,
 }
 import extdeps.cpu.types { CpuModelCatalogRow }
@@ -130,12 +131,17 @@ fn min_rate(a: MegatransfersPerSecond, b: MegatransfersPerSecond) -> Megatransfe
   )
 }
 
+type ChannelClockUnresolvedCause
+  = RankSpecificRateMissing
+  | RankSpecificRateUncited { read_obligation: NonEmptyStr }
+
 type ChannelClock
   = ChannelClockAdmitted { rate: MegatransfersPerSecond }
   | ChannelClockUnresolved {
       dimms_per_channel: Nat
       rank_count: Nat
       platform_max: MegatransfersPerSecond
+      cause: ChannelClockUnresolvedCause
     }
 
 fn apply_rank_ceiling_row(
@@ -166,9 +172,18 @@ fn rank_specific_2dpc_clock(
       dimms_per_channel: 2,
       rank_count: rank_count,
       platform_max: platform_max,
+      cause: RankSpecificRateMissing,
     }
-    Present { value: ceiling } =>
-      ChannelClockAdmitted { rate: min_rate(a: ceiling, b: platform_max) }
+    Present { value: ceiling } => match table.evidence {
+      TranscribedUncited { read_obligation: obligation } => ChannelClockUnresolved {
+        dimms_per_channel: 2,
+        rank_count: rank_count,
+        platform_max: platform_max,
+        cause: RankSpecificRateUncited { read_obligation: obligation },
+      }
+      CitedToAuthority { authority: _ } =>
+        ChannelClockAdmitted { rate: min_rate(a: ceiling, b: platform_max) }
+    }
   }
 }
 
@@ -206,6 +221,7 @@ type MemoryBandwidthReading
       dimms_per_channel: Nat
       rank_count: Nat
       platform_max: MegatransfersPerSecond
+      cause: ChannelClockUnresolvedCause
     }
 
 fn memory_bandwidth(
@@ -219,11 +235,12 @@ fn memory_bandwidth(
     dimms_per_channel: dpc,
     rank_count: module.rank_count,
   ) {
-    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m } =>
+    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m, cause: c } =>
       MemoryBandwidthUnresolved {
         dimms_per_channel: d,
         rank_count: r,
         platform_max: m,
+        cause: c,
       }
     ChannelClockAdmitted { rate: er } => {
       let rated = min_nat(
