@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.symbols { Tier, Emoji, Unicode, StatusBlocked }
 import std.measure { Nanosecond, Millisecond, millisecond, millisecond_to_nanosecond, byte_size, basis_point }
+import gunbc.memory_stall_refusal { MemoryStallObservation }
 import std.measure { nanosecond, nanosecond_count }
 import std.disposition { Disposition, Terminal }
 import std.observation {
@@ -11,7 +12,6 @@ import std.observation {
   RunSegment,
   EntrySegment,
   DeclarationSegment,
-  BatchSegment,
   PhaseSegment,
   ModuleSegment,
   MeasuredValue,
@@ -393,32 +393,90 @@ fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, e
   )
 }
 
-data seed_heartbeat_unreadable_cause: NonEmptyStr = "cgroup field unreadable" as NonEmptyStr
+// UNREADABILITY CAUSES, ONE PER SOURCE THE FLOOR READS, so the rendered line names WHICH file did
+// not read rather than a uniform sentinel. The seed's mirror carries the same spellings and the
+// oracle RED holds them equal. The stall cause covers both its counters at once: the window is a
+// pair (major faults, user cpu) over one wall, and a share from half a reading is not a share.
+data seed_heartbeat_stat_unreadable_cause: NonEmptyStr = "/proc/self/stat unreadable" as NonEmptyStr
+data seed_heartbeat_statm_unreadable_cause: NonEmptyStr = "/proc/self/statm unreadable" as NonEmptyStr
+data seed_heartbeat_cgroup_current_unreadable_cause: NonEmptyStr = "memory.current unreadable" as NonEmptyStr
+data seed_heartbeat_cgroup_events_unreadable_cause: NonEmptyStr = "memory.events unreadable" as NonEmptyStr
+data seed_heartbeat_cgroup_events_local_unreadable_cause: NonEmptyStr = "memory.events.local unreadable" as NonEmptyStr
+data seed_heartbeat_vmstat_unreadable_cause: NonEmptyStr = "/proc/vmstat unreadable" as NonEmptyStr
+data seed_heartbeat_stall_unreadable_cause: NonEmptyStr = "stall counters unreadable" as NonEmptyStr
 
-// The floor-memory heartbeat's projection. The heartbeat runs on a detached liveness thread in a memory-constrained context, so the seed renders it through a Rust MIRROR of ci_heartbeat_line rather than calling the interpreter there — an interpreter render on that thread would build a duplicate module index, consuming the very memory the heartbeat watches (DESIGN section 2), and the thread's whole point is to stay alive when the main interpreter is busy. This fn is the ORACLE that keeps the mirror honest: the seed's Rust test runs this (through the interpreter) and its mirror on the same samples and asserts byte-equality, so the format authority stays here in the one renderer and any drift reds. The subject is batch-grain by construction — the floor walks entries in parallel, so there is no single active module to name; the primitive interface carries no module or phase, which is why the mirror is a COMPLETE reflection of this fn over the seed's real input space, never a fabricated per-module detail (observation law 2: identity, never invented). NOT WIRED. It was — claim_executor render_heartbeat_line_mirror rendered through it and cli_run HeartbeatFeed fed it — and #9228 deleted both with the plan/walk surface they lived on, leaving this fn an oracle with nothing to keep honest. The floor did not stop beating: cli_run.rs spawn_floor_heartbeat emits a raw [floor-heartbeat] line with no projection behind it, which gunbc.observation_emit_census carries as a CountedFrontierSite whose dissolution is that the seed calls this renderer again. So this fn is retained deliberately as the target of that restoration rather than as live machinery, and the claim that a byte-equality test holds it is FALSE until the mirror returns.
+data seed_heartbeat_run_id: NonEmptyStr = "required floor" as NonEmptyStr
+
+fn seed_measured_count(value: Nat, available: Bool, cause: NonEmptyStr) -> Measured<Nat> {
+  if available { MeasuredValue { value: value } } else { MeasuredUnavailable { cause: cause } }
+}
+
+fn seed_measured_bytes(value: Nat, available: Bool, cause: NonEmptyStr) -> Measured<ByteSize> {
+  if available { MeasuredValue { value: byte_size(value) } } else { MeasuredUnavailable { cause: cause } }
+}
+
+// The floor's subject on a beat: the run, and the seam it is in when one is set. An unset seam
+// (the beat fired before the runner named its first phase) carries no PhaseSegment rather than a
+// fabricated name, so the line reads `still in run required floor` and nothing more.
+fn seed_heartbeat_subject(seam: String) -> ObservationSubject {
+  ObservationSubject {
+    segments: if seam == "" {
+      [ RunSegment { id: seed_heartbeat_run_id } ]
+    } else {
+      [ RunSegment { id: seed_heartbeat_run_id }, PhaseSegment { name: seam as NonEmptyStr } ]
+    }
+  }
+}
+
+// The floor heartbeat's projection, RESTORED 2026-09-11. The heartbeat runs on a detached liveness thread in a memory-constrained context, so the seed renders it through a Rust MIRROR of ci_heartbeat_line (cli_run render_heartbeat_line_mirror) rather than calling the interpreter there — an interpreter render on that thread would build a duplicate module index, consuming the very memory the heartbeat watches (DESIGN section 2), and the thread's whole point is to stay alive when the main interpreter is busy. This fn is the ORACLE that keeps the mirror honest: the seed's Rust test runs this through the interpreter and its mirror on the same samples and asserts byte-equality, so the format authority stays in the one renderer and any drift reds. It WAS unwired: #9228 deleted claim_executor render_heartbeat_line_mirror and the cli_run HeartbeatFeed with the plan/walk surface they lived on, and the one-attempt floor that replaced them emitted a raw [floor-heartbeat] eprintln with no projection behind it (gunbc.observation_emit_census recorded the reversal as a CountedFrontierSite). The primitive interface below is the seed's REAL input space on that floor -- wall since floor start, the seam label, and each /proc and cgroup reading with its own readability -- so the mirror is a complete reflection of this fn over what the seed actually holds, never a fabricated per-entry detail (observation law 2). The stall window arrives as its three raw counters and is projected into the refusal authority's own MemoryStallObservation, so rate and share print by the functions the refusal decides on. The two cache counters of that observation are zero here as a TRUE statement about what this window measured -- the heartbeat does not read the typed cache -- not a stand-in for an unread counter.
 fn seed_heartbeat_line(
   elapsed_ms: Nat,
-  batch_index: Nat,
-  batch_label: NonEmptyStr,
-  entry_index: Nat,
-  entry_total: Nat,
+  seam: String,
+  cpu_ms: Nat,
+  major_faults: Nat,
+  stat_available: Bool,
   rss_bytes: Nat,
   rss_available: Bool,
-  swap_bytes: Nat,
-  swap_available: Bool,
-  pressure_bp: Nat,
-  pressure_available: Bool,
+  cgroup_charge_bytes: Nat,
+  cgroup_charge_available: Bool,
+  cgroup_high_events: Nat,
+  cgroup_max_events: Nat,
+  cgroup_events_available: Bool,
+  cgroup_local_high_events: Nat,
+  cgroup_events_local_available: Bool,
+  host_swap_in: Nat,
+  host_major_faults: Nat,
+  vmstat_available: Bool,
+  stall_window_ms: Nat,
+  stall_major_faults: Nat,
+  stall_user_cpu_ms: Nat,
+  stall_available: Bool,
   emoji: Bool
 ) -> String {
   ci_render_line(
     line: ci_heartbeat_line(sample: HeartbeatSample {
       elapsed: millisecond(count: elapsed_ms),
-      active: ObservationSubject { segments: [ BatchSegment { index: batch_index, label: batch_label } ] },
-      entry_index: entry_index,
-      entry_total: entry_total,
-      rss: if rss_available { MeasuredValue { value: byte_size(rss_bytes) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } },
-      swap: if swap_available { MeasuredValue { value: byte_size(swap_bytes) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } },
-      pressure: if pressure_available { MeasuredValue { value: basis_point(count: pressure_bp) } } else { MeasuredUnavailable { cause: seed_heartbeat_unreadable_cause } }
+      active: seed_heartbeat_subject(seam: seam),
+      cpu: if stat_available { MeasuredValue { value: millisecond(count: cpu_ms) } } else { MeasuredUnavailable { cause: seed_heartbeat_stat_unreadable_cause } },
+      major_faults: seed_measured_count(value: major_faults, available: stat_available, cause: seed_heartbeat_stat_unreadable_cause),
+      rss: seed_measured_bytes(value: rss_bytes, available: rss_available, cause: seed_heartbeat_statm_unreadable_cause),
+      cgroup_charge: seed_measured_bytes(value: cgroup_charge_bytes, available: cgroup_charge_available, cause: seed_heartbeat_cgroup_current_unreadable_cause),
+      cgroup_high_events: seed_measured_count(value: cgroup_high_events, available: cgroup_events_available, cause: seed_heartbeat_cgroup_events_unreadable_cause),
+      cgroup_max_events: seed_measured_count(value: cgroup_max_events, available: cgroup_events_available, cause: seed_heartbeat_cgroup_events_unreadable_cause),
+      cgroup_local_high_events: seed_measured_count(value: cgroup_local_high_events, available: cgroup_events_local_available, cause: seed_heartbeat_cgroup_events_local_unreadable_cause),
+      host_swap_in: seed_measured_count(value: host_swap_in, available: vmstat_available, cause: seed_heartbeat_vmstat_unreadable_cause),
+      host_major_faults: seed_measured_count(value: host_major_faults, available: vmstat_available, cause: seed_heartbeat_vmstat_unreadable_cause),
+      stall: if stall_available && stall_window_ms > 0 {
+        MeasuredValue { value: MemoryStallObservation {
+          window_wall: millisecond(count: stall_window_ms),
+          major_faults_in_window: stall_major_faults,
+          self_user_cpu_in_window: millisecond(count: stall_user_cpu_ms),
+          cache_evictions_in_window: 0,
+          cache_readmissions_in_window: 0
+        } }
+      } else {
+        MeasuredUnavailable { cause: seed_heartbeat_stall_unreadable_cause }
+      }
     }),
     tier: seed_tier(emoji: emoji)
   )

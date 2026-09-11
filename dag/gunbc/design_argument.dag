@@ -169,6 +169,28 @@ data conformance_domains: List<ConformanceDomain> = [
     ],
     narrative: "a choice must remain attributable to its subject, candidate field, constraints, evidence and policy, and conformance exposes accidental forks of that authority; the hard selection laws -- no answer outrunning its evidence, no front standing as a winner -- stay with the §3d reviewer, and goal assessment (std.goal_assessment) is a boundary of this row, not a member of it",
   },
+  ConformanceDomain {
+    key: "conformance-observability",
+    label: "process observability / reporting",
+    question: "When this change reports process progress, an occurrence, a measurement or an outcome -- a progress line, a heartbeat, a receipt line, a refusal restated for a reader -- does it use the existing observation and presentation authorities: an ObservationEvent or RecordedObservation carrying the typed subject, transition and Measured readings, projected through the CI renderer's event line and rendered line; and where it departs (a seed mirror, a wire format, a transport), does it state the departure and its reason?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.observation", decl_name: "ObservationEvent"),
+      rest: [
+        decl_ref(module_path: "std.observation", decl_name: "RecordedObservation"),
+        decl_ref(module_path: "std.observation", decl_name: "ObservationPresentation"),
+        decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_event_line"),
+        decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_render_line"),
+      ],
+    },
+    tells: [
+      "a status, count, duration or refusal cause built into an ad hoc formatted message instead of a typed event field the renderer projects",
+      "presentation assignment (glyph, attention, grouping, human units) rebuilt at the emit site rather than read from ObservationPresentation and the renderer",
+      "a reader that parses human prose as an undeclared wire contract, or a producer cut over while its reader still expects the old shape",
+      "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause",
+      "a site recorded as migrated in gunbc.observation_emit_census while the active producer bypasses the projection the row names"
+    ],
+    narrative: "operators and automated readers need reports traceable to the facts and occurrences they describe; the owning domain establishes the fact, the observation model represents its occurrence, the renderer or codec encodes it, and a bound effect delivers it -- four responsibilities, and producing bytes is not delivery. The row is scoped to process reporting: a repository population measured at a revision stays with gunbc.repository_census_observation, and durable delivery with the effect authorities",
+  },
 ]
 
 fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {

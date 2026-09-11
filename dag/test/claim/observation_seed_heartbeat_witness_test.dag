@@ -1,0 +1,135 @@
+module test.claim.observation_seed_heartbeat_witness_test
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.observation_seed_render { seed_heartbeat_line }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE .DAG ORACLE'S BYTES, PINNED BY AN EXECUTING WITNESS (2026-09-11). The floor heartbeat is
+// rendered in the seed by a Rust mirror of seed_heartbeat_line (cli_run render_heartbeat_line_mirror),
+// because the liveness thread may not build an interpreter. The seed's own unit test holds the
+// mirror byte-equal to this oracle, and that test is off the merge path
+// (gunbc.rung_drop rust_unit_tests_off_the_merge_path); this module is the half that DOES execute
+// on the required floor: it pins the oracle's exact output for a fully-read sample and for a
+// sample where nothing read, so a change to the renderer that would silently move the seed's
+// mirror out of equality reds here first, and a reader of the two expected strings below is
+// reading what the floor log actually prints. Both samples are the same specimens the seed test
+// uses, so the three-way agreement (oracle bytes here, oracle == mirror there) is over one input.
+
+data measured_expected: String = "🕐 33 minutes in — still in run required floor, now closure-strict-resolve. cpu 59 seconds, memory 15.0 GiB, cgroup charge 16.0 GiB, cgroup events high 3 / max 0 / local high 1, major faults 1234, host swap-in 0, host major faults 999, stall 178795 faults/min at 0.8% user cpu"
+
+data unreadable_expected: String = "◷ 500ms in — still in run required floor. cpu unreadable (/proc/self/stat unreadable), memory unreadable (/proc/self/statm unreadable), cgroup charge unreadable (memory.current unreadable), cgroup events high unreadable (memory.events unreadable) / max unreadable (memory.events unreadable) / local high unreadable (memory.events.local unreadable), major faults unreadable (/proc/self/stat unreadable), host swap-in unreadable (/proc/vmstat unreadable), host major faults unreadable (/proc/vmstat unreadable), stall unreadable (stall counters unreadable)"
+
+fn measured_line() -> String {
+  seed_heartbeat_line(
+    elapsed_ms: 1980000,
+    seam: "closure-strict-resolve",
+    cpu_ms: 59830,
+    major_faults: 1234,
+    stat_available: true,
+    rss_bytes: 16107200512,
+    rss_available: true,
+    cgroup_charge_bytes: 17179869184,
+    cgroup_charge_available: true,
+    cgroup_high_events: 3,
+    cgroup_max_events: 0,
+    cgroup_events_available: true,
+    cgroup_local_high_events: 1,
+    cgroup_events_local_available: true,
+    host_swap_in: 0,
+    host_major_faults: 999,
+    vmstat_available: true,
+    stall_window_ms: 60000,
+    stall_major_faults: 178795,
+    stall_user_cpu_ms: 480,
+    stall_available: true,
+    emoji: true
+  )
+}
+
+fn unreadable_line() -> String {
+  seed_heartbeat_line(
+    elapsed_ms: 500,
+    seam: "",
+    cpu_ms: 0,
+    major_faults: 0,
+    stat_available: false,
+    rss_bytes: 0,
+    rss_available: false,
+    cgroup_charge_bytes: 0,
+    cgroup_charge_available: false,
+    cgroup_high_events: 0,
+    cgroup_max_events: 0,
+    cgroup_events_available: false,
+    cgroup_local_high_events: 0,
+    cgroup_events_local_available: false,
+    host_swap_in: 0,
+    host_major_faults: 0,
+    vmstat_available: false,
+    stall_window_ms: 0,
+    stall_major_faults: 0,
+    stall_user_cpu_ms: 0,
+    stall_available: false,
+    emoji: false
+  )
+}
+
+test fn w_seed_heartbeat_oracle_renders_the_measured_sample_exactly() -> Bool {
+  measured_line() == measured_expected
+}
+
+// The treadmill specimen from gunbc.host.memory_stall_refusal renders at the refusal's own
+// figures: 178795 faults/min and 80 basis points, printed as 0.8%. A renderer that reached for
+// utime+stime, or divided by anything but the window's wall, would print a different share here.
+test fn w_seed_heartbeat_stall_clause_is_the_refusal_authority_arithmetic() -> Bool {
+  string_contains(s: measured_line(), pattern: "stall 178795 faults/min at 0.8% user cpu")
+}
+
+test fn w_seed_heartbeat_oracle_renders_every_unreadable_arm_with_its_cause() -> Bool {
+  unreadable_line() == unreadable_expected
+}
+
+// NO FABRICATED ZERO ON ANY ARM: the unreadable sample passes 0 for every counter and none of
+// those zeros may reach the line. The only digits permitted are the elapsed wall's.
+test fn w_seed_heartbeat_unreadable_sample_prints_no_counter_value() -> Bool {
+  let line = unreadable_line()
+  !string_contains(s: line, pattern: "cpu 0") &&
+  !string_contains(s: line, pattern: "memory 0") &&
+  !string_contains(s: line, pattern: "faults 0") &&
+  !string_contains(s: line, pattern: "high 0") &&
+  !string_contains(s: line, pattern: "swap-in 0") &&
+  !string_contains(s: line, pattern: "stall 0")
+}
+
+// A STALL WINDOW WITH NO WALL IS UNREADABLE, NOT A DIVISION: the seed marks the window available
+// only once both counters read, and the oracle additionally refuses a zero-wall window rather
+// than computing a rate over it. Both flags true with a zero wall must still print the cause.
+test fn w_seed_heartbeat_zero_wall_stall_window_is_unreadable() -> Bool {
+  let line = seed_heartbeat_line(
+    elapsed_ms: 60000,
+    seam: "typecheck",
+    cpu_ms: 1,
+    major_faults: 1,
+    stat_available: true,
+    rss_bytes: 1,
+    rss_available: true,
+    cgroup_charge_bytes: 1,
+    cgroup_charge_available: true,
+    cgroup_high_events: 0,
+    cgroup_max_events: 0,
+    cgroup_events_available: true,
+    cgroup_local_high_events: 0,
+    cgroup_events_local_available: true,
+    host_swap_in: 0,
+    host_major_faults: 0,
+    vmstat_available: true,
+    stall_window_ms: 0,
+    stall_major_faults: 5,
+    stall_user_cpu_ms: 5,
+    stall_available: true,
+    emoji: false
+  )
+  string_contains(s: line, pattern: "stall unreadable (stall counters unreadable)") &&
+  string_contains(s: line, pattern: "still in run required floor, now typecheck")
+}
