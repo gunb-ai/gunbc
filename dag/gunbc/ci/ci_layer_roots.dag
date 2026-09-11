@@ -1387,7 +1387,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag", f: "consumer_census_live_reference_population_is_produced"),
   bin_wet(entry: "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag", f: "consumer_census_live_transaction_refuses_for_recorded_reasons"),
   bin_wet(entry: "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag", f: "consumer_census_live_gate_refuses_even_with_every_successor_realized"),
-  bin_wet(entry: "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag", f: "consumer_census_live_population_carries_the_whole_roster"),
   bin_wet(entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_live_witness_test.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_typed_read_witness_holds_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution"),

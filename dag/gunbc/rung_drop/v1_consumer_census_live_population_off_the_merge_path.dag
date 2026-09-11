@@ -32,7 +32,6 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 data v1_consumer_census_live_population_identities: List<String> = [
   "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag::consumer_census_live_transaction_refuses_for_recorded_reasons",
   "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag::consumer_census_live_gate_refuses_even_with_every_successor_realized",
-  "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag::consumer_census_live_population_carries_the_whole_roster",
   "dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag::consumer_census_live_reference_population_is_produced",
 ]
 

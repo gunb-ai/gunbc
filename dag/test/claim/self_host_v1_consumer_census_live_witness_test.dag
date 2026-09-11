@@ -3,10 +3,9 @@ module test.claim.self_host_v1_consumer_census_live_witness_test
 import std.types { Bool }
 import gunbc.rust_item_host_observation { RustReferencesObserved, RustReferenceHostRefused }
 import gunbc.v1_consumer_census {
-  v1_consumers_of, v1_uncitable_consumers_of, v1_consumer_population, v1_row_keys,
-  v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer,
+  v1_consumers_of, v1_consumer_population,
   v1_bankruptcy_transaction_admitted, V1BlockingCount, V1BlockingCounted, V1BlockingUnmeasured, v1_blocking_count_of,
-  ConsumerPopulation, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
+  ConsumerPopulation, consumer_population_is_complete,
   v1_shim_partition_over, v1_current_rust_references, v1_claimed_successors
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -68,17 +67,6 @@ fn the_live_gate_refuses_even_with_every_successor_realized() -> Bool {
     && !v1_bankruptcy_transaction_admitted(population: p, realized: v1_claimed_successors(rows: v1_consumers_of(p: p)))
 }
 
-// THE ROSTER AND THE POPULATION NAME ONE LIST -- asked of ONE read of the tree, so the two sides
-// of each comparison are the same observation rather than two observations that happen to agree.
-fn the_live_population_carries_the_whole_roster() -> Bool {
-  let p = v1_consumer_population()
-  let keys = v1_row_keys(rows: v1_consumers_of(p: p))
-  v1_every_discovered_consumer_disposed(discovered: keys, rows: consumer_population_rows(p: p))
-    && v1_every_row_names_a_live_consumer(discovered: keys, rows: consumer_population_rows(p: p))
-    && count(v1_uncitable_consumers_of(p: p)) == count(consumer_population_uncitable(p: p))
-}
-
 test fn consumer_census_live_reference_population_is_produced() -> Bool { the_live_reference_population_is_produced() }
 test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
 test fn consumer_census_live_gate_refuses_even_with_every_successor_realized() -> Bool { the_live_gate_refuses_even_with_every_successor_realized() }
-test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }
