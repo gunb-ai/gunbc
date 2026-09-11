@@ -566,9 +566,9 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
 // "VFS: Unable to mount root fs on unknown-block(0,0)". THE ORIGINAL TEXT HERE CALLED THAT A
 // MEDIA DROP AND IT WAS WRONG TWICE OVER, so it is corrected rather than quietly edited.
 //
-// It read the 100 -> 1 transition as the session dying. It is not: the controller's own frontend
-// renders 1 as "Started - Connection Accepted" and 100 as connecting, so 100 -> 1 is the
-// redirection SUCCEEDING. That misreading is what mtcollins1_media_state_machine now records.
+// It read the 100 -> 1 transition as the session dying. That reading was asserted, never evidenced:
+// the transition is recorded raw at mtcollins1_media_transition_observed, and what any particular
+// status code MEANS is the status-code catalog's to say, not this receipt's.
 //
 // And the console refutes the drop directly. The captured sequence is GNU GRUB, then
 // "EFI stub: Booting Linux Kernel", then "EFI stub: ERROR: Failed to load initrd:
@@ -578,10 +578,9 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
 //
 // WHAT THIS ATTEMPT THEREFORE DOES AND DOES NOT ESTABLISH. It establishes an initrd-load failure
 // on a boot that reached the CD. It does NOT establish why. The attempt reset the host while the
-// redirection was still at 100 (connecting), so a plausible reading is that GRUB's small reads
-// succeeded against a partly-ready medium and the larger initrd read did not — consistent with
-// the successful boots, which reset when the session had already reached 1. That is plausible and
-// unproven, and it is recorded at that strength deliberately.
+// observed redirection status was still 100, whereas the boots that produced a host capture had
+// already reached status 1. That difference is recorded; whether it CAUSED the initrd failure is
+// not established by these artifacts, and no mechanism is asserted for it here.
 //
 // ITS BYTES ARE COMMITTED ANYWAY. The recurring failure mode this whole census exists to answer is
 // that a decisive observation gets produced by ad-hoc probing and then lost because the probe's
@@ -606,8 +605,8 @@ type MtCollins1CaptureAttemptFailure {
   why_not_retried: NonEmptyStr
 }
 
-// THE ARTIFACTS RETAIN THE BMC CREDENTIAL IN argv, DELIBERATELY, AND HERE IS THE POLICY THAT
-// PERMITS IT. Two ----ARGV lines in mtcollins1-attempt3-srv2-side.txt record
+// THIS ATTEMPT'S srv2-SIDE ARTIFACT RETAINS THE BMC CREDENTIAL IN argv, DELIBERATELY. Two
+// ----ARGV lines in mtcollins1-attempt3-srv2-side.txt record
 // `ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin`. Review flagged that as a credential
 // published to a public repository, and I redacted it. THE REDACTION WAS WRONG AND HAS BEEN
 // REVERTED; the artifact is restored byte-for-byte to what the machine produced, digest
@@ -618,25 +617,13 @@ type MtCollins1CaptureAttemptFailure {
 // extdeps.bmc.megarac `megarac_factory_login` carries username "admin" and published_password
 // "admin", and the field is NAMED published_password precisely because the value is public. The
 // artifact therefore discloses nothing the corpus does not already state by design, and redacting
-// it protected nothing while destroying the one property that makes a capture evidence.
-//
-// THE GENERAL RULE THIS INSTANCE SETTLES, because the next reviewer will ask the same question: a
-// credential appearing in a capture is redactable only when it is a SECRET. A value the corpus
-// already publishes as an upstream fact is not made secret by appearing in argv, and an artifact
-// is not improved by editing it to disagree with extdeps. What IS a real defect here is the
-// producer: every ad-hoc call in this session passed -P on the command line, while the modelled
-// route already uses -f with a password file. That is worth fixing in the producer and is not a
-// reason to rewrite bytes after the fact.
-//
-// WHAT WOULD CHANGE THIS. If the unit's credential is ever rotated off the published default, the
-// rotated value IS a secret, must never reach argv, and any capture containing it is genuinely
-// unpublishable. That is the BmcSecure step, and this row is not a licence to be casual about it.
-data mtcollins1_credential_retention_basis: NonEmptyStr = "artifacts/bmc/mtcollins1-attempt3-srv2-side.txt retains `-U admin -P admin` in two ----ARGV lines, unedited. admin/admin is AMI's published MegaRAC factory default, modelled as an upstream fact at extdeps.bmc.megarac megarac_factory_login (published_password, so named because it is public). The artifact discloses nothing the corpus does not already state, so redaction would destroy byte fidelity to protect nothing. A rotated credential would be a secret and a capture containing one would be unpublishable; the producer defect (passing -P instead of -f) is real and belongs in the producer."
-
+// it protected nothing while destroying the one property that makes a capture evidence. What IS a
+// real defect is the producer passing -P on the command line where the modelled route uses -f with
+// a password file; that belongs in the producer, not in a post-hoc edit of captured bytes.
 data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1CaptureAttemptFailure {
   attempt: 3,
   intent: "Close the subject-binding gap (dmidecode type 1/2/3), record per-section argv and exit status, and add a named memory workload with EDAC counters read before and after, so the health reading would be a load-based one rather than a snapshot.",
-  observed_failure: "The host reached the CD's GRUB, started the EFI kernel, and then failed at the INITRD load: \"EFI stub: ERROR: Failed to load initrd: 0x8000000000000001\", followed by \"VFS: Unable to mount root fs on unknown-block(0,0)\". NOT a media drop — a medium that had vanished could not have served GRUB and a kernel first. The host was reset while the redirection was still at 100 (connecting) rather than 1 (started), which is a plausible but unproven cause. No host capture was produced.",
+  observed_failure: "The host reached the CD's GRUB, started the EFI kernel, and then failed at the INITRD load: \"EFI stub: ERROR: Failed to load initrd: 0x8000000000000001\", followed by \"VFS: Unable to mount root fs on unknown-block(0,0)\". NOT a media drop — a medium that had vanished could not have served GRUB and a kernel first. The host was reset while the observed redirection status was still 100, whereas the boots that produced a host capture had already reached status 1; these artifacts do not establish whether that difference caused the initrd failure. No host capture was produced.",
   preserved_artifacts: "artifacts/bmc/mtcollins1-attempt3-sol.log (the console, carrying the panic) and artifacts/bmc/mtcollins1-attempt3-srv2-side.txt (the pre-boot ARP observation with a typed verdict against the expected MAC, plus the boot artifact digest). A failed attempt whose bytes are discarded reproduces the exact failure mode this census exists to end.",
   why_not_retried: "A further attempt refused before booting: stop-media and start-media each answered HTTP 500 and the subsequent configurations readback was UNCHANGED, so neither requested transition was established as applied; the HTTP status decided nothing either way. This controller is the only out-of-band path to the M1 canary, so driving a degraded remote-media subsystem harder was declined in favour of leaving the path intact. Boot override was cleared and the controller verified healthy over IPMI.",
 }

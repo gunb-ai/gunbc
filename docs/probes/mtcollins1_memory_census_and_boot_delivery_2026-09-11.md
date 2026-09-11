@@ -237,11 +237,10 @@ The next reset booted the census image and produced `mtcollins1-host-capture.txt
 
 **Scope of that control, stated precisely.** Persistence was held constant between the
 failing and succeeding probes, so it proves the **EFI axis** and nothing about persistence.
-`persistent` is the *wrong* intake policy — it changes all future boots — and was used for
-convenience on a machine that was not mine to leave reconfigured. `ipmitool` sets the valid
-bit itself, so `valid` is redundant in that request. **What argv the intake should use, and
-the one-shot/persistent policy, are the migration's to state — this record does not
-prescribe them.** A one-shot EFI wet run is still owed and belongs to the typed producer.
+`persistent` was used for convenience on a machine that was not mine to leave reconfigured,
+and the override was cleared at session end (§9.7). **What argv the intake should use, and
+what policy governs persistence, are the migration's to state — this record does not
+prescribe them.**
 
 ### 7.2 The modelling defect behind it
 
@@ -342,8 +341,9 @@ Both 500 cases occurred the same evening on the same endpoint with no configurat
 difference I could find. I could not explain the variation and did not invent a reason.
 **The readback comparator is the entire verdict**; the HTTP status is diagnostic only.
 
-Also: `start-media` **requires** the undocumented key `image_redirection: 1` or it refuses
-with opaque errors 13410/13460.
+Also observed: `start-media` requests without the undocumented key `image_redirection: 1`
+were refused with errors 13410/13460; the requests carrying it were accepted. How far that
+generalizes is the status/API catalog's to say, not this record's.
 
 ### BMC controller reset timings (3 resets, consistent)
 
@@ -362,14 +362,14 @@ will wrongly conclude the controller is dead.
 Recorded because the operator asked to understand the process end to end, and because most
 of this session's elapsed time was spent on my mistakes rather than the hardware's.
 
-**1. I read `redirection_status: 1` as death when it means "Started".** This is the big
-one. I inverted the central status value, invented a "~10 second decay clock" out of what
-was really connect time, measured it with controls, and escalated it. That sent the
-directing session and an analyst into hours of packet captures, BMC resets and
-teardown-hunting for a session that was healthy throughout. Every boot gate I wrote
-demanded status *reach and hold 100* — i.e. they refused at exactly the moment the medium
-became ready. The 90-second settle gate did not merely fail to help; it waited around
-specifically to observe the success and then aborted on it.
+**1. I asserted a meaning for `redirection_status` that I had not evidenced.** This is the
+big one. I read the raw `100 -> 1` transition (§8) as a session dying, built a "~10 second
+decay clock" on top of that reading, measured it with controls, and escalated it — sending
+the directing session and an analyst into hours of packet captures, BMC resets and
+teardown-hunting for a session that went on to serve a full boot. Every boot gate I wrote
+was built on the same assertion and refused on the transition that preceded every success.
+The defect is not which code means what; it is that I treated my own decoding of an opaque
+vendor enum as a fact, and the artifacts never contained a source for it.
 
 **2. I read a flag byte as a session count.** `cd_active_sessions` 128/129 → I claimed a
 129-slot pool, "the unit arrived with 128 consumed", and "one virtual-media boot per BMC
@@ -406,7 +406,9 @@ a measurement round.
 **9. And the one that frames the rest: I never built the modelled capture producer.** It
 was in the directing session's *first* message. I optimised for getting bytes and left the
 actuation unreviewable and irreproducible — the exact failure class this lane exists to
-eliminate. It remains the blocking objection on #10965 and it is fair.
+eliminate. That limitation is now carried explicitly by
+`mtcollins1_acquisition_standing = HistoricalAdHocCapture { reusable_producer_absent: true }`,
+which is what lets this evidence land without being mistaken for producer-backed provenance.
 
 ---
 
@@ -429,7 +431,6 @@ where they can be consumed rather than read.
 
 **Open questions:**
 
-- One-shot EFI wet run (`options=efiboot`, no `persistent`) — owed.
 - Mode B (initrd load failure) — cause plausible but unproven.
 - SOL is unreliable on this controller: it closed mid-POST at 22:45:53 and later delivered
   nothing at all while still accepting keystrokes. Treat it as diagnostic only; the
