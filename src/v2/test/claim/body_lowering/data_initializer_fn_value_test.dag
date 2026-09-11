@@ -11,8 +11,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // record literal inside a fn body already accepted. The shells are now structure-preserved after
 // the child fold, same door as field_init.
 //
-// The two data-record claims stay off floor_cost_debt so they remain ordinary-floor
-// regression controls for the classifier widening (review 63356).
+// The two data-record claims interrupted on D4's floor of record (job
+// 103155806208) and are censored on floor_cost_debt_censored_chunk_04. Cause F's
+// sniff stays ordinary-floor. ChangedCostDebtVerdictOnly still executes these
+// when this file is touched.
 
 fn normalize_outcome(src: String) -> String {
   body_lowering_normalize_outcome(src: src, file: ^data_initializer_fn_value_subject)
