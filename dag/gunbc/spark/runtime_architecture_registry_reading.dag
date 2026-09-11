@@ -67,6 +67,7 @@ data vllm_registry_instrument: NonEmptyStr = "python3 -c: vllm.model_executor.mo
 data sglang_registry_instrument: NonEmptyStr = "python3 -c: sglang.srt.models.registry.ModelRegistry keys, executed by `docker run --gpus all` against the pinned digest" as NonEmptyStr
 
 data spark_a3ee_host: NonEmptyStr = "spark-a3ee (NVIDIA GB10, torch.cuda.get_device_capability(0) = (12, 1))" as NonEmptyStr
+data srv9_gb10_host: NonEmptyStr = "srv9 (NVIDIA GB10, torch.cuda.get_device_capability(0) = (12, 1))" as NonEmptyStr
 
 
 // THE PRODUCTION SPARK RUNTIME'S REGISTRY, 361 entries. It carries thirteen GLM architectures and
@@ -1897,9 +1898,9 @@ data v41_published_arm64_observed_digest: NonEmptyStr = "sha256:714a937591e16204
 
 data v41_published_arm64_registry_reading: ArchitectureRegistryReading = ArchitectureRegistryReading {
   image_reference: v41_published_arm64_observed_digest,
-  host: "srv9" as NonEmptyStr,
+  host: srv9_gb10_host,
   observed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
-  instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM" as NonEmptyStr,
+  instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM. Same digest re-read by fleet-converge 34646650317 (inspect JSON, no --format)." as NonEmptyStr,
   architectures: [deepseek_v4_1_flash_architecture_class],
 }
 
