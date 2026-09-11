@@ -4189,6 +4189,44 @@ pub struct PreparedScopeIndexes {
 }
 
 impl PreparedScopeIndexes {
+    /// DOES A BARE VALUE REFERENCE AT THIS SITE FALL THROUGH TO THE SHARED SLOT?
+    ///
+    /// The two tiers below ARE `lookup_fn_from`'s first two tiers, asked in its order and with
+    /// its conditions: the site file's OWN module's qualified declaration first, then the module
+    /// the site file explicitly imported the name FROM. A name either tier answers never reaches
+    /// the bare slot, so it cannot be ambiguous there however many modules spell it.
+    ///
+    /// It is answered HERE, on the index `lookup_fn_from` itself reads, because the alternative
+    /// is a second resolution rule beside the first. `ResolvedFuncEnv.parents` was tried and is
+    /// exactly wrong for this question — this carrier's own `file_import_bindings` note says why:
+    /// it is the FLATTENED TRANSITIVE closure, which "does not separate a direct import from a
+    /// transitively reachable module", so any transitively reached module that merely declares
+    /// the spelling would answer yes while the interpreter still fell through to the slot. A
+    /// wildcard import binds no names and contributes nothing, which is the residue this question
+    /// exists to find.
+    pub fn falls_through_to_shared_slot(&self, site_file: &str, name: &str) -> bool {
+        if site_file.is_empty() || name.contains('.') {
+            return false;
+        }
+        if let Some(module_path) = self.file_module_paths.get(site_file) {
+            if self.fn_nodes.contains_key(&format!("{module_path}.{name}")) {
+                return false;
+            }
+        }
+        if let Some(source_module) = self
+            .file_import_bindings
+            .get(&(site_file.to_string(), name.to_string()))
+        {
+            if self
+                .fn_nodes
+                .contains_key(&format!("{source_module}.{name}"))
+            {
+                return false;
+            }
+        }
+        true
+    }
+
     /// EVERY RESOLUTION THIS INDEX SET CAN ANSWER, rendered at identity grain and sorted, so
     /// two index sets can be compared for equality of ANSWERS rather than of construction path.
     /// Items are identified by `Rc` address: the same declaration node, not merely an equal

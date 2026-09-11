@@ -39785,9 +39785,10 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
 /// would refuse a convention rather than a defect.
 ///
 /// The refusal's real population is the READ. This row is one of them: a module in the scope
-/// that references `name` bare, declares it nowhere itself, and has nothing in its own authored
-/// import closure that declares it either — so the reference falls through to the shared slot,
-/// and the slot holds one of several declarations that nothing the author wrote ranks.
+/// that references `name` in value position where `lookup_fn_from`'s own first two tiers — the
+/// site file's module's own declaration, then the module that file explicitly imported the name
+/// FROM — both decline, so the reference falls through to the shared slot and the slot holds one
+/// of several declarations that nothing the author wrote ranks.
 ///
 /// COUNTED STATICALLY, over the scope's whole closure rather than over the lookups a fold
 /// happens to EXECUTE. An execution-keyed census omits a reference on a path no witness runs,
@@ -40522,62 +40523,6 @@ fn claim_scope_for_with_memos(
             }
         }
     }
-    // WHICH OF THOSE AMBIGUOUS NAMES IS ACTUALLY READ THROUGH THE SHARED SLOT, decided
-    // statically over every reference site in the scope rather than over executed lookups.
-    //
-    // `reference_closure_index` already classified every `ExprVar` occurrence in the corpus into
-    // bindings and free references, so the sites are read off that index rather than re-derived
-    // by a second walk — the same index this function already consulted to build the scope's
-    // order. The VALUE-POSITION projection is the one consulted: `refs_by_module` unions type
-    // annotations, record-literal type names and variant constructors into the same set, and a
-    // wall keyed on that union would refuse a TYPE collision at a site where the evaluator's
-    // shared value slot is never consulted. `value_refs_by_module` carries exactly the two forms
-    // that slot resolves — a free variable and a call's target.
-    //
-    // The three-step resolution the interpreter performs is the filter, in its order: the
-    // referring module's OWN declarations win first, then what its author's import closure
-    // declares (ordinary shadowing the language sanctions — the same authored-region rule the
-    // declaration census applies), and only what survives both reaches the shared slot.
-    let mut ambiguous_reads: Vec<AmbiguousBareRead> = Vec::new();
-    if !ambiguous.is_empty() {
-        for module in modules.iter() {
-            let referring = module.func_env.name.as_str();
-            let Some(refs) = ref_index.value_refs_by_module.get(referring) else {
-                continue;
-            };
-            for name in refs.iter() {
-                let Some(claimants) = ambiguous.get(name) else {
-                    continue;
-                };
-                let declared_by = ref_index.decl_index.get(name);
-                let declares_itself = declared_by.is_some_and(|d| d.contains(referring));
-                if declares_itself {
-                    continue;
-                }
-                let ranked_by_own_imports = declared_by.is_some_and(|d| {
-                    module
-                        .func_env
-                        .parents
-                        .iter()
-                        .any(|parent| d.contains(&parent.name))
-                });
-                if ranked_by_own_imports {
-                    continue;
-                }
-                ambiguous_reads.push(AmbiguousBareRead {
-                    name: name.clone(),
-                    referring_module: referring.to_string(),
-                    claimants: claimants.iter().cloned().collect(),
-                });
-            }
-        }
-        // A function of the scope's data, not of the module vector's order.
-        ambiguous_reads.sort_by(|a, b| {
-            a.name
-                .cmp(&b.name)
-                .then_with(|| a.referring_module.cmp(&b.referring_module))
-        });
-    }
     // Folded left over the ORDERED identities with `hash_combine`, which is not commutative —
     // so two scopes holding the same modules in different orders get different identities. A
     // set digest would call them equal, and order is exactly what decides which declaration
@@ -40602,6 +40547,49 @@ fn claim_scope_for_with_memos(
         fragments,
     );
     let indexes_nanos = indexes_started.elapsed().as_nanos();
+    // WHICH OF THOSE AMBIGUOUS NAMES IS ACTUALLY READ THROUGH THE SHARED SLOT, decided
+    // statically over every value-position reference in the scope rather than over the lookups
+    // any fold executes. Computed HERE, after the indexes exist, because the question "does this
+    // reference fall through to the shared slot" is `lookup_fn_from`'s and is answered on
+    // `lookup_fn_from`'s own index — see `PreparedScopeIndexes::falls_through_to_shared_slot`.
+    // An earlier revision asked it of `func_env.parents` instead and under-reported silently:
+    // that carrier is the flattened transitive closure, so a module merely REACHED by the site
+    // suppressed a row the interpreter would still resolve through the slot.
+    //
+    // The reference sites come from `reference_closure_index`, which already classified every
+    // `ExprVar` occurrence into bindings and free references; its VALUE-POSITION projection is
+    // the one consulted, since `refs_by_module` unions type annotations, record-literal type
+    // names and variant constructors into one set and a wall keyed on that union would refuse a
+    // TYPE collision at a site where the shared value slot is never consulted.
+    let mut ambiguous_reads: Vec<AmbiguousBareRead> = Vec::new();
+    if !ambiguous.is_empty() {
+        for module in scoped_graph.modules.iter() {
+            let referring = module.func_env.name.as_str();
+            let Some(refs) = ref_index.value_refs_by_module.get(referring) else {
+                continue;
+            };
+            let site_file = module.module.span.file.as_str();
+            for name in refs.iter() {
+                let Some(claimants) = ambiguous.get(name) else {
+                    continue;
+                };
+                if !indexes.falls_through_to_shared_slot(site_file, name) {
+                    continue;
+                }
+                ambiguous_reads.push(AmbiguousBareRead {
+                    name: name.clone(),
+                    referring_module: referring.to_string(),
+                    claimants: claimants.iter().cloned().collect(),
+                });
+            }
+        }
+        // A function of the scope's data, not of the module vector's order.
+        ambiguous_reads.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.referring_module.cmp(&b.referring_module))
+        });
+    }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
