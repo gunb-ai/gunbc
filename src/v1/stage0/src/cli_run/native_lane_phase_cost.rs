@@ -1,17 +1,22 @@
 //! Continuous `[cost-partition]` receipts for the required-v2-native lane.
 //!
-//! One line per completed named phase so a cancel still keeps the phases already
-//! committed. SCAFFOLD: same dissolution as `cli_run_exclusive_cost_partition_probe`
+//! Host `commit_phase` prints one `[cost-partition]` line per completed named
+//! host phase as it finishes, so a cancel still keeps those host phases.
+//! Child `[native-lane-phase]` clocks are captured with `Command::output` and
+//! reach the stream only after the child exits; a cancel mid-run does not keep
+//! `module_bundle` receipts. SCAFFOLD: same dissolution as `cli_run_exclusive_cost_partition_probe`
 //! (`PerformanceReceipt` / `CostAccount` Measured). This module consumes
 //! `exclusive_cost_partition_from_rows` + `render_exclusive_cost_partition_json`;
 //! it does not mint a second JSON schema. The emitted binary prints `[native-lane-phase]`
 //! clocks; this host re-renders them as `[cost-partition]` so parent and child share one
 //! record shape on one stream.
 //!
-//! Named phases (operator roster for #10940's next run):
+//! Named host phases (operator roster for #10940's next run):
 //! `seed_emission`, `cargo_build`, `malformed_control_run`, `universe_derivation`,
 //! `module_preparation`, `identity_evaluation`, `receipt_admission`.
-//! Nested grain: `module_bundle` (prepare-once-per-module plus the identities inside it).
+//! Nested child grain: `module_bundle` (prepare-once-per-module plus the identities inside it).
+//! Child exclusive `receipt_serialization` is println/serde of an observation, not host
+//! `receipt_admission` (workspace resolve + admission join).
 
 use std::time::Instant;
 
@@ -31,6 +36,7 @@ pub const PHASE_UNIVERSE_DERIVATION: &str = "universe_derivation";
 pub const PHASE_MODULE_PREPARATION: &str = "module_preparation";
 pub const PHASE_IDENTITY_EVALUATION: &str = "identity_evaluation";
 pub const PHASE_RECEIPT_ADMISSION: &str = "receipt_admission";
+pub const PHASE_RECEIPT_SERIALIZATION: &str = "receipt_serialization";
 pub const PHASE_MODULE_BUNDLE: &str = "module_bundle";
 pub const PHASE_SOURCE_LOAD: &str = "source_load";
 pub const PHASE_TEST_CONTEXT: &str = "test_context";
@@ -124,7 +130,7 @@ fn intern_exclusive_name(name: &str) -> Option<&'static str> {
         "universe_derivation" => PHASE_UNIVERSE_DERIVATION,
         "module_preparation" => PHASE_MODULE_PREPARATION,
         "identity_evaluation" => PHASE_IDENTITY_EVALUATION,
-        "receipt_admission" => PHASE_RECEIPT_ADMISSION,
+        "receipt_serialization" => PHASE_RECEIPT_SERIALIZATION,
         "module_bundle" => PHASE_MODULE_BUNDLE,
         "source_load" => PHASE_SOURCE_LOAD,
         "test_context" => PHASE_TEST_CONTEXT,
@@ -375,5 +381,27 @@ mod tests {
         )
         .expect_err("count is not a population");
         assert!(err.contains("unknown observation source_files"), "{err}");
+    }
+
+    #[test]
+    fn child_receipt_admission_row_is_refused_as_a_meaning_fork() {
+        let err = render_child_phase_as_cost_partition(
+            r#"{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{"receipt_admission":10}}"#,
+        )
+        .expect_err("child println clock is not host admission");
+        assert!(
+            err.contains("unknown exclusive row receipt_admission"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn child_receipt_serialization_is_a_distinct_exclusive_row() {
+        let json = render_child_phase_as_cost_partition(
+            r#"{"phase":"module_bundle","parent_span_nanos":10,"exclusive":{"receipt_serialization":10}}"#,
+        )
+        .expect("parse");
+        assert!(json.contains("\"receipt_serialization\":10"));
+        assert!(!json.contains("\"receipt_admission\""));
     }
 }
