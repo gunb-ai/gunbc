@@ -168,6 +168,19 @@ test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bo
 // measure-itself shape §5 rejects. Kept apart, renaming the binary reddens this row, which is the
 // correct outcome: it forces a deliberate update rather than silently following.
 //
+// THE REFUSAL WITNESS EXERCISES THE SEAM, NOT THE HELPER, and that distinction is the whole point
+// of the row. An earlier cut called fleet_password_leg_from_host_observation directly and asserted
+// it returns PasswordLegPrerequisiteRefused -- true, and useless as a regression wall: the claim
+// being made is "missing sshpass, so the leg refuses BEFORE the transport", and a test of the
+// helper alone stays green if exec_as_fleet_principal_with_stdin_observed later ignores the helper
+// result and calls password_file_ssh_exec_portable_words_with_stdin anyway. The ordering is the
+// subject, so the integration function must be what runs.
+//
+// THE `FleetPrincipalLegRan => false` ARM IS THE ASSERTION THAT THE TRANSPORT WAS NOT REACHED. Both
+// transports carry a mock_response with distinct stdout, so under the hermetic envelope a leg that
+// did reach one comes back as Ran with that stdout -- there is no way for the transport to run and
+// this row to stay green. Refused is only reachable by stopping first.
+//
 // THE REFUSAL HAS ITS OWN WITNESS, hermetic, because the discriminator above must not carry it.
 // Both call the pure decision with an INJECTED observation, so neither is moved by the PATH of the
 // host that runs it: the discriminator supplies a satisfied prerequisite and stays a statement
@@ -176,19 +189,36 @@ test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bo
 // without sshpass -- passing on srv1/srv2 and failing on srv3/srv4, flaky by whichever runner
 // picked the job up, while appearing to measure transport selection.
 test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool {
-  match fleet_password_leg_from_host_observation(
-    absence: Present {
-      value: HostCliDependencyAbsence {
-        tool: sshpass_cli_tool.name,
-        hint: "apt install sshpass",
-      },
-    },
-    credential: BootstrapCredentialFileHeld { path: "/run/gunbc-witness-credential" as NonEmptyStr },
-  ) {
-    PasswordLegPrerequisiteReady { password_file: _ } => false
-    PasswordLegPrerequisiteRefused { cause: c } =>
-      string_contains(c as String, "sshpass")
-        && string_contains(c as String, "NOT attempted")
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => false
+    Present { value: context } =>
+      match portable_remote_words(raws: ["id", "-un"]) {
+        Absent => false
+        Present { value: words } =>
+          match exec_as_fleet_principal_with_stdin_observed(
+            context: context,
+            target: SshTarget {
+              endpoint: witness_bootstrap_target_endpoint,
+              principal: fleet_bootstrap_principal_login(),
+            },
+            words: words,
+            stdin_payload: "",
+            credential: BootstrapCredentialFileHeld {
+              path: "/run/gunbc-witness-credential" as NonEmptyStr,
+            },
+            absence: Present {
+              value: HostCliDependencyAbsence {
+                tool: sshpass_cli_tool.name,
+                hint: "apt install sshpass",
+              },
+            },
+          ) {
+            FleetPrincipalLegRan { session: _, result: _ } => false
+            FleetPrincipalLegRefused { cause: c } =>
+              string_contains(c as String, "sshpass")
+                && string_contains(c as String, "NOT attempted")
+          }
+      }
   }
 }
 
