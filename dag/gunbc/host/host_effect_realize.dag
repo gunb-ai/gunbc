@@ -1663,8 +1663,12 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
   }
 }
 
-// FleetSsh resolved path is the same apt_installed_bin_path the presence probe tests, not PATH
-// stdout from command -v (see srv3_apt_tool_present).
+// FleetSsh resolved path is the same question as srv3_apt_tool_present: executable at
+// apt_installed_bin_path (FHS /usr/bin/<binary>), not PATH stdout from command -v. LocalShell and
+// SshShell still resolve via command -v. This arm is in scope because srv3_apt_tool_version_ok
+// (and srv3_run_tool_by_name) read the path from here; leaving FleetSsh on posix_command_v_check_argv
+// would make version_ok Unobserved after a successful path-presence probe -- the install arm would
+// never be able to prove the version on FleetSsh. A binary only elsewhere still reads absent.
 fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
