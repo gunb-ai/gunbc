@@ -228,9 +228,9 @@ data observed_ci_iap_cross_project_binding: ObservedPrincipalSetBinding = Observ
 }
 
 data gap_project_314501921854: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/314501921854" as NonEmptyStr,
-  cause: "named by principalSet IAM bindings on gunbai-secrets service accounts as project 314501921854; this session has no credential that can read the project",
-  discharge: "projects.get on 314501921854 plus that project's workloadIdentityPools list and each provider's attribute condition",
+  subject_identity: "projects/gunbai-auto/workloadIdentityPools" as NonEmptyStr,
+  cause: "gunbai-auto (314501921854) is our org project; two secrets-project SAs federate into it; its WIF pools, providers, and attribute conditions are unread",
+  discharge: "list gunbai-auto workloadIdentityPools and each provider's attribute condition",
   trusting_accounts: [gunbai_ci_secrets_sa_email, gunbai_ci_iap_sa_email],
   trusting_role: Present { value: role_iam_workload_identity_user },
   federated_repo: Present { value: legacy_federated_repo },
@@ -281,88 +281,197 @@ data gap_cross_project_principal_set_member: EstateCoverageGap = EstateCoverageG
   federated_repo: Present { value: legacy_federated_repo },
 }
 
+data observed_gunbai_auto_project: GcpProject = GcpProject {
+  project_id: "gunbai-auto" as GcpProjectId,
+  project_number: 314501921854,
+  name: "gunbai-auto",
+}
+
+data observed_gunb_ci_project: GcpProject = GcpProject {
+  project_id: "gunb-ci" as GcpProjectId,
+  project_number: 477326212498,
+  name: "gunb-ci",
+}
+
+data observed_gunb_test_project: GcpProject = GcpProject {
+  project_id: "gunb-test" as GcpProjectId,
+  project_number: 895190113964,
+  name: "gunb-test",
+}
+
+data observed_gemini_project: GcpProject = GcpProject {
+  project_id: "gen-lang-client-0162760657" as GcpProjectId,
+  project_number: 789244434730,
+  name: "Default Gemini Project",
+}
+
 data gunb_test_project_id: GcpProjectId = "gunb-test"
+
+data gunbai_auto_project_id: GcpProjectId = "gunbai-auto"
+
+data gunb_ci_project_id: GcpProjectId = "gunb-ci"
 
 data sheets_api_service_id: NonEmptyStr = "sheets.googleapis.com"
 
-data secrets_project_refused_as_sheets_api_surface: NonEmptyStr = "gunbai-secrets is custody; enabling Sheets there widens what any identity in it can reach and must not be the default API surface"
+data gunb_test_enabled_service_ids: List<NonEmptyStr> = [
+  "analyticshub.googleapis.com" as NonEmptyStr,
+  "bigquery.googleapis.com" as NonEmptyStr,
+  "bigqueryconnection.googleapis.com" as NonEmptyStr,
+  "bigquerydatapolicy.googleapis.com" as NonEmptyStr,
+  "bigquerydatatransfer.googleapis.com" as NonEmptyStr,
+  "bigquerymigration.googleapis.com" as NonEmptyStr,
+  "bigqueryreservation.googleapis.com" as NonEmptyStr,
+  "bigquerystorage.googleapis.com" as NonEmptyStr,
+  "cloudapis.googleapis.com" as NonEmptyStr,
+  "cloudtrace.googleapis.com" as NonEmptyStr,
+  "compute.googleapis.com" as NonEmptyStr,
+  "dataform.googleapis.com" as NonEmptyStr,
+  "dataplex.googleapis.com" as NonEmptyStr,
+  "datastore.googleapis.com" as NonEmptyStr,
+  "iam.googleapis.com" as NonEmptyStr,
+  "iamcredentials.googleapis.com" as NonEmptyStr,
+  "logging.googleapis.com" as NonEmptyStr,
+  "monitoring.googleapis.com" as NonEmptyStr,
+  "oslogin.googleapis.com" as NonEmptyStr,
+  "servicemanagement.googleapis.com" as NonEmptyStr,
+  "serviceusage.googleapis.com" as NonEmptyStr,
+  "sql-component.googleapis.com" as NonEmptyStr,
+  "storage.googleapis.com" as NonEmptyStr,
+  "storage-api.googleapis.com" as NonEmptyStr,
+  "storage-component.googleapis.com" as NonEmptyStr,
+  "sts.googleapis.com" as NonEmptyStr,
+  "telemetry.googleapis.com" as NonEmptyStr,
+]
 
-data fleet_automation_refused_as_sheets_writer: NonEmptyStr = "fleet-automation@ has no IAM policy bindings and its display name scopes it to fleet-automation-ssh-key only; it is not the Sheets writer"
+fn gunb_test_enables_service(service: NonEmptyStr) -> Bool {
+  fold(
+    gunb_test_enabled_service_ids,
+    init: false,
+    f: fn(acc, s) { acc || s == service },
+  )
+}
 
-data fleet_cloud_convergence_does_not_close_sheets_project: NonEmptyStr = "fleet-cloud-convergence@ is a WIF-scoped candidate and lives in gunbai-secrets, so choosing it re-opens the project question rather than closing it"
+fn gunb_test_sheets_is_absent() -> Bool {
+  !gunb_test_enables_service(service: sheets_api_service_id)
+}
 
-data gunb_test_is_not_an_anchor: NonEmptyStr = "gunb-test exists and once had Sheets enabled then disabled; operator refused anchoring on year-old console state; the home must be managed by .dag modeling"
+fn observed_project_roster_count(census: GcpEstateCensus) -> Int {
+  fold(
+    census.projects,
+    init: 0,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: _ } => acc + 1
+      }
+    },
+  )
+}
 
-data other_automation_projects_unread: NonEmptyStr = "this session has no credential for cloudresourcemanager projects.list; existence of an automation-suitable project besides gunbai-secrets and gunb-test is unread, not empty"
-
+// Secrets is custody. Convergence SA lives there so it cannot close the API-surface project.
+// gunb-test is a kitchen-sink sandbox (Sheets absent). gunbai-auto is a leading unread candidate, not a selection.
 type SheetsCallingHome
   = SheetsCallingHomeUnresolved {
-      secrets_project_refused_as_api_surface: NonEmptyStr
-      fleet_automation_refused_as_writer: NonEmptyStr
-      convergence_sa_does_not_close_project: NonEmptyStr
-      gunb_test_not_an_anchor: NonEmptyStr
-      other_projects_unread: NonEmptyStr
+      refused_api_surface_project: GcpProjectId
+      refused_writer: ServiceAccountEmail
+      candidate_writer_in_secrets: ServiceAccountEmail
+      kitchen_sink_project: GcpProjectId
+      unread_leading_candidate: GcpProjectId
     }
 
 fn sheets_calling_home() -> SheetsCallingHome {
   SheetsCallingHomeUnresolved {
-    secrets_project_refused_as_api_surface: secrets_project_refused_as_sheets_api_surface,
-    fleet_automation_refused_as_writer: fleet_automation_refused_as_sheets_writer,
-    convergence_sa_does_not_close_project: fleet_cloud_convergence_does_not_close_sheets_project,
-    gunb_test_not_an_anchor: gunb_test_is_not_an_anchor,
-    other_projects_unread: other_automation_projects_unread,
+    refused_api_surface_project: fleet_secrets_gcp_project,
+    refused_writer: fleet_automation_sa_email,
+    candidate_writer_in_secrets: fleet_cloud_convergence_sa_email,
+    kitchen_sink_project: gunb_test_project_id,
+    unread_leading_candidate: gunbai_auto_project_id,
   }
 }
 
 fn sheets_calling_home_is_unresolved() -> Bool {
   match sheets_calling_home() {
     SheetsCallingHomeUnresolved {
-      secrets_project_refused_as_api_surface: _,
-      fleet_automation_refused_as_writer: _,
-      convergence_sa_does_not_close_project: _,
-      gunb_test_not_an_anchor: _,
-      other_projects_unread: _,
+      refused_api_surface_project: _,
+      refused_writer: _,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      unread_leading_candidate: _,
     } => true
   }
 }
 
 fn secrets_project_is_refused_as_sheets_api_surface() -> Bool {
-  (secrets_project_refused_as_sheets_api_surface as String).contains("gunbai-secrets")
-    && (secrets_project_refused_as_sheets_api_surface as String).contains("must not be the default")
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: p,
+      refused_writer: _,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      unread_leading_candidate: _,
+    } => p == fleet_secrets_gcp_project
+  }
 }
 
 fn fleet_automation_is_refused_as_sheets_writer() -> Bool {
-  (fleet_automation_refused_as_sheets_writer as String).contains("fleet-automation@")
-    && (fleet_automation_refused_as_sheets_writer as String).contains("not the Sheets writer")
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: _,
+      refused_writer: w,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      unread_leading_candidate: _,
+    } => w == fleet_automation_sa_email
+  }
 }
 
 fn gunb_test_is_enumerated_not_selected(census: GcpEstateCensus) -> Bool {
-  census_subject_is_named_gap(census: census, subject: "projects/gunb-test")
-    && !census_subject_is_observed_project_id(census: census, project_id: gunb_test_project_id)
+  census_subject_is_observed_project_id(census: census, project_id: gunb_test_project_id)
+    && match sheets_calling_home() {
+      SheetsCallingHomeUnresolved {
+        refused_api_surface_project: _,
+        refused_writer: _,
+        candidate_writer_in_secrets: _,
+        kitchen_sink_project: k,
+        unread_leading_candidate: _,
+      } => k == gunb_test_project_id
+    }
 }
 
-data gap_gunb_test_not_an_anchor: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "projects/gunb-test" as NonEmptyStr,
-  cause: gunb_test_is_not_an_anchor,
-  discharge: "do not enable Sheets on gunb-test from this census; name a modeled automation project after projects.list, or create one as a converge target",
+fn gunbai_auto_is_not_selected_as_sheets_home() -> Bool {
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: _,
+      refused_writer: _,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      unread_leading_candidate: c,
+    } => c == gunbai_auto_project_id
+  }
+}
+
+data gap_gunb_ci_enabled_services: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunb-ci/services" as NonEmptyStr,
+  cause: "gunb-ci is in the roster; enabled services and service accounts are unread",
+  discharge: "serviceusage.services.list and iam serviceAccounts.list on gunb-ci",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
 }
 
-data gap_projects_list_beyond_named: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "cloudresourcemanager.projects.list" as NonEmptyStr,
-  cause: other_automation_projects_unread,
-  discharge: "cloudresourcemanager.googleapis.com projects.list; classify each id other than gunbai-secrets and gunb-test; record enabled services including sheets.googleapis.com",
+data gap_gunbai_auto_enabled_services: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "projects/gunbai-auto/services" as NonEmptyStr,
+  cause: "gunbai-auto enabled services and service accounts are unread; a name that reads as automation is not a selection",
+  discharge: "serviceusage.services.list and iam serviceAccounts.list on gunbai-auto",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
 }
 
-data gap_enabled_services_unrelayed: EstateCoverageGap = EstateCoverageGap {
-  subject_identity: "serviceusage.services.list" as NonEmptyStr,
-  cause: "operator audit did not relay enabled APIs per project; Sheets enablement on any project is unread, not false",
-  discharge: "serviceusage.googleapis.com services.list on each enumerated project including gunbai-secrets and gunb-test",
+data gap_wif_pools_outside_secrets: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "workloadIdentityPools-outside-gunbai-secrets" as NonEmptyStr,
+  cause: "whether gunb-ci, gunb-test, or gen-lang-client-0162760657 holds a WIF pool is unread; gunbai-auto WIF is a separate named gap",
+  discharge: "iam workloadIdentityPools.list on gunb-ci, gunb-test, and gen-lang-client-0162760657",
   trusting_accounts: [],
   trusting_role: Absent,
   federated_repo: Absent,
@@ -372,7 +481,13 @@ fn operator_audit_census() -> GcpEstateCensus {
   GcpEstateCensus {
     method_identity: operator_audit_method_identity,
     observed_at: operator_audit_observed_at,
-    projects: [EstateObserved { value: observed_gunbai_secrets_project }],
+    projects: [
+      EstateObserved { value: observed_gunbai_secrets_project },
+      EstateObserved { value: observed_gunbai_auto_project },
+      EstateObserved { value: observed_gunb_ci_project },
+      EstateObserved { value: observed_gunb_test_project },
+      EstateObserved { value: observed_gemini_project },
+    ],
     service_accounts: [],
     wif_pools: [
       EstateObserved { value: observed_github_actions_pool },
@@ -390,15 +505,28 @@ fn operator_audit_census() -> GcpEstateCensus {
       gap_github_oidc_issuer_unrelayed,
       gap_github_pool_provider_id,
       gap_cross_project_principal_set_member,
-      gap_gunb_test_not_an_anchor,
-      gap_projects_list_beyond_named,
-      gap_enabled_services_unrelayed,
+      gap_gunb_ci_enabled_services,
+      gap_gunbai_auto_enabled_services,
+      gap_wif_pools_outside_secrets,
     ],
   }
 }
 
 fn census_gap_count(census: GcpEstateCensus) -> Int {
   census.coverage_gaps.length()
+}
+
+fn census_coverage_has_unread<T>(rows: List<GcpEstateCoverage<T>>) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => true
+        EstateObserved { value: _ } => acc
+      }
+    },
+  )
 }
 
 fn accounts_include(accounts: List<ServiceAccountEmail>, email: ServiceAccountEmail) -> Bool {

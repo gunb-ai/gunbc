@@ -44,11 +44,16 @@ import gunbc.gcp_estate_observation {
   gunb_test_is_enumerated_not_selected,
   sheets_calling_home,
   SheetsCallingHomeUnresolved,
-  secrets_project_refused_as_sheets_api_surface,
-  fleet_automation_refused_as_sheets_writer,
   sheets_api_service_id,
-  gap_projects_list_beyond_named,
-  gap_enabled_services_unrelayed,
+  gunb_test_sheets_is_absent,
+  gunb_test_enabled_service_ids,
+  observed_project_roster_count,
+  gunbai_auto_is_not_selected_as_sheets_home,
+  gap_gunb_ci_enabled_services,
+  gap_gunbai_auto_enabled_services,
+  fleet_automation_sa_email,
+  gunb_test_project_id,
+  gunbai_auto_project_id,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
@@ -91,7 +96,7 @@ test fn unread_project_is_a_named_gap_not_an_absence() -> Bool {
   census_gap_count(census: census) != 0
     && unread_project_gap_names_trusting_accounts(gap: gap_project_314501921854)
     && unread_project_gap_names_role_and_repo(gap: gap_project_314501921854)
-    && (gap_project_314501921854.discharge as String).contains("projects.get")
+    && (gap_project_314501921854.discharge as String).contains("attribute condition")
     && (gap_project_314501921854.cause as String).contains("314501921854")
 }
 
@@ -109,8 +114,12 @@ test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
   let census = operator_audit_census()
   let number = unread_project_number_314501921854 as String
   census_subject_is_enumerated_project_number(census: census, number: number)
-    && !census_subject_is_observed_project_number(census: census, number: number)
-    && census_subject_is_named_gap(census: census, subject: concat("projects/", number))
+    && census_subject_is_observed_project_number(census: census, number: number)
+    && census_subject_is_named_gap(
+      census: census,
+      subject: gap_project_314501921854.subject_identity as String,
+    )
+    && (gap_project_314501921854.subject_identity as String).contains("workloadIdentityPools")
 }
 
 test fn observed_project_is_enumerated_observed_and_not_a_gap() -> Bool {
@@ -275,27 +284,41 @@ test fn sheets_calling_home_is_unresolved_and_does_not_default_to_secrets() -> B
   sheets_calling_home_is_unresolved()
     && secrets_project_is_refused_as_sheets_api_surface()
     && fleet_automation_is_refused_as_sheets_writer()
-    && (secrets_project_refused_as_sheets_api_surface as String).contains("gunbai-secrets")
-    && (fleet_automation_refused_as_sheets_writer as String).contains("not the Sheets writer")
+    && gunbai_auto_is_not_selected_as_sheets_home()
     && match sheets_calling_home() {
       SheetsCallingHomeUnresolved {
-        secrets_project_refused_as_api_surface: _,
-        fleet_automation_refused_as_writer: _,
-        convergence_sa_does_not_close_project: c,
-        gunb_test_not_an_anchor: t,
-        other_projects_unread: o,
+        refused_api_surface_project: p,
+        refused_writer: w,
+        candidate_writer_in_secrets: c,
+        kitchen_sink_project: k,
+        unread_leading_candidate: u,
       } =>
-        (c as String).contains("re-opens the project question")
-          && (t as String).contains("gunb-test")
-          && (o as String).contains("unread, not empty")
+        p == fleet_secrets_gcp_project
+          && w == fleet_automation_sa_email
+          && c == fleet_cloud_convergence_sa_email
+          && k == gunb_test_project_id
+          && u == gunbai_auto_project_id
     }
 }
 
 test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   let census = operator_audit_census()
   gunb_test_is_enumerated_not_selected(census: census)
-    && census_subject_is_named_gap(census: census, subject: gap_projects_list_beyond_named.subject_identity as String)
-    && census_subject_is_named_gap(census: census, subject: gap_enabled_services_unrelayed.subject_identity as String)
-    && (gap_enabled_services_unrelayed.cause as String).contains("unread, not false")
+    && observed_project_roster_count(census: census) == 5
+    && gunb_test_enabled_service_ids.length() == 27
+    && gunb_test_sheets_is_absent()
     && sheets_api_service_id as String == "sheets.googleapis.com"
+    && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_enabled_services.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gunbai_auto_enabled_services.subject_identity as String)
+}
+
+test fn unread_pool_rows_do_not_classify_desired_pool_as_absent() -> Bool {
+  match classify_desired_wif_pool(
+    desired: gcp_estate_desired_github_actions_pool(),
+    census: census_with_unread_pool_gap(),
+  ) {
+    UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } } =>
+      (r as String).contains("not readable")
+    _ => false
+  }
 }

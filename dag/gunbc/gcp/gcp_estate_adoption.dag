@@ -42,6 +42,7 @@ import gunbc.gcp_estate_observation {
   fleet_cloud_convergence_sa_email,
   role_iam_workload_identity_user,
   census_github_actions_provider_is_unread,
+  census_coverage_has_unread,
 }
 
 // PEER of gunbc.host_converge, not a fork of it. Hosts converge knobs on a machine; this
@@ -149,23 +150,25 @@ fn classify_desired_wif_pool(
   desired: DesiredWifPool,
   census: GcpEstateCensus,
 ) -> UpsertClassification<GcpEstateAdoptionPlan> {
-  fold(
+  let matched = fold(
     census.wif_pools,
-    init: UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } },
+    init: none,
     f: fn(acc, row) {
       match row {
         EstateUnread { gap: _ } => acc
         EstateObserved { value: p } =>
           if p.project_number == desired.project_number && p.pool_id == desired.pool_id {
             if p.disabled {
-              UpsertClassification {
-                verdict: Drifted,
-                decision: Refuse {
-                  reason: "observed pool is disabled; converge does not enable-by-delete-or-disable inversion and will not disable" as NonEmptyStr,
+              Present {
+                value: UpsertClassification {
+                  verdict: Drifted,
+                  decision: Refuse {
+                    reason: "observed pool is disabled; converge does not enable-by-delete-or-disable inversion and will not disable" as NonEmptyStr,
+                  },
                 },
               }
             } else {
-              UpsertClassification { verdict: Converged, decision: Noop }
+              Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
             }
           } else {
             acc
@@ -173,45 +176,64 @@ fn classify_desired_wif_pool(
       }
     },
   )
+  match matched {
+    Present { value: c } => c
+    _ =>
+      if census_coverage_has_unread(rows: census.wif_pools) {
+        inaccessible_desired_subject()
+      } else {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } }
+      }
+  }
 }
 
 fn classify_desired_wif_provider(
   desired: DesiredWifProvider,
   census: GcpEstateCensus,
 ) -> UpsertClassification<GcpEstateAdoptionPlan> {
-  if census_github_actions_provider_is_unread(census: census) {
-    inaccessible_desired_subject()
-  } else {
-    fold(
-      census.wif_providers,
-      init: UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } },
-      f: fn(acc, row) {
-        match row {
-          EstateUnread { gap: _ } => acc
-          EstateObserved { value: p } =>
-            if p.project_number == desired.project_number
-              && p.pool_id == desired.pool_id
-              && p.provider_id == desired.provider_id {
-              if p.attribute_condition == desired.attribute_condition {
-                UpsertClassification { verdict: Converged, decision: Noop }
-              } else {
-                match drift_policy_for(kind: KindWifProvider) {
-                  DriftApplyUpdate => UpsertClassification {
+  let matched = fold(
+    census.wif_providers,
+    init: none,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } =>
+          if p.project_number == desired.project_number
+            && p.pool_id == desired.pool_id
+            && p.provider_id == desired.provider_id {
+            if p.attribute_condition == desired.attribute_condition {
+              Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
+            } else {
+              match drift_policy_for(kind: KindWifProvider) {
+                DriftApplyUpdate => Present {
+                  value: UpsertClassification {
                     verdict: Drifted,
                     decision: Apply { plan: UpdateSubject },
-                  }
-                  DriftRefuse { reason: reason } => UpsertClassification {
+                  },
+                }
+                DriftRefuse { reason: reason } => Present {
+                  value: UpsertClassification {
                     verdict: Drifted,
                     decision: Refuse { reason: reason },
-                  }
+                  },
                 }
               }
-            } else {
-              acc
             }
-        }
-      },
-    )
+          } else {
+            acc
+          }
+      }
+    },
+  )
+  match matched {
+    Present { value: c } => c
+    _ =>
+      if census_coverage_has_unread(rows: census.wif_providers)
+        || census_github_actions_provider_is_unread(census: census) {
+        inaccessible_desired_subject()
+      } else {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } }
+      }
   }
 }
 
@@ -219,21 +241,30 @@ fn classify_desired_binding(
   desired: DesiredPrincipalSetBinding,
   census: GcpEstateCensus,
 ) -> UpsertClassification<GcpEstateAdoptionPlan> {
-  fold(
+  let matched = fold(
     census.principal_set_bindings,
-    init: UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } },
+    init: none,
     f: fn(acc, row) {
       match row {
         EstateUnread { gap: _ } => acc
         EstateObserved { value: b } =>
           if b.account == desired.account && b.role == desired.role && observed_member_eq(b: b, member: desired.member) {
-            UpsertClassification { verdict: Converged, decision: Noop }
+            Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
           } else {
             acc
           }
       }
     },
   )
+  match matched {
+    Present { value: c } => c
+    _ =>
+      if census_coverage_has_unread(rows: census.principal_set_bindings) {
+        inaccessible_desired_subject()
+      } else {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } }
+      }
+  }
 }
 
 fn observed_member_eq(b: ObservedPrincipalSetBinding, member: String) -> Bool {
