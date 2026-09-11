@@ -1,0 +1,55 @@
+module test.claim.dsv41_confirm_on_main
+
+import std.types { list_length, Bool, String, Int, List }
+import extdeps.languages.json.emit { JsonValue, serialize_json }
+import gunbc.harness.harness_wire {
+  HarnessWireBlock, WireToolUseBlock,
+  HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
+  harness_decode_chat_completion, harness_decode_response }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, DeepseekV4FlashOnVllm }
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn chat_with_tool_call(call: String) -> String {
+  join(["{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":\"x\",\"tool_calls\":[", call, "]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}"], "")
+}
+
+test fn main_fabricates_empty_arguments_for_unparseable_arguments() -> Bool {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: chat_with_tool_call(call: "{\"id\":\"c1\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \"}}")) {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks, stop_reason: _, input_tokens: _, output_tokens: _ } =>
+      match blocks.last() {
+        Present { value: WireToolUseBlock { id: _, name: _, input } } => serialize_json(v: input) == "{}"
+        _ => false
+      }
+  }
+}
+
+test fn main_fabricates_an_empty_tool_call_id() -> Bool {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: chat_with_tool_call(call: "{\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"}}")) {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks, stop_reason: _, input_tokens: _, output_tokens: _ } =>
+      match blocks.last() {
+        Present { value: WireToolUseBlock { id, name: _, input: _ } } => id == ""
+        _ => false
+      }
+  }
+}
+
+test fn main_fabricates_zero_token_counts_when_usage_is_absent() -> Bool {
+  match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}]}") {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks: _, stop_reason: _, input_tokens: i, output_tokens: o } => i == 0 && o == 0
+  }
+}
+
+test fn main_fabricates_an_empty_input_for_a_messages_tool_use_block() -> Bool {
+  match harness_decode_response(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"run_command\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}") {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks, stop_reason: _, input_tokens: _, output_tokens: _ } =>
+      match blocks.first() {
+        Present { value: WireToolUseBlock { id: _, name: _, input } } => serialize_json(v: input) == "{}"
+        _ => false
+      }
+  }
+}

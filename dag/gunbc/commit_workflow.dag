@@ -2049,6 +2049,59 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     },
     surfaces: [GithubActionsCiJob]
   },
+  // THE HARNESS WIRE CODEC'S FABRICATION REDS, ENROLLED BECAUSE AN UNENROLLED RED IS NOT EVIDENCE.
+  //
+  // `test.claim.harness_chat_shape` carries no `test.claim.harness_` prefix in
+  // `v2.workflow.required_floor` `required_gate_prefixes`, and it must not: that roster is the
+  // operator's compiler-floor ruling, and a harness wire codec is exactly the kind of witness that
+  // ruling moved OFF the gate. So the module resolved `DeclinedOutsideRequiredGate` on every
+  // ordinary floor and executed only on the pull requests that happened to touch it
+  // (`PlannedAsChangedWitness`). The proof that this is a real hole rather than a theoretical one is
+  // dated: the `unit:` parameter landed on `harness_decode_chat_completion` in #10815, this module
+  // went on calling it with one argument -- an arity error the floor has a blocking wall for -- and
+  // nothing went red for months. A witness nothing runs is absent, not green.
+  //
+  // This row is that module's standing consumer, on the surface a non-floor witness belongs to.
+  // DESIGN section 4b(4) is the requirement it discharges: a climb deletes the lower-rung production
+  // machinery it obsoletes, but the discriminating RED and its positive control REMAIN ENROLLED as
+  // the executing evidence that the higher rung stays real. The eleven fabrication reds here each
+  // decoded GREEN before the repair, so a revert of any arm is a countable red rather than a silence.
+  //
+  // ExecutionWitnessKind, not Corpus: these are interpreted decodes of authored string fixtures with
+  // no host effects and no read of the corpus, so the module declares SubstrateInputsOnly and the
+  // wet subprocess lane would be a nickname for it. The whole module is milliseconds of string
+  // decoding -- it is enrolled at module grain rather than split because no function in it is
+  // expensive enough for a split to mean anything.
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/harness_chat_shape_test.dag",
+      check_fns: [
+        "a_chat_completion_decodes_to_thinking_text_and_tool_use",
+        "tool_call_arguments_are_parsed_from_their_json_string",
+        "an_unknown_finish_reason_is_unreadable",
+        "the_chat_replay_carries_reasoning_content_and_tool_calls",
+        "the_messages_replay_is_untouched",
+        "chat_tool_results_are_tool_messages_then_the_notice",
+        "the_messages_shape_still_sends_one_user_message_of_results",
+        "the_brief_is_a_plain_string_on_the_chat_shape",
+        "each_shape_posts_to_its_own_path",
+        "the_replica_roster_derives_from_the_pair_heads",
+        "unparseable_tool_call_arguments_refuse_rather_than_decoding_to_an_empty_object",
+        "a_tool_call_without_arguments_refuses_rather_than_dispatching_an_empty_call",
+        "a_tool_call_without_an_id_refuses_rather_than_addressing_its_result_to_the_empty_string",
+        "a_completion_without_a_usage_object_reads_as_unavailable_not_as_zero",
+        "a_usage_member_that_is_not_a_number_reads_as_unavailable_not_as_zero",
+        "a_usage_object_missing_one_count_reads_as_unavailable_rather_than_half_a_measurement",
+        "a_messages_tool_use_block_without_input_refuses",
+        "a_messages_tool_use_block_without_an_id_refuses",
+        "a_well_formed_messages_response_still_decodes_with_its_input_and_counts",
+        "an_unmodelled_block_kind_is_skipped_not_refused"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
   CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
