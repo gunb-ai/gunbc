@@ -1,0 +1,39 @@
+module extdeps.linux.kernel
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/README.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.kernel",
+      decl_name: "LinuxKernelRelease",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE RELEASE STRING IS THE KERNEL'S OWN IDENTITY, so it is branded here rather than wherever a
+// consumer first happened to need it. It was previously declared inside
+// gunbc.served_surface_browser_observation, a downstream receipt module: an extdeps module cannot
+// import a gunbc one, so keying an upstream fact to a kernel release would have had to re-coin the
+// brand — the §3 fork. The spelling is `uname -r`'s: upstream mainline versions ("6.8.0") and
+// distribution-patched releases ("6.8.0-71-generic") are both this brand, because both are what the
+// kernel answers with and neither is a different kind of thing.
+type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
+
+// A LOADABLE MODULE'S NAME IS ALSO THE KERNEL'S, and it is the identifier `lsmod`, modprobe and
+// /sys/module all key on. Branded rather than left a bare String so a module name cannot be
+// interchanged with the arbitrary text beside it in a driver-binding row.
+type LinuxKernelModuleName = NonEmptyStr where brand("LinuxKernelModuleName")

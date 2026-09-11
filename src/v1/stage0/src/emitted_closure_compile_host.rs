@@ -40,9 +40,19 @@
 //! CLI flag and no required phase, and it is not on the emitted seed's public surface.
 //!
 //! WHAT THIS PHASE IS NOT. No baseline, no diagnostic count, no ratchet. Cargo's exit status is
-//! the whole verdict; warnings are not errors here. Pinning a diagnostic population measured on
-//! the current tree would be the tree-copied oracle DESIGN 5 rejects; an identity-grain debt
-//! contract over the emitted population is a separate construction with a separate argument.
+//! the whole verdict. Pinning a diagnostic population measured on the current tree would be the
+//! tree-copied oracle DESIGN 5 rejects; an identity-grain debt contract over the emitted
+//! population is a separate construction with a separate argument.
+//!
+//! A WARNING IS AN ERROR HERE, AND THE INVOCATION SAYS SO ITSELF. `run_cargo` sets RUSTFLAGS to
+//! the repository's own denial row (`gunbc.repo_self_build` `repo_self_warning_denial_rustflags`)
+//! on every spawn, so the verdict is the same on a workstation and on a runner. It used to
+//! inherit: CI's toolchain step defaults RUSTFLAGS to `-D warnings` and a workstation exports
+//! none, so the emitted compiler crate compiled clean locally and refused with status 101 in
+//! CI — and the required v2-native lane's receipt could not say which environment its
+//! "compiled" was true of. The lane now records the flags, the argv and rustc's identity on its
+//! receipt (`gunbc.witness_v2_native_route` `NativeRouteEmittedBuild`) and admission compares
+//! the flags against that same row.
 
 // CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
 // its count. Until this commit the generated crate root allowed `clippy::all` plus six
@@ -62,7 +72,9 @@ use super::{
     ci_layer_roots_authority_content, compile_entry_emission, process_workspace_root,
     string_list_data_from_ci_layer_roots_source, CompileDisposition, CompileRun,
 };
-use crate::extdeps_cargo::{CargoDepSource, CargoDependency};
+use crate::extdeps_cargo::{
+    cargo_environment_variable_name, CargoDependency, CargoEnvironmentVariable,
+};
 use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind;
 use crate::v1_compiler_stage0_crates::{
@@ -150,11 +162,17 @@ pub enum CargoVerdict {
     /// alone says only WHERE a fault was reported and never WHAT rustc refused, so a caller
     /// holding only `probe_line` passes on ANY refusal reported in the attributed file. The
     /// header is what lets a caller name the error class it expects.
+    /// `warning_count` is the number of `warning` diagnostic headers on stderr — rustc's
+    /// `warning: …` and cargo's own alike, counted by the same header scan that governs
+    /// attribution. Under the denial a rustc lint arrives as an `error` and stops the build, so
+    /// a non-zero count beside status 0 is a warning nobody denied (cargo's, a build script's);
+    /// the count is carried so a receipt can name it rather than swallow it.
     Completed {
         status: i32,
         stderr_tail: String,
         probe_line: Option<String>,
         probe_diagnostic: Option<String>,
+        warning_count: usize,
     },
 }
 
@@ -190,6 +208,7 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
             stderr_tail,
             probe_line,
             probe_diagnostic,
+            warning_count: _,
         } => format!(
             "Completed status={status} diagnostic={} line={} stderr_tail={stderr_tail}",
             probe_diagnostic.as_deref().unwrap_or("unattributed"),
@@ -508,6 +527,44 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// runtime dependency set, which emitted code links against), each rendered by that module's
 /// `render_stage0_crate_dep`.
 ///
+/// THE SEED IS NOT A DEPENDENCY OF THE EMITTED CRATE, AND THIS FUNCTION CANNOT NAME IT. Until
+/// this commit the rendered rows carried `v1-compiler = { path = <workspace>/src/v1/stage0 }`,
+/// justified as "the runtime surface the emitted closure does not emit". That justification was
+/// false against the emitter: `v1.compiler.emit_rust` `emit_rust_selected` writes `src/v1_rt.rs`
+/// into EVERY emission (`emit_v2_rt_module`, unconditional) and renders the `NonEmptyVec` /
+/// `NonEmptyBTreeSet` wrappers into the emitted `lib.rs`, and the emitted crate name is
+/// `v1_compiled` for every entry that is not the retained-host pipeline, so no emitted line
+/// paths into `v1_compiler` at all. THAT IS MEASURED RATHER THAN REASONED, AND THE INSTRUMENT IS
+/// NAMED RATHER THAN TRANSCRIBED (DESIGN section 6): `run_required_emit_compile` over
+/// `gunbc.ci_layer_roots` `required_emit_compile_entries` re-derives it on every run, emitting
+/// each entry's closure through this writer and handing the result to `run_cargo` -- so a seed
+/// symbol the emission failed to cover would refuse there, on the acceptance path, rather than in
+/// a sentence here. A count copied into this comment would rot the moment the roster or the
+/// emitter moved, which is exactly how the deleted CI job cited two paragraphs down came to be
+/// named here at all.
+///
+/// The consequence of the dead edge was not cosmetic. A fixed point measured on emitted BYTES
+/// said nothing about the emitted crate's ability to BUILD, because the manifest silently put
+/// `src/v1/stage0` back into its dependency graph; and building any probe rebuilt the seed into
+/// the shared target directory the running `claim_executor` was executing from.
+///
+/// THE WORKSPACE ROOT IS NO LONGER A PARAMETER, and what that buys is stated exactly rather than
+/// rounded up to a wall it is not. It eliminates the LIVE PRODUCER ROUTE that minted the seed
+/// path dependency: this function is handed no repository root, and
+/// `stage0_foundation_runtime_dependencies` carries registry rows only, so nothing on the
+/// rendering path supplies one. The regression witness beside it additionally refuses a rendered
+/// `src/v1` or `v1-compiler` dependency row, which is a second, independent reader of the same
+/// output.
+///
+/// A TYPE-LEVEL REGISTRY-ONLY BOUNDARY IS NOT CLAIMED, and saying so is the point:
+/// `CargoDependency` still admits `CargoDepSource::LocalPathDep { path }`, so a local path
+/// remains AUTHORABLE here from a literal -- which is exactly how this commit's discriminating
+/// red was established, with a hardcoded `/repo/src/v1/stage0`. Calling the parameter's removal a
+/// construction that makes the seed path unwritable would be the rung inflation DESIGN 4b(1)
+/// names. Making the local-path arm unreachable for an EMITTED crate's manifest belongs to the
+/// terminal shape -- the host consuming the emission's own manifest rather than authoring a
+/// second one -- and is not done here.
+///
 /// THE `[lib]` NAME IS THE EMITTER'S CONTRACT, NOT A SPELLING OF THE PATH. `src/lib.rs` stays
 /// cargo's default path; what must be named is the LIB TARGET's crate name, because the emitted
 /// `main.rs` reaches the closure through it: `v1.compiler.emit_rust` `emit_rust_selected` binds
@@ -515,7 +572,10 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// the SourceRootEvalDriver and DirectIngestDriver mains both `use v1_compiled::…`. The package
 /// name is per-entry (one slug per probe, sharing one target dir), so without this section the
 /// lib takes the package's name and the driver main's self-references fail E0433 — measured on
-/// the required-v2-native lane's first preparation. Pipeline-free probe entries never named
+/// the first preparation of the emitted-native compiler, which was a required CI job then and is
+/// the operator-invoked `--v2-native-route` instrument since #11003 deleted that job. The two
+/// consumers of this manifest today are that instrument and the `emit-compile` phase; naming a
+/// required native lane would cite a job main no longer declares. Pipeline-free probe entries never named
 /// their crate in a `use`, so the gap was unreachable until a pipeline entry became a probe
 /// subject.
 ///
@@ -523,20 +583,11 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// `cssl_v1_compiled_probe_lib_cargo_toml`) is deliberately not used: it is marked scaffold debt
 /// in its own module as concat-authored markup, and a required gate consuming it would pin that
 /// debt open on the merge path.
-fn probe_manifest(workspace: &Path, entry: &str) -> String {
-    let mut deps: Vec<CargoDependency> = stage0_foundation_runtime_dependencies()
+fn probe_manifest(entry: &str) -> String {
+    let deps: Vec<CargoDependency> = stage0_foundation_runtime_dependencies()
         .iter()
         .map(|dep| (**dep).clone())
         .collect();
-    // The emitted closure links against the seed crate for the runtime surface it does not emit
-    // (`v1_rt` and friends). An absolute path dependency: the probe crate is written outside the
-    // repository.
-    deps.push(CargoDependency {
-        name: "v1-compiler".to_string(),
-        source: std::rc::Rc::new(CargoDepSource::LocalPathDep {
-            path: workspace.join("src/v1/stage0").display().to_string(),
-        }),
-    });
     let rendered: String = deps
         .into_iter()
         .map(|dep| render_stage0_crate_dep(std::rc::Rc::new(dep)))
@@ -700,11 +751,8 @@ fn write_probe_crate_files(
             dir.display()
         ));
     }
-    std::fs::write(
-        dir.join("Cargo.toml"),
-        probe_manifest(&process_workspace_root(), entry),
-    )
-    .map_err(|e| format!("writing the manifest into {}: {e}", dir.display()))?;
+    std::fs::write(dir.join("Cargo.toml"), probe_manifest(entry))
+        .map_err(|e| format!("writing the manifest into {}: {e}", dir.display()))?;
     Ok((dir, written))
 }
 
@@ -757,11 +805,204 @@ fn attributed_diagnostic(
     (None, None)
 }
 
-/// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: the
-/// lane's first step is `cargo build --release -p v1-compiler --bins`, so the seed crate is
-/// already compiled there under that profile; a `check` or a private target dir would share no
-/// fingerprint and rebuild the whole dependency graph inside a required phase. The baseline arm
-/// thus compiles only the emitted crate, and the two further arms are incremental.
+/// The number of `warning` diagnostic headers on a cargo stderr, by the same line shape
+/// `attributed_diagnostic` reads (a trimmed line starting with `warning`). Pure, for the same
+/// reason: the count is receipt content and its scan must be testable without a toolchain.
+fn warning_header_count(stderr: &str) -> usize {
+    stderr
+        .lines()
+        .filter(|line| line.trim().starts_with("warning"))
+        .count()
+}
+
+/// The exact cargo invocation `run_cargo` spawns for a probe crate, as receipt content: the
+/// argv (program first), the RUSTFLAGS value the spawn SETS, the one compiler executable cargo
+/// is bound to, and that executable's self-reported identity. Built by the one function that
+/// also builds the `Command`, so the receipt cannot describe a different spawn than the one
+/// that ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProbeCargoInvocation {
+    pub argv: Vec<String>,
+    pub rustflags: String,
+    pub compiler_path: String,
+    pub rustc_identity: String,
+}
+
+/// Mirror of `gunbc.repo_self_build` `repo_self_warning_denial_rustflags`: the lint arguments
+/// `["-D", "warnings"]` joined by a space, the form cargo tokenises RUSTFLAGS in. A seed mirror
+/// like every other literal this host carries — the `.dag` row is the authority the required
+/// v2-native lane's admission compares the receipt against, so a drift here reds that lane by
+/// `emitted_build_warnings_not_denied` rather than passing silently.
+pub(crate) const WARNING_DENIAL_RUSTFLAGS: &str = "-D warnings";
+
+/// The same denial in cargo's ENCODED form: `CARGO_ENCODED_RUSTFLAGS` is read BEFORE
+/// `RUSTFLAGS` and separates arguments with 0x1f. Setting only the plain form would let an
+/// ambient encoded value win the build while the receipt still said `-D warnings`.
+pub(crate) const WARNING_DENIAL_ENCODED_RUSTFLAGS: &str = "-D\x1fwarnings";
+
+/// THE ENVIRONMENT CHANNELS CARGO READS TO CHOOSE FLAGS AND A COMPILER, all of which this
+/// construction OWNS (cargo's environment-variables reference, cited by `extdeps.rust.cargo`
+/// `cargo_environment_variables_authority`): the two flag channels above; `RUSTC`, which wins
+/// over `build.rustc` config; and the two wrapper channels `RUSTC_WRAPPER` /
+/// `RUSTC_WORKSPACE_WRAPPER`, which when PRESENT (even empty) short-circuit their
+/// `build.rustc-wrapper` / `build.rustc-workspace-wrapper` config — so setting them empty is
+/// the one spelling that disables a wrapper from every source. A receipt that recorded
+/// `-D warnings` and compiler X while cargo compiled under an ambient encoded flag, a config
+/// compiler or a wrapper fronting X would be admission evidence about a build that did not
+/// happen (side-chat landing ruling on #11011, 2026-09-11).
+const CARGO_ENCODED_RUSTFLAGS_ENV: &str = "CARGO_ENCODED_RUSTFLAGS";
+const RUSTC_ENV: &str = "RUSTC";
+const RUSTC_WRAPPER_ENV: &str = "RUSTC_WRAPPER";
+const RUSTC_WORKSPACE_WRAPPER_ENV: &str = "RUSTC_WORKSPACE_WRAPPER";
+
+/// The ONE compiler executable the probe build is bound to: `RUSTC` when the caller's
+/// environment names one (cargo's own precedence), else the first `rustc` on PATH — resolved
+/// to an absolute path HERE so the identity probe and the build cannot resolve differently.
+/// No executable is a typed refusal, never a bare `"rustc"` handed to cargo to resolve again.
+fn resolve_probe_compiler() -> Result<PathBuf, String> {
+    if let Some(named) = std::env::var_os(RUSTC_ENV) {
+        let path = PathBuf::from(&named);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(format!(
+            "ProbeCompilerUnresolved: RUSTC names {} which is not a file",
+            path.display()
+        ));
+    }
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join("rustc");
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err("ProbeCompilerUnresolved: no RUSTC in the environment and no rustc on PATH".to_string())
+}
+
+/// rustc's self-reported identity in its keyed `--version --verbose` form
+/// (`extdeps.rust.rustc` `rustc_version_verbose`): the release line plus every `key: value`
+/// line, joined by `; `. Asked of THE BOUND EXECUTABLE, from THE CRATE'S OWN DIRECTORY — a
+/// rustup proxy selects its toolchain per working directory, and cargo runs the compiler from
+/// the package dir, so a probe from elsewhere could name a different toolchain than the build
+/// used. Unreadable is a refusal, not an empty identity.
+fn probe_compiler_identity(compiler: &Path, crate_dir: &Path) -> Result<String, String> {
+    let output = std::process::Command::new(compiler)
+        .arg("--version")
+        .arg("--verbose")
+        .current_dir(crate_dir)
+        .output()
+        .map_err(|e| {
+            format!(
+                "RustcIdentityUnreadable: spawning {}: {e}",
+                compiler.display()
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "RustcIdentityUnreadable: {} --version --verbose exited {}",
+            compiler.display(),
+            output.status
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let identity = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    if identity.is_empty() {
+        return Err(format!(
+            "RustcIdentityUnreadable: {} --version --verbose printed nothing",
+            compiler.display()
+        ));
+    }
+    Ok(identity)
+}
+
+/// The `Command` and its receipt description, from one construction, with `compiler` and its
+/// `identity` supplied by the caller that resolved them (so the pure env shape is testable
+/// without a toolchain, and the resolving arm is testable separately). Every channel named
+/// above is SET on the spawn — never inherited, never left to config: an ambient value would
+/// make the verdict a fact about the runner rather than the crate.
+fn probe_cargo_command_bound(
+    crate_dir: &Path,
+    workspace: &Path,
+    compiler: &Path,
+    identity: &str,
+) -> (std::process::Command, ProbeCargoInvocation) {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let manifest = crate_dir.join("Cargo.toml");
+    let argv: Vec<String> = vec![
+        cargo.clone(),
+        "build".to_string(),
+        "--release".to_string(),
+        "--manifest-path".to_string(),
+        manifest.display().to_string(),
+    ];
+    let mut command = std::process::Command::new(&cargo);
+    command
+        .args(&argv[1..])
+        .env(
+            cargo_environment_variable_name(CargoEnvironmentVariable::CargoTargetDirEnv),
+            workspace.join("target"),
+        )
+        .env(
+            cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
+            WARNING_DENIAL_RUSTFLAGS,
+        )
+        .env(
+            CARGO_ENCODED_RUSTFLAGS_ENV,
+            WARNING_DENIAL_ENCODED_RUSTFLAGS,
+        )
+        .env(RUSTC_ENV, compiler)
+        .env(RUSTC_WRAPPER_ENV, "")
+        .env(RUSTC_WORKSPACE_WRAPPER_ENV, "")
+        .current_dir(crate_dir);
+    (
+        command,
+        ProbeCargoInvocation {
+            argv,
+            rustflags: WARNING_DENIAL_RUSTFLAGS.to_string(),
+            compiler_path: compiler.display().to_string(),
+            rustc_identity: identity.to_string(),
+        },
+    )
+}
+
+/// Resolve the compiler, take its identity from the crate's directory, and build the bound
+/// spawn. The receipt's compiler is the executable cargo is bound to, by construction.
+fn probe_cargo_command(
+    crate_dir: &Path,
+    workspace: &Path,
+) -> Result<(std::process::Command, ProbeCargoInvocation), String> {
+    let compiler = resolve_probe_compiler()?;
+    let identity = probe_compiler_identity(&compiler, crate_dir)?;
+    Ok(probe_cargo_command_bound(
+        crate_dir, workspace, &compiler, &identity,
+    ))
+}
+
+/// The receipt description of the spawn `run_cargo` would make for `crate_dir` — the same
+/// construction, without spawning cargo (the compiler identity probe does run).
+pub(crate) fn probe_cargo_invocation(
+    crate_dir: &Path,
+    workspace: &Path,
+) -> Result<ProbeCargoInvocation, String> {
+    probe_cargo_command(crate_dir, workspace).map(|(_, invocation)| invocation)
+}
+
+/// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: a
+/// `check` or a private target dir would share no fingerprint with anything and rebuild the
+/// whole dependency graph inside a required phase. RUSTFLAGS is part of cargo's fingerprint,
+/// so what the seed build already compiled is reusable here exactly when it was built under
+/// the same denial: on CI it was (the toolchain step exports the same `-D warnings`), so the
+/// baseline arm compiles only the emitted crate; on a workstation whose seed build inherited
+/// no RUSTFLAGS the FIRST probe build recompiles the dependency graph under the denial once,
+/// and the further arms — and every later probe in that target dir — are incremental against
+/// that. The one-time local cost is the price of the verdict being about the crate rather than
+/// about which machine built it.
 ///
 /// Phases within one required run are sequential in one process, so nothing else holds cargo's
 /// lock on that directory.
@@ -772,15 +1013,11 @@ pub(crate) fn run_cargo(
     workspace: &Path,
     attribution_symbol: &str,
 ) -> CargoVerdict {
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let mut command = std::process::Command::new(&cargo);
-    command
-        .arg("build")
-        .arg("--release")
-        .arg("--manifest-path")
-        .arg(crate_dir.join("Cargo.toml"))
-        .env("CARGO_TARGET_DIR", workspace.join("target"))
-        .current_dir(crate_dir);
+    let (mut command, invocation) = match probe_cargo_command(crate_dir, workspace) {
+        Ok(bound) => bound,
+        Err(reason) => return CargoVerdict::NotAttempted { reason },
+    };
+    let cargo = &invocation.argv[0];
     match command.output() {
         Err(e) => CargoVerdict::DidNotComplete {
             detail: format!("spawning {cargo} failed: {e}"),
@@ -799,6 +1036,7 @@ pub(crate) fn run_cargo(
                     stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
                     probe_line,
                     probe_diagnostic,
+                    warning_count: warning_header_count(&stderr),
                 }
             }
         },
@@ -1994,6 +2232,144 @@ mod tests {
     /// A NON-ZERO COMPLETED VERDICT MUST NAME WHAT RUSTC SAID. The native lane's refusal
     /// interpolates only this summary; a status-only render is how a cargo failure reached CI
     /// as `Completed status=101` with the diagnostic sitting unread in the same verdict.
+    fn env_of(command: &std::process::Command, name: &str) -> Option<Option<String>> {
+        command
+            .get_envs()
+            .find(|(n, _)| *n == std::ffi::OsStr::new(name))
+            .map(|(_, v)| v.map(|v| v.to_string_lossy().to_string()))
+    }
+
+    /// THE SPAWN OWNS EVERY CHANNEL CARGO READS, AND THE RECEIPT DESCRIBES THE SPAWN. The
+    /// `Command`'s own environment table is read back rather than the receipt trusted: a
+    /// receipt that said `-D warnings` and compiler X beside a spawn that let cargo read an
+    /// ambient encoded flag, a config compiler or a wrapper would be the fabricated provenance
+    /// this construction exists to make unwritable.
+    #[test]
+    fn the_probe_cargo_spawn_binds_flags_compiler_and_wrappers_and_the_receipt_names_that_spawn() {
+        let crate_dir = Path::new("/tmp/probe-crate");
+        let workspace = Path::new("/tmp/workspace");
+        let compiler = Path::new("/toolchain/bin/rustc");
+        let (command, invocation) =
+            probe_cargo_command_bound(crate_dir, workspace, compiler, "rustc 1.93.0; host: x");
+        assert_eq!(
+            env_of(&command, "RUSTFLAGS"),
+            Some(Some(WARNING_DENIAL_RUSTFLAGS.to_string())),
+            "RUSTFLAGS is SET on the spawn, not inherited"
+        );
+        assert_eq!(
+            env_of(&command, CARGO_ENCODED_RUSTFLAGS_ENV),
+            Some(Some(WARNING_DENIAL_ENCODED_RUSTFLAGS.to_string())),
+            "the encoded channel cargo reads FIRST carries the same denial"
+        );
+        assert_eq!(
+            WARNING_DENIAL_ENCODED_RUSTFLAGS
+                .split('\x1f')
+                .collect::<Vec<_>>()
+                .join(" "),
+            WARNING_DENIAL_RUSTFLAGS,
+            "the two channels spell one denial"
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_ENV),
+            Some(Some(compiler.display().to_string())),
+            "cargo is bound to the exact executable whose identity the receipt records"
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WRAPPER_ENV),
+            Some(Some(String::new()))
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WORKSPACE_WRAPPER_ENV),
+            Some(Some(String::new())),
+            "both wrapper channels are present-and-empty, which disables config wrappers too"
+        );
+        assert_eq!(
+            cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
+            "RUSTFLAGS",
+            "the spawn's env name is the authority's row, and that row spells cargo's name"
+        );
+        let spawned: Vec<String> =
+            std::iter::once(command.get_program().to_string_lossy().to_string())
+                .chain(command.get_args().map(|a| a.to_string_lossy().to_string()))
+                .collect();
+        assert_eq!(
+            spawned, invocation.argv,
+            "the receipt argv is the spawned argv"
+        );
+        assert_eq!(invocation.compiler_path, compiler.display().to_string());
+        assert_eq!(invocation.rustc_identity, "rustc 1.93.0; host: x");
+    }
+
+    /// RED CONTROLS: conflicting AMBIENT values on every channel are planted in this
+    /// process's environment and the spawn's table must override each one. Without the
+    /// binding, cargo would have read the planted values and the receipt would have stayed
+    /// falsely unchanged. The planted values are removed again so sibling tests are not
+    /// steered (the harness runs this crate's tests single-threaded, `.cargo/config.toml`).
+    #[test]
+    fn planted_ambient_flags_compiler_and_wrappers_cannot_reach_the_probe_build() {
+        let planted = [
+            (CARGO_ENCODED_RUSTFLAGS_ENV, "-C\x1fopt-level=0"),
+            ("RUSTFLAGS", "-C opt-level=0"),
+            (RUSTC_ENV, "/planted/other-rustc"),
+            ("CARGO_BUILD_RUSTC", "/planted/config-rustc"),
+            (RUSTC_WRAPPER_ENV, "/planted/wrapper"),
+            ("CARGO_BUILD_RUSTC_WRAPPER", "/planted/config-wrapper"),
+            (RUSTC_WORKSPACE_WRAPPER_ENV, "/planted/workspace-wrapper"),
+        ];
+        for (name, value) in planted {
+            std::env::set_var(name, value);
+        }
+        let compiler = Path::new("/toolchain/bin/rustc");
+        let (command, invocation) = probe_cargo_command_bound(
+            Path::new("/tmp/probe-crate"),
+            Path::new("/tmp/workspace"),
+            compiler,
+            "rustc 1.93.0",
+        );
+        let resolved_named = resolve_probe_compiler();
+        for (name, _) in planted {
+            std::env::remove_var(name);
+        }
+        assert_eq!(
+            env_of(&command, CARGO_ENCODED_RUSTFLAGS_ENV),
+            Some(Some(WARNING_DENIAL_ENCODED_RUSTFLAGS.to_string())),
+            "a planted encoded flag is overridden on the spawn"
+        );
+        assert_eq!(
+            env_of(&command, "RUSTFLAGS"),
+            Some(Some(WARNING_DENIAL_RUSTFLAGS.to_string()))
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_ENV),
+            Some(Some(compiler.display().to_string())),
+            "a planted RUSTC is overridden by the bound executable"
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WRAPPER_ENV),
+            Some(Some(String::new()))
+        );
+        assert_eq!(
+            env_of(&command, RUSTC_WORKSPACE_WRAPPER_ENV),
+            Some(Some(String::new()))
+        );
+        assert_eq!(invocation.rustflags, WARNING_DENIAL_RUSTFLAGS);
+        // A planted RUSTC that is not a file is a typed refusal from the resolver, never a
+        // bare name handed on to cargo.
+        let refusal = resolved_named.expect_err("a RUSTC naming no file must refuse");
+        assert!(
+            refusal.starts_with("ProbeCompilerUnresolved"),
+            "typed refusal, got: {refusal}"
+        );
+    }
+
+    #[test]
+    fn warning_headers_are_counted_and_errors_are_not() {
+        let stderr = "warning: unused import: `x`\n --> src/a.rs:1:5\nerror[E0308]: mismatched types\n --> src/b.rs:2:1\nwarning: `probe` (lib) generated 1 warning\n";
+        assert_eq!(warning_header_count(stderr), 2);
+        assert_eq!(warning_header_count("error: could not compile"), 0);
+        assert_eq!(warning_header_count(""), 0);
+    }
+
     #[test]
     fn cargo_verdict_summary_renders_the_diagnostic_a_non_zero_run_already_holds() {
         let attributed = CargoVerdict::Completed {
@@ -2001,6 +2377,7 @@ mod tests {
             stderr_tail: "error: could not compile `probe`".to_string(),
             probe_line: Some("--> src/fixture.rs:1:1".to_string()),
             probe_diagnostic: Some("error[E0308]: mismatched types".to_string()),
+            warning_count: 0,
         };
         let summary = cargo_verdict_summary(&attributed);
         assert!(
@@ -2016,6 +2393,7 @@ mod tests {
             stderr_tail: "error[E0433]: failed to resolve".to_string(),
             probe_line: None,
             probe_diagnostic: None,
+            warning_count: 0,
         };
         let summary = cargo_verdict_summary(&unattributed);
         assert!(
@@ -2028,16 +2406,16 @@ mod tests {
             stderr_tail: String::new(),
             probe_line: None,
             probe_diagnostic: None,
+            warning_count: 0,
         };
         assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
     }
 
     /// The manifest is DERIVED, so this asserts the derivation reached the modeled rows, not a
-    /// golden string: version-authority package header, the seed's runtime dependency set, and
-    /// the path dependency the emitted closure links against.
+    /// golden string: version-authority package header and the seed's runtime dependency set.
     #[test]
     fn manifest_carries_the_modeled_dependency_rows() {
-        let manifest = probe_manifest(Path::new("/repo"), "dag/std/logic.dag");
+        let manifest = probe_manifest("dag/std/logic.dag");
         // The package name is DERIVED PER ENTRY, so two entries cannot alias each other's cargo
         // fingerprints in the shared target directory.
         assert!(
@@ -2053,7 +2431,18 @@ mod tests {
         for name in ["im", "serde", "serde_json", "stacker"] {
             assert!(manifest.contains(name), "missing dependency row {name}");
         }
-        assert!(manifest.contains("/repo/src/v1/stage0"));
+        // THE DISCRIMINATING ASSERTION OF THIS COMMIT, and it is a regression control, not a
+        // wall. Removing the workspace-root parameter closed the live producer route that minted
+        // the seed dependency; it did NOT make a local path unwritable here, because
+        // `CargoDepSource::LocalPathDep` still admits a literal. So this reads the rendered
+        // OUTPUT: a `src/v1` or `v1-compiler` row means the emitted crate's dependency graph
+        // contains the seed again, and "v2 emits itself" stops being a claim about a buildable
+        // crate. Its RED was executed, not assumed -- re-adding the dependency panics here.
+        assert!(
+            !manifest.contains("src/v1"),
+            "the emitted probe crate must not depend on the seed: {manifest}"
+        );
+        assert!(!manifest.contains("v1-compiler"));
         // THE LIB NAME IS THE EMITTER'S SELF-NAME CONTRACT: the emitted driver mains reach the
         // closure through `use v1_compiled::…` (`v1.compiler.emit_rust` `emit_rust_selected`
         // binds the name), so the probe crate's lib target must carry it even though the package
@@ -2383,6 +2772,7 @@ error: could not compile `probe` (lib) due to 1 previous error
                 stderr_tail: String::new(),
                 probe_line: Some("--> src/fixture_probe.rs:13:5".to_string()),
                 probe_diagnostic: diagnostic.map(|value| value.to_string()),
+                warning_count: 0,
             },
         };
         let pair_with = |diagnostic: Option<&str>| FixtureDiscrimination {
@@ -2413,6 +2803,7 @@ error: could not compile `probe` (lib) due to 1 previous error
             stderr_tail: String::new(),
             probe_line: None,
             probe_diagnostic: None,
+            warning_count: 0,
         };
         for mutation in [
             MutationVerdict::NotAttempted {

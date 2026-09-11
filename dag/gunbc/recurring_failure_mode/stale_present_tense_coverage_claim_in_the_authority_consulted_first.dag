@@ -1,0 +1,56 @@
+module gunbc.recurring_failure_mode.stale_present_tense_coverage_claim_in_the_authority_consulted_first
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data stale_present_tense_coverage_claim_in_the_authority_consulted_first: RecurringFailureMode = RecurringFailureMode {
+  identity: "stale_present_tense_coverage_claim_in_the_authority_consulted_first" as NonEmptyStr,
+
+  receipts: [
+    "**a declaration's own annotation asserts, in the present tense, that an invariant it just gave up is still covered elsewhere, and names a consumer that does not execute** (INVALID STATE: a de-enrolment, re-home or scope narrowing lands together with a sentence of the form \"enforcement is NOT reduced: it executes per-PR via X\", and X is on no executing path. ",
+
+    "HARM: the sentence is not merely unhelpful, it is load-bearing in the wrong direction. ",
+
+    "It sits in the authority a reader consults FIRST when asking whether a class is still covered, so it converts an open question into a confident YES, and the reader stops. ",
+
+    "The de-enrolment that produced it was usually correct on its own terms -- a corpus walk priced out of the per-PR fold, a nullary gate that should never have been tree-grain -- which is exactly why the compensating sentence is written with no one checking it: the author is discharging a real objection and the sentence is how the objection is discharged. ",
+
+    "DISTINGUISHING FACTS. It is not an inert lens (the mechanism may be perfectly live), not a rung drop (nothing is declared), and not an ordinary stale comment (an ordinary stale comment describes; this one ASSERTS COVERAGE, which is the fact a reviewer is trying to establish). ",
+
+    "The tell is grammatical and mechanical: a present-tense executes/runs/covers clause naming an entry or function, inside an annotation whose subject is a REMOVAL. ",
+
+    "SPECIMEN ONE, and it is the one this class was filed from. ",
+
+    "`v2.compiler.compile`'s annotation above `always_required_root_lenses` records the de-enrolment of `lens_module_gate` from the root roster and adds that \"Enforcement is NOT reduced: the invariant executes per-PR via its honestly-stamped consumer v2.test.claim.enforcement.lens_module_gate_witness\". ",
+
+    "That is false on two independent grounds, either sufficient alone: the entry is enrolled in `gunbc.witness_deferral_freeze`, which means DECLARED NEVER-EXECUTED, and `test/claim/enforcement/` is a pattern in `gunbc.ci_layer_roots` `witness_exclusion_frontier`, which carves the whole directory out of per-PR discovery. ",
+
+    "SPECIMEN TWO, prior and already corrected, which is what establishes this as recurring rather than singular. ",
+
+    "`gunbc.ci_layer_roots` `excl_bin_wet_reason` read \"they run every PR as the declared bin-witness wet batch via bin_witness_wet_entries\" while nothing had run that batch since the 2026-08-15 floor cut -- 94 rows across 38 entry files naming an executing consumer that did not execute. ",
+
+    "It was corrected in place on 2026-08-19 with the correction stated rather than the sentence quietly reworded, and that correction's own note gives this class its severity in one line: anyone reading the row to answer \"is this class covered\" was told YES. ",
+
+    "RUNG FOUND AT: mitigatable. ",
+
+    "The only thing standing between the false sentence and a reader is review diligence, and both specimens survived review at the time they landed. ",
+
+    "CEILING: mechanically preventable, and the reason it is not higher is that the sentence is prose in an annotation, which by DESIGN section 4c no Accepted program can read. ",
+
+    "The class cannot climb by making the annotation checkable; it climbs by making the CLAIM a declaration. ",
+
+    "NEXT TRIGGER: a de-enrolment carries a typed compensating-consumer row -- the removed obligation, the entry and function said to still cover it -- so the claim joins `gunbc.witness_deferral_freeze` and `gunbc.ci_layer_roots` `witness_exclusion_frontier` the way `gunbc.v2_compile_obligation_census` now derives every obligation's per-PR standing, and a compensating consumer that executes nowhere refuses at the point the de-enrolment lands rather than being discovered by a census months later.)"
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.compiler.compile", decl_name: "always_required_root_lenses"),
+    decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "excl_bin_wet_reason"),
+    decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
+    decl_ref(module_path: "gunbc.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),
+    decl_ref(
+      module_path: "gunbc.v2_compile_obligation_census",
+      decl_name: "interpreted_standing"
+    ),
+  ],
+}

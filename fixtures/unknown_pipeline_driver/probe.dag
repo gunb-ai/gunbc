@@ -1,0 +1,18 @@
+module test.fixture.unknown_pipeline_driver
+
+import std.compiler_entry { CompilerEntryDriver }
+import v2.std.logic { Bool }
+
+// AN ORDINARY ACCEPTED PROGRAM THAT THE EMITTER'S ARM SELECTION CANNOT READ. The declaration below
+// denotes SourceRootEvalDriver and resolves to it; it is spelled with its declaring module's
+// qualifier, which is a legitimate spelling the resolver accepts. The arm selection reads the
+// declaration body's AUTHORED NAME off its source span, so it sees the qualified spelling, matches
+// none of the three declared drivers, and — before the wall beside this fixture — rendered the
+// DIRECT-INGEST main anyway: a 25-line translator for a corpus that declares the source-root Eval
+// driver, emitted with zero diagnostics. Measured on this fixture at 17 modules, which is what
+// makes the 404-module instance a symptom rather than the subject.
+data compiler_pipeline_entry: CompilerEntryDriver = std.compiler_entry.SourceRootEvalDriver
+
+fn probe_holds() -> Bool {
+  true
+}

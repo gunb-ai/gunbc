@@ -13,7 +13,10 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
 }
 import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import std.measure { token_count_value, second_count }
-import gunbc.harness.harness_wire { harness_engine_context_window, harness_engine_admission_cap }
+import gunbc.harness.harness_wire { harness_engine_context_window, harness_context_budget_for }
+import gunbc.harness.harness_reasoning_wire {
+  DeepseekV4FlashOnVllm, Glm53FlashOnVllm, harness_unit_declared_context_ceiling,
+}
 import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
 import gunbc.harness.harness_turn {
   harness_stop_reason_truncated, harness_wire_block_json,
@@ -135,8 +138,10 @@ test fn a_rounds_premise_projects_its_measured_count() -> Bool {
 // -- which is exactly the case where a check earns its place rather than decorating a guarantee the
 // carrier already gives.
 test fn the_working_window_stays_under_the_engine_admission_cap() -> Bool {
-  token_count_value(t: harness_engine_context_window)
-    <= token_count_value(t: harness_engine_admission_cap)
+  token_count_value(t: harness_context_budget_for(unit: DeepseekV4FlashOnVllm))
+    <= token_count_value(t: harness_unit_declared_context_ceiling(unit: DeepseekV4FlashOnVllm))
+    && token_count_value(t: harness_context_budget_for(unit: Glm53FlashOnVllm))
+      <= token_count_value(t: harness_unit_declared_context_ceiling(unit: Glm53FlashOnVllm))
 }
 
 // A RESPONSE CANNOT BE LARGER THAN THE WINDOW IT IS GENERATED INTO. Also authorable red, and it is

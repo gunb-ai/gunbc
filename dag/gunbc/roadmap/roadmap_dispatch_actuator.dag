@@ -75,7 +75,7 @@ import extdeps.tmux {
 }
 import extdeps.llm.cli {
   ProviderModelSelection,
-  ProviderModelPinned,
+  ProviderModelPinned, ProviderAccountDefaultModel,
   shape_claude_invoke_argv,
   claude_cli_program,
   codex_cli_program,
@@ -97,8 +97,8 @@ import extdeps.llm.cli_lifecycle {
   CursorCliProvider,
 }
 import gunbc.harness.harness_backend {
-  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing, HarnessRosterUnresolved,
-  harness_observe_roster, harness_declines_detail, harness_roster_unresolved_detail,
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
+  harness_observe_roster, harness_declines_detail,
 }
 import gunbc.dispatch_selection {
   ExecutionProfile,
@@ -311,30 +311,32 @@ type DispatchActuatorSelection
 // type whose other consumers still require the field.
 data harness_selection_process_fingerprint: NonEmptyStr = "gunbc" as NonEmptyStr
 
-// THE SAME FIELD CARRIES TWO MEANINGS, AND ONLY ONE OF THEM IS AN INSTRUCTION. On the three vendor
-// arms, model is what will be SENT to the process: it becomes --model on the argv or it is the
-// account default and no flag is passed. Here it is a REPORT -- what the observed roster says this
-// backend is serving -- and nothing transmits it, because the harness worker is this repository's own
-// binary talking to a fixed local engine, not a CLI that takes a model argument. The pin is honest
-// because the roster really did observe that identity; it must not become a reason to add a --model
-// to the harness spawn, which would be inventing a knob the executor does not have. When the harness
-// grows per-group model identity, that identity replaces the single constant this reports, and the
-// transmission question is still answered by the executor, not by this field.
+// THE PIN IS GONE BECAUSE THE EVENT IT WAS WAITING FOR HAPPENED. This field pinned the one model the
+// roster observed, and the annotation standing here said in as many words that when the harness grew
+// per-route model identity, that identity would replace the single constant. It has: the harness now
+// binds its model from the route that grants the seat, so before placement there is no single
+// identity to report, and reporting one route's would be a claim about where the turn will land that
+// this function does not make.
+//
+// SO THE ARM IS THE ACCOUNT DEFAULT, WHICH IS THE ONE THAT IS TRUE. On the three vendor arms, model
+// is what will be SENT to the process -- it becomes --model on the argv, or it is the default and no
+// flag is passed. The harness worker is this repository's own binary and has no --model flag at all,
+// so "no flag" was always the accurate transmission answer and the pin was only ever a report. What
+// is lost with it is a REPORT, not an instruction, and the report now lives where it is observed:
+// gunbc.harness.harness_backend's roster carries one model per serving route.
 fn dispatch_harness_selection() -> DispatchActuatorSelection {
   match harness_observe_roster() {
-    HarnessRosterServing { model: serving_model, serving: _, declined: _ } =>
+    HarnessRosterServing { serving: _, declined: _, unresolved: _ } =>
       DispatchActuatorSelectionOk {
         provider: GunbcHarnessProvider,
         effort: ReasoningMedium,
-        model: ProviderModelPinned { model: serving_model as NonEmptyStr },
+        model: ProviderAccountDefaultModel,
         process_fingerprint: harness_selection_process_fingerprint,
       }
-    HarnessRosterNoneServing { model: m, declined } =>
+    HarnessRosterNoneServing { declined, unresolved } =>
       DispatchActuatorSelectionRefused {
-        reason: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") as NonEmptyStr,
+        reason: join(["no enrolled serving route advertises a model the harness is admitted to ask: ", harness_declines_detail(declined: declined, unresolved: unresolved)], "") as NonEmptyStr,
       }
-    HarnessRosterUnresolved { hosts } =>
-      DispatchActuatorSelectionRefused { reason: harness_roster_unresolved_detail(hosts: hosts) as NonEmptyStr }
   }
 }
 

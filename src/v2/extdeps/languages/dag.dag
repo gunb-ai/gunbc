@@ -472,10 +472,17 @@ fn dag_string_escape_sequence_pattern() -> LexPattern {
   }
 }
 
+// v1.compiler.tokenize scan_string_body never treats line feed as a closer:
+// only quote, backslash, and interpolation-start end the body walk. This arm
+// is that admission on the grammar row — StringTextChar still excludes LF so
+// other language models that reuse the class do not grow a second meaning.
 fn dag_string_body_element_pattern() -> LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
-    right: CharClassPattern { class: StringTextChar }
+    right: ChoicePattern {
+      left: CharPattern { char: 10 },
+      right: CharClassPattern { class: StringTextChar }
+    }
   }
 }
 
@@ -531,6 +538,8 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_false, text: "false"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_where, text: "where"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_as, text: "as"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_return, text: "return"),
       dag_literal_lex_rule(token_class: ^dag_token_arrow, text: "->"),
       dag_literal_lex_rule(token_class: ^dag_token_fat_arrow, text: "=>"),
       dag_literal_lex_rule(token_class: ^dag_token_eq_eq, text: "=="),
@@ -2333,7 +2342,9 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
     ^dag_token_kw_else,
     ^dag_token_kw_true,
     ^dag_token_kw_false,
-    ^dag_token_kw_where
+    ^dag_token_kw_where,
+    ^dag_token_kw_as,
+    ^dag_token_kw_return
   ]
 }
 
@@ -2344,7 +2355,7 @@ fn dag_grammar_binding_name_terminal() -> GrammarExpr {
     cons: fn(acc, tok) {
       dag_grammar_choice(
         left: acc,
-        right: dag_grammar_terminal(token_class: tok)
+        right: dag_grammar_terminal_lexeme(token_class: tok)
       )
     }
   )
@@ -2392,8 +2403,14 @@ fn dag_grammar_stmt_seq_expr() -> GrammarExpr {
 
 fn dag_grammar_stmt_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_let_expr),
-    right: dag_grammar_nonterminal(production: ^dag_production_expr)
+    left: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_kw_return),
+      right: dag_grammar_nonterminal(production: ^dag_production_expr)
+    ),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_let_expr),
+      right: dag_grammar_nonterminal(production: ^dag_production_expr)
+    )
   )
 }
 
@@ -2593,7 +2610,13 @@ fn dag_grammar_unary_expr_expr() -> GrammarExpr {
       left: dag_grammar_terminal(token_class: ^dag_token_bang),
       right: dag_grammar_nonterminal(production: ^dag_production_unary_expr)
     ),
-    right: dag_grammar_nonterminal(production: ^dag_production_postfix_expr)
+    right: dag_grammar_choice(
+      left: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_minus),
+        right: dag_grammar_nonterminal(production: ^dag_production_unary_expr)
+      ),
+      right: dag_grammar_nonterminal(production: ^dag_production_postfix_expr)
+    )
   )
 }
 
@@ -2653,16 +2676,30 @@ fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
 // why v2 could not read a fully-qualified record literal that v1 accepts. The leftover surfaced at a
 // different stage per position (parse in a match arm, normalize at a fn tail, and in a call argument it
 // parsed as a SECOND argument), so the spelling axis and the position axis had to be crossed to see it.
+fn dag_grammar_postfix_dot_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_dot),
+    right: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_primary_ident_suffix_expr()
+    )
+  )
+}
+
+fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_as),
+    right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+  )
+}
+
 fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_primary_expr),
     right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_dot),
-        right: dag_grammar_sequence(
-          left: dag_grammar_binding_name_terminal(),
-          right: dag_grammar_primary_ident_suffix_expr()
-        )
+      element: dag_grammar_choice(
+        left: dag_grammar_postfix_dot_suffix_expr(),
+        right: dag_grammar_postfix_as_suffix_expr()
       )
     )
   )
@@ -2733,11 +2770,20 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
                       right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
                     )
                   ),
-                  right: dag_grammar_sequence(
-                    left: dag_grammar_terminal(token_class: ^dag_token_lparen),
-                    right: dag_grammar_sequence(
-                      left: dag_grammar_nonterminal(production: ^dag_production_expr),
-                      right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+                  right: dag_grammar_choice(
+                    left: dag_grammar_sequence(
+                      left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+                      right: dag_grammar_sequence(
+                        left: dag_grammar_nonterminal(production: ^dag_production_expr),
+                        right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+                      )
+                    ),
+                    right: dag_grammar_choice(
+                      left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
+                      right: dag_grammar_choice(
+                        left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+                        right: dag_grammar_nonterminal(production: ^dag_production_loop_expr)
+                      )
                     )
                   )
                 )
@@ -2756,7 +2802,7 @@ fn dag_grammar_block_expr_expr() -> GrammarExpr {
 fn dag_grammar_arg_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_colon),
         right: dag_grammar_nonterminal(production: ^dag_production_expr)
@@ -2768,7 +2814,10 @@ fn dag_grammar_arg_expr() -> GrammarExpr {
 
 fn dag_grammar_field_init_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_ident),
+    left: dag_grammar_choice(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_string_literal)
+    ),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_colon),
       right: dag_grammar_nonterminal(production: ^dag_production_expr)
@@ -2861,13 +2910,13 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
 fn dag_grammar_field_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_colon),
         right: dag_grammar_nonterminal(production: ^dag_production_pattern)
       )
     ),
-    right: dag_grammar_terminal(token_class: ^dag_token_ident)
+    right: dag_grammar_binding_name_terminal()
   )
 }
 

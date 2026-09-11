@@ -56,11 +56,19 @@ data github_wif_pool: WifPool = WifPool {
   disabled: false
 }
 
+// The attribute condition confines the federation to this repository. It is derived from the same
+// repository authority the principal set uses, so the two cannot drift apart into a pool that
+// admits a repository the principal set does not name.
+fn github_wif_attribute_condition() -> String {
+  concat("assertion.repository == '", concat(federated_github_repo, "'"))
+}
+
 data github_wif_provider: WifProvider = WifProvider {
   name: github_wif_provider_id
   pool: github_wif_pool_id
   issuer_uri: github_wif_issuer_uri
   attribute_mapping: Present { value: github_wif_attribute_mapping }
+  attribute_condition: Present { value: github_wif_attribute_condition() }
 }
 
 fn github_wif_provider_resource() -> String {
@@ -73,13 +81,6 @@ fn github_wif_principal_set() -> String {
     pool_id: github_wif_pool.name,
     repository: federated_github_repo
   )
-}
-
-// The attribute condition confines the federation to this repository. It is derived from the same
-// repository authority the principal set uses, so the two cannot drift apart into a pool that
-// admits a repository the principal set does not name.
-fn github_wif_attribute_condition() -> String {
-  concat("assertion.repository == '", concat(federated_github_repo, "'"))
 }
 
 // A federating domain supplies its own service account; the federation does not enumerate them.

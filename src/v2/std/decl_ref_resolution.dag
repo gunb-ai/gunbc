@@ -156,6 +156,19 @@ fn declaration_ref_resolution_is_resolved(resolution: DeclarationRefResolution) 
   }
 }
 
+// THE ONE SPELLING OF EACH ARM for a located diagnostic. Authored here, beside the coproduct,
+// so a consumer rendering a refusal (gunbc.generated_artifact's producer coverage is the first)
+// does not mint its own -- a second consumer would otherwise mint a second spelling.
+fn declaration_ref_resolution_arm_key(resolution: DeclarationRefResolution) -> String {
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } => "resolved"
+    DeclarationRefModuleAbsent { reference: _ } => "module-absent"
+    DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
+    DeclarationRefFieldAbsent { reference: _ } => "field-absent"
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => "ambiguous"
+  }
+}
+
 fn declaration_ref_resolves(
   ref: DeclarationRef,
   facts: List<DeclFact>,
