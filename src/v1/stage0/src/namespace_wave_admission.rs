@@ -1858,6 +1858,18 @@ const SCM_SOURCE_RECOVERY_REHOME_LABEL: &str =
     "gunbc#10729 scm source-recovery re-home into object_store 2026-09-10";
 const SCM_MERGE_BASE_COHOME_LABEL: &str =
     "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
+/// FIFTH MERGE OF THIS FILE, AND THE FIRST WHERE GIT INTERLEAVED THE TWO ROSTERS -- three conflict
+/// hunks across one array, because both sides appended rows. Resolved by reconstructing each side's
+/// array from its own staged blob (`git show :2:` and `:3:`) and concatenating, rather than by
+/// patching the interleaving, which is how a row gets silently dropped in the middle of a list
+/// nobody re-counts. 40 SCM rows here, 3 for gunbc#11071 from main: UNION, because taking either
+/// side whole deletes obligations the other still owes and an unadjudicated delta is what this wall
+/// refuses. Main's #11071 TRIGGER paragraph is kept verbatim below; it is the history of when those
+/// rows come due, and this branch is not the authority that retires them.
+///
+/// TRIGGER: these rows go when #11071 merges. The base then authors `LinuxKernelRelease` in
+/// `extdeps.linux.kernel`, the delta stops being producible, and CONSUMED comes due on the roster's
+/// next touch — adjudicated by the declaring-module join, not by this sentence.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
@@ -2269,6 +2281,36 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
                 "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
             spelling: "MergeBaseSourceAlreadyConsumed",
             target: "gunbc.scm.repository_envelope",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11071 LinuxKernelRelease rehome",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.served_surface_browser_observation",
+            in_declaration: "ContainerVisibleHostKernel",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11071 LinuxKernelRelease rehome",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.served_surface_browser_observation",
+            in_declaration: "playwright_chromium_151_linux_arm64_headless_navigation_run",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11071 LinuxKernelRelease rehome",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.served_surface_browser_observation_witness",
+            in_declaration: "witness_run_owns_one_execution_identity",
+            spelling: "LinuxKernelRelease",
+            target: "extdeps.linux.kernel",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

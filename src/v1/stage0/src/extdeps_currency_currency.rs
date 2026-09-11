@@ -51,6 +51,13 @@ pub fn currency_numeric_code(c: CurrencyCode) -> i64 {
     }
 }
 
+pub fn currency_alphabetic_code(c: CurrencyCode) -> String {
+    match c.clone() {
+        CurrencyCode::Eur => "EUR".to_string(),
+        CurrencyCode::Usd => "USD".to_string(),
+    }
+}
+
 pub fn currency_code_eq(a: CurrencyCode, b: CurrencyCode) -> bool {
     (currency_numeric_code(a.clone()) == currency_numeric_code(b.clone()))
 }

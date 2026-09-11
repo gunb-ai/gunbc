@@ -58,9 +58,60 @@ type EmitSiteDisposition
 // looked at cannot be represented here, so the roster's completeness is what the witness checks
 // against the seed.
 
+// WHO PRODUCES A FAMILY AND WHO CONSUMES IT ARE CENSUS FACTS, NOT PROSE (2026-09-11, the
+// observability lane's census extension). A row that says only "migrated" or "frontier" cannot
+// answer the two questions the brief of that lane put first: which declaration emits the line, and
+// whether anything downstream PARSES it -- because a family whose reader is a machine has a wire
+// contract, and cutting its producer over to the observation vocabulary without cutting the reader
+// silently breaks the reader while the census books progress. The producer is a DeclarationRef
+// into the hand-Rust namespace (v1_compiler.cli_run and siblings), which the ingestion citation
+// wall counts as outside-index rather than refusing (gunbc.declaration_index_seed_growth), so a
+// deleted producer is at least a countable outside-index row rather than a silent lie, and a
+// witness below holds each named producer's SYMBOL present in the seed sources. Consumption has
+// exactly three honest answers. MachineConsumed names the reader declaration and the fields whose
+// values change its behaviour, so a producer cut knows what it must preserve. HumanPresentationOnly
+// carries the EVIDENCE for the claim, which must be more than "a grep for the prefix found no
+// parser" -- that search proves absence only over the population it searched, and the brief
+// forbids booking human-only on it. ConsumerUnresolved records what WAS searched and is the
+// default for every row until a real reader survey lands; it is not a defect state, it is the
+// honest one, and observation_emit_unresolved_consumer_count folds it so it can rank. THE PRODUCER
+// IS ONE DECLARATION PER FAMILY, AT FUNCTION GRAIN: a family with several emitting sites ([floor-drain]
+// has seven across five functions and two files) names one of them, and the enumeration of the rest
+// is the same occurrence-grain discovery the completeness note below records as unbuilt. A row
+// names a producer that exists today; it does not claim to name every site.
+type EmitProducer
+  = ProducerDeclared { declaration: DeclarationRef }
+  | ProducerUnlocated { reason: NonEmptyStr }
+
+type EmitConsumption
+  = MachineConsumed { reader: DeclarationRef, fields_read: List<NonEmptyStr> }
+  | HumanPresentationOnly { evidence: NonEmptyStr }
+  | ConsumerUnresolved { searched: NonEmptyStr }
+
 type CensusedEmitSite {
   marker: NonEmptyStr
+  producer: EmitProducer
+  consumption: EmitConsumption
   disposition: EmitSiteDisposition
+}
+
+fn seed_producer(decl_name: String) -> EmitProducer {
+  ProducerDeclared { declaration: DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: decl_name, field: WholeDeclaration } }
+}
+
+fn seed_producer_in(module_path: String, decl_name: String) -> EmitProducer {
+  ProducerDeclared { declaration: DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration } }
+}
+
+// The in-repo reader search every row below was subjected to on 2026-09-11: every file under the
+// repository outside the producer's own file, for the family's tag spelling, excluding target/ and
+// .git/. It found no parser for any family. That is evidence about THIS REPOSITORY'S sources and
+// nothing else -- operator scripts, dashboards and log post-processors outside the tree are
+// unsurveyed -- so every row stays ConsumerUnresolved rather than human-only, per the brief.
+data in_repo_reader_search: NonEmptyStr = "in-repo source search 2026-09-11 for the tag spelling outside the producer file: no parser found; readers outside this repository (operator scripts, dashboards, log post-processors) unsurveyed" as NonEmptyStr
+
+fn unresolved_after_in_repo_search() -> EmitConsumption {
+  ConsumerUnresolved { searched: in_repo_reader_search }
 }
 
 // A ROW NAMES A TAG FAMILY, NOT A FILE, AND THE FIELD THAT NAMED A FILE IS DELETED (2026-08-26).
@@ -84,10 +135,27 @@ data seed_emit_sources: List<String> = [
   "src/v1/stage0/src/bin/claim_executor.rs",
   "src/v1/stage0/src/bin/claim_batch.rs",
   "src/v1/stage0/src/cli_run.rs",
+  "src/v1/stage0/src/cli_run/required_floor_runner.rs",
+  "src/v1/stage0/src/cli_run/entry_resolve.rs",
+  "src/v1/stage0/src/cli_run/declared_refs.rs",
+  "src/v1/stage0/src/pre_push.rs",
   "src/v1/stage0/src/v1_interpreter.rs",
   "src/v1/stage0/src/v1_rt.rs",
   "src/v1/stage0/src/memory_governor.rs"
 ]
+
+// THE DENOMINATOR FELL BEHIND THE SEED AND THE PREDICTED NARROW HAPPENED (2026-09-11). cli_run.rs
+// was split into cli_run/*.rs submodules after this list was written, and the emits moved with the
+// code: [floor-claim-memory] lives only in cli_run/required_floor_runner.rs and one [floor-drain]
+// arm in cli_run/entry_resolve.rs. Neither file was listed, so census_marker_present answered
+// FALSE for floor_claim_memory_site -- a rostered row whose marker the census could not find --
+// and nothing reported it, because the witness that asks is declined by the floor
+// (test.claim.observation_emit_census_witness_test declares ReadsLiveTree). Measured by listing
+// every seed file containing a bracket-tagged eprintln; the four files added above are the
+// difference. This is the second time a declined witness held a false heartbeat-family row
+// (test.claim.observation_lockstep_witness_test records the first), and the fix is the same each
+// time: the denominator is re-derived by hand until the source-derived discovery this note names
+// lands.
 
 // THE CENSUS'S DENOMINATOR: the seed files a tagged progress emit can live in. Presence of a
 // rostered marker is asked of this SET, never of one named file, which is what makes a row survive
@@ -105,22 +173,27 @@ data seed_emit_sources: List<String> = [
 
 data floor_heartbeat_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-heartbeat]" as NonEmptyStr,
-  disposition: CountedFrontierSite {
-    reason: "THE SUCCESSOR TO THE RETIRED [floor-memory] MIGRATION, AND ITS ARRIVAL IS A REGRESSION RATHER THAN GROWTH. floor-memory was a MigratedToObservation row: the floor's periodic progress line was a projection of the observation event stream through gunbc.observation_ci_render.ci_heartbeat_line, rendered by the seed mirror render_heartbeat_line_mirror. Measured 2026-08-26, that mirror does not occur anywhere under src/ -- only one doc comment names it -- and the periodic line the floor actually emits is this raw formatted eprintln. So the projection was deleted and a raw emit took the same job under a new tag. The row is CountedFrontierSite because that is what the site now IS, not because it was newly discovered: a census that recorded the disappearance of floor-memory as a completed retirement, with no row for what replaced it, would have booked a reversal as progress" as NonEmptyStr,
-    dissolution: unbound_dissolution(description: "restore the heartbeat projection: the periodic floor line is rendered by gunbc.observation_ci_render.ci_heartbeat_line again (the .dag projection still exists and is still witnessed by test.claim.observation_ci_render_witness_test -- what is missing is the seed calling it), at which point this row becomes MigratedToObservation and [floor-claim-memory] follows it")
+  producer: seed_producer(decl_name: "spawn_floor_heartbeat"),
+  consumption: unresolved_after_in_repo_search(),
+  disposition: MigratedToObservation {
+    via: "gunbc.observation_ci_render.ci_heartbeat_line (seed seed_heartbeat_line; mirror render_heartbeat_line_mirror; RunSegment+PhaseSegment subject from the floor seam; every /proc and cgroup reading a Measured arm; stall clause by gunbc.memory_stall_refusal's own rate and share). RESTORED 2026-09-11: this row was a CountedFrontierSite from 2026-08-26, when #9228 deleted the [floor-memory] projection and a raw key=value eprintln took its job under this tag -- a migrated row that had silently reverted. The restoration replaced HeartbeatSample with the one-attempt floor's real sample rather than reviving the batch/entry shape, because the fields the raw line had grown (cpu delta, major faults, cgroup charge and throttle events, host vmstat, the stall window) each carried a measured justification the old record could not hold. The raw key=value shape is gone from the seed; the marker survives as the FLOOR_HEARTBEAT_CENSUS_MARKER const so this row cannot go stale. The reader question is what the consumption field carries: the old line had no in-repo parser, and this cut did not survey readers outside the tree, so if one existed it now reads prose" as NonEmptyStr
   }
 }
 
 data floor_claim_memory_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-claim-memory]" as NonEmptyStr,
+  producer: seed_producer(decl_name: "run_required_floor"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
-    reason: "the per-claim and worst-claim RSS growth lines emitted beside the heartbeat above, raw and formatted in the seed with no observation projection behind them. Same family and same regression as [floor-heartbeat]: this is the memory half of what [floor-memory] used to carry as a MeasurementSegment projection" as NonEmptyStr,
-    dissolution: unbound_dissolution(description: "the same restoration as [floor-heartbeat] -- a MeasurementSegment projection carries the RSS growth, rather than a formatted string")
+    reason: "the per-claim and worst-claim RSS growth lines emitted beside the heartbeat, raw and formatted in cli_run/required_floor_runner.rs with no observation projection behind them. Same family as [floor-heartbeat] and the same 2026-08-26 regression; the heartbeat half was restored on 2026-09-11 and this half was deliberately left for a separate cut, because a growth line is a DELTA between two RSS readings on a named claim and the renderer has no measurement-delta projection yet -- ci_measurement_rss_line carries one level, not a change. The 2026-08-26 note that this row's marker was present in the seed was FALSE from the cli_run split until 2026-09-11: the emit lives in a file the census denominator did not list (see the note on seed_emit_sources)" as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a measurement-delta projection in gunbc.observation_ci_render (a MeasurementSegment carrying the RSS before, after and the claim identity) rendered by a seed mirror on the same oracle pattern as the heartbeat, at which point this row becomes MigratedToObservation")
   }
 }
 
 data typecheck_attribution_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[typecheck-attribution]" as NonEmptyStr,
+  producer: seed_producer(decl_name: "render_typecheck_concluded_line_mirror"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: MigratedToObservation {
     via: "gunbc.observation_ci_render.ci_event_line (seed typecheck_begin_line / typecheck_concluded_line; mirror render_typecheck_*_line_mirror; ModuleSegment+PhaseSegment)" as NonEmptyStr
   }
@@ -128,6 +201,8 @@ data typecheck_attribution_site: CensusedEmitSite = CensusedEmitSite {
 
 data gantt_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[gantt]" as NonEmptyStr,
+  producer: seed_producer_in(module_path: "v1_compiler.v1_rt", decl_name: "trace_mark"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: MigratedToObservation {
     via: "gunbc.observation_ci_render.ci_event_line (seed phase_begin_line / phase_concluded_line; mirror render_phase_begin_line_mirror / render_phase_concluded_line_mirror; PhaseSegment)" as NonEmptyStr
   }
@@ -135,6 +210,8 @@ data gantt_site: CensusedEmitSite = CensusedEmitSite {
 
 data governor_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[governor]" as NonEmptyStr,
+  producer: seed_producer_in(module_path: "v1_compiler.memory_governor", decl_name: "render_governor_hold_line_mirror"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: MigratedToObservation {
     via: "gunbc.observation_ci_render.ci_hold_cause_text (seed seed_governor_hold_line; mirror render_governor_hold_line_mirror; SchedulerHold/BlockedOn)" as NonEmptyStr
   }
@@ -142,6 +219,8 @@ data governor_site: CensusedEmitSite = CensusedEmitSite {
 
 data measurement_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[measurement]" as NonEmptyStr,
+  producer: seed_producer(decl_name: "render_peak_rss_line_mirror"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: MigratedToObservation {
     via: "gunbc.observation_ci_render.ci_measurement_rss_line (seed seed_peak_rss_line; mirror render_peak_rss_line_mirror; identity-first label, human GiB)" as NonEmptyStr
   }
@@ -149,6 +228,8 @@ data measurement_site: CensusedEmitSite = CensusedEmitSite {
 
 data shell_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[shell]" as NonEmptyStr,
+  producer: seed_producer_in(module_path: "v1_compiler.v1_interpreter", decl_name: "SHELL_CENSUS_MARKER"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: MigratedToObservation {
     via: "gunbc.observation_ci_render.ci_event_line (seed shell_effect_begin_line / shell_effect_done_line / shell_effect_failed_line; mirror render_shell_effect_*_line_mirror; named-intent subject; Ambient ShellTrace Suppressed-at-Normal; Anomaly Failed via disposition alone)" as NonEmptyStr
   }
@@ -156,6 +237,8 @@ data shell_site: CensusedEmitSite = CensusedEmitSite {
 
 data witness_claim_result_site: CensusedEmitSite = CensusedEmitSite {
   marker: "render_witness_claim_result_text_mirror" as NonEmptyStr,
+  producer: seed_producer(decl_name: "render_witness_claim_result_text_mirror"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: MigratedToObservation {
     via: "gunbc.observation_ci_render.ci_witness_claim_result_text (seed mirror render_witness_claim_result_text_mirror; Bazel-shaped per-witness claim result; module_path subject)" as NonEmptyStr
   }
@@ -163,6 +246,8 @@ data witness_claim_result_site: CensusedEmitSite = CensusedEmitSite {
 
 data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-drain]" as NonEmptyStr,
+  producer: seed_producer(decl_name: "emit_floor_drain_receipt"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "schedule-retention / typed-cache drain diagnostics born after the initial census snapshot — retention kit instrumentation, not yet an observation projection" as NonEmptyStr,
     dissolution: unbound_dissolution(description: "re-census into MigratedToObservation once drain events speak the observation vocabulary (or retire the tag into a named group summary)")
@@ -171,6 +256,8 @@ data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
 
 data receipt_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[receipt]" as NonEmptyStr,
+  producer: seed_producer(decl_name: "write_floor_compile_clean_cost_receipt"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "floor resolve / batch-wall / materialization receipt lines — data, not outcomes; still bracket-tagged" as NonEmptyStr,
     dissolution: unbound_dissolution(description: "collapse into the floor-receipts observation group as Ambient MeasurementSegment / StatusPulse lines")
@@ -179,6 +266,8 @@ data receipt_site: CensusedEmitSite = CensusedEmitSite {
 
 data file_trace_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[file]" as NonEmptyStr,
+  producer: seed_producer_in(module_path: "v1_compiler.v1_interpreter", decl_name: "dispatch_file"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "Filesystem transport host-effect traces — sibling of the shell-echo class, still raw-tagged" as NonEmptyStr,
     dissolution: unbound_dissolution(description: "same named-intent ObservationEvent path as shell (Filesystem.Read/Write/…) once shell grain is proven")
@@ -187,6 +276,8 @@ data file_trace_site: CensusedEmitSite = CensusedEmitSite {
 
 data resolve_split_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[resolve-split]" as NonEmptyStr,
+  producer: seed_producer_in(module_path: "v1_compiler.claim_batch", decl_name: "run"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "per-entry resolve-stage timing split (#7205 / #6848 cost instrumentation) — load/parse/resolve/normalize/typecheck/parent_envs/assembly/ownership" as NonEmptyStr,
     dissolution: unbound_dissolution(description: "fold into a MeasurementSegment / StatusPulse receipt projection under the floor-receipts group")
@@ -195,6 +286,8 @@ data resolve_split_site: CensusedEmitSite = CensusedEmitSite {
 
 data assembly_split_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[assembly-split]" as NonEmptyStr,
+  producer: seed_producer_in(module_path: "v1_compiler.claim_batch", decl_name: "run"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "reconcile-assembly sub-split (#7205) — schedule/probe/registry/services/rewire/emit_info/residue timings that priced the type-export-set memo" as NonEmptyStr,
     dissolution: unbound_dissolution(description: "fold into the same MeasurementSegment receipt projection as resolve-split")
@@ -203,6 +296,8 @@ data assembly_split_site: CensusedEmitSite = CensusedEmitSite {
 
 data witness_row_cost_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[witness-row-cost]" as NonEmptyStr,
+  producer: seed_producer(decl_name: "witness_cost_nanosecond_value"),
+  consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "the surviving [witness-row-cost] emits, and the SYMBOL naming them is corrected here (2026-08-26). The batch-fed cost TSV probe this row originally described is deleted at the root, together with the drift and migration-disclosure siblings. What still carries the tag is the refusal vocabulary of the witness-cost projection helpers -- witness_cost_nanosecond_value, witness_cost_eval_durations, witness_cost_string_field and witness_cost_clock_nanos in cli_run.rs -- each returning a `[witness-row-cost] REFUSED: ...` string when a measured value will not inhabit its declared carrier. The tag family therefore exists in the seed and the bidirectional rule requires a roster row for it, while the population it names is refusals rather than a per-witness join projection. The prior text grounded this on `claim_executor discovery_claim_result`, which resolves to no declaration anywhere in the seed" as NonEmptyStr,
     dissolution: unbound_dissolution(description: "the refusal speaks the observation vocabulary as a typed ObservationEvent rather than a bracket-tagged eprintln, at which point the tag retires with it")
@@ -328,6 +423,34 @@ fn emit_site_dissolve_on(site: CensusedEmitSite) -> String {
     MigratedToObservation { via: v } => v
     CountedFrontierSite { reason: _, dissolution: d } => dissolution_description(condition: d)
   }
+}
+
+fn emit_site_consumer_unresolved(site: CensusedEmitSite) -> Bool {
+  match site.consumption {
+    MachineConsumed { reader: _, fields_read: _ } => false
+    HumanPresentationOnly { evidence: _ } => false
+    ConsumerUnresolved { searched: _ } => true
+  }
+}
+
+// The producer's SYMBOL, for the seed-presence check: a named producer that has left the seed is a
+// row citing a deleted declaration, which is the fabricated-citation class this file has recorded
+// once already ([witness-row-cost] on `claim_executor discovery_claim_result`).
+fn emit_site_producer_symbol(site: CensusedEmitSite) -> String? {
+  match site.producer {
+    ProducerDeclared { declaration: d } => Present { value: d.decl_name }
+    ProducerUnlocated { reason: _ } => Absent
+  }
+}
+
+fn observation_emit_unresolved_consumer_count() -> Nat {
+  fold(observation_emit_roster, init: 0, f: (acc, site) =>
+    if emit_site_consumer_unresolved(site: site) { acc + 1 } else { acc })
+}
+
+fn observation_emit_located_producer_count() -> Nat {
+  fold(observation_emit_roster, init: 0, f: (acc, site) =>
+    match emit_site_producer_symbol(site: site) { Present { value: _ } => acc + 1  Absent => acc })
 }
 
 fn observation_emit_frontier_count() -> Nat {

@@ -67,15 +67,25 @@ fn crawl_basis() -> AttentionBasis {
   AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
 }
 
-fn crawl_heartbeat_at(minute: Int, rss: Int, swap: Int, psi: Int) -> RenderedLine {
+// The capture read cgroup current, swap and PSI; the floor's sample now carries the cgroup charge and
+// vitals the capture never printed, which replay as unavailable with the capture named as cause
+// (see test.claim.observation_ci_render_witness_test crawl_not_captured_cause).
+data crawl_not_captured_cause: NonEmptyStr = "not captured by run 30044816605" as NonEmptyStr
+
+fn crawl_heartbeat_at(minute: Int, charge: Int) -> RenderedLine {
   ci_heartbeat_line(sample: HeartbeatSample {
     elapsed: millisecond(count: minute * 60000),
     active: crawl_leaf(),
-    entry_index: 214,
-    entry_total: 602,
-    rss: MeasuredValue { value: byte_size(rss) },
-    swap: MeasuredValue { value: byte_size(swap) },
-    pressure: MeasuredValue { value: basis_point(count: psi) }
+    cpu: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    major_faults: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    rss: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    cgroup_charge: MeasuredValue { value: byte_size(charge) },
+    cgroup_high_events: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    cgroup_max_events: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    cgroup_local_high_events: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    host_swap_in: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    host_major_faults: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    stall: MeasuredUnavailable { cause: crawl_not_captured_cause }
   })
 }
 
@@ -89,8 +99,8 @@ fn observation_crawl_after_block() -> String {
       rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
     }, basis: crawl_basis()), tier: Emoji),
     ci_collapsed_summary(green_count: 213),
-    ci_render_line(line: crawl_heartbeat_at(minute: 29, rss: 16106717184, swap: 34359738368, psi: 533), tier: Emoji),
-    ci_render_line(line: crawl_heartbeat_at(minute: 33, rss: 16107200512, swap: 34359738368, psi: 901), tier: Emoji),
+    ci_render_line(line: crawl_heartbeat_at(minute: 29, charge: 16106717184), tier: Emoji),
+    ci_render_line(line: crawl_heartbeat_at(minute: 33, charge: 16107200512), tier: Emoji),
     ci_render_line(line: ci_escalation_line(quiet_subject: crawl_entry(), active_leaf: crawl_leaf(), quiet: millisecond(count: 120000), t: observation_dwell_threshold), tier: Emoji),
     ci_render_line(line: ci_escalation_blocked_line(quiet_subject: crawl_entry(), active_leaf: crawl_leaf(), quiet: millisecond(count: 240000), t: observation_dwell_threshold, hold: PsiPressure { avg10: basis_point(count: 901) }), tier: Emoji),
     ci_render_line(line: ci_refusal_restate_line(subject: crawl_entry(), diagnostic: "FLOOR-BATCH-OVER-BUDGET wall=41m12s budget=22m" as NonEmptyStr), tier: Emoji),
@@ -108,14 +118,14 @@ fn observation_crawl_after_block() -> String {
 
 test fn w_replay_names_the_module_where_the_capture_was_silent() -> Bool {
   let block = observation_crawl_after_block()
-  string_contains(s: block, pattern: "still in witness discovery: entry 214 of 602, now typecheck v2.compiler.normalized_tree") &&
+  string_contains(s: block, pattern: "still in witness discovery, now typecheck v2.compiler.normalized_tree") &&
   string_contains(s: block, pattern: "quiet for 2 minutes — still working") &&
   string_contains(s: block, pattern: "quiet for 4 minutes — blocked on memory reclaim (pressure 9.0%)")
 }
 
 test fn w_replay_uses_human_units_not_raw_bytes() -> Bool {
   let block = observation_crawl_after_block()
-  string_contains(s: block, pattern: "memory 15.0 GiB, swap 32.0 GiB, pressure 9.0%") &&
+  string_contains(s: block, pattern: "cgroup charge 15.0 GiB") &&
   !string_contains(s: block, pattern: "16107200512") &&
   !string_contains(s: block, pattern: "current=")
 }

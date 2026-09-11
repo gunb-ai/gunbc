@@ -17,6 +17,7 @@ import std.measure {
   byte_size_count,
   basis_point,
   basis_point_count,
+  events_per_minute_count,
   gibibyte_scale_factor_bytes,
   milliseconds_per_second,
   seconds_per_minute,
@@ -31,6 +32,11 @@ import gunbc.witness_row_cost {
   shared_fill_payer_tag,
 }
 import extdeps.render.glyphs { resolve_symbol }
+import gunbc.memory_stall_refusal {
+  MemoryStallObservation,
+  memory_stall_major_fault_rate,
+  memory_stall_self_cpu_share,
+}
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.observation {
@@ -373,30 +379,85 @@ fn ci_event_line(event: ObservationEvent, basis: AttentionBasis) -> RenderedLine
   )
 }
 
+// THE FLOOR HEARTBEAT SAMPLE IS WHAT THE FLOOR ACTUALLY READS ON EACH BEAT, TYPED, EVERY FIELD
+// A MEASURED ARM (restored 2026-09-11). The earlier shape of this record carried a batch/entry
+// position and cgroup swap and PSI readings because it was projected from the batched plan/walk
+// floor; #9228 deleted that floor and its projection together, and the one-attempt floor that
+// replaced it beat on with a raw [floor-heartbeat] eprintln whose fields were each added under a
+// measured justification the old record could not hold: this floor's own cpu delta since it
+// started, its major-fault counter, the cgroup leaf's charge and its high/max/local-high throttle
+// events, host-wide swap-in and major faults from /proc/vmstat (the pair that separates host swap
+// from file-backed churn), and the memory-stall window the refusal in
+// gunbc.host.memory_stall_refusal decides on. So the record is REPLACED, not extended: the batch
+// position has no producer any more and a field nothing measures is a fabrication waiting to be
+// filled. The stall window is carried as the authority's own MemoryStallObservation so the rate and
+// share printed here are computed by the same two functions the refusal consumes -- a second
+// arithmetic here would agree the day it was written and drift after. Unreadability is kept at the
+// grain the seed reads it: one /proc/self/stat read feeds cpu and major_faults together, statm feeds
+// rss, memory.current, memory.events and memory.events.local are three files, /proc/vmstat is one,
+// and the stall window needs both its counters -- each arm names its cause and never prints 0.
 type HeartbeatSample {
   elapsed: Millisecond
   active: ObservationSubject
-  entry_index: Nat
-  entry_total: Nat
+  cpu: Measured<Millisecond>
+  major_faults: Measured<Nat>
   rss: Measured<ByteSize>
-  swap: Measured<ByteSize>
-  pressure: Measured<BasisPoint>
+  cgroup_charge: Measured<ByteSize>
+  cgroup_high_events: Measured<Nat>
+  cgroup_max_events: Measured<Nat>
+  cgroup_local_high_events: Measured<Nat>
+  host_swap_in: Measured<Nat>
+  host_major_faults: Measured<Nat>
+  stall: Measured<MemoryStallObservation>
+}
+
+fn ci_measured_count_text(m: Measured<Nat>) -> String {
+  match m {
+    MeasuredValue { value: n } => to_string(n)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
+}
+
+fn ci_measured_duration_text(m: Measured<Millisecond>) -> String {
+  match m {
+    MeasuredValue { value: d } => ci_human_duration(d: d)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
+}
+
+// The stall clause prints the two figures the refusal is decided on, computed by the refusal's own
+// functions: faults per minute and the process's user-cpu share of the window's wall.
+fn ci_measured_stall_text(m: Measured<MemoryStallObservation>) -> String {
+  match m {
+    MeasuredValue { value: o } =>
+      concat(
+        to_string(events_per_minute_count(r: memory_stall_major_fault_rate(o: o))),
+        concat(" faults/min at ", concat(ci_human_percent(bp: memory_stall_self_cpu_share(o: o)), " user cpu"))
+      )
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
 }
 
 // Law 2: the heartbeat carries IDENTITY, not just vitals — and identity comes first in the sentence, vitals last. The ordering is the whole point. A reader scanning a wall of heartbeats needs to know WHAT is running; the memory numbers only matter once they know that. The captured crawl window is the counter-example in the record: sixty heartbeats that named no subject at all while one module typechecked for ten minutes, so the operator could see the process was alive and could not see what it was doing.
 fn ci_heartbeat_line(sample: HeartbeatSample) -> RenderedLine {
   let detail = ci_subject_detail_text(subject: sample.active)
-  let position = concat(": entry ", concat(to_string(sample.entry_index), concat(" of ", to_string(sample.entry_total))))
   let identity = concat(
     "still in ",
     concat(ci_subject_activity_text(subject: sample.active),
-    concat(position, if detail == "" { "" } else { concat(", now ", detail) }))
+    if detail == "" { "" } else { concat(", now ", detail) })
   )
-  let vitals = concat(
-    "memory ", concat(ci_measured_bytes_text(m: sample.rss),
-    concat(", swap ", concat(ci_measured_bytes_text(m: sample.swap),
-    concat(", pressure ", ci_measured_percent_text(m: sample.pressure)))))
-  )
+  let vitals = join([
+    concat("cpu ", ci_measured_duration_text(m: sample.cpu)),
+    concat("memory ", ci_measured_bytes_text(m: sample.rss)),
+    concat("cgroup charge ", ci_measured_bytes_text(m: sample.cgroup_charge)),
+    concat("cgroup events high ", concat(ci_measured_count_text(m: sample.cgroup_high_events),
+      concat(" / max ", concat(ci_measured_count_text(m: sample.cgroup_max_events),
+      concat(" / local high ", ci_measured_count_text(m: sample.cgroup_local_high_events)))))),
+    concat("major faults ", ci_measured_count_text(m: sample.major_faults)),
+    concat("host swap-in ", ci_measured_count_text(m: sample.host_swap_in)),
+    concat("host major faults ", ci_measured_count_text(m: sample.host_major_faults)),
+    concat("stall ", ci_measured_stall_text(m: sample.stall))
+  ], ", ")
   RenderedLine {
     glyph: StatusPulse,
     text: concat(ci_human_duration(d: sample.elapsed), concat(" in — ", concat(identity, concat(". ", vitals)))),
