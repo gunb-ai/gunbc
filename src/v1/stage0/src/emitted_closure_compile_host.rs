@@ -62,7 +62,7 @@ use super::{
     ci_layer_roots_authority_content, compile_entry_emission, process_workspace_root,
     string_list_data_from_ci_layer_roots_source, CompileDisposition, CompileRun,
 };
-use crate::extdeps_cargo::{CargoDepSource, CargoDependency};
+use crate::extdeps_cargo::CargoDependency;
 use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind;
 use crate::v1_compiler_stage0_crates::{
@@ -508,6 +508,27 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// runtime dependency set, which emitted code links against), each rendered by that module's
 /// `render_stage0_crate_dep`.
 ///
+/// THE SEED IS NOT A DEPENDENCY OF THE EMITTED CRATE, AND THIS FUNCTION CANNOT NAME IT. Until
+/// this commit the rendered rows carried `v1-compiler = { path = <workspace>/src/v1/stage0 }`,
+/// justified as "the runtime surface the emitted closure does not emit". That justification was
+/// false against the emitter: `v1.compiler.emit_rust` `emit_rust_selected` writes `src/v1_rt.rs`
+/// into EVERY emission (`emit_v2_rt_module`, unconditional) and renders the `NonEmptyVec` /
+/// `NonEmptyBTreeSet` wrappers into the emitted `lib.rs`, and the emitted crate name is
+/// `v1_compiled` for every entry that is not the retained-host pipeline, so no emitted line
+/// paths into `v1_compiler` at all. Measured, not reasoned: the closure of `dag/std/node.dag`
+/// emits 15 files carrying zero `v1_compiler::` references and `cargo build --release` over it
+/// with the seed absent from the manifest completes at status 0.
+///
+/// The consequence of the dead edge was not cosmetic. A fixed point measured on emitted BYTES
+/// said nothing about the emitted crate's ability to BUILD, because the manifest silently put
+/// `src/v1/stage0` back into its dependency graph; and building any probe rebuilt the seed into
+/// the shared target directory the running `claim_executor` was executing from.
+///
+/// THE WORKSPACE ROOT IS NO LONGER A PARAMETER, which is the construction rather than the check
+/// (DESIGN section 5): a repository path cannot be rendered into a manifest by a function that is
+/// not handed one. `stage0_foundation_runtime_dependencies` carries only registry rows, so what
+/// this renders is the emitted closure's real link set and nothing else.
+///
 /// THE `[lib]` NAME IS THE EMITTER'S CONTRACT, NOT A SPELLING OF THE PATH. `src/lib.rs` stays
 /// cargo's default path; what must be named is the LIB TARGET's crate name, because the emitted
 /// `main.rs` reaches the closure through it: `v1.compiler.emit_rust` `emit_rust_selected` binds
@@ -523,20 +544,11 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// `cssl_v1_compiled_probe_lib_cargo_toml`) is deliberately not used: it is marked scaffold debt
 /// in its own module as concat-authored markup, and a required gate consuming it would pin that
 /// debt open on the merge path.
-fn probe_manifest(workspace: &Path, entry: &str) -> String {
-    let mut deps: Vec<CargoDependency> = stage0_foundation_runtime_dependencies()
+fn probe_manifest(entry: &str) -> String {
+    let deps: Vec<CargoDependency> = stage0_foundation_runtime_dependencies()
         .iter()
         .map(|dep| (**dep).clone())
         .collect();
-    // The emitted closure links against the seed crate for the runtime surface it does not emit
-    // (`v1_rt` and friends). An absolute path dependency: the probe crate is written outside the
-    // repository.
-    deps.push(CargoDependency {
-        name: "v1-compiler".to_string(),
-        source: std::rc::Rc::new(CargoDepSource::LocalPathDep {
-            path: workspace.join("src/v1/stage0").display().to_string(),
-        }),
-    });
     let rendered: String = deps
         .into_iter()
         .map(|dep| render_stage0_crate_dep(std::rc::Rc::new(dep)))
@@ -700,11 +712,8 @@ fn write_probe_crate_files(
             dir.display()
         ));
     }
-    std::fs::write(
-        dir.join("Cargo.toml"),
-        probe_manifest(&process_workspace_root(), entry),
-    )
-    .map_err(|e| format!("writing the manifest into {}: {e}", dir.display()))?;
+    std::fs::write(dir.join("Cargo.toml"), probe_manifest(entry))
+        .map_err(|e| format!("writing the manifest into {}: {e}", dir.display()))?;
     Ok((dir, written))
 }
 
@@ -2033,11 +2042,10 @@ mod tests {
     }
 
     /// The manifest is DERIVED, so this asserts the derivation reached the modeled rows, not a
-    /// golden string: version-authority package header, the seed's runtime dependency set, and
-    /// the path dependency the emitted closure links against.
+    /// golden string: version-authority package header and the seed's runtime dependency set.
     #[test]
     fn manifest_carries_the_modeled_dependency_rows() {
-        let manifest = probe_manifest(Path::new("/repo"), "dag/std/logic.dag");
+        let manifest = probe_manifest("dag/std/logic.dag");
         // The package name is DERIVED PER ENTRY, so two entries cannot alias each other's cargo
         // fingerprints in the shared target directory.
         assert!(
@@ -2053,7 +2061,17 @@ mod tests {
         for name in ["im", "serde", "serde_json", "stacker"] {
             assert!(manifest.contains(name), "missing dependency row {name}");
         }
-        assert!(manifest.contains("/repo/src/v1/stage0"));
+        // THE DISCRIMINATING ASSERTION OF THIS COMMIT, and it is a regression control rather
+        // than a wall: the wall is that `probe_manifest` is not handed a workspace root, so the
+        // only way back to a seed path dependency is a diff that reintroduces the parameter.
+        // A `src/v1` substring in the rendered manifest means the emitted crate's dependency
+        // graph contains the seed again, and "v2 emits itself" stops being a claim about a
+        // buildable crate.
+        assert!(
+            !manifest.contains("src/v1"),
+            "the emitted probe crate must not depend on the seed: {manifest}"
+        );
+        assert!(!manifest.contains("v1-compiler"));
         // THE LIB NAME IS THE EMITTER'S SELF-NAME CONTRACT: the emitted driver mains reach the
         // closure through `use v1_compiled::…` (`v1.compiler.emit_rust` `emit_rust_selected`
         // binds the name), so the probe crate's lib target must carry it even though the package
