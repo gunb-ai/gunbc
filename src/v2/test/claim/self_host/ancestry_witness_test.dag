@@ -1,0 +1,580 @@
+module v2.test.claim.self_host.ancestry_witness
+
+import std.content_hash { Sha512Digest, sha512_hex_digest }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, Symbol, symbol_identity_digest }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.text { String }
+import v2.compiler.self_host.emitter_producer_provenance {
+  EmitterProducer,
+  RealizedEmitterClosure,
+  V1SeedEmitter,
+  V2EmitterInterpreted,
+  V2EmitterNative,
+  emitter_producer_eq
+}
+import v2.compiler.self_host.generation {
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  GeneratedArtifactIdentity,
+  GenerationIdentity,
+  ObservedArtifactDigest,
+  observed_artifact_digest
+}
+import v2.compiler.self_host.ancestry {
+  BuildPathPinned,
+  BuildPathRemapped,
+  BuildPathUnresolved,
+  BuildPathTreatment,
+  GenesisAdmitted,
+  GenesisExecuted,
+  GenesisFromSeed,
+  GenesisNotExecuted,
+  GenesisRefused,
+  NativeAncestorAcquired,
+  NativeAncestorMissing,
+  NativeAncestorUnverified,
+  NativeAncestry,
+  NativeGeneration,
+  NativeGenerationAdmitted,
+  NativeGenerationRefused,
+  ReadBackReported,
+  ReadBackReceipt,
+  ReadBackUnperformed,
+  SucceedsNative,
+  acquire_native_ancestor,
+  admit_genesis,
+  ancestor_identity_still_current,
+  native_generation_admitted,
+  native_generation_mint_admission,
+  native_generation_producer,
+  recurring_producer_is_native_only,
+  successor_names_its_ancestor
+}
+
+// Fixture digests. Two distinct sha512 hexes, so "the artifact that was built" and "the
+// artifact the binary reported" can be made to disagree — which is the whole subject of the
+// read-back clause. They are reached through sha512_hex_digest, the validating mint, so no
+// control here fabricates an artifact identity that the production path could not produce.
+data anc_built_hex: String = "8f31919534d1585a005d999df89eea61ae2aee36ed7f943b768f251bc38c7cbdd927d3dd88c1a1b9322552ee85bf2f866acfc2e9e9d718a6b4195e86b0943316"
+
+data anc_other_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75a44bcdaaac7a113384ad78e6412513a229f7fdb0204a113fa17cb876304eb478d9099296a49ad209954edd"
+
+data anc_seed_hex: String = "b3f1c37a2d0e5a6c9481f2b5dd0a7c3e6f48b19d25c07ae3f6b81d4c92a05e71c8d36f04bb2719ea5d08c34f7196ab52e0d47f83cc61b09da24e5f7381c6a04b"
+
+fn anc_digest(hex: String) -> Optional<Sha512Digest> {
+  sha512_hex_digest(hex: hex)
+}
+
+fn anc_artifact(hex: String) -> GeneratedArtifactIdentity {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    Absent => ArtifactNotMaterialized
+  }
+}
+
+fn anc_observed(hex: String) -> Optional<ObservedArtifactDigest> {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      optional_present(value: observed_artifact_digest(observed: d))
+    Absent => optional_absent()
+  }
+}
+
+fn anc_hash(label: String) -> Hash {
+  symbol_identity_digest(sym: label)
+}
+
+fn anc_identity(artifact: GeneratedArtifactIdentity) -> GenerationIdentity {
+  GenerationIdentity {
+    producer_compiler: anc_hash(label: "producer-compiler"),
+    source_closure: anc_hash(label: "source-closure"),
+    target_model: anc_hash(label: "target-model"),
+    toolchain: anc_hash(label: "toolchain"),
+    build_configuration: anc_hash(label: "build-configuration"),
+    materialized_artifact: artifact
+  }
+}
+
+// The genesis closure DOES reach the seed emitter — that is what a genesis is.
+data anc_seed_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+  emitter_module_paths: ["v1.compile", "v1.compiler.emit_rust"]
+}
+
+// The recurring closure reaches neither the seed emitter nor the interpreted emitter.
+data anc_native_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+  emitter_module_paths: [
+    "v2.compiler.self_host.candidate_generation",
+    "v2.compiler.emit_produced",
+    "v2.compiler.translate"
+  ]
+}
+
+data anc_interpreted_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+  emitter_module_paths: ["v2.compiler.emit", "v2.compiler.translate"]
+}
+
+data anc_remap: BuildPathTreatment = BuildPathRemapped {
+  remap_prefix_from: "/build/native-generation",
+  remap_prefix_to: "/gunbc"
+}
+
+fn anc_generation(
+  generation: Int,
+  ancestry: NativeAncestry,
+  artifact_hex: String,
+  read_back: ReadBackReceipt,
+  closure: RealizedEmitterClosure,
+  build_path: BuildPathTreatment
+) -> NativeGeneration {
+  NativeGeneration {
+    generation: generation,
+    ancestry: ancestry,
+    identity: anc_identity(artifact: anc_artifact(hex: artifact_hex)),
+    emitted_source: anc_hash(label: "emitted-source"),
+    read_back: read_back,
+    realized_closure: closure,
+    build_path_treatment: build_path
+  }
+}
+
+fn anc_read_back(hex: String) -> ReadBackReceipt {
+  match anc_observed(hex: hex) {
+    Present { value: o } => ReadBackReported { reported_artifact: o }
+    Absent => ReadBackUnperformed
+  }
+}
+
+// EVERY FIXTURE IS OPTIONAL-VALUED, and no control supplies a fallback value for a digest
+// that failed to parse. Sha512Digest is reachable only through sha512_hex_digest, so a
+// fixture whose hex is malformed has no inhabitant to stand in for it — and inventing one
+// would be the fabricated-plausible-output failure inside the very evidence that exists to
+// catch it. Instead the Absent arm makes the control FALSE, so a broken fixture reports as a
+// red control rather than as a green one exercising a substitute.
+fn anc_genesis(
+  artifact_hex: String,
+  read_back: ReadBackReceipt,
+  closure: RealizedEmitterClosure,
+  build_path: BuildPathTreatment
+) -> Optional<NativeGeneration> {
+  match anc_digest(hex: anc_seed_hex) {
+    Absent => optional_absent()
+    Present { value: seed } =>
+      optional_present(
+        value: anc_generation(
+          generation: 0,
+          ancestry: GenesisFromSeed { seed_binary: seed },
+          artifact_hex: artifact_hex,
+          read_back: read_back,
+          closure: closure,
+          build_path: build_path
+        )
+      )
+  }
+}
+
+fn anc_successor(
+  generation: Int,
+  parent_generation: Int,
+  parent_hex: String,
+  artifact_hex: String,
+  read_back: ReadBackReceipt,
+  closure: RealizedEmitterClosure,
+  build_path: BuildPathTreatment
+) -> Optional<NativeGeneration> {
+  match anc_observed(hex: parent_hex) {
+    Absent => optional_absent()
+    Present { value: parent } =>
+      optional_present(
+        value: anc_generation(
+          generation: generation,
+          ancestry: SucceedsNative {
+            parent_generation: parent_generation,
+            parent_artifact: parent
+          },
+          artifact_hex: artifact_hex,
+          read_back: read_back,
+          closure: closure,
+          build_path: build_path
+        )
+      )
+  }
+}
+
+// POSITIVE CONTROL fixtures. The genesis is produced BY the seed, on a closure that reaches
+// the seed, with the build directory pinned and a read-back agreeing with the built bytes.
+// The successor is produced by generation 0, on a closure reaching neither the seed nor the
+// interpreter, with the build path remapped and its own read-back agreeing. Both are
+// admitted below, so nothing that follows is green merely because the fold refuses
+// everything.
+fn anc_good_genesis() -> Optional<NativeGeneration> {
+  anc_genesis(
+    artifact_hex: anc_built_hex,
+    read_back: anc_read_back(hex: anc_built_hex),
+    closure: anc_seed_closure,
+    build_path: BuildPathPinned { directory: "/build/genesis" }
+  )
+}
+
+fn anc_good_successor() -> Optional<NativeGeneration> {
+  anc_successor(
+    generation: 1,
+    parent_generation: 0,
+    parent_hex: anc_built_hex,
+    artifact_hex: anc_other_hex,
+    read_back: anc_read_back(hex: anc_other_hex),
+    closure: anc_native_closure,
+    build_path: anc_remap
+  )
+}
+
+// The two adapters every control below funnels through: a fixture that is Absent makes the
+// control false, never green-by-substitute.
+fn anc_admitted(g: Optional<NativeGeneration>) -> Bool {
+  match g {
+    Absent => false
+    Present { value: v } => native_generation_admitted(g: v)
+  }
+}
+
+fn anc_refused_with(g: Optional<NativeGeneration>, cause: Symbol) -> Bool {
+  match g {
+    Absent => false
+    Present { value: v } =>
+      match native_generation_mint_admission(g: v) {
+        NativeGenerationAdmitted => false
+        NativeGenerationRefused { cause: c } => c == cause
+      }
+  }
+}
+
+test fn genesis_from_seed_is_admitted() -> Bool {
+  anc_admitted(g: anc_good_genesis())
+}
+
+test fn native_successor_is_admitted() -> Bool {
+  anc_admitted(g: anc_good_successor())
+}
+
+fn anc_producer_is(g: Optional<NativeGeneration>, expected: EmitterProducer) -> Bool {
+  match g {
+    Absent => false
+    Present { value: v } =>
+      emitter_producer_eq(
+        left: native_generation_producer(g: v),
+        right: expected
+      )
+  }
+}
+
+fn anc_recurring_producer_native_only(g: Optional<NativeGeneration>) -> Bool {
+  match g {
+    Absent => false
+    Present { value: v } => recurring_producer_is_native_only(g: v)
+  }
+}
+
+// THE PRODUCER PROJECTION REUSES THE EXISTING AUTHORITY and never mints a second one.
+// Genesis projects V1SeedEmitter; generation N + 1 projects V2EmitterNative(N) and is
+// neither of the other two producers.
+test fn producer_projection_is_seed_for_genesis_and_native_for_successor() -> Bool {
+  anc_producer_is(g: anc_good_genesis(), expected: V1SeedEmitter)
+    && anc_producer_is(
+      g: anc_good_successor(),
+      expected: V2EmitterNative { generation: 0 }
+    )
+    && !anc_producer_is(g: anc_good_successor(), expected: V1SeedEmitter)
+    && !anc_producer_is(g: anc_good_successor(), expected: V2EmitterInterpreted)
+    && anc_recurring_producer_native_only(g: anc_good_successor())
+    && anc_recurring_producer_native_only(g: anc_good_genesis())
+}
+
+// DISCRIMINATING RED 1 — the seed on the recurring path. The identical successor, moved onto
+// a closure that reaches v1.compiler.emit_rust, is refused BY NAME. This is the control the
+// C1 ruling is about: it goes red if any future edit lets the recurring step reach the seed.
+test fn successor_whose_closure_reaches_the_seed_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_seed_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_successor_closure_reaches_seed
+  )
+}
+
+// DISCRIMINATING RED 2 — the interpreted emitter is not an ancestor either, and is refused
+// under its OWN cause rather than being smeared into "not native".
+test fn successor_whose_closure_reaches_the_interpreter_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_interpreted_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_successor_closure_reaches_interpreter
+  )
+}
+
+// DISCRIMINATING RED 3 — a green build is not a verified ancestor.
+test fn successor_without_a_read_back_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: ReadBackUnperformed,
+      closure: anc_native_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_read_back_unperformed
+  )
+}
+
+// DISCRIMINATING RED 4 — a read-back that reports SOME identity is not a read-back that
+// agrees. The binary reports the genesis digest while the bytes built were the other one;
+// divergence refuses separately from absence.
+test fn successor_whose_read_back_diverges_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_built_hex),
+      closure: anc_native_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_read_back_diverged
+  )
+}
+
+// DISCRIMINATING RED 5 — the generation number must be the ancestry's own successor. A
+// generation claiming to follow parent 0 while numbering itself 7 is refused.
+test fn successor_numbering_must_be_parent_plus_one() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 7,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_native_closure,
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_successor_not_parent_plus_one
+  )
+}
+
+// DISCRIMINATING RED 6 — build path. Pinning is admissible for the one-time genesis and NOT
+// for a generation whose artifact will be acquired as an ancestor; unresolved is admissible
+// for neither. Stated as one conjunction so a dropped arm cannot pass unnoticed.
+test fn build_path_treatment_discriminates_genesis_from_recurrence() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_native_closure,
+      build_path: BuildPathPinned { directory: "/build/successor" }
+    ),
+    cause: ^ancestry_successor_build_path_pinned
+  )
+    && anc_refused_with(
+      g: anc_successor(
+        generation: 1,
+        parent_generation: 0,
+        parent_hex: anc_built_hex,
+        artifact_hex: anc_other_hex,
+        read_back: anc_read_back(hex: anc_other_hex),
+        closure: anc_native_closure,
+        build_path: BuildPathUnresolved
+      ),
+      cause: ^ancestry_build_path_unresolved
+    )
+    && anc_refused_with(
+      g: anc_genesis(
+        artifact_hex: anc_built_hex,
+        read_back: anc_read_back(hex: anc_built_hex),
+        closure: anc_seed_closure,
+        build_path: BuildPathUnresolved
+      ),
+      cause: ^ancestry_build_path_unresolved
+    )
+}
+
+// DISCRIMINATING RED 7 — a genesis that did not run the seed is not a genesis. Without this
+// clause the GenesisFromSeed arm would admit any closure at all, making the constructor a
+// label rather than a claim about what produced the bytes.
+test fn genesis_whose_closure_omits_the_seed_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_genesis(
+      artifact_hex: anc_built_hex,
+      read_back: anc_read_back(hex: anc_built_hex),
+      closure: anc_native_closure,
+      build_path: BuildPathPinned { directory: "/build/genesis" }
+    ),
+    cause: ^ancestry_genesis_closure_omits_seed
+  )
+}
+
+// GENESIS EXECUTES ONCE. Positive: against a standing that has not executed, an admissible
+// genesis is admitted. Discriminating red: the SAME genesis, offered against a standing that
+// already carries one, is refused — so re-running the migration is not a no-op, it is an
+// error. Third clause: the recurring step is not admitted by the migration at all.
+test fn genesis_is_admitted_once_and_refused_thereafter() -> Bool {
+  match anc_good_genesis() {
+    Absent => false
+    Present { value: g } =>
+      match admit_genesis(standing: GenesisNotExecuted, candidate: g) {
+        GenesisRefused { cause: _ } => false
+        GenesisAdmitted =>
+          match admit_genesis(
+            standing: GenesisExecuted { genesis: g },
+            candidate: g
+          ) {
+            GenesisAdmitted => false
+            GenesisRefused { cause: second } =>
+              (second == ^genesis_already_executed)
+                && match anc_good_successor() {
+                  Absent => false
+                  Present { value: s } =>
+                    match admit_genesis(
+                      standing: GenesisNotExecuted,
+                      candidate: s
+                    ) {
+                      GenesisAdmitted => false
+                      GenesisRefused { cause: third } =>
+                        third == ^genesis_candidate_is_not_a_genesis
+                    }
+                }
+          }
+      }
+  }
+}
+
+// ACQUISITION REFUSES; IT DOES NOT WIDEN. An absent ancestor names the generation it wanted,
+// an ancestor of the wrong generation is unverified, and an ancestor that fails the mint is
+// unverified under the mint's OWN cause. No arm of this fold selects another producer.
+test fn missing_ancestor_refuses_naming_the_generation_expected() -> Bool {
+  match acquire_native_ancestor(
+    expected_generation: 3,
+    available: optional_absent()
+  ) {
+    NativeAncestorMissing { expected_generation: n } => n == 3
+    NativeAncestorAcquired { ancestor: _ } => false
+    NativeAncestorUnverified { expected_generation: _, cause: _ } => false
+  }
+}
+
+test fn ancestor_of_the_wrong_generation_is_unverified() -> Bool {
+  match acquire_native_ancestor(
+    expected_generation: 3,
+    available: anc_good_successor()
+  ) {
+    NativeAncestorUnverified { expected_generation: n, cause: c } =>
+      (n == 3) && (c == ^ancestor_generation_is_not_the_one_expected)
+    NativeAncestorAcquired { ancestor: _ } => false
+    NativeAncestorMissing { expected_generation: _ } => false
+  }
+}
+
+test fn unverified_ancestor_carries_the_mints_own_cause() -> Bool {
+  match acquire_native_ancestor(
+    expected_generation: 1,
+    available: anc_successor(
+      generation: 1,
+      parent_generation: 0,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: ReadBackUnperformed,
+      closure: anc_native_closure,
+      build_path: anc_remap
+    )
+  ) {
+    NativeAncestorUnverified { expected_generation: n, cause: c } =>
+      (n == 1) && (c == ^ancestry_read_back_unperformed)
+    NativeAncestorAcquired { ancestor: _ } => false
+    NativeAncestorMissing { expected_generation: _ } => false
+  }
+}
+
+// POSITIVE CONTROL for acquisition — an admissible ancestor of the expected generation is
+// acquired. Without it the three refusals above would be satisfied by a fold that refuses
+// unconditionally.
+test fn admissible_ancestor_of_the_expected_generation_is_acquired() -> Bool {
+  match acquire_native_ancestor(
+    expected_generation: 1,
+    available: anc_good_successor()
+  ) {
+    NativeAncestorAcquired { ancestor: a } => a.generation == 1
+    NativeAncestorMissing { expected_generation: _ } => false
+    NativeAncestorUnverified { expected_generation: _, cause: _ } => false
+  }
+}
+
+fn anc_joins(
+  successor: Optional<NativeGeneration>,
+  ancestor: Optional<NativeGeneration>
+) -> Bool {
+  match successor {
+    Absent => false
+    Present { value: s } =>
+      match ancestor {
+        Absent => false
+        Present { value: a } =>
+          successor_names_its_ancestor(successor: s, ancestor: a)
+      }
+  }
+}
+
+// THE IDENTITY JOIN. A successor must name its ancestor's OWN observed artifact, so
+// "produced by generation N" is falsifiable rather than declarative. Positive: the good pair
+// joins. Red: the same successor against a generation-0 whose artifact is the other digest
+// does not — the generation NUMBER still matches, so this clause is discriminating only
+// because the join is on artifact identity.
+test fn successor_joins_its_ancestor_by_artifact_identity() -> Bool {
+  anc_joins(successor: anc_good_successor(), ancestor: anc_good_genesis())
+    && !anc_joins(
+      successor: anc_good_successor(),
+      ancestor: anc_genesis(
+        artifact_hex: anc_other_hex,
+        read_back: anc_read_back(hex: anc_other_hex),
+        closure: anc_seed_closure,
+        build_path: BuildPathPinned { directory: "/build/genesis" }
+      )
+    )
+}
+
+// A MOVED IDENTITY AXIS IS A DIFFERENT GENERATION. The ancestor compared against itself is
+// current; compared against an identity whose artifact axis moved, it is not — so a stale
+// ancestor cannot be silently reused.
+test fn ancestor_identity_moving_on_an_axis_is_no_longer_current() -> Bool {
+  match anc_good_genesis() {
+    Absent => false
+    Present { value: a } =>
+      ancestor_identity_still_current(ancestor: a, observed_now: a.identity)
+        && !ancestor_identity_still_current(
+          ancestor: a,
+          observed_now: anc_identity(artifact: anc_artifact(hex: anc_other_hex))
+        )
+  }
+}
