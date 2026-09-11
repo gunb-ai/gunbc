@@ -46,14 +46,18 @@ import gunbc.gcp_estate_observation {
   gunb_test_enabled_service_ids,
   observed_project_roster_count,
   gunbai_auto_is_not_selected_as_sheets_home,
-  gap_gunb_ci_service_accounts_and_pools,
-  gap_gunb_test_service_accounts_and_pools,
+  gap_gunb_ci_github_pool_providers,
+  gap_gunb_test_github_pool_providers,
+  gap_workspace_admin_iam_roles_keys_refs,
   gap_gemini_project_beyond_identity,
   fleet_automation_sa_email,
   gunb_test_project_id,
   gunbai_auto_project_id,
   gunb_ci_project_id,
   observed_gunbai_auto_github_pool,
+  observed_gunb_ci_github_pool,
+  observed_gunb_test_github_pool,
+  four_github_pools_are_keyed_by_project_number,
   github_pool_id_does_not_discriminate_project,
   gunbai_auto_sts_inert_is_not_established,
   gunbai_auto_has_sts,
@@ -69,6 +73,8 @@ import gunbc.gcp_estate_observation {
   gunbai_auto_enabled_service_ids,
   sheets_leading_candidate_is_not_selected,
   gunb_ci_is_the_only_sts_candidate,
+  gunb_test_is_deranked_scratch_not_a_sheets_candidate,
+  workspace_admin_display_name_says_test,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.gcp_estate_dependency {
@@ -338,20 +344,28 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
     && !gunbai_auto_has_sts()
     && gunb_ci_has_sts
     && gunbai_auto_enabled_service_ids.length() == 32
-    && census.service_accounts.length() == 3
+    && census.service_accounts.length() == 17
     && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
-    && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_service_accounts_and_pools.subject_identity as String)
-    && census_subject_is_named_gap(census: census, subject: gap_gunb_test_service_accounts_and_pools.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gunb_ci_github_pool_providers.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gunb_test_github_pool_providers.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_workspace_admin_iam_roles_keys_refs.subject_identity as String)
     && census_subject_is_named_gap(census: census, subject: gap_gemini_project_beyond_identity.subject_identity as String)
     && sheets_leading_candidate_is_not_selected()
     && gunb_ci_is_the_only_sts_candidate()
+    && gunb_test_is_deranked_scratch_not_a_sheets_candidate()
+    && workspace_admin_display_name_says_test()
 }
 
 test fn two_github_pools_are_keyed_by_project_not_name() -> Bool {
-  github_pool_id_does_not_discriminate_project(
-    left: observed_github_pool,
-    right: observed_gunbai_auto_github_pool,
-  )
+  four_github_pools_are_keyed_by_project_number()
+    && github_pool_id_does_not_discriminate_project(
+      left: observed_github_pool,
+      right: observed_gunbai_auto_github_pool,
+    )
+    && github_pool_id_does_not_discriminate_project(
+      left: observed_gunb_ci_github_pool,
+      right: observed_gunb_test_github_pool,
+    )
     && gunbai_auto_sts_inert_is_not_established()
 }
 
