@@ -264,8 +264,8 @@ test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
 // sanctioned tag-reference idiom (operator Ruling 1a, 2026-07-15) and compiles clean; the same
 // literal one expression away from that seam is a construction and refuses. Both arms are measured
 // so the exemption can neither vanish silently nor widen back into the hole it used to be.
-data tag_reference_at_discriminant_seam_source: String = "module probe_floor_tag_ref_seam\nimport std.types { String }\ntype Shape = Fielded { token: String } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
-data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\nimport std.types { String }\ntype Shape = Fielded { token: String } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
+data tag_reference_at_discriminant_seam_source: String = "module probe_floor_tag_ref_seam\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
+data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
 
 test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool {
   total_row_count_is_zero(census: census_of(source: tag_reference_at_discriminant_seam_source))
