@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
 // eBay MARKETPLACE ACCOUNT DELETION, the compliance condition on every keyset of the eBay subject.
@@ -44,6 +44,23 @@ fn account_deletion_exemption_reason_label(r: EbayAccountDeletionExemptionReason
   }
 }
 
+// THE LABELS' STANDING, IN THE TYPE AND NOT ONLY IN PROSE: they are the operator's transcription of
+// the portal, with no first-party text behind them.
+data account_deletion_exemption_reason_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a first-party eBay text of the Marketplace Account Deletion exemption-reason options (the documentation shows them only as images); the labels here were transcribed from the developer portal by the operator on 2026-09-11",
+}
+
+// THE PAGE WAS READ FROM AN ARCHIVE CAPTURE, and the standing cites that capture rather than the live
+// URL the anchor names, because the live page answers 403 to this repository's fetches.
+data account_deletion_page_read_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "web.archive.org/web/20250712193352/https://developer.ebay.com/marketplace-account-deletion"
+    }
+  },
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -76,6 +93,20 @@ data ebay_account_deletion_frontier_rows: List<FrontierRow> = [
     reason: "the verbatim portal label is rendered by the consumer that records which exemption reason was filed, outside the public closure",
     dissolution: unbound_dissolution(
       description: "dissolves when an executing gunbc entry renders the filed exemption reason through account_deletion_exemption_reason_label into a record or refusal an operator reads; a witness comparing the string does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_exemption_reason_standing"),
+    reason: "the labels' transcribed standing is read by the consumer that records the filed exemption reason, outside the public closure",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry carries account_deletion_exemption_reason_standing beside the filed exemption reason it records, so a reader sees the label is transcribed; or when a first-party eBay text of the options is read and the standing becomes CitedToAuthority"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_page_read_standing"),
+    reason: "the archive-capture standing of the page read is consumed alongside the compliance facts by a consumer outside the public closure",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry reports account_deletion_page_read_standing with any compliance decision it derives from this module; or when the live page is read and the standing cites it directly"
     )
   ),
   frontier_row_decl(
