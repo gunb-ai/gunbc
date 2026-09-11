@@ -78,7 +78,9 @@ test fn witness_posix_shell_reserved_exits_are_infra_not_subject() -> ProcessExi
     && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: posix_exit_status_decimal(code: 126))
     && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "title=environment")
     && (posix_exit_status_decimal(code: 126) == "126")
-    && string_contains(s: floor_attempt_receipt_body(exit_code: 126, outcome: classify_floor_exit(e: not_exec)), pattern: "CommandInvokedCannotExecute") {
+    && string_contains(s: floor_attempt_receipt_body(exit_code: 126, outcome: classify_floor_exit(e: not_exec)), pattern: "CommandInvokedCannotExecute")
+    && class_is_infra(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages"))
+    && (floor_failure_blocks_merge(c: classify_failure_reason(reason: "MemoryStallRefusedPageThrash: this process refaulted")) == false) {
     ExitSuccess
   } else {
     ExitFailure {
@@ -131,8 +133,9 @@ test fn witness_grep_alternation_is_single_authority() -> Bool {
 test fn witness_build_retry_subset_excludes_job_signals() -> Bool {
   let build = build_retry_infra_signatures()
   (list_len(xs: build) == 5)
-    && (list_len(xs: verdict_infra_signatures) == 6)
+    && (list_len(xs: verdict_infra_signatures) == 7)
     && (list_has_signature(xs: build, target: RunnerLost) == false)
+    && (list_has_signature(xs: build, target: MemoryStallRefusedPageThrash) == false)
     && (string_contains(s: infra_retry_grep_alternation(), pattern: infra_signature_match_substring(sig: RunnerLost)) == false)
 }
 

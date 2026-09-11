@@ -33,6 +33,7 @@ type InfraSignature
   | ClusteredOutOfMemoryKill
   | CommandInvokedCannotExecute
   | CommandNotFound
+  | MemoryStallRefusedPageThrash
 
 type SignatureSite
   = BuildLog
@@ -49,7 +50,8 @@ data verdict_infra_signatures: List<InfraSignature> = [
   SccacheFatalError,
   SccacheRustcWrapperExit254,
   SccacheFailedToExecuteCompile,
-  RunnerLost
+  RunnerLost,
+  MemoryStallRefusedPageThrash
 ]
 
 fn infra_signature_match_substring(sig: InfraSignature) -> String {
@@ -63,6 +65,7 @@ fn infra_signature_match_substring(sig: InfraSignature) -> String {
     ClusteredOutOfMemoryKill => "Out of memory: Killed process"
     CommandInvokedCannotExecute => "command invoked cannot execute"
     CommandNotFound => "command not found"
+    MemoryStallRefusedPageThrash => "MemoryStallRefusedPageThrash"
   }
 }
 
@@ -77,6 +80,7 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
     ClusteredOutOfMemoryKill => "kernel cgroup memory.events oom_kill / systemd-oomd (cross-run clustered OOM, evidence-derived; not a log-grep roster signature)"
     CommandInvokedCannotExecute => "extdeps.process.posix_exit (POSIX.1-2017 shell status 126: command found but not executable)"
     CommandNotFound => "extdeps.process.posix_exit (POSIX.1-2017 shell status 127: command not found)"
+    MemoryStallRefusedPageThrash => "gunbc.host.memory_stall_refusal memory_stall_refusal_pressure_text (typed floor refusal, not a subject defect; positive control)"
   }
 }
 
@@ -91,6 +95,7 @@ fn infra_signature_site(sig: InfraSignature) -> SignatureSite {
     ClusteredOutOfMemoryKill => JobSignal
     CommandInvokedCannotExecute => ExitStatus
     CommandNotFound => ExitStatus
+    MemoryStallRefusedPageThrash => JobSignal
   }
 }
 
@@ -192,6 +197,7 @@ data floor_outcome_wire_structural: String = "structural"
 data floor_outcome_wire_unobserved: String = "unobserved"
 
 data floor_attempt_receipt_filename: String = "gunbc-floor-outcome.txt"
+data floor_attempt_command_log_filename: String = "gunbc-floor-cmd.log"
 data floor_attempt_receipt_output_name: String = "floor_class"
 data floor_attempt_receipt_step_id: String = "attempt_receipt"
 
@@ -236,6 +242,7 @@ fn infra_signature_wire(sig: InfraSignature) -> String {
     ClusteredOutOfMemoryKill => "ClusteredOutOfMemoryKill"
     CommandInvokedCannotExecute => "CommandInvokedCannotExecute"
     CommandNotFound => "CommandNotFound"
+    MemoryStallRefusedPageThrash => "MemoryStallRefusedPageThrash"
   }
 }
 
@@ -274,66 +281,45 @@ fn floor_attempt_receipt_body(exit_code: Int, outcome: FloorOutcome) -> String {
 }
 
 fn floor_attempt_receipt_write_script() -> String {
-  concat(
-    concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"\n")),
-    concat(
-      concat("GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_structural, "\"\n")),
-      concat(
-        "GUNBC_FLOOR_SIGNATURE=\"\"\n",
-        concat(
-          concat("if [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_invoked_cannot_execute), " ]; then\n")),
-          concat(
-            concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"\n")),
-            concat(
-              concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandInvokedCannotExecute), "\"\n")),
-              concat(
-                concat("elif [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_not_found), " ]; then\n")),
-                concat(
-                  concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"\n")),
-                  concat(
-                    concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandNotFound), "\"\n")),
-                    concat(
-                      "elif [ \"$GUNBC_FLOOR_EXIT\" -eq 0 ]; then\n",
-                      concat(
-                        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_none, "\"\n")),
-                        concat(
-                          "fi\n",
-                          concat(
-                            "printf 'class=%s\\nsignature=%s\\nexit=%s\\n' \"$GUNBC_FLOOR_CLASS\" \"$GUNBC_FLOOR_SIGNATURE\" \"$GUNBC_FLOOR_EXIT\" > \"$GUNBC_FLOOR_RECEIPT\"\n",
-                            concat(
-                              concat("if [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_infra, "\" ]; then\n")),
-                              concat(
-                                "  echo \"::error title=environment::floor_class=$\{GUNBC_FLOOR_CLASS} signature=$\{GUNBC_FLOOR_SIGNATURE} exit=$\{GUNBC_FLOOR_EXIT}; this is not a verdict about the diff. Attempt receipt: $\{GUNBC_FLOOR_RECEIPT}\"\n",
-                                concat(
-                                  concat("elif [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_structural, "\" ]; then\n")),
-                                  "  echo \"::error title=subject::floor_class=$\{GUNBC_FLOOR_CLASS} exit=$\{GUNBC_FLOOR_EXIT}; read the step log for the subject defect\"\nfi\n"
-                                )
-                              )
-                            )
-                          )
-                        )
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+  join(
+    [
+      concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"")),
+      concat("GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_structural, "\"")),
+      "GUNBC_FLOOR_SIGNATURE=\"\"",
+      concat("if [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_invoked_cannot_execute), " ]; then")),
+      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
+      concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandInvokedCannotExecute), "\"")),
+      concat("elif [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_not_found), " ]; then")),
+      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
+      concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandNotFound), "\"")),
+      "elif [ \"$GUNBC_FLOOR_EXIT\" -eq 0 ]; then",
+      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_none, "\"")),
+      concat("elif [ -f \"$GUNBC_FLOOR_LOG\" ] && grep -q \"", concat(infra_signature_match_substring(sig: MemoryStallRefusedPageThrash), "\" \"$GUNBC_FLOOR_LOG\"; then")),
+      concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"")),
+      concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: MemoryStallRefusedPageThrash), "\"")),
+      "fi",
+      "printf 'class=%s\\nsignature=%s\\nexit=%s\\n' \"$GUNBC_FLOOR_CLASS\" \"$GUNBC_FLOOR_SIGNATURE\" \"$GUNBC_FLOOR_EXIT\" > \"$GUNBC_FLOOR_RECEIPT\"",
+      concat("if [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_infra, "\" ]; then")),
+      "  echo \"::error title=environment::floor_class=$\{GUNBC_FLOOR_CLASS} signature=$\{GUNBC_FLOOR_SIGNATURE} exit=$\{GUNBC_FLOOR_EXIT}; this is not a verdict about the diff. Attempt receipt: $\{GUNBC_FLOOR_RECEIPT}\"",
+      concat("elif [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_structural, "\" ]; then")),
+      "  echo \"::error title=subject::floor_class=$\{GUNBC_FLOOR_CLASS} exit=$\{GUNBC_FLOOR_EXIT}; read the step log for the subject defect\"",
+      "fi"
+    ],
+    "\n"
   )
 }
 
 fn wrap_command_with_floor_attempt_receipt(command: String) -> String {
   join(
     [
+      concat("GUNBC_FLOOR_LOG=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_command_log_filename, "\"")),
       "set +e",
       "(",
       "set -e",
       command,
-      ")",
+      ") > \"$GUNBC_FLOOR_LOG\" 2>&1",
       "GUNBC_FLOOR_EXIT=$?",
+      "cat \"$GUNBC_FLOOR_LOG\"",
       floor_attempt_receipt_write_script(),
       "exit \"$GUNBC_FLOOR_EXIT\""
     ],

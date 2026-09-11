@@ -480,7 +480,7 @@ fn required_lanes_refusal_stmts(
       ),
       then_stmts: [
         required_lanes_error_stmt(
-          text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed; rerun it (",
+          text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed (timeout-cancel is no verdict, not a red). Fetch the gunbc-floor-outcome artifact for this run id and attempt BEFORE re-running; a re-run reuses the run id and drops the failed attempt's log (",
           lanes: lanes,
           mechanism_var: mechanism_var,
           attribution_var: attribution_var

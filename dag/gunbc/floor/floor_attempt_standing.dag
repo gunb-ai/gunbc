@@ -241,6 +241,12 @@ type EvaluationInterruption {
 // RECEIPT published by the lane and read here -- that is this pair's next-rung trigger, recorded
 // on `floor_subject_receipt_acquisition_trigger`, and it is a different acquisition from the head
 // one.
+// THREE SPECIMENS THIS COPRODUCT MUST KEEP DISTINCT (2026-09-10/11):
+//   Exit 126 (command found, not executable) -> AttemptStandsEnvironment after an Infra receipt.
+//   MemoryStallRefusedPageThrash (gunbc.host.memory_stall_refusal) -> Infra by reason; already a
+//     typed refusal; must not collapse to stands-red as if it were a subject defect.
+//   Job CANCELLED at timeout -> AttemptStandsUnestablished: no verdict, not a red. Still blocks.
+//     A re-run reuses the GitHub run id and erases the failed attempt's log; fetch the receipt first.
 type FloorRenderedVerdict =
     AttemptSuperseded { measured: String, current: String }
   | AttemptStandsGreen { standing: FloorHeadStanding }
