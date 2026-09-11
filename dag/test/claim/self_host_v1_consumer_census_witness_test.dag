@@ -327,17 +327,13 @@ test fn discovery_fold_does_not_count_its_own_signature_table() -> Bool {
 // same reader over a list-literal initializer does. So the fold sees list and call positions and is
 // blind to the bare String-initializer position.
 //
-// THIS ASSERTS THE BOUNDARY RATHER THAN HIDING IT, which is the only honest arm available here: the
-// repair is in the declaration-fact projection for data items, not in this instrument, and reaching
-// past it would mean re-deriving a literal reader beside the one the corpus already owns -- the
-// section 3 fork. The assertion is written so it goes RED WHEN THE BLIND SPOT CLOSES, which is
-// exactly what a reader wants: the day the projection carries the lexeme, this witness fails and
-// whoever fixes it deletes the boundary note, widens the producer's claim, and re-runs the gate.
-// The paired positive control is the list position, above, so this cannot pass by the fold having
-// stopped working altogether.
+// THE BLIND SPOT CLOSED: DataItem declaration facts now carry authored LitStr atoms from every
+// initializer shape (parse-tree walk on the pool item, not typechecked lookup). This row is the
+// permanent positive control that a bare String initializer is visible to lexeme-keyed
+// discovery; the list/call control beside it still proves the fold has not gone silent.
 data devboot_program_package_name: String = "gunbc.devboot.program.devboot_program_package"
 
-test fn discovery_fold_is_blind_to_a_bare_string_initializer() -> Bool {
-  count(v1_discovery_keys_at_name(qualified_name: devboot_program_package_name)) == 0
+test fn discovery_fold_sees_a_bare_string_initializer() -> Bool {
+  count(v1_discovery_keys_at_name(qualified_name: devboot_program_package_name)) > 0
     && count(v1_discovery_keys_at_name(qualified_name: devboot_offered_programs_name)) > 0
 }

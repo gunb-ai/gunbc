@@ -1935,9 +1935,14 @@ fn marshal_decl_fact_node(
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
-            crate::data_initializer_identity::marshal_data_initializer_projection(
+            let projection = crate::data_initializer_identity::marshal_data_initializer_projection(
                 ctx,
                 qualified_name,
+            )?;
+            Ok(
+                crate::data_initializer_identity::with_authored_string_literals(
+                    ctx, item, projection,
+                ),
             )
         }
         _ => Ok(unit_type_node(ctx)),

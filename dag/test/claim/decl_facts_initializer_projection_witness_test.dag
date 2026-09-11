@@ -18,6 +18,7 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_nullary_value_projection,
   decl_facts_reflection_plain_record_parent,
 }
+import v2.std.decl_facts_skeleton { skeleton_contains_marshal_atom_lexeme }
 import v2.std.data_initializer_identity {
   data_initializer_is_constructor_resolution_refused_projection,
   data_initializer_is_typechecked_subject_absent_projection,
@@ -50,6 +51,9 @@ data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.amb
 data ambiguous_b_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen"
 data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen"
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
+data planted_plain_string_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_plain_string_specimen"
+data planted_string_list_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_string_list_specimen"
+data planted_concat_string_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_concat_string_specimen"
 data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_named_field_bind"
 data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
 data scaffold_with_data_ref_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref"
@@ -281,4 +285,37 @@ test fn decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
   duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
     lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
   )
+}
+
+test fn decl_facts_plain_string_initializer_carries_authored_lexeme() -> Bool {
+  match decl_facts_reflection_fact_node(qn: planted_plain_string_qn) {
+    Present { value: node } => skeleton_contains_marshal_atom_lexeme(node: node, lexeme: "hello")
+    Absent => false
+  }
+}
+
+test fn decl_facts_record_field_string_initializer_carries_authored_lexeme() -> Bool {
+  match decl_facts_reflection_fact_node(qn: terminal_specimen_qn) {
+    Present { value: node } =>
+      skeleton_contains_marshal_atom_lexeme(node: node, lexeme: "witness-terminal")
+    Absent => false
+  }
+}
+
+test fn decl_facts_list_string_initializer_carries_authored_lexemes() -> Bool {
+  match decl_facts_reflection_fact_node(qn: planted_string_list_qn) {
+    Present { value: node } =>
+      skeleton_contains_marshal_atom_lexeme(node: node, lexeme: "list-alpha")
+        && skeleton_contains_marshal_atom_lexeme(node: node, lexeme: "list-beta")
+    Absent => false
+  }
+}
+
+test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool {
+  match decl_facts_reflection_fact_node(qn: planted_concat_string_qn) {
+    Present { value: node } =>
+      skeleton_contains_marshal_atom_lexeme(node: node, lexeme: "concat-left")
+        && skeleton_contains_marshal_atom_lexeme(node: node, lexeme: "concat-right")
+    Absent => false
+  }
 }

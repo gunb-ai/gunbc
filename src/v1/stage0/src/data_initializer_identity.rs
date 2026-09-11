@@ -21,6 +21,7 @@ use std::rc::Rc;
 
 use im::HashMap;
 
+use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_infer_env::{lookup_binding_by_name_local, lookup_type};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
 use crate::v1_compiler_infer_types::normalize_access_type_node;
@@ -587,6 +588,91 @@ fn projection_atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
                 },
             ),
         ])),
+    }
+}
+
+fn projection_edge_positional(ctx: &InterpContext, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("Positional"),
+                    fields: Rc::new(vec![]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+fn collect_authored_string_literals(node: &Rc<Node>, out: &mut Vec<String>) {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } | ExprData::ExprElaboratedLiteral { value, .. } => {
+            if let LiteralValue::LitStr { value: s } = value.as_ref() {
+                out.push(s.clone());
+            }
+        }
+        _ => {}
+    }
+    for child in node.children.iter() {
+        collect_authored_string_literals(child, out);
+    }
+    if let Some(body) = node.body.as_ref() {
+        collect_authored_string_literals(body, out);
+    }
+}
+
+/// Attach every authored `LitStr` in a DataItem initializer (literal, record field,
+/// list element, concat argument, string-interp fragment — the parse tree, not the
+/// typechecked projection) as positional atom children so lexeme-keyed discovery can
+/// read them even when `lookup_fn_node` is absent.
+pub fn with_authored_string_literals(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    projection: Value,
+) -> Value {
+    let mut lexemes = Vec::new();
+    if let Some(body) = item.body.as_ref() {
+        collect_authored_string_literals(body, &mut lexemes);
+    } else {
+        collect_authored_string_literals(item, &mut lexemes);
+    }
+    if lexemes.is_empty() {
+        return projection;
+    }
+    let Value::Record { type_name, fields } = projection else {
+        return projection;
+    };
+    let children_key = ctx.sym("children");
+    let mut new_fields = Vec::with_capacity(fields.len());
+    let mut replaced = false;
+    for (k, v) in fields.iter() {
+        if *k == children_key {
+            replaced = true;
+            let mut kids: Vec<Value> = match v {
+                Value::List(xs) => xs.iter().cloned().collect(),
+                _ => Vec::new(),
+            };
+            for lex in &lexemes {
+                kids.push(projection_edge_positional(
+                    ctx,
+                    projection_atom_identity_node(ctx, lex),
+                ));
+            }
+            new_fields.push((*k, crate::v1_interpreter::list_value(kids)));
+        } else {
+            new_fields.push((*k, v.clone()));
+        }
+    }
+    if !replaced {
+        return Value::Record { type_name, fields };
+    }
+    Value::Record {
+        type_name,
+        fields: Rc::new(sorted_fields(new_fields)),
     }
 }
 
