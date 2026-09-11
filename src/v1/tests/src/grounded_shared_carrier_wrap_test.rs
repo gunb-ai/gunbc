@@ -13,9 +13,11 @@
 //! WHERE THIS EXECUTES, STATED RATHER THAN ASSUMED. No CI step runs a Rust unit test today
 //! (`gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`); the clippy `--all-targets` step
 //! COMPILES this target, so a shape change that stops type-checking is caught, and the assertions
-//! below execute under any local `cargo test`. The executing evidence on a REQUIRED lane is the
-//! required-v2-native job's own cargo build of the emitted closure, which refused before this wall
-//! and compiles after it.
+//! below execute under any local `cargo test`. NO REQUIRED LANE EXECUTES THIS WALL TODAY: the
+//! required-v2-native job was deleted by the 2026-09-11 ruling (`gunbc.rung_drop`
+//! `v2_native_route_off_the_merge_path`), so the emitted-closure cargo build that refused before
+//! this wall and compiles after it is now reached by `claim_executor --v2-native-route`, an
+//! operator-invoked instrument. Saying otherwise would claim a rung the merge path does not hold.
 
 use v1_compiler::cli_run::compile_entry_emission;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
