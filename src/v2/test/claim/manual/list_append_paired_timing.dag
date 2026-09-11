@@ -1,0 +1,95 @@
+module v2.test.manual.list_append_paired_timing
+
+import v2.std.algebra {
+  Cons,
+  Empty,
+  FreeMonoid,
+  fold_list_right,
+  length,
+  list_append,
+  zip_eq,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PAIRED ONE-BINARY TIMING ARM for the list_append concat routing.
+// Both arms are linear, so a two-point doubling-ratio witness cannot go red and is not enrolled.
+// This entry times production list_append against the pre-repair body reconstructed from the
+// SAME emitted fold_list_right, in one process of one vintage. Invoke natively on a
+// HostBudget-capable host (not the interpreter): gunbc run --source-root dag --source-root src/v2
+// --entry src/v2/test/claim/manual/list_append_paired_timing.dag --function paired_timing
+
+fn list_append_from_fold_list_right<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
+  fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
+    Cons { head: item, tail: acc }
+  })
+}
+
+fn singleton_one() -> FreeMonoid<Int> {
+  Cons { head: 1, tail: Empty }
+}
+
+fn ones(n: Int) -> FreeMonoid<Int> {
+  if n <= 0 {
+    Empty
+  } else {
+    Cons { head: 1, tail: ones(n: n - 1) }
+  }
+}
+
+fn list_times_two(xs: FreeMonoid<Int>) -> FreeMonoid<Int> {
+  list_append(left: xs, right: xs)
+}
+
+fn pow2_ones(k: Int) -> FreeMonoid<Int> {
+  if k <= 0 {
+    singleton_one()
+  } else {
+    list_times_two(xs: pow2_ones(k: k - 1))
+  }
+}
+
+func paired_timing() -> String {
+  let left = pow2_ones(k: 18)
+  let right = ones(n: 100)
+  let left_n = length(xs: left)
+  let right_n = length(xs: right)
+  let new_start = observed_monotonic_nanos("list-append-concat-start")
+  let new_out = list_append(left: left, right: right)
+  let new_end = observed_monotonic_nanos("list-append-concat-end")
+  let old_start = observed_monotonic_nanos("list-append-fold-right-start")
+  let old_out = list_append_from_fold_list_right(left: left, right: right)
+  let old_end = observed_monotonic_nanos("list-append-fold-right-end")
+  let new_ns = new_end - new_start
+  let old_ns = old_end - old_start
+  let same = zip_eq(a: new_out, b: old_out, eq: fn(a, b) { a == b })
+  concat(
+    "carrier=emitted-list_append-vs-reconstructed-fold_list_right ",
+    concat(
+      "left_n=",
+      concat(
+        to_string(left_n),
+        concat(
+          " right_n=",
+          concat(
+            to_string(right_n),
+            concat(
+              " new_ns=",
+              concat(
+                to_string(new_ns),
+                concat(
+                  " old_ns=",
+                  concat(
+                    to_string(old_ns),
+                    concat(" same=", if same { "true" } else { "false" })
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
