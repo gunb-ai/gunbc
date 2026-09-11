@@ -309,6 +309,28 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
   }
 }
 
+test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
+  let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
+  match review_sheet_from_readback(range: range, projection: projection) {
+    Apply { plan: p } =>
+      match p.patches |> first {
+        Present { value: w } =>
+          (w.a1 as String) == "B2"
+            && !string_contains(s: w.a1 as String, pattern: "!")
+            && match value_ranges_from_write_plan(plan: p, tab: "Review" as NonEmptyStr) |> first {
+              Present { value: vr } =>
+                vr.range == "Review!B2"
+                  && !string_contains(s: vr.range, pattern: "Review!Review!")
+              Absent => false
+            }
+        Absent => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
 test fn ensure_over_unchanged_readback_is_noop() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
