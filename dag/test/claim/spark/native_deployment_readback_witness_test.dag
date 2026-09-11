@@ -232,3 +232,83 @@ test fn a_rank_on_the_wrong_host_is_rejected() -> Bool {
     _ => false
   }
 }
+
+// ── SAME LENGTH, DIFFERENT MEANING: THE TWO REDS A WORD COUNT CANNOT SEE ───────────────────────
+//
+// A COUNT-BASED COMPARISON ACCEPTS BOTH POPULATIONS BELOW, and both describe an engine nobody asked for.
+// The readback compares exact ordered argv, so these are the rows that say so rather than leaving it to be
+// read off the implementation.
+//
+// THE FIRST CHANGES ONE WORD -- the memory fraction -- which is precisely the parameter this repository
+// spent five attempts learning to get right. A deployment serving at a fraction nobody decided is not the
+// deployment that was planned, and it is the most likely single-word divergence this arm has.
+//
+// THE SWAP IS BY VALUE RATHER THAN BY POSITION, because naming an index would couple this fixture to where
+// the flag happens to sit in the rendered line -- the positional dependence the exact comparison exists to
+// avoid.
+fn swap_word(words: List<String>, target: String, replacement: String) -> List<String> {
+  map(words, w => if w == target { replacement } else { w })
+}
+
+fn argv_with_one_word_changed(rank: Nat) -> List<String> {
+  swap_word(words: planned_argv_for(rank: rank), target: "0.84", replacement: "0.90")
+}
+
+data one_word_changed_ranks: List<RankObservation> = [
+  rank_observation(
+    host: operator_host_srv9, node_rank: 0, image_digest: pinned_digest, model_path: pinned_model_path,
+    argv: argv_with_one_word_changed(rank: 0),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn one_changed_word_at_the_same_length_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: one_word_changed_ranks, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}
+
+// THE SECOND REORDERS THE LINE WITHOUT CHANGING ANY WORD. The count is identical and so is the multiset;
+// only the ORDER differs. vLLM's argv is order-sensitive -- the positional model path and every flag/value
+// pairing depend on it -- so a reordered line is a different command, and an unordered comparison would call
+// it the same one.
+fn argv_reversed(rank: Nat) -> List<String> {
+  reverse(planned_argv_for(rank: rank))
+}
+
+data reordered_ranks: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  rank_observation(
+    host: operator_host_srv10, node_rank: 1, image_digest: pinned_digest, model_path: pinned_model_path,
+    argv: argv_reversed(rank: 1),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn a_reordered_argv_of_the_same_words_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: reordered_ranks, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}
+
+// AND THE POSITIVE CONTROL THE TWO REDS REQUIRE: the faithful population is ACCEPTED. Without it a readback
+// that rejected everything would satisfy both rows above and establish nothing.
+test fn the_faithful_population_is_accepted() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: all_four_faithful, endpoint_alias: served() }) {
+    DeploymentAccepted { receipt: _ } => true
+    DeploymentRejected { deviations: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}

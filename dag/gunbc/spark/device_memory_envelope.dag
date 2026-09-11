@@ -37,9 +37,16 @@ import gunbc.spark.fabric_switch_observed { FabricGroupB }
 // exceed, a floor below which the arm is not worth launching, and a reserve between the budget and the
 // supply. Everything between those is arithmetic over observations.
 //
-// THE CORRECTION IS NOT "USE 0.84". A tuned constant would be the same defect with a smaller number,
-// green on the machine that produced it and wrong on the next one, or on the same one an hour later. 0.84
-// is what this policy RESOLVES TO against the readings taken on 2026-09-10; it is a receipt, not a value.
+// THE CORRECTION WAS NEVER "USE A SMALLER NUMBER", AND THE FROZEN PROFILE IS NOT THAT EITHER. A tuned
+// constant substituted for this model would be the same defect with a smaller value: green on the machine
+// that produced it, wrong on the next one or on the same one an hour later.
+//
+// SO THIS MODULE ANSWERS TWO DIFFERENT QUESTIONS AND KEEPS THEM APART. RESOLUTION asks what the most a
+// population can carry is, and is the authority for that; ADMISSION asks whether every rank can carry a
+// fraction someone has already decided. The initial normal deployment uses the second, at an operator's
+// 0.84 -- and the observation, the completeness join and every refusal are identical in both. What a
+// decided fraction removes is the derivation, not the evidence: no rank is assumed, and a rank that cannot
+// admit 0.84 refuses rather than quietly launching at whatever it could have taken.
 type DeviceMemoryEnvelopePolicy sole_constructor {
   maximum_fraction_basis_points: Nat
   minimum_fraction_basis_points: Nat
@@ -73,10 +80,15 @@ type DeviceMemoryEnvelopePolicy sole_constructor {
 // safetensors index -- refilled page cache and took the device figure back down.
 //
 // THE DRIFT MEASURED DIRECTLY IS 6.8 GiB (113.5 observed here, 106.7 at the engine's check), taken on an idle
-// host with caches released. 12 GiB carries that with margin, and margin is required rather than tidy: the
-// drift is page cache refill, so its size depends on what the container happens to read and is not a
-// constant. At 12 GiB the same population resolves (113.5 - 12) / 121.69 = 0.834, a 101.0 GiB budget against
-// 106.7 GiB of real supply.
+// host with caches released. 8 GiB carries that with 1.2 GiB to spare, which is the reserve's whole job.
+//
+// A FIRST REPAIR SET IT TO 12 GiB AND THAT WOULD HAVE REFUSED THE FROZEN PROFILE. 12 was the measured drift
+// plus margin chosen when this reserve fed a RESOLUTION -- where a larger number only means a more
+// conservative fraction. Under a DECIDED fraction the reserve stops being a tuning knob and becomes an
+// admission threshold: at 12 GiB a released host resolves a cap of 8300 basis points, which is below the
+// decided 8400, so every rank would have refused a launch that fits. Arithmetic caught it before a
+// displacement window did. The reserve must cover the drift and nothing more, because whatever it covers
+// beyond that is subtracted from a budget an operator has already decided.
 //
 // IT IS NOT SLACK FOR THE MODEL, and the two must not be confused. The CUDA context, the NCCL communicator
 // buffers and the loader's transient allocations also live outside the fraction and draw on the same pool;
@@ -93,7 +105,7 @@ type DeviceMemoryEnvelopePolicy sole_constructor {
 data glm_native_device_memory_policy: DeviceMemoryEnvelopePolicy = DeviceMemoryEnvelopePolicy {
   maximum_fraction_basis_points: 9000,
   minimum_fraction_basis_points: 8000,
-  startup_reserve_bytes: byte_size(count: 12884901888),
+  startup_reserve_bytes: byte_size(count: 8589934592),
   granularity_basis_points: 100,
 }
 
@@ -466,6 +478,77 @@ fn resolve_device_memory_envelope(
   }
 }
 
+// ── THE INITIAL NORMAL DEPLOYMENT DECIDES THE FRACTION AND VERIFIES IT, RATHER THAN DERIVING IT ─
+//
+// A DECIDED FRACTION AND A RESOLVED ONE ANSWER DIFFERENT QUESTIONS, AND THE FIRST NORMAL DEPLOYMENT WANTS
+// THE FIRST. Resolution asks "what is the most this population can carry", which is the right question for
+// an envelope that must not exceed supply and the wrong one for a launch an operator has already specified.
+// 0.84 is an operator decision for the initial normal deployment (2026-09-11): conservative, known to clear
+// the worst startup guard reading observed on this fleet, and explicitly not a claim of optimality.
+//
+// SO THE FRACTION LEAVES THE CRITICAL PATH AND THE OBSERVATION DOES NOT. Every planned rank is still read
+// fresh, in the launch image, under the exact digest and attempt, with the same completeness join and the
+// same refusals -- what changes is the question asked of those readings: not "what is the minimum cap" but
+// "does every rank admit the decided fraction". A rank that cannot is a refusal, not a renegotiation, and
+// the launch does not quietly drop to what that rank could have taken.
+//
+// THE FIRST LAUNCH IS WHAT RETIRES THIS ROW. A serving deployment produces a real startup memory profile,
+// and a fraction derived from that profile is better than either a decided or a supply-resolved one. Until a
+// rank has served, there is no such profile, which is why this is decided rather than derived and says so.
+data glm_native_decided_basis_points: Nat = 8400
+
+// THE DECIDED VALUE MUST BE EXPRESSIBLE AND WITHIN POLICY, and both are checked here rather than assumed by
+// the caller: a decided fraction above the operator's own ceiling, below the arm's floor, or off the wire's
+// granularity is a specification error and refuses before any rank is consulted.
+fn decided_fraction_is_well_formed(decided: Nat, policy: DeviceMemoryEnvelopePolicy) -> Bool {
+  decided <= policy.maximum_fraction_basis_points
+    && decided >= policy.minimum_fraction_basis_points
+    && (decided / policy.granularity_basis_points) * policy.granularity_basis_points == decided
+}
+
+fn ranks_below_decided(ss: List<RankEnvelopeStanding>, decided: Nat) -> List<RankEnvelopeStanding> {
+  filter(ss, s => match rank_standing_cap(s: s) {
+    Absent => true
+    Present { value: c } => c < decided
+  })
+}
+
+fn admit_decided_envelope(
+  nodes: List<ArmNode>, standings: List<RankEnvelopeStanding>,
+  policy: DeviceMemoryEnvelopePolicy, attempt: NonEmptyStr, decided: Nat,
+) -> ResolvedDeviceMemoryEnvelope {
+  if !decided_fraction_is_well_formed(decided: decided, policy: policy) {
+    NoFeasibleDeviceMemoryEnvelope {
+      cause: join(["the decided fraction ", to_string(decided),
+                   " bp is outside this arm's policy or off the wire's granularity"], "") as NonEmptyStr,
+      standings: standings,
+    }
+  } else {
+    match envelope_population_standing(nodes: nodes, standings: standings) {
+      EnvelopePopulationIncomplete { standings: ss, missing_ranks: _, cause: c } =>
+        NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss }
+      EnvelopePopulationComplete { standings: ss } => {
+        let short = ranks_below_decided(ss: ss, decided: decided)
+        if count(short) != 0 {
+          NoFeasibleDeviceMemoryEnvelope {
+            cause: join(["a planned rank cannot admit the decided fraction of ", to_string(decided), " bp: ",
+                         join(map(short, s => rank_envelope_standing_text(s: s)), "; ")], "") as NonEmptyStr,
+            standings: ss,
+          }
+        } else {
+          ResolvedForAttempt {
+            basis_points: decided,
+            binding_node_rank: 0,
+            policy: policy,
+            attempt: attempt,
+            standings: ss,
+          }
+        }
+      }
+    }
+  }
+}
+
 func resolve_envelope_from_fleet(
   ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, image: NonEmptyStr,
   attempt: NonEmptyStr, policy: DeviceMemoryEnvelopePolicy,
@@ -473,12 +556,13 @@ func resolve_envelope_from_fleet(
   uses net: Network
 {
   let readings = observe_device_memory_population(ctx: ctx, nodes: nodes, image: image, attempt: attempt)
-  resolve_device_memory_envelope(
+  admit_decided_envelope(
     nodes: nodes,
     standings: map(readings, r => rank_envelope_standing(
       reading: r, policy: policy, expected_image: image, expected_attempt: attempt)),
     policy: policy,
     attempt: attempt,
+    decided: glm_native_decided_basis_points,
   )
 }
 
