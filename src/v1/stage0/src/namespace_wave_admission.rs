@@ -1729,44 +1729,13 @@ pub struct TransitionAdmission {
 /// each spelling to the module named in `target`, the delta stops being producible, and the wall
 /// reports them CONSUMED on the next roster-touching change, which is what deletes them.
 ///
-/// UNION (2026-09-12 merge of origin/main). Both sides carried LIVE rows: `main` admits
-/// gunbc#11137 (`extdeps.tools.sha256sum` names `Filesystem` instead of reaching it) and this
-/// branch still admits the gunbc#10994 sizing relocations (#10994 is still open), so the
-/// rosters are appended rather than one side taken whole -- an unadjudicated delta is what
-/// this wall exists to refuse. The #11137 row's trigger is its own merge; the sizing rows retire
-/// the same way.
-///
-/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
-/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
-/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
-/// required floor on that branch reported all three as `CONSUMED ADMISSION ... already satisfied
-/// at the base`. Their TRIGGER, recorded at the time as "these rows go when #11071 merges", is
-/// what fired. The sha256sum row below is a DIFFERENT delta that #11137 produces, not that one
-/// restored.
-///
-/// WHAT #11137 DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
-/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
-/// module into the candidate set for every name it declares, so filesystem_io's copy of
-/// `extdeps_external_authority_anchor` was a candidate at this site. The import now names
-/// `{ Filesystem }`. The spelling is authored on both sides; what moved is which declarations it
-/// admits. NO RESOLUTION CHANGES: the module authors its own `extdeps_external_authority_anchor`,
-/// so the site resolved to sha256sum's row at the base and resolves to sha256sum's row at the
-/// head. TRIGGER: that row goes when #11137 merges.
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, this roster touch). The merge of origin/main unioned
+/// main's live `gunbc#11137` sha256sum admission with the sizing rows. #11137 is already on
+/// main, so this PR versus main produces no such delta. Required floor on d6466da4593
+/// (run 34680530922) printed `STALE ADMISSION gunbc#11137 ... matches no delta in this run`
+/// with 0 consumed. Stale is the unmatched-admission refusal; the deletion is paid here
+/// because this change is the roster's next touch. The sizing rows remain live.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-        // The rationale, the safety adjudication and the trigger are in the doc comment on this
-        // const rather than repeated here. In one line: the bare `import
-        // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-        // spelling's candidate set without changing what it resolves to.
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.tools.sha256sum",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            target: "extdeps.tools.sha256sum",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
         subject: AdmissionSubject::Binding {
