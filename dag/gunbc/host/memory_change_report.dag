@@ -137,7 +137,7 @@ fn memory_mixture_evidence_lines(read: MemoryMixtureEvidenceRead) -> List<NonEmp
     ": socket ", to_string(finding.comparison_socket), ", firmware ", finding.configuration.platform.firmware as String,
     ", expected group ", memory_package_fields(value: finding.expected_byte), ", found ", memory_package_fields(value: finding.actual_byte),
     "; source ", declaration_ref_display_key(ref: finding.collector.source), "; coverage ", to_string(finding.collector.coverage)) as NonEmptyStr),
-    map(read.unavailable.unknowns, unknown => concat("excluded observation: ", memory_unknown_text(fact: unknown) as String) as NonEmptyStr))
+    map(read.unavailable, unknown => concat("excluded observation: ", memory_unknown_text(fact: unknown) as String) as NonEmptyStr))
 }
 
 fn explain_memory_change(assessment: MemoryChangeAssessment) -> MemoryChangeExplanation {

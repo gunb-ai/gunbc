@@ -112,28 +112,24 @@ fn memory_position_precedes(a: MemoryPosition, b: MemoryPosition) -> Bool {
 // receipt can still answer it. No receipt is selected merely by list order.
 type MemoryMixtureEvidenceRead {
   findings: List<MemoryMixtureFinding>
-  unavailable: MemoryCheckFacts
+  unavailable: List<MemoryUnknownFact>
 }
 
 fn memory_read_mixture_findings(evidence: MemoryEvaluationEvidence) -> MemoryMixtureEvidenceRead {
-  fold(evidence.mixtures, init: MemoryMixtureEvidenceRead { findings: [], unavailable: memory_empty_facts }, f: (acc, attempt) => {
-    match attempt {
-      ObservationRefused { cause } => MemoryMixtureEvidenceRead { findings: acc.findings,
-        unavailable: memory_facts_join(a: acc.unavailable, b: memory_unknown(fact: MemoryFindingUnavailable { cause: cause })) }
-      ObservationEstablished { observed: finding } => {
-        let refusal = memory_collector_refusal(c: finding.collector)
-        match refusal {
-          Present { value: cause } => MemoryMixtureEvidenceRead { findings: acc.findings,
-            unavailable: memory_facts_join(a: acc.unavailable, b: memory_unknown(fact: MemoryCollectorUnavailable { cause: cause })) }
-          Absent => if memory_capture_covers_population(configuration: finding.configuration, collector: finding.collector) {
-            MemoryMixtureEvidenceRead { findings: concat(acc.findings, [finding]), unavailable: acc.unavailable }
-          } else { MemoryMixtureEvidenceRead { findings: acc.findings,
-            unavailable: memory_facts_join(a: acc.unavailable, b: memory_unknown(fact: MemoryCollectorUnavailable {
-              cause: "mixture receipt does not cover its captured configuration" })) } }
-        }
-      }
+  let observations = map(evidence.mixtures, attempt => match attempt {
+    ObservationRefused { cause } => MemoryMixtureEvidenceRead { findings: [], unavailable: [MemoryFindingUnavailable { cause: cause }] }
+    ObservationEstablished { observed: finding } => match memory_collector_refusal(c: finding.collector) {
+      Present { value: cause } => MemoryMixtureEvidenceRead { findings: [], unavailable: [MemoryCollectorUnavailable { cause: cause }] }
+      Absent => if memory_capture_covers_population(configuration: finding.configuration, collector: finding.collector) {
+        MemoryMixtureEvidenceRead { findings: [finding], unavailable: [] }
+      } else { MemoryMixtureEvidenceRead { findings: [], unavailable: [MemoryCollectorUnavailable {
+        cause: "mixture receipt does not cover its captured configuration" }] } }
     }
   })
+  MemoryMixtureEvidenceRead {
+    findings: flat_map(observations, observation => observation.findings),
+    unavailable: flat_map(observations, observation => observation.unavailable),
+  }
 }
 
 fn memory_package_pair(left: PositionedMemoryModule, right: PositionedMemoryModule, findings: List<MemoryMixtureFinding>) -> MemoryCheckFacts {
@@ -170,7 +166,7 @@ fn memory_package_pair(left: PositionedMemoryModule, right: PositionedMemoryModu
 
 fn memory_package_facts(configuration: MemoryConfiguration, read: MemoryMixtureEvidenceRead) -> MemoryCheckFacts {
   if count(read.findings) == 0 {
-    memory_facts_join(a: read.unavailable, b: memory_unknown(fact: MemoryFindingUnavailable { cause: "no established mixture findings" }))
+    MemoryCheckFacts { sources: [], deviations: [], unknowns: concat(read.unavailable, [MemoryFindingUnavailable { cause: "no established mixture findings" }]) }
   } else {
     let facts = fold(configuration.population, init: memory_empty_facts, f: (acc, left) => {
       let applicable = filter(read.findings, finding => configuration.platform == finding.configuration.platform
@@ -210,8 +206,8 @@ fn memory_firmware_scope_facts(configuration: MemoryConfiguration, read: MemoryM
       && dimm.position.socket == finding.comparison_socket) { acc }
     else { memory_facts_join(a: acc, b: memory_unknown(fact: MemoryFirmwareScopeUnestablished { position: dimm.position })) }
   )
-  if count(read.findings) == 0 { memory_facts_join(a: coverage, b: memory_facts_join(a: read.unavailable,
-    b: memory_unknown(fact: MemoryFindingUnavailable { cause: "no established mixture findings" }))) } else { coverage }
+  if count(read.findings) == 0 { memory_facts_join(a: coverage, b: MemoryCheckFacts { sources: [], deviations: [],
+    unknowns: concat(read.unavailable, [MemoryFindingUnavailable { cause: "no established mixture findings" }]) }) } else { coverage }
 }
 
 fn memory_placement_facts(configuration: MemoryConfiguration) -> MemoryCheckFacts {
