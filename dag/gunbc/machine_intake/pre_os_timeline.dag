@@ -212,3 +212,12 @@ fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
     "\nsel=", to_string(row.sel), "\ncycles=", to_string(row.cycles), "\nboot=", to_string(row.boot), "\ntraining=", to_string(row.training),
     "\nconfiguration=", to_string(row.configuration), "\npresent_admission=", to_string(row.present_admission))), "\n\n")
 }
+
+// The acquisition boundary supplies envelopes; this observer reads their
+// artifacts, assesses them, and returns the derived view without actuation.
+type PreOsReplayRequest { envelope: ObservationEnvelope, format: PreOsSourceFormat }
+
+func replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
+  let observations = map(requests, request => pre_os_read_observation(envelope: request.envelope, format: request.format))
+  pre_os_machine_timeline(machine: machine, observations: observations, host_mac: host_mac, rendered_host_mac: rendered_host_mac, inventory_question: inventory_question)
+}

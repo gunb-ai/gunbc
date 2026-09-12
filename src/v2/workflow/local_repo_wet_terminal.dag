@@ -551,6 +551,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_early_exit_refuses_absence_on_real_bytes" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_early_exit_refuses_absence_on_real_bytes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_four_real_captures_retain_statement_inventory_and_missing_receipts" },
       entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
       function: "w_four_real_captures_retain_statement_inventory_and_missing_receipts",
