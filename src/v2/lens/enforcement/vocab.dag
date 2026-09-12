@@ -1,6 +1,7 @@
 module v2.lens.enforcement.vocab
 
 import v2.std.algebra { contains }
+import v2.std.text { string_eq }
 
 
 type SubjectRoster {
@@ -148,10 +149,6 @@ fn narrowing_reason_same_variant(a: NarrowingReason, b: NarrowingReason) -> Bool
       ExplicitOperatorExemption { signoff: b4 } => true
     }
   }
-}
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
 }
 
 fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
