@@ -258,7 +258,7 @@ fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_
 // THE ENTRY IS A MODULE PATH, not a file path, because that is what `claim_scope_for` is keyed on.
 type ClaimScopeFixtureOutcome
   = ClaimScopeInstrumentRefused { cause: String }
-  | ClaimScopeCompileRefused { blocking_count: Int }
+  | ClaimScopeCompileRefused { blocking_count: Int, diagnostics: List<CompileDiagnosticCensusRow> }
   | ClaimScopeRefused { cause: String }
   | ClaimScopeAccepted { module_count: Int }
 
@@ -280,7 +280,7 @@ fn claim_scope_was_refused(o: ClaimScopeFixtureOutcome) -> Bool {
   match o {
     ClaimScopeRefused { cause: c } => true
     ClaimScopeAccepted { module_count: n } => false
-    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
     ClaimScopeInstrumentRefused { cause: c } => false
   }
 }
@@ -297,7 +297,23 @@ fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) 
   match o {
     ClaimScopeRefused { cause: c } => (split(s: c, delimiter: cause_marker) |> count) > 1
     ClaimScopeAccepted { module_count: n } => false
-    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+// WHY A FIXTURE FAILED TO COMPILE, readable from `.dag` rather than only from a hand-run compile.
+// `ClaimScopeCompileRefused` carries the diagnostic rows, so a control that expects a scope verdict
+// and gets a compile refusal can name the class instead of reporting a bare non-acceptance. This
+// exists because its absence cost a wrong diagnosis: a manifest was refused with `undefined
+// variable`, the instrument could report only that it was not accepted, and the cause was supplied
+// by inference from prose rather than read -- the same arm-for-cause conflation this outcome type
+// was split to prevent.
+fn claim_scope_compile_refusal_has_class(o: ClaimScopeFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => fixture_has_class(rows: d, wanted: wanted)
+    ClaimScopeRefused { cause: c } => false
+    ClaimScopeAccepted { module_count: n } => false
     ClaimScopeInstrumentRefused { cause: c } => false
   }
 }
@@ -306,7 +322,7 @@ fn claim_scope_was_accepted(o: ClaimScopeFixtureOutcome) -> Bool {
   match o {
     ClaimScopeAccepted { module_count: n } => true
     ClaimScopeRefused { cause: c } => false
-    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
     ClaimScopeInstrumentRefused { cause: c } => false
   }
 }

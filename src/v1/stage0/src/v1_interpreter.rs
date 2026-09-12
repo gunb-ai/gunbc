@@ -12268,13 +12268,42 @@ fn claim_scope_fixture_value(
             "ClaimScopeInstrumentRefused",
             vec![(ctx.sym("cause"), str_value(cause))],
         ),
-        crate::cli_run::ClaimScopeFixtureOutcome::CompileRefused { diagnostics } => variant(
-            "ClaimScopeCompileRefused",
-            vec![(
-                ctx.sym("blocking_count"),
-                Value::Int(diagnostics.iter().filter(|row| row.blocking).count() as i64),
-            )],
-        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::CompileRefused { diagnostics } => {
+            // THE ROWS, NOT JUST THE COUNT. The first revision carried only `blocking_count`, and
+            // the diagnostics were right here and dropped. That made "why did this manifest fail
+            // to compile" unanswerable from `.dag` -- a control could see THAT the fixture did not
+            // reach scope construction and never WHY, so diagnosing one took reproducing the
+            // compile by hand outside the instrument. An instrument that cannot report its own
+            // failure mode makes its reader guess, and a guessed cause is what DESIGN §4d calls
+            // asserting as deduced what is only inferred.
+            let rows = list_value(
+                diagnostics
+                    .iter()
+                    .map(|row| Value::Record {
+                        type_name: ctx.sym("CompileDiagnosticCensusRow"),
+                        fields: Rc::new(sorted_fields(vec![
+                            (
+                                ctx.sym("diagnostic_class"),
+                                str_value(row.diagnostic_class.clone()),
+                            ),
+                            (ctx.sym("subject_name"), str_value(row.subject_name.clone())),
+                            (ctx.sym("blocking"), Value::Bool(row.blocking)),
+                            (ctx.sym("count"), Value::Int(row.count)),
+                        ])),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            variant(
+                "ClaimScopeCompileRefused",
+                vec![
+                    (
+                        ctx.sym("blocking_count"),
+                        Value::Int(diagnostics.iter().filter(|row| row.blocking).count() as i64),
+                    ),
+                    (ctx.sym("diagnostics"), rows),
+                ],
+            )
+        }
         crate::cli_run::ClaimScopeFixtureOutcome::ScopeRefused { cause } => variant(
             "ClaimScopeRefused",
             vec![(ctx.sym("cause"), str_value(cause))],

@@ -40700,6 +40700,96 @@ fn claim_scope_for_with_memos(
         qualified_reads.sort();
         qualified_reads.dedup();
     }
+    // THE WALL. Every row left in `ambiguous_reads` is a bare value reference reaching the shared
+    // name slot with two transitively-reached declarations spelling it and nothing the author
+    // wrote ranking them. Until now the slot settled it silently by scope precedence -- a
+    // resolution no source authorizes, which is §5's fabricated-plausible-output in the resolver
+    // rather than in an output. The line stops here instead, typed and located.
+    //
+    // KEYED ON THE SAME VALUE THE CENSUS PUBLISHES, not on a restatement of it. `ambiguous_reads`
+    // is the single binding; the census lines in `required_floor_runner` read this same vector,
+    // so the refusal and the count cannot drift apart. A wall keyed on the RAW free-reference set
+    // would over-approximate -- that set unions type annotations, record-literal type names,
+    // field labels and variant constructors -- and would refuse `Foo { observation: o }` the day
+    // a second `observation` is declared. The value-position projection plus the three resolution
+    // tiers behind `falls_through_to_shared_slot` are what make this population precise enough to
+    // refuse on.
+    //
+    // THE REFUSAL CARRIES ITS REMEDY, AND THE REMEDY NAMES DECLARING MODULES. This wall lands into
+    // a corpus that is still moving: a site authored next week reds someone who never heard of
+    // this campaign, in a module they may not own, over a name they did not know was contested. A
+    // message that only says "this read is ambiguous" hands that person a dead remedy, and the
+    // cheapest way out is to copy whatever import an adjacent file has -- which is how a
+    // re-exporting module gets named instead of a declaring one, and how `import std.types
+    // { String }` came to appear in ~1951 modules while binding nothing. So each row prints its
+    // claimants WITH the module that declares each, and an import line to paste.
+    //
+    // THE MECHANISM ANYONE NARROWING AN IMPORT NEEDS, recorded here because a PR body is not
+    // readable from the code: A BARE `import some.module` RE-EXPORTS THAT MODULE'S OWN IMPORTED
+    // BINDINGS, not merely its declarations. `extdeps.clock` imports `v2.std.optional { Present }`
+    // and `extdeps.filesystem.filesystem_io` imports `std.types { ... List ... }`, so files that
+    // bare-imported those were receiving `Present` and `List` through them. Narrowing a bare
+    // import to a name list therefore STRANDS names belonging to modules the file never mentions,
+    // and a check that joins the file against the NARROWED module's declarations cannot find them
+    // -- the lost names are declared elsewhere. Measured on gunbc#11156: six such names across
+    // four modules, surfaced by this phase's own `NewUnresolvedness` deltas after a hand sweep
+    // missed them.
+    //
+    // WHAT THIS WALL DOES NOT COVER, stated so that zero rows is never later cited as "no
+    // ambiguity in the corpus":
+    //
+    //   - TYPE-POSITION name collisions. `String`, `Int`, `List`, `Bool` and `WireContract` are
+    //     each declared by both `std.*` and its `v2.std.*` self-host copy. That double is a real
+    //     ambiguity in a different channel, owned by the v2 self-host replacement migration, and
+    //     it ends by ending the double -- not by a rename this wall could ask for. The census line
+    //     `channel=value_position_only not_covered=type_position_name_collisions
+    //     owner=v2_self_host_replacement_migration` is what says so.
+    //   - A VARIANT ARM reachable only through an ALIAS right-hand side naming a coproduct in
+    //     another module. The arm tier is node-local (`fragment_coproduct_disj_node`) and does not
+    //     follow such an alias, so a read of that arm stays in this population and refuses. That
+    //     is the conservative direction -- a false REFUSAL, never a false pass -- and the
+    //     next-rung trigger is a scope-wide arm index built after resolution.
+    //   - PATHS OTHER THAN CLAIM-SCOPE CONSTRUCTION. This refuses where the census measures, so
+    //     the two cannot disagree. Per §4b(1) a class's rung is the MINIMUM across its in-scope
+    //     paths: the honest report is mechanically-preventable on the claim-scope path, with
+    //     extension to the general interpreter entry as the named next-rung trigger.
+    if !ambiguous_reads.is_empty() {
+        let sites = ambiguous_reads
+            .iter()
+            .map(|row| {
+                let claimants = row
+                    .claimants
+                    .iter()
+                    .map(|(module, kind)| format!("{module} (declares it as {kind})"))
+                    .collect::<Vec<String>>()
+                    .join(" and ");
+                let remedy = row
+                    .claimants
+                    .iter()
+                    .map(|(module, _)| format!("import {module} {{ {} }}", row.name))
+                    .collect::<Vec<String>>()
+                    .join("   OR   ");
+                format!(
+                    "  `{}` is read bare by {}, and is declared by {}.\n                          Add ONE of these to {}, choosing the authority that module means:\n       {}",
+                    row.name, row.referring_module, claimants, row.referring_module, remedy
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=AmbiguousBareNameRead scope={entry_module_path} \
+             sites={}\n{}\n\
+             Each names a value two transitively-reached modules both declare, where the \
+             referring module neither declares it nor names a source for it -- so the shared name \
+             slot would pick one by scope precedence, which is a resolution nothing in the source \
+             authorizes.\n\
+             THE IMPORT MUST NAME THE MODULE THAT DECLARES THE NAME. An import naming a module \
+             that merely re-exports or mentions it binds nothing and leaves this refusal standing \
+             -- copying an adjacent file's import line is the common way to get that wrong.",
+            ambiguous_reads.len(),
+            sites
+        ));
+    }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
