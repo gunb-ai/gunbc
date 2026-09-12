@@ -1742,7 +1742,7 @@ pub struct TransitionAdmission {
 /// stop being producible, and CONSUMED comes due on the roster's next touch.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#11156 Filesystem and Clock service bindings",
+        label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
         subject: AdmissionSubject::Binding {
             module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
             in_declaration: "extdeps_external_authority_anchor",
@@ -1758,7 +1758,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11156 Filesystem and Clock service bindings",
+        label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
         subject: AdmissionSubject::Binding {
             module: "gunbc.srv3_boot_once_cd",
             in_declaration: "srv3_boot_once_cd_resolved",
