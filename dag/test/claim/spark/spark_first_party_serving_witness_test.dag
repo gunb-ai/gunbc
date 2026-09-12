@@ -15,8 +15,14 @@ import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread,
 }
+import std.types { Port }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.first_party_serving {
-  spark_serving_usage_stats_standing,
+  SparkServingRealization, spark_serving_usage_stats_standing,
   spark_first_party_use_scope, spark_first_party_admission,
   spark_first_party_sanction_roster, spark_first_party_route_facts, spark_first_party_posture,
   spark_sanctions_disposition, spark_export_disposition, spark_prohibited_use_disposition,
@@ -60,10 +66,29 @@ fn t_third_party_scope() -> ProviderUseScope<NonEmptyStr> {
   }
 }
 
+// THE REALIZATION THAT ANSWERED IS NOW PART OF EVERY SUBJECT, because the route facts are about the
+// deployment being offered rather than about a declaration. The pair-serving fixture is the one the
+// site allocation covers and whose container environment this module models; the foreign one differs
+// in the single field that decides attribution -- the port that answered.
+fn t_pair_realization() -> SparkServingRealization {
+  SparkServingRealization {
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
+    hosts: [operator_host_srv5, operator_host_srv6],
+  }
+}
+
+fn t_foreign_realization() -> SparkServingRealization {
+  SparkServingRealization {
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30001 as Port },
+    hosts: [operator_host_srv5, operator_host_srv6],
+  }
+}
+
 // POSITIVE CONTROL. The first-party scope admits, and the permit carries the route and posture it
 // was admitted under rather than merely existing.
 test fn the_first_party_scope_admits_and_the_permit_names_its_posture() -> Bool {
   match spark_first_party_admission(
+    realization: t_pair_realization(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
@@ -92,6 +117,7 @@ fn t_not_engaged_naming(d: DispositionStanding, basis_decl: NonEmptyStr) -> Bool
 
 test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
   match spark_first_party_admission(
+    realization: t_pair_realization(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
@@ -115,7 +141,7 @@ test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
 // but us reaches the same producer and is refused, and the refusal names the unsupported profile so
 // the remedy is the right one: get that profile sanctioned under a posture, not widen this one.
 test fn a_non_first_party_use_refuses_as_unsupported() -> Bool {
-  match spark_first_party_admission(scope: t_third_party_scope(), offer: t_offer()) {
+  match spark_first_party_admission(realization: t_pair_realization(), scope: t_third_party_scope(), offer: t_offer()) {
     ProviderUseAdmitted { permit: _ } => false
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "customer scope unsupported"
   }
@@ -136,7 +162,7 @@ fn t_later_posture() -> CompliancePostureRevision {
 test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
   match admit_provider_use(
     roster: spark_first_party_sanction_roster(),
-    facts: spark_first_party_route_facts(),
+    facts: spark_first_party_route_facts(realization: t_pair_realization()),
     active: t_later_posture(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
@@ -160,9 +186,51 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
 // in another module, so what goes red is a real divergence between the launch and the drop roster
 // rather than a number someone has to keep in step by hand.
 test fn the_launch_leaves_usage_reporting_on_which_is_what_the_drop_is_declared_against() -> Bool {
-  match spark_serving_usage_stats_standing() {
+  match spark_serving_usage_stats_standing(realization: t_pair_realization()) {
     UsageStatsEnabledByDefault { basis: _ } => true
     UsageStatsDisabledByLaunch { mechanism: _ } => false
     UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+
+// RED -- A DEPLOYMENT THIS MODULE HAS NO ENVIRONMENT MODEL FOR DOES NOT INHERIT PAIR-SERVING'S
+// ANSWER. Same hosts, same site coverage, one different port: before this repair the telemetry fold
+// read gunbc.spark.pair_serving_realization's container environment over the global lane roster and
+// would have handed this launch the pair route's answer, so a native GLM engine would have been
+// admitted on route facts describing a different container. It is unread now, which refuses.
+test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool {
+  match spark_serving_usage_stats_standing(realization: t_foreign_realization()) {
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "models no serving container environment")
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+  }
+}
+
+// RED -- AND THE REFUSAL REACHES ADMISSION RATHER THAN STOPPING AT THE STANDING. An unread telemetry
+// path is an unresolved data path, so provider-use admission refuses for that route: the engine can
+// be healthy, the site covered and the posture current, and the route still does not admit.
+test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
+  match spark_first_party_admission(
+    realization: t_foreign_realization(),
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "route facts incomplete"
+  }
+}
+
+// RED -- A REALIZATION WITH NO READABLE HOST MEMBERSHIP IS UNREAD TOO, and for its own reason rather
+// than the foreign-deployment one: the port is the pair route's, so the environment WOULD be
+// attributable, and what is missing is which lanes serve it.
+test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
+  match spark_serving_usage_stats_standing(realization: SparkServingRealization {
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
+    hosts: [] as List<HostIdentity>,
+  }) {
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no fabric lane")
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
   }
 }

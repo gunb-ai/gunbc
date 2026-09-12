@@ -15,6 +15,7 @@ import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.first_party_serving {
   spark_first_party_route, spark_fleet_site_allocation, spark_site_uncovered_units,
+  SparkServingRealization,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
@@ -154,6 +155,12 @@ data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_o
 // a machine the operator never placed at his home carry a region citing an assertion about other
 // machines (review 63995).
 //
+// THE SUBJECT IS THE REALIZATION THAT ANSWERED, NOT A HOST LIST, because the same hosts can carry
+// more than one deployment and the route's facts are about the one being offered. The coverage
+// question below reads its hosts; gunbc.spark.first_party_serving reads its endpoint to decide whose
+// container environment it may attribute. Passing a bare host list let those two answers come from
+// different deployments (operator-routed review of #11083).
+//
 // AN EMPTY HOST LIST REFUSES, and that arm is the reason this is a fold over the UNCOVERED set
 // rather than an all() over the covered one: all() of nothing is true, so a group whose membership
 // could not be read would have passed the check vacuously -- the check reading cleanest exactly
@@ -168,7 +175,8 @@ fn spark_serving_route_uncovered_obligation(uncovered: List<HostIdentity>) -> No
   ], "") as NonEmptyStr
 }
 
-fn spark_serving_route_standing(hosts: List<HostIdentity>) -> SparkServingRoute {
+fn spark_serving_route_standing(realization: SparkServingRealization) -> SparkServingRoute {
+  let hosts = realization.hosts
   if count(hosts) == 0 {
     ServingRouteRegionUnobserved { obligation: spark_serving_route_hosts_unreadable_obligation }
   } else {

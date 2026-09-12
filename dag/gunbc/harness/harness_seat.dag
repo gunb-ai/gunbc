@@ -45,6 +45,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
   LaunchObserved, LaunchUnobserved,
 }
+import gunbc.spark.first_party_serving { SparkServingRealization }
 import gunbc.spark.serving_offer {
   SparkOfferBound, SparkOfferBindingRefused, SparkServingReadiness, ServingObserved, ServingUnobserved,
   spark_serving_capability, spark_serving_shape, bind_spark_serving_offer, spark_serving_route_standing,
@@ -477,7 +478,9 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     isolation: serving_isolation_profile(),
     seats: seats as Int,
     readiness: harness_serving_readiness(standing: standing, now: now),
-    route: spark_serving_route_standing(hosts: fabric_group_hosts(g: group)),
+    route: spark_serving_route_standing(
+      realization: SparkServingRealization { endpoint: endpoint, hosts: fabric_group_hosts(g: group) },
+    ),
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
