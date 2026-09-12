@@ -2,18 +2,49 @@ module gunbc.machine_intake_pre_os_capture_replay
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.decl_ref { decl_ref }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused }
 import gunbc.memory_configuration { MemoryConfiguration, PositionedMemoryModule }
 import gunbc.memory_observation {
-  MemoryCaptureCycles, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, memory_cycle_coverage_refusal, memory_inventory_in_capture, read_verified_memory_capture,
+  MemoryCaptureCycles, memory_cycle_coverage_refusal, memory_inventory_in_capture, read_verified_memory_capture,
 }
 import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
-import gunbc.mtcollins_memory_change { mtcollins_hynix_part }
 import gunbc.machine_intake_pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
-import gunbc.machine_intake_pre_os_observer { pre_os_has_banner }
+import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones }
+import gunbc.machine_intake_sel_stimulus_listener { sel_snapshot_summary }
+
+// Historical assessment retains the snapshot scope without inventing a collector
+// session or firmware attempt for a file that has neither. The claimed topology
+// in the operator's subject line is not a host-observed population inventory.
+type PreOsQuietArchiveAssessment {
+  sel: ObservationAttempt<NonEmptyStr, NonEmptyStr>
+  milestones: PreOsMilestones
+  configuration: ObservationAttempt<Bool, NonEmptyStr>
+}
+
+fn pre_os_quiet_archive_assessment(payload: String) -> PreOsQuietArchiveAssessment {
+  let rows = filter(split(s: payload, delimiter: "\n"), line => contains(line, "|"))
+  PreOsQuietArchiveAssessment {
+    sel: if count(rows) == 0 { ObservationRefused { cause: "SEL archive has no record rows" } }
+      else { sel_snapshot_summary(text: join(rows, "\n")) },
+    milestones: pre_os_milestones(console: ObservationRefused { cause: "console collector failed; no captured host output" },
+      os_boot: ObservationRefused { cause: "no independent OS evidence in SEL archive" }),
+    configuration: ObservationRefused { cause: "operator subject is not a captured populated-DIMMs inventory" },
+  }
+}
+
+func replay_pre_os_quiet_archive() -> ProcessExit {
+  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-known-good-socket0-2026-09-12.txt",
+    expected_sha256: "81137a1169d3d1bc4fde2ae91910a85e9b70c4195e53d248d7d668adc347eb64") {
+    ObservationRefused { cause } => exit_failure(reason: cause as String)
+    ObservationEstablished { observed: payload } => {
+      let assessed = pre_os_quiet_archive_assessment(payload: payload)
+      println(to_string(assessed))
+      ExitSuccess
+    }
+  }
+}
 
 // Historical files have inventory and statements, but no event-driven liveness,
 // SEL-watermark or independent flush receipts. Expose those facts independently;

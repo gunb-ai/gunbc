@@ -102,3 +102,8 @@ test fn w_positive_boot_requires_host_end_marker() -> Bool {
     _ => false
   }
 }
+
+test fn w_marker_substring_is_not_host_end_marker() -> Bool {
+  let payload = join(split(s: observer_test_boot_payload(), delimiter: "marker-end=gunbc-runner-host-boot"), "prefix-marker-end=gunbc-runner-host-boot-suffix")
+  match pre_os_host_userspace_boot(text: payload, host_mac: "28:c1:3c:8a:d6:4a") { ObservationRefused { cause: _ } => true _ => false }
+}

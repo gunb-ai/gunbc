@@ -80,9 +80,9 @@ fn pre_os_training_assessment(milestones: PreOsMilestones) -> GoalAssessment<Non
 // envelope consumer before this parser is called. No kernel boot UUID is minted.
 fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> ObservationAttempt<HostBootOutcome, NonEmptyStr> {
   let lines = map(split(s: text, delimiter: "\n"), line => trim(line))
-  let beginning = "marker=gunbc-runner-host-boot"
-  let ending = "marker-end=gunbc-runner-host-boot"
-  let blocks = split(s: text, delimiter: beginning).skip(n: 1)
+  let beginning = "\nmarker=gunbc-runner-host-boot\n"
+  let ending = "\nmarker-end=gunbc-runner-host-boot\n"
+  let blocks = split(s: concat("\n", join(lines, "\n"), "\n"), delimiter: beginning).skip(n: 1)
   if any(lines, line => contains(line, "Linux version "))
     && any(lines, line => contains(line, "Run /init as init process"))
     && any(blocks, block => {

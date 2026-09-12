@@ -4,7 +4,7 @@ import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.memory_observation { read_verified_memory_capture }
-import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify }
+import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, pre_os_quiet_archive_assessment }
 import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_milestones, pre_os_boot_assessment }
 import gunbc.host_memory_qualification { BootReachedOperatingSystem, TrainingOutcomeUnobserved, BootOutcomeUnobserved }
@@ -48,7 +48,26 @@ test fn w_truncated_configuration_cannot_support_absence() -> Bool {
   }
 }
 
+fn quiet_archive_regression() -> Bool {
+  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-known-good-socket0-2026-09-12.txt",
+    expected_sha256: "81137a1169d3d1bc4fde2ae91910a85e9b70c4195e53d248d7d668adc347eb64") {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: payload } => {
+      let assessed = pre_os_quiet_archive_assessment(payload: payload)
+      assessed.milestones.training == TrainingOutcomeUnobserved
+        && assessed.milestones.boot == BootOutcomeUnobserved
+        && match assessed.sel { ObservationEstablished { observed: summary } =>
+          starts_with(s: summary as String, prefix: "no restart observed in supplied SEL rows only:")
+            && contains(summary as String, "702") && contains(summary as String, "70d")
+          _ => false }
+        && match pre_os_boot_assessment(milestones: assessed.milestones) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false }
+        && match assessed.configuration { ObservationRefused { cause: _ } => true _ => false }
+    }
+  }
+}
+
 test fn w_real_host_userspace_positive_and_truncated_negative() -> Bool {
+  quiet_archive_regression() &&
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log", expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: payload } => {

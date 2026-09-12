@@ -4,8 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.numeric.base16 { base16_digit_rows }
-import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart }
-import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart, OtherStandardEvent }
+import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart, OemSelPayload }
+import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart, OtherStandardEvent, OemTimestamped }
 
 // ipmitool's rendered SEL is a durable append log, not a clock. Keep the complete
 // prefix so clear, rollover, replacement and reused record ids REFUSE. A numeric
@@ -54,9 +54,29 @@ fn sel_rendered_record(line: String) -> ObservationAttempt<SelWindowEvent, NonEm
             BootRestart { offset: InitiatedByPowerUp }
           } else if count(fields) == 6 && asserted && starts_with(s: sensor, prefix: "System Boot Initiated ") && description == "System Restart" {
             BootRestart { offset: SystemRestart }
+          } else if sensor == "OEM record c0" && description != "" && sel_field(fields: fields, index: 5) != "" {
+            OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: description as NonEmptyStr,
+              oem_bytes_rendering: sel_field(fields: fields, index: 5) as NonEmptyStr } }
           } else { OtherStandardEvent { rendering: line as NonEmptyStr } }
         } }
       }
+  }
+}
+
+// A snapshot's actual rows are its scope. This rendering has no duration input,
+// and its absence statement cannot establish training, boot or cursor continuity.
+fn sel_snapshot_summary(text: String) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+  match sel_read(text: text) {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: watermark } => {
+      let restart = any(watermark.records, line => match sel_rendered_record(line: line) {
+        ObservationEstablished { observed: event } => match event.kind { BootRestart { offset: _ } => true _ => false }
+        ObservationRefused { cause: _ } => false
+      })
+      ObservationEstablished { observed: concat(if restart { "restart observed" } else { "no restart observed" },
+        " in supplied SEL rows only: ", to_string(map(watermark.records, line => sel_field(fields: split(s: line, delimiter: "|"), index: 0))),
+        "; generation and continuity unestablished") as NonEmptyStr }
+    }
   }
 }
 
