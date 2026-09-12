@@ -38,14 +38,12 @@ import gunbc.spark.vllm_runtime_image_build {
   vllm_source_is_clean, vllm_image_provenance_wire, BuiltByThisRun, AdoptedUnderExpectedTag,
   vllm_source_dir,
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
-  v41_gb10_recipe, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
-  admit_spark_build_host,
-  SparkBuildHostAdmitted, SparkBuildHostRefused,
+  v41_gb10_recipe, vllm_build_host_purpose, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
   SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable,
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
 }
-import gunbc.spark.host_commitment { spark_uncommitted_hosts, spark_host_is_uncommitted }
+import gunbc.spark.host_commitment { spark_uncommitted_hosts, spark_host_is_uncommitted, SparkHostAdmitted, SparkHostRefused, admit_uncommitted_host }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import gunbc.spark.serving_runtime_capability_probe {
   v41_sm121_capability_probe_rows, v41_gb10_source_build_probe, gb10_observed_compute_capability,
@@ -375,13 +373,13 @@ test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
     && !spark_host_is_uncommitted(host: "srv7" as HostIdentity)
     && !spark_host_is_uncommitted(host: "srv8" as HostIdentity)
     && length(spark_uncommitted_hosts) != 0
-    && (match admit_spark_build_host(raw: "srv5") {
-      SparkBuildHostRefused { cause: why } => string_contains(s: why, pattern: "not an admissible build host")
-      SparkBuildHostAdmitted { host: _ } => false
+    && (match admit_uncommitted_host(raw: "srv5", purpose: vllm_build_host_purpose) {
+      SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "not admissible for")
+      SparkHostAdmitted { host: _ } => false
     })
-    && (match admit_spark_build_host(raw: "") {
-      SparkBuildHostRefused { cause: why } => string_contains(s: why, pattern: "does not pick")
-      SparkBuildHostAdmitted { host: _ } => false
+    && (match admit_uncommitted_host(raw: "", purpose: vllm_build_host_purpose) {
+      SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "does not pick")
+      SparkHostAdmitted { host: _ } => false
     })
 }
 

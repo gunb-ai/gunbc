@@ -1,7 +1,9 @@
 module gunbc.spark.host_commitment
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
+import v2.std.optional { Present, Absent }
+import std.decl_ref { declaration_ref_display_key }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.cell_role {
   SparkCellRole,
@@ -15,6 +17,7 @@ import gunbc.spark.cell_role {
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
+import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims, spark_serving_arm_claimed_hosts }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 
 // WHAT EACH DGX SPARK UNIT IS CURRENTLY SPOKEN FOR BY, AS A SET OF IDENTITIES WITH THEIR CAUSES.
@@ -22,8 +25,9 @@ import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 // WHY THIS EXISTS, AND WHY IT IS A SAFETY REPAIR RATHER THAN A REFINEMENT.
 // gunbc.spark.serving_deployment_selection CARRIES, PRESENT TENSE AND STILL TODAY, the fleet as
 // `host_count: 8`, and screens a candidate with `hosts_consumed(c) <= fleet.host_count`. A scalar
-// cannot tell eight free hosts from eight of which four are spoken for -- and four of these eight
-// ARE spoken for, by the deployment that is serving right now -- so the one screen whose whole job
+// cannot tell eight free hosts from eight of which five are spoken for -- and five of these eight
+// ARE spoken for: the four hosts of the one claimed serving group, and the host the GLM canary is
+// placed on -- so the one screen whose whole job
 // is to rule shapes OUT is generous in exactly the direction DESIGN section 5 forbids, and generous
 // silently, because nothing in a count can carry the fact that it was wrong. The repair is not a
 // check placed beside the count: it is to delete the count and derive the SET, so that a shape too
@@ -49,11 +53,18 @@ import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 // AND THE JOIN ALREADY EXISTED, WHICH IS THE OTHER HALF OF WHY THIS FILE IS HERE.
 // gunbc.spark.vllm_runtime_image_build had authored `spark_build_host_excluded` /
 // `admissible_spark_build_hosts` -- the same subtraction over two of the same authorities, to answer
-// where a container build may run. A second consumer arriving with the same question is precisely
-// the moment the fold stops being one module's private helper: two derivations of "which Sparks are
-// free" that differ by two hosts is the fork section 3 exists to prevent, and it would have been
-// invisible, because each is locally correct. So the fold moved here at its root, the build lane
-// consumes it, and neither answers for the other.
+// where a container build may run. A second consumer arriving with the same question is precisely the
+// moment the fold stops being one module's private helper. So the fold moved here at its root, the
+// build lane consumes it, and neither answers for the other.
+//
+// WHAT THAT MOVE DID AND DID NOT CHANGE, stated exactly, because an earlier revision of this note
+// overstated it. It said the two derivations "differ by two hosts", which is false: the private build
+// fold excluded the claimed serving group and the held reservations and answered srv9-srv12, and this
+// module answered the same four until the serving-arm claim below was added. What changed is COVERAGE
+// OF COMMITMENT CAUSES, not the membership either produced on the day. The scalar this whole exercise
+// is aimed at -- `host_count: 8` in serving selection -- differs from the derived set by four, not
+// two, and it is a count rather than a derivation, so it was never the second fork; it is the
+// consumer that has not cut over yet.
 //
 // A COMMITMENT IS NOT A CAPABILITY. Nothing here says a host cannot serve or cannot build. It says
 // some other authority has already placed work on it, so a lane that places NEW work must not treat
@@ -80,6 +91,27 @@ import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 // subtracts the whole fleet. A cage is where a group COULD serve; spark_pair_serving_groups is where
 // one DOES. The build lane learned that from a red witness and the reasoning is its, not this file's.
 //
+// THE SERVING-ARM CLAIM IS THE CAUSE THIS CENSUS SHIPPED WITHOUT, AND IT WAS A FAIL-OPEN.
+//
+// The first cut read cell roles, claimed pair-serving groups and held llama.cpp reservations, and
+// declared srv9 uncommitted. srv9 is where the GLM canary is serving. gunbc.serving.serving_enrollment
+// says so directly -- the canary is serving on srv9 and nothing in this repository launched it through
+// the pair route -- and derives that route's head from the arm rather than from the pair roster,
+// precisely because the pair claim on group B was withdrawn while the canary was not. An observer
+// reading only the pair roster therefore sees srv9 as free and is wrong, and this module was that
+// observer while claiming to be the authority on what every unit is spoken for by.
+//
+// THE CONSEQUENCE WAS NOT ACADEMIC, which is why the cause is added rather than the note softened.
+// Both consumers of this set authorise effects on the host they are handed: a source build that
+// occupies a machine for most of an hour, and an image probe that pulls a 9.6 GB image and starts a
+// container. Either, pointed at srv9, would have landed on a machine answering live requests.
+//
+// THE CLAIM IS READ FROM BELOW, NOT FROM THE ARM. gunbc.spark.serving_arm_placement carries the
+// placement fact on its own, because the canary's convergence root imports serving selection, and
+// serving selection imports THIS module in the follow-up -- reaching up into the canary module would
+// close that loop. The placement authority also carries why release is a receipt rather than an edit,
+// which is the same lifecycle the reservation arm below already enforces.
+//
 // THE HELD RESERVATION IS A WALL THAT IS CURRENTLY QUIET, NOT A DEAD ONE.
 // `llama_cpp_rpc_undischarged_peer_reservation_hosts()` is EMPTY on this corpus today: the one minted
 // internal-participant reservation (srv8, the weights peer) was cleared by a release receipt on
@@ -100,6 +132,7 @@ import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 type SparkHostCommitment
   = CommittedToCellRole { role: SparkCellRole }
   | MemberOfClaimedServingGroup
+  | OccupiedByServingArm { claim: ServingArmHostClaim }
   | HoldsUndischargedRpcReservation
   | CellRoleUndecidable { assignments: List<SparkCellRoleAssignment> }
 
@@ -117,6 +150,7 @@ type SparkHostStanding
 fn spark_host_commitments_in(
   assignments: List<SparkCellRoleAssignment>,
   claimed_serving_hosts: List<HostIdentity>,
+  arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
   host: HostIdentity,
 ) -> FreeMonoid<SparkHostCommitment> {
@@ -126,11 +160,17 @@ fn spark_host_commitments_in(
     } else {
       Empty {}
     }
+  let armed =
+    fold(
+      filter(arm_claims, c => host_identity_eq(a: c.host, b: host)),
+      init: reserved,
+      f: fn(acc, c) { Cons { head: OccupiedByServingArm { claim: c }, tail: acc } },
+    )
   let serving =
     if any(claimed_serving_hosts, h => host_identity_eq(a: h, b: host)) {
-      Cons { head: MemberOfClaimedServingGroup, tail: reserved }
+      Cons { head: MemberOfClaimedServingGroup, tail: armed }
     } else {
-      reserved
+      armed
     }
   match spark_cell_role_in(assignments: assignments, host: host) {
     SparkCellRoleAbsent => serving
@@ -144,12 +184,14 @@ fn spark_host_commitments_in(
 fn spark_host_standing_in(
   assignments: List<SparkCellRoleAssignment>,
   claimed_serving_hosts: List<HostIdentity>,
+  arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
   host: HostIdentity,
 ) -> SparkHostStanding {
   match spark_host_commitments_in(
     assignments: assignments,
     claimed_serving_hosts: claimed_serving_hosts,
+    arm_claims: arm_claims,
     held_reservation_hosts: held_reservation_hosts,
     host: host,
   ) {
@@ -163,57 +205,55 @@ fn spark_host_standings_in(
   units: List<HostIdentity>,
   assignments: List<SparkCellRoleAssignment>,
   claimed_serving_hosts: List<HostIdentity>,
+  arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
 ) -> List<SparkHostStanding> {
   map(units, h => spark_host_standing_in(
     assignments: assignments,
     claimed_serving_hosts: claimed_serving_hosts,
+    arm_claims: arm_claims,
     held_reservation_hosts: held_reservation_hosts,
     host: h,
   ))
 }
 
-// THE SET, AS IDENTITIES. A caller that needs a bound takes its length; nothing takes a length that
-// was authored beside it.
-fn spark_uncommitted_hosts_in(
-  units: List<HostIdentity>,
-  assignments: List<SparkCellRoleAssignment>,
-  claimed_serving_hosts: List<HostIdentity>,
-  held_reservation_hosts: List<HostIdentity>,
-) -> List<HostIdentity> {
-  flat_map(
-    spark_host_standings_in(
-      units: units,
-      assignments: assignments,
-      claimed_serving_hosts: claimed_serving_hosts,
-      held_reservation_hosts: held_reservation_hosts,
-    ),
-    s => match s {
-      SparkHostUncommitted { host: h } => [h]
-      SparkHostCommitted { host: _, commitments: _ } => []
-    })
+// THE SET, AS IDENTITIES, AND IT IS A PROJECTION OF THE STANDINGS RATHER THAN A SECOND DERIVATION.
+//
+// THE SHAPE THIS REPLACES HAD TWO ROOTS. `spark_host_standings` folded the commitment sources, and
+// `spark_uncommitted_hosts` folded the same sources again to answer the narrower question -- so the
+// module whose whole purpose is to stop two derivations of one fact from drifting contained two
+// derivations of one fact. A fifth commitment source added to one and not the other would have been
+// invisible in exactly the way the private build fold was. These take a standings list and read it;
+// there is nowhere in them for an input to be forgotten, because they have no inputs to forget.
+fn spark_uncommitted_hosts_of(standings: List<SparkHostStanding>) -> List<HostIdentity> {
+  flat_map(standings, s => match s {
+    SparkHostUncommitted { host: h } => [h]
+    SparkHostCommitted { host: _, commitments: _ } => []
+  })
 }
 
-fn spark_committed_host_standings_in(
-  units: List<HostIdentity>,
-  assignments: List<SparkCellRoleAssignment>,
-  claimed_serving_hosts: List<HostIdentity>,
-  held_reservation_hosts: List<HostIdentity>,
-) -> List<SparkHostStanding> {
-  filter(
-    spark_host_standings_in(
-      units: units,
-      assignments: assignments,
-      claimed_serving_hosts: claimed_serving_hosts,
-      held_reservation_hosts: held_reservation_hosts,
-    ),
-    s => match s {
-      SparkHostUncommitted { host: _ } => false
-      SparkHostCommitted { host: _, commitments: _ } => true
-    })
+fn spark_committed_standings_of(standings: List<SparkHostStanding>) -> List<SparkHostStanding> {
+  filter(standings, s => match s {
+    SparkHostUncommitted { host: _ } => false
+    SparkHostCommitted { host: _, commitments: _ } => true
+  })
 }
 
-// THE PRODUCTION APPLICATION, AND IT IS THE ONLY PLACE THE FOUR AUTHORITIES ARE NAMED TOGETHER.
+// The lookup folds the matched rows into an optional exactly as gunbc.spark.cell_role's own lookup
+// does, rather than reaching for a list head this substrate does not expose as a free function.
+fn spark_standing_of(standings: List<SparkHostStanding>, host: HostIdentity) -> SparkHostStanding? {
+  fold(
+    filter(standings, s => match s {
+      SparkHostUncommitted { host: h } => host_identity_eq(a: h, b: host)
+      SparkHostCommitted { host: h, commitments: _ } => host_identity_eq(a: h, b: host)
+    }),
+    init: none,
+    f: fn(acc, s) { Present { value: s } },
+  )
+}
+
+// THE PRODUCTION APPLICATION, AND IT IS THE ONLY PLACE THE COMMITMENT SOURCES ARE NAMED TOGETHER.
+// Everything below is a projection of this one value.
 fn spark_claimed_serving_group_hosts() -> List<HostIdentity> {
   flat_map(spark_pair_serving_groups, g => fabric_group_hosts(g: g))
 }
@@ -222,31 +262,112 @@ data spark_host_standings: List<SparkHostStanding> = spark_host_standings_in(
   units: dgx_spark_reserved_identities(),
   assignments: spark_cell_role_assignments,
   claimed_serving_hosts: spark_claimed_serving_group_hosts(),
+  arm_claims: spark_serving_arm_host_claims,
   held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
 )
 
-data spark_uncommitted_hosts: List<HostIdentity> = spark_uncommitted_hosts_in(
-  units: dgx_spark_reserved_identities(),
-  assignments: spark_cell_role_assignments,
-  claimed_serving_hosts: spark_claimed_serving_group_hosts(),
-  held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
-)
+data spark_uncommitted_hosts: List<HostIdentity> = spark_uncommitted_hosts_of(standings: spark_host_standings)
 
 fn spark_host_is_uncommitted(host: HostIdentity) -> Bool {
   any(spark_uncommitted_hosts, h => host_identity_eq(a: h, b: host))
 }
 
-// HOW THE SET WAS ARRIVED AT, carried for the receipts that consume it. It names the producers rather
-// than transcribing their answer, so it cannot go stale against the set beside it.
-data spark_uncommitted_hosts_how: NonEmptyStr = "the gunbc.spark.dgx_procurement unit identities, less every host gunbc.spark.cell_role commits to a role or cannot decide a role for, less every host in a serving group gunbc.spark.pair_serving_desired claims, less every host holding an undischarged internal-participant reservation in gunbc.spark.llama_cpp_rpc_observed" as NonEmptyStr
+fn spark_host_standing(host: HostIdentity) -> SparkHostStanding? {
+  spark_standing_of(standings: spark_host_standings, host: host)
+}
 
-// THE COMMITMENT AS PROSE, FOR A REFUSAL THAT HAS TO SAY WHY. One rendering, so two refusals cannot
-// describe the same cause differently.
+// WHY A HOST IS NOT AVAILABLE, RENDERED FROM THE STANDING ITSELF.
+//
+// THE SHAPE THIS REPLACES WAS A HAND-MAINTAINED SENTENCE. `spark_uncommitted_hosts_how` listed the
+// producers in prose and claimed it could not go stale because it named them rather than transcribing
+// their answer. That was half true and the wrong half was load-bearing: it was still a second list of
+// the commitment sources, maintained by hand, and adding the serving-arm cause did not update it --
+// measured, because adding that cause is exactly what happened. A refusal now renders the CAUSES THIS
+// HOST ACTUALLY CARRIES, which no edit can desynchronise from the fold, and which tells an operator
+// the one thing the generic sentence never did: which authority to go and talk to.
+fn spark_commitment_tail_wire(rest: FreeMonoid<SparkHostCommitment>) -> String {
+  match rest {
+    Empty => ""
+    Cons { head: next, tail: more } =>
+      join(["; ", spark_host_commitment_wire(c: next) as String, spark_commitment_tail_wire(rest: more)], "")
+  }
+}
+
+fn spark_host_commitment_causes_wire(host: HostIdentity) -> NonEmptyStr {
+  match spark_host_standing(host: host) {
+    Absent => "that host is not a DGX Spark unit in gunbc.spark.dgx_procurement, so this fleet has no standing for it" as NonEmptyStr
+    Present { value: standing } =>
+      match standing {
+        SparkHostUncommitted { host: _ } => "nothing has claimed that host" as NonEmptyStr
+        SparkHostCommitted { host: _, commitments: c } =>
+          join([
+            spark_host_commitment_wire(c: c.head) as String,
+            spark_commitment_tail_wire(rest: c.tail),
+          ], "") as NonEmptyStr
+      }
+  }
+}
+
 fn spark_host_commitment_wire(c: SparkHostCommitment) -> NonEmptyStr {
   match c {
     CommittedToCellRole { role: _ } => "committed to a Spark cell role" as NonEmptyStr
     MemberOfClaimedServingGroup => "a member of a serving group this repository claims" as NonEmptyStr
+    OccupiedByServingArm { claim: c2 } => join(["a serving arm is placed on it (", declaration_ref_display_key(ref: c2.arm), ")"], "") as NonEmptyStr
     HoldsUndischargedRpcReservation => "holding an undischarged llama.cpp RPC peer reservation" as NonEmptyStr
     CellRoleUndecidable { assignments: _ } => "carrying more than one cell role row, so its commitment cannot be decided" as NonEmptyStr
   }
 }
+
+// THE ONE ADMISSION SEAM, BECAUSE THREE EFFECTFUL ROOTS WERE EACH ASKING IN THEIR OWN WORDS.
+//
+// THE SHAPE THIS REPLACES: gunbc.spark.vllm_runtime_image_build owned a typed `admit_spark_build_host`
+// that exactly one of its two entries called; the other entry, and the published-image probe in
+// gunbc.spark.v41_runtime_image_probe, each re-wrote the guard as a bare `if !uncommitted` with their
+// own refusal sentence. Three roots, one of them typed, and the witness exercised only the typed one
+// -- so a regression in either open-coded guard left the suite green while an effect ran on a claimed
+// host. The seam belongs to the authority that owns the commitment fact rather than to whichever lane
+// needed it first, so it lives here and all three roots consume it.
+//
+// IT IS AN ELIGIBILITY ANSWER AND IT IS NOT A LEASE. THIS IS A STATED DIVERGENCE (DESIGN section 3b),
+// not an oversight, and the honest form of it is the whole point. `SparkHostUncommitted` is an
+// OBSERVATION over modelled persistent claims: it says nobody has written down a claim on this host.
+// It is not a lease, not a compare-and-set, and it adds no claim of its own, so two runs can both
+// read the same host as uncommitted and both proceed. The generated fleet workflow does not close
+// that gap either -- its concurrency key is `gunbc-host-mutation-${host}` over the EXECUTOR runner
+// (srv1-srv4), while the Spark being mutated is a separate target input, so two runs dispatched
+// through different executors can target one Spark without ever sharing a key.
+//
+// THE THREE-STEP SHAPE THIS OWES, stated so the gap is legible rather than papered over:
+//   uncommitted-set observation -> candidate ELIGIBILITY only
+//   target-host claim acquired  -> PERMISSION to mutate
+//   terminal release receipt    -> host becomes claimable again
+// This module answers the first and nothing else. TRIGGER for the second: the fabric/capacity lease
+// authority (product.capacity.lease LeaseGrant, gunbc.fabric_event_log fabric_seat_acquire) gaining a
+// subject shaped like a whole Spark host rather than a serving seat, at which point admission becomes
+// acquire-and-hold and this function's refusal arm becomes the lease's. SUFFICIENT FOR: two
+// concurrent runs against one target, dispatched through different executors, cannot both be
+// admitted. Until then an admitted answer means "nothing has claimed it as of this read", and the
+// name says so rather than implying a hold.
+type SparkHostAdmission
+  = SparkHostAdmitted { host: HostIdentity }
+  | SparkHostRefused { cause: NonEmptyStr }
+
+fn admit_uncommitted_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+  let host = raw as HostIdentity
+  if raw == "" {
+    SparkHostRefused { cause: join(["no host was named for ", purpose as String, "; this entry takes one and does not pick"], "") as NonEmptyStr }
+  } else if !spark_host_is_uncommitted(host: host) {
+    SparkHostRefused {
+      cause: join([
+        raw, " is not admissible for ", purpose as String, ", because ",
+        spark_host_commitment_causes_wire(host: host) as String,
+        ". Uncommitted as of this read: ",
+        join(map(spark_uncommitted_hosts, h => h as String), ", "),
+        ". This is an eligibility read and not a held claim",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    SparkHostAdmitted { host: host }
+  }
+}
+

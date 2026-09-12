@@ -10,7 +10,7 @@ import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
-import gunbc.spark.host_commitment { spark_uncommitted_hosts, spark_host_is_uncommitted, spark_uncommitted_hosts_how }
+import gunbc.spark.host_commitment { SparkHostAdmission, SparkHostAdmitted, SparkHostRefused, admit_uncommitted_host }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker { DockerMount, BindMount }
@@ -159,31 +159,20 @@ import gunbc.typed_argv_exec {
 // -- an `admissible_spark_build_hosts` alias standing beside `spark_uncommitted_hosts` would be one
 // concept under two names, which is the other half of the same §3 law.
 
-// A HOST THE CALLER NAMED IS NOT YET A HOST THIS LANE MAY USE. The refusal is separated from the
-// endpoint lookup because they fail for different reasons and want different remedies: an
-// inadmissible host is a policy answer, an unresolvable one is a fleet-data answer, and an earlier
-// revision of this lane learned the second the hard way.
-type SparkBuildHostAdmission
-  = SparkBuildHostAdmitted { host: HostIdentity }
-  | SparkBuildHostRefused { cause: String }
-
-fn admit_spark_build_host(raw: String) -> SparkBuildHostAdmission {
-  let host = raw as HostIdentity
-  if raw == "" {
-    SparkBuildHostRefused { cause: "no build host was named; this entry takes one and does not pick" }
-  } else if !spark_host_is_uncommitted(host: host) {
-    SparkBuildHostRefused {
-      cause: join([
-        raw, " is not an admissible build host. Admissible today: ",
-        join(map(spark_uncommitted_hosts, h => h as String), ", "),
-        ". A Spark is excluded when something else has already claimed it -- ",
-        spark_uncommitted_hosts_how as String,
-      ], ""),
-    }
-  } else {
-    SparkBuildHostAdmitted { host: host }
-  }
-}
+// A HOST THE CALLER NAMED IS NOT YET A HOST THIS LANE MAY USE, AND THE SEAM THAT DECIDES THAT IS NOT
+// THIS MODULE'S ANY MORE.
+//
+// `SparkBuildHostAdmission` / `admit_spark_build_host` stood here and were called by exactly ONE of
+// this module's two effectful entries; the other repeated the check as a bare boolean with its own
+// refusal sentence, as did the published-image probe. One typed seam and two open-coded copies of it
+// is the same fork this PR removed from the host set itself, one level up, and it had the sharper
+// consequence: the witness exercised the typed one, so a regression in either copy left the suite
+// green while an effect ran on a claimed host. The seam now belongs to gunbc.spark.host_commitment,
+// which owns the fact it consults, and all three roots call it.
+//
+// WHAT THIS LANE STILL OWNS IS THE PURPOSE STRING it hands that seam -- what the host is wanted FOR,
+// which is the one thing the commitment authority cannot know and the refusal has to say.
+data vllm_build_host_purpose: NonEmptyStr = "a vLLM source build, which occupies the host for the better part of an hour" as NonEmptyStr
 
 // THE BUILD ROOT IS DERIVED FROM THE PRINCIPAL THAT OWNS IT, NOT SPELLED. An earlier revision put it
 // under the OPERATOR's home while the legs authenticate as the managed executor -- a path belonging to
@@ -651,9 +640,9 @@ func vllm_runtime_image_build_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: a build occupies one host for the better part of an hour, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: build_host } =>
-      if !spark_host_is_uncommitted(host: build_host) {
-        exit_failure(reason: join([build_host as String, " is a rostered Spark but not an admissible BUILD host: ", join(map(spark_uncommitted_hosts, h => h as String), ", "), " are the non-serving, non-reserved members"], ""))
-      } else {
+      match admit_uncommitted_host(raw: build_host as String, purpose: vllm_build_host_purpose) {
+        SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+        SparkHostAdmitted { host: _ } =>
         match observe_executor_reach() {
           ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["vllm_runtime_image_build_ci: ", c], ""))
           ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -759,9 +748,9 @@ func vllm_source_acquire_wet(host: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
-  match admit_spark_build_host(raw: host) {
-    SparkBuildHostRefused { cause: why } => exit_failure(reason: why)
-    SparkBuildHostAdmitted { host: build_host } =>
+  match admit_uncommitted_host(raw: host, purpose: vllm_build_host_purpose) {
+    SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+    SparkHostAdmitted { host: build_host } =>
       match fleet_ssh_attempt_identity(raw: vllm_source_acquire_attempt_raw) {
         Absent => exit_failure(reason: "attempt identity is not a safe path segment")
         Present { value: attempt } =>

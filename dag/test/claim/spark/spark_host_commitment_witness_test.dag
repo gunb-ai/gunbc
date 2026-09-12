@@ -1,8 +1,10 @@
 module test.claim.spark.spark_host_commitment_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.algebra { FreeSemigroup, FreeMonoid, Empty, Cons }
 import product.placement_supply { HostIdentity, host_identity_eq }
+import std.decl_ref { decl_ref, declaration_ref_display_key }
+import v2.std.optional { Present, Absent }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
@@ -13,18 +15,27 @@ import gunbc.spark.cell_role {
 }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
+import gunbc.spark.serving_arm_placement { ServingArmHostClaim, glm_canary_host_claim, spark_serving_arm_host_claims }
 import gunbc.spark.host_commitment {
+  spark_host_standings,
   SparkHostCommitment,
   CommittedToCellRole,
   MemberOfClaimedServingGroup,
   HoldsUndischargedRpcReservation,
   CellRoleUndecidable,
+  OccupiedByServingArm,
   SparkHostStanding,
   SparkHostUncommitted,
   SparkHostCommitted,
+  SparkHostAdmission,
+  SparkHostAdmitted,
+  SparkHostRefused,
+  admit_uncommitted_host,
+  spark_host_commitment_causes_wire,
   spark_host_standing_in,
-  spark_uncommitted_hosts_in,
-  spark_committed_host_standings_in,
+  spark_host_standings_in,
+  spark_uncommitted_hosts_of,
+  spark_committed_standings_of,
   spark_claimed_serving_group_hosts,
   spark_uncommitted_hosts,
   spark_host_is_uncommitted,
@@ -49,13 +60,18 @@ data fixture_duplicate_assignments: List<SparkCellRoleAssignment> = [
   SparkCellRoleAssignment { host: operator_host_srv9, role: SparkTrainingCell },
 ]
 
-fn fixture_uncommitted(held: List<HostIdentity>) -> List<HostIdentity> {
-  spark_uncommitted_hosts_in(
+fn fixture_standings(held: List<HostIdentity>, arms: List<ServingArmHostClaim>) -> List<SparkHostStanding> {
+  spark_host_standings_in(
     units: fixture_units,
     assignments: fixture_assignments,
     claimed_serving_hosts: [],
+    arm_claims: arms,
     held_reservation_hosts: held,
   )
+}
+
+fn fixture_uncommitted(held: List<HostIdentity>) -> List<HostIdentity> {
+  spark_uncommitted_hosts_of(standings: fixture_standings(held: held, arms: []))
 }
 
 fn contains_host(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
@@ -83,6 +99,7 @@ test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
   match spark_host_standing_in(
     assignments: fixture_assignments,
     claimed_serving_hosts: [operator_host_srv9],
+    arm_claims: [],
     held_reservation_hosts: [operator_host_srv9],
     host: operator_host_srv9,
   ) {
@@ -92,6 +109,7 @@ test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
         && (match c.head {
              CommittedToCellRole { role: _ } => true
              MemberOfClaimedServingGroup => false
+             OccupiedByServingArm { claim: _ } => false
              HoldsUndischargedRpcReservation => false
              CellRoleUndecidable { assignments: _ } => false
            })
@@ -101,6 +119,7 @@ test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
                (match second {
                   MemberOfClaimedServingGroup => true
                   CommittedToCellRole { role: _ } => false
+                  OccupiedByServingArm { claim: _ } => false
                   HoldsUndischargedRpcReservation => false
                   CellRoleUndecidable { assignments: _ } => false
                 })
@@ -111,6 +130,7 @@ test fn a_committed_host_carries_every_cause_that_commits_it() -> Bool {
                           HoldsUndischargedRpcReservation => true
                           CommittedToCellRole { role: _ } => false
                           MemberOfClaimedServingGroup => false
+                          OccupiedByServingArm { claim: _ } => false
                           CellRoleUndecidable { assignments: _ } => false
                         }
                     })
@@ -143,6 +163,7 @@ test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
   match spark_host_standing_in(
     assignments: fixture_duplicate_assignments,
     claimed_serving_hosts: [],
+    arm_claims: [],
     held_reservation_hosts: [],
     host: operator_host_srv9,
   ) {
@@ -152,6 +173,7 @@ test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
         CellRoleUndecidable { assignments: rows } => length(rows) == 2
         CommittedToCellRole { role: _ } => false
         MemberOfClaimedServingGroup => false
+        OccupiedByServingArm { claim: _ } => false
         HoldsUndischargedRpcReservation => false
       }
   }
@@ -164,6 +186,7 @@ test fn an_unclaimed_unheld_unassigned_host_is_uncommitted() -> Bool {
   match spark_host_standing_in(
     assignments: fixture_assignments,
     claimed_serving_hosts: [],
+    arm_claims: [],
     held_reservation_hosts: [],
     host: operator_host_srv8,
   ) {
@@ -178,43 +201,125 @@ test fn each_commitment_cause_renders_distinctly() -> Bool {
   let group = spark_host_commitment_wire(c: MemberOfClaimedServingGroup) as String
   let held = spark_host_commitment_wire(c: HoldsUndischargedRpcReservation) as String
   let ambiguous = spark_host_commitment_wire(c: CellRoleUndecidable { assignments: fixture_duplicate_assignments }) as String
+  let armed = spark_host_commitment_wire(c: OccupiedByServingArm { claim: glm_canary_host_claim }) as String
   role != group && group != held && held != ambiguous && role != ambiguous
+    && armed != role && armed != group && armed != held && armed != ambiguous
+    && string_contains(s: armed, pattern: "glm_canary_arm")
 }
 
 // ── THE PRODUCTION SET, ASSERTED BY IDENTITY ──────────────────────────────────────────────────
 //
-// srv5 and srv6 are committed cells and all four of srv5-srv8 are the hosts of the one serving group
-// this repository claims (cage 1 of gunbc.spark.fabric_switch_observed), so the uncommitted set is
-// srv9-srv12. The assertion is membership in both directions, never a count: a set of the right SIZE
-// holding the wrong hosts is exactly the failure the scalar this replaces could not detect. A host
-// outside the Spark unit population is not in the set either -- absence from the universe is not
-// membership.
+// srv5 and srv6 are committed cells, all four of srv5-srv8 are the hosts of the one serving group
+// this repository claims (cage 1 of gunbc.spark.fabric_switch_observed), and srv9 carries the GLM
+// canary's placement claim -- so the uncommitted set is srv10-srv12. The assertion is membership in
+// both directions, never a count: a set of the right SIZE holding the wrong hosts is exactly the
+// failure the scalar this replaces could not detect. A host outside the Spark unit population is not
+// in the set either -- absence from the universe is not membership.
 //
 // AND THE COUNT THAT USED TO SIT AT THE END OF THIS CLAIM IS DELETED (claude review 64144 on #11107).
-// `length(spark_uncommitted_hosts) == 4` compared a LIVE repository population, derived from four
+// `length(spark_uncommitted_hosts) == 4` compared a LIVE repository population, derived from several
 // authorities, to a number read off the tree it was measuring -- which DESIGN section 5 forbids in
 // exactly these words: completeness is an identity join, not a count equality, and a measurement
-// copied from the same current tree is not an oracle. It added no content the join above does not
-// already carry, and it added a change detector that would go red the next time a role is assigned
-// or a group withdrawn -- the very edit this derivation exists to absorb without anyone touching
-// this file. Writing it three lines under a note saying "never a count" is the tell that a count
-// feels like completeness even where the join is already complete.
+// copied from the same current tree is not an oracle. It added no content the join already carries,
+// and it would have gone red the next time a role is assigned or a group withdrawn -- the very edit
+// this derivation exists to absorb without anyone touching this file. That it would ALSO have gone
+// red for the right reason when srv9 was found to be claimed is not a defence of it: the identity
+// lines below are what state which hosts, and they are what changed.
 //
 // WHAT IS NOT A TRANSCRIBED MEASUREMENT, so it stays: the vacuity check on the reservation arm
 // asserts ZERO, which is the arm's own emptiness stated as such rather than a population size, and
 // the partition claim below is a structural identity between two derived sets and their universe.
-test fn the_production_uncommitted_set_is_the_four_unclaimed_units_by_identity() -> Bool {
-  contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv9)
-    && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv10)
+test fn the_production_uncommitted_set_excludes_every_claimed_unit_by_identity() -> Bool {
+  contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv10)
     && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv11)
     && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv12)
     && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv5)
     && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv6)
     && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv7)
     && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv8)
+    && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv9)
     && !contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv2)
     && !spark_host_is_uncommitted(host: operator_host_srv5)
-    && spark_host_is_uncommitted(host: operator_host_srv9)
+    && spark_host_is_uncommitted(host: operator_host_srv10)
+}
+
+// ── RED 4: THE HOST A SERVING ARM IS PLACED ON IS NOT FREE ────────────────────────────────────
+//
+// THIS IS THE RED FOR A FAIL-OPEN THIS MODULE SHIPPED WITH. The first cut of the census read cell
+// roles, claimed pair-serving groups and held llama.cpp reservations, and answered srv9 -- where the
+// GLM canary is serving -- as uncommitted, while two consumers stood ready to start an hour-long
+// build or pull a 9.6 GB image onto whatever host they were handed. The claim is now a cause, and
+// this asserts it BY IDENTITY against the production placement roster rather than by a count.
+test fn the_canary_host_is_committed_and_its_cause_names_the_arm() -> Bool {
+  host_identity_eq(a: glm_canary_host_claim.host, b: operator_host_srv9)
+    && !spark_host_is_uncommitted(host: operator_host_srv9)
+    && (match spark_host_standing(host: operator_host_srv9) {
+         Absent => false
+         Present { value: standing } =>
+           match standing {
+             SparkHostUncommitted { host: _ } => false
+             SparkHostCommitted { host: _, commitments: c } =>
+               match c.head {
+                 OccupiedByServingArm { claim: claimed } =>
+                   host_identity_eq(a: claimed.host, b: operator_host_srv9)
+                     && string_contains(s: declaration_ref_display_key(ref: claimed.arm), pattern: "glm_canary_arm")
+                 CommittedToCellRole { role: _ } => false
+                 MemberOfClaimedServingGroup => false
+                 HoldsUndischargedRpcReservation => false
+                 CellRoleUndecidable { assignments: _ } => false
+               }
+           }
+       })
+}
+
+// A FIXTURE ARM CLAIM COMMITS ITS HOST AND NOTHING ELSE, so the cause is the claim rather than the
+// identity srv9, and it would still hold if the canary moved.
+test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
+  let claims = [ServingArmHostClaim {
+    arm: decl_ref(module_path: "test.claim.spark.spark_host_commitment_witness", decl_name: "an_arm_claim_commits_only_the_host_it_names"),
+    host: operator_host_srv8,
+    basis: "fixture" as NonEmptyStr,
+  }]
+  let uncommitted = spark_uncommitted_hosts_of(standings: fixture_standings(held: [], arms: claims))
+  !contains_host(hosts: uncommitted, host: operator_host_srv8)
+    && contains_host(hosts: uncommitted, host: operator_host_srv7)
+}
+
+// ── RED 5: THE ONE ADMISSION SEAM REFUSES A CLAIMED HOST, AND SAYS WHY ────────────────────────
+//
+// The three effectful roots -- the source build, the image build entry and the published-image probe
+// -- all reach a host through `admit_uncommitted_host`. This is the control that the seam refuses a
+// claimed target and that its refusal names the actual cause rather than a generic sentence, which is
+// what the deleted hand-maintained producer list could never do.
+test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
+  (match admit_uncommitted_host(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
+     SparkHostRefused { cause: why } =>
+       string_contains(s: why as String, pattern: "srv9")
+         && string_contains(s: why as String, pattern: "serving arm")
+         && string_contains(s: why as String, pattern: "not a held claim")
+     SparkHostAdmitted { host: _ } => false
+   })
+    && (match admit_uncommitted_host(raw: "srv5", purpose: "a fixture effect" as NonEmptyStr) {
+         SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "cell role")
+         SparkHostAdmitted { host: _ } => false
+       })
+    && (match admit_uncommitted_host(raw: "", purpose: "a fixture effect" as NonEmptyStr) {
+         SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "does not pick")
+         SparkHostAdmitted { host: _ } => false
+       })
+    && (match admit_uncommitted_host(raw: "srv10", purpose: "a fixture effect" as NonEmptyStr) {
+         SparkHostAdmitted { host: h } => host_identity_eq(a: h, b: operator_host_srv10)
+         SparkHostRefused { cause: _ } => false
+       })
+}
+
+// AN UNROSTERED HOST IS NOT ADMITTED EITHER, and its refusal says it is not a Spark unit rather than
+// inventing a commitment for it.
+test fn a_host_outside_the_unit_population_is_refused_as_unrostered() -> Bool {
+  match admit_uncommitted_host(raw: "srv2", purpose: "a fixture effect" as NonEmptyStr) {
+    SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "not a DGX Spark unit")
+    SparkHostAdmitted { host: _ } => false
+  }
 }
 
 // THE SERVING GROUP IS WHERE THE COMMITMENT OF srv7 AND srv8 ACTUALLY COMES FROM, and that is worth
@@ -228,6 +333,7 @@ test fn srv7_and_srv8_are_committed_by_the_claimed_serving_group_and_by_nothing_
     && (match spark_host_standing_in(
           assignments: spark_cell_role_assignments,
           claimed_serving_hosts: spark_claimed_serving_group_hosts(),
+          arm_claims: spark_serving_arm_host_claims,
           held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
           host: operator_host_srv7,
         ) {
@@ -236,6 +342,7 @@ test fn srv7_and_srv8_are_committed_by_the_claimed_serving_group_and_by_nothing_
             (match c.head {
                MemberOfClaimedServingGroup => true
                CommittedToCellRole { role: _ } => false
+               OccupiedByServingArm { claim: _ } => false
                HoldsUndischargedRpcReservation => false
                CellRoleUndecidable { assignments: _ } => false
              })
@@ -247,12 +354,7 @@ test fn srv7_and_srv8_are_committed_by_the_claimed_serving_group_and_by_nothing_
 // nothing here authors a host list.
 test fn the_derivation_partitions_the_unit_population() -> Bool {
   let units = dgx_spark_reserved_identities()
-  let committed = spark_committed_host_standings_in(
-    units: units,
-    assignments: spark_cell_role_assignments,
-    claimed_serving_hosts: spark_claimed_serving_group_hosts(),
-    held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
-  )
+  let committed = spark_committed_standings_of(standings: spark_host_standings)
   length(spark_uncommitted_hosts) + length(committed) == length(units)
     && all(spark_uncommitted_hosts, h => contains_host(hosts: units, host: h))
 }
