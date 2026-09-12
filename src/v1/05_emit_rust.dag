@@ -244,7 +244,7 @@ import v1.compiler.emit {
   bind_operation_transport, transport_binding_refusal_fact,
   FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
-  FileChanPath, FileChanError, FileChanContent
+  FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
 }
 import v1.compiler.languages {
   wrap_shared_type,
@@ -3312,7 +3312,8 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 // Overlapping-permutation control:
 // `v1.compiler.compiler_tests_rust` `ct_overlapping_use_line_dedupe_permutation_test`.
 // THE V2 DETERMINISM GATE DOES NOT REACH THIS SEED SITE: `determinism_lens` sits in
-// `always_required_root_lenses` of `v2.compiler.compile` and classifies declared primitives; the
+// the CompileLensRoot partition of `required_compile_lens_roster` in `v2.compiler.compile`, and
+// classifies declared primitives; the
 // seed emitter is compiled by stage0. The terminal wall is that gate covering the emitter once it is
 // v2-compiled. SECOND FINDING, NOT A WIDENING: this site previously walked via `unique_strings`
 // (fold + membership map, never `map_keys`), so the lens would NOT have classified it
@@ -15391,7 +15392,7 @@ fn emit_file_call(verb: FileVerb, path_template: Node, result_fields: List<FileR
   let path_line = emit_file_path_line(path_template: path_template, source_indices: source_indices)
   let action = concat(file_channel_binding_prefix, file_verb_action_expr(verb: verb))
   let return_line = emit_file_return(result_fields: result_fields)
-  [path_line, file_empty_path_guard, action, return_line] |> join(separator: "\n")
+  [path_line, file_empty_path_guard, file_io_error_kind_fn, action, return_line] |> join(separator: "\n")
 }
 
 // One expression per verb, selected on the CLOSED coproduct the binding resolved.
@@ -15452,15 +15453,22 @@ fn emit_file_path_line(path_template: Node, source_indices: Map<String, NewlineI
 // process working directory, so the emitted realization carries the same refusal.
 data file_empty_path_guard: String = "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }"
 
-data file_channel_binding_prefix: String = "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = "
+// THE error_kind CHANNEL'S ONE PROJECTION IN THE EMITTED PROGRAM, bound once per file call and
+// reached by every verb's failure arm, so the six arms cannot disagree about the roster. It is the
+// emitted image of v1_interpreter io_error_kind_name, and its closed names are the ones
+// extdeps.filesystem.filesystem_io admit_filesystem_failure_kind admits -- a name outside that
+// roster reaches the consumer as FilesystemFailureKindUnrecognized, never as a guessed kind.
+data file_io_error_kind_fn: String = "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        _ => \"other\",\n    }\n    .to_string()\n};"
 
-data file_read_match_expr: String = "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64),\n};"
+data file_channel_binding_prefix: String = "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count, file_error_kind): (bool, String, String, i64, String) = "
 
-data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};"
+data file_read_match_expr: String = "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes, String::new()) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64, file_io_error_kind(&read_err)),\n};"
 
-data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes)\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
+data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64, String::new()),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64, file_io_error_kind(&delete_err)),\n};"
 
-data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};"
+data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64, \"other\".to_string()),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes, String::new())\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64, file_io_error_kind(&list_err)),\n};"
+
+data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};"
 
 // THE EMITTED REALIZATION PUBLISHES ONLY COMPLETE CONTENT, exactly as the interpreter helper does,
 // and this row exists because review 5089156132 on gunbc#10069 found the two had DIVERGED. The
@@ -15491,9 +15499,9 @@ data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;
 // policy -- a stringified error and a byte count -- and the realization deliberately does not
 // return it, because doing so would stringify std::io::Error inside the realization and discard
 // the host's structured failure before any consumer asked for that loss.
-data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};"
+data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
 
-data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};"
+data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64, file_io_error_kind(&owner_only_err)),\n    }\n};"
 
 // TOTAL BY CONSTRUCTION, and this is where the climb is visible. #8929 took the
 // channel as a String and needed a final arm for a key that reached the renderer
@@ -15513,6 +15521,7 @@ fn emit_file_channel_expr(channel: FileResultChannel, is_optional: Bool) -> Stri
     FileChanByteCount => "file_byte_count"
     FileChanPath      => "file_path.clone()"
     FileChanError     => "file_error.clone()"
+    FileChanErrorKind => "file_error_kind.clone()"
     FileChanContent   => "file_content.clone()"
   }
   if is_optional { concat("Some(", base, ")") } else { base }
@@ -17100,8 +17109,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                        prepare_infer_nanos += this_infer;\n",
       "                        prepare_samples.push(this_prepare);\n",
       "                        prepare_ok += 1;\n",
-      "                        eprintln!(\"[native-prepare] module=\{dotted\} nanos=\{this_prepare\} decls=\{\} outcome=accepted\", declarations.len());\n",
-      "                        eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=\{this_infer\} prepare_nanos=\{this_prepare\} outcome=accepted\");\n",
+      "                        eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=\{this_infer\} prepare_nanos=\{this_prepare\} decls=\{\} outcome=accepted\", declarations.len());\n",
       "                        for declaration in declarations {\n",
       "                            let eval_start = Instant::now();\n",
       "                            let observation = native_test_eval_one(prepared.clone(), declaration.clone());\n",
@@ -17120,8 +17128,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                        prepare_infer_nanos += this_infer;\n",
       "                        prepare_samples.push(this_prepare);\n",
       "                        prepare_refused += 1;\n",
-      "                        eprintln!(\"[native-prepare] module=\{dotted\} nanos=\{this_prepare\} decls=\{\} outcome=refused\", declarations.len());\n",
-      "                        eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=\{this_infer\} prepare_nanos=\{this_prepare\} outcome=infer_refused\");\n",
+      "                        eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=\{this_infer\} prepare_nanos=\{this_prepare\} decls=\{\} outcome=infer_refused\", declarations.len());\n",
       "                        let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n",
       "                        for declaration in declarations {\n",
       "                            let observation = NativeTestObservation {\n",
@@ -17145,8 +17152,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                prepare_resolve_nanos += this_resolve;\n",
       "                prepare_samples.push(this_prepare);\n",
       "                prepare_refused += 1;\n",
-      "                eprintln!(\"[native-prepare] module=\{dotted\} nanos=\{this_prepare\} decls=\{\} outcome=refused\", declarations.len());\n",
-      "                eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=0 prepare_nanos=\{this_prepare\} outcome=resolve_refused\");\n",
+      "                eprintln!(\"[native-prepare-split] module=\{dotted\} resolve_nanos=\{this_resolve\} infer_nanos=0 prepare_nanos=\{this_prepare\} decls=\{\} outcome=resolve_refused\", declarations.len());\n",
       "                let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n",
       "                for declaration in declarations {\n",
       "                    let observation = NativeTestObservation {\n",
@@ -17177,7 +17183,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        eval: nanosecond(native_cost_i64(eval_nanos)),\n",
       "    });\n",
       "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;\n",
-      "    let remainder_nanos = parent_span_nanos.saturating_sub(exclusive_sum);\n",
       "    let shared_nanos = load_nanos + context_nanos;\n",
       "    let shared_per_identity = if identities == 0 { 0 } else { shared_nanos / identities as u128 };\n",
       "    let eval_mean = if eval_samples.is_empty() { 0 } else { eval_nanos / eval_samples.len() as u128 };\n",
@@ -17190,14 +17195,14 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        nanosecond(native_cost_i64(parent_span_nanos)),\n",
       "        exclusive,\n",
       "        native_driver_cost_remainder_tolerance_nanos(),\n",
-      "    );\n",
+      "    );\n    let remainder_nanos = match accounting.as_ref() { NativeDriverCostAccounting::NativeDriverCostOverAttributed \{ .. \} => None, NativeDriverCostAccounting::NativeDriverCostReconciled \{ residual, .. \} | NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance \{ residual, .. \} => Some(nanosecond_count(residual.clone()) as u128) };\n",
       "    let verdict = match accounting.as_ref() {\n",
       "        NativeDriverCostAccounting::NativeDriverCostOverAttributed \{ .. \} => r#\"NativeDriverCostOverAttributed\"#,\n",
       "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance \{ .. \} => r#\"NativeDriverCostRemainderExceedsTolerance\"#,\n",
       "        NativeDriverCostAccounting::NativeDriverCostReconciled \{ .. \} => r#\"NativeDriverCostReconciled\"#,\n",
       "    };\n",
-      "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!(\{ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": tolerance_nanos, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": \{ \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos \}, \"sum_exclusive_nanos\": exclusive_sum, \"remainder_nanos\": remainder_nanos, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module, \"prepare_resolve_nanos\": prepare_resolve_nanos, \"prepare_infer_nanos\": prepare_infer_nanos \}));\n",
-      "}\n")
+      "    let mut partition = serde_json::json!(\{ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": tolerance_nanos, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": \{ \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos \}, \"sum_exclusive_nanos\": exclusive_sum, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module, \"prepare_resolve_nanos\": prepare_resolve_nanos, \"prepare_infer_nanos\": prepare_infer_nanos \});\n    if let Some(r) = remainder_nanos { partition[\"remainder_nanos\"] = serde_json::json!(r); }\n    eprintln!(\"[native-cost-partition] {}\", partition);\n",
+      "    match accounting.as_ref() { NativeDriverCostAccounting::NativeDriverCostOverAttributed \{ sum_exclusive, parent_span \} => { eprintln!(\"REFUSED: native driver cost OverAttributed \{\{ sum_exclusive_nanos: \{\}, parent_span_nanos: \{\} \}\}\", nanosecond_count(sum_exclusive.clone()) as u128, nanosecond_count(parent_span.clone()) as u128); std::process::exit(1); } NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance \{ residual, tolerance \} => { eprintln!(\"REFUSED: native driver cost RemainderExceedsTolerance \{\{ residual_nanos: \{\}, tolerance_nanos: \{\} \}\}\", nanosecond_count(residual.clone()) as u128, nanosecond_count(tolerance.clone()) as u128); std::process::exit(1); } NativeDriverCostAccounting::NativeDriverCostReconciled \{ .. \} => {} }\n}\n")
   }
 }
 

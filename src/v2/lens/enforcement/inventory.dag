@@ -400,7 +400,7 @@ fn standing_intent_applications_for_contract(
   facts: List<DeclFact>
 ) -> List<LensEnforcementApplication> {
   fold(intents, init: [], f: fn(acc, intent) {
-    if contract_answers(c: c, p: intent.property) { list_append(left: [standing_intent_application(intent: intent, c: c, receipts: receipts, facts: facts)], right: acc) } else { acc }
+    if contract_answers(c: c, p: intent.property) { list_append(left: acc, right: [standing_intent_application(intent: intent, c: c, receipts: receipts, facts: facts)]) } else { acc }
   })
 }
 
@@ -468,15 +468,15 @@ fn derive_lens_enforcement_inventory(
 ) -> List<LensEnforcementInventoryRow> {
   fold(contracts, init: [], f: fn(acc, c) {
     list_append(
-      left: [inventory_row_for_contract(
+      left: acc,
+      right: [inventory_row_for_contract(
         c: c,
         intents: intents,
         receipts: receipts,
         facts: facts,
         ci_entries: ci_entries,
         prepush_entries: prepush_entries
-      )],
-      right: acc
+      )]
     )
   })
 }
@@ -610,12 +610,12 @@ fn derive_witness_admission_inventory(
 ) -> List<WitnessAdmissionInventoryRow> {
   fold(exclusion_rows, init: [], f: fn(acc, row) {
     list_append(
-      left: [witness_admission_inventory_row_for_exclusion_row(
+      left: acc,
+      right: [witness_admission_inventory_row_for_exclusion_row(
         row: row,
         ci_entries: ci_entries,
         prepush_entries: prepush_entries
-      )],
-      right: acc
+      )]
     )
   })
 }
