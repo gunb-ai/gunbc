@@ -2,7 +2,15 @@ module extdeps.cpu.ampere_altra_memory_controller
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
-import std.measure { BitWidth, ByteSize, bit_width, bit_width_count, byte_size }
+import std.measure {
+  BitWidth,
+  ByteSize,
+  MegatransfersPerSecond,
+  bit_width,
+  bit_width_count,
+  byte_size,
+  megatransfers_per_second,
+}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.memory.types {
@@ -63,13 +71,14 @@ data extdeps_model_scope: ExternalModelScope = ampere_altra_memory_controller_mo
 // sequence, the RAS feature list beyond its existence, and the signal tables — an ingestion-scope
 // boundary, not a carriage refusal. The document is publicly reachable at the cited locator without
 // a login, so gunbc.upstream_document_carriage permits its facts; the proprietary page footer is a
-// recorded attribute that decides nothing. Also deliberately NOT carried: the maximum transfer rate
-// the section states as DDR4-3200. It has no consumer here, and the corpus has no carrier for it —
-// transfer rate is a bare Int named data_rate_mts at 30 references across 11 files, so authoring it
-// would mint a 31st instance of a representation that is already forked rather than ground the
-// fact. MT/s is not Hertz: DDR4-3200 transfers 3200 megatransfers per second on a 1600 MHz clock,
-// so the existing Hertz carrier is the wrong grounding and a correct one is a std.measure dimension
-// plus the migration of the whole existing population, at that grain and not this one.
+// recorded attribute that decides nothing.
+//
+// THE RATED RATE IS NOW CARRIED, because product.node_power_envelope 2DPC ceilings consume it.
+// Section 2.10 states "Up to DDR4-3200" and "Up to 2 DPC" as two bullets. It does not publish a
+// rank-dependent 2DPC derate table (no 2933, no 2400, no per-rank ceiling). That absence is the
+// load-bearing fact for a 32-slot fill: a transcribed 2R@2933 / 4R@2400 table is not this
+// document, and inventing one from JEDEC or an x86 population guide would be a differently-uncited
+// number. MT/s is MegatransfersPerSecond, not Hertz.
 
 data altra_memory_generation: DramGeneration = dram_generation_ddr4
 
@@ -79,6 +88,20 @@ data altra_memory_channel_width: BitWidth = bit_width(count: 72)
 // this as a coproduct rather than a count, which is the stronger shape: "up to 2 DPC" names an
 // admitted set of arrangements, and an Int lets a 3 be written that no authority admits.
 data altra_memory_max_dimms_per_channel_topology: DimmsPerChannelTopology = TwoDimmsPerChannel
+
+// Section 2.10, first feature bullet, verbatim grain: "Up to DDR4-3200".
+data altra_memory_max_data_rate: MegatransfersPerSecond = megatransfers_per_second(count: 3200)
+
+// A RANK-DEPENDENT 2DPC CEILING TABLE IS NOT IN THE HELD DATASHEET. Issue 1.50 section 2.10 was
+// read in full on 2026-09-10 (public locator, HTTP 200, 90 pages). The section lists maximum rate
+// and maximum DPC as independent capabilities. No table, figure, or running-text sentence assigns
+// a lower MT/s to dual-rank or quad-rank 2DPC. The same absence holds for the held Altra Max
+// datasheet issue 1.15 at the matching section. WHAT THIS DOES NOT ANSWER: Ampere Customer Connect
+// AVL issue 1.15 and the gated Altra PCB Layout Guidelines were not readable from this session
+// (AVL locator HTTP 403). Those remain the next documents to search, not a licence to keep the
+// uncited 2933/2400 transcription. The empty 2DPC ceiling table in product.node_power_envelope
+// is the consuming reading of this absence as UNRESOLVED for a 2DPC effective rate, not a
+// default of this maximum; a second one-arm type here would be a decoration.
 
 // Four terabytes, as the datasheet states it for the whole processor rather than per channel.
 data altra_memory_max_capacity: ByteSize = byte_size(count: 4398046511104)

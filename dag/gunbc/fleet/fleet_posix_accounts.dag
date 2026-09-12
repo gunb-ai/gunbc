@@ -123,6 +123,21 @@ data fleet_posix_operator_user: PosixUser = PosixUser {
   shell: LoginShellUnobserved,
 }
 
+// THE BOOTSTRAP PRINCIPAL'S LOGIN, DERIVED AND NAMED ONCE. It was `data spark_operator_bootstrap_login:
+// String = "briansrls"` in gunbc.spark.managed_access_bootstrap -- a second literal for the account
+// declared three lines above, which is the nickname §3 calls a correctness concern rather than a style
+// one. It became load-bearing when gunbc.fleet_bootstrap_principal_session started deriving the SSH
+// session from the principal: with two literals, a divergence would silently resolve every bootstrap
+// leg to the key session and refuse, which is the exact defect that derivation exists to make
+// unauthorable. So this is the one name, and the one place the spelling comes from.
+//
+// It lives here rather than in the session module because the login is a fact of the ACCOUNT MODEL and
+// the session is a consequence of it; putting it with the session would make the account model read its
+// own member's name back from a consumer.
+fn fleet_bootstrap_principal_login() -> NonEmptyStr {
+  fleet_posix_operator_user.name
+}
+
 data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   name: "ghrunner",
   uid: 1001,
@@ -784,7 +799,7 @@ fn ground_posix_principal(
       PrincipalAllocationConflicted { occurrence: occ, first: f, more: m }
     AccountAllocated { allocation: a } =>
       match observation {
-        Absent => PrincipalUnobserved
+        Absent => PrincipalUnobserved { allocation: a }
         Present { value: o } =>
           if o.occurrence.host != a.occurrence.host {
             PrincipalDrifted {

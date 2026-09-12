@@ -103,6 +103,10 @@ import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential,
 }
 import gunbc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
+import gunbc.host_cli_dependency {
+  first_absent_password_session_host_cli_dependency,
+  host_dependency_absent_wire,
+}
 import gunbc.bmc_converge {
   BmcFanPolicyApplyPlan,
   bmc_fan_policy_classification,
@@ -188,7 +192,6 @@ import std.upsert_decision {
   Noop,
   Refuse,
 }
-import extdeps.shell
 
 data bmc_fan_atomic_transaction_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: replace the phase-partial mutation refusal when one atomically published content-addressed backup manifest binds manifest identity, exact target and stable BMC identity, firmware, config path, before/backup digests, and creation generation; restore proves the manifest identity, restored-byte digest, controller readback, and bounded thermal/tach monitoring receipt. Until then the live actuator is observation-only and cannot mutate.")
 
@@ -1670,17 +1673,37 @@ fn bmc_fan_converge_with_credential(
 // hold and this gate supplies only the first. BmcFanRollbackPrevious is deliberately NOT gated:
 // restoring a previously admitted configuration is a recovery path, and a catalog gap must never
 // strand a host on a policy it cannot roll back off.
+// THE HOST PREREQUISITE THIS FUNCTION ASKS FIRST is asked OF THE ENROLLED ROSTER rather than of a
+// string literal. The body opened with `shell.PosixCommandV.Check(command: "sshpass")` against a
+// hand-spelled word -- a second authority for a fact gunbc.host_cli_dependency now owns (§3), and
+// one that could not notice the binary being renamed, re-sourced, or joined by a sibling
+// requirement.
+//
+// IT SHARES THE PASSWORD-SESSION ROSTER rather than minting a BMC-specific one, because the
+// population is the same fact and not merely a similar one: this leg reaches the BMC through
+// extdeps.bmc.openbmc_password_ssh_transport, whose every operation's argv begins `sshpass -d 0
+// ssh`, so a host that cannot run a fleet password leg cannot run this one either and for exactly
+// the same reason. A second roster here would be the meaning fork
+// password_session_host_cli_requirements' own annotation forbids -- one obligation wearing two
+// names -- and would silently skip any requirement later added to the shared row.
 func bmc_fan_run(
   target: BmcFanConvergeTarget,
   action: BmcFanRequestedAction,
 ) -> ProcessExit
   uses net: Network
 {
-  let sshpass = shell.PosixCommandV.Check(command: "sshpass")
-  if !sshpass.exists {
-    return exit_failure(
-      reason: "BMC fan convergence needs sshpass (password is fed through fd 0, never argv)",
-    )
+  match first_absent_password_session_host_cli_dependency() {
+    Present { value: absence } =>
+      return exit_failure(
+        reason: join([
+          "BMC fan convergence reaches the BMC over a password session, which feeds the password ",
+          "through fd 0 and therefore executes through ",
+          absence.tool as String,
+          "; it is not on PATH on this host, so nothing was converged: ",
+          host_dependency_absent_wire(tool: absence.tool, hint: absence.hint),
+        ], "") as String,
+      )
+    Absent => {}
   }
   match fetch_secret_ref_credential(
     secret_ref: target.credential_ref,

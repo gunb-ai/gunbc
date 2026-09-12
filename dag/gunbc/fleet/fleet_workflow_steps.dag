@@ -453,6 +453,14 @@ STEADY STATE IS SECONDS, NOT MINUTES. A host that already holds the base artifac
 
 DISSOLVE-ON: the first successful guest_image_converge on a cold host produces the measurement this envelope stands in for -- replace the number with that receipt, dated and cited to its run id, per the rule stated one constant down that raising a budget needs a measurement rather than a round number."
 
+// Runner host file observe/converge step budget, raised from the shared aux 5m for a measured reason:
+// the step is one `gunbc run` whose closure resolve dominates, and the fleet plan step -- the nearest
+// resolve of comparable size -- took 3m55s to 4m18s on runs of 2026-09-04 against that same 5m, so the
+// aux budget would make a slow resolve read as a converge failure. The remote legs are a dozen short
+// ssh execs. Its own constant for the reason the Spark envelope records: the aux value is multiplied by
+// the step count in the fleet job backstop.
+data gunbc_ci_runner_host_file_step_timeout_minutes: Duration = 15
+
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
 // v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate
@@ -615,7 +623,10 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // mode (RLM-2a) is, like dashboard_deploy, its OWN job (fleet_converge_workflow
 // fleet_converge_rlm_launch_deployment_receipt_job) with its own backstop
 // (gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout_minutes), so it does not move this
-// figure either.
+// figure either. The runner_host_file_observe and runner_host_file_converge modes DO add steps to
+// this job -- one gated run step each plus one shared receipt upload -- and still do not move the
+// bound: a dispatch of either runs one step at gunbc_ci_runner_host_file_step_timeout_minutes and one
+// transfer-tier upload, which is below the spark_grants branch that sets the worst case.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }
