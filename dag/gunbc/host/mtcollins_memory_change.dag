@@ -3,7 +3,7 @@ module gunbc.mtcollins_memory_change
 import std.types { Bool, String, NonEmptyStr, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
-import std.goal_assessment { ObservationRefused }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs,
@@ -21,7 +21,7 @@ import gunbc.memory_configuration {
   MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, RetainedMemoryUnit, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
 }
-import gunbc.memory_observation { MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryEvaluationEvidence, memory_mixture_finding }
+import gunbc.memory_observation { MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population }
 import gunbc.memory_change_report { MemoryChangeExplanation, explain_memory_change }
 import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -103,6 +103,10 @@ fn mtcollins_training_collector(payload: String) -> MemoryCollectorReceipt {
       MemoryPrintedPartBinding { part: mtcollins_ads_part, printed: "36ADS2G72PZ-2G1A1" },
       MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK" },
     ],
+    printed_positions: map(mtcollins_witnessed_configuration().population, dimm => MemoryPrintedPositionBinding {
+      position: dimm.position, printed: concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":") as NonEmptyStr,
+    }),
+    expected_payload_token: "DRAM populated DIMMs:",
     session: "mtcollins1 SOL 2026-09-12T02:37:23Z",
     expected_stimulus: "2026-09-12T02:37:23Z failing boot",
     observed_stimulus: Present { value: "2026-09-12T02:37:23Z failing boot" },
@@ -112,9 +116,46 @@ fn mtcollins_training_collector(payload: String) -> MemoryCollectorReceipt {
   }
 }
 
+// Recognizer for this witnessed attempt only. The transcript tokens, roster,
+// firmware and compared pair are observing facts, not universal firmware rules.
+fn mtcollins_training_mixture_finding(
+  attempt: NonEmptyStr,
+  configuration: MemoryConfiguration,
+  collector: MemoryCollectorReceipt,
+) -> ObservationAttempt<MemoryMixtureFinding, NonEmptyStr> {
+  match memory_collector_refusal(c: collector) {
+    Present { value: cause } => ObservationRefused { cause: cause }
+    Absent =>
+      if count(configuration.population) != count(concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs)) {
+        ObservationRefused { cause: "bounded Mt. Collins attempt requires one populated position per documented channel pair across both sockets" }
+      } else if !memory_capture_covers_population(configuration: configuration, collector: collector) {
+        ObservationRefused { cause: "positioned inventory incomplete or printed-part catalog binding missing or ambiguous" }
+      } else if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
+        || !contains(collector.payload, "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]")
+        || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
+        || !contains(collector.payload, "ERROR:   SK[0]: 00110010")
+        || configuration.platform.firmware != "210525"
+      {
+        ObservationRefused { cause: "transcript does not establish the bounded socket-0 00/91 firmware finding" }
+      } else {
+        let positions = filter(configuration.population, dimm => dimm.position.socket == 0 && dimm.position.controller == 4 && dimm.position.slot == 0)
+        if count(positions) != 1 {
+          ObservationRefused { cause: "observed mismatch coordinate does not identify one DIMM in the captured configuration" }
+        } else { match positions.first() {
+          Absent => ObservationRefused { cause: "observed mismatch coordinate is absent" }
+          Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
+            attempt: attempt, configuration: configuration, collector: collector,
+            comparison_socket: 0, mismatch_position: dimm.position,
+            expected_byte: 145, actual_byte: 0,
+          } }
+        } }
+      }
+  }
+}
+
 fn mtcollins_memory_evidence_from_capture(payload: String) -> MemoryEvaluationEvidence {
   MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
-    mixture: memory_mixture_finding(attempt: "2026-09-12T02:37:23Z", configuration: mtcollins_witnessed_configuration(),
+    mixture: mtcollins_training_mixture_finding(attempt: "2026-09-12T02:37:23Z", configuration: mtcollins_witnessed_configuration(),
       collector: mtcollins_training_collector(payload: payload)),
     qualifications: [], training_failures: [],
   }

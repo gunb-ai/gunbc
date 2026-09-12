@@ -12,8 +12,8 @@ import gunbc.memory_configuration {
   memory_operating_obligations,
 }
 import gunbc.memory_observation {
-  MemoryEvaluationEvidence, MemoryCollectorReceipt, ConfigurationQualificationReceipt,
-  memory_mixture_finding, memory_collector_refusal,
+  MemoryEvaluationEvidence, MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, ConfigurationQualificationReceipt,
+  memory_collector_refusal, memory_capture_covers_population,
 }
 import gunbc.memory_configuration_evaluation {
   MemoryConfigurationAssessment, MemoryPackageConflict, MemoryProcurementCondition, MemoryTrainingScreenUnresolved,
@@ -24,7 +24,7 @@ import gunbc.memory_change_evaluation {
   evaluate_memory_change, memory_change_admission_refusal, memory_configuration_admission_refusal,
 }
 import gunbc.mtcollins_memory_change {
-  mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_memory_variants, mtcollins_memory_evidence_from_capture,
+  mtcollins_training_mixture_finding, mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_memory_variants, mtcollins_memory_evidence_from_capture,
   mtcollins_training_collector, mtcollins_memory_position, mtcollins_ads_part,
 }
 import product.build_fulfillment {
@@ -208,14 +208,14 @@ data memory_test_short_capture_seconds: Seconds = 3
 
 fn memory_test_broken_collector(failed: Bool) -> MemoryCollectorReceipt {
   let c = mtcollins_training_collector(payload: memory_test_payload())
-  MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, session: c.session, expected_stimulus: c.expected_stimulus,
+  MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session, expected_stimulus: c.expected_stimulus,
     observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
     collector_start: c.collector_start, collector_end: if failed { c.collector_end } else { memory_test_short_capture_seconds },
     exit_code: if failed { 1 } else { 0 }, payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
 }
 
 test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool {
-  fold([true, false], init: true, f: (ok, failed) => ok && match memory_mixture_finding(
+  fold([true, false], init: true, f: (ok, failed) => ok && match mtcollins_training_mixture_finding(
     attempt: "control", configuration: mtcollins_witnessed_configuration(), collector: memory_test_broken_collector(failed: failed)) {
       ObservationRefused { cause: _ } => true
       ObservationEstablished { observed: _ } => false
@@ -266,11 +266,11 @@ test fn w_unknown_register_vendor_does_not_prevent_package_comparison() -> Bool 
 
 test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
   let c = mtcollins_training_collector(payload: memory_test_payload())
-  let repeated = MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, session: c.session, expected_stimulus: c.expected_stimulus,
+  let repeated = MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session, expected_stimulus: c.expected_stimulus,
     observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
     collector_start: c.collector_start, collector_end: c.collector_end, exit_code: c.exit_code,
     payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: Present { value: c.capture_digest } }
-  let incomplete = MemoryCollectorReceipt { source: repeated.source, printed_parts: repeated.printed_parts,
+  let incomplete = MemoryCollectorReceipt { source: repeated.source, printed_parts: repeated.printed_parts, printed_positions: repeated.printed_positions, expected_payload_token: repeated.expected_payload_token,
     session: repeated.session, expected_stimulus: repeated.expected_stimulus, observed_stimulus: repeated.observed_stimulus,
     required_start: repeated.required_start, required_end: repeated.required_end,
     collector_start: repeated.collector_start, collector_end: repeated.collector_start, exit_code: repeated.exit_code,
@@ -279,7 +279,7 @@ test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
     Present { value: cause } => contains(cause as String, "repeated capture digest") && contains(cause as String, "required stimulus interval")
     Absent => false
   }
-  explained && match memory_mixture_finding(attempt: "control",
+  explained && match mtcollins_training_mixture_finding(attempt: "control",
     configuration: mtcollins_witnessed_configuration(), collector: repeated) {
       ObservationEstablished { observed: _ } => true
       ObservationRefused { cause: _ } => false
@@ -460,12 +460,12 @@ test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() 
 
 test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool {
   let c = mtcollins_training_collector(payload: memory_test_payload())
-  let unbound = MemoryCollectorReceipt { source: c.source, printed_parts: [], session: c.session,
+  let unbound = MemoryCollectorReceipt { source: c.source, printed_parts: [], printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session,
     expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
     required_start: c.required_start, required_end: c.required_end, collector_start: c.collector_start,
     collector_end: c.collector_end, exit_code: c.exit_code, payload: c.payload,
     capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
-  match memory_mixture_finding(attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(), collector: unbound) {
+  match mtcollins_training_mixture_finding(attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(), collector: unbound) {
     ObservationRefused { cause } => contains(cause as String, "binding")
     ObservationEstablished { observed: _ } => false
   }
@@ -536,4 +536,32 @@ test fn w_power_frontier_retirement_is_bound_to_existing_carrier() -> Bool {
       dissolution_status(condition: frontier.dissolution, present_decls: [target]) == DissolutionPending
         && dissolution_status(condition: frontier.dissolution, present_decls: []) == DissolutionFired
   }
+}
+
+// The generic collector accepts an explicitly bound alternative format. The
+// Mt. Collins recognizer still refuses it as evidence of that particular boot.
+test fn w_collector_format_belongs_to_observing_producer() -> Bool {
+  let configuration = mtcollins_witnessed_configuration()
+  let c = mtcollins_training_collector(payload: memory_test_payload())
+  let positions = map(configuration.population, dimm => MemoryPrintedPositionBinding {
+    position: dimm.position, printed: concat("connector ", dimm.position.connector as String, ":") as NonEmptyStr,
+  })
+  let parts = map(c.printed_parts, part => MemoryPrintedPartBinding { part: part.part, printed: "controlled module" })
+  let payload = concat("controlled inventory\n", join(map(positions, p => concat(p.printed as String, " controlled module")), "\n"))
+  fold([true, false], init: true, f: (ok, complete) => {
+    let collector = MemoryCollectorReceipt {
+      source: c.source, printed_parts: parts, printed_positions: if complete { positions } else { [] },
+      expected_payload_token: "controlled inventory", session: c.session,
+      expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
+      required_start: c.required_start, required_end: c.required_end,
+      collector_start: c.collector_start, collector_end: c.collector_end,
+      exit_code: c.exit_code, payload: payload, capture_digest: "controlled alternative format", previous_capture_digest: none,
+    }
+    ok && match memory_collector_refusal(c: collector) { Absent => true, Present { value: _ } => false }
+      && memory_capture_covers_population(configuration: configuration, collector: collector) == complete
+      && match mtcollins_training_mixture_finding(attempt: "alternate-format control", configuration: configuration, collector: collector) {
+        ObservationRefused { cause: _ } => true
+        ObservationEstablished { observed: _ } => false
+      }
+  })
 }

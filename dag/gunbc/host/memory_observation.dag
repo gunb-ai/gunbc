@@ -3,11 +3,8 @@ module gunbc.memory_observation
 import std.types { Bool, Int, Seconds, List, NonEmptyStr, String }
 import std.integer { UInt8 }
 import std.nat { Nat }
-import extdeps.ampere.mt_collins_product_brief.memory_population {
-  mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs,
-}
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.goal_assessment { ObservationAttempt }
 import gunbc.memory_configuration { MemoryConfiguration, MemoryPosition }
 import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
 
@@ -15,6 +12,13 @@ import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFai
 // This is observing evidence, not a vendor promise about output formatting.
 type MemoryPrintedPartBinding {
   part: DeclarationRef
+  printed: NonEmptyStr
+}
+
+// Coordinate tokens are supplied by the capture's observing producer. The
+// generic inventory join does not define any firmware's print convention.
+type MemoryPrintedPositionBinding {
+  position: MemoryPosition
   printed: NonEmptyStr
 }
 
@@ -26,6 +30,8 @@ type MemoryPrintedPartBinding {
 type MemoryCollectorReceipt {
   source: DeclarationRef
   printed_parts: List<MemoryPrintedPartBinding>
+  printed_positions: List<MemoryPrintedPositionBinding>
+  expected_payload_token: NonEmptyStr
   session: NonEmptyStr
   expected_stimulus: NonEmptyStr
   observed_stimulus: NonEmptyStr?
@@ -48,7 +54,7 @@ fn memory_collector_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
       Absent => Present { value: "expected stimulus was not observed in this session" as NonEmptyStr }
       Present { value: stimulus } =>
         if stimulus != c.expected_stimulus { Present { value: "observed stimulus belongs to another attempt" as NonEmptyStr } }
-        else if !contains(c.payload, "DRAM populated DIMMs:") {
+        else if !contains(c.payload, c.expected_payload_token as String) {
           Present { value: "no positive host memory payload; session banner is not host observation" as NonEmptyStr }
         } else { none }
     }
@@ -73,10 +79,10 @@ fn memory_capture_repetition_suspected(c: MemoryCollectorReceipt) -> Bool {
 // partial table cannot bind this finding to a whole captured configuration.
 fn memory_capture_covers_population(configuration: MemoryConfiguration, collector: MemoryCollectorReceipt) -> Bool {
   count(configuration.population) > 0 && fold(configuration.population, init: true, f: (covered, dimm) => {
-    let coordinate = concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":")
+    let coordinates = filter(collector.printed_positions, binding => binding.position == dimm.position)
     let bindings = filter(collector.printed_parts, binding => declaration_ref_eq(a: binding.part, b: dimm.part))
-    covered && count(bindings) == 1 && any(bindings, binding =>
-      any(split(s: collector.payload, delimiter: "\n"), line => contains(line, coordinate) && contains(line, binding.printed as String)))
+    covered && count(coordinates) == 1 && count(bindings) == 1 && any(coordinates, coordinate => any(bindings, binding =>
+      any(split(s: collector.payload, delimiter: "\n"), line => contains(line, coordinate.printed as String) && contains(line, binding.printed as String))))
   })
 }
 
@@ -91,41 +97,6 @@ type MemoryMixtureFinding {
   mismatch_position: MemoryPosition
   expected_byte: UInt8
   actual_byte: UInt8
-}
-
-fn memory_mixture_finding(
-  attempt: NonEmptyStr,
-  configuration: MemoryConfiguration,
-  collector: MemoryCollectorReceipt,
-) -> ObservationAttempt<MemoryMixtureFinding, NonEmptyStr> {
-  match memory_collector_refusal(c: collector) {
-    Present { value: cause } => ObservationRefused { cause: cause }
-    Absent =>
-      if count(configuration.population) != count(concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs)) {
-        ObservationRefused { cause: "bounded Mt. Collins attempt requires one populated position per documented channel pair across both sockets" }
-      } else if !memory_capture_covers_population(configuration: configuration, collector: collector) {
-        ObservationRefused { cause: "positioned inventory incomplete or printed-part catalog binding missing or ambiguous" }
-      } else if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
-        || !contains(collector.payload, "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]")
-        || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
-        || !contains(collector.payload, "ERROR:   SK[0]: 00110010")
-        || configuration.platform.firmware != "210525"
-      {
-        ObservationRefused { cause: "transcript does not establish the bounded socket-0 00/91 firmware finding" }
-      } else {
-        let positions = filter(configuration.population, dimm => dimm.position.socket == 0 && dimm.position.controller == 4 && dimm.position.slot == 0)
-        if count(positions) != 1 {
-          ObservationRefused { cause: "observed mismatch coordinate does not identify one DIMM in the captured configuration" }
-        } else { match positions.first() {
-          Absent => ObservationRefused { cause: "observed mismatch coordinate is absent" }
-          Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
-            attempt: attempt, configuration: configuration, collector: collector,
-            comparison_socket: 0, mismatch_position: dimm.position,
-            expected_byte: 145, actual_byte: 0,
-          } }
-        } }
-      }
-  }
 }
 
 // Standings remain four independent facts. This binding makes a receipt about
