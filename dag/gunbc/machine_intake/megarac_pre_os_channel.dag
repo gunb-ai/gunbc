@@ -1,6 +1,6 @@
 module gunbc.machine_intake_megarac_pre_os_channel
 
-import std.types { Int, NonEmptyStr, Duration }
+import std.types { NonEmptyStr, Duration }
 import gunbc.machine_intake_pre_os_observation_capabilities {
   CollectorStillRunning,
   PreOsObservationCapabilities,
@@ -22,8 +22,6 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
 data megarac_sol_host_payload_positive_control_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt" as NonEmptyStr
 
 data megarac_sol_host_payload_positive_control_sha256: NonEmptyStr = "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c" as NonEmptyStr
-
-data megarac_sol_host_payload_positive_control_byte_count: Int = 3764
 
 data megarac_sol_collector_terminate_deadline_seconds: Duration = 645
 

@@ -234,10 +234,6 @@ data megarac_spx_ui_surface_path: NonEmptyStr = "artifacts/bmc/mtcollins1-megara
 
 data megarac_spx_ui_surface_sha256: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd" as NonEmptyStr
 
-data megarac_spx_ui_source_min_js_sha256: NonEmptyStr = "8b5ef64f5bf1df88a0f497887540d198a677e7a6f63f1bc8fc9bbc79e4f54fcd" as NonEmptyStr
-
-data megarac_spx_ui_endpoint_count: Int = 255
-
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route.
 type MegaRacRemoteMediaRole
@@ -427,23 +423,6 @@ fn megarac_gen_id_as_sender(standing: MegaRacGenIdStanding) -> MegaRacGenIdIsNot
 data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOemEmptySelData
 
 data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
-
-// CHANNELS ON THE SERVED UI. Presence of an endpoint is not delivery of host bytes. Delivery is
-// a collector coverage observation (gunbc.machine_intake_pre_os_observation_capabilities); this
-// module does not inhabit a present-but-silent host standing.
-
-type MegaRacObservationChannel
-  = MegaRacSolSessionChannel
-  | MegaRacKvmFramebufferChannel
-  | MegaRacFramebufferRecorderChannel
-  | MegaRacSolRecorderChannel
-
-data megarac_observation_channels: List<MegaRacObservationChannel> = [
-  MegaRacSolSessionChannel,
-  MegaRacKvmFramebufferChannel,
-  MegaRacFramebufferRecorderChannel,
-  MegaRacSolRecorderChannel,
-]
 
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
 // paths and contract notes and carries no transport, so nothing in this repository could invoke the
