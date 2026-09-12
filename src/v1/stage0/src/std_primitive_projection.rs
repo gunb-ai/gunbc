@@ -110,19 +110,19 @@ pub fn primitive_map_get() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_empty_map() -> Rc<PrimitiveIdentity> {
+pub fn primitive_lookup() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("empty_map".to_string())
+            primitive_identity_slug("lookup".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_lookup() -> Rc<PrimitiveIdentity> {
+pub fn primitive_empty_map() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("lookup".to_string())
+            primitive_identity_slug("empty_map".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
