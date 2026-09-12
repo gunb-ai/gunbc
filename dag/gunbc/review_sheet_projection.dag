@@ -20,6 +20,7 @@ type ReviewColumnKind
   = DerivedField { source_field: NonEmptyStr }
   | OperatorEntered
   | ListingStanding
+  | DerivedErasureMark
 
 type ReviewColumn {
   name: NonEmptyStr
@@ -47,9 +48,10 @@ type ReviewSheetProjection {
 }
 
 // Derived payload erasure is caller-supplied, never implicit in ListingGone: a listing
-// ending and a person exercising a right are unrelated facts. It writes DerivedField only,
-// never OperatorEntered, never a silent row drop; standing stays ListingGone. Located
-// writes or a located refuse; quiet success is refused. Judgement has no deletion arm.
+// ending and a person exercising a right are unrelated facts. It writes DerivedField only
+// plus the DerivedErasureMark cell, never OperatorEntered, never a silent row drop;
+// standing stays ListingGone on the apply pass. Located writes or a located refuse;
+// quiet success is refused. Judgement has no deletion arm.
 // identity_column in the intended binding is an eBay item id: a stub that keeps that key
 // still retains eBay data under a broad MAD reading. Identity split is deferred until
 // exemption wording puts the item id in scope.
@@ -57,11 +59,9 @@ type ReviewSheetProjection {
 // they wrote buy, and a labelled stub does not carry that. The buyer loop still has
 // identity plus the operator cell and can refuse to re-ask. We gave something up; we did
 // not never have it.
-// Durability is the caller re-supplying DerivedPayloadErasure each pass. ListingGone
-// plus empty DerivedField cells is not a record: a gone listing whose derived payload
-// was legitimately empty looks the same. MAD against restore holds only while the
-// erasure list still names the listing (still-projected refuse). An empty erasure list
-// does not infer a prior erasure.
+// Durability is the DerivedErasureMark cell written on the authorized pass. A later pass
+// that would restore derived payload reads that mark, not empty DerivedField cells and
+// not a comment telling the caller to re-supply the list.
 type DerivedPayloadErasure {
   listing_id: NonEmptyStr
 }
@@ -172,6 +172,47 @@ fn read_listing_standing(cell: String) -> ListingStandingRead {
       } else {
         StandingForeign { raw: cell }
       }
+    }
+  }
+}
+
+type DerivedErasureMarkState
+  = ErasureUnmarked
+  | ErasureApplied
+
+type DerivedErasureMarkRead
+  = ErasureMarkKnown { state: DerivedErasureMarkState }
+  | ErasureMarkBlank
+  | ErasureMarkForeign { raw: String }
+
+fn derived_erasure_mark_label(state: DerivedErasureMarkState) -> String {
+  match state {
+    ErasureUnmarked => ""
+    ErasureApplied => "ErasureApplied"
+  }
+}
+
+fn derived_erasure_mark_eq(a: DerivedErasureMarkState, b: DerivedErasureMarkState) -> Bool {
+  match a {
+    ErasureUnmarked => match b {
+      ErasureUnmarked => true
+      ErasureApplied => false
+    }
+    ErasureApplied => match b {
+      ErasureApplied => true
+      ErasureUnmarked => false
+    }
+  }
+}
+
+fn read_derived_erasure_mark(cell: String) -> DerivedErasureMarkRead {
+  if cell == "" {
+    ErasureMarkBlank
+  } else {
+    if cell == derived_erasure_mark_label(state: ErasureApplied) {
+      ErasureMarkKnown { state: ErasureApplied }
+    } else {
+      ErasureMarkForeign { raw: cell }
     }
   }
 }
@@ -360,6 +401,16 @@ fn column_is_listing_standing(column: ReviewColumn) -> Bool {
     ListingStanding => true
     OperatorEntered => false
     DerivedField { source_field: _ } => false
+    DerivedErasureMark => false
+  }
+}
+
+fn column_is_erasure_mark(column: ReviewColumn) -> Bool {
+  match column.kind {
+    DerivedErasureMark => true
+    ListingStanding => false
+    OperatorEntered => false
+    DerivedField { source_field: _ } => false
   }
 }
 
@@ -374,6 +425,38 @@ fn read_row_listing_standing(
       match header_by_name.lookup(col.name as String) {
         Absent => none
         Present { value: idx } => Present { value: read_listing_standing(cell: cell_at(cells: row.cells, index: idx)) }
+      }
+  }
+}
+
+fn read_row_erasure_mark(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+) -> DerivedErasureMarkRead? {
+  match schema.columns |> filter(c => column_is_erasure_mark(column: c)) |> first {
+    Absent => none
+    Present { value: col } =>
+      match header_by_name.lookup(col.name as String) {
+        Absent => none
+        Present { value: idx } => Present { value: read_derived_erasure_mark(cell: cell_at(cells: row.cells, index: idx)) }
+      }
+  }
+}
+
+fn row_erasure_mark_is_applied(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+) -> Bool {
+  match read_row_erasure_mark(schema: schema, header_by_name: header_by_name, row: row) {
+    Absent => false
+    Present { value: mark_read } =>
+      match mark_read {
+        ErasureMarkKnown { state: mark_state } =>
+          derived_erasure_mark_eq(a: mark_state, b: ErasureApplied)
+        ErasureMarkBlank => false
+        ErasureMarkForeign { raw: _ } => false
       }
   }
 }
@@ -398,12 +481,24 @@ fn erasure_has_no_derived_field_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
   concat("derived payload erasure has no DerivedField column listing=", listing_id as String) as NonEmptyStr
 }
 
+fn erasure_has_no_erasure_mark_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure has no DerivedErasureMark column listing=", listing_id as String) as NonEmptyStr
+}
+
 fn schema_has_derived_field(schema: ReviewSheetSchema) -> Bool {
   match schema.columns |> filter(c => match c.kind {
     DerivedField { source_field: _ } => true
     OperatorEntered => false
     ListingStanding => false
+    DerivedErasureMark => false
   }) |> first {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn schema_has_erasure_mark(schema: ReviewSheetSchema) -> Bool {
+  match schema.columns |> filter(c => column_is_erasure_mark(column: c)) |> first {
     Present { value: _ } => true
     Absent => false
   }
@@ -441,7 +536,11 @@ fn authorize_derived_payload_erasure(
             StandingKnown { state: standing_state } =>
               if listing_standing_eq(a: standing_state, b: StandingGone) {
                 if schema_has_derived_field(schema: schema) {
-                  ErasureAuthorized
+                  if schema_has_erasure_mark(schema: schema) {
+                    ErasureAuthorized
+                  } else {
+                    ErasureRefused { reason: erasure_has_no_erasure_mark_reason(listing_id: listing_id) }
+                  }
                 } else {
                   ErasureRefused { reason: erasure_has_no_derived_field_reason(listing_id: listing_id) }
                 }
@@ -501,6 +600,7 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
       DerivedField { source_field: _ } => true
       OperatorEntered => false
       ListingStanding => false
+      DerivedErasureMark => false
     })
     |> filter(c => match derived.lookup(c.name as String) {
       Absent => true
@@ -552,7 +652,7 @@ fn write_plan_touches_column(plan: ReviewSheetWritePlan, column: NonEmptyStr) ->
 }
 
 fn operator_column_names(schema: ReviewSheetSchema) -> List<NonEmptyStr> {
-  schema.columns |> filter(c => match c.kind { OperatorEntered => true  DerivedField { source_field: _ } => false  ListingStanding => false }) |> map(c => c.name)
+  schema.columns |> filter(c => match c.kind { OperatorEntered => true  DerivedField { source_field: _ } => false  ListingStanding => false  DerivedErasureMark => false }) |> map(c => c.name)
 }
 
 fn write_plan_covers_column_letter(plan: ReviewSheetWritePlan, letter: String) -> Bool {
@@ -605,6 +705,41 @@ fn decide_derived_erasure_cell(observed: String) -> CellDecision {
     CellSkip
   } else {
     CellWrite { value: "" }
+  }
+}
+
+fn decide_erasure_mark_cell(observed: String, desired: DerivedErasureMarkState) -> CellDecision {
+  match read_derived_erasure_mark(cell: observed) {
+    ErasureMarkForeign { raw: _ } => CellConflict
+    ErasureMarkBlank =>
+      if derived_erasure_mark_eq(a: desired, b: ErasureUnmarked) {
+        CellSkip
+      } else {
+        CellWrite { value: derived_erasure_mark_label(state: desired) }
+      }
+    ErasureMarkKnown { state: observed_state } =>
+      if derived_erasure_mark_eq(a: observed_state, b: desired) {
+        CellSkip
+      } else {
+        CellWrite { value: derived_erasure_mark_label(state: desired) }
+      }
+  }
+}
+
+fn desired_erasure_mark(erase_derived: Bool, observed: String) -> DerivedErasureMarkState {
+  if erase_derived {
+    ErasureApplied
+  } else {
+    match read_derived_erasure_mark(cell: observed) {
+      ErasureMarkKnown { state: mark_state } =>
+        if derived_erasure_mark_eq(a: mark_state, b: ErasureApplied) {
+          ErasureApplied
+        } else {
+          ErasureUnmarked
+        }
+      ErasureMarkBlank => ErasureUnmarked
+      ErasureMarkForeign { raw: _ } => ErasureUnmarked
+    }
   }
 }
 
@@ -746,7 +881,11 @@ fn classify_existing_row_after_erasure_auth(
         listing_id: listing_id,
         in_projection: in_projection,
         derived: derived,
-        erase_derived: false,
+        erase_derived: row_erasure_mark_is_applied(
+          schema: schema,
+          header_by_name: header_by_name,
+          row: row,
+        ),
         plan: plan,
       )
   }
@@ -786,6 +925,18 @@ fn fold_columns_for_row(
                   ),
                 )
               OperatorEntered => ReviewSheetNeedsWrite { plan: p }
+              DerivedErasureMark =>
+                classification_from_cell_decision(
+                  plan: p,
+                  listing_id: listing_id,
+                  column: col.name,
+                  column_index: idx,
+                  data_index: row.data_index,
+                  decision: decide_erasure_mark_cell(
+                    observed: observed,
+                    desired: desired_erasure_mark(erase_derived: erase_derived, observed: observed),
+                  ),
+                )
               DerivedField { source_field: _ } =>
                 if erase_derived {
                   classification_from_cell_decision(
@@ -831,16 +982,11 @@ fn fold_columns_for_row(
   })
 }
 
-fn columns_by_name(schema: ReviewSheetSchema) -> Map<String, ReviewColumn> {
-  fold(schema.columns, init: empty_map(), f: fn(acc, c) {
-    map_insert(acc, c.name as String, c)
-  })
-}
-
 fn append_cell_for_column(column: ReviewColumn, derived: Map<String, String>) -> String? {
   match column.kind {
     ListingStanding => Present { value: listing_standing_label(state: StandingObserved) }
     OperatorEntered => none
+    DerivedErasureMark => Present { value: "" }
     DerivedField { source_field: _ } =>
       match derived.lookup(column.name as String) {
         Present { value: v } => Present { value: v }
@@ -971,6 +1117,7 @@ fn operator_overwrite_reason(
           OperatorEntered => true
           DerivedField { source_field: _ } => false
           ListingStanding => false
+          DerivedErasureMark => false
         })
         |> filter(c => match header_by_name.lookup(c.name as String) {
           Absent => false
