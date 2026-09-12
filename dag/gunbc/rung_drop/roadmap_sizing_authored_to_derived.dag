@@ -48,8 +48,9 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // the condition under which they become writable again against a real population. What replaces
 // them meanwhile is one control that IS authorable and does the load-bearing job:
 // test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
-// executes the live authority and refuses -- it goes red the day the graph renders a forecast,
-// which is either this drop retiring or a regression that would otherwise be silent. The history
+// hands derived_node_sizings a two-node fixture and refuses NodeUnsized over that identity join --
+// it goes red the day the deriver answers a cell, which is either this drop retiring or a
+// regression that would otherwise be silent. The history
 // join keeps its own live control for the same reason:
 // test.claim.roadmap_forecast_witness.witness_cited_acceptance_pr_history_refuses_every_link_as_unsized
 // asserts that EVERY cited acceptance/pull link refuses as HistoryNodeUnsized, so the loss is

@@ -18,12 +18,6 @@ import gunbc.roadmap_model {
   node_sizing_subject_id,
   ManualAcceptance,
 }
-import gunbc.roadmap_authority {
-  roadmap_authority_projection,
-  RoadmapAuthorityProjected,
-  RoadmapAuthorityProjectionRefused,
-  active_roadmap_nodes_for_accepted,
-}
 import gunbc.roadmap_sizing {
   SizingDerived,
   NodeSizing,
@@ -34,6 +28,7 @@ import gunbc.roadmap_forecast {
   NodeSizingAssignment,
   NodeSizingAdaptation,
   node_sizing_adaptation,
+  derived_node_sizings,
   SizingAssignmentRefused,
   SizingForAnotherSubject,
   SizingAssignedTwice,
@@ -73,7 +68,6 @@ import gunbc.roadmap_forecast {
   ForecastRoadmapAuthorityRefused,
   ForecastBuildRefused,
   schedule_forecast,
-  live_roadmap_schedule_forecast,
   AdjustmentUnavailable,
   ReviewCycleDurationUnobserved,
   OperatorMergeLatencyUnobserved,
@@ -490,43 +484,33 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
   }
 }
 
-// WHAT THE LIVE FORECAST RENDERS NOW THAT SIZING IS DERIVED AND THE DERIVER IS A STUB, asserted on
-// the real authority rather than on a fixture. The answer must be a REFUSAL naming every node it
-// could not size -- not a forecast with empty cells, and not a shorter forecast over the nodes that
-// happened to survive. A declared drop admits losing the capability; it does not license rendering
-// something that reads like a schedule. This witness is the standing control on that: it goes red
-// the moment the live graph produces a ScheduleForecastKnown, whether because the deriver started
-// answering (correct, and the drop retires) or because some later change let an unsized node
-// through (a regression this would otherwise hide).
-// THE COMPLETE LIVE POPULATION IS REFUSED, AND "COMPLETE" IS AN IDENTITY JOIN, NOT A COUNT AND NOT
-// A NON-EMPTY CHECK. The earlier form of this witness asserted only that SOME NodeUnsized refusal
-// carried a non-empty list, which a forecast that dropped every node but one would also satisfy --
-// so it proved "at least one node was reported unsized" while the claim built on it was "the whole
-// graph refused and nothing survived into a shortened schedule". Those are different sentences and
-// the weaker one was being quoted for the stronger.
-//
-// What is asserted now: the refusal names EVERY node of the live active graph and NO node outside
-// it, joined by identity in both directions, and the result is a refusal at all -- so there is no
-// forecast, hence no surviving population to shorten. It goes red the day the deriver answers,
-// which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring.
-// THE EXPECTED POPULATION IS READ OFF THE SAME PLAN THE FORECAST IS HANDED, not derived a second
-// time from the public carrier. gunbc#10987 made the plan a parameter precisely because a second
-// read answers about the PUBLIC roadmap while the nodes come from the caller's, and a control that
-// re-derived its own expectation would reintroduce exactly that split one layer up: today the two
-// agree, because roadmap_authority_projection fills `accepted` from the same projection, so the
-// join would look sound right up until someone hands this witness a plan of their own.
-fn live_active_node_ids() -> List<RoadmapNodeId> {
-  match roadmap_authority_projection() {
-    RoadmapAuthorityProjectionRefused { detail: _ } => []
-    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
-      active_roadmap_nodes_for_accepted(accepted: accepted) |> map(n => n.node)
-  }
-}
-
+// STUB DERIVER REFUSAL IS AN IDENTITY JOIN OVER THE GRAPH HANDED TO THE FOLD, not a live census.
+// The claim is that derived_node_sizings (the production adapter over the real stub) yields no
+// cells, and schedule_forecast then refuses NodeUnsized for EVERY handed node and no other -- not
+// a shortened forecast over survivors. Two nodes discriminate "every" from "some"; walking the
+// live roadmap does not. Expected ids are the same list the fold receives (gunbc#10987: do not
+// re-derive the population from a second authority). The enrolled name keeps "live_graph" because
+// that identity is already on the floor; the body is the smallest discriminating fixture.
+// Goes red the day the deriver answers, which is gunbc.rung_drop.roadmap_sizing_authored_to_derived
+// retiring.
 test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
-  let expected = live_active_node_ids()
-  count(expected) > 0
-    && match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
+  let a = fixture_node(id: "stub-unsized-a")
+  let b = fixture_node(id: "stub-unsized-b")
+  let handed = [a, b]
+  let expected = handed |> map(n => n.node)
+  let adapted = derived_node_sizings(nodes: handed)
+  count(adapted.assignments) == 0
+    && count(adapted.refusals) == 0
+    && match schedule_forecast(
+      nodes: handed,
+      sizings: adapted.assignments,
+      edges: [],
+      observations: fixture_observations(),
+      history_refusals: [],
+      population_exclusions: [],
+      assumptions: assumptions(),
+      anchor: anchor(),
+    ) {
       ScheduleForecastKnown { forecast: _ } => false
       ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
         NodeUnsized { nodes } =>
