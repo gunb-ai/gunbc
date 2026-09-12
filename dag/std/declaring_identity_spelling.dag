@@ -9,7 +9,7 @@ import v2.std.qualified_name { QualifiedName }
 // XL-3: whether one mention is spelled as the identity that declared its target.
 // Canonical spelling is the SymbolIndex path (v2.std.symbol_index), the same qualified
 // projection 03_resolve already uses. This module does not walk trees and does not collect
-// sites. Wiring is held: consume v2.compiler.reference_site_collector's
+// sites. Producer consumes v2.compiler.reference_site_collector's
 // ReferenceSiteCollection (.sites plus .unreadable_roots) and refuse to treat the
 // census as complete unless reference_site_collection_is_total. Do not add a second
 // collector or a parse-tree walker.
