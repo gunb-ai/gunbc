@@ -11,7 +11,7 @@ import std.types { String, List, Bool }
 // THREE SOURCES, ALL DECLARED, NONE A FILENAME EXCEPTION.
 //
 // 1. The dependency closure the regen already builds, read in reverse. The seed's closure
-//    authority is cli_run extend_sources_to_both_closure_fixpoint over both_closure_edge_index
+//    authority is cli_run extend_sources_to_both_closure_fixpoint over whole_pool_closure_edge_index
 //    (dotted references, which include every `import` line, plus bare references), and the
 //    affected modules are every module from which an edited module is reachable along those
 //    edges. Measured 2026-08-30 (tree 677988a2, srv1 and BuildBuddy): a data row added to
