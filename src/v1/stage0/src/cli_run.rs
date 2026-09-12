@@ -24333,6 +24333,21 @@ fn collect_sorted_decl_lines_for_file(
 pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
     edited_test_fns: HashSet<(String, String)>,
+    /// Test fns declared in a path whose DECLARATION SET IS ESTABLISHED FRESH at NEW — a wholly
+    /// added file or a rename destination, exactly the population
+    /// `parse_unified_diff_added_paths` already rules on. These identities have never executed
+    /// under their current qualified spelling, so they are the NEWLY ENROLLED set the enrolment
+    /// margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
+    ///
+    /// A STRICT SUBSET OF `edited_test_fns`, AND DELIBERATELY NARROWER THAN "NEWLY ENROLLED"
+    /// IN FULL. A brand-new `test fn` added to an EXISTING file is also newly enrolled and is
+    /// NOT in this set: distinguishing it from a modified sibling needs the base revision's
+    /// declaration names, which no observation in this tree produces today. The narrower set is
+    /// the sound one — every member provably did not exist before, so the gate cannot refuse a
+    /// PR for a witness it did not author, which is the property that makes a merge-blocking
+    /// conjunct safe. The residual is a declared gap with a named trigger, not silence; see the
+    /// gate module's own header.
+    enrolled_test_fns: HashSet<(String, String)>,
     /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
     touched_entry_files: HashSet<String>,
 }
@@ -41004,6 +41019,16 @@ pub struct RequiredFloorOutcome {
     /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
     /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
     pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
+    /// NEWLY ENROLLED IDENTITIES REFUSED BY THE ENROLMENT MARGIN GATE, each with its cause.
+    /// Authority: `v2.workflow.floor_enrolment_margin` `enrolment_margin_blocking_cause`.
+    ///
+    /// SCOPED TO WHAT THIS CHANGE ENROLS, never the standing corpus — the same discipline
+    /// `changed_witness_blocking` keeps, and for a stronger reason here: the margin is TIGHTER
+    /// than the ceiling, so a corpus-wide reading of it would refuse main for every row already
+    /// living between the margin and the ceiling. Those rows are pre-existing debt with their own
+    /// roster (`v2.workflow.floor_cost_debt`), and refusing a PR for them would be the
+    /// externalization DESIGN section 5 names: moving an accepted cost onto whoever pushed next.
+    pub enrolment_margin_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -41034,7 +41059,7 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
@@ -41045,6 +41070,14 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
     "gunbc.v1_interpreter_opaque_host_call",
+    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`, qualified, from
+    // `floor_enrolment_margin_budget_ms`). Enrolled here for the same reason the opaque-host-call
+    // surface is: this list IS the declaration that a module is evaluated by name. It cannot live
+    // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
+    // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
+    // policy module for it would require the import to run the other way -- a cycle, which DESIGN
+    // section 4 makes the import graph's one structural prohibition.
+    "v2.workflow.floor_enrolment_margin",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -42615,6 +42648,15 @@ pub fn run_required_regen_fixed_point(
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
+
+/// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --
+/// see `required_regen_host::run_dag_artifact_identity`. Re-exported here rather than reached
+/// directly so every required phase addresses its producer through one surface, the way the
+/// regen and generated-artifact paths do.
+pub use required_regen_host::{
+    run_dag_artifact_identity, DagArtifactIdentityOutcome, DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT,
+    DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT,
+};
 
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
