@@ -385,6 +385,23 @@ fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>>
     None
 }
 
+/// The NODE-LOCAL half of [`coproduct_disj_node`]: the coproduct this item itself is, or the one
+/// its inference resolved to. Deliberately does NOT follow an alias right-hand side, because that
+/// tier needs an `InterpContext` and this runs during fragment derivation, before any scope
+/// exists. Missing such an arm is the safe direction -- the read stays in the ambiguous
+/// population rather than being excused by a resolution nothing verified.
+fn fragment_coproduct_disj_node(item: &Rc<Node>) -> Option<Rc<Node>> {
+    if item.connective == Connective::Disj && !item.children.is_empty() {
+        return Some(item.clone());
+    }
+    if let Some(InferredNode::Resolved { node }) = item.inferred.as_deref() {
+        if node.connective == Connective::Disj && !node.children.is_empty() {
+            return Some(node.clone());
+        }
+    }
+    None
+}
+
 fn resolve_coproduct_type_node(ctx: &InterpContext, parent_enum: &str) -> Option<Rc<Node>> {
     let bare = qualified_last_segment(parent_enum.to_string());
     if let Some(item) = lookup_type_item_across_modules(ctx, parent_enum)
@@ -4033,6 +4050,16 @@ pub struct ModuleScopeFragment {
     file_module_paths: Vec<(String, String)>,
     file_import_bindings: Vec<((String, String), String)>,
     service_ops: Vec<(String, ServiceOp)>,
+    /// (declaring module path, coproduct name, arm name) for every VARIANT ARM this module's
+    /// top-level coproducts declare.
+    ///
+    /// `fn_entries` is built by walking `module.items`, so it holds top-level declarations and
+    /// nothing else. An arm of `type TestClass = Unit | Hermetic | Integration` is not a
+    /// top-level item, so it is reachable from neither `fn_nodes` slot -- which made a bare read
+    /// of an arm indistinguishable from a read that falls through to the shared name slot, even
+    /// when the arm's coproduct is declared in the reading module itself. That is the third
+    /// resolution tier's input; see `site_resolved_variant_arm_module`.
+    variant_arm_entries: Vec<(String, String, String)>,
 }
 
 /// A `fn_nodes` write, tagged with which slot it targets. The bare slot is subject to the
@@ -4078,6 +4105,7 @@ fn derive_module_scope_fragment(
     let mut fn_entries: Vec<FragmentFnEntry> = Vec::new();
     let mut file_module_paths: Vec<(String, String)> = Vec::new();
     let mut file_import_bindings: Vec<((String, String), String)> = Vec::new();
+    let mut variant_arm_entries: Vec<(String, String, String)> = Vec::new();
     let mut service_ops: Vec<(String, ServiceOp)> = Vec::new();
     // WHAT THE AUTHOR WROTE ABOUT WHERE EACH NAME COMES FROM, read once per module from
     // the parser's import list. FIRST WRITE WINS within a file: two imports of one
@@ -4120,6 +4148,22 @@ fn derive_module_scope_fragment(
                 });
             }
         }
+        // VARIANT ARMS, recorded so a bare read of one is not mistaken for a shared-slot read.
+        // Node-local for the same reason the service branch below is: the coproduct is either
+        // this item or the node its inference resolved to, and both are on the item in hand. An
+        // alias whose right-hand side names a coproduct in ANOTHER module is deliberately not
+        // followed -- resolving it needs the whole scope, which does not exist yet at fragment
+        // derivation, and a missed arm leaves the read in the ambiguous population (the
+        // conservative direction) rather than silently excusing it.
+        if let Some(disj) = fragment_coproduct_disj_node(item) {
+            for arm in disj.children.iter() {
+                let arm_name = authored_name_at(source_indices.clone(), arm.clone());
+                if arm_name.is_empty() || module_path.is_empty() {
+                    continue;
+                }
+                variant_arm_entries.push((module_path.clone(), name.clone(), arm_name));
+            }
+        }
         // Service-item detection is node-local: the node carries the `transport` that
         // *defines* it as a service, so its own `item_kind` is the single authority.
         // Do NOT gate on a name-keyed `item_registry` lookup — two top-level items can
@@ -4150,6 +4194,7 @@ fn derive_module_scope_fragment(
         file_module_paths,
         file_import_bindings,
         service_ops,
+        variant_arm_entries,
     }
 }
 
@@ -4164,6 +4209,14 @@ pub struct PreparedScopeIndexes {
     // a fresh evaluation frame must not re-read the corpus to resolve its first cast.
     type_items: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
+    /// ARM NAME -> the (declaring module, COPRODUCT) pairs that declare an arm of that name.
+    ///
+    /// Keyed on the coproduct and not merely on the module, because the question the third tier
+    /// has to answer is "does exactly ONE coproduct visible to this site declare this arm". A
+    /// module-only key cannot tell one coproduct from two in the same module, and would resolve
+    /// a genuinely ambiguous arm read to whichever matched first -- silencing exactly the class
+    /// the refusal exists to catch. See `site_resolved_variant_arm_module`.
+    variant_arm_owners: HashMap<String, std::collections::BTreeSet<(String, String)>>,
     /// SOURCE FILE -> DECLARING MODULE PATH, for the one lookup tier that needs to know where a
     /// reference was authored.
     ///
@@ -4231,11 +4284,68 @@ impl PreparedScopeIndexes {
         None
     }
 
+    /// THE THIRD TIER: is this bare read a VARIANT ARM the site can already see?
+    ///
+    /// The two `fn_nodes` tiers above answer only about TOP-LEVEL declarations, because
+    /// `fn_entries` is built by walking `module.items`. An arm of `type TestClass = Unit |
+    /// Hermetic | Integration` is not a top-level item, so a site reading that arm matched
+    /// neither tier and was reported as falling through to the shared slot -- even when the
+    /// coproduct is declared in the reading module itself, and even when the arm is explicitly
+    /// imported by name. Measured on the corpus at the revision this landed against: five such
+    /// sites, `std.fidelity` and `v2.extdeps.languages.cpp` reading arms of their OWN
+    /// coproducts, and `gunbc.live_deploy.unit_standing`, `v2.test.lens_cost.valuation` and
+    /// `v2.test.manual.infer_ground_add` reading arms they import by name. None of the five
+    /// means either claimant type, so all five are sites a refusal keyed on this population
+    /// must NOT refuse.
+    ///
+    /// Same two-step shape as `site_resolved_fn`, and deliberately so: the site's own module
+    /// first, then the file's own import binding. A module that merely SITS in the scope does
+    /// not answer here, which is the whole point -- reaching a declaration is not naming it.
+    fn site_resolved_variant_arm_module(&self, site_file: &str, name: &str) -> Option<String> {
+        let owners = self.variant_arm_owners.get(name)?;
+        // WHICH COPRODUCTS THIS SITE CAN ACTUALLY NAME. Same two-step shape as
+        // `site_resolved_fn`, and deliberately so: the site's own module, then the module its
+        // own file binds this name to. A module that merely SITS in the scope answers nothing --
+        // reaching a declaration is not naming it, which is the whole distinction this census
+        // measures.
+        let own_module = self.file_module_paths.get(site_file);
+        let bound_module = self
+            .file_import_bindings
+            .get(&(site_file.to_string(), name.to_string()));
+        let visible: std::collections::BTreeSet<&(String, String)> = owners
+            .iter()
+            .filter(|(module, _coproduct)| {
+                own_module.is_some_and(|own| own == module)
+                    || bound_module.is_some_and(|bound| bound == module)
+            })
+            .collect();
+        // EXACTLY ONE, OR NOTHING. Two visible coproducts each declaring an arm of this name is
+        // a genuinely ambiguous read and stays in the ambiguous population, because nothing the
+        // author wrote ranks them. Resolving it to the first match would silence precisely the
+        // class the refusal exists to catch.
+        //
+        // This is deliberately STRICTER than the two tiers above, which let the site's own
+        // module win unconditionally. Those tiers can, because a top-level declaration in one's
+        // own module is the authored answer by construction. Arms carry no such precedence rule
+        // -- an arm of one's own coproduct and an arm of an imported one are both named by the
+        // author with equal standing -- so the fail-closed arm is the honest one here (§5).
+        match visible.len() {
+            1 => visible
+                .into_iter()
+                .next()
+                .map(|(module, _coproduct)| module.clone()),
+            _ => None,
+        }
+    }
+
     /// DOES A BARE VALUE REFERENCE AT THIS SITE FALL THROUGH TO THE SHARED SLOT? The census's
     /// question and the wall's, answered by the resolution the interpreter performs rather than
     /// by a restatement of it.
     pub fn falls_through_to_shared_slot(&self, site_file: &str, name: &str) -> bool {
         self.site_resolved_fn(site_file, name).is_none()
+            && self
+                .site_resolved_variant_arm_module(site_file, name)
+                .is_none()
     }
 
     /// AND WHICH MODULE ANSWERED, when one did. The census's negative — a pair that has left the
@@ -4244,8 +4354,13 @@ impl PreparedScopeIndexes {
     /// declaration's own source file through the same `file_module_paths` the first tier reads,
     /// so it names the module that answered rather than the module the census hoped would.
     pub fn site_resolved_module(&self, site_file: &str, name: &str) -> Option<String> {
-        let node = self.site_resolved_fn(site_file, name)?;
-        self.file_module_paths.get(node.span.file.as_str()).cloned()
+        if let Some(node) = self.site_resolved_fn(site_file, name) {
+            return self.file_module_paths.get(node.span.file.as_str()).cloned();
+        }
+        // A variant-arm read names the module whose coproduct declares the arm. Reported through
+        // the same `resolves_to` channel as the other two tiers, so the census says WHICH
+        // declaration answered rather than only that the site left the ambiguous list.
+        self.site_resolved_variant_arm_module(site_file, name)
     }
 
     /// EVERY RESOLUTION THIS INDEX SET CAN ANSWER, rendered at identity grain and sorted, so
@@ -4671,6 +4786,8 @@ impl InterpContext {
         let mut file_module_paths = HashMap::<String, String>::new();
         let mut file_import_bindings = HashMap::<(String, String), String>::new();
         let mut service_ops = HashMap::new();
+        let mut variant_arm_owners: HashMap<String, std::collections::BTreeSet<(String, String)>> =
+            HashMap::new();
         for fragment in fragments_to_walk {
             for ((file, imported), source_module) in fragment.file_import_bindings.iter() {
                 file_import_bindings
@@ -4697,6 +4814,12 @@ impl InterpContext {
             }
             for (key, op) in fragment.service_ops.iter() {
                 service_ops.insert(key.clone(), op.clone());
+            }
+            for (module_path, coproduct, arm_name) in fragment.variant_arm_entries.iter() {
+                variant_arm_owners
+                    .entry(arm_name.clone())
+                    .or_default()
+                    .insert((module_path.clone(), coproduct.clone()));
             }
         }
         let ambiguous_bare_function_names = bare_name_counts
@@ -4725,6 +4848,7 @@ impl InterpContext {
             fn_nodes,
             type_items,
             ambiguous_bare_function_names,
+            variant_arm_owners,
             file_module_paths,
             file_import_bindings,
             service_ops,
