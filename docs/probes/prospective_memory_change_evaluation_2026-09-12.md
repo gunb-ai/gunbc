@@ -29,7 +29,7 @@ The artifact is consumed from evidence PR #11141 (head `c9ac696e3e1`); its origi
 - `artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt`
 - SHA-256 `e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c`
 
-The replay checks read success and the artifact hash before classifying the transcript. Its collector duration is the operator's repaired-collector report (645 seconds), not the script wrapper lifetime. The artifact does not establish module serials, which remain absent. Collector rejection combines process status, expected stimulus, interval coverage and positive positioned inventory. Identical capture hashes only trigger suspicion; they do not prove self-observation.
+The replay checks read success and the artifact hash before classifying the transcript. Its collector duration is the operator's repaired-collector report (645 seconds), not the script wrapper lifetime. The artifact does not establish module serials, which remain absent. Collector rejection combines process status, expected stimulus, interval coverage and positive positioned inventory. Identical capture hashes only trigger suspicion; they do not prove self-observation. `memory_collector_refusal` consumes the comparison to retain repetition context alongside an independently established process, stimulus, payload or interval failure. Repetition alone does not construct a refusal or unresolved obligation.
 
 ```sh
 ctrl-build --local -- /cargo-target/release/gunbc run \

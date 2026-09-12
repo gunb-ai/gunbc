@@ -21,7 +21,8 @@ type MemoryPrintedPartBinding {
 // Transcript ingestion boundary, not a hardware actuator. Times are offsets
 // in seconds from the attempt's stimulus. Wrapper lifetime is not collector lifetime.
 // Identical hashes alone never reject: positive stimulus/payload and interval
-// coverage are required on every capture, repeated or otherwise.
+// coverage are required on every capture, repeated or otherwise. Repetition
+// contextualizes an independently established refusal; it cannot create one.
 type MemoryCollectorReceipt {
   source: DeclarationRef
   printed_parts: List<MemoryPrintedPartBinding>
@@ -39,7 +40,7 @@ type MemoryCollectorReceipt {
 }
 
 fn memory_collector_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
-  if c.exit_code != 0 { Present { value: "collector process failed" as NonEmptyStr } }
+  let refusal = if c.exit_code != 0 { Present { value: "collector process failed" as NonEmptyStr } }
   else if c.required_end <= c.required_start || c.collector_start > c.required_start || c.collector_end < c.required_end {
     Present { value: "collector did not cover the required stimulus interval" as NonEmptyStr }
   } else {
@@ -51,6 +52,13 @@ fn memory_collector_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
           Present { value: "no positive host memory payload; session banner is not host observation" as NonEmptyStr }
         } else { none }
     }
+  }
+  match refusal {
+    Absent => none
+    Present { value: cause } =>
+      if memory_capture_repetition_suspected(c: c) {
+        Present { value: concat("repeated capture digest; independent collector failure: ", cause as String) as NonEmptyStr }
+      } else { refusal }
   }
 }
 

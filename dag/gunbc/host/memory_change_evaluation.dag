@@ -1,6 +1,7 @@
 module gunbc.memory_change_evaluation
 
 import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -16,14 +17,14 @@ import gunbc.memory_configuration_evaluation { MemoryConfigurationAssessment, ev
 // Pure workflow evaluation, not execution. These values have no constructor
 // path to MemoryCollectorReceipt or ConfigurationQualificationReceipt.
 type MemoryInitializationAssessment {
-  action_ordinal: Int
+  action_ordinal: Nat
   assessment: MemoryConfigurationAssessment
 }
 
 type MemoryWorkflowState {
   configuration: MemoryConfiguration
   powered_off: Bool
-  ordinal: Int
+  ordinal: Nat
   readback_planned: Bool
   initializations: List<MemoryInitializationAssessment>
   violations: List<NonEmptyStr>
@@ -99,7 +100,7 @@ fn evaluate_memory_change(proposal: MemoryChangeProposal, evidence: MemoryEvalua
 // explicit completion obligations. It never creates production admission.
 type MemoryPurchasePurpose
   = ProductionMemoryPurchase
-  | QualificationMemoryPurchase { maximum_units: Int, completion: List<MemoryOperatingObligation> }
+  | QualificationMemoryPurchase { maximum_units: Nat, completion: List<MemoryOperatingObligation> }
 
 fn memory_assessment_coverage_present(a: MemoryConfigurationAssessment) -> Bool {
   fold(memory_operating_obligations, init: true, f: (ok, obligation) => ok && any(a.required, r => r == obligation))
@@ -149,7 +150,7 @@ fn memory_change_admission_refusal(a: MemoryChangeAssessment, purpose: MemoryPur
     let policy_refusal = match purpose {
       ProductionMemoryPurchase => none
       QualificationMemoryPurchase { maximum_units, completion } =>
-        if maximum_units <= 0 || count(a.proposal.proposed.population) > maximum_units || count(completion) == 0 {
+        if maximum_units == 0 || count(a.proposal.proposed.population) > maximum_units || count(completion) == 0 {
           Present { value: "qualification experiment lacks a sufficient finite population bound or completion criteria" as NonEmptyStr }
         } else { none }
     }

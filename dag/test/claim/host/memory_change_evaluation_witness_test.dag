@@ -12,7 +12,7 @@ import gunbc.memory_configuration {
 }
 import gunbc.memory_observation {
   MemoryEvaluationEvidence, MemoryCollectorReceipt, ConfigurationQualificationReceipt,
-  memory_mixture_finding, memory_capture_repetition_suspected,
+  memory_mixture_finding, memory_collector_refusal,
 }
 import gunbc.memory_configuration_evaluation {
   MemoryConfigurationAssessment, MemoryPackageConflict, MemoryProcurementCondition, MemoryTrainingScreenUnresolved,
@@ -269,7 +269,16 @@ test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
     observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
     collector_start: c.collector_start, collector_end: c.collector_end, exit_code: c.exit_code,
     payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: Present { value: c.capture_digest } }
-  memory_capture_repetition_suspected(c: repeated) && match memory_mixture_finding(attempt: "control",
+  let incomplete = MemoryCollectorReceipt { source: repeated.source, printed_parts: repeated.printed_parts,
+    session: repeated.session, expected_stimulus: repeated.expected_stimulus, observed_stimulus: repeated.observed_stimulus,
+    required_start: repeated.required_start, required_end: repeated.required_end,
+    collector_start: repeated.collector_start, collector_end: repeated.collector_start, exit_code: repeated.exit_code,
+    payload: repeated.payload, capture_digest: repeated.capture_digest, previous_capture_digest: repeated.previous_capture_digest }
+  let explained = match memory_collector_refusal(c: incomplete) {
+    Present { value: cause } => contains(cause as String, "repeated capture digest") && contains(cause as String, "required stimulus interval")
+    Absent => false
+  }
+  explained && match memory_mixture_finding(attempt: "control",
     configuration: mtcollins_witnessed_configuration(), collector: repeated) {
       ObservationEstablished { observed: _ } => true
       ObservationRefused { cause: _ } => false
