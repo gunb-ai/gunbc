@@ -64,7 +64,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the collector is blind to this tree generally and the probe is uninformative.
 data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport v2.std.logic { Bool }\n\ndata xl0_provided_value: Bool = true\n"
 
-data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
 
 fn xl0_provider_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -317,30 +317,36 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
   reference_site_collection_is_total(collection: fixture_collection())
 }
 
-// THE IMPORT SURFACE IS ITS OWN ARM, AND THESE ARE THE ROWS THAT MAKE THAT CHECKABLE RATHER THAN
-// ASSERTED. The collector used to emit import-statement mentions as ordinary sites, which is how
-// this file's type-position row came to be green on `import v2.std.logic { Bool }` instead of on a
-// type position. The pair below is the discriminator that defect needed:
+// IMPORTS DO NOT REACH THIS ROUTE, SO THE IMPORT ARM IS EMPTY BY CONSTRUCTION HERE -- MEASURED,
+// AND THE MEASUREMENT RETRACTS AN EXPLANATION I GAVE EARLIER IN THIS FILE.
 //
-//   Xl0UserType is declared in the fixture, used ONLY as a parameter type, and named in NO import
-//   anywhere -- so a site spelling it can only be a type-position mention, and it must be in
-//   `sites`.
-//   Bool is named in an IMPORT in both fixture modules -- so its mention must be in `import_sites`
-//   and must NOT be in `sites`, or the denominator is once again counting the very import surface
-//   the cut deletes.
+// The arm was added because a type-position row of mine was believed to be green on an
+// `import ... { Bool }` line. It was not, and it could not have been: `Absent` is imported by the
+// consumer fixture and used NOWHERE else, so it exists at exactly one point in the source, and it
+// appears in NEITHER `sites` NOR `import_sites`. Import statements are consumed before the
+// normalized tree the collector walks, so there is no import surface here to pollute a denominator
+// with and none to classify.
 //
-// Together they fail in opposite directions: collapse the arms and the second reds; drop the
-// import surface instead of classifying it and the third reds.
-test fn a_user_declared_type_in_type_position_lands_in_sites_holds() -> Bool {
-  sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
-    && !sites_mention(sites: fixture_import_sites(), spelling: "Xl0UserType")
+// WHAT THAT MEANS FOR THE TYPE-POSITION ROW: the `Bool` mentions in `sites` are the real type
+// positions, not import lines, and the row that asserted a type-position name reaches the collector
+// was correct as originally written. I renamed it on a hypothesis I never tested and told two
+// sibling lanes the same thing.
+//
+// THE ARM IS KEPT AND ITS CONTROLS ARE NOT. A control that can only be green on a route where
+// imports survive is unauthorable HERE, and DESIGN section 4b calls a permanently-red-or-
+// permanently-green check a decoration rather than a weak wall -- worse than absent, because it
+// gets cited as coverage. What is enrolled instead is the MEASUREMENT: the arm is empty, and the
+// reason is that imports never arrive, so no reader mistakes an empty arm for "this corpus has no
+// imports". The classification itself stays, because a consumer walking a PARSE tree does see
+// import productions and should not have to invent its own policy -- which is the fork the arm was
+// asked to close.
+test fn the_import_arm_is_empty_because_imports_do_not_reach_this_route_holds() -> Bool {
+  !sites_mention(sites: fixture_import_sites(), spelling: "Absent")
+    && !sites_mention(sites: fixture_sites(), spelling: "Absent")
+    && !fold_list(xs: fixture_import_sites(), empty: false, cons: fn(acc, site) { true })
 }
 
-test fn an_imported_name_lands_in_import_sites_and_not_in_sites_holds() -> Bool {
-  sites_mention(sites: fixture_import_sites(), spelling: "Bool")
-    && !sites_mention(sites: fixture_sites(), spelling: "Bool")
-}
-
-test fn the_import_surface_is_carried_rather_than_dropped_holds() -> Bool {
-  fold_list(xs: fixture_import_sites(), empty: false, cons: fn(acc, site) { true })
+test fn a_type_position_name_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "Bool")
+    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
