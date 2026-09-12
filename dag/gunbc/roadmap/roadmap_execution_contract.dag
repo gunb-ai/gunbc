@@ -31,6 +31,17 @@ type AttemptPathScope
   = PathsUnrestricted
   | PathsAllowed { prefixes: List<FilePath> }
 
+// PathsAllowed / attempt_paths_admitted is DECLARED FRONTIER, not a live wall.
+// agent_execution_contract and every production ExecutionContract bind PathsUnrestricted.
+// attempt_paths_admitted is the verdict over a caller-supplied touched set; belt verify still
+// binds path_scope: _ (roadmap_belt_actuate). GitExactDiffWindow is identity-only;
+// git.Core.DiffNameStatus is in the argv-expression residue. NAMED CONSUMER: belt verify
+// (or the admitted-base POST /dispatch verify) calling attempt_paths_admitted with a
+// name-status observation over that exact diff window as `touched`. TRIGGER: a production
+// tick refuses PathOutOfScope for a path outside the declared prefixes. A witness that
+// constructs PathsAllowed and calls the fold does not satisfy this trigger. Inventing a
+// second path census does not satisfy it either.
+
 type PathScopeVerdict
   = PathsAdmitted
   | PathOutOfScope { path: FilePath }

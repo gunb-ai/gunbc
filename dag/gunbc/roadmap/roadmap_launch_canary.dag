@@ -1,17 +1,11 @@
 module gunbc.roadmap_launch_canary
 
-import std.types { String, NonEmptyStr, FilePath, List }
+import std.types { String, NonEmptyStr, FilePath }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest }
 import gunbc.roadmap_status { TicketFields }
 import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
-  ExecutionContract,
-  ExecutionContractUnspecified,
-  OperatorExclusive,
-  ExternalLead,
-  CalendarObservation,
-  PathsAllowed,
   gunbc_claim_execution_contract,
 }
 
@@ -59,36 +53,16 @@ data roadmap_launch_canary_oracle_entry: FilePath = "dag/test/manual/roadmap_lau
 data roadmap_launch_canary_oracle_function: NonEmptyStr = "roadmap_launch_canary_oracle_completed" as NonEmptyStr
 
 fn roadmap_launch_canary_execution_contract() -> WorkItemExecutionContract {
-  match gunbc_claim_execution_contract(
+  gunbc_claim_execution_contract(
     entry: roadmap_launch_canary_oracle_entry,
     function: roadmap_launch_canary_oracle_function,
-  ) {
-    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots } =>
-      ExecutionContract {
-        validations: validations,
-        extra_capabilities: extra_capabilities,
-        path_scope: PathsAllowed { prefixes: roadmap_launch_canary_allowed_change_paths },
-        source_roots: source_roots,
-      }
-    ExecutionContractUnspecified => gunbc_claim_execution_contract(
-      entry: roadmap_launch_canary_oracle_entry,
-      function: roadmap_launch_canary_oracle_function,
-    )
-    OperatorExclusive => OperatorExclusive
-    ExternalLead => ExternalLead
-    CalendarObservation => CalendarObservation
-  }
+  )
 }
 
-// THE ONE ALLOWED CHANGED PATH, DECLARED ON THE CONTRACT AS PathsAllowed. attempt_paths_admitted
-// is the verdict over a caller-supplied touched set. The live belt verify arm still binds
-// path_scope: _ and does not observe a path census (GitExactDiffWindow is identity-only;
-// git.Core.DiffNameStatus is in the argv-expression residue). This is declared scope, not an
-// enforced wall, until a name-status observation over the exact diff window is the input to
-// that fold.
-data roadmap_launch_canary_allowed_change_paths: List<FilePath> = [
-  "dag/gunbc/roadmap/roadmap_launch_canary_sentinel.dag" as FilePath,
-]
+// Ticket prose still names the intended sentinel path. That is not AttemptPathScope:
+// PathsAllowed is DECLARED FRONTIER on gunbc.roadmap_execution_contract until belt verify
+// consumes attempt_paths_admitted with a name-status observation. Production contracts,
+// including this canary, bind PathsUnrestricted.
 
 // The acceptance criteria of the parent, in the ticket carrier the live authority uses, so the
 // criteria digest RLM-3..6 bind is gunbc.roadmap_model roadmap_criteria_digest over exactly these
