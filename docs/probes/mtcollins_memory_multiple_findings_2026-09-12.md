@@ -26,6 +26,12 @@ gunbc run --source-root dag --source-root src/v2 \
 
 The committed-file replay verified both hashes and exited 1 with the expected production-admission refusal. It retained expected values 145 and 178 with their separate sources and coverage, located found 0 at J9/MCU4, reported the independent per-socket capacity violation (68719476736 versus 17179869184 bytes), and left the Samsung catalog binding unresolved. No hardware action occurred.
 
-All 86 scoped controls passed in one dispatch using the full source/import closures: 17 multiple-finding controls, 30 original assessment/consumer controls, 27 fulfillment controls and 12 selection controls. They cover both known pairs, an unobserved pair, order and duplicate findings, missing/failed observations, every-cycle inventory coverage, firmware and socket applicability, unbound identity, independent capacity, and the real production fulfillment refusal. The source-carried hypothesis controls are explicitly not new machine observations. Required CI remains separate from these scoped results.
+The controls live in `dag/test/claim/host/memory_multiple_findings_witness_test.dag`, with the original assessment, fulfillment and selection controls in their sibling witness modules. They cover both known pairs, an unobserved pair, order and duplicate findings, missing/failed observations, every-cycle inventory coverage, firmware and socket applicability, unbound identity, independent capacity, and the real production fulfillment refusal. For example, dispatch the identity-join and production-consumer controls through the existing instrument:
 
-The final collection-reader adjustment uses map/flatten rather than repeatedly copying an accumulator as observation history grows. All 17 multiple-finding controls passed again after that adjustment; the read's unavailable arm carries only unresolved facts.
+```sh
+claim_batch --source-root dag --source-root src/v2 \
+  --entry dag/test/claim/host/memory_multiple_findings_witness_test.dag \
+  --functions w_printed_token_standings_cannot_qualify_unbound_modules,w_second_configuration_withholds_actual_production_fulfillment
+```
+
+The source-carried hypothesis controls are explicitly not new machine observations. Required CI remains separate from these scoped controls. The collection reader uses map/flatten rather than repeatedly copying an accumulator as observation history grows; its unavailable arm carries only unresolved facts.
