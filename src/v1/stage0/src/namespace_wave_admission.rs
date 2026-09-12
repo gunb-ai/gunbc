@@ -1715,60 +1715,31 @@ pub struct TransitionAdmission {
 /// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
 /// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
-/// gunbc#11137 sha256sum names Filesystem instead of reaching it (2026-09-12). The row below is a
-/// DIFFERENT delta that this change produces, not that one restored: empty is the resting state
-/// and one change authoring a row back into it is the ordinary motion.
+/// gunbc#11137 sha256sum names Filesystem instead of reaching it -- ROW RETIRED 2026-09-12, ITS OWN
+/// TRIGGER HAVING FIRED. That row admitted a TargetChanged binding on
+/// `extdeps.tools.sha256sum::extdeps_external_authority_anchor`, created when a bare
+/// `import extdeps.filesystem.filesystem_io` became `{ Filesystem }` and the spelling's candidate
+/// set narrowed from three modules to two without changing what it resolves to. Its stated trigger
+/// was "this row goes when #11137 merges"; #11137 merged at 06:35:25 on 2026-09-12, so the base
+/// carries the named import, the delta stopped being producible, and the deletion came due on this
+/// roster's next touch -- which this change is. The roster is empty again, which this file already
+/// records as its resting state.
 ///
-/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
-/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
-/// module into the candidate set for every name it declares, so filesystem_io's copy of
-/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
-/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
+/// AND IT DID NOT MERELY LINGER, WHICH IS THE PART WORTH LEAVING BEHIND. A spent row matches no
+/// delta, so the wave phase reports it as an UnmatchedAdmission refusal in `stale_admissions` --
+/// correctly, since a row provable against neither side is not evidence of anything -- and that
+/// REFUSES the required floor for every pull request whose base already carries the merge. Between
+/// 06:35 and this deletion it blocked at least four unrelated lanes, each of which diagnosed it
+/// independently. Measured rather than inferred: PRs based on 0c93af0d0 reported the stale row,
+/// while a PR on an older base reported none.
 ///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
-/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
-/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. NO RESOLUTION CHANGES.
-/// `extdeps.tools.sha256sum` authors its own `extdeps_external_authority_anchor`, and a module's
-/// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
-/// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
-/// either way. What narrowed is the SET, from three modules to two, which is the qualification's
-/// whole purpose: the resolution stopped depending on a module the author never named. That no
-/// consumer changed behaviour is the required floor's verdict on this head, re-derived by
-/// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
-/// and read off its own `required-floor:` verdict line -- named rather than transcribed, because a
-/// copied count rots without anyone touching either end (DESIGN §6).
-///
-/// WHY THE `String` REQUALIFICATION IN THE SAME CHANGE NEEDS NO ROW, which is a fair question to
-/// ask of a diff that moves ten import lines onto `std.string_type`. It is not this adjudication's
-/// assertion; it is the wave phase's own measurement. That phase compares the binding table on both
-/// sides, and on this head it reported exactly ONE `TargetChanged binding` delta -- the row below --
-/// and none for `String`. The ten `String` sites appear instead as
-/// `ExplicitlyEvaluatedZeroDelta membership <module> -> std.string_type ... reached by a name this
-/// module authors`: explicitly evaluated, zero delta. The reason is that `std.types` declares no
-/// `String` at all, so `import std.types { String }` bound nothing and the read fell through to the
-/// shared slot, where scope precedence already answered `std.string_type`. Naming that module
-/// changes the read's AUTHORIZATION -- from an accident of precedence to something the author
-/// wrote -- without changing which declaration answers it. A delta row adjudicates a changed
-/// binding; there is no changed binding here to adjudicate.
-///
-/// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
-/// stops being producible, and CONSUMED comes due on the roster's next touch.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-    // The rationale, the safety adjudication and the trigger are in the doc comment on this
-    // const rather than repeated here. In one line: the bare `import
-    // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-    // spelling's candidate set without changing what it resolves to.
-    subject: AdmissionSubject::Binding {
-        module: "extdeps.tools.sha256sum",
-        in_declaration: "extdeps_external_authority_anchor",
-        spelling: "extdeps_external_authority_anchor",
-        target: "extdeps.tools.sha256sum",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+/// THE SHAPE TO FIX WHEN THIS ROSTER IS NEXT DESIGNED, rather than when it is next touched: a row
+/// whose retirement is a SENTENCE naming a merge does not retire when that merge happens. The
+/// trigger is readable by people and by nothing else, so the row outlives its own condition and the
+/// cost lands on whoever opens the next pull request. Deriving the retirement from the merge -- the
+/// same positive proof `admission_consumed_at_base` already performs for the consumed arm -- would
+/// make the deletion structural instead of a debt passed between lanes.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
