@@ -1,11 +1,11 @@
-module test.claim.moonshot.kimi_code_k2_8_preview_witness
+module test.claim.moonshot.kimi_code_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import std.measure { token_count_value }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.roster_frontier { DeclSubject, PathSubject }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.moonshot.kimi_code_k2_8_preview {
+import extdeps.moonshot.kimi_code {
   kimi_for_coding_wire_id,
   kimi_k28_preview_served_version_name,
   kimi_k27_code_highspeed_served_version_name,
@@ -36,7 +36,7 @@ import extdeps.moonshot.kimi_code_k2_8_preview {
   CitedAvailableOn,
   StartDateNotPublishedOnCitedAuthorities,
   kimi_code_catalog_as_of_2026_09_11,
-  kimi_code_k28_preview_provider_integration_frontier,
+  kimi_code_provider_integration_frontier,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -192,8 +192,8 @@ test fn highspeed_remains_k2_7_code_highspeed() -> Bool {
 }
 
 test fn provider_integration_frontier_names_the_route() -> Bool {
-  (kimi_code_k28_preview_provider_integration_frontier |> count) == 4
-    && (kimi_code_k28_preview_provider_integration_frontier |> any(row =>
+  (kimi_code_provider_integration_frontier |> count) == 4
+    && (kimi_code_provider_integration_frontier |> any(row =>
       match row.subject {
         DeclSubject { ref: r } => (r.decl_name as String) == "kimi_code_route"
         PathSubject { path: _ } => false
@@ -205,7 +205,7 @@ test fn provider_integration_frontier_names_the_route() -> Bool {
           BoundDissolution { trigger: _ } => false
         }
     ))
-    && (kimi_code_k28_preview_provider_integration_frontier |> any(row =>
+    && (kimi_code_provider_integration_frontier |> any(row =>
       match row.subject {
         DeclSubject { ref: r } =>
           (r.decl_name as String) == "kimi_k28_declared_context_ceiling"
@@ -218,7 +218,7 @@ test fn provider_integration_frontier_names_the_route() -> Bool {
           BoundDissolution { trigger: _ } => false
         }
     ))
-    && (kimi_code_k28_preview_provider_integration_frontier |> any(row =>
+    && (kimi_code_provider_integration_frontier |> any(row =>
       match row.subject {
         DeclSubject { ref: r } => (r.decl_name as String) == "KimiCodeEffectiveFrom"
         PathSubject { path: _ } => false
@@ -230,7 +230,7 @@ test fn provider_integration_frontier_names_the_route() -> Bool {
           BoundDissolution { trigger: _ } => false
         }
     ))
-    && (kimi_code_k28_preview_provider_integration_frontier |> any(row =>
+    && (kimi_code_provider_integration_frontier |> any(row =>
       match row.subject {
         DeclSubject { ref: r } => (r.decl_name as String) == "KimiCodeAliasEnd"
         PathSubject { path: _ } => false

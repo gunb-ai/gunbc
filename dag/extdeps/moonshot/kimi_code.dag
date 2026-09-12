@@ -1,4 +1,4 @@
-module extdeps.moonshot.kimi_code_k2_8_preview
+module extdeps.moonshot.kimi_code
 
 import std.types { NonEmptyStr, List }
 import std.measure { TokenCount, token_count }
@@ -10,9 +10,10 @@ import extdeps.external_authority {
 }
 import extdeps.uri { Uri, Https }
 
-// KIMI CODE K2.8 PREVIEW as a SERVICE RELEASE, not a local serving candidate. Kimi Code is an
-// independently versioned Moonshot product; wire-compatible OpenAI/Anthropic shapes live elsewhere
-// and do not become this product. No moonshot/kimi vendor module existed to inhabit.
+// KIMI CODE, independently versioned Moonshot product. K2.8 Preview is a time-bounded served
+// version of the kimi-for-coding alias, not the module subject. Wire-compatible OpenAI/Anthropic
+// shapes live elsewhere and do not become this product. No moonshot/kimi vendor module existed to
+// inhabit.
 
 data kimi_code_whats_new_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -196,7 +197,7 @@ data kimi_code_catalog_as_of_2026_09_11: KimiCodeCatalogEpoch = KimiCodeCatalogE
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
-      module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
+      module_path: "extdeps.moonshot.kimi_code" as NonEmptyStr,
       decl_name: "kimi_code_catalog_as_of_2026_09_11" as NonEmptyStr,
       field: WholeDeclaration,
     }
@@ -277,32 +278,32 @@ fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingContr
 
 data kimi_k28_declared_context_ceiling: TokenCount = token_count(count: 1048576)
 
-fn kimi_code_k28_preview_fact(decl_name: NonEmptyStr) -> DeclarationRef {
+fn kimi_code_fact(decl_name: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
-    module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
+    module_path: "extdeps.moonshot.kimi_code" as NonEmptyStr,
     decl_name: decl_name,
     field: WholeDeclaration,
   }
 }
 
-data kimi_code_k28_preview_provider_integration_frontier: List<FrontierRow> = [
+data kimi_code_provider_integration_frontier: List<FrontierRow> = [
   frontier_row_decl(
-    ref: kimi_code_k28_preview_fact(decl_name: "kimi_code_route" as NonEmptyStr),
+    ref: kimi_code_fact(decl_name: "kimi_code_route" as NonEmptyStr),
     reason: "KIMI28-1 is the owning change: it binds this resolver on the admitted Kimi Code live-request path; this change does not",
     dissolution: unbound_dissolution(description: "KIMI28-1 binds kimi_code_route as the production resolver on an admitted Kimi Code live request"),
   ),
   frontier_row_decl(
-    ref: kimi_code_k28_preview_fact(decl_name: "kimi_k28_declared_context_ceiling" as NonEmptyStr),
+    ref: kimi_code_fact(decl_name: "kimi_k28_declared_context_ceiling" as NonEmptyStr),
     reason: "KIMI28-1 request admission applies this TokenCount as the K2.8 Preview context bound; this change does not admit requests",
     dissolution: unbound_dissolution(description: "KIMI28-1 request admission consumes kimi_k28_declared_context_ceiling when binding an admitted Kimi Code request's context bound"),
   ),
   frontier_row_decl(
-    ref: kimi_code_k28_preview_fact(decl_name: "KimiCodeEffectiveFrom" as NonEmptyStr),
+    ref: kimi_code_fact(decl_name: "KimiCodeEffectiveFrom" as NonEmptyStr),
     reason: "CitedAvailableOn.on is a Gregorian day as NonEmptyStr; v2.std.datetime CalendarDate has no corpus constructor (pin.dag pin_currency_gap dissolve names the same gap)",
     dissolution: unbound_dissolution(description: "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"),
   ),
   frontier_row_decl(
-    ref: kimi_code_k28_preview_fact(decl_name: "KimiCodeAliasEnd" as NonEmptyStr),
+    ref: kimi_code_fact(decl_name: "KimiCodeAliasEnd" as NonEmptyStr),
     reason: "AliasEndPublished.on is the same Gregorian-day NonEmptyStr as CitedAvailableOn.on",
     dissolution: unbound_dissolution(description: "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"),
   ),
