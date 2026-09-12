@@ -1,6 +1,6 @@
 module gunbc.spark.vllm_observed
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
 import extdeps.languages.json.parse {
   JsonValue, JsonString, JsonArray,
@@ -9,6 +9,7 @@ import extdeps.languages.json.parse {
 import extdeps.languages.json.number {
   JsonNumberExact, JsonNumberOutsideExactFragment,
   JsonNumberValueRead, JsonValueIsNotANumber, read_json_number_value,
+  json_number_fragment_refusal_text,
 }
 import product.placement_supply { HostIdentity }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
@@ -398,6 +399,7 @@ type VllmModelsRouteReadbackStanding
   | ModelsRouteEntryAbsent { served_model_id: NonEmptyStr }
   | ModelsRouteFieldAbsent { served_model_id: NonEmptyStr, field: NonEmptyStr }
   | ModelsRouteFieldUnreadable { served_model_id: NonEmptyStr, field: NonEmptyStr, cause: NonEmptyStr }
+  | ModelsRouteEntryDuplicated { served_model_id: NonEmptyStr, count: Int }
 
 fn vllm_models_route_standing_wire(s: VllmModelsRouteReadbackStanding) -> String {
   match s {
@@ -408,30 +410,54 @@ fn vllm_models_route_standing_wire(s: VllmModelsRouteReadbackStanding) -> String
       join(["the /v1/models entry for ", i as String, " carries no ", f as String, " member"], "")
     ModelsRouteFieldUnreadable { served_model_id: i, field: f, cause: c } =>
       join(["the /v1/models entry for ", i as String, " carries a ", f as String, " that cannot be read exactly: ", c as String], "")
+    ModelsRouteEntryDuplicated { served_model_id: i, count: n } =>
+      join(["the /v1/models document advertises ", i as String, " ", to_string(n), " times, so no single entry describes it"], "")
   }
 }
 
-// A CONTEXT LENGTH IS A COUNT OF TOKENS AND MUST ARRIVE AS ONE. The document's number is a lexeme,
-// and this repository's exact fragment reads it into an ExactDecimal rather than into an integer, so
-// two things are refused here rather than coerced: a value carrying fraction digits, which is not a
-// token count, and a negative one, which no context length is. Neither can be repaired by rounding,
-// and a rounded context length would be a fabricated bound on every turn this route serves.
-// THE VALUE'S KIND IS ASKED BY THE MODULE THAT OWNS THE ANSWER. read_json_number_value already
-// separates 'this is not a number' from 'this numeral is outside the exact fragment', which are a
-// defect in the document and a limit of this substrate respectively; re-deriving that split here
-// would be a second authority for one question, and the quoted-"30" case is exactly where the two
-// copies would drift.
-fn vllm_models_route_token_count(v: JsonValue) -> TokenCount? {
+// A CONTEXT LENGTH IS A COUNT OF TOKENS AND MUST ARRIVE AS ONE, AND THE REASON IT DID NOT IS PART
+// OF THE ANSWER. Four different things can go wrong here and they have four different remedies: the
+// member is not a number at all, which is an upstream document defect; the numeral is outside the
+// fragment this substrate reads exactly, which is a limit of ours; it carries fraction digits; or it
+// is negative. The first two are the split extdeps.languages.json.number draws deliberately -- a
+// defect in the document against a limit of this fragment -- and an earlier spelling of this
+// function collapsed all four into a bare Optional while the annotation above it claimed the split
+// was preserved by delegating. It was not preserved; it was discarded one line later, and the caller
+// then printed one sentence for four causes (review 64178). A reading that carries its own reason
+// cannot lose it at the boundary.
+type VllmContextLengthReading
+  = ContextLengthRead { tokens: TokenCount }
+  | ContextLengthNotANumber
+  | ContextLengthOutsideExactFragment { refusal: NonEmptyStr }
+  | ContextLengthNotWholeCount { units: Int, fraction_digits: Int }
+
+fn vllm_context_length_cause(r: VllmContextLengthReading) -> NonEmptyStr {
+  match r {
+    ContextLengthRead { tokens: _ } => "read" as NonEmptyStr
+    ContextLengthNotANumber =>
+      "the member is present but is not a JSON number, which is a defect in the document the route returned rather than a limit of this substrate" as NonEmptyStr
+    ContextLengthOutsideExactFragment { refusal: why } =>
+      join(["the numeral is outside the fragment this substrate reads exactly: ", why as String, ". That is a limit of ours, not a defect in the route's document"], "") as NonEmptyStr
+    ContextLengthNotWholeCount { units: u, fraction_digits: f } =>
+      join([
+        "the numeral reads exactly but is not a whole non-negative token count (units ", to_string(u),
+        ", fraction digits ", to_string(f), "), and rounding it would fabricate a bound on every turn this route serves",
+      ], "") as NonEmptyStr
+  }
+}
+
+fn vllm_models_route_token_count(v: JsonValue) -> VllmContextLengthReading {
   match read_json_number_value(v: v) {
-    JsonValueIsNotANumber => none
+    JsonValueIsNotANumber => ContextLengthNotANumber
     JsonNumberValueRead { reading: r } =>
       match r {
-        JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } => none
+        JsonNumberOutsideExactFragment { lexeme: _, refusal: why } =>
+          ContextLengthOutsideExactFragment { refusal: json_number_fragment_refusal_text(r: why) }
         JsonNumberExact { value: d } =>
           if d.fraction_digits == 0 && d.units >= 0 {
-            Present { value: token_count(count: d.units) }
+            ContextLengthRead { tokens: token_count(count: d.units) }
           } else {
-            none
+            ContextLengthNotWholeCount { units: d.units, fraction_digits: d.fraction_digits }
           }
       }
   }
@@ -472,18 +498,30 @@ fn vllm_models_route_standing_from_entry(entry: JsonValue, served_model_id: NonE
           match json_object_unique_member(v: entry, key: "max_model_len") {
             JsonMemberFound { value: lenv } =>
               match vllm_models_route_token_count(v: lenv) {
-                Present { value: len } =>
+                ContextLengthRead { tokens: len } =>
                   ModelsRouteRead {
                     readback: vllm_models_route_readback(
                       served_model_id: served_model_id,
                       configured_model_path: root as NonEmptyStr,
                       max_model_len: len),
                   }
-                Absent =>
+                ContextLengthNotANumber =>
                   ModelsRouteFieldUnreadable {
                     served_model_id: served_model_id,
                     field: "max_model_len" as NonEmptyStr,
-                    cause: "the member is not a number this substrate reads exactly as a whole non-negative count" as NonEmptyStr,
+                    cause: vllm_context_length_cause(r: ContextLengthNotANumber),
+                  }
+                ContextLengthOutsideExactFragment { refusal: why } =>
+                  ModelsRouteFieldUnreadable {
+                    served_model_id: served_model_id,
+                    field: "max_model_len" as NonEmptyStr,
+                    cause: vllm_context_length_cause(r: ContextLengthOutsideExactFragment { refusal: why }),
+                  }
+                ContextLengthNotWholeCount { units: u, fraction_digits: f } =>
+                  ModelsRouteFieldUnreadable {
+                    served_model_id: served_model_id,
+                    field: "max_model_len" as NonEmptyStr,
+                    cause: vllm_context_length_cause(r: ContextLengthNotWholeCount { units: u, fraction_digits: f }),
                   }
               }
             _ => ModelsRouteFieldAbsent { served_model_id: served_model_id, field: "max_model_len" as NonEmptyStr }
@@ -500,9 +538,12 @@ fn vllm_models_route_standing_from_entry(entry: JsonValue, served_model_id: NonE
 }
 
 // THE DOCUMENT-LEVEL ENTRY POINT. A document advertising the admitted id twice is not read as one
-// entry: fold over the matches would pick a winner by list order, and two entries for one id is a
-// route contradicting itself rather than a route to read a path off. It is reported as absent-shaped
-// through the field arm rather than silently resolved.
+// entry: folding the matches would pick a winner by list order, and two entries for one id is a
+// route contradicting itself rather than a route to read a path off. It gets its own arm and its own
+// count, because the remedy is neither "wait for the route to advertise it" nor "go read a field" --
+// it is that the route is inconsistent about what it serves. An earlier spelling reported it through
+// the field arm while the annotation here claimed it was absent-shaped, so the prose named a third
+// thing neither the code nor the type did (review 64178).
 fn vllm_models_route_standing(doc: JsonValue, served_model_id: NonEmptyStr) -> VllmModelsRouteReadbackStanding {
   let hits = vllm_models_entry_named(doc: doc, served_model_id: served_model_id)
   if count(hits) == 1 {
@@ -511,10 +552,6 @@ fn vllm_models_route_standing(doc: JsonValue, served_model_id: NonEmptyStr) -> V
   } else if count(hits) == 0 {
     ModelsRouteEntryAbsent { served_model_id: served_model_id }
   } else {
-    ModelsRouteFieldUnreadable {
-      served_model_id: served_model_id,
-      field: "id" as NonEmptyStr,
-      cause: "the /v1/models document advertises this id more than once, so no single entry describes it" as NonEmptyStr,
-    }
+    ModelsRouteEntryDuplicated { served_model_id: served_model_id, count: count(hits) }
   }
 }

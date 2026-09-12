@@ -35,7 +35,8 @@ import gunbc.spark.vllm_observed {
   vllm_version_route_2026_09_03,
   vllm_readback_2026_09_03,
   VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteEntryAbsent,
-  ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, vllm_models_route_standing,
+  ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, ModelsRouteEntryDuplicated,
+  vllm_models_route_standing,
 }
 import extdeps.vllm.server {
   VllmRoute,
@@ -433,7 +434,31 @@ test fn a_duplicated_id_refuses_rather_than_picking() -> Bool {
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/a\",\"max_model_len\":8\},\{\"id\":\"m\",\"root\":\"/b\",\"max_model_len\":8\}]\}"),
     served_model_id: "m" as NonEmptyStr,
   ) {
-    ModelsRouteFieldUnreadable { served_model_id: _, field: f, cause: _ } => (f as String) == "id"
+    ModelsRouteEntryDuplicated { served_model_id: i, count: n } => (i as String) == "m" && n == 2
     _ => false
   }
+}
+
+// RED -- THE TWO UNREADABLE CAUSES ARE TOLD APART, which is the half review 64178 found missing: a
+// quoted "8" is a defect in the route's document and an exponent is a limit of this substrate, and
+// an operator reading the refusal has to know which one to go and fix. Asserting only that both
+// refuse would be satisfied by the collapsed spelling this replaces.
+test fn an_exponent_length_and_a_quoted_length_refuse_for_different_reasons() -> Bool {
+  let quoted = match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":\"8\"\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: _, cause: c } => c as String
+    _ => ""
+  }
+  let exponent = match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":1e6\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: _, cause: c } => c as String
+    _ => ""
+  }
+  string_contains(s: quoted, pattern: "defect in the document")
+    && string_contains(s: exponent, pattern: "limit of ours")
+    && quoted != exponent
 }
