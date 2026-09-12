@@ -901,7 +901,15 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
-    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added, None)
+    floor_diff_edits_from_line_ranges(
+        index,
+        &line_ranges,
+        &changed,
+        &departed,
+        &added,
+        None,
+        &std::collections::HashMap::new(),
+    )
 }
 
 pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
@@ -913,6 +921,7 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
+    let rename_from = parse_unified_diff_rename_sources(diff_text);
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
@@ -920,6 +929,7 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
         &departed,
         &added,
         Some(base_test_decl_names),
+        &rename_from,
     )
 }
 
@@ -933,6 +943,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
+    rename_from: &std::collections::HashMap<String, String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -1101,20 +1112,17 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             }
             if test_fn_names.contains(name) {
                 edited_test_fns.insert((file_norm.clone(), name.clone()));
-                // NEWLY ENROLLED, AND THE CONDITION IS THE PATH'S rather than the line's. A test
-                // fn in a path whose declaration set is established fresh at NEW has never
-                // executed under its current qualified identity; one in a modified path may be a
-                // long-standing witness whose body was touched. Only the first may be refused for
-                // its cost by a gate that must never red a PR for debt it did not author.
                 // NEWLY ENROLLED = declared now and not declared at the resolved diff base.
-                // `base_test_decl_names` is that census: a missing path (or an empty name set)
-                // means every current test fn is new; a name present at base is a modified
-                // sibling and is not enrolled. When the census is absent this falls back to
-                // the added-path rule so attribution unit tests that do not observe git keep
-                // their old enrolment set; production always passes the census.
+                // The census is path-keyed. A rename destination is absent at the NEW path, so
+                // looking up the dest would enrol every fn as new — the author's-only-moved
+                // case. Enrolment therefore reads the SOURCE path when `rename_from` names one.
+                // When the census is absent this falls back to the added-path rule so
+                // attribution unit tests that do not observe git keep their old enrolment set;
+                // production always passes the census.
+                let census_path = rename_from.get(&file_norm).unwrap_or(&file_norm);
                 let newly_declared = match base_test_decl_names {
                     Some(at_base) => !at_base
-                        .get(&file_norm)
+                        .get(census_path)
                         .is_some_and(|names| names.contains(name)),
                     None => added_paths.contains(&file_norm),
                 };
@@ -1207,12 +1215,19 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
-    let dag_paths: Vec<String> = line_ranges_by_file
+    let rename_from = parse_unified_diff_rename_sources(&diff_text);
+    let mut dag_paths: std::collections::HashSet<String> = line_ranges_by_file
         .keys()
         .filter(|p| p.ends_with(".dag"))
         .cloned()
         .collect();
-    let base_test_decl_names = floor_base_test_decl_census(&dag_paths)?;
+    for (dest, src) in &rename_from {
+        if dest.ends_with(".dag") {
+            dag_paths.insert(src.clone());
+        }
+    }
+    let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
@@ -1220,6 +1235,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         &departed_paths,
         &added_paths,
         Some(&base_test_decl_names),
+        &rename_from,
     )?;
     let quarantined = quarantine_probe_admitted_pairs();
     let root = process_workspace_root();

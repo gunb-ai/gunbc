@@ -426,8 +426,13 @@ fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
 // `tools.pr_containment_instrument` `base_file_reading`; this row asks a different question
 // (declaration names, not line text) of the same two git facts.
 //
-// 302ms is not a fact this observation carries. The percentile that consumes this census sits
-// in `floor_enrolment_margin` and is p90 over TWELVE green main runs.
+// THIS CENSUS IS PATH-KEYED AND RENAME-BLIND. Git lists and shows one path at one revision.
+// A rename destination is absent from the base tree under its NEW spelling, which is a true
+// empty-names answer for that path and must not be fused with unreadability. Following the
+// move — subtracting names that lived at `rename from` — is the enrolment consumer's join,
+// not a second observation. 302ms is not a fact this observation carries. The percentile
+// that consumes this census sits in `floor_enrolment_margin` and is p90 over TWELVE green
+// main runs.
 
 type FloorBasePathTestDecls {
   path: String

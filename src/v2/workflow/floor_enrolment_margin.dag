@@ -48,14 +48,16 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // THE GATED POPULATION.
 //
 // WHAT IS GATED: every newly enrolled test declaration — `declared now` minus `declared at the
-// resolved diff base`. The base names come from `v2.workflow.floor_diff_observe`
-// `floor_run_base_test_decl_census`, the capability this module named as its next-rung trigger.
-// A wholly added file and a rename destination are the case where the base path is absent, so
-// every current name is new; a brand-new `test fn` in an existing file is the case where the
-// path is present and the name is not. Both are gated. A modified sibling whose name WAS at
-// the base is not, which is what keeps the conjunct from refusing a PR for a witness it did
-// not author. The census REFUSES rather than answering empty when the base cannot be listed or
-// a listed path cannot be shown, so ignorance cannot enrol (or exempt) anyone. It is also
+// resolved diff base`. The census (`floor_run_base_test_decl_census`) is path-keyed and
+// rename-blind: it answers names at a given path at the base, and a rename destination is
+// absent there. Enrolment JOINS that census to git's `rename from` so the subtracted names
+// are the SOURCE path's. A wholly added file has no source and no base names, so every
+// current name is new; a brand-new `test fn` in an existing file is present at the same path
+// and missing from the name set; a file that was only moved subtracts its source names and
+// enrols nothing it already declared. A modified sibling whose name WAS at the lookup path
+// is not enrolled, which is what keeps the conjunct from refusing a PR for a witness it did
+// not author. The census REFUSES rather than answering empty when the base cannot be listed
+// or a listed path cannot be shown, so ignorance cannot enrol (or exempt) anyone. It is also
 // joined to what the run actually PLANNED, so an identity the runner itself withheld is
 // deferred rather than refused here.
 
