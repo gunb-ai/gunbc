@@ -123,8 +123,7 @@ fn runner_usage_from_observation<P>(
                   initiator: initiator,
                   vcpu_minutes: MeteredVcpuMinutes { count: FieldOfFractions {
                     num: elapsed * hardware_thread_count_value(t: meter.configured_vcpus),
-                    denom: nanosecond_count(n: millisecond_to_nanosecond(m:
-                      minute_to_millisecond(m: minute(count: 1)))),
+                    denom: nanosecond_count(n: millisecond_to_nanosecond(m: minute_to_millisecond(m: minute(count: 1)))),
                   } },
                   vm_elapsed: nanosecond(count: elapsed),
                   capacity_held: nanosecond(count: held),
