@@ -20,7 +20,7 @@ import gunbc.roadmap_program_view {
   V1ConvergenceFront, NamespacePDeriveFront, V2GenerationFront,
   ConvergenceFrontSpec, program_front_key,
   RemainingShape, ConstraintView, ConstraintKind,
-  ImplementationConstraint, ContractConstraint,
+  ImplementationConstraint, ContractConstraint, NonAgentWorkConstraint,
   ProposedPlane, ProposedCarrierAbsent,
   FinishLineView, V1DeletionProgramView,
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused,
@@ -192,7 +192,7 @@ fn fx_derived(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>)
       finish_lines: [], fronts: [],
       remaining: RemainingShape {
         sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
-        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
+        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, not_agent_work: 0 - 1, unsized: 0 - 1,
       },
       proposed: ProposedCarrierAbsent,
     }
@@ -255,6 +255,7 @@ test fn witness_acceptance_moves_the_primary_constraint() -> Bool {
               && match ac.kind {
                 ImplementationConstraint => true
                 ContractConstraint => false
+                NonAgentWorkConstraint => false
               }
         }
       }

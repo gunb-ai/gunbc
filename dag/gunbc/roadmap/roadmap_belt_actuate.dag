@@ -345,6 +345,7 @@ import gunbc.roadmap_validation_oracle {
   ValidationCommandRefused,
   ValidationChangeWindowRefused,
   ValidationContractUnspecified,
+  ValidationContractClosesNothing,
   ValidationNotAgentWork,
   validation_oracle_scopes,
   validation_oracle_observe_from_source,
@@ -5416,14 +5417,12 @@ fn belt_verify_run_and_persist(
               },
             }
           ContractClosesNothing =>
-            belt_run_validation_operations(
-              instance: instance,
-              validations: [],
-              worktree: worktree,
-              oracle_identity: identity,
-              diff_window_path: diff_window_path,
-              source_roots: contract_source_roots(contract: node.execution),
-            )
+            BeltValidationRun {
+              executions: [],
+              verdict: ValidationRefused {
+                cause: ValidationContractClosesNothing,
+              },
+            }
           ContractCloses { validations } =>
             belt_run_validation_operations(
               instance: instance,

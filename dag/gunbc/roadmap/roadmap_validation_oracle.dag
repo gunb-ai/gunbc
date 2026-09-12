@@ -452,6 +452,7 @@ fn validation_oracle_set_observe(
 
 type ValidationRefusalCause
   = ValidationContractUnspecified
+  | ValidationContractClosesNothing
   | ValidationNotAgentWork { mode: NonAgentWorkMode }
   | ValidationOracleUnpinnable {
       validation_label: String,
@@ -651,7 +652,9 @@ fn validation_oracle_gate(
       ValidationOracleGateRefused { cause: ValidationContractUnspecified }
     ContractNotAgentWork { mode } =>
       ValidationOracleGateRefused { cause: ValidationNotAgentWork { mode: mode } }
-    _ =>
+    ContractClosesNothing =>
+      ValidationOracleGateRefused { cause: ValidationContractClosesNothing }
+    ContractCloses { validations: _ } =>
       match validation_oracle_scopes(contract: contract)
         |> filter(s => match s {
           OraclePinnable { oracle: _ } => false
@@ -759,6 +762,7 @@ fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusa
 fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified => "contract-unspecified"
+    ValidationContractClosesNothing => "contract-closes-nothing"
     ValidationNotAgentWork { mode } => non_agent_work_mode_label(mode: mode)
     ValidationOracleUnpinnable { validation_label: _, reason: _ } =>
       "oracle-unpinnable"
@@ -783,6 +787,8 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified =>
       "the node declares no execution contract, so there is no validation to run"
+    ValidationContractClosesNothing =>
+      "the node declares an execution contract with no validation operations, so there is nothing to run"
     ValidationNotAgentWork { mode } =>
       join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
     ValidationOracleUnpinnable { validation_label, reason } =>
@@ -849,6 +855,8 @@ fn validation_refusal_cause_decode(
 ) -> ValidationRefusalCause? {
   if cause_kind == "contract-unspecified" {
     Present { value: ValidationContractUnspecified }
+  } else if cause_kind == "contract-closes-nothing" {
+    Present { value: ValidationContractClosesNothing }
   } else {
     match non_agent_work_mode_from_label(label: cause_kind) {
       Present { value: mode } =>
