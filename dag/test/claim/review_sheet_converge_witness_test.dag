@@ -491,6 +491,27 @@ test fn derived_payload_erasure_refuses_without_derived_columns_while_still_proj
   }
 }
 
+test fn derived_payload_erasure_refuses_without_derived_columns_when_gone_and_authorized_otherwise() -> Bool {
+  let projection = ReviewSheetProjection { schema: w_schema_no_derived(), rows: [] }
+  let observed = w_observed(
+    headers: ["listing_id", "standing", "judgement"],
+    rows: [["L1", w_standing_gone(), "buy"]],
+  )
+  match classify_review_sheet_with_erasure(
+    observed: observed,
+    projection: projection,
+    erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
+  ) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "has no DerivedField column")
+        && string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "cell=A2")
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
 test fn derived_payload_erasure_refuses_listing_not_on_sheet() -> Bool {
   let projection = w_projection(rows: [])
   let observed = w_observed(headers: w_headers(), rows: [])
@@ -587,27 +608,6 @@ test fn ensure_with_erasure_refuses_while_still_projected() -> Bool {
         && string_contains(s: r as String, pattern: "cell=A2")
     Noop => false
     Apply { plan: _ } => false
-  }
-}
-
-test fn erased_derived_is_not_restored_when_the_listing_returns_to_the_projection() -> Bool {
-  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
-  let observed = w_observed(
-    headers: w_headers(),
-    rows: [["L1", "", w_standing_gone(), "buy"]],
-  )
-  match classify_review_sheet_with_erasure(
-    observed: observed,
-    projection: projection,
-    erasures: [],
-  ) {
-    ReviewSheetUnreadable { reason: r } =>
-      string_contains(s: r as String, pattern: "cannot restore derived payload after erasure")
-        && string_contains(s: r as String, pattern: "listing=L1")
-        && string_contains(s: r as String, pattern: "cell=A2")
-    ReviewSheetNeedsWrite { plan: _ } => false
-    ReviewSheetConverged => false
-    ReviewSheetConflict { conflict: _ } => false
   }
 }
 
