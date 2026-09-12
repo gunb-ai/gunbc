@@ -143,6 +143,19 @@ type GenerationProvenanceReceipt {
 // the obligations independent of the submitter. Measured on the revision that lacked it: coverage
 // whose required set and rows were shortened together, and coverage that was entirely empty, both
 // promoted.
+// SECTION 3C STANDING, STATED BECAUSE THE HONEST ANSWER IS A FRONTIER AND NOT AN EXECUTING
+// CONSUMER. `admit_promotion` has ZERO production callers and `CandidateGeneration` has ZERO
+// production constructors: every one is a witness fixture. So this binding is consumed by execution
+// only in the suite, and claiming otherwise would be the grep-matched-prose mistake -- three of the
+// four "readers" that claim was first built on are comments.
+//
+// The tree already carries this fact and names its trigger, so this row cites rather than restates:
+// `gunbc.compiler_frontend_program_status` `milestone_status`, arm
+// `SelfHostSuccessorPromotionAdmitted`, whose cause is `needs(i: PersistedPromotionOutcome)`. That
+// persisted outcome over a named candidate is the trigger for this frontier too, and it is the same
+// moment the procedure stops being inert. KILL CONDITION: if a PromotionOutcome is persisted and
+// this binding is still reached only from tests, the frontier was wrong and the coverage fields are
+// dangling rather than deferred.
 type GenerationLensCoverage {
   subject: GenerationIdentity
   contract_material: List<CompileLens>
