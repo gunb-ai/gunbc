@@ -85,30 +85,6 @@ fn alternative_arm_standings(
   map(alternatives, l => arm_standing(r: resolve_runner_label(label: l, observed_at: observed_at)))
 }
 
-fn arm_standing_is_undetermined(s: ArmStanding) -> Bool {
-  match s {
-    ArmUndetermined { label, cause } => true
-    ArmConfirmed { label, snapshot } => false
-    NotArmConfirmed { label, architecture, snapshot } => false
-  }
-}
-
-fn arm_standing_is_arm(s: ArmStanding) -> Bool {
-  match s {
-    ArmConfirmed { label, snapshot } => true
-    NotArmConfirmed { label, architecture, snapshot } => false
-    ArmUndetermined { label, cause } => false
-  }
-}
-
-fn arm_standing_is_not_arm(s: ArmStanding) -> Bool {
-  match s {
-    NotArmConfirmed { label, architecture, snapshot } => true
-    ArmConfirmed { label, snapshot } => false
-    ArmUndetermined { label, cause } => false
-  }
-}
-
 fn declared_architecture_standing(
   spec: DeclaredRunner,
   observed_at: Rfc3339Timestamp,
@@ -130,17 +106,33 @@ fn declared_architecture_standing(
         }
       } else {
         let standings = alternative_arm_standings(alternatives: alternatives, observed_at: observed_at)
-        if any(standings, s => arm_standing_is_undetermined(s: s)) {
+        if any(standings, s => match s {
+          ArmUndetermined { label, cause } => true
+          ArmConfirmed { label, snapshot } => false
+          NotArmConfirmed { label, architecture, snapshot } => false
+        }) {
           DeclaredArchitectureUnresolved {
             via: spec,
             cause: "at least one declared alternative is absent from the surveyed runner catalogs, so architecture is not established by the workflow file alone",
           }
-        } else if any(standings, s => arm_standing_is_arm(s: s)) && any(standings, s => arm_standing_is_not_arm(s: s)) {
+        } else if any(standings, s => match s {
+          ArmConfirmed { label, snapshot } => true
+          NotArmConfirmed { label, architecture, snapshot } => false
+          ArmUndetermined { label, cause } => false
+        }) && any(standings, s => match s {
+          NotArmConfirmed { label, architecture, snapshot } => true
+          ArmConfirmed { label, snapshot } => false
+          ArmUndetermined { label, cause } => false
+        }) {
           DeclaredArchitectureUnresolved {
             via: spec,
             cause: "declared alternatives mix catalog Arm and not-Arm labels; the workflow does not establish a single architecture",
           }
-        } else if any(standings, s => arm_standing_is_arm(s: s)) {
+        } else if any(standings, s => match s {
+          ArmConfirmed { label, snapshot } => true
+          NotArmConfirmed { label, architecture, snapshot } => false
+          ArmUndetermined { label, cause } => false
+        }) {
           DeclaredArm { via: spec }
         } else {
           match standings.first() {
@@ -166,13 +158,6 @@ fn alternative_provider_readings(
   observed_at: Rfc3339Timestamp,
 ) -> List<ProviderReading> {
   map(alternatives, l => provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)))
-}
-
-fn provider_reading_is_unresolved(r: ProviderReading) -> Bool {
-  match r {
-    ProviderUnresolved { label, cause } => true
-    ProviderFromCatalog { provider, label, snapshot } => false
-  }
 }
 
 fn provider_readings_share_one_catalog_provider(readings: List<ProviderReading>) -> Bool {
@@ -214,7 +199,10 @@ fn declared_provider_standing(
         }
       } else {
         let readings = alternative_provider_readings(alternatives: alternatives, observed_at: observed_at)
-        if any(readings, r => provider_reading_is_unresolved(r: r)) {
+        if any(readings, r => match r {
+          ProviderUnresolved { label, cause } => true
+          ProviderFromCatalog { provider, label, snapshot } => false
+        }) {
           DeclaredProviderUnresolved {
             via: spec,
             cause: "at least one declared alternative is absent from the surveyed runner catalogs, so the workflow file does not establish a provider",
@@ -304,22 +292,6 @@ fn observed_provider_standing(
   }
 }
 
-fn conclusion_is_success(c: WorkflowRunConclusion?) -> Bool {
-  match c {
-    Present { value: conclusion } => match conclusion {
-      Success => true
-      Failure => false
-      Cancelled => false
-      Neutral => false
-      Skipped => false
-      TimedOut => false
-      ActionRequired => false
-      StartupFailure => false
-    }
-    Absent => false
-  }
-}
-
 type BaselineAdmission
   = BaselineAdmitted {
       job_id: Int
@@ -336,39 +308,54 @@ fn baseline_admission(o: ObservedExecution) -> BaselineAdmission {
     NoRunObserved { obligation } =>
       BaselineRefused { cause: concat("no run observed: ", obligation) }
     JobRunObserved { job, head_sha, correctness } =>
-      if conclusion_is_success(c: job.conclusion) == false {
-        BaselineRefused {
+      match job.conclusion {
+        Absent => BaselineRefused {
           cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
         }
-      } else {
-        match correctness {
-          TestsExecuted { step } => match observed_label_standing(o: o) {
-            ObservedLabel { label } => BaselineAdmitted {
-              job_id: job.id,
-              run_id: job.run_id,
-              run_attempt: observed_job_run_attempt(job: job),
-              head_sha: head_sha,
-              test_step: step,
-              observed_label: label,
+        Present { value: conclusion } => match conclusion {
+          Success => match correctness {
+            TestsExecuted { step } => match observed_label_standing(o: o) {
+              ObservedLabel { label } => BaselineAdmitted {
+                job_id: job.id,
+                run_id: job.run_id,
+                run_attempt: observed_job_run_attempt(job: job),
+                head_sha: head_sha,
+                test_step: step,
+                observed_label: label,
+              }
+              NoRunObservedForLabel { obligation } => BaselineRefused {
+                cause: concat("no run observed: ", obligation),
+              }
+              JobResourceCarriedNoLabels { job_id } => BaselineRefused {
+                cause: "the observed job concluded success and ran tests, but the job resource carried no runner labels",
+              }
             }
-            NoRunObservedForLabel { obligation } => BaselineRefused {
-              cause: concat("no run observed: ", obligation),
-            }
-            JobResourceCarriedNoLabels { job_id } => BaselineRefused {
-              cause: "the observed job concluded success and ran tests, but the job resource carried no runner labels",
-            }
+            NoTestsExecuted { note } =>
+              BaselineRefused { cause: concat("job succeeded but executed no correctness check: ", note) }
           }
-          NoTestsExecuted { note } =>
-            BaselineRefused { cause: concat("job succeeded but executed no correctness check: ", note) }
+          Failure => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Cancelled => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Neutral => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Skipped => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          TimedOut => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          ActionRequired => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          StartupFailure => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
         }
       }
-  }
-}
-
-fn baseline_is_admitted(b: BaselineAdmission) -> Bool {
-  match b {
-    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
-    BaselineRefused { cause } => false
   }
 }
 
@@ -417,14 +404,6 @@ fn cache_condition(m: CacheMechanism) -> CacheCondition {
   }
 }
 
-fn cache_condition_is_warm(c: CacheCondition) -> Bool {
-  match c {
-    RemoteWarmOnFreshWorker { evidence } => true
-    LogicalCold { evidence } => false
-    CacheConditionUnestablished { cause } => false
-  }
-}
-
 data cache_read_obligation: NonEmptyStr = "this census read workflow YAML and the job-run resource (labels, conclusion, step names); no cache log line was read, so hit or miss is unobserved"
 
 // -------------------------------------------------------------------------------------
@@ -446,26 +425,6 @@ type ExternalEffect {
   kind: ExternalEffectKind
   step: NonEmptyStr
   disposition: EffectDisposition
-}
-
-fn effect_requires_removal(k: ExternalEffectKind) -> Bool {
-  match k {
-    RegistryPush { registry } => true
-    CloudRoleAssumption { role } => true
-    CoverageUpload { service } => true
-    WorkflowArtifactUpload { artifact } => false
-  }
-}
-
-fn effect_is_removed(e: ExternalEffect) -> Bool {
-  match e.disposition {
-    RemovedFromBothRealizations { cause } => true
-    RetainedAndTimed { cause } => false
-  }
-}
-
-fn effect_disposition_is_sound(e: ExternalEffect) -> Bool {
-  effect_requires_removal(k: e.kind) == effect_is_removed(e: e)
 }
 
 type ReplayAdmission
@@ -540,20 +499,33 @@ fn candidate_baseline(c: WorkloadCandidate) -> BaselineAdmission {
   baseline_admission(o: c.observed)
 }
 
-fn candidate_is_selected(c: WorkloadCandidate) -> Bool {
-  match c.selection {
-    SelectedWorkload { rank, complementarity } => true
-    CandidateRejected { reason } => false
-    CandidateUnresolved { obligation } => false
-  }
-}
-
 fn candidate_effects_are_sound(c: WorkloadCandidate) -> Bool {
-  all(c.external_effects, e => effect_disposition_is_sound(e: e))
+  all(c.external_effects, e => match e.kind {
+    RegistryPush { registry } => match e.disposition {
+      RemovedFromBothRealizations { cause } => true
+      RetainedAndTimed { cause } => false
+    }
+    CloudRoleAssumption { role } => match e.disposition {
+      RemovedFromBothRealizations { cause } => true
+      RetainedAndTimed { cause } => false
+    }
+    CoverageUpload { service } => match e.disposition {
+      RemovedFromBothRealizations { cause } => true
+      RetainedAndTimed { cause } => false
+    }
+    WorkflowArtifactUpload { artifact } => match e.disposition {
+      RetainedAndTimed { cause } => true
+      RemovedFromBothRealizations { cause } => false
+    }
+  })
 }
 
 fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
-  count(filter(c.caches, m => cache_condition_is_warm(c: cache_condition(m: m))))
+  count(filter(c.caches, m => match cache_condition(m: m) {
+    RemoteWarmOnFreshWorker { evidence } => true
+    LogicalCold { evidence } => false
+    CacheConditionUnestablished { cause } => false
+  }))
 }
 
 fn observed_job_attempt(o: ObservedExecution) -> Int? {
@@ -1032,14 +1004,19 @@ data workload_census: List<WorkloadCandidate> = [
 ]
 
 fn selected_workloads() -> List<WorkloadCandidate> {
-  filter(workload_census, c => candidate_is_selected(c: c))
+  filter(workload_census, c => match c.selection {
+    SelectedWorkload { rank, complementarity } => true
+    CandidateRejected { reason } => false
+    CandidateUnresolved { obligation } => false
+  })
 }
 
 fn correctness_admitted_workloads() -> List<WorkloadCandidate> {
-  filter(selected_workloads(), c =>
-    baseline_is_admitted(b: candidate_baseline(c: c))
-      && baseline_attempt_matches_observed_job(c: c)
-  )
+  filter(selected_workloads(), c => match candidate_baseline(c: c) {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } =>
+      baseline_attempt_matches_observed_job(c: c)
+    BaselineRefused { cause } => false
+  })
 }
 
 fn rejected_candidates() -> List<WorkloadCandidate> {
