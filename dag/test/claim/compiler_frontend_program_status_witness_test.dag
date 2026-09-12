@@ -74,6 +74,8 @@ import v2.workflow.legacy_baseline_capture {
 }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import gunbc.compiler_frontend_program_status {
+  milestone_missing_instruments,
+  SeedDeletionObservation,
   native_route_required_lane_outstanding,
   MilestoneStanding,
   Clear,
@@ -349,6 +351,14 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
   count(native_route_required_lane_outstanding(drop: retired)) == 0
     && count(open) == 1
     && any(open, o => o == "fixture_native_route_drop")
+}
+
+// SEED RETIREMENT MUST BE ABLE TO CLEAR, now that the cutover requires it (review 64771). Its
+// underivability names an instrument, not DerivableOnlyViaPrerequisites. A prerequisite whose
+// standing is defined never to clear would hold the cutover's startability NotDerivable forever.
+test fn seed_retirement_awaits_an_instrument_rather_than_only_its_prerequisites() -> Bool {
+  any(milestone_missing_instruments(m: SelfHostSeedRetirement),
+      i => missing_instrument_label(i: i) == missing_instrument_label(i: SeedDeletionObservation))
 }
 
 fn milestone_in(ms: List<ProgramMilestone>, want: ProgramMilestone) -> Bool {
