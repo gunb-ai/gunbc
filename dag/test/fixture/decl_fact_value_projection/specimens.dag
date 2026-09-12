@@ -1,0 +1,52 @@
+module test.fixture.decl_fact_value_projection.specimens
+
+import std.types { List, String }
+
+// VALUE-ONLY SPECIMENS for test.claim.decl_fact_value_projection_witness.
+//
+// WHY THEY LIVE IN A FIXTURE MODULE AND NOT IN THE WITNESS FILE, measured rather than assumed:
+// decl_facts_corpus_walk skips any path for which is_test_dag holds, and is_test_dag is the
+// "_test.dag" suffix. A declaration authored inside the witness is therefore invisible to the
+// very reader under test, so specimens declared there resolve to nothing and the positive
+// control goes red for a reason that has nothing to do with the claim. This file does not carry
+// that suffix, so it is in the corpus the reader walks.
+//
+// WHY THEY ARE AUTHORED AT ALL RATHER THAN BORROWED. An earlier revision borrowed specimens
+// from live modules and two of the three pairs were CONFOUNDED (review 63983):
+// cssl_harness_realized_closure holds 2 module paths, one of them a DECLARATION REFERENCE
+// rather than a literal, against v2_interpreted_emitter_closure's 3; and agreement_pool_roots
+// holds 2 elements against empty_string_list's 0. Those pairs differed in ARITY and in
+// referenced identifiers, not solely in the strings their rows author. A projection that began
+// carrying list cardinality, or a referenced declaration's atom identity, would have turned
+// those reds green while carrying no authored lexeme at all — which is exactly the
+// insufficiency the class row declares, reproduced inside the red that exists to catch it. An
+// acceptance red whose green can be bought by something other than the named capability is not
+// a weaker wall; it is a false one.
+//
+// THE INVARIANT EVERY PAIR HOLDS: within a pair the two rows share their declared type, their
+// shape, their element count, their field names and the LENGTH of every string. Only the
+// characters differ. So nothing but authored string content can distinguish them, and nothing
+// but a projection that carries authored string content can turn the reds green.
+
+data specimen_bare_alpha: String = "aaa-lexeme-one"
+
+data specimen_bare_beta: String = "bbb-lexeme-two"
+
+data specimen_list_alpha: List<String> = ["aaa-lexeme-one", "shared-tail-xx"]
+
+data specimen_list_beta: List<String> = ["bbb-lexeme-two", "shared-tail-xx"]
+
+type SpecimenRecord {
+  first: String
+  second: String
+}
+
+data specimen_record_alpha: SpecimenRecord = SpecimenRecord {
+  first: "aaa-lexeme-one",
+  second: "shared-tail-xx"
+}
+
+data specimen_record_beta: SpecimenRecord = SpecimenRecord {
+  first: "bbb-lexeme-two",
+  second: "shared-tail-xx"
+}

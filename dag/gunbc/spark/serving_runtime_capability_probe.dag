@@ -6,11 +6,16 @@ import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_kv_layout, v41_sm12_attention_class }
+import gunbc.spark.v41_published_image_observation {
+  v41_published_repository, v41_published_tag, v41_published_arm64_reference,
+  v41_published_distribution_name,
+}
 import gunbc.spark.runtime_architecture_registry_reading {
-  ArchitectureRegistryReading, registry_reading_contains,
+  ArchitectureRegistryReading, ArchitectureObservation, ArchitectureAsked, RegistryDump,
+  registry_reading_contains, architecture_observation_image_reference,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
   timothystewart6_vllm_gb10_registry_reading, xomoxcc_dgx_spark_sglang_registry_reading,
-  gunbc_vllm_dsv41_gb10_registry_reading,
+  gunbc_vllm_dsv41_gb10_registry_reading, v41_published_arm64_architecture_asked,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference,
@@ -184,6 +189,34 @@ type RuntimeCapabilityProbeRow {
 // extdeps.deepseek.deepseek_v4_1_flash owns `architectures[0]` of config.json at the pinned
 // revision; spelling it again here would be a second authority for one fact, which is what this
 // import exists to prevent.
+fn architecture_asked_outcome(observation: ArchitectureObservation) -> KernelProbeOutcome {
+  match observation {
+    RegistryDump { reading: _ } =>
+      KernelProbeSymbolUngrounded {
+        roster: "gunbc.spark.runtime_architecture_registry_reading ArchitectureObservation" as NonEmptyStr,
+        defect: "ArchitectureRegistered for an asked probe cannot be derived from a registry dump via this fold" as NonEmptyStr,
+      }
+    ArchitectureAsked {
+      image_reference: _,
+      host: _,
+      observed_at: _,
+      instrument: _,
+      architecture: a,
+      present: p,
+    } =>
+      if (a as String) != (deepseek_v4_1_flash_architecture_class as String) {
+        KernelProbeSymbolUngrounded {
+          roster: "gunbc.spark.runtime_architecture_registry_reading ArchitectureObservation" as NonEmptyStr,
+          defect: "this capability names DeepseekV41ForCausalLM and the asked observation is for a different architecture" as NonEmptyStr,
+        }
+      } else if p {
+        KernelObservedPresent { symbol: v41_probe_registry_symbol }
+      } else {
+        KernelObservedAbsent { symbol: v41_probe_registry_symbol }
+      }
+  }
+}
+
 fn architecture_registered_outcome(reading: ArchitectureRegistryReading) -> KernelProbeOutcome {
   if registry_reading_contains(r: reading, architecture: deepseek_v4_1_flash_architecture_class) {
     KernelObservedPresent { symbol: v41_probe_registry_symbol }
@@ -417,6 +450,17 @@ data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
     candidate: "a GB10 image built from vLLM 07b75534651a0dd584c6f3be75d8c62fb8426397, built by gunbc.spark.vllm_runtime_image_build and probed inside its own digest" as NonEmptyStr,
     discovered_via: "the upstream commit that carries vllm/models/deepseek_v4_1/nvidia/model.py with its SM12 branch. It was a BUILD OBLIGATION when this roster was written and nothing published answered it; the obligation was taken, the image exists, and the same probe was run inside it -- so it is a probed candidate here and the obligation it discharges is stated separately below, where what it did and did not settle can be read" as NonEmptyStr,
     disposition: CandidateProbed { image_reference: gunbc_vllm_dsv41_gb10_registry_reading.image_reference },
+  },
+  RuntimeCandidateRow {
+    candidate: join([
+      v41_published_repository as String,
+      ":",
+      v41_published_tag as String,
+      " arm64, pulled as ",
+      v41_published_arm64_reference() as String,
+    ], "") as NonEmptyStr,
+    discovered_via: "operator-chosen route A published image; probed on srv9 by fleet-converge 34643985099" as NonEmptyStr,
+    disposition: CandidateProbed { image_reference: v41_published_arm64_reference() },
   },
 ]
 
@@ -743,12 +787,80 @@ data v41_sm121_source_build_probe_rows: List<RuntimeCapabilityProbeRow> = [
   },
 ]
 
+// THE PUBLISHED ROUTE-A IMAGE. fleet-converge 34643985099 on srv9, after inspect read back
+// sha256:714a9375... (the daemon's config id for the d84a1232... pull). Every required capability
+// the probe asks, including Fp4WeightSupportedHere called on the device, returned present.
+data v41_published_arm64_probe: ProbedRuntimeImage = ProbedRuntimeImage {
+  image_reference: architecture_observation_image_reference(o: v41_published_arm64_architecture_asked),
+  framework: "vllm" as NonEmptyStr,
+  framework_version: v41_published_distribution_name,
+}
+
+data v41_sm121_published_image_probe_rows: List<RuntimeCapabilityProbeRow> = [
+  RuntimeCapabilityProbeRow {
+    image: v41_published_arm64_probe,
+    host: "srv9" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+    capability: ArchitectureRegistered,
+    outcome: architecture_asked_outcome(observation: v41_published_arm64_architecture_asked),
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_published_arm64_probe,
+    host: "srv9" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+    capability: Fp4WeightKernels,
+    outcome: KernelObservedPresent { symbol: "ops _C.cutlass_scaled_fp4_mm and _C.cutlass_scaled_mm_supports_fp4, both found inside this digest" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_published_arm64_probe,
+    host: "srv9" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+    capability: Fp4WeightSupportedHere,
+    outcome: KernelObservedPresent { symbol: "cutlass_scaled_mm_supports_fp4 called on the device; DETAIL call found True" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_published_arm64_probe,
+    host: "srv9" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+    capability: MlaKvCacheLayoutAdmitted,
+    outcome: KernelObservedPresent { symbol: "supports_combination at this device admitted fp8,fp8_e4m3,fp8_ds_mla and rejected nvfp4_ds_mla" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_published_arm64_probe,
+    host: "srv9" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+    capability: FlashInferSparseMlaSm120Symbols,
+    outcome: KernelObservedPresent { symbol: "every flashinfer sparse MLA SM120 entry the probe asks, imported inside this digest" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_published_arm64_probe,
+    host: "srv9" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+    capability: Csa2CompressorKernels,
+    outcome: KernelObservedPresent { symbol: "modules vllm.models.deepseek_v4_1.compressor and .sparse_mla, each found" as NonEmptyStr },
+  },
+  RuntimeCapabilityProbeRow {
+    image: v41_published_arm64_probe,
+    host: "srv9" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+    capability: DSparkSpeculator,
+    outcome: KernelObservedPresent { symbol: "modules vllm.models.deepseek_v4_1.nvidia.dspark and vllm.v1.worker.gpu.spec_decode.dspark, each found" as NonEmptyStr },
+  },
+]
+
 // THE ONE ROSTER EVERY READER SHOULD CONSUME, so no consumer can pick up the vLLM receipts and miss
 // the SGLang ones, the source-built one, or any other -- a sweep whose denominator splits is a sweep
 // that can report a clean result over half its subjects.
 fn v41_sm121_capability_probe_rows() -> List<RuntimeCapabilityProbeRow> {
   fold(
-    concat(v41_sm121_sglang_probe_rows, v41_sm121_source_build_probe_rows),
+    concat(concat(v41_sm121_sglang_probe_rows, v41_sm121_source_build_probe_rows), v41_sm121_published_image_probe_rows),
     init: v41_sm121_vllm_probe_rows,
     f: (acc, r) => append(acc, r),
   )
