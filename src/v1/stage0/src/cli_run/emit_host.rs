@@ -328,15 +328,62 @@ pub fn claim_scope_dag_multi_module_fixture(
     // from a corpus: `full_inventory` and `discovery_exclusions` are empty because a fixture has
     // no discovery step, and the counts describe this manifest. No corpus root is read, which is
     // what keeps the subject under the calling test's control.
+    // A REAL DIGEST, NOT AN EMPTY STRING. The per-subject memos are keyed by this value, so an
+    // empty digest is not merely uninformative -- every fixture would collide with every other
+    // fixture and with anything else that left the field blank, and a scope would consume an
+    // index built from a different graph.
+    let subject_digest = multi_module_fixture_source_digest(
+        &paths
+            .iter()
+            .zip(contents.iter())
+            .map(|(path, content)| MultiModuleFixtureSource {
+                path: path.clone(),
+                content: content.clone(),
+            })
+            .collect::<Vec<MultiModuleFixtureSource>>(),
+        entry_module_path,
+    );
     let prepared = crate::cli_run::PreparedRepository {
         graph,
         source_indices,
-        subject_digest: String::new(),
+        subject_digest,
         modules_resolved: module_count as usize,
         modules_excluded: 0,
         full_inventory: Vec::new(),
         discovery_exclusions: HashMap::new(),
     };
+    // THE BOUNDED PER-SUBJECT RESOURCE IS ACQUIRED FIRST, AND ITS REFUSAL IS THE HARNESS'S, NOT
+    // THE SUBJECT'S.
+    //
+    // `claim_scope_for_with_memos` reaches `reference_closure_index`, which is memoized in a
+    // `thread_local!` keyed by `subject_digest` and bounded at
+    // `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`; a subject beyond that population is refused. That
+    // refusal is a fact about THIS PROCESS's caches -- how many distinct subjects it has already
+    // built -- and says nothing whatever about the manifest. Folding it into `ScopeRefused`, as
+    // the first revision did, made a harness budget refusal indistinguishable from a scope
+    // refusal, which is the not-applicable-versus-malformed conflation this outcome type exists
+    // to prevent. Worse, it is INVISIBLE: the floor prints the claim's Bool and not the cause, so
+    // the instrument could not report its own failure mode.
+    //
+    // MEASURED, on gunbc#11143's floor: the positive control returned false while the negative
+    // one passed -- the inverse of both passing locally. The memo is thread-local and the floor
+    // evaluates claims on several workers, so the verdict depended on WHICH WORKER picked the
+    // claim up. A floor-resident instrument that reaches a thread-local, process-bounded cache is
+    // order- and thread-dependent by construction; anyone building one should read that sentence
+    // before trusting a green.
+    //
+    // Acquiring it here separates the two causes. It does NOT remove the competition with the
+    // floor's own corpus and policy subjects -- that needs a non-registering construction path
+    // and lands separately.
+    if let Err(cause) = crate::cli_run::reference_closure_index(&prepared) {
+        return Outcome::InstrumentRefused {
+            cause: format!(
+                "claim_scope_dag_multi_module_fixture: the host process refused this fixture as an \
+                 additional prepared subject, which is a fact about ITS bounded per-subject caches \
+                 and not about the supplied manifest: {cause}"
+            ),
+        };
+    }
     // WITHOUT MEMOS, deliberately: `claim_scope_for` reaches per-subject memo caches, and a
     // fixture -- whose PreparedRepository is synthesized here and carries an empty subject digest
     // -- must neither read from nor write to them. So this calls the SAME
