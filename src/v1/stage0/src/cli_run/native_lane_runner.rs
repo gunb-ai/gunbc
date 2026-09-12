@@ -608,10 +608,25 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
 /// Spawn the emitted binary once, by explicit path, and decode its stdout. A nonzero exit or an
 /// unparseable stdout refuses the lane — the run's output is the receipt's evidence, and a
 /// partial or garbled evidence stream is a red, never a truncated green.
+// `rows_out` PERSISTS THE CHILD'S STDOUT BESIDE THE RECEIPT. MEASUREMENT OVERLAY ONLY -- this
+// branch exists to produce a baseline rows artifact for an identity join and is not a proposal to
+// land the tee on main by this route.
+//
+// The driver prints one population row per identity, each carrying a typed verdict. This host
+// parsed that stream for counts and dropped it, so a run that refused before printing its terminal
+// marker left NOTHING on disk: BASELINE3 on 2026-09-12 refused at cost accounting after 5h11m and
+// its 3621 identity rows are unrecoverable. A join against main needs those rows, and the only way
+// to get them is to persist the bytes.
+//
+// WRITTEN BEFORE THE STATUS CHECK AND BEFORE THE PARSE, DELIBERATELY. A run that ends in a refusal
+// is exactly the run whose rows someone needs; gating the write on a successful exit or a
+// successful parse would discard them on the one occasion they matter. That ordering is the whole
+// point of the overlay, and it is why the write sits above the early return rather than below it.
 fn run_native_binary(
     binary: &Path,
     universe_file: &Path,
     source_roots: &[String],
+    rows_out: Option<&Path>,
 ) -> Result<NativeRunOutput, String> {
     let output = Command::new(binary)
         .arg(universe_file)
@@ -623,6 +638,40 @@ fn run_native_binary(
                 binary.display()
             )
         })?;
+    if let Some(path) = rows_out {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "V2-NATIVE REFUSAL cause=NativeRunRowsNotPersisted — creating {}: {e}",
+                    parent.display()
+                )
+            })?;
+        }
+        std::fs::write(path, &output.stdout).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunRowsNotPersisted — writing {}: {e}",
+                path.display()
+            )
+        })?;
+        // READ BACK AND COMPARE BYTES. A baseline whose rows are not the rows the child produced is
+        // worse than no baseline: it would be joined against as though it were evidence. This fires
+        // only on a real storage fault, and when it fires it refuses rather than reporting a
+        // population nobody can vouch for.
+        let written = std::fs::read(path).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunRowsNotPreserved — reading back {}: {e}",
+                path.display()
+            )
+        })?;
+        if written != output.stdout {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeRunRowsNotPreserved — {} holds {} byte(s) but the child wrote {}; the persisted rows are not the rows that were produced",
+                path.display(),
+                written.len(),
+                output.stdout.len()
+            ));
+        }
+    }
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.status.success() {
         return Err(format!(
@@ -962,7 +1011,16 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
 
     // 5. THE NATIVE RUN. The emitted binary, by explicit path, over the derived universe.
     eprintln!("required-ci: v2-native running the emitted compiler over the universe");
-    let main_output = run_native_binary(&preparation.binary_path, &universe_file, source_roots)?;
+    let driver_rows_path = workspace
+        .join("target")
+        .join("v2-native-lane")
+        .join("driver-rows.jsonl");
+    let main_output = run_native_binary(
+        &preparation.binary_path,
+        &universe_file,
+        source_roots,
+        Some(&driver_rows_path),
+    )?;
     eprintln!(
         "required-ci: v2-native native run complete — {} verdict rows, {} file refusals",
         main_output.terminal_rows,
@@ -987,6 +1045,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         &preparation.binary_path,
         &control_universe_file,
         &control_roots,
+        None,
     )?;
     drop(withdrawal);
     eprintln!("required-ci: v2-native old route restored");
