@@ -41,6 +41,14 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // marker being necessary. Together they say the equality decision reads the NOMINAL HEAD and does
 // not consult the argument at all.
 //
+// INLINE_DISTINCT IS THE BOUNDARY PROBE AN EXISTING ROW ASKED FOR, which this witness did not know
+// when it was written. gunbc.recurring_failure_mode.generic_application_admits_distinct_unit_variant_arguments
+// owns this exact population -- unit variants of one closed coproduct distinguishing generic
+// applications -- and its next-rung trigger says to PRESERVE the expecting-accept boundary probe
+// until the repair flips it to a permanent refusing regression. This arm is that probe. Do not
+// delete it to make the file tidier, and do not flip its expectation to make a future compiler
+// green: when the repair lands, the arm reds, and that red is the row's receipt.
+//
 // INLINE_DISTINCT IS A PINNED LIMITATION, NOT AN ENDORSEMENT. Its expect_blocking: false records
 // what the compiler does today, so the claim stays falsifiable. If structural marker enforcement
 // ever lands, this arm goes RED -- and that red is correct and wants a human: it means the

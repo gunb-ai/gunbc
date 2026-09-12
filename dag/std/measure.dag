@@ -416,6 +416,16 @@ type Milliwatt = Measure<Power, Milli, Nat>
 // is not power -- but it is bought by the NAMED ALIAS, and every consumer that wants the wall must
 // spell the alias rather than the shape. Minting a Quantity arm documents a dimension and gives the
 // alias somewhere to hang; it does not by itself refuse anything.
+//
+// AND THE INLINE ACCEPTANCE IS A FILED DEFECT, NOT A PROPERTY TO BUILD ON. Read the paragraph above
+// as "spell the alias" and you would conclude the shape-level acceptance is simply how the language
+// works. It is not: gunbc.recurring_failure_mode.generic_application_admits_distinct_unit_variant_arguments
+// owns that exact population -- unit variants of one closed coproduct distinguishing generic
+// applications -- records its rung as OutsideTheLadder, and states in its own words that the present
+// acceptance IS THE DEFECT rather than desired language behavior. Its next-rung trigger is a
+// variant-to-declaration identity judgment at generic argument positions. So the alias is the wall
+// AVAILABLE TODAY, not the wall that is intended, and an author choosing a carrier should not design
+// around the inline hole as though it were permanent.
 type VoltAmpere = Measure<ApparentPower, One, Nat>
 
 type Volt = Measure<ElectricPotentialDifference, One, Nat>
