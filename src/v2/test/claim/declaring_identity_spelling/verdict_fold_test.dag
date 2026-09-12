@@ -8,7 +8,7 @@ import std.declaring_identity_spelling {
   IdentityAmbiguous,
   IdentityOwnerless,
   InvisibleUntilCallExpressionRetained,
-  InvisibleUntilProductionIngestYieldsSites,
+  InvisibleUntilTypePositionMentionSurvives,
   ObservedOnNormalizedTree,
   ResolvedAuthoredNotOnCanonicalPath,
   ResolvedSpelling,
@@ -134,7 +134,7 @@ test fn unbound_is_unresolvable_and_not_requalification_work_holds() -> Bool {
   }
 }
 
-data held_file_ingest_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilProductionIngestYieldsSites
+data held_type_position_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilTypePositionMentionSurvives
 
 data held_call_erasure_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilCallExpressionRetained
 
@@ -146,13 +146,15 @@ data unresolvable_fixture_path: String = "src/v2/test/fixture/declaring_identity
 
 data call_only_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/call_only.dag"
 
+data value_outside_call_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag"
+
 test fn coverage_frontiers_are_not_observed_tree_holds() -> Bool {
-  match held_file_ingest_coverage {
-    InvisibleUntilProductionIngestYieldsSites =>
+  match held_type_position_coverage {
+    InvisibleUntilTypePositionMentionSurvives =>
       match held_call_erasure_coverage {
         InvisibleUntilCallExpressionRetained => true
         ObservedOnNormalizedTree => false
-        InvisibleUntilProductionIngestYieldsSites => false
+        InvisibleUntilTypePositionMentionSurvives => false
       }
     ObservedOnNormalizedTree => false
     InvisibleUntilCallExpressionRetained => false
