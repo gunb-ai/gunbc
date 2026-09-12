@@ -1586,8 +1586,12 @@ fn native_lane_declared_module_name(content: String) -> Optional<String> {
 // with `import ` names exactly one module, and a file that spells a dependency any other way is a
 // closure miss that surfaces as a located resolve refusal inside the route rather than as a silent
 // narrowing, because the module it needed was never ingested and the resolver says so by name.
-// NEXT-RUNG TRIGGER: the closure is computed from the front end's own import edges after a cheap
-// parse of the seed set, at which point this scan deletes rather than being kept beside it.
+// THE DISSOLUTION CONDITION IS A ROW, NOT THIS PARAGRAPH (review 64571):
+// `gunbc.rung_drop.native_lane_second_textual_production_reading`. It carries the previous and
+// temporary rungs, the bounded population (both scans and their one consumer), and the restoration
+// trigger with what the capability must be SUFFICIENT FOR. A trigger written here would be
+// readable by people and by nothing else, so nothing could enumerate this debt or notice it
+// discharge; DESIGN section 4c puts a dissolution condition in a typed carrier for that reason.
 // AN IMPORT LINE THAT NAMES NOTHING IS A REFUSAL, NOT A DROPPED LINE (review 64474). The fold
 // below skips a line whose `import ` prefix is followed by no token, and a skipped import is a
 // NARROWED CLOSURE: the module it should have named is never walked, so its declarations are never
@@ -1893,8 +1897,10 @@ fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> 
 // every prior insert, so a set built from it answers membership in O(n) exactly like
 // `contains`. The capability is declared and unrealized: `v2.std.collection`
 // `map_insert_host_binding` binds `std.primitives` `map_insert_contract` and nothing delegates
-// to it. THAT is the trigger — primitive-backed `map_insert`/`map_lookup` delegates — and until
-// it lands this fold is the honest shape rather than a keyed set in name.
+// to it. THE TRIGGER IS A ROW, NOT THIS PARAGRAPH (review 64571):
+// `gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership`, which names the capability as
+// gunbc#11121 and says its toucher retires the row. Until it lands this fold is the honest shape
+// rather than a keyed set in name.
 fn native_lane_module_reachable(
   facts: List<NativeLaneSourceFacts>,
   frontier: List<String>,

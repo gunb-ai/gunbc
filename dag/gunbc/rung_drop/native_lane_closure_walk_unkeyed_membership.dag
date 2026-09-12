@@ -1,0 +1,48 @@
+module gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-12 (review 64571). The route grows its import closure by folding the fact list
+// to test membership, because v2 has no keyed set it can use: v2.compiler.compile
+// native_lane_module_reachable answers "is this module named by the frontier" by scanning facts.
+//
+// WHAT IS DROPPED IS A CONSTRUCTED MEMBERSHIP TEST. A keyed set answers membership by construction;
+// a fold answers it by looking, and the looking is priced per round. The fold was moved to once per
+// ROUND rather than once per frontier member, which bounds the work at O(rounds x facts x frontier)
+// -- A REDUCTION AND NOT A FIX, stated that way because the shape is unchanged and only its
+// constant moved. DESIGN section 6's bare-minimum-cost rule says a proven cost-shape defect is
+// always fixed regardless of the realized n, and this one is NOT fixed; it is declared.
+//
+// THE CAPABILITY IS NAMED AND IT IS SOMEONE ELSE'S: a primitive-backed map_insert / map_lookup.
+// v2.std.collection map_insert_host_binding binds std.primitives map_insert_contract today with
+// nothing delegating to it, so the keyed set cannot be written in v2 yet -- the contract exists and
+// its realization does not. gunbc#11121 is that capability by name. WHEN #11121 LANDS, ITS TOUCHER
+// RETIRES THIS ROW: the row comes due on the change that supplies the primitive, not on a later
+// lane noticing, and not on this PR.
+//
+// WHY THE TRIGGER IS NOT "map_insert_host_binding EXISTS". It already exists. A trigger satisfied
+// by the binding's presence would fire while the walk stayed quadratic, which is the grain mismatch
+// DESIGN section 4b(3) names as its own review tell -- a trigger naming less than the capability it
+// restores will be satisfied while the capability stays dead.
+
+data native_lane_closure_walk_unkeyed_membership_population: List<String> = [
+  "v2.compiler.compile native_lane_module_reachable — the membership test folded per round",
+  "v2.compiler.compile native_lane_closure_grow — the frontier walk that calls it",
+  "v2.compiler.compile native_lane_module_named — the name comparison the fold performs",
+]
+
+data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {
+  identity: "native_lane_closure_walk_unkeyed_membership" as NonEmptyStr,
+  subject: "constructed membership for the route's import-closure walk",
+  declared: "2026-09-12",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "a keyed membership set backed by a primitive map_insert / map_lookup realization" },
+    population: native_lane_closure_walk_unkeyed_membership_population,
+    restoration_trigger: "A realization DELEGATES to std.primitives map_insert_contract so a keyed membership set is writable in v2, and the frontier walk answers membership by key lookup rather than by folding the fact list. That capability is gunbc#11121; the change that lands it is this row's toucher and retires it. The existence of v2.std.collection map_insert_host_binding does NOT satisfy this trigger -- the binding is already present and nothing delegates to it, so a trigger keyed on the binding would fire while the walk stayed quadratic."
+  }
+}
