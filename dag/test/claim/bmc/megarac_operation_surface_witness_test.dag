@@ -19,7 +19,7 @@ import extdeps.bmc.megarac {
   RedirectionStatusFirmwareUncatalogued,
   RedirectionStatusKnown,
   RedirectionStopped,
-  RedirectionVendorRenderedStopped,
+  RedirectionWireUncatalogued,
   RedfishServiceAbsentFromServedUi,
   ServedUiFactFirmwareUncatalogued,
   ServedUiFactKnown,
@@ -78,7 +78,7 @@ test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
           match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0) {
             RedirectionStatusKnown { firmware: _, status: RedirectionStopped } =>
               match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7) {
-                RedirectionStatusKnown { firmware: _, status: RedirectionVendorRenderedStopped { wire: 7 } } => true
+                RedirectionStatusKnown { firmware: _, status: RedirectionWireUncatalogued { wire: 7 } } => true
                 _ => false
               }
             _ => false
@@ -97,7 +97,7 @@ test fn redirection_status_refuses_an_uncatalogued_firmware() -> Bool {
   }
 }
 
-test fn denial_and_vendor_stopped_cannot_confirm_attachment() -> Bool {
+test fn uncatalogued_wire_cannot_confirm_attachment() -> Bool {
   megarac_redirection_presents_media(
     lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1),
   )

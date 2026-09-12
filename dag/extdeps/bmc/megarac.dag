@@ -170,10 +170,10 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
 // 8b5ef64f5bf1df88a0f497887540d198a677e7a6f63f1bc8fc9bbc79e4f54fcd) as served at
 // https://192.168.1.228/source.min.js on 2026-09-12, and committed as
 // artifacts/bmc/mtcollins1-megarac-api-surface.txt (sha256
-// 4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd). This is the citation a
-// redirection_status decoder previously lacked. The catalog is a FACT ABOUT THIS FIRMWARE'S
-// SERVED UI, not a unit observation and not a family-wide MegaRAC claim: AMI advertises Redfish
-// on other builds; this surface does not carry it.
+// 4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd). The catalog is a FACT ABOUT
+// THIS FIRMWARE'S SERVED UI PATHS, not a unit observation, not a family-wide MegaRAC claim, and
+// not a redirection_status map: AMI advertises Redfish on other builds; this surface does not
+// carry it. Status-code meanings are a separate fact, cited on megarac_redirection_status_of_wire.
 // ---------------------------------------------------------------------------------------------
 
 data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
@@ -189,19 +189,20 @@ data megarac_spx_ui_surface_sha256: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
 
-// REDIRECTION_STATUS, recovered from the served UI at firmware 0.32. Codes 0, 1, 100 are the
-// rendered trio; 2–5 are the named refusal suffixes in the same bundle; any other numeric code
-// is vendor-rendered Stopped — neither connecting nor started. A firmware identity this row
+// REDIRECTION_STATUS. The 255-path catalog does not contain these mappings. The codes that this
+// decoder names are the ones committed observations actually returned on firmware 0.32:
+// 0 stopped (artifacts/bmc/mtcollins1-media-independence-probe.log), 1 started and 100 connecting
+// (artifacts/bmc/mtcollins1-diskless-boot.json, artifacts/bmc/mtcollins1-virtual-media-boot.json,
+// and gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
+// Connecting is presenting: the same unit booted GRUB from a session that still read 100.
+// Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial
+// recovered from source.min.js (those bytes are not in the tree). A firmware identity this row
 // does not catalog refuses rather than inheriting 0.32's numbers.
 type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
   | RedirectionConnecting
-  | RedirectionConnectionDenied
-  | RedirectionLoginFailed
-  | RedirectionMaxSessionReached
-  | RedirectionPermissionDenied
-  | RedirectionVendorRenderedStopped { wire: Int }
+  | RedirectionWireUncatalogued { wire: Int }
 
 type MegaRacRedirectionStatusLookup
   = RedirectionStatusKnown { firmware: BmcFirmwareReleaseIdentity, status: MegaRacRedirectionStatus }
@@ -218,16 +219,8 @@ fn megarac_redirection_status_of_wire(
       RedirectionStartedConnectionAccepted
     } else if wire == 100 {
       RedirectionConnecting
-    } else if wire == 2 {
-      RedirectionConnectionDenied
-    } else if wire == 3 {
-      RedirectionLoginFailed
-    } else if wire == 4 {
-      RedirectionMaxSessionReached
-    } else if wire == 5 {
-      RedirectionPermissionDenied
     } else {
-      RedirectionVendorRenderedStopped { wire: wire }
+      RedirectionWireUncatalogued { wire: wire }
     }
     RedirectionStatusKnown { firmware: firmware, status: status }
   } else {
@@ -235,9 +228,9 @@ fn megarac_redirection_status_of_wire(
   }
 }
 
-// A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped, the named denials,
-// vendor-rendered stopped, and an uncatalogued firmware cannot confirm attachment: nonzero is not
-// a success code, and a firmware this decoder does not catalog cannot inherit 0.32's numbers.
+// A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped, an uncatalogued
+// wire, and an uncatalogued firmware cannot confirm attachment: nonzero is not a success code,
+// and a firmware this decoder does not catalog cannot inherit 0.32's numbers.
 fn megarac_redirection_presents_media(lookup: MegaRacRedirectionStatusLookup) -> Bool {
   match lookup {
     RedirectionStatusFirmwareUncatalogued { firmware: _, wire: _ } => false
@@ -246,11 +239,7 @@ fn megarac_redirection_presents_media(lookup: MegaRacRedirectionStatusLookup) ->
         RedirectionStartedConnectionAccepted => true
         RedirectionConnecting => true
         RedirectionStopped => false
-        RedirectionConnectionDenied => false
-        RedirectionLoginFailed => false
-        RedirectionMaxSessionReached => false
-        RedirectionPermissionDenied => false
-        RedirectionVendorRenderedStopped { wire: _ } => false
+        RedirectionWireUncatalogued { wire: _ } => false
       }
   }
 }
