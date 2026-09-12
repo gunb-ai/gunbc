@@ -86,7 +86,6 @@ import gunbc.self_host_compile_phase_frontier {
   render_phase_board,
 }
 
-
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
 fn failure_mode_preamble_blocks() -> List<MarkdownBlock> {

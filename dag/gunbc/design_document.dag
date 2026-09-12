@@ -14,8 +14,8 @@ import gunbc.documentary_refs {
 import gunbc.design_argument { conformance_domains, ConformanceDomain, conformance_home_list }
 import gunbc.roadmap.roadmap_review_criteria { review_home_text }
 
-
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
+
 fn preamble_blocks() -> List<MarkdownBlock> {
   [
     h1(text: "gunbc — Design"),
