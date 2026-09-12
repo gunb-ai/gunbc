@@ -1707,69 +1707,53 @@ pub struct TransitionAdmission {
 /// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
 /// empty was the resting state and one change authoring rows back into it is the ordinary motion.
 ///
-/// gunbc#11071 LinuxKernelRelease rehome (2026-09-11). `gunbc.served_surface_browser_observation`
-/// authored `LinuxKernelRelease`, the brand for what `uname -r` answers. That is a fact the Linux
-/// kernel owns, and it was declared inside a downstream RECEIPT module — so when
-/// `extdeps.linux.edac` needed to key its GHES/APEI topology facts to a kernel release it could not
-/// reach the brand at all: an extdeps module may not import a gunbc one. The only two landings were
-/// re-coining the brand upstream, which is the §3 fork, or moving it. It moved, to the new
-/// `extdeps.linux.kernel`, and both prior consumers import it from there.
+/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
+/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
+/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
+/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
+/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
+/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
+/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `LinuxKernelRelease` is authored
-/// on both sides in all three declarations below, and what changed is which declaration it admits:
-/// base `{gunbc.served_surface_browser_observation}`, head `{extdeps.linux.kernel}`. That is the
-/// motion this wall exists to make an author say out loud. It is not `AuthoredReferenceResolution`:
-/// the name was bound to a real declaration that this change deliberately relocated.
+/// gunbc#11137 sha256sum names Filesystem instead of reaching it (2026-09-12). The row below is a
+/// DIFFERENT delta that this change produces, not that one restored: empty is the resting state
+/// and one change authoring a row back into it is the ordinary motion.
 ///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. The moved declaration is
-/// byte-identical to the one it replaces — same name, same `NonEmptyStr where brand(...)` body, same
-/// brand STRING, so every `as LinuxKernelRelease` ascription in the corpus denotes the same brand it
-/// did at the base; a changed brand string would have changed what the ascriptions mean and this row
-/// would be admitting a semantic change under a relocation's name. The two consumers are the
-/// complete population: `LinuxKernelRelease` resolved to exactly
-/// `gunbc.served_surface_browser_observation` and
-/// `test.claim.served_surface_browser_observation_witness` at the base, and both are edited here, so
-/// no third site is left resolving through a module that no longer authors the name. The witness
-/// suite over the consuming module passes on this head. The closure blast radius the same run
-/// measured is 4 modules — `extdeps.linux.kernel` imports only the citation vocabulary the base
-/// consumer already reached (`std.types`, `std.decl_ref`, `extdeps.external_authority`,
-/// `extdeps.uri`), so nothing downstream gained reach it did not have.
+/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
+/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
+/// module into the candidate set for every name it declares, so filesystem_io's copy of
+/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
+/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
 ///
-/// TRIGGER: these rows go when #11071 merges. The base then authors `LinuxKernelRelease` in
-/// `extdeps.linux.kernel`, the delta stops being producible, and CONSUMED comes due on the roster's
-/// next touch — adjudicated by the declaring-module join, not by this sentence.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.served_surface_browser_observation",
-            in_declaration: "ContainerVisibleHostKernel",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
+/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
+/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
+///
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. NO RESOLUTION CHANGES.
+/// `extdeps.tools.sha256sum` authors its own `extdeps_external_authority_anchor`, and a module's
+/// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
+/// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
+/// either way. What narrowed is the SET, from three modules to two, which is the qualification's
+/// whole purpose: the resolution stopped depending on a module the author never named. The
+/// required floor on this head is `verdict=FloorClean unexpected_failures=0` over
+/// planned=3757 executed=3757 claims_failed=0, so no consumer of this module changed behaviour.
+///
+/// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
+/// stops being producible, and CONSUMED comes due on the roster's next touch.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
+    // The rationale, the safety adjudication and the trigger are in the doc comment on this
+    // const rather than repeated here. In one line: the bare `import
+    // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
+    // spelling's candidate set without changing what it resolves to.
+    subject: AdmissionSubject::Binding {
+        module: "extdeps.tools.sha256sum",
+        in_declaration: "extdeps_external_authority_anchor",
+        spelling: "extdeps_external_authority_anchor",
+        target: "extdeps.tools.sha256sum",
     },
-    TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.served_surface_browser_observation",
-            in_declaration: "playwright_chromium_151_linux_arm64_headless_navigation_run",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.served_surface_browser_observation_witness",
-            in_declaration: "witness_run_owns_one_execution_identity",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
