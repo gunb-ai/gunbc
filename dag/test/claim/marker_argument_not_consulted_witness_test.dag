@@ -130,14 +130,34 @@ test fn m_every_arm_behaves_as_declared() -> Bool {
   marker_arms |> all(a => arm_agrees(a: a))
 }
 
+// SELECT EXACTLY ONE ARM, AND RED WHEN THE SELECTION IS EMPTY. A by-name filter folded with `all`
+// is vacuously TRUE over an empty list, so a rename, a typo or a deleted arm would make the headline
+// property below permanently green while asserting nothing -- acceptance as the FAILURE MODE of the
+// lookup, which is the same shape as the expect_class sentinel this witness removed two commits ago
+// and is satisfiable by editing the declaration while the realization lies (DESIGN section 5). The
+// count conjunct makes the empty selection RED instead, so a rename reddens here rather than
+// quietly retiring the property. Requiring exactly one also catches a duplicated arm name, where
+// `all` would silently range over two fixtures and report on neither in particular.
+fn exactly_one_arm_agrees(wanted: String) -> Bool {
+  let selected = filter(marker_arms, a => a.name == wanted)
+  count(selected) == 1 && all(selected, a => arm_agrees(a: a))
+}
+
+// NAMES ARE THE SELECTION KEY, SO THEIR UNIQUENESS IS PART OF THE WALL, not hygiene. The sibling
+// brand_nominal_identity_witness_test carries this test for the same reason and this file dropped it
+// when it was adapted.
+fn arm_names() -> List<String> {
+  map(marker_arms, a => a.name)
+}
+
+test fn m_arm_names_are_pairwise_distinct() -> Bool {
+  all(arm_names(), n => count(filter(arm_names(), x => x == n)) == 1)
+}
+
 // THE PROPERTY ITSELF, AS ONE CONJUNCTION. Split into two tests, a compiler that refused everything
 // would green the identical-marker half while the inline half reddened elsewhere in the report, and
 // a reader consulting either alone would draw the opposite conclusion from the one the pair
 // supports. Joined, the only way to pass is for the line to sit exactly where these fixtures put it.
 test fn m_equality_reads_the_name_and_not_the_marker() -> Bool {
-  let identical_refuses =
-    marker_arms |> filter(a => a.name == "named_identical") |> all(a => arm_agrees(a: a))
-  let inline_accepts =
-    marker_arms |> filter(a => a.name == "inline_distinct") |> all(a => arm_agrees(a: a))
-  identical_refuses && inline_accepts
+  exactly_one_arm_agrees(wanted: "named_identical") && exactly_one_arm_agrees(wanted: "inline_distinct")
 }
