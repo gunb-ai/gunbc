@@ -1239,14 +1239,18 @@ fn native_test_file_refusal(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestF
   }
 }
 
-fn native_test_context_fold_step(
+// THE FILE'S ROOT, ABSORBED. This is the half of the per-file step that is NOT the front end:
+// the qualified-name read off the module node and the source-root index insertion, plus the two
+// refusal arms. It takes the root OUTCOME rather than the read, so the caller decides how the
+// front end was entered -- as one composed call (native_test_context_from_ingest below) or phase
+// by phase with a clock between them (std.compiler_entry.SourceRootEvalDriver). Neither caller
+// changes what is absorbed.
+fn native_test_context_absorb(
   state: NativeTestContextFoldState,
   read: DagSourceReadWitness,
-  lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  root_outcome: Outcome<NormalizedTree>
 ) -> NativeTestContextFoldState {
-  match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
+  match root_outcome {
     Rejected { diagnostics: d } =>
       NativeTestContextFoldState {
         roots: state.roots,
@@ -1277,40 +1281,99 @@ fn native_test_context_fold_step(
   }
 }
 
-// One language model for the whole fold: dag_language_model() rebuilds the grammar, lex rules
-// and canonical-symbol set on every call, and calling it inside the cons closure paid that
-// once PER FILE — measured at ~0.3s/file of the context fold's wall time (2026-09-09,
-// v2-native route work), a pure recompute with no per-file dependency.
-fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
+fn native_test_context_fold_step(
+  state: NativeTestContextFoldState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> NativeTestContextFoldState {
+  native_test_context_absorb(
+    state: state,
+    read: read,
+    root_outcome: program_assembly_read_to_normalized_root_prepared(
+      read: read,
+      lm: lm,
+      prepared: prepared,
+      residue: residue
+    )
+  )
+}
+
+// THE ONCE-PER-FOLD INVARIANT, NAMED. dag_language_model() rebuilds the grammar, lex rules and
+// canonical-symbol set on every call and prepare_grammar runs the five validation checks and the
+// FIRST/nullable analysis; both are pure functions of nothing, so both are paid once here and
+// carried. Calling dag_language_model() inside the cons closure paid that once PER FILE --
+// measured at ~0.3s/file of the context fold's wall time (2026-09-09, required-v2-native lane
+// work), a pure recompute with no per-file dependency.
+//
+// IT IS A CARRIER BECAUSE THE PER-FILE SEAM NEEDS TO NAME IT. A driver that enters the front end
+// phase by phase hands the same prepared front end to each file; a second dag_language_model()
+// call on the driver side would be the same recompute re-introduced at the realization layer.
+type NativeTestFrontEnd {
+  lm: LanguageModel
+  prepared: PreparedGrammar
+  residue: Diagnostics
+}
+
+fn native_test_front_end_prepare() -> Outcome<NativeTestFrontEnd> {
   let lm = dag_language_model()
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } => {
-      let folded = fold_list(
-        xs: ingest,
-        empty: NativeTestContextFoldState {
-          roots: Empty,
-          index: source_root_index_empty(),
-          file_refusals: Empty
-        },
-        cons: fn(state, read) {
-          native_test_context_fold_step(
-            state: state,
-            read: read,
-            lm: lm,
-            prepared: prepared,
-            residue: residue
-          )
-        }
-      )
-      outcome_accepted(value: NativeTestContext {
-        roots: folded.roots,
-        index: folded.index,
-        active_roots: source_root_set_from_ingest(ingest: ingest),
-        file_refusals: folded.file_refusals
+    Accepted { value: prepared, diagnostics: residue } =>
+      outcome_accepted(value: NativeTestFrontEnd {
+        lm: lm,
+        prepared: prepared,
+        residue: residue
       })
-    }
   }
+}
+
+fn native_test_context_state_empty() -> NativeTestContextFoldState {
+  NativeTestContextFoldState {
+    roots: Empty,
+    index: source_root_index_empty(),
+    file_refusals: Empty
+  }
+}
+
+fn native_test_context_finish(
+  state: NativeTestContextFoldState,
+  ingest: SourceRootIngest
+) -> NativeTestContext {
+  NativeTestContext {
+    roots: state.roots,
+    index: state.index,
+    active_roots: source_root_set_from_ingest(ingest: ingest),
+    file_refusals: state.file_refusals
+  }
+}
+
+// The whole-ingest composition, retained as the single-call door: witnesses and any caller that
+// does not own a clock keep calling this, and it is DEFINED BY the same parts the driver enters
+// separately rather than restating the fold beside them.
+fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
+  bind_outcome(
+    o: native_test_front_end_prepare(),
+    f: fn(front) {
+      outcome_accepted(value: native_test_context_finish(
+        state: fold_list(
+          xs: ingest,
+          empty: native_test_context_state_empty(),
+          cons: fn(state, read) {
+            native_test_context_fold_step(
+              state: state,
+              read: read,
+              lm: front.lm,
+              prepared: front.prepared,
+              residue: front.residue
+            )
+          }
+        ),
+        ingest: ingest
+      ))
+    }
+  )
 }
 
 fn native_test_resolve_module(
