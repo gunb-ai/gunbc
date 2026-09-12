@@ -98,6 +98,9 @@ import gunbc.host_layout {
   publication_refused_dir,
 }
 import gunbc.host_axis_caps {
+  CapConvergeDecision,
+  CapConvergeWithheld,
+  cap_converge_is_withheld,
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
@@ -1241,11 +1244,40 @@ fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> Li
   ]
 }
 
-fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+// THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
+//
+// THIS IS THE PRODUCTION WRITER. `gunbc.host_axis_caps` authors the per-slot drop-in content and
+// THIS path applies it -- `gunbc converge` does not (operator privilege hold, 2026-08-13) -- so a
+// gate that lives only beside the authoring helpers leaves the reachable route intact. Until this
+// parameter existed the guard here checked author-before-shadow-revert composition and a nonempty
+// unit list, neither of which is evidence that the surplus old slots have finished.
+//
+// THE DEFAULT IS WITHHELD AND THAT IS DELIBERATE. No caller yet supplies a live
+// `SurplusSlotObservation` (`gunbc.runner_slot_population_census` produces one but is not wired to
+// a converge call site), so every caller today reaches the refusal arm. A deploy that cannot prove
+// retirement does not write caps; it stops and says which evidence is missing. That is the safe
+// default the previous shape did not have.
+//
+// IT REFUSES BOTH HALVES. The withheld arm emits neither the authoring script NOR the per-unit
+// shadow reverts that follow it, because a revert is a change to the same subject and authorising
+// half a transaction is how the ordering hazard returns under a different name.
+fn deploy_memory_cap_apply_steps(
+  spec: DeploymentSpec,
+  authorization: CapConvergeDecision,
+) -> List<PipelineStep> {
   let host = spec.target.host.identity
   let units = runner_slot_service_units_for_host(host: host)
   let script = deploy_memory_cap_apply_script_for_host(host: host)
-  if host_axis_caps_author_before_revert_enforced
+  if cap_converge_is_withheld(d: authorization) {
+    [
+      deploy_raw(
+        command: concat(
+          "__GUNBC_DEPLOY_REFUSED__ memory-cap apply withheld: no completed retirement evidence host=",
+          host as String,
+        ),
+      ),
+    ]
+  } else if host_axis_caps_author_before_revert_enforced
     && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
     [deploy_raw(command: script)]
   } else {
@@ -1774,7 +1806,12 @@ fn apply_intent_from_effects(
       concat(
         deploy_apply_preamble_steps(access: access, spec: spec),
         concat(
-          deploy_memory_cap_apply_steps(spec: spec),
+          deploy_memory_cap_apply_steps(
+            spec: spec,
+            authorization: CapConvergeWithheld {
+              cause: "no live surplus-slot observation is wired to this deploy path; gunbc.runner_slot_population_census produces one but has no converge call site",
+            },
+          ),
           concat(
             flat_map(spec.steps, step => apply_step_effects(step: step, effects: effects, spec: spec, plan: plan)),
             [

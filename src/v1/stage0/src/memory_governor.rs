@@ -814,6 +814,30 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
 /// diagnostics that render the source as text. A consumer deciding anything about the
 /// SOURCE must use the resolution, never this label (§3: the label is a rendering, not a
 /// second representation of the discriminant).
+/// INHERITED DEFECT, DECLARED HERE RATHER THAN LEFT FOR THE NEXT READER TO TRIP OVER
+/// (found by review 2026-09-12; NOT introduced by the slot-sizing change that surfaced it).
+///
+/// THE MISMATCH: `gunbc.whole_corpus_compile_admission`'s `.dag` surface explicitly REFUSES a
+/// `HostBudgetDeclaredUnverified` resolution -- an unverified request is not an observation of any
+/// host, so it may not license a whole-corpus compile. This function reduces the typed resolution
+/// to `(Option<u64>, String)`, and `HostBudgetResolution::bytes()` returns the REQUESTED number for
+/// the unverified arm. The Rust admission decision then checks the number and never asks whether it
+/// was verified, so a sufficiently large unverified request can admit through the composition that
+/// the model refuses.
+///
+/// WHAT IS AND IS NOT CLAIMED. The mechanism is read from source. It is NOT established that this
+/// has occurred on any host, and it is NOT the desired-row substitution it superficially resembles:
+/// the runtime path does not pass `DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES`, and the budget resolver
+/// limits an environment request by the observed bound where one is readable. Conflating the two
+/// would attach this defect to the wrong change and leave it unowned when that change lands.
+///
+/// NEXT-RUNG TRIGGER: carry the typed `HostBudgetResolution` into the real admission decision so the
+/// unverified arm is refused where the model refuses it. Reconstructing verification by parsing the
+/// rendered `label()` string is explicitly NOT the repair -- that would make a second authority for
+/// a fact the type already holds, which is how this seam lost the distinction in the first place.
+///
+/// RUNG: *mitigatable*. The `.dag` authority states the correct rule and the Rust path does not
+/// enforce it; nothing detects the divergence today.
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {
     let resolution = read_host_budget_resolution();
     (resolution.bytes(), resolution.label())
@@ -1510,15 +1534,36 @@ mod tests {
         assert!(msg.contains("cgroup memory.high (/sys/fs/cgroup/runner.slice)"));
         assert!(msg.contains("--entry"));
 
-        let ci_slot = whole_corpus_compile_admission(
+        // THE OLD EFFECTIVE SLOT STILL REFUSES, AND THIS IS THE CONTROL THAT MUST SURVIVE THE
+        // 2026-09-12 SIZING CHANGE. 16106127360 is what every runner slot in the fleet actually
+        // carries today; it sits below the measured demand and is refused, which is the property
+        // this test was written for and the one a desired-row edit must not quietly retire.
+        let old_effective_slot =
+            whole_corpus_compile_admission(Some(16_106_127_360), "cgroup memory.high");
+        assert!(matches!(
+            old_effective_slot,
+            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
+        ));
+        assert!(whole_corpus_compile_refusal_diagnostic(&old_effective_slot).is_some());
+
+        // THE DECLARED ROW NOW ADMITS, AND THAT IS A STATEMENT ABOUT A DESIRED CONFIGURATION
+        // RATHER THAN ABOUT ANY HOST. `DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES` mirrors
+        // `gunbc.runner_slot_allocation`'s desired row, which moved to 25 GiB; 25 GiB clears the
+        // 16 GiB measured demand, so the admission flips from refusal to admission BY POLICY.
+        //
+        // THE THRESHOLD IS NOT TOUCHED. Lowering it to keep the old assertion green would be
+        // choosing a rule to preserve an answer, which is the reverse of an oracle.
+        //
+        // WHAT THIS DOES NOT ESTABLISH: that any host can honour it. No fleet member carries this
+        // limit -- the control above is the live figure -- so a run admitted on this basis would
+        // still meet the old effective ceiling. That gap is the subject of the separate review
+        // question about admission outrunning effective configuration, and this fixture is
+        // deliberately not evidence either way about it.
+        let declared_slot = whole_corpus_compile_admission(
             Some(DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES),
             "cgroup memory.high",
         );
-        assert!(matches!(
-            ci_slot,
-            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
-        ));
-        assert!(whole_corpus_compile_refusal_diagnostic(&ci_slot).is_some());
+        assert!(whole_corpus_compile_refusal_diagnostic(&declared_slot).is_none());
     }
 
     #[test]

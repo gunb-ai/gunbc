@@ -246,56 +246,118 @@ fn derived_runner_memory_cap_members() -> List<CapMember> {
 
 // ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────
 //
-// WHAT ADMISSION ALREADY DOES, so this is not a second copy of it: `runner_slot_service_units_for_host`
-// bounds the units these drop-ins target by `gunbc_runner_slots_per_host`, so a host whose width is
-// REFUSED gets no units and therefore no caps. That answers WHETHER a host may be written to.
+// WHAT ADMISSION ALREADY DOES: `runner_slot_service_units_for_host` bounds the units these drop-ins
+// target by `gunbc_runner_slots_per_host`, so a host whose width is REFUSED gets no units and
+// therefore no caps. That answers WHETHER a host may be written to.
 //
-// WHAT IT DOES NOT ANSWER IS WHEN, and the gap is the whole hazard of a shrink. Narrowing the width
-// from 21 to 12 narrows the target list to slots 1..12 -- it does not stop slots 13..21 EXISTING or
-// SERVING. Applying the raise there commits the host to twelve slots at the new ceiling PLUS nine
-// still holding the old one, which is a commitment nothing in this module can see and nothing on
-// the host has agreed to. `gunbc.runner_capacity_plan` cannot close it either: its planner emits
-// only `RunnerSlotAdd`, so a surplus slot is invisible to the one component whose job is to
-// converge the population.
+// WHAT IT DOES NOT ANSWER IS WHEN. Narrowing a width from 21 to 12 narrows the target list -- it
+// does not stop slots 13..21 EXISTING or SERVING. Applying the raise then commits the host to
+// twelve slots at the new ceiling PLUS nine still holding the old one.
 //
-// THE OBSERVATION IS AN INPUT RATHER THAN A LOOKUP, for the reason DESIGN gives about authorable
-// reds: a zero-argument derivation over whatever the host currently reports can only ever be
-// exercised on today's fleet, so its refusing arms would be unreachable and the check on them a
-// decoration. Taking the observation lets a fixture hand this function each arm it claims to refuse.
+// THE OBSERVATION IS AN INPUT RATHER THAN A LOOKUP, so a fixture can drive every arm this claims to
+// refuse; a zero-argument derivation over today's fleet would leave the refusing arms unreachable
+// and the check on them a decoration.
 type SurplusSlotObservation
   = SurplusSlotsObserved { retired: List<NonEmptyStr>, still_present: List<NonEmptyStr> }
   | SurplusSlotsUnobserved { cause: String }
 
-// THERE IS NO ARM THAT RAISES WITHOUT EVIDENCE, and that absence is the guarantee. An unobserved
-// surplus is NOT treated as an empty one -- that is the empty-observation narrow, rendering "I could
-// not see the retiring set" as "there is nothing left to retire", which is the failure mode that
-// makes a shrink silently unsafe rather than loudly blocked.
+// THE REQUIRED RETIRING SET IS CARRIED, AND WITHOUT IT THE GATE COULD NOT SEE AN OMISSION.
+//
+// An earlier revision partitioned only the SUPPLIED standings and admitted whenever `still_present`
+// was empty. That detects an incomplete STANDING and is blind to an incomplete COLLECTION of them:
+// `standings = []` projects to `retired: [], still_present: []` and admitted, as did one truthful
+// completion supplied while another required retiree was simply omitted. Evidence about the slots
+// someone chose to mention is not evidence about the slots that must go.
+//
+// AN EMPTY REQUIRED SET IS LEGITIMATE and is not rejected: a host with no surplus -- including the
+// already-converged second pass -- has nothing to retire, and refusing that would make convergence
+// non-idempotent.
 type CapRaiseStanding
   = CapRaiseAdmitted
   | CapRaiseBlockedPendingRetirement { still_present: List<NonEmptyStr> }
+  | CapRaiseBlockedIncompleteEvidence { missing: List<NonEmptyStr> }
   | CapRaiseBlockedUnobserved { cause: String }
 
-fn cap_raise_standing(observation: SurplusSlotObservation) -> CapRaiseStanding {
+fn retirement_evidence_covers(required: List<NonEmptyStr>, retired: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  required |> filter(r => !any(retired, d => (d as String) == (r as String)))
+}
+
+fn cap_raise_standing(
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+) -> CapRaiseStanding {
   match observation {
     SurplusSlotsUnobserved { cause: c } => CapRaiseBlockedUnobserved { cause: c }
-    SurplusSlotsObserved { retired: _, still_present: sp } =>
+    SurplusSlotsObserved { retired: rt, still_present: sp } =>
       if sp.length() > 0 {
         CapRaiseBlockedPendingRetirement { still_present: sp }
       } else {
-        CapRaiseAdmitted
+        let missing = retirement_evidence_covers(required: required_retiring, retired: rt)
+        if missing.length() > 0 {
+          CapRaiseBlockedIncompleteEvidence { missing: missing }
+        } else {
+          CapRaiseAdmitted
+        }
       }
   }
 }
 
-// THE MEMBERS ARE THE STANDING'S OUTPUT, so a blocked raise cannot author drop-in content at all
-// rather than authoring it and relying on a caller to decline. An empty member list is what the
-// membership reconcile already treats as "nothing desired here", so a blocked host converges to no
-// change instead of to a new ceiling.
-fn admitted_runner_memory_cap_members(observation: SurplusSlotObservation) -> List<CapMember> {
-  match cap_raise_standing(observation: observation) {
-    CapRaiseAdmitted => derived_runner_memory_cap_members()
-    CapRaiseBlockedPendingRetirement { still_present: _ } => []
-    CapRaiseBlockedUnobserved { cause: _ } => []
+// A WITHHELD RAISE IS NOT AN EMPTY DESIRED SET, AND THE DIFFERENCE IS A TEARDOWN.
+//
+// The previous shape returned `[]` on every blocked arm, with a note claiming an empty member list
+// means "no change". IT DOES NOT. `caps_reconcile` treats an OWNED OBSERVED member absent from the
+// desired set as `MemberRemoved`, and `membership_effects` renders that as `EffectRemove` -- so
+// "this host is not authorised to change" was encoded as "this host should have no cap members",
+// which asks for the existing caps to be TORN DOWN. A blocked raise would have removed the very
+// ceilings it was blocked from raising.
+//
+// The disposition is therefore carried to the EFFECT decision rather than flattened into a list on
+// the way there, and the withheld arm emits neither upserts nor removals.
+type CapConvergeDecision
+  = CapConvergeAuthorized { desired: List<CapMember> }
+  | CapConvergeWithheld { cause: String }
+
+fn cap_converge_decision(
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+) -> CapConvergeDecision {
+  match cap_raise_standing(required_retiring: required_retiring, observation: observation) {
+    CapRaiseAdmitted => CapConvergeAuthorized { desired: derived_runner_memory_cap_members() }
+    CapRaiseBlockedPendingRetirement { still_present: sp } =>
+      CapConvergeWithheld {
+        cause: join(["surplus slots have not retired: ", join(map(sp, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
+      }
+    CapRaiseBlockedIncompleteEvidence { missing: ms } =>
+      CapConvergeWithheld {
+        cause: join(["no retirement evidence for required retirees: ", join(map(ms, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
+      }
+    CapRaiseBlockedUnobserved { cause: c } =>
+      CapConvergeWithheld {
+        cause: join(["the slot population could not be observed (", c, "); existing caps are left exactly as observed"], ""),
+      }
+  }
+}
+
+fn cap_converge_is_withheld(d: CapConvergeDecision) -> Bool {
+  match d {
+    CapConvergeAuthorized { desired: _ } => false
+    CapConvergeWithheld { cause: _ } => true
+  }
+}
+
+// THE ONLY ROUTE FROM A DECISION TO EFFECTS. A withheld decision yields NO effects at all -- not an
+// empty desired set reconciled against a nonempty observed one, which is the removal path above.
+fn authorized_caps_effects(
+  decision: CapConvergeDecision,
+  observed: List<CapMember>,
+) -> List<MemberEffect<CapMember>> {
+  match decision {
+    CapConvergeWithheld { cause: _ } => []
+    CapConvergeAuthorized { desired: d } =>
+      match caps_effects(desired: d, observed: observed) {
+        EffectsReady { effects: es } => es
+        ApplyRefused { refusals: _ } => []
+      }
   }
 }
 
@@ -303,6 +365,7 @@ fn cap_raise_standing_blocks(standing: CapRaiseStanding) -> Bool {
   match standing {
     CapRaiseAdmitted => false
     CapRaiseBlockedPendingRetirement { still_present: _ } => true
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => true
     CapRaiseBlockedUnobserved { cause: _ } => true
   }
 }

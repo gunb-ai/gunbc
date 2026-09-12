@@ -32,10 +32,30 @@ fn observed_doomed_budget() -> HostBudgetResolution {
   )
 }
 
-fn fleet_runner_slot_budget() -> HostBudgetResolution {
+// TWO FIXTURES, BECAUSE THEY ARE TWO DIFFERENT CLAIMS AND ONE OF THEM USED TO IMPERSONATE THE
+// OTHER. The single fixture this replaces took its bytes from `gunbc_runner_slot_desired()` -- a
+// DESIRED row -- while naming a real live cgroup path, so it read as an observation of srv1-01 and
+// silently changed meaning the moment the desired row moved.
+
+// WHAT EVERY RUNNER SLOT IN THE FLEET ACTUALLY CARRIES TODAY, read back from converged hosts:
+// memory.high = 16106127360. This is the observation, and it is the control that must keep
+// refusing across any sizing change.
+fn fleet_runner_slot_effective_budget() -> HostBudgetResolution {
   host_budget_resolved_observation(
     source: BudgetSourceCgroupMemoryHigh {
       cgroup_dir: "/sys/fs/cgroup/system.slice/system-actions-runner.slice/actions-runner@srv1-01.service" as NonEmptyStr,
+    },
+    bytes: byte_size(16106127360)
+  )
+}
+
+// THE DESIRED ROW, NAMED AS DESIRED. No cgroup on any host reports this value, so the source is
+// labelled for what it is rather than borrowing a live unit's path -- a fixture that names a real
+// cgroup is asserting a readback, and this one has none to assert.
+fn fleet_runner_slot_desired_budget() -> HostBudgetResolution {
+  host_budget_resolved_observation(
+    source: BudgetSourceCgroupMemoryHigh {
+      cgroup_dir: "<desired row: gunbc.runner_slot_allocation gunbc_runner_slot_desired, not observed on any host>" as NonEmptyStr,
     },
     bytes: gunbc_runner_slot_desired().memory_high
   )
@@ -118,8 +138,23 @@ test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
 // HIGHER reading, so the second path requires the trigger to be changed on its own argument and not
 // as a side effect of wanting this green.
 
+// THE LIVE SLOT IS STILL REFUSED, and this row is unchanged in substance: 15 GiB sits below the
+// completing peak demand, so a whole-corpus compile on a real runner refuses. The 2026-09-12 sizing
+// change does not touch it, which is the point of keeping it separate from the desired row below.
 test fn the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand() -> Bool {
-  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: fleet_runner_slot_budget())) == false
+  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: fleet_runner_slot_effective_budget())) == false
+}
+
+// THE DESIRED ROW ADMITS, BY POLICY, AND THIS ROW SAYS SO RATHER THAN LEAVING THE FLIP UNSTATED.
+// 25 GiB clears the 16 GiB measured demand. The threshold is NOT adjusted to preserve the old
+// answer -- choosing a rule to keep an assertion green is the reverse of an oracle.
+//
+// WHAT IT DOES NOT ESTABLISH: that any host can honour it. No fleet member carries this limit, so a
+// run admitted on this basis would still meet the effective ceiling asserted above. Whether
+// admission can outrun effective configuration is a separate open question and this fixture is
+// deliberately not evidence either way.
+test fn the_desired_row_admits_and_is_not_an_observation_of_any_host() -> Bool {
+  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: fleet_runner_slot_desired_budget()))
 }
 
 test fn admission_is_tight_at_the_measured_demand() -> Bool {
