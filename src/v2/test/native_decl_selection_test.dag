@@ -1,9 +1,11 @@
 module v2.test.native_decl_selection
 
 import v2.compiler.compile {
-  native_lane_module_preparation,
-  NativeLaneModulePrepared,
-  NativeLaneModuleRowsDecided,
+  native_lane_module_resolution,
+  native_lane_file_refusal_index,
+  NativeLaneModuleResolved,
+  NativeLaneModuleContextRowsDecided,
+  NativeLaneModuleResolveRowsDecided,
   NativeLaneUniverseModule,
   native_test_context_from_ingest,
   native_test_eval_one,
@@ -158,16 +160,18 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
   match native_test_context_from_ingest(ingest: [collision_read(), collision_read()]) {
     Rejected { diagnostics: _ } => false
     Accepted { value: context, diagnostics: _ } =>
-      match native_lane_module_preparation(
+      match native_lane_module_resolution(
         context: context,
+        refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
         entry: NativeLaneUniverseModule {
           module: "v2.test.collision",
           path: ^native_decl_selection_collision_cu,
           declarations: ["real_test"]
         }
       ) {
-        NativeLaneModulePrepared { prepared: _ } => false
-        NativeLaneModuleRowsDecided { rows: rows } =>
+        NativeLaneModuleResolved { resolved: _ } => false
+        NativeLaneModuleContextRowsDecided { rows: _ } => false
+        NativeLaneModuleResolveRowsDecided { rows: rows } =>
           length(xs: rows) == 1 && fold_list(
             xs: rows,
             empty: true,
