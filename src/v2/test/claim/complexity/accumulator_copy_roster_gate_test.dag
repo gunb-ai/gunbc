@@ -44,13 +44,7 @@ test fn roster_lens_cost_model_zero_suspects_within_ratchet() -> Bool {
 test fn roster_std_algebra_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/std/algebra.dag", refusal_ceiling: 3)
 }
-// THE PLANTED COPY SITS ON THE COPIED PORT, WHICH IS THE RIGHT OPERAND. gunbc#11019 repointed
-// list_append's copied-port citation when the concat realization landed -- v2.std.fn_index records
-// that v1_rt::rc_list_concat make_muts the LEFT and clones the RIGHT -- so `left: acc, right: x`
-// copies only x per step and is LINEAR. A planted defect written on that axis can no longer mint a
-// Poly2Suspect, and this control asserts SuspectObserved, so it would have been a red that cannot
-// fire: enrolled as evidence and incapable of alarming (DESIGN section 4b(4), section 5).
-data planted_copy_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
+data planted_copy_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 
 // ASSERTED AS *SUSPECT OBSERVED*, NOT AS "NOT CLEAN". Those differ on exactly the state this change
 // exists for: a subject the lens could not read is neither clean nor suspect, and a control written
