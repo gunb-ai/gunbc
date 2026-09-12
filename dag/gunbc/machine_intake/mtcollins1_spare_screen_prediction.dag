@@ -57,6 +57,12 @@ data spare_screen_outcome_report: SpareScreenOutcomeReport = SpareScreenOutcomeR
 data spare_screen_prediction_commit: CommitSha = "a47ce298890ac8dca72cda501b8a1225fcb740ec" as CommitSha
 data spare_screen_prediction_artifact: FilePath = "docs/probes/mtcollins1_spare_module_screen_prediction_2026-09-11.md" as FilePath
 
+// The original object became detached from the author's branch. This evidence tag archives the
+// unchanged object AFTER the outcome; it does not establish pre-outcome publication ordering.
+// Read the file AT spare_screen_prediction_commit, not as a path in the current source tree.
+data spare_screen_prediction_archive: NonEmptyStr = "Original commit archived after the outcome at gunb-ai/gunbc refs/tags/evidence/mtcollins1-spare-screen-a47ce298890. Fetch that ref, then read docs/probes/mtcollins1_spare_module_screen_prediction_2026-09-11.md at a47ce298890ac8dca72cda501b8a1225fcb740ec. Archival publication is not a witnessed preregistration. Artifact: https://github.com/gunb-ai/gunbc/blob/a47ce298890ac8dca72cda501b8a1225fcb740ec/docs/probes/mtcollins1_spare_module_screen_prediction_2026-09-11.md"
+
+
 data spare_screen_configuration: SpareScreenConfiguration = SpareScreenConfiguration {
   population: mt_collins_population_16_dimms,
   modules: SixteenOfSeventeenSparesSelectionUnrecorded,
@@ -171,6 +177,7 @@ fn spare_screen_prediction_review() -> SpareScreenPredictionReview {
 fn spare_screen_prediction_cli() -> CliWireResponse {
   let report = spare_screen_outcome_report
   predictive_review_cli(result: narrowed_spare_screen_model(), context: [
+    spare_screen_prediction_archive,
     concat("Reported experiment: ", report.message_id),
     concat("Restart after power-on (ms): ", to_string(report.restart_after_power_on)),
     concat("OEM payload quotation: ", report.oem_payload_quotation),
