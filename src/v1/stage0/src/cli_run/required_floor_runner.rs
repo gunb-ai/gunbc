@@ -6410,6 +6410,22 @@ pub fn run_required_floor(
     let mut scope_build_split = crate::cli_run::ScopeBuildSplit::default();
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
+    // THE DISTINCT POPULATION, which the summed total cannot express: `names_total` adds one
+    // scope's count to the next, so a name claimed in 300 scopes is counted 300 times. The set a
+    // rename campaign has to dissolve is this one — name to the claimants that spell it, unioned
+    // across every scope that reached them — plus how many scopes each name is ambiguous in,
+    // which is what ranks the offenders.
+    let mut ambiguous_claimants: BTreeMap<String, BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
+    let mut ambiguous_scope_count: BTreeMap<String, usize> = BTreeMap::new();
+    // AND THE READS: (name, referring module) sites, unioned across scopes. This is the
+    // population a refusal is affordable against — a declared name nothing reads bare is a
+    // convention, and the corpus carries whole families of those.
+    let mut ambiguous_read_sites: BTreeMap<(String, String), BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
+    // The positive half: (name, referring module) -> the module that answered it, for names that
+    // ARE ambiguous in the shared slot but are not read through it at this site.
+    let mut qualified_read_sites: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
@@ -6443,10 +6459,29 @@ pub fn run_required_floor(
             scope_build_split.accumulate(&built.build_split);
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
-            if built.ambiguous_bare_names > 0 {
+            if !built.ambiguous_bare_names.is_empty() {
                 scopes_with_ambiguity += 1;
-                ambiguous_total += built.ambiguous_bare_names;
-                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names);
+                ambiguous_total += built.ambiguous_bare_names.len();
+                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names.len());
+                for (name, referring, resolved) in built.qualified_bare_reads.iter() {
+                    qualified_read_sites
+                        .entry((name.clone(), referring.clone()))
+                        .or_default()
+                        .insert(resolved.clone());
+                }
+                for row in built.ambiguous_bare_reads.iter() {
+                    ambiguous_read_sites
+                        .entry((row.name.clone(), row.referring_module.clone()))
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
+                for row in built.ambiguous_bare_names.iter() {
+                    *ambiguous_scope_count.entry(row.name.clone()).or_insert(0) += 1;
+                    ambiguous_claimants
+                        .entry(row.name.clone())
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
             }
             current_scope = Some((claim.module_path.clone(), built));
         }
@@ -7252,9 +7287,127 @@ pub fn run_required_floor(
     // reference closure never donates a colliding name and the flat registry is adequate in
     // practice; anything else sizes the terminal per-module-environment correction.
     eprintln!(
-        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
-        scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max
+        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={} \
+         names_distinct={}",
+        scopes_with_ambiguity,
+        scope_constructions,
+        ambiguous_total,
+        ambiguous_max,
+        ambiguous_claimants.len()
     );
+    let ambiguous_claimants_len = ambiguous_claimants.len();
+    // AND THE NAMES THEMSELVES. `names_total` sizes the population and names nothing in it, so
+    // it can size a campaign and cannot be the campaign's input. Layer 2 of this class is a
+    // refusal landed together with the rename or qualification of every site it would refuse;
+    // these lines ARE that site list, one per distinct name, carrying every claimant and the
+    // kinds they claim it as. Not truncated to a top-N: a census whose tail is elided is an
+    // allow-list with extra steps, and the refusal this feeds admits none.
+    {
+        let mut kind_histogram: BTreeMap<String, usize> = BTreeMap::new();
+        // The union is folded back into the SAME carrier the scope produced, so the census line
+        // and the per-scope rows answer about one type and the kind signature is read off it
+        // rather than recomputed here — the alternative was a second copy of that fold living in
+        // the reporter.
+        let mut ranked: Vec<crate::cli_run::AmbiguousBareName> = ambiguous_claimants
+            .into_iter()
+            .map(|(name, claimants)| crate::cli_run::AmbiguousBareName {
+                name,
+                claimants: claimants.into_iter().collect(),
+            })
+            .collect();
+        // Scope count descending, then the name, so the ordering is a function of the census and
+        // not of a map's iteration.
+        ranked.sort_by(|a, b| {
+            let a_scopes = ambiguous_scope_count.get(&a.name).copied().unwrap_or(0);
+            let b_scopes = ambiguous_scope_count.get(&b.name).copied().unwrap_or(0);
+            b_scopes.cmp(&a_scopes).then_with(|| a.name.cmp(&b.name))
+        });
+        for row in ranked.iter() {
+            let name = &row.name;
+            let claimants = &row.claimants;
+            let signature = row.kind_signature();
+            *kind_histogram.entry(signature.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-name] name={name} scopes={} kinds={signature} \
+                 claimants={sites}",
+                ambiguous_scope_count.get(name).copied().unwrap_or(0)
+            );
+        }
+        let mix = kind_histogram
+            .iter()
+            .map(|(signature, count)| format!("{signature}={count}"))
+            .collect::<Vec<String>>()
+            .join(" ");
+        // The kind mix, folded from the same rows rather than tallied beside them. A signature
+        // mixing `data` with `fn` is the dangerous shape — it crosses the evaluator's kind
+        // dispatch — and one that is `fn+fn` is the common shape that merely picks a body.
+        eprintln!("[floor-bare-name-ambiguity-kinds] {mix}");
+    }
+    // THE READS, WHICH ARE THE DEFECTS. Everything above is a DECLARATION census: it says which
+    // names two transitively-reached modules both spell. A name nothing references bare is
+    // harmless, and the corpus deliberately carries per-module convention rows that hundreds of
+    // modules each declare — so the population a refusal has to dissolve is not that one, it is
+    // the set of reference SITES that actually fall through to the ambiguous shared slot.
+    // Counted statically over each scope's whole closure, never over the lookups this fold
+    // happened to execute: a reference on a path no witness runs is exactly the site a later
+    // refusal would surprise. The grain is (name, referring module), which is the grain a fix is
+    // written at — `refs_by_module` publishes a module's free references deduped, so this is a
+    // count of referencing modules per name and NOT a count of occurrences.
+    {
+        let mut read_names: BTreeMap<String, usize> = BTreeMap::new();
+        for ((name, referring_module), claimants) in ambiguous_read_sites.iter() {
+            *read_names.entry(name.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-read] name={name} referring_module={referring_module} \
+                 claimants={sites}"
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] read_name_module_pairs={} \
+             read_names_distinct={} declared_names_distinct={}",
+            ambiguous_read_sites.len(),
+            read_names.len(),
+            ambiguous_claimants_len
+        );
+        // THE ADJACENT CLASS THIS CENSUS DELIBERATELY DOES NOT COVER, named so that a zero here
+        // can never be read as "no ambiguity in the corpus". A value-position read is what the
+        // evaluator resolves through the shared slot; a TYPE whose spelling two modules share is
+        // a real ambiguity in a different channel, and the corpus carries a large deliberate
+        // instance of it -- String, Int, List, Bool, WireContract each declared by both `std.*`
+        // and its `v2.std.*` self-host copy. That double is owned by the v2 self-host
+        // replacement migration, which ends it by ending the double, and is not a rename this
+        // wall could ask for.
+        // WHAT THE QUALIFIED SITES RESOLVE TO. A site that has left the ambiguous list above
+        // has either been qualified or has stopped being read; these lines say which, and name
+        // the declaration the reference now reaches. Without them the only evidence a
+        // qualification worked is a row disappearing from a census this same process produces.
+        for ((name, referring_module), resolved) in qualified_read_sites.iter() {
+            eprintln!(
+                "[floor-bare-name-ambiguity-bound] name={name} referring_module={referring_module} \
+                 resolves_to={}",
+                resolved.iter().cloned().collect::<Vec<String>>().join(",")
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] qualified_name_module_pairs={}",
+            qualified_read_sites.len()
+        );
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] channel=value_position_only \
+             not_covered=type_position_name_collisions \
+             owner=v2_self_host_replacement_migration"
+        );
+    }
     // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
     // the mean cost of a scope that cost anything; a scope whose modules were all resident from
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the
@@ -8482,6 +8635,10 @@ mod scope_fragment_memo_equivalence {
             assert_eq!(
                 memoized.ambiguous_bare_names, control.ambiguous_bare_names,
                 "{entry}: ambiguity population diverged"
+            );
+            assert_eq!(
+                memoized.ambiguous_bare_reads, control.ambiguous_bare_reads,
+                "{entry}: ambiguous READ sites diverged"
             );
             assert_eq!(
                 memoized.resolution_fingerprint(),

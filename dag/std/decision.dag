@@ -1,7 +1,7 @@
 module std.decision
 
-import std.types { Bool, List, NonEmptyStr }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { OrderedClosedInterval, degenerate_interval }
 import std.observation_completeness {
   ObservationCompleteness,
@@ -780,10 +780,12 @@ type FeasibilityScan
   = FeasibilityReady { remaining: List<ParetoEntry> }
   | FeasibilityNeedsEvidence { gaps: List<AxisGap> }
   | FeasibilityRefused { defects: List<NonEmptyStr> }
+  | FeasibilityNone { causes: List<NonEmptyStr> }
 
 type FeasibilityAccum {
   remaining: List<ParetoEntry>
   gaps: List<AxisGap>
+  exclusions: List<NonEmptyStr>
 }
 
 fn axis_goal_for(axes: List<SelectionAxis>, wanted: DeclarationRef) -> AxisGoal? {
@@ -878,6 +880,36 @@ fn unread_axis_gaps(entry: ParetoEntry, wanted: List<DeclarationRef>) -> List<Ax
   )
 }
 
+fn constraint_definite_infeasibilities(
+  entry: ParetoEntry,
+  constraints: List<HardConstraint>,
+  axes: List<SelectionAxis>,
+) -> List<HardConstraint> {
+  flat_map(constraints, c =>
+    match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+      Present { value: cmp } =>
+        match cmp {
+          Worse => [c]
+          Better => []
+          Same => []
+          UndecidedOnEvidence => []
+        }
+      Absent => []
+    }
+  )
+}
+
+fn constraint_infeasibility_cause(entry: ParetoEntry, constraint: HardConstraint) -> NonEmptyStr {
+  join([
+    "candidate ",
+    declaration_ref_display_key(ref: entry.identity),
+    " violates hard constraint ",
+    declaration_ref_display_key(ref: constraint.identity),
+    " on axis ",
+    declaration_ref_display_key(ref: constraint.axis),
+  ], "") as NonEmptyStr
+}
+
 fn scan_feasibility(
   field: List<ParetoEntry>,
   axes: List<SelectionAxis>,
@@ -888,48 +920,47 @@ fn scan_feasibility(
     FeasibilityRefused { defects: unfunded }
   } else {
   let wanted = feasibility_unread_axes(axes: axes, constraints: constraints)
-  let folded = fold(field, init: FeasibilityAccum { remaining: [], gaps: [] }, f: (acc, entry) => {
+  let folded = fold(field, init: FeasibilityAccum { remaining: [], gaps: [], exclusions: [] }, f: (acc, entry) => {
+    let infeas = constraint_definite_infeasibilities(entry: entry, constraints: constraints, axes: axes)
+    if (infeas |> count) > 0 {
+      FeasibilityAccum {
+        remaining: acc.remaining,
+        gaps: acc.gaps,
+        exclusions: concat(acc.exclusions, map(infeas, c => constraint_infeasibility_cause(entry: entry, constraint: c))),
+      }
+    } else {
     let unread = unread_axis_gaps(
       entry: entry,
       wanted: wanted,
     )
     if (unread |> count) > 0 {
-      FeasibilityAccum { remaining: acc.remaining, gaps: concat(acc.gaps, unread) }
+      FeasibilityAccum { remaining: acc.remaining, gaps: concat(acc.gaps, unread), exclusions: acc.exclusions }
     } else {
       let undecided = constraint_undecided_gaps(entry: entry, constraints: constraints, axes: axes)
       if (undecided |> count) > 0 {
         FeasibilityAccum {
           remaining: acc.remaining,
           gaps: concat(acc.gaps, undecided),
+          exclusions: acc.exclusions,
         }
       } else {
-        let infeasible = any(constraints, c =>
-          match constraint_cmp(entry: entry, constraint: c, axes: axes) {
-            Present { value: cmp } =>
-              match cmp {
-                Worse => true
-                Better => false
-                Same => false
-                UndecidedOnEvidence => false
-              }
-            Absent => false
-          }
-        )
-        if infeasible {
-          acc
-        } else {
-          FeasibilityAccum {
-            remaining: concat(acc.remaining, [entry]),
-            gaps: acc.gaps,
-          }
+        FeasibilityAccum {
+          remaining: concat(acc.remaining, [entry]),
+          gaps: acc.gaps,
+          exclusions: acc.exclusions,
         }
       }
+    }
     }
   })
   if (folded.gaps |> count) > 0 {
     FeasibilityNeedsEvidence { gaps: folded.gaps }
   } else {
-    FeasibilityReady { remaining: folded.remaining }
+    if (folded.remaining |> count) == 0 {
+      FeasibilityNone { causes: folded.exclusions }
+    } else {
+      FeasibilityReady { remaining: folded.remaining }
+    }
   }
   }
 }
@@ -1175,10 +1206,8 @@ fn select_realization(
         FeasibilityNeedsEvidence { gaps: gs } =>
           SelectionNeedsEvidence { needs: as_unfunded_axis_needs(gaps: gs) }
         FeasibilityRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+        FeasibilityNone { causes: cs } => NoFeasibleRealization { causes: cs }
         FeasibilityReady { remaining: rem } =>
-          if (rem |> count) == 0 {
-            NoFeasibleRealization { causes: ["every candidate violates a hard constraint" as NonEmptyStr] }
-          } else {
             match pareto_survivor_identities(field: rem, axes: axes) {
               SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: ns }
               RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
@@ -1198,7 +1227,6 @@ fn select_realization(
                   evidence_snapshot: evidence_snapshot,
                 )
             }
-          }
       }
   }
   bind_pick_to_subject_closure(assessment: assessment, pick: pick)

@@ -4189,6 +4189,65 @@ pub struct PreparedScopeIndexes {
 }
 
 impl PreparedScopeIndexes {
+    /// THE SITE-RELATIVE TIERS, AND THE ONLY IMPLEMENTATION OF THEM.
+    ///
+    /// A bare reference resolves first through the site file's OWN module's qualified
+    /// declaration, then through the module that file explicitly imported the name FROM — and
+    /// both only for a name the shared slot cannot represent unambiguously, which is the
+    /// condition that makes the tiers worth consulting at all. `None` means no tier answered and
+    /// the reference reaches the shared bare slot below.
+    ///
+    /// `InterpContext::lookup_fn_from` IS this method plus that slot, and the bare-name
+    /// ambiguity census asks this same method whether a reference falls through to it. They
+    /// cannot drift, because there is nothing to drift from: an earlier revision stated "one
+    /// rule, one home" while leaving the interpreter its own copy, and the two copies had
+    /// already disagreed on this gate.
+    ///
+    /// `ResolvedFuncEnv.parents` is exactly wrong for the second tier and was tried — this
+    /// carrier's own `file_import_bindings` note says why: it is the FLATTENED TRANSITIVE
+    /// closure, which "does not separate a direct import from a transitively reachable module".
+    /// A wildcard import binds no names and contributes nothing here, which is the residue the
+    /// census exists to find.
+    fn site_resolved_fn(&self, site_file: &str, name: &str) -> Option<&Rc<Node>> {
+        if name.contains('.')
+            || site_file.is_empty()
+            || !self.ambiguous_bare_function_names.contains(name)
+        {
+            return None;
+        }
+        if let Some(module_path) = self.file_module_paths.get(site_file) {
+            if let Some(node) = self.fn_nodes.get(&format!("{module_path}.{name}")) {
+                return Some(node);
+            }
+        }
+        if let Some(source_module) = self
+            .file_import_bindings
+            .get(&(site_file.to_string(), name.to_string()))
+        {
+            if let Some(node) = self.fn_nodes.get(&format!("{source_module}.{name}")) {
+                return Some(node);
+            }
+        }
+        None
+    }
+
+    /// DOES A BARE VALUE REFERENCE AT THIS SITE FALL THROUGH TO THE SHARED SLOT? The census's
+    /// question and the wall's, answered by the resolution the interpreter performs rather than
+    /// by a restatement of it.
+    pub fn falls_through_to_shared_slot(&self, site_file: &str, name: &str) -> bool {
+        self.site_resolved_fn(site_file, name).is_none()
+    }
+
+    /// AND WHICH MODULE ANSWERED, when one did. The census's negative — a pair that has left the
+    /// ambiguous-read list — proves only that the list moved; this says what the reference now
+    /// resolves TO, which is what a qualification is actually for. Derived from the resolved
+    /// declaration's own source file through the same `file_module_paths` the first tier reads,
+    /// so it names the module that answered rather than the module the census hoped would.
+    pub fn site_resolved_module(&self, site_file: &str, name: &str) -> Option<String> {
+        let node = self.site_resolved_fn(site_file, name)?;
+        self.file_module_paths.get(node.span.file.as_str()).cloned()
+    }
+
     /// EVERY RESOLUTION THIS INDEX SET CAN ANSWER, rendered at identity grain and sorted, so
     /// two index sets can be compared for equality of ANSWERS rather than of construction path.
     /// Items are identified by `Rc` address: the same declaration node, not merely an equal
@@ -4979,33 +5038,20 @@ impl InterpContext {
     /// subject and retires with namespace-only resolution, where a reference has exactly one
     /// declarer by construction.
     fn lookup_fn_from(&self, name: &str, site_file: &str) -> Option<&Rc<Node>> {
-        if !name.contains('.')
-            && !site_file.is_empty()
-            && self.indexes.ambiguous_bare_function_names.contains(name)
-        {
-            if let Some(module_path) = self.indexes.file_module_paths.get(site_file) {
-                let qualified = format!("{}.{}", module_path, name);
-                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
-                    return Some(node);
-                }
-            }
-            // THEN WHERE THE AUTHOR SAID IT COMES FROM: an explicitly imported name resolves to
-            // the module it was imported FROM, a fact the shared slot discards. Without this tier
-            // `import a.b.c { anchor }` is inert whenever another module in scope declares
-            // `anchor` -- the reference lands on the precedence winner and the import line reads
-            // as though it decided something.
-            if let Some(source_module) = self
-                .indexes
-                .file_import_bindings
-                .get(&(site_file.to_string(), name.to_string()))
-            {
-                let qualified = format!("{}.{}", source_module, name);
-                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
-                    return Some(node);
-                }
-            }
-        }
-        self.indexes.fn_nodes.get(name)
+        // WHERE THE REFERENCE WAS WRITTEN ANSWERS FIRST: the site file's own module's
+        // declaration, then where the author said the name comes from -- an explicitly imported
+        // name resolves to the module it was imported FROM, a fact the shared slot discards.
+        // Without that tier `import a.b.c { anchor }` is inert whenever another module in scope
+        // declares `anchor`: the reference lands on the precedence winner and the import line
+        // reads as though it decided something.
+        //
+        // Both tiers live in `PreparedScopeIndexes::site_resolved_fn`, which is also what the
+        // bare-name ambiguity census asks whether a reference falls through to the slot below.
+        // One implementation, so the population the census names is the population execution
+        // resolves.
+        self.indexes
+            .site_resolved_fn(site_file, name)
+            .or_else(|| self.indexes.fn_nodes.get(name))
     }
 
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {

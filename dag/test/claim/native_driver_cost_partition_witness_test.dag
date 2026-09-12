@@ -8,6 +8,12 @@ import std.compiler_entry {
   NativeDriverCostRemainderExceedsTolerance,
   native_driver_cost_account,
   native_driver_cost_remainder_tolerance_nanos,
+  native_driver_cost_row_standing,
+  NativeDriverChildExited,
+  NativeDriverChildStillRunning,
+  NativeDriverCostRowsObserved,
+  NativeDriverCostRowsUnobserved,
+  NativeDriverCostRowsPending,
   native_driver_exclusive_sum
 }
 
@@ -20,7 +26,8 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
     context: nanosecond(count: 3380085706753),
     prepare: nanosecond(count: 59277814291),
     eval: nanosecond(count: 3531894),
-    receipt_admission: nanosecond(count: 31775)
+    receipt_admission: nanosecond(count: 31775),
+    row_serialization: nanosecond(count: 0)
   }
 }
 
@@ -53,7 +60,8 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
       context: nanosecond(count: 40),
       prepare: nanosecond(count: 40),
       eval: nanosecond(count: 0),
-      receipt_admission: nanosecond(count: 0)
+      receipt_admission: nanosecond(count: 0),
+      row_serialization: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -73,7 +81,8 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
       context: nanosecond(count: 10),
       prepare: nanosecond(count: 10),
       eval: nanosecond(count: 10),
-      receipt_admission: nanosecond(count: 0)
+      receipt_admission: nanosecond(count: 0),
+      row_serialization: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -105,7 +114,8 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
       context: nanosecond(count: 10),
       prepare: nanosecond(count: 10),
       eval: nanosecond(count: 10),
-      receipt_admission: nanosecond(count: 10)
+      receipt_admission: nanosecond(count: 10),
+      row_serialization: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -125,7 +135,8 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
       context: nanosecond(count: 10),
       prepare: nanosecond(count: 10),
       eval: nanosecond(count: 10),
-      receipt_admission: nanosecond(count: 80)
+      receipt_admission: nanosecond(count: 80),
+      row_serialization: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -150,7 +161,8 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
       context: nanosecond(count: 700),
       prepare: nanosecond(count: 150),
       eval: nanosecond(count: 50),
-      receipt_admission: nanosecond(count: 0)
+      receipt_admission: nanosecond(count: 0),
+      row_serialization: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -169,12 +181,107 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
       context: nanosecond(count: 450),
       prepare: nanosecond(count: 150),
       eval: nanosecond(count: 40),
-      receipt_admission: nanosecond(count: 10)
+      receipt_admission: nanosecond(count: 10),
+      row_serialization: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
     NativeDriverCostReconciled { residual: residual, tolerance: _ } => residual == nanosecond(count: 0)
     NativeDriverCostOverAttributed { sum_exclusive: _, parent_span: _ } => false
     NativeDriverCostRemainderExceedsTolerance { residual: _, tolerance: _ } => false
+  }
+}
+
+test fn a_completed_capture_with_no_cost_rows_is_unobserved() -> Bool {
+  match native_driver_cost_row_standing(child: NativeDriverChildExited { stderr: "" }) {
+    NativeDriverCostRowsUnobserved => true
+    NativeDriverCostRowsObserved => false
+    NativeDriverCostRowsPending => false
+  }
+}
+
+test fn a_planted_partition_line_is_observed() -> Bool {
+  match native_driver_cost_row_standing(
+    child: NativeDriverChildExited {
+      stderr: "[native-cost-partition] {\"verdict\":\"NativeDriverCostReconciled\"}\n"
+    }
+  ) {
+    NativeDriverCostRowsObserved => true
+    NativeDriverCostRowsUnobserved => false
+    NativeDriverCostRowsPending => false
+  }
+}
+
+test fn a_child_that_has_not_exited_is_pending_not_unobserved() -> Bool {
+  match native_driver_cost_row_standing(child: NativeDriverChildStillRunning) {
+    NativeDriverCostRowsPending => true
+    NativeDriverCostRowsObserved => false
+    NativeDriverCostRowsUnobserved => false
+  }
+}
+
+// ── the measured serialization row, and what happens without it ────────────────────────────
+//
+// THE PAIR IS BUILT FROM THE ROUTE'S OWN REFUSAL, not from invented numbers. The full-N run at
+// #10940 dec1cfa3 measured parent_span 4736.4 s over 3544 identities and refused with
+// NativeDriverCostRemainderExceedsTolerance: residual 158600186 ns against the 50000000 ns
+// tolerance. That residual was the per-identity serialize-and-write the driver performed and no
+// row covered. The fixture below uses those exact figures: the sample rows sum to 3440612010317,
+// and a parent of 3440770610503 leaves precisely that residual.
+//
+// WHAT EACH SIDE DISCRIMINATES. With row_serialization carrying the measured span, the sum
+// reaches the parent and the account RECONCILES. With it dropped from the row set -- the state
+// this PR found the driver in -- the same parent refuses by the tolerance arm. So the row is load
+// -bearing in the fold rather than a field that only rides on the receipt, and a future change
+// that adds a row to the TYPE while forgetting native_driver_exclusive_sum fails here rather than
+// silently enlarging the residual.
+
+fn serialization_sample_rows_measured() -> NativeDriverExclusiveRows {
+  NativeDriverExclusiveRows {
+    load: nanosecond(count: 432921485),
+    universe_derivation: nanosecond(count: 812004119),
+    context: nanosecond(count: 3380085706753),
+    prepare: nanosecond(count: 59277814291),
+    eval: nanosecond(count: 3531894),
+    receipt_admission: nanosecond(count: 31775),
+    row_serialization: nanosecond(count: 158600186)
+  }
+}
+
+fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
+  NativeDriverExclusiveRows {
+    load: nanosecond(count: 432921485),
+    universe_derivation: nanosecond(count: 812004119),
+    context: nanosecond(count: 3380085706753),
+    prepare: nanosecond(count: 59277814291),
+    eval: nanosecond(count: 3531894),
+    receipt_admission: nanosecond(count: 31775),
+    row_serialization: nanosecond(count: 0)
+  }
+}
+
+test fn the_measured_serialization_row_closes_the_route_residual() -> Bool {
+  match native_driver_cost_account(
+    parent_span: nanosecond(count: 3440770610503),
+    exclusive: serialization_sample_rows_measured(),
+    tolerance: native_driver_cost_remainder_tolerance_nanos
+  ) {
+    NativeDriverCostReconciled { residual: residual, tolerance: _ } => residual == nanosecond(count: 0)
+    NativeDriverCostOverAttributed { sum_exclusive: _, parent_span: _ } => false
+    NativeDriverCostRemainderExceedsTolerance { residual: _, tolerance: _ } => false
+  }
+}
+
+test fn without_the_serialization_row_the_route_residual_refuses() -> Bool {
+  match native_driver_cost_account(
+    parent_span: nanosecond(count: 3440770610503),
+    exclusive: serialization_sample_rows_dropped(),
+    tolerance: native_driver_cost_remainder_tolerance_nanos
+  ) {
+    NativeDriverCostRemainderExceedsTolerance { residual: residual, tolerance: tol } =>
+      (residual == nanosecond(count: 158600186))
+        && (tol == native_driver_cost_remainder_tolerance_nanos)
+    NativeDriverCostReconciled { residual: _, tolerance: _ } => false
+    NativeDriverCostOverAttributed { sum_exclusive: _, parent_span: _ } => false
   }
 }
