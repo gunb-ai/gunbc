@@ -8,7 +8,7 @@ import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.predictive_claim {
   AdversarialTestingObligation, Prediction, PredictionRestriction,
-  PredictionObservationWindow, BoundedPredictionWindow, PredictionWindowNotRecorded,
+  PredictionObservationWindow, BoundedPredictionWindow, ApproximatePredictionWindow, PredictionWindowNotRecorded,
   PredictionTestDiscrimination, IsolatedMechanism, ConfoundedMechanisms,
   ConversationOnly, PreregisteredPrediction, CommittedPredictionWithoutWitnessedOrder, PostOutcomeArchivedPrediction,
   PredictiveModel, PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
@@ -171,10 +171,11 @@ test fn a_snapshot_cannot_be_committed_before_the_evidence_it_contains() -> Bool
     recorded_at: 100, started_at: 200, observed_at: 300), expected: PredictionSnapshotPredatesItsEvidence)
 }
 
-test fn unrecorded_window_cannot_be_preregistered_retroactively() -> Bool {
-  fixture_refused(result: fixture_run(
-    result: begin_predictive_model(prediction: fixture_prediction(window: PredictionWindowNotRecorded, falsifier: 1)),
-    configuration: 1, value: 0, id: "missing-window"), expected: PredictionWindowRequired)
+test fn a_missing_approximate_or_zero_window_cannot_be_preregistered() -> Bool {
+  all([PredictionWindowNotRecorded, ApproximatePredictionWindow { duration: 1000 }, BoundedPredictionWindow { duration: 0 }], window =>
+    fixture_refused(result: fixture_run(
+      result: begin_predictive_model(prediction: fixture_prediction(window: window, falsifier: 1)),
+      configuration: 1, value: 0, id: "invalid-window"), expected: PredictionWindowRequired))
 }
 
 test fn no_tests_and_five_surviving_tests_are_different_standings() -> Bool {
@@ -424,7 +425,7 @@ func predictive_claim_contract_probe() -> ProcessExit {
     && commitment_must_strictly_precede_start()
     && observation_must_follow_start_and_respect_committed_bound()
     && a_snapshot_cannot_be_committed_before_the_evidence_it_contains()
-    && unrecorded_window_cannot_be_preregistered_retroactively()
+    && a_missing_approximate_or_zero_window_cannot_be_preregistered()
     && no_tests_and_five_surviving_tests_are_different_standings()
     && confounding_and_missing_preregistration_each_weaken_a_match()
     && unknown_outcome_is_not_confirmation()
