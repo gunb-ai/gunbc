@@ -1,7 +1,9 @@
 module test.fixture.reference_derived_graph.consumer_call_only
 
-fn uses_provider_in_call(
-  x: test.fixture.reference_derived_graph.provider.ProvidedMarker
-) -> test.fixture.reference_derived_graph.provider.ProvidedMarker {
-  x
+import std.types { Int }
+
+fn sink(x: Int) -> Int { x }
+
+fn uses_only_in_call() -> Int {
+  sink(x: test.fixture.reference_derived_graph.provider.provided_value)
 }

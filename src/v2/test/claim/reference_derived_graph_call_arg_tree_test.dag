@@ -1,0 +1,121 @@
+module v2.test.claim.reference_derived_graph_call_arg_tree
+
+import std.algebra { Empty }
+import std.types { Int }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  ModuleDependencyEdge,
+  reference_derived_edges_from_located_roots,
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CALL-ARGUMENT TREE PROBE (XL-2 lowering). The collector walks the Node it is given; XL-4
+// ingest is parse_module, not normalize. claim_batch of the visibility assertions (edge count 1)
+// FAIL on both trees. These two rows record that measured absence. They go red when a
+// call-argument mention becomes a resolved owner. Trigger: eager-raven-113 body-lowering repair,
+// then XL-4 ingest of that repaired tree. Not a second collector.
+
+data ca_provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\n"
+
+data ca_call_arg_text: String = "module test.fixture.reference_derived_graph.consumer_call_only\nimport std.types { Int }\nfn sink(x: Int) -> Int { x }\nfn uses_only_in_call() -> Int {\n  sink(x: test.fixture.reference_derived_graph.provider.provided_value)\n}\n"
+
+data ca_provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
+
+data ca_call_arg_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
+
+data ca_provider_module: String = "test.fixture.reference_derived_graph.provider"
+
+fn ca_parse_root(text: String, file: Symbol) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: text, file: file, rules: lm.lex),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse_module(tokens: token_stream, grammar: lm.grammar),
+        f: fn(artifact) {
+          outcome_accepted(value: artifact.tree)
+        }
+      )
+    }
+  )
+}
+
+fn ca_normalized_root(text: String, file: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: ca_parse_root(text: text, file: file),
+    f: fn(parse_tree) {
+      bind_outcome(
+        o: normalize(parse_tree: parse_tree),
+        f: fn(normalized) {
+          outcome_accepted(value: normalized.root)
+        }
+      )
+    }
+  )
+}
+
+fn ca_edge_count(edges: List<ModuleDependencyEdge>, path: String, target: String) -> Int {
+  length(xs: edges |> filter(e => e.path == path && e.target_module == target))
+}
+
+fn ca_edges_from_roots(provider_root: Node, call_root: Node) -> List<ModuleDependencyEdge> {
+  reference_derived_edges_from_located_roots(
+    items: [
+      LocatedModuleRoot { path: ca_provider_path, root: provider_root },
+      LocatedModuleRoot { path: ca_call_arg_path, root: call_root }
+    ],
+    include_import_syntax: false
+  )
+}
+
+fn ca_parse_call_arg_edge_count() -> Int {
+  match ca_parse_root(text: ca_provider_text, file: ^ca_provider_parse) {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: provider_root, diagnostics: _ } =>
+      match ca_parse_root(text: ca_call_arg_text, file: ^ca_call_arg_parse) {
+        Rejected { diagnostics: _ } => 0
+        Accepted { value: call_root, diagnostics: _ } =>
+          ca_edge_count(
+            edges: ca_edges_from_roots(provider_root: provider_root, call_root: call_root),
+            path: ca_call_arg_path,
+            target: ca_provider_module
+          )
+      }
+  }
+}
+
+fn ca_normalized_call_arg_edge_count() -> Int {
+  match ca_normalized_root(text: ca_provider_text, file: ^ca_provider_norm) {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: provider_root, diagnostics: _ } =>
+      match ca_normalized_root(text: ca_call_arg_text, file: ^ca_call_arg_norm) {
+        Rejected { diagnostics: _ } => 0
+        Accepted { value: call_root, diagnostics: _ } =>
+          ca_edge_count(
+            edges: ca_edges_from_roots(provider_root: provider_root, call_root: call_root),
+            path: ca_call_arg_path,
+            target: ca_provider_module
+          )
+      }
+  }
+}
+
+test fn call_argument_only_reference_is_missing_from_parse_tree_today_holds() -> Bool {
+  ca_parse_call_arg_edge_count() == 0
+}
+
+test fn call_argument_only_reference_is_missing_from_normalized_tree_today_holds() -> Bool {
+  ca_normalized_call_arg_edge_count() == 0
+}
