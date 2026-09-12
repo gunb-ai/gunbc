@@ -48,10 +48,14 @@ import gunbc.fabric_m0_publication { publish_work }
 // PUT and the self-staging GET are a sibling conjunct; this fold is ready for them and does not
 // impersonate them.
 //
-// CONSUMERS (DESIGN 3c): test.claim.fabric_m0_job_ending_witness exercises every publication arm
-// through end_required_job. stamp_floor_receipt_with_conclusion is the existing receipt mint
-// that can take the CheckConclusion this fold returns; it is not called here because this module
-// is the decision, not the GitHub report. The required-CI ending is the named later consumer.
+// CONSUMERS (DESIGN 3c): test.claim.fabric_m0_job_ending_witness exercises the publication
+// arms this fold can inhabit — Success, ComputationFailed, FinalizationFailed, Pending —
+// through end_required_job. PublishObligationsUnreadable is matched for exhaustiveness and is
+// not reached: publish_work always resolve_output_obligations with work.id.key, and work_for
+// derives that key from the same contract and requirements, so WorkKeyDoesNotMatchContract has
+// no producer on this path. stamp_floor_receipt_with_conclusion can take the CheckConclusion
+// this fold returns; it is not called here because this module is the decision, not the GitHub
+// report. The required-CI ending is the named later consumer.
 
 // WHY PENDING IS ActionRequired AND NEVER Neutral OR Success.
 //
