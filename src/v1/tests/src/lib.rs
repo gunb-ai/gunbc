@@ -7,7 +7,7 @@
 pub mod helpers;
 
 #[cfg(test)]
-mod grounded_shared_carrier_wrap_test;
+mod map_insert_record_shaped_refusal_test;
 
 #[cfg(test)]
 mod unknown_pipeline_driver_refusal_test;

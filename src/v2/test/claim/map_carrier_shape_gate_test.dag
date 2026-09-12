@@ -19,7 +19,6 @@ import std.types { Int, Map }
 import v2.std.collection {
   empty_map,
   map_insert,
-  map_insert_non_native_carrier_is_refused,
   map_lookup,
 }
 import v2.std.optional { Absent, Present }
@@ -33,14 +32,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the earliest key. The HostRealizedSeam delegates are now the insert and lookup authority:
 // `map_insert_primitive_delegate` / `map_lookup_primitive_delegate` self-call, and the public
 // surfaces call them. Native maps stay HAMT. A record-shaped `Map { lookup: ... }` reaching
-// `map_insert` TypeErrors at the seam (Ok(None) is not fallthrough into a wrap body).
+// `map_insert` TypeErrors at the seam (Ok(None) is not fallthrough into a wrap body). That
+// refusal is exercised in `src/v1/tests/src/map_insert_record_shaped_refusal_test.rs`
+// (`InterpError::TypeError`). This file keeps the positive route only: a throw is not a floor
+// Bool verdict.
 //
-// `native_map_reaches_map_insert` is the positive control. `record_shaped_map_reaches_map_insert`
-// is inverted: it feeds a record-shaped Map into `map_insert_non_native_carrier_is_refused`,
-// which runs `map_insert`'s grounding and treats TypeError as true. HostRealizedSeam tests
-// below are roster agreement only. `first_inserted_key_is_found_after_many_inserts` is the
-// executing cost witness (green on the delegate HAMT). Paired wall-clock at two sizes is an
-// instrument, not a merge-blocking literal.
+// `native_map_reaches_map_insert` is the positive control. HostRealizedSeam tests below are
+// roster agreement only. `first_inserted_key_is_found_after_many_inserts` is the positive
+// lookup after n inserts; the executing cost witness (HAMT insert count and sublinear lookup
+// steps vs a closure chain) lives in the same v1 test, citing `map_insert_contract`
+// (`CarrierSensitive { ephemeral_work: "n", persistent_work: "log32 n" }`).
 
 fn native_map_after_insert() -> Optional<String> {
   let m = empty_map()
@@ -67,15 +68,6 @@ test fn native_map_reaches_map_insert() -> Bool {
     Present { value: v } => v == "v"
     Absent => false
   }
-}
-
-test fn record_shaped_map_reaches_map_insert() -> Bool {
-  map_insert_non_native_carrier_is_refused(
-    m: Map { lookup: fn(_) { Absent } },
-    key: "k",
-    value: "v",
-  )
-    && !map_insert_non_native_carrier_is_refused(m: empty_map(), key: "k", value: "v")
 }
 
 test fn map_insert_delegate_is_host_realized_seam() -> Bool {

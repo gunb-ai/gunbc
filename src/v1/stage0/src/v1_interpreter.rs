@@ -7507,30 +7507,6 @@ fn try_v2_std_collection_map_primitive_grounding(
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
 ) -> Option<InterpResult<Value>> {
-    let in_collection = ctx
-        .item_registry
-        .get(&fn_node.name)
-        .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE);
-    if in_collection && fn_node.name.as_str() == "map_insert_non_native_carrier_is_refused" {
-        // Observe `map_insert`'s own grounding: TypeError (Ok(None) at the HAMT arm) is
-        // refusal; a successful insert is not; fallthrough (None) means the wrap body would
-        // run, so the wall is not holding. Floor cannot enroll a throw as a Bool verdict
-        // (`ExpectedRedArm::RuntimeErrored`); this projection is the enrolled control.
-        let Some(insert_node) = ctx.lookup_fn("map_insert") else {
-            return Some(Err(InterpError::NoSuchFunction {
-                name: "map_insert".to_string(),
-            }));
-        };
-        let insert_node = insert_node.clone();
-        return Some(
-            match try_v2_std_collection_map_primitive_grounding(ctx, &insert_node, args) {
-                Some(Err(InterpError::TypeError { .. })) => Ok(Value::Bool(true)),
-                Some(Ok(_)) => Ok(Value::Bool(false)),
-                Some(Err(e)) => Err(e),
-                None => Ok(Value::Bool(false)),
-            },
-        );
-    }
     if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
         return None;
     }
