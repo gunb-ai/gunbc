@@ -403,7 +403,7 @@ type Milliwatt = Measure<Power, Milli, Nat>
 // the dangerous combination: a reader takes the stated mechanism as a general licence to buy
 // dimensional safety by minting a Quantity arm, and does not get it.
 //
-// THE PROPERTY IS WITNESSED, NOT TRANSCRIBED HERE. test.claim.marker_argument_not_consulted_witness
+// THE PROPERTY IS WITNESSED, NOT TRANSCRIBED HERE. test.claim.marker_argument_not_consulted_witness_test
 // carries it as three enrolled fixtures -- two named aliases over DIFFERENT markers must refuse, two
 // named aliases over the SAME marker must ALSO refuse, and the same two different markers spelled
 // INLINE with no alias must be ACCEPTED. The last two are the load-bearing pair: identical markers
