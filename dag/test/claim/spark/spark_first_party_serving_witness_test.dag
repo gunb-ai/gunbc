@@ -1,6 +1,6 @@
 module test.claim.spark.spark_first_party_serving_witness_test
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, Port }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
@@ -15,12 +15,19 @@ import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread,
 }
-import std.types { Port }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import std.measure { token_count }
+import v2.std.optional { Present, Absent }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6 }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
-import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
+import gunbc.spark.pair_serving_realization {
+  spark_pair_serve_port, spark_pair_model_path_in_container, spark_pair_desired_snapshot,
+}
+import gunbc.spark.vllm_observed {
+  VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteDocumentUnreadable,
+  vllm_models_route_readback,
+}
 import gunbc.spark.first_party_serving {
   SparkServingRealization, spark_serving_usage_stats_standing,
   spark_first_party_use_scope, spark_first_party_admission,
@@ -70,17 +77,41 @@ fn t_third_party_scope() -> ProviderUseScope<NonEmptyStr> {
 // deployment being offered rather than about a declaration. The pair-serving fixture is the one the
 // site allocation covers and whose container environment this module models; the foreign one differs
 // in the single field that decides attribution -- the port that answered.
+fn t_readback(path: String) -> VllmModelsRouteReadbackStanding {
+  ModelsRouteRead {
+    readback: vllm_models_route_readback(
+      served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+      configured_model_path: path as NonEmptyStr,
+      max_model_len: token_count(count: 1048576)),
+  }
+}
+
+// THE DECLARED PATH IS TAKEN FROM THE SAME PRODUCER THE MODULE COMPARES AGAINST, never transcribed.
+// A literal here would pass whatever the pinned snapshot became, which is the fixture agreeing with
+// itself rather than with the launch.
+fn t_declared_path() -> String {
+  match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+    Present { value: p } => p
+    Absent => ""
+  }
+}
+
 fn t_pair_realization() -> SparkServingRealization {
   SparkServingRealization {
     endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [operator_host_srv5, operator_host_srv6],
+    readback: t_readback(path: t_declared_path()),
   }
 }
 
+// THE FOREIGN DEPLOYMENT DIFFERS IN WHAT THE RUNNING ENGINE REPORTED, not in where it answered. An
+// earlier spelling discriminated on the PORT, which review 64424 correctly refused: a replacement
+// engine on the same port would inherit an environment nothing observed it to have.
 fn t_foreign_realization() -> SparkServingRealization {
   SparkServingRealization {
-    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30001 as Port },
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [operator_host_srv5, operator_host_srv6],
+    readback: t_readback(path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a"),
   }
 }
 
@@ -201,7 +232,7 @@ test fn the_launch_leaves_usage_reporting_on_which_is_what_the_drop_is_declared_
 // admitted on route facts describing a different container. It is unread now, which refuses.
 test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool {
   match spark_serving_usage_stats_standing(realization: t_foreign_realization()) {
-    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "models no serving container environment")
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no environment model for the deployment that answered")
     UsageStatsEnabledByDefault { basis: _ } => false
     UsageStatsDisabledByLaunch { mechanism: _ } => false
   }
@@ -228,8 +259,43 @@ test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
   match spark_serving_usage_stats_standing(realization: SparkServingRealization {
     endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [] as List<HostIdentity>,
+    readback: t_readback(path: t_declared_path()),
   }) {
     UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no fabric lane")
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+  }
+}
+
+
+// RED -- A REALIZATION WHOSE HOSTS ARE ONLY PARTLY OBSERVED IS UNREAD, NOT ANSWERED FROM THE HALF
+// THAT IS. The earlier spelling refused only an EMPTY lane result, so one observed host and one
+// unobserved host resolved from the observed one and silently dropped the other (review 64424).
+// Partial evidence is missing evidence: srv5 has an observed lane and srv1 does not, and the answer
+// is the obligation rather than srv5's environment.
+test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_observed_half() -> Bool {
+  match spark_serving_usage_stats_standing(realization: SparkServingRealization {
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
+    hosts: [operator_host_srv5, operator_host_srv1],
+    readback: t_readback(path: t_declared_path()),
+  }) {
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no observed fabric lane")
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+  }
+}
+
+// RED -- AN UNRESOLVED READBACK IDENTIFIES NOTHING, so a route whose /v1/models document could not
+// be decoded cannot have an environment attributed to it either. This is the arm that makes the
+// identity join launch-bound rather than declaration-bound: with nothing reported by the process,
+// there is nothing to compare to the declared path.
+test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
+  match spark_serving_usage_stats_standing(realization: SparkServingRealization {
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: ModelsRouteDocumentUnreadable { cause: "the document's data member is not an array" as NonEmptyStr },
+  }) {
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "did not resolve")
     UsageStatsEnabledByDefault { basis: _ } => false
     UsageStatsDisabledByLaunch { mechanism: _ } => false
   }

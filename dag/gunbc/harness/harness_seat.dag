@@ -46,6 +46,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   LaunchObserved, LaunchUnobserved,
 }
 import gunbc.spark.first_party_serving { SparkServingRealization }
+import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import gunbc.spark.serving_offer {
   SparkOfferBound, SparkOfferBindingRefused, SparkServingReadiness, ServingObserved, ServingUnobserved,
   spark_serving_capability, spark_serving_shape, bind_spark_serving_offer, spark_serving_route_standing,
@@ -468,7 +469,7 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // running engine, SUFFICIENT FOR gunbc.serving.turn_demand serving_turn_work to return TurnWorkBound
 // for a harness turn -- at which point the demand and work identities exist, the admission producer
 // is called with them, and bind_candidate has everything it compares.
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, standing: HarnessBackendStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, standing: HarnessBackendStanding, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -479,7 +480,11 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     seats: seats as Int,
     readiness: harness_serving_readiness(standing: standing, now: now),
     route: spark_serving_route_standing(
-      realization: SparkServingRealization { endpoint: endpoint, hosts: fabric_group_hosts(g: group) },
+      realization: SparkServingRealization {
+        endpoint: endpoint,
+        hosts: fabric_group_hosts(g: group),
+        readback: readback,
+      },
     ),
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
@@ -520,7 +525,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
       let group = endpoint.group
       let standing = harness_observe_replica(endpoint: endpoint)
       match standing {
-        HarnessBackendServing { model: observed_model, unit: observed_unit, readback: _ } =>
+        HarnessBackendServing { model: observed_model, unit: observed_unit, readback: observed_readback } =>
           if !harness_requirement_admits(requirement: requirement, observed: observed_unit) {
             harness_no_candidate(
               acc: acc,
@@ -531,6 +536,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             harness_add_serving_candidate(
               acc: acc, endpoint: endpoint, route: route, class: class, requirement: requirement,
               standing: standing, model: observed_model, unit: observed_unit,
+              readback: observed_readback,
               seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
               layout: layout, now: now,
             )
@@ -553,6 +559,7 @@ fn harness_add_serving_candidate(
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
   standing: HarnessBackendStanding,
+  readback: VllmModelsRouteReadbackStanding,
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   seats: Nat,
@@ -575,7 +582,7 @@ fn harness_add_serving_candidate(
       )
       match admission {
         AdmissibleForClass { class: _, receipt: _ } =>
-          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, standing: standing, requirement: requirement, seats: seats, now: now)
+          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, standing: standing, readback: readback, requirement: requirement, seats: seats, now: now)
         InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
           harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
         InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
