@@ -20,45 +20,78 @@ The decision this plan models is therefore **not** "where does Engram go". It is
 
 This was the failure mode the fabric already committed once — `docs/plans/fabric-concept-reconciliation.md` records four existing concepts re-minted on a clean-slate fabric branch, one of them dropping the field that was the security check. So the census comes before the vocabulary.
 
+**An earlier revision of this table overstated four rows and the census is not closed.** Each correction is kept visible below rather than silently repaired, because the pattern — reading an authority's *shape* and assuming its *semantics* — is the thing a later reader needs to avoid.
+
 | Concept this plan needs | Existing home | Verdict |
 | --- | --- | --- |
-| "where do the bytes live" | `std.realization` `Placement` = `LocalInProcess` \| `LocalFilesystem` \| `RemoteNetwork` | **inhabit**. `std.materialization_ladder` already repaired a nickname minted beside this once; a second one is not available. |
-| tier of a materialization | `std.materialization_ladder` `ProviderTier` = `ReferenceTier` \| `CopyTier` \| `MemoTier` \| `ArtifactTier` \| `CasTier`, derived from `ProviderAxes {placement, addressing, aliasing}` via `tier_axes` | **inhabit**. RAM-resident = `MemoTier`/`ReferenceTier` (`LocalInProcess`); per-host NVMe = `ArtifactTier` (`LocalFilesystem`); NFS or object origin = `CasTier` (`RemoteNetwork`). No ladder refactor is needed and none is proposed. |
-| retention, capacity, replacement | `std.cache_interface` `ProviderRetention`, `CapacityPolicy`, `ReplacementStrategy`, `AtCapacityDisposition` | **inhabit**. |
-| latency / consistency / locality class of a backend | `std.cache_interface` `CacheInterfaceFacts`, `ReadLatencyClass` (`InProcessNs` \| `LocalDiskUs` \| `LanMs` \| `WanTensMs`), `PersistenceLocality`, `ConsistencyModel`; the placement record is `extdeps.cache.catalog_placement` `CacheInterfaceCatalogPlacement` | **inhabit**, with one honest gap: see §6. |
+| "where do the bytes live" | `std.realization` `Placement` = `LocalInProcess` \| `LocalFilesystem` \| `RemoteNetwork` \| **`LocalAccelerator`** | **inhabit**, with a scope gap declared. An earlier revision listed three arms and dropped `LocalAccelerator` — the arm most relevant to the all-resident route. On GB10 host and accelerator are one unified pool, so whether resident Engram is `LocalInProcess`, `LocalAccelerator`, or a topology relation between them is a real modelling question this plan does **not** settle; it is an obligation on step 2, not a silent omission. |
+| tier of a materialization | `std.materialization_ladder` `ProviderTier` = `ReferenceTier` \| `CopyTier` \| `MemoTier` \| `ArtifactTier` \| `CasTier`, derived from `ProviderAxes {placement, addressing, aliasing}` via `tier_axes` | **inhabit — but a tier is not a locality.** `CasTier` means remote **and** key-addressed **and** content-keyed, with the aliasing `tier_axes` derives. An NFS pathname does not become CAS because the filesystem is remote. An earlier revision mapped "NFS or object origin = `CasTier`", which classifies by locality while silently inheriting keying semantics it never established. Each NFS route must now say whether its addressing is content-derived, pathname-derived, or supplied by an enclosing content-addressed namespace. |
+| retention, capacity, replacement | `std.cache_interface` `ProviderRetention`, `CapacityPolicy`, `ReplacementStrategy`, `AtCapacityDisposition` — reached through `CacheProvider.retention` | **inhabit**, and not restated on the route (§9). |
+| latency / consistency / locality class of a backend | `std.cache_interface` `CacheInterfaceFacts`, `ReadLatencyClass`, `PersistenceLocality`, `ConsistencyModel`; placement record `extdeps.cache.catalog_placement` `CacheInterfaceCatalogPlacement` | **inhabit**, with one honest gap: see §6. |
 | a bounded store over a provider, with eviction | `std.artifact_store` `ArtifactStore`, `store_over_provider`, `store_put`, `StorePutReceipt` | **inhabit** — this is the per-host NVMe cache, not a new thing. |
-| content identity of the bytes | `std.content_hash` `ContentHash`; `std.materialization_provider` `ArtifactRequest` / `MaterializedArtifact` / `artifact_content_digest` | **inhabit**. Engram's identity is its digest; every route serves the same digest or is refused. |
-| choosing among candidates | `std.decision` `select_realization`, `SelectionReceipt`, `HardConstraint`, `RealizationSelectionResult`; `std.pareto` `SelectionAxis` / `ParetoEntry` / `AxisGap` | **inhabit**. §3d forbids a second decision algebra and this plan declares no score, no weight, and no ranking function. |
+| content identity of the bytes | `std.content_hash` `ContentHash`; `std.artifact_store` `ArtifactKey` | **inhabit at this level only.** An earlier revision also cited `std.materialization_provider` `ArtifactRequest` / `MaterializedArtifact` as an existing home. That is wrong: `ArtifactRequest` is a **closed coproduct** over `ParseModuleRequest`, `TypecheckModuleRequest` and `ResolveClosureRequest`, each fixing its own output roster and key derivation. Engram cannot inhabit it unchanged. Either a genuine generic component-materialization request is minted at the proper authority — which is new modelling with its own §3 justification, not a citation — or this plan uses the lower-level `ContentHash`/`ArtifactStore` vocabulary honestly. It now does the latter. |
+| choosing among candidates | `std.decision` `select_realization`, `SelectionReceipt`, `HardConstraint`, `RealizationSelectionResult`; `std.pareto` `SelectionAxis` / `ParetoEntry` / `AxisGap` | **inhabit**, returned unchanged (§7). |
 | durable origin, read back and digest-verified | `gunbc.fabric_m0_origin_readback` `OriginReading` / `read_origin_staged_file` (sole constructor) | **inhabit**. Every route's chain begins at this origin. |
 | citation standing of an upstream figure | `extdeps.external_authority` `CitedFigureStanding` = `CitedToAuthority` \| `TranscribedUncited` | **inhabit** (§4d). |
 
-**Net new concepts proposed: three.** Each is listed with the home it inhabits in §9, and each exists because the census found no carrier for it, not because a new module wanted its own vocabulary.
+**The net-new concept count is therefore open, not "exactly three".** §9 lists what is currently believed necessary; the corrections above add at least the component-identity trio of §3 and the two access carriers of §4, and the generic-request question is unresolved. A plan that reported a closed count here would be asserting the one thing this census just proved it had not checked.
 
-## 3. The component: one identity, placement-independent
 
-Engram is **one content-addressed immutable serving component**. RAM-residency, a per-host NVMe copy, an NFS-backed read and an object-store origin are four *access realizations of the same bytes*. They are not four artifacts, they do not get four identities, and a route change is not a checkpoint change.
+## 3. The component: one identity — and what "the same digest" can actually mean
 
-This is the structural reason `engram_location = "ssd"` is forbidden: a location string attached to the component makes placement a property *of the artifact*, so two placements become two artifacts, and nothing can then state that they serve identical bytes. Identity is the digest; placement is a property of the *route*, which is a separate row joined to the component by that digest.
+Engram is **one semantic serving component**. RAM-residency, a per-host NVMe copy, an NFS-backed read and an object-store origin are four *access realizations* of it. They are not four artifacts, they do not get four identities, and a route change is not a checkpoint change.
 
-Component facts already live upstream in `extdeps.deepseek.deepseek_v4_1_flash` and mostly already exist: `deepseek_v4_1_flash_engram` (layer ids, n-gram order, heads, head dim, vocab), `..._safetensors_payload_footprint.engram_bytes`, and the publisher-standing row. What is missing there is **immutability and layout as declared facts** rather than as things a reader infers from "it's a checkpoint" — added as component rows in that module, not in a fabric module.
+This is the structural reason `engram_location = "ssd"` is forbidden: a location string attached to the component makes placement a property *of the artifact*, so two placements become two artifacts, and nothing can then state that they serve the same thing.
 
-## 4. Access demand: the fact that decides everything, and the one nobody measures
+**But an earlier revision said "every route serves the same digest", and that sentence was doing more work than it can bear.** If RAM, safetensors on disk, and an SSD row store repacked for gather have different physical encodings, they do not share one byte digest — they are one semantic component with *different realization digests*. Claiming a single digest across routes is either false, or it silently presupposes a canonical physical encoding that no one has defined. Three carriers, not one:
 
-**Never infer access cost from total file size.** This is the load-bearing methodological rule of the whole plan, and the reason the answer is not obvious.
+```
+EngramComponentSubject        exact model revision + exact tensor population
+MaterializedEngramArtifact    encoding/layout + physical content digest
+FaithfulComponentRealization  the relation proving this artifact realizes that subject
+```
 
-Engram's per-token demand is derivable from `deepseek_v4_1_flash_engram`: 2 layers (`layer_ids: [1, 14]`) × 3 n-gram orders (`max_ngram_size: 4`, orders 2–4) × 8 heads (`n_heads: 8`) = **48 row reads per token**.
+Identity is the *subject*; each route carries a `MaterializedEngramArtifact` whose digest is its own, and the route is admissible only when a `FaithfulComponentRealization` relates the two. "Digest-verified at a declared point in the chain" (§5) then means verified against **that route's** artifact digest, with faithfulness to the subject established separately — which is the honest version of what the earlier sentence was gesturing at.
 
-Row size is where the honesty boundary sits. `head_dim: 256` with an fp8 row plus an 8-byte scale gives 264 B, which is the figure the brief carries and which reproduces 48 × 264 = 12,672 B ≈ 12.375 KiB/token. **That row size is an inference, not a read fact**: it is consistent with the declared head dim and the checkpoint dtype, and it is not stated by the publisher. It lands as `TranscribedUncited` with a read obligation naming exactly what would ground it — the tensor dtype and per-row stride from the safetensors header for an `.engram.` tensor at this revision, which is a cheap read we have already done for the byte partition.
+**And the subject does not exist yet.** `extdeps.deepseek.deepseek_v4_1_flash` `deepseek_v4_1_flash_engram` carries config dimensions and `..._safetensors_payload_footprint.engram_bytes` carries aggregate bytes. Neither is a digest over an exact tensor population. Producing one is step 1 work, not a citation.
 
-With that caveat stated once, the shape of the demand:
 
-- **logical bytes/token: 12,672 B against a 203,073,076,240 B table — a ratio of 6.2 × 10⁻⁸.** Per token, one ten-millionth of the component is touched.
-- **granularity: 264 B, sub-page.** So the *device* traffic is not the logical traffic: at 4 KiB page granularity a token costs 48 page reads = 196,608 B and 48 IOPS, a **15.5× read amplification**. Any model that prices the logical figure is wrong by that factor, which is precisely why granularity is a declared demand field rather than a derived one.
-- **sparse, not sequential**, and reuse is workload-dependent — a token's rows are selected by its n-gram context, so hit locality is a property of the text, not of the model. **This is a typed gap, not a zero.** An assumed reuse rate is the one input that could flip the ordering, so it is declared unread rather than estimated.
-- **concurrency**: a decode step does 48 × (batch size) gathers, issued together. Latency, not bandwidth, is the binding term, and it is a *queue-depth* question.
-- **max admitted added latency** is a constraint the serving subject owns, not a storage fact.
+## 4. Access demand: logical demand and physical access are two facts, not one chain
 
-Worked forward, per replica: at 400 tok/s aggregate the device sees ~78.6 MB/s and 19,200 IOPS; at 6,400 tok/s, ~1.26 GB/s and 307,200 IOPS. Both sit inside a single modern NVMe's random-read envelope — but that is a *comparison against a provider fact that must be measured on this fleet*, not a conclusion, and §7 keeps it that way.
+**Never infer access cost from total file size.** That rule survives. What does not survive is an earlier revision's single chain from config straight through to device IOPS, which asserted as derived a series of steps that are a *scenario under named assumptions*.
+
+### 4.1 Logical demand — derivable, and derivable from more than the config
+
+The reference implementation defines `n_hash_cols = (max_ngram_size - 1) * n_heads`. With the published configuration — `max_ngram_size: 4`, `n_heads: 8`, `layer_ids: [1, 14]` — that is 24 hash IDs per Engram layer and **48 logical hash IDs per token** across the two layers.
+
+That figure is **implementation-plus-config derived**, not config-only as an earlier revision claimed. The arithmetic `2 × 3 × 8` happens to reach the same number, but it is not the reference's own formula, and a reader who believed the config alone established it would have no reason to re-check when either the config or the implementation moved.
+
+### 4.2 Physical access — a route property, and currently unmeasured
+
+An earlier revision continued: 48 rows × 264 B → 48 device pages → 196,608 B/token → 15.5× amplification → 19,200 IOPS at 400 tok/s → 307,200 at 6,400. **None of that is derived.** Each step assumes something not established here:
+
+- **264 B is a summed logical payload, not a layout fact.** 256 fp8 values plus 8 scale entries — but the reference stores `weight` and `scale` as *separate tensors* with separate `F.embedding` operations. There is no evidence of one physically contiguous 264-byte record. A route could repack them into one, and that would be a **route-specific materialization format**, which is a different claim from an upstream layout property.
+- **A sub-page payload does not imply one page read.** Value and scale may sit on different pages; a row may straddle a boundary; several requested rows may share a page; pages may already be in the page cache; the kernel or adapter may coalesce, batch or read ahead; the host's page size is not established here.
+- **Tensor parallelism changes the demand.** The reference shards rows across `world_size`, maps off-rank IDs to local row zero, zeroes them afterward and `all_reduce`s. Masked local-row-zero reads and ownership routing are physical demand this model has not accounted for — and they are one of the couplings §7 now takes seriously.
+
+So the split is structural, and the standing lives *in* the carrier rather than beside it:
+
+```
+ComponentLogicalAccessDemand    hash_ids_per_token = 48
+                                evidence: derived from exact implementation + config
+
+RoutePhysicalAccessStanding     physical reads, bytes transferred, unique pages,
+                                page-cache hits/misses, coalescing/readahead,
+                                per-rank ownership
+                                evidence: Unobserved { obligation } | Measured { route, profile, receipt }
+```
+
+The `Unobserved` arm must project to an `AxisGap` in every selection projector. That is why the 264 B figure's standing and its number have to be **inseparable**: a bare `ByteSize` beside a separate prose standing row is exactly how an inference gets consumed as established, which is the failure §4d names and which this document has already committed twice.
+
+What survives as useful is the **ratio**: 48 logical row reads against a 203,073,076,240 B table is 6.2 × 10⁻⁸ of the component per token. That is the fact that motivates asking the question at all, and it does not depend on any of the physical assumptions above.
+
+Reuse locality is workload-dependent — a token's rows are selected by its n-gram context — and stays a typed gap rather than an estimate. Max admitted added latency is **not** a field here: it belongs to the serving subject and reaches this decision as context or a hard constraint (§7).
+
 
 ## 5. Routes are chains, and NFS must say which role it plays
 
@@ -99,7 +132,22 @@ Hard constraints, screened *before* Pareto (§3d: an attractive candidate violat
 
 The dropped arm that bites hardest here is **`SelectionNeedsPolicy`**, and this subject is likely to reach it. B and D can both be *fully measured* and still non-dominated — D wins on fill (the site cache is already near the hosts) while B wins on network bytes and failure-domain breadth — and no further measurement resolves that. Under the three-arm vocabulary such a field has nowhere honest to go: it either reports `NeedsEvidence` for evidence that exists, or picks a winner off a front of two, which §3d names as the thing the law exists to prevent. `NoFeasibleRealization` is the second live arm — see §11 — and it is distinct from a refusal, because "every candidate violated a constraint" is not "the selection itself was defective".
 
-So the subject adds no result type. It supplies a candidate field, funded axes, hard constraints and a policy authority, and hands back whatever `select_realization` returns. The receipt is `SelectionReceipt`, unchanged.
+So the subject adds no result type: it returns `RealizationSelectionResult<MaterializationRoute>` directly. A domain-specific spelling would be admissible only if its projection were total and distinction-preserving, and the simplest way to guarantee that is not to have one. The receipt is `SelectionReceipt`, unchanged.
+
+### 7.1 Placement and topology are coupled — there is no context-free route winner
+
+An earlier revision closed §10 with "two selections, two receipts, one direction of flow, no joint search space." **That factorization was asserted, not established, and it is wrong.** The plan's own objective terms depend on the serving topology and execution profile:
+
+- fill cost is **per host**, so it scales with the participating host count;
+- the Engram table is **row-sharded across ranks**, so per-rank demand and ownership routing depend on the degree (§4.2);
+- local storage quantity and refill scope depend on how many hosts hold a copy;
+- retained page-cache memory depends on route, concurrency and access pattern;
+- failure-domain cost depends on host assignment;
+- the route's latency requirement depends on the exact serving profile.
+
+And the coupling runs the other way too: placement changes the resident-memory lower bound, and therefore which topologies can enter the field at all. Selecting one global route *before* topology can discard a route that is preferable at one topology and inferior at another, or price a route against no concrete host population. §3d requires the complete decision subject and its load-bearing variables; settling a coupled variable outside the candidate field needs an established invariance relation, and **this plan has none and does not claim one**.
+
+Two shapes are sound. Either one complete candidate field over `(materialization route, topology, execution profile)`; or **route selection parameterized by each exact serving candidate**, producing a route result and receipt *for that candidate*, with the outer serving selection then ranking the composed candidates. This plan takes the second: it keeps the two authorities distinct — `gunbc.fabric.engram_materialization` still owns route selection, `serving_deployment_selection` still owns the deployment — without pretending a context-free route winner exists. The consequence is that "the selected route" is always *the route selected for a named serving candidate*, and a receipt that does not name one is incomplete.
 
 ## 8. The deduction, worked — including why it does not conclude today
 
@@ -107,8 +155,12 @@ The arithmetic that makes the ordering fall out, stated so it can be checked and
 
 Usable pool per host at the 82% memory fraction the canary route uses: 130,663,231,488 × 0.82 = 107,143,849,820 B (99.8 GiB).
 
-- **Route A (all-resident).** Whole payload 510,286,023,000 B ÷ usable = 4.76 → **5 ranks minimum, so TP8**, since a tensor-parallel degree of 5 is not expressible for an 8-head layout.
-- **Routes B/D (Engram off the pool).** Non-Engram payload 307,212,946,760 B ÷ usable = 2.87 → **3 ranks minimum, so TP4**.
+**Under two stated assumptions — that loaded bytes equal publisher payload bytes, and that a non-resident route adds no resident working set (§10 shows the second is false as an assumption and must be measured):**
+
+- **Route A (all-resident).** Whole payload 510,286,023,000 B ÷ usable = 4.76 → the first candidate degree **not ruled out by the lower bound** is TP8, since 5 is not expressible for an 8-head layout.
+- **Routes B/D (Engram off the pool).** Non-Engram payload 307,212,946,760 B ÷ usable = 2.87 → the first degree not ruled out is TP4.
+
+The phrasing is deliberate and matches the authority: `weight_fit_of`'s positive arm is named `WeightsNotRuledOutByLowerBound`, not "fits". This is a lower-bound screen against a **cited** payload (§8.3), so "Route A needs TP8" and "B/D fit four Sparks" are both overstatements. What the arithmetic supports is that the two routes are not ruled out at *different* degrees, which is enough to motivate the decomposition and not enough to conclude anything.
 
 ### 8.1 The payoff is feasibility against the admissible host set, not a replica axis
 
@@ -116,8 +168,8 @@ An earlier draft of this section read the 8-vs-4 rank difference as "one replica
 
 With replica count fixed at 1, the difference is **whether the shape fits the hosts that are actually available at all**:
 
-- Route A: TP8 × 1 — needs **all eight** Sparks, which means tearing down the four-rank serving deployment that is running on half of them (§8.2).
-- Routes B/D: TP4 × 1 — fits the **four** Sparks that are admissible without disturbing either.
+- Route A: at the first degree not ruled out, TP8 × 1 — which would need **all eight** Sparks, tearing down the four-rank serving deployment running on half of them (§8.2).
+- Routes B/D: TP4 × 1 — which the **four** admissible Sparks could hold, *if* the route's resident working set is small enough (§10) and the bytes are ever read on the fleet (§8.3).
 
 So placement is not trading a redundancy property against a latency property. It decides **feasibility inside a host set the fabric, not this decision, controls** — which is a hard constraint screened before Pareto, exactly where §7 puts things that can make a candidate unservable rather than merely expensive.
 
@@ -154,9 +206,14 @@ Missing, and tracked as the obligations §12 carries: this fleet's measured per-
 
 | New concept | Home | Why not an existing carrier |
 | --- | --- | --- |
-| `ComponentAccessDemand` — bytes/reads per token, granularity, sparsity, reuse (typed gap), concurrency, admitted added latency | `gunbc.fabric.engram_materialization` | Nothing in the corpus states *how a consumer touches* bytes. `FrameDemand` names a computation's identity and nature; `ArtifactRequest` names inputs and outputs. Neither carries an access profile. This is the genuine gap. |
-| `MaterializationRoute` — an ordered chain of hops, each a `(Placement, ProviderTier, retention, role)` over the existing ladder vocabulary, head-anchored at the M0 origin | `gunbc.fabric.engram_materialization` | The ladder models a *provider*; nothing models a **chain** of them, which is what a fill-path-plus-serving-path is. The hops are existing types; only the chain is new. |
-| `RoutePerformanceReading` — measured p50/p95/p99, fill bandwidth, retained page-cache bytes, on this fleet at a named launch | `gunbc.fabric.engram_materialization` (receipt side) | §6: `ReadLatencyClass` is a backend taxonomy, deliberately not a fleet measurement. Merging them would put a reading inside an `extdeps` classification, a layer inversion. |
+| `EngramComponentSubject`, `MaterializedEngramArtifact`, `FaithfulComponentRealization` (§3) | subject in `extdeps.deepseek.deepseek_v4_1_flash`; artifact and realization relation in `gunbc.fabric.engram_materialization` | The corpus has `ContentHash` and `ArtifactKey` but nothing relating *one semantic component* to *several physical encodings of it*. `ArtifactRequest`/`MaterializedArtifact` cannot host this: they are a closed coproduct over compiler artifacts (§2). |
+| `ComponentLogicalAccessDemand` — hash IDs per token, granularity, sparsity, reuse (typed gap), concurrency (§4.1) | `gunbc.fabric.engram_materialization` | Nothing in the corpus states *how a consumer touches* bytes. `FrameDemand` names a computation's identity and nature; neither it nor `ArtifactRequest` carries an access profile. **Max admitted added latency is not a field here** — an earlier revision put it here while §4 said it belongs to the serving subject, which made the fabric layer a second authority for serving policy. It arrives as decision context or a hard constraint. |
+| `RoutePhysicalAccessStanding` — physical reads, bytes, unique pages, cache hits/misses, coalescing, per-rank ownership; `Unobserved` or `Measured` (§4.2) | `gunbc.fabric.engram_materialization` | Physical access is a property of a route on a profile, not of the component. Folding it into logical demand is what let an earlier revision present a scenario as derived. |
+| `MaterializationRoute` — an ordered chain of hops, each identifying a **`CacheProvider` and a role**, head-anchored at the M0 origin | `gunbc.fabric.engram_materialization` | The ladder models a *provider*; nothing models a **chain** of them, which is what a fill-path-plus-serving-path is. An earlier revision stored `(Placement, ProviderTier, retention, role)` per hop — but `tier_axes` already *derives* placement from the tier and `CacheProvider` already carries retention, so restating them made contradictory hops writable (`ArtifactTier` beside `RemoteNetwork`). The hop now identifies the provider and derives the rest: construction rather than validation. |
+| `RouteResidentMemoryStanding` — observed / bounded / unestablished (§10) | `gunbc.fabric.engram_materialization` | No existing carrier states how much RAM a *route* retains as working set, which is distinct from what a component occupies. |
+| `RoutePerformanceReading` — measured p50/p95/p99, fill bandwidth, retained page-cache bytes, at a named launch | `gunbc.fabric.engram_materialization` (receipt side) | §6: `ReadLatencyClass` is a backend taxonomy, deliberately not a fleet measurement. Merging them would put a reading inside an `extdeps` classification, a layer inversion. |
+
+**This roster is what is currently believed necessary, not a closed count** (§2). The generic component-materialization request question is unresolved, and the `LocalInProcess`/`LocalAccelerator` modelling of resident bytes on a unified pool is an open obligation.
 
 Component facts stay in `extdeps.deepseek.deepseek_v4_1_flash`. Backend/provider kind facts stay in `extdeps.cache` / `extdeps.storage`. Fleet readings are receipts in the observing layer, never properties authored into an upstream module (§3, external upstream decomposition).
 
@@ -171,13 +228,27 @@ The change is that the quantity fed to the fit screen becomes **the resident sha
 - `ModelArtifact` gains a component decomposition whose entries each carry their own `ArtifactFootprint` — the *same* type, one level down. The scalar whole-artifact footprint becomes the sum, so nothing that reads it today changes meaning.
 - Each component carries a placement standing: resident, or placed by a route selected in `gunbc.fabric.engram_materialization`.
 - `weight_fit_of` sums only the resident components. `FootprintUnread` on any resident component still yields `WeightFitUnderivable`, unchanged.
-- A component placed on a non-resident route contributes **zero resident bytes and one hard constraint** — the runtime-capability constraint of §11 — so a route that the runtime cannot serve does not quietly shrink the footprint.
+- A component placed on a non-resident route contributes **its route's resident working set**, which is not zero and is not currently known. An earlier revision wrote "zero resident bytes", and that is a fail-open term of exactly the kind §5 forbids: routes B and D depend on a retained page cache *by construction*, and direct NFS may populate one too. Unknown working-set memory silently becoming zero deletes the precise RAM term this plan insists must be measured — and it is what would make TP4 look feasible. The fit path needs a route-specific standing:
 
-For #11013's candidate field: a candidate's `topology` is derived, not authored, so the Spark count **follows from** the placement rather than being chosen beside it. the **selected route** — the `MaterializationRoute` inside the `SelectedWithin` arm of §7's result, with no second name minted for it — is an input to candidate generation; the minimum rank count is a consequence of the resident sum (§8: 3 vs 5 → TP4 vs TP8); and with `constraint_no_redundancy` pinning replica count to 1, that rank count **is** the host demand. It is screened against the admissible set of §8.2, not against `spark_fleet_snapshot.host_count` — the one place this integration could otherwise reintroduce the eight-free-hosts assumption, since `fleet_fits` today compares `hosts_consumed` directly to that scalar. The candidate field does not gain a placement dimension to be searched independently: placement is selected by its own subject, and the deployment subject consumes the result. Two selections, two receipts, one direction of flow, no joint search space.
+  ```
+  RouteResidentMemoryStanding
+    = ResidentMemoryObserved   { bytes, receipt }
+    | ResidentMemoryBounded    { upper_bound, authority }
+    | ResidentMemoryUnestablished { obligation }
+  ```
+
+  The resident sum is static resident components **plus** each route's cache/buffer working set, and the `ResidentMemoryUnestablished` arm keeps the weight-fit and host-feasibility results **open** rather than optimistic.
+- It also carries one hard constraint — the runtime-capability constraint of §11 — so a route the runtime cannot serve does not quietly shrink the footprint.
+
+For #11013's candidate field, the flow is the §7.1 parameterized shape rather than the two-independent-selections one an earlier revision closed with. Each serving candidate — topology and execution profile — is the **context** a route selection runs against, producing a route result and `SelectionReceipt` *for that candidate*; the outer serving selection then ranks the composed candidates. So there is no free-floating "the selected route": a route result that does not name the serving candidate it was evaluated under is incomplete, because §7.1's couplings mean the same route can price differently at a different degree.
+
+What follows from that, rather than from a global route choice: a candidate's resident sum includes its route's `RouteResidentMemoryStanding`, the rank count follows from that sum, and with `constraint_no_redundancy` pinning replica count to 1 the rank count **is** the host demand — screened against the admissible set of §8.2, never against `spark_fleet_snapshot.host_count`, which is the one place this integration could otherwise reintroduce the eight-free-hosts assumption, since `fleet_fits` today compares `hosts_consumed` directly to that scalar.
+
+Two authorities remain distinct — `gunbc.fabric.engram_materialization` owns route selection, `serving_deployment_selection` owns the deployment — without either pretending the other's variable is settled.
 
 ## 11. The open fact, as an obligation with a hard constraint attached
 
-**Can vLLM's published `deepseekv41-flash-0909` image — `sha256:d84a1232…`, recorded at `gunbc.spark.v41_published_image_observation` `v41_published_arm64_digest` — serve Engram from a non-resident tier at all?**
+**Can the vLLM image published as `deepseekv41-flash-0909` — pull reference `sha256:d84a1232…`, `gunbc.spark.v41_published_image_observation` `v41_published_arm64_digest` — serve Engram from a non-resident tier at all?** (On digest grain, see §11.1: the pull reference is not the execution subject.)
 
 This plan does **not** settle it, and says so rather than inferring an answer. What is known: `extdeps.deepseek.deepseek_v4_1_flash` `deepseek_v4_1_flash_config_declares_engram_off_accelerator` is `false` — off-accelerator placement is not a publisher config key, the reference implementation allocates the tables as parameters, and a third-party 4-Spark build **patched vLLM** to do it. A patch existing is positive evidence that the stock image does not.
 
@@ -187,7 +258,29 @@ It becomes a **hard constraint**, not an axis: if the runtime cannot serve the c
 
 That state is not hypothetical, and it is the most useful thing this subject can say: it would mean the deployment does not fit this fleet under any placement, and the reply is to change a constraint — release Group A, patch the runtime, add hosts — rather than to pick a route.
 
-The obligation is a capability probe against that exact digest, homed with the probes that already exist (`gunbc.spark.serving_runtime_capability_probe` `RuntimeCapabilityProbeRow`), answering one question: does this image expose a mechanism by which Engram tables are read from a non-resident tier at token time. Until that row exists the constraint reads unfunded, and per `std.decision` an unfunded constraint axis is a defect — `RealizationSelectionRefused`, since a selection run against a constraint nobody can read is defective rather than merely under-evidenced. That distinction is one of the six arms earning its keep.
+### 11.1 A capability probe cannot discharge this constraint — two gates, not one
+
+An earlier revision briefed a single `RuntimeCapabilityProbeRow` as the thing that "moves the hard constraint from unfunded to funded". **That module says otherwise about itself**, in `v41_prerequisites_are_not_feasibility`: a positive capability reading "rules the image IN as a candidate and establishes nothing about serving", and executable feasibility "belongs to `gunbc.spark.serving_deployment_selection` `RuntimeFeasibility`, whose witness is a launch receipt rather than a symbol lookup". Briefing the inventory as the gate would have used an authority against its own stated meaning — the plan citing a home while ignoring what the home says it is for.
+
+So two gates, and only the second satisfies the constraint:
+
+```
+NonResidentEngramMechanismStanding      absent     -> hard refusal (asymmetric: absence DOES rule out)
+                                        unobserved -> SelectionNeedsEvidence
+                                        present    -> prerequisite only; launch proof still required
+
+RuntimeFeasibility (exact route × profile)   engine starts
+                                             exact checkpoint loads
+                                             the exact materialization route is observed
+                                             a request completes
+                                             resident-memory and access receipts recorded
+```
+
+The asymmetry is the useful part: *absence* is decisive and cheap, *presence* is not decisive at all.
+
+**And the digest grain was wrong.** `sha256:d84a1232…` is the **registry pull reference**; the subject that executes is the **observed local config digest** — `sha256:714a9375…` per the srv9 readback in the in-flight #11088 (open at this writing, so cited as in flight), against which the capability rows are keyed at GB10 `sm_121`. The pull reference may initiate acquisition; it is not what ran. The non-resident launch receipt must bind all of: requested registry reference, observed local config digest, component subject and materialization digest, route, topology and exact hosts, context/memory/KV/speculative profile, runtime revision, and observed completion and performance.
+
+Until the mechanism standing is `unobserved`, the constraint axis is unfunded and `std.decision` treats a selection run against an unreadable constraint as defective — `RealizationSelectionRefused`, not `SelectionNeedsEvidence`. That distinction is one of the six arms earning its keep.
 
 Note also that a GB10's host and GPU are **one unified pool**, so "host memory offload" adds no capacity here; the only routes that free bytes are ones that reach a *storage* tier. That is why B/C/D are the arms and a host-RAM arm is not.
 
@@ -207,9 +300,11 @@ The prediction and the measurement are separate rows with a stated relation, so 
 
 ## 14. Landing order, if approved
 
-1. Component facts: immutability/layout rows and the row-size read obligation in `extdeps.deepseek.deepseek_v4_1_flash`. **One Spark read discharges three obligations at once** and should be taken as a single pass: the `.engram.` row dtype and stride (grounding §4's 264 B), and the `.engram.`/backbone byte spans read on the fleet (turning `CitedToAuthority` into `FootprintObservedOnFleet`, which is what makes §8's rank arithmetic a feasibility finding rather than motivation — see §8.3).
-2. `gunbc.fabric.engram_materialization`: `ComponentAccessDemand`, `MaterializationRoute` over the existing ladder vocabulary, the four candidate routes, and the selection consuming `select_realization`. Consumed by execution in the same change — the module produces a `RealizationSelectionResult` a witness exercises, not a declaration set nothing reads (§3c).
-3. The runtime capability probe row against `sha256:d84a1232…`, which is what moves the hard constraint from unfunded to funded.
+1. Component facts in `extdeps.deepseek.deepseek_v4_1_flash`: the `EngramComponentSubject` digest over an exact tensor population (§3), immutability/layout rows, and the row-size read obligation. **One Spark read discharges three obligations** and should be a single pass: the `.engram.` row dtype and stride (grounding §4.2's 264 B and settling whether weight and scale are separately addressed), and the `.engram.`/backbone byte spans read on the fleet — turning `CitedToAuthority` into `FootprintObservedOnFleet`, which is what would let §8's arithmetic be a feasibility finding rather than motivation (§8.3).
+2. `gunbc.fabric.engram_materialization`: the §9 carriers, the four candidate routes, and route selection **parameterized by a serving candidate** (§7.1), returning `RealizationSelectionResult<MaterializationRoute>`. Also settles the `LocalInProcess`/`LocalAccelerator` question for resident bytes on a unified pool (§2).
+
+   **§3c: a witness is not the production consumer.** An earlier revision said this step may land because a witness exercises the fold, with the serving consumer arriving at step 5. A discriminating witness proves the fold's behaviour; it does not make a future consumer present. The plan already names the consumer, so the honest choices are to land route selection **together with** the `ModelArtifact`/candidate-field consumption (steps 2 and 5 merged), or to land the module as a **declared frontier** naming that exact later consumer and its dissolution trigger. Not "a witness reads it".
+3. Both §11.1 gates: the `NonResidentEngramMechanismStanding` probe — keyed to the **observed local config digest**, not the pull reference — and, separately, the `RuntimeFeasibility` launch receipt that is the only thing which can actually satisfy the hard constraint.
 4. The **admissible host binding** (§8.2): the fit screen consumes a host set derived from **the roster, minus hosts bound by a desired serving deployment, minus role assignments, minus undischarged reservations** — each exclusion naming the authority that actually produced it and reading that authority live — replacing the comparison against `spark_fleet_snapshot.host_count`.
 
    The **desired-serving-deployment term is the load-bearing one and the only non-empty one today** (`gunbc.spark.pair_serving_desired` `spark_pair_serving_groups`, Group A binding srv5–srv8). It is listed first because it is the term a worker reading the role roster would omit, and omitting it admits six hosts and hands four of them to a new shape while Group A is serving on them. Role assignment is a strict subset of it, because `cell_role` lags the desired state; the reservation term is currently discharged.
