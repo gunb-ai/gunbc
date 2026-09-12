@@ -689,10 +689,17 @@ fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   state.unique
 }
 
+// THE COST IS CHARGED IN THE RIGHT OPERAND, AND THE RIGHT-FOLD THIS REPLACED CHARGED THE LEFT.
+// `concat` is the primitive two-list append; `std.primitives` `concat_contract` declares its
+// persistent carrier cost as `log(n + m)`. The `fold_list_right` form that stood here walked
+// its LEFT operand instead, one `Cons` per element, so an accumulate-on-the-left fold paid the
+// whole accumulator at every step and came out quadratic in the accumulated length --
+// `list_snoc_item` below is exactly that shape, which is why it inherited the defect, and it is
+// the shape the corpus uses wherever it builds a list by appending. Routing to the primitive
+// makes the singleton case constant and the general case linear in the appended side only.
+// DESIGN section 6 fixes a proven cost-shape defect at the root rather than per callsite.
 fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
-  fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
-    Cons { head: item, tail: acc }
-  })
+  left |> concat(right)
 }
 
 // `list_push` is the primitive single-item append (amortized O(log n) on the persistent

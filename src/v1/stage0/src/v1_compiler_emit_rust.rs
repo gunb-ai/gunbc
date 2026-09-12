@@ -129,7 +129,8 @@ use crate::v1_compiler_emit::BoundOperation::{
 };
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 use crate::v1_compiler_emit::FileResultChannel::{
-    FileChanByteCount, FileChanContent, FileChanError, FileChanPath, FileChanSuccess,
+    FileChanByteCount, FileChanContent, FileChanError, FileChanErrorKind, FileChanPath,
+    FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
     FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteOwnerOnly,
@@ -36174,6 +36175,7 @@ pub fn emit_file_call(
         Rc::new(vec![
             path_line.clone(),
             file_empty_path_guard(),
+            file_io_error_kind_fn(),
             action.clone(),
             return_line.clone(),
         ])
@@ -36325,10 +36327,19 @@ pub fn file_empty_path_guard() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn file_io_error_kind_fn() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        _ => \"other\",\n    }\n    .to_string()\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn file_channel_binding_prefix() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = ".to_string()
+            "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count, file_error_kind): (bool, String, String, i64, String) = ".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36337,7 +36348,7 @@ pub fn file_channel_binding_prefix() -> String {
 pub fn file_read_match_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64),\n};".to_string()
+            "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes, String::new()) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64, file_io_error_kind(&read_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36346,7 +36357,7 @@ pub fn file_read_match_expr() -> String {
 pub fn file_delete_match_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};".to_string()
+            "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64, String::new()),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64, file_io_error_kind(&delete_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36355,7 +36366,7 @@ pub fn file_delete_match_expr() -> String {
 pub fn file_list_match_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes)\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};".to_string()
+            "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64, \"other\".to_string()),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes, String::new())\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64, file_io_error_kind(&list_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36364,7 +36375,7 @@ pub fn file_list_match_expr() -> String {
 pub fn file_write_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36373,7 +36384,7 @@ pub fn file_write_expr() -> String {
 pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36382,7 +36393,7 @@ pub fn file_write_create_new_expr() -> String {
 pub fn file_write_owner_only_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64, file_io_error_kind(&owner_only_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36395,6 +36406,7 @@ pub fn emit_file_channel_expr(channel: FileResultChannel, is_optional: bool) -> 
             FileResultChannel::FileChanByteCount => "file_byte_count".to_string(),
             FileResultChannel::FileChanPath => "file_path.clone()".to_string(),
             FileResultChannel::FileChanError => "file_error.clone()".to_string(),
+            FileResultChannel::FileChanErrorKind => "file_error_kind.clone()".to_string(),
             FileResultChannel::FileChanContent => "file_content.clone()".to_string(),
         };
         if is_optional.clone() {

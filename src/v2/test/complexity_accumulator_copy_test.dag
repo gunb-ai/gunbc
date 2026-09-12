@@ -48,11 +48,11 @@ fn is_absent(o: Optional<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
   }
 }
 
-test fn red_list_append_left_is_suspect() -> Bool {
+test fn red_list_append_right_is_suspect() -> Bool {
   is_suspect(
     o: classify(
       combiner: ^list_append,
-      ports: [bare(s: ^acc), bare(s: ^item)],
+      ports: [bare(s: ^item), bare(s: ^acc)],
       carriers: [^acc]
     )
   )
@@ -82,7 +82,7 @@ test fn noncarrier_name_in_copied_port_refuses_may_alias() -> Bool {
   refuses_with(
     o: classify(
       combiner: ^list_append,
-      ports: [bare(s: ^item), bare(s: ^acc)],
+      ports: [bare(s: ^acc), bare(s: ^item)],
       carriers: [^acc]
     ),
     cause: ^copied_port_name_may_alias
@@ -104,7 +104,7 @@ test fn pure_literal_in_copied_port_is_provably_fresh() -> Bool {
   is_absent(
     o: classify(
       combiner: ^list_append,
-      ports: [PortPureLiteral, bare(s: ^acc)],
+      ports: [bare(s: ^acc), PortPureLiteral],
       carriers: [^acc]
     )
   )
@@ -114,7 +114,7 @@ test fn computed_copied_port_refuses() -> Bool {
   refuses_with(
     o: classify(
       combiner: ^list_append,
-      ports: [PortComputedExpression { mentions: [] }, bare(s: ^item)],
+      ports: [bare(s: ^item), PortComputedExpression { mentions: [] }],
       carriers: [^acc]
     ),
     cause: ^copied_port_computed_argument
@@ -147,7 +147,7 @@ test fn missing_copied_port_refuses() -> Bool {
   refuses_with(
     o: classify(
       combiner: ^list_append,
-      ports: [PortMissing, bare(s: ^item)],
+      ports: [bare(s: ^item), PortMissing],
       carriers: [^acc]
     ),
     cause: ^copied_port_argument_missing
