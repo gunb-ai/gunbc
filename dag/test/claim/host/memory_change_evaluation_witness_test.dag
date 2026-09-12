@@ -1,6 +1,7 @@
 module test.claim.memory_change_evaluation_witness
 
 import std.types { Bool, List, NonEmptyStr, String, Seconds }
+import std.dissolution { dissolution_status, DissolutionPending, DissolutionFired }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, ObservationRefused, ObservationEstablished }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -521,4 +522,18 @@ test fn w_intermediate_initialization_explanation_locates_conflict() -> Bool {
     && any(explanation.lines, line => contains(line as String, "byte6(decimal)=145")
       && contains(line as String, "byte6(decimal)=0") && contains(line as String, "J9")
       && contains(line as String, "210525") && contains(line as String, "source "))
+}
+
+// The returned frontier is bound to a live retirement subject, not to the
+// appearance of a future consumer. Both states use the shared dissolution fold.
+test fn w_power_frontier_retirement_is_bound_to_existing_carrier() -> Bool {
+  let assessment = evaluate_memory_change(proposal: memory_test_proposal(configuration: memory_test_uniform(),
+    actions: [MemoryReadbackRequired]), evidence: memory_test_evidence())
+  let target = decl_ref(module_path: "product.node_power_envelope", decl_name: "PopulationModuleRead")
+  match assessment.consumer_frontiers.first() {
+    Absent => false
+    Present { value: frontier } =>
+      dissolution_status(condition: frontier.dissolution, present_decls: [target]) == DissolutionPending
+        && dissolution_status(condition: frontier.dissolution, present_decls: []) == DissolutionFired
+  }
 }

@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { unbound_dissolution, retires_dissolution }
 import std.decl_ref { decl_ref }
 import gunbc.memory_configuration {
   MemoryChangeProposal, MemoryConfiguration, MemoryOperatingObligation,
@@ -36,8 +36,8 @@ type MemoryWorkflowState {
 data memory_change_consumer_frontiers: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.memory_provisioning", decl_name: "PopulationOption"),
-    reason: "node_power_envelope aggregate population path frozen: no per-connector mixed-population power model exists; its candidate envelope does not assess this selected configuration",
-    dissolution: unbound_dissolution(description: "product.node_power_envelope consumes MemoryConfiguration.population for channel coverage and per-module power with existing unsupported-density and missing-evidence refusals preserved; delete its PopulationOption input atomically, with no new host rows or callers before cutover"),
+    reason: "node_power_envelope aggregate population path frozen: its candidate envelope does not assess this selected configuration. Retirement requires MemoryConfiguration.population for channel coverage and per-module power with existing unsupported-density and missing-evidence refusals preserved; retire PopulationModuleRead and its PopulationOption input atomically, with no new host rows or callers before cutover",
+    dissolution: retires_dissolution(ref: decl_ref(module_path: "product.node_power_envelope", decl_name: "PopulationModuleRead")),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
