@@ -1,0 +1,104 @@
+module test.claim.spark.derived_layer_dockerfile_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_7_0_dev20260910_wheels }
+import gunbc.spark.vllm_runtime_image_build {
+  DerivedRuntimeLayer, glm53_nope_derived_layer,
+  DerivedLayerRender, DerivedLayerRendered, DerivedLayerRenderRefused,
+  render_derived_layer_dockerfile, dockerfile_exec_run_line, derived_layer_image_wheel_dir,
+}
+
+// ── WHAT A GENERATED BUILD FILE MUST NOT DO ───────────────────────────────────────────────────
+//
+// THE POINT OF GENERATING THIS FILE IS THAT IT CANNOT DRIFT FROM THE ROWS, so the fixtures ask about the
+// two ways a renderer silently disagrees with its model: it can name the base by something mutable, and
+// it can mangle a word on the way into the file.
+
+data w_base_id: NonEmptyStr = "sha256:0b5e1f5a9c7d4e2a8f3b6c1d0e9a7b5c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a" as NonEmptyStr
+
+fn w_layer() -> DerivedRuntimeLayer {
+  glm53_nope_derived_layer(base_tag: "gunbc-vllm-glm53-nope-gb10:8d09804-sm121" as NonEmptyStr)
+}
+
+fn w_rendered() -> String? {
+  match render_derived_layer_dockerfile(base_image_id: w_base_id, l: w_layer()) {
+    DerivedLayerRendered { content: c } => Present { value: c }
+    DerivedLayerRenderRefused { cause: _ } => none
+  }
+}
+
+// THE BASE IS THE OBSERVED IDENTITY AND NOT THE TAG THE LAYER CARRIES. A FROM naming the tag would build
+// against whatever that tag points at when the build runs, which is a different question from the one the
+// observation answered.
+test fn the_from_line_carries_the_observed_image_id() -> Bool {
+  match w_rendered() {
+    Absent => false
+    Present { value: c } => starts_with(s: c, prefix: join(["FROM ", w_base_id as String, "\n"], ""))
+  }
+}
+
+test fn the_from_line_does_not_carry_the_mutable_tag() -> Bool {
+  match w_rendered() {
+    Absent => false
+    Present { value: c } => !string_contains(s: c, pattern: "FROM gunbc-vllm-glm53-nope-gb10")
+  }
+}
+
+// EVERY WHEEL IN THE POPULATION REACHES THE FILE. Two of three installed is the silent-fallback state the
+// layer exists to prevent, and a renderer that dropped one would produce a build that succeeds.
+test fn every_required_wheel_is_copied_and_installed() -> Bool {
+  match w_rendered() {
+    Absent => false
+    Present { value: c } =>
+      all(flashinfer_0_7_0_dev20260910_wheels, w =>
+        string_contains(s: c, pattern: join(["COPY ", w.filename as String, " "], ""))
+          && string_contains(s: c, pattern: join([derived_layer_image_wheel_dir() as String, "/", w.filename as String, "\""], "")))
+  }
+}
+
+// THE INSTALL IS EXEC FORM, so no far-side shell re-parses these words. The jit-cache wheel's name carries
+// a `+`, which a shell-form RUN would hand to /bin/sh -- the same character that makes this population
+// unexpressible on the portable-word leg one module over.
+test fn the_install_is_exec_form_with_no_deps() -> Bool {
+  match w_rendered() {
+    Absent => false
+    Present { value: c } =>
+      string_contains(s: c, pattern: "RUN [\"python3\", \"-m\", \"pip\", \"install\", \"--no-deps\", \"--force-reinstall\"")
+  }
+}
+
+test fn a_plus_in_a_wheel_name_survives_into_the_install() -> Bool {
+  match w_rendered() {
+    Absent => false
+    Present { value: c } => string_contains(s: c, pattern: "+cu130")
+  }
+}
+
+// ── THE REDS: A WORD THIS GENERATOR CANNOT SPELL REFUSES ──────────────────────────────────────
+//
+// AN ESCAPING RENDERER IS WHERE A GENERATED FILE STARTS DISAGREEING WITH ITS MODEL. These assert the
+// refusal rather than a repair, and they are the discriminating cases: a generator that escaped instead
+// would pass every fixture above and quietly emit a different argv than the list it was given.
+test fn a_word_carrying_a_quote_refuses_rather_than_escaping() -> Bool {
+  match dockerfile_exec_run_line(argv: ["python3", "a\"b"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_word_carrying_a_backslash_refuses_rather_than_escaping() -> Bool {
+  match dockerfile_exec_run_line(argv: ["python3", "a\\b"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND THE POSITIVE CONTROL, so the two refusals above cannot be satisfied by a renderer that refuses
+// everything.
+test fn an_ordinary_argv_renders_as_a_json_array() -> Bool {
+  match dockerfile_exec_run_line(argv: ["python3", "-m", "pip"]) {
+    Absent => false
+    Present { value: line } => line == "RUN [\"python3\", \"-m\", \"pip\"]\n"
+  }
+}

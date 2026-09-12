@@ -382,18 +382,6 @@ fn glm53_nope_derived_layer(base_tag: NonEmptyStr) -> DerivedRuntimeLayer {
   }
 }
 
-// THE INSTALL IS ORDERED AND THE ORDER IS LOAD-BEARING. flashinfer-python is installed with its
-// dependencies already satisfied by the base image, so it goes in with --no-deps: letting it resolve
-// freely is exactly how a fresh dependency solve reaches back to the stable index and restores the
-// released build this layer exists to replace. The jit-cache wheel is last because it is the one whose
-// filename carries the architecture, and a wrong one there is a silent mismatch rather than a refusal.
-fn derived_layer_install_argv(l: DerivedRuntimeLayer) -> List<String> {
-  concat(
-    ["python3", "-m", "pip", "install", "--no-deps", "--force-reinstall"],
-    map(l.wheels, w => w.filename as String),
-  )
-}
-
 // AND THE LAYER'S IDENTITY IS THE BASE PLUS WHAT IT INSTALLED. Two derived images over one base with
 // different wheels are different runtimes, and a tag that named only the base would let the cache serve
 // either for the other.
@@ -473,6 +461,91 @@ fn derived_layer_inputs(required: List<FlashInferWheel>, acquired: List<Acquired
     DerivedInputsReady { wheels: map(required, w => w.filename) }
   } else {
     DerivedInputsIncomplete { missing: map(missing, w => w.filename), acquired: map(acquired, a => a.filename) }
+  }
+}
+
+// ── THE DERIVED LAYER AS A GENERATED FILE, WHICH IS A PROJECTION AND NOT A SCRIPT ───────────
+//
+// THE MODEL ALREADY HOLDS EVERY FACT THIS FILE CONTAINS -- the base, the wheel population, the install
+// operation and its order -- so the Dockerfile is a rendering of rows rather than a second place those
+// decisions are made. What must not happen is the shape this repository keeps paying for: a hand-written
+// build file beside the rows it was transcribed from, agreeing with them on the day it was typed.
+//
+// THE BASE IS BOUND BY OBSERVED CONTENT AND NOT BY ITS TAG. `DerivedRuntimeLayer` carries a base_tag,
+// which is what a person types and what a person can move. A tag read at planning time and a tag read by
+// the build are two reads of a mutable name, so the identity is observed through the privileged leg and
+// the generated FROM carries the local image id that read returned.
+//
+// RUN IS EXEC FORM, AND A WORD THIS GENERATOR CANNOT SPELL REFUSES RATHER THAN BEING ESCAPED. Shell form
+// hands the install argv to /bin/sh on the far side, which is a second quoting authority over a list this
+// module already holds exactly; the JSON array carries the words as words. A word containing a quote or a
+// backslash is refused, because escaping is the point where a generated file starts disagreeing with the
+// list it was generated from -- and a wheel filename is upstream data, not a literal authored here.
+//
+// THE CONSUMER THAT EXECUTES THIS LANDS NEXT AND ITS TRIGGER IS NAMED: the derived build leg needs the
+// administrator credential the privileged leg takes (GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE), without
+// which no docker operation on a Spark can run at all -- gunbc-automation holds NOPASSWD sudo for exactly
+// two commands and is in no docker group (measured on srv9, 2026-09-12). The rendering below is complete
+// and executed by its fixtures; the leg that hands its bytes to a build host is not written, because
+// nothing in this session could have run it.
+fn derived_layer_image_wheel_dir() -> NonEmptyStr {
+  "/tmp/gunbc-wheels" as NonEmptyStr
+}
+
+fn dockerfile_json_word(w: String) -> String? {
+  if string_contains(s: w, pattern: "\"") || string_contains(s: w, pattern: "\\") {
+    none
+  } else {
+    Present { value: join(["\"", w, "\""], "") }
+  }
+}
+
+fn dockerfile_exec_run_line(argv: List<String>) -> String? {
+  let quoted = flat_map(argv, w => match dockerfile_json_word(w: w) {
+    Present { value: q } => [q]
+    Absent => []
+  })
+  if count(quoted) != count(argv) {
+    none
+  } else {
+    Present { value: join(["RUN [", join(quoted, ", "), "]\n"], "") }
+  }
+}
+
+type DerivedLayerRender
+  = DerivedLayerRendered { content: String }
+  | DerivedLayerRenderRefused { cause: NonEmptyStr }
+
+// THE INSTALL PATHS ARE ABSOLUTE INSIDE THE IMAGE, because a bare filename resolves against a working
+// directory this generator never set, and the one upstream chose is not a fact this module holds.
+// THE INSTALL IS ORDERED AND THE ORDER IS LOAD-BEARING. flashinfer-python is installed with its
+// dependencies already satisfied by the base image, so it goes in with --no-deps: letting it resolve
+// freely is exactly how a fresh dependency solve reaches back to the stable index and restores the
+// released build this layer exists to replace. The jit-cache wheel is last because it is the one whose
+// filename carries the architecture, and a wrong one there is a silent mismatch rather than a refusal.
+fn derived_layer_image_install_argv(l: DerivedRuntimeLayer) -> List<String> {
+  concat(
+    ["python3", "-m", "pip", "install", "--no-deps", "--force-reinstall"],
+    map(l.wheels, w => join([derived_layer_image_wheel_dir() as String, "/", w.filename as String], "")),
+  )
+}
+
+fn render_derived_layer_dockerfile(base_image_id: NonEmptyStr, l: DerivedRuntimeLayer) -> DerivedLayerRender {
+  match dockerfile_exec_run_line(argv: derived_layer_image_install_argv(l: l)) {
+    Absent => DerivedLayerRenderRefused {
+      cause: "a wheel filename carries a quote or a backslash, which this generator refuses to escape" as NonEmptyStr,
+    }
+    Present { value: run_line } =>
+      DerivedLayerRendered {
+        content: join([
+          "FROM ", base_image_id as String, "\n",
+          join(map(l.wheels, w => join([
+            "COPY ", w.filename as String, " ",
+            derived_layer_image_wheel_dir() as String, "/", w.filename as String, "\n",
+          ], "")), ""),
+          run_line,
+        ], ""),
+      }
   }
 }
 
