@@ -33,6 +33,23 @@ type PredictionObservationWindow
   | ApproximatePredictionWindow { duration: Milliseconds }
   | PredictionWindowNotRecorded
 
+type PredictionObservationWindowFold<R> {
+  bounded: fn(Milliseconds) -> R
+  approximate: fn(Milliseconds) -> R
+  unrecorded: R
+}
+
+fn prediction_observation_window_fold<R>(
+  window: PredictionObservationWindow,
+  fold: PredictionObservationWindowFold<R>,
+) -> R {
+  match window {
+    BoundedPredictionWindow { duration: duration } => fold.bounded(duration)
+    ApproximatePredictionWindow { duration: duration } => fold.approximate(duration)
+    PredictionWindowNotRecorded => fold.unrecorded
+  }
+}
+
 type Prediction<S, O> {
   claim: Claim<DeclarationRef, DeclarationRef, O, List<PredictionRestriction<S>>, PredictionObservationWindow>
   statement: NonEmptyStr
@@ -244,11 +261,11 @@ fn start_predictive_test<S, O>(
   discrimination: PredictionTestDiscrimination,
   started_at: EpochMs,
 ) -> PredictiveTestStart<S, O> {
-  if match committed.snapshot.prediction.claim.bound {
-    PredictionWindowNotRecorded => true
-    ApproximatePredictionWindow { duration: _ } => true
-    BoundedPredictionWindow { duration: duration } => duration == 0
-  } {
+  if prediction_observation_window_fold(window: committed.snapshot.prediction.claim.bound,
+    fold: PredictionObservationWindowFold {
+      bounded: fn(duration) { duration == 0 }, approximate: fn(_) { true }, unrecorded: true,
+    },
+  ) {
     PredictiveTestStartRefused { cause: PredictionWindowRequired }
   } else if committed.recorded_at >= started_at {
     PredictiveTestStartRefused { cause: PredictionNotRecordedBeforeStart }
@@ -310,11 +327,12 @@ fn observe_predictive_test<S, O>(
 ) -> PredictiveModelResult<S, O> {
   if observed_at < test.started_at {
     PredictiveModelRefused { cause: PredictionObservationBeforeStart }
-  } else if match test.committed.snapshot.prediction.claim.bound {
-    PredictionWindowNotRecorded => true
-    ApproximatePredictionWindow { duration: _ } => true
-    BoundedPredictionWindow { duration: duration } => observed_at - test.started_at > duration
-  } {
+  } else if prediction_observation_window_fold(window: test.committed.snapshot.prediction.claim.bound,
+    fold: PredictionObservationWindowFold {
+      bounded: fn(duration) { observed_at - test.started_at > duration },
+      approximate: fn(_) { true }, unrecorded: true,
+    },
+  ) {
     PredictiveModelRefused { cause: PredictionObservationBeyondBound }
   } else {
     append_predictive_observation(
