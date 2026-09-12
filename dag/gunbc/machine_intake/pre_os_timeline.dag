@@ -9,7 +9,7 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import std.algebra { FreeSemigroup, Empty }
 import gunbc.memory_observation { read_verified_memory_capture }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, source_byte_fact }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, RetentionExposure, retention_exposure, source_byte_fact }
 import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, range_end }
 import gunbc.machine_intake_pre_os_replay { pre_os_commit_binds_chunk, pre_os_same_source_generation, pre_os_envelope_binding_consistent, pre_os_continuity_covers_chunk, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
@@ -109,6 +109,7 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendere
 
 type PreOsTimelineRow {
   observation: PreOsReplayObservation
+  retention: RetentionExposure
   association: ObservationAttempt<Bool, NonEmptyStr>
   cycles: List<PreOsCapturedCycleReading>
   sel: ObservationAttempt<PreOsSelIngestion, NonEmptyStr>
@@ -192,6 +193,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
     }
     let milestones = pre_os_milestones(console: console, os_boot: os_boot)
     let row = PreOsTimelineRow {
+      retention: retention_exposure(envelope: o.envelope),
       configuration: configuration, sel: sel, observation: o, association: association,
       cycles: match association { ObservationEstablished { observed: _ } => match o.format { PreOsConsoleText => pre_os_captured_cycles(span: span, host_mac: host_mac, rendered_host_mac: rendered_host_mac) PreOsSelSnapshot => [] } _ => [] },
       boot: pre_os_boot_assessment(milestones: milestones), training: match configuration {
@@ -209,6 +211,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
 // The published view is derived, never a second handwritten ledger authority.
 fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
   join(map(rows, row => concat(to_string(row.observation.envelope), "\nassociation=", to_string(row.association),
+    "\nretention=", to_string(row.retention),
     "\nsel=", to_string(row.sel), "\ncycles=", to_string(row.cycles), "\nboot=", to_string(row.boot), "\ntraining=", to_string(row.training),
     "\nconfiguration=", to_string(row.configuration), "\npresent_admission=", to_string(row.present_admission))), "\n\n")
 }

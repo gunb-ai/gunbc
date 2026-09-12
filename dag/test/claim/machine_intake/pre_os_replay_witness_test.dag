@@ -3,8 +3,8 @@ module test.claim.pre_os_replay_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor }
-import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost }
+import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted }
 import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for }
 import gunbc.machine_intake_pre_os_replay { pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
@@ -74,6 +74,26 @@ test fn w_same_occurrence_new_continuity_receipt_is_retained() -> Bool {
     downstream: a.downstream, continuity: ContinuityEstablished { verified_through: 200 } }
   count(pre_os_unique_occurrences(envelopes: [a, a, b, b])) == 2
     && !pre_os_occurrence_conflicts(envelopes: [a, b], subject: a)
+}
+
+// Delivery changes retention for the same occurrence; it must neither erase
+// the earlier exposure nor establish an OS boot from the delivery receipt.
+test fn w_timeline_retains_local_exposure_and_downstream_acceptance() -> Bool {
+  let local = replay_fixture(seq: 1, generation: "console-a", record: "685")
+  let delivered = ObservationEnvelope { binding: local.binding, source_generation: local.source_generation, native_cursor: local.native_cursor,
+    ownership: local.ownership, chunk: local.chunk, producer_timestamp: local.producer_timestamp, received: local.received,
+    local_commit: local.local_commit, continuity: local.continuity,
+    downstream: DownstreamAccepted { accepted_content: local.chunk.payload_digest } }
+  let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: [
+    PreOsReplayObservation { envelope: local, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
+    PreOsReplayObservation { envelope: delivered, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
+  ], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
+    inventory_question: ObservationRefused { cause: "no inventory question" })
+  count(rows) == 2
+    && match rows.first() { Present { value: row } => match row.retention { ExposedToCollectorHostLoss { refusal: _ } => true _ => false } Absent => false }
+    && match rows.skip(n: 1).first() { Present { value: row } => match row.retention { RetainedBeyondCollectorHost => true _ => false } Absent => false }
+    && all(rows, row => match row.boot { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false })
+    && contains(pre_os_timeline_view(rows: rows), "retention=")
 }
 
 fn replay_console_chunk(seq: Nat, first: Nat, payload: NonEmptyStr, continuity: StreamContinuity) -> PreOsReplayObservation {
