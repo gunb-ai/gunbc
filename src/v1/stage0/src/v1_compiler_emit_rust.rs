@@ -32034,22 +32034,29 @@ pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
     }
 }
 
+pub fn type_node_is_ordered_element_run(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((((n.return_cardinality.clone() != Cardinality::CardOptional)
+        && crate::v1_compiler_infer_types::node_is_element_collection(
+            n.clone(),
+            source_indices.clone(),
+        ))
+        && !crate::v1_compiler_infer_types::node_is_set_collection(
+            n.clone(),
+            source_indices.clone(),
+        ))
+        && !is_rust_string_like(n.clone(), source_indices.clone()))
+}
+
 pub fn is_list_typed_expr(
     e: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            ((((rt.return_cardinality.clone() != Cardinality::CardOptional)
-                && crate::v1_compiler_infer_types::node_is_element_collection(
-                    rt.clone(),
-                    source_indices.clone(),
-                ))
-                && !crate::v1_compiler_infer_types::node_is_set_collection(
-                    rt.clone(),
-                    source_indices.clone(),
-                ))
-                && !is_rust_string_like(rt.clone(), source_indices.clone()))
+            type_node_is_ordered_element_run(rt.clone(), source_indices.clone())
         }
         _ => false,
     }
@@ -36001,18 +36008,10 @@ pub fn shell_argv_param_is_word_list(
     param: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let type_expr = crate::v1_std_core::param_node_type_expr(param.clone());
-        (((type_expr.return_cardinality.clone() != Cardinality::CardOptional)
-            && crate::v1_compiler_infer_types::node_is_element_collection(
-                type_expr.clone(),
-                source_indices.clone(),
-            ))
-            && !crate::v1_compiler_infer_types::node_is_set_collection(
-                type_expr.clone(),
-                source_indices.clone(),
-            ))
-    }
+    type_node_is_ordered_element_run(
+        crate::v1_std_core::param_node_type_expr(param.clone()),
+        source_indices.clone(),
+    )
 }
 
 pub fn shell_argv_element_is_word_list(
