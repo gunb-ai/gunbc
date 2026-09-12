@@ -1734,9 +1734,24 @@ pub struct TransitionAdmission {
 /// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
 /// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
 /// either way. What narrowed is the SET, from three modules to two, which is the qualification's
-/// whole purpose: the resolution stopped depending on a module the author never named. The
-/// required floor on this head is `verdict=FloorClean unexpected_failures=0` over
-/// planned=3757 executed=3757 claims_failed=0, so no consumer of this module changed behaviour.
+/// whole purpose: the resolution stopped depending on a module the author never named. That no
+/// consumer changed behaviour is the required floor's verdict on this head, re-derived by
+/// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
+/// and read off its own `required-floor:` verdict line -- named rather than transcribed, because a
+/// copied count rots without anyone touching either end (DESIGN §6).
+///
+/// WHY THE `String` REQUALIFICATION IN THE SAME CHANGE NEEDS NO ROW, which is a fair question to
+/// ask of a diff that moves ten import lines onto `std.string_type`. It is not this adjudication's
+/// assertion; it is the wave phase's own measurement. That phase compares the binding table on both
+/// sides, and on this head it reported exactly ONE `TargetChanged binding` delta -- the row below --
+/// and none for `String`. The ten `String` sites appear instead as
+/// `ExplicitlyEvaluatedZeroDelta membership <module> -> std.string_type ... reached by a name this
+/// module authors`: explicitly evaluated, zero delta. The reason is that `std.types` declares no
+/// `String` at all, so `import std.types { String }` bound nothing and the read fell through to the
+/// shared slot, where scope precedence already answered `std.string_type`. Naming that module
+/// changes the read's AUTHORIZATION -- from an accident of precedence to something the author
+/// wrote -- without changing which declaration answers it. A delta row adjudicates a changed
+/// binding; there is no changed binding here to adjudicate.
 ///
 /// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
 /// stops being producible, and CONSUMED comes due on the roster's next touch.
