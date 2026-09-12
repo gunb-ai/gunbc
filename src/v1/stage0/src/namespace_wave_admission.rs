@@ -1877,6 +1877,18 @@ const SCM_MERGE_BASE_COHOME_LABEL: &str =
 /// TRIGGER: these rows go when #11071 merges. The base then authors `LinuxKernelRelease` in
 /// `extdeps.linux.kernel`, the delta stops being producible, and CONSUMED comes due on the roster's
 /// next touch — adjudicated by the declaring-module join, not by this sentence.
+/// THE #11137 ROW IS GONE ON A **STALE** RECEIPT, WHICH IS NOT THE CONSUMED ONE. Required floor run
+/// 34678970776: `STALE ADMISSION gunbc#11137 ... matches no delta in this run`, with the floor
+/// otherwise `verdict=FloorClean`. The two dispositions are deliberately different and this file
+/// says so above: CONSUMED is entered only on the positive proof `admission_consumed_at_base`,
+/// never as the else-arm of "did not match a delta", and a row provable against neither side stays
+/// an UnmatchedAdmission in `stale_admissions`. So this deletion is NOT the consumed-row pattern
+/// repeating a fourth time; it is the rule this roster already states -- `stale_admissions` is per
+/// RUN, a pull_request build adjudicates the MERGE commit, so a row that reached main is inherited
+/// by every open PR and can never match in a PR that does not produce its delta. "The shrink is the
+/// fix, not housekeeping." Empty is still not permissive: a run with a real delta refuses it as
+/// UNADJUDICATED.
+///
 /// SEVENTH MERGE, UNION CASE: 40 SCM rows here, one for gunbc#11137 from main. Rebuilt each side's
 /// array from its own staged blob rather than patching hunks. Note the two sides format the array
 /// DIFFERENTLY -- ours opens `= &[` and lists rows, main's single-row version opens
@@ -3708,20 +3720,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
                 "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
             spelling: "MergeBaseSourceAlreadyConsumed",
             target: "gunbc.scm.repository_envelope",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-        // The rationale, the safety adjudication and the trigger are in the doc comment on this
-        // const rather than repeated here. In one line: the bare `import
-        // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-        // spelling's candidate set without changing what it resolves to.
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.tools.sha256sum",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            target: "extdeps.tools.sha256sum",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
