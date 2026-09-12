@@ -16,6 +16,7 @@ import gunbc.witness_floor_workflow {
   ci_heal_expected_healed_sha_input_name,
   ci_heal_checkout_ref_expression,
   heal_generated_artifacts_job,
+  heal_commit_push_step,
   witness_floor_lane_jobs,
   witness_floor_triggers
 }
@@ -261,6 +262,22 @@ test fn the_heal_job_grant_does_not_admit_dispatch_and_widens_nothing_else() -> 
     && match ci_heal_job_permissions.pull_requests { Absent => true  Present { value: _ } => false }
     && match ci_heal_job_permissions.issues { Absent => true  Present { value: _ } => false }
     && match ci_heal_job_permissions.id_token { Absent => true  Present { value: _ } => false }
+}
+
+// THE STEP TOKEN WAS THE DISPATCH'S AUTH. After CreateDispatch left this script, injecting
+// GITHUB_TOKEN would be a grant no statement spends -- the same shape as a dormant actions: write.
+test fn the_heal_commit_push_step_carries_no_github_token_env() -> Bool {
+  match heal_commit_push_step() {
+    RunStep {
+      name: _, id: _, run: _, shell: _, env, working_directory: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } =>
+      match env { Absent => true  Present { value: _ } => false }
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } => false
+  }
 }
 
 fn preflight_step_script() -> String {

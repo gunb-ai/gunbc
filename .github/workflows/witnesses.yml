@@ -602,8 +602,6 @@ jobs:
             fi
             exit 1
           fi
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
       - name: Upload the author-commit-required regeneration
         uses: actions/upload-artifact@v4
         with:
