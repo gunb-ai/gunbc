@@ -20,7 +20,7 @@ import test.claim.decl_facts_reflection_witness_support {
 }
 import v2.std.decl_facts_skeleton {
   skeleton_contains_authored_string_literal,
-  skeleton_contains_marshal_atom_lexeme,
+  skeleton_authored_string_absent_from_marshal_atom_channel,
 }
 import v2.std.data_initializer_identity {
   data_initializer_is_constructor_resolution_refused_projection,
@@ -327,8 +327,10 @@ test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool 
 test fn decl_facts_authored_string_does_not_fork_constructor_spelling_channel() -> Bool {
   match decl_facts_reflection_fact_node(qn: planted_constructor_spelling_string_qn) {
     Present { value: node } =>
-      skeleton_contains_authored_string_literal(node: node, lexeme: "SingleAuthority")
-        && !skeleton_contains_marshal_atom_lexeme(node: node, lexeme: "SingleAuthority")
+      skeleton_authored_string_absent_from_marshal_atom_channel(
+        node: node,
+        lexeme: "SingleAuthority"
+      )
     Absent => false
   }
 }

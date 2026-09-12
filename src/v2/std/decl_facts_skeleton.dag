@@ -109,6 +109,20 @@ fn skeleton_contains_authored_string_literal(node: Node, lexeme: String) -> Bool
   ) > 0
 }
 
+// One census fold. Two contains-walks over the same node paid the channel-separation
+// witness twice and crossed the 500ms claim ceiling (run 34689030136, cost=525ms).
+fn skeleton_authored_string_absent_from_marshal_atom_channel(node: Node, lexeme: String) -> Bool {
+  let census = skeleton_atom_lexeme_census_fold(n: node)
+  count_where(
+    xs: census.authored_string_lexemes,
+    predicate: fn(lex) { lex == lexeme }
+  ) > 0
+    && count_where(
+      xs: census.all_atom_lexemes,
+      predicate: fn(lex) { lex == lexeme }
+    ) == 0
+}
+
 fn decl_fact_skeleton_for_resolution(
   resolution: DeclFactQualifiedNameResolution
 ) -> Node? {
