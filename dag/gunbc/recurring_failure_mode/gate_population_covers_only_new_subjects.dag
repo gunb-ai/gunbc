@@ -8,7 +8,7 @@ data gate_population_covers_only_new_subjects: RecurringFailureMode = RecurringF
   identity: "gate_population_covers_only_new_subjects" as NonEmptyStr,
 
   receipts: [
-    "**a gate whose population is NEW subjects, guarding a property that degrades in EXISTING ones** (INVALID STATE: a gate exists to stop a property of the standing corpus, and the population it actually ranges over is only identities enrolled in this change -- declared now minus declared at the resolved diff base -- so an already-enrolled subject that degrades into the same state passes unremarked.",
+    "**a gate whose population is NEW subjects, guarding a property that degrades in EXISTING ones** INVALID STATE: a gate exists to stop a property of the standing corpus, and the population it actually ranges over is only identities enrolled in this change -- declared now minus declared at the resolved diff base -- so an already-enrolled subject that degrades into the same state passes unremarked.",
 
     "HARM: the gate reports coverage of a failure mode it only half covers, which is DESIGN section 4b rung inflation: an inflated class never ranks for climbing.",
 
@@ -26,7 +26,7 @@ data gate_population_covers_only_new_subjects: RecurringFailureMode = RecurringF
 
     "ATTAINABLE CEILING: mechanically preventable over the standing enrolled population, not structurally guaranteed. Whether a claim's measured CPU, times the named runner envelope, crosses the ceiling is a measurement, not a source property; the invalid state stays writable and safety depends on the gate executing. Claiming structural impossibility would be inflation about an undecidable-from-source cost. The same ceiling the module already claims for new identities, applied to already-enrolled ones, is the honest climb -- still rung 2, over the population the purpose actually named.",
 
-    "NEXT-RUNG TRIGGER, naming the CAPABILITY: a wall that refuses an ALREADY-ENROLLED required identity whose measured CPU, multiplied by the named runner-inflation envelope, crosses the claim CPU ceiling -- the same `implied_clean_run_budget` derivation, over the standing declared population rather than declared-now minus declared-at-base. Sufficient that a row which degrades into the 450ms-then-coin-flip state after enrolment is refused on a later PR, not only on the PR that first enrolled it. A trigger that names only this increment gate, or that names a larger ceiling, does not discharge this: the first leaves the standing population unguarded, and the second papers over the cliff the module was written to refuse.)",
+    "NEXT-RUNG TRIGGER, naming the CAPABILITY: a wall that refuses an ALREADY-ENROLLED required identity whose measured CPU, multiplied by the named runner-inflation envelope, crosses the claim CPU ceiling -- the same `implied_clean_run_budget` derivation, over the standing declared population rather than declared-now minus declared-at-base. Sufficient that a row which degrades into the 450ms-then-coin-flip state after enrolment is refused on a later PR, not only on the PR that first enrolled it. A trigger that names only this increment gate, or that names a larger ceiling, does not discharge this: the first leaves the standing population unguarded, and the second papers over the cliff the module was written to refuse.",
   ],
 
   evidence: [

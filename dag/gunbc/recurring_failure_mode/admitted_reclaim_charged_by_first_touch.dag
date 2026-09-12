@@ -8,7 +8,7 @@ data admitted_reclaim_charged_by_first_touch: RecurringFailureMode = RecurringFa
   identity: "admitted_reclaim_charged_by_first_touch" as NonEmptyStr,
 
   receipts: [
-    "**a per-subject budget charges a shared, scheduling-determined reclaim cost to whichever subject touches first** (INVALID STATE: a per-claim CPU ceiling (`v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`) is applied to a claim whose measured CPU includes page-refault cost that is a property of the RUN's memory pressure and of TOUCH ORDER, not of the claim.",
+    "**a per-subject budget charges a shared, scheduling-determined reclaim cost to whichever subject touches first** INVALID STATE: a per-claim CPU ceiling (`v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`) is applied to a claim whose measured CPU includes page-refault cost that is a property of the RUN's memory pressure and of TOUCH ORDER, not of the claim.",
 
     "HARM: which claim is billed is an ordering accident, so the ceiling refuses an arbitrary subject; PRs red at random on a fold that is progressing correctly; and the reading cannot be used to rank claims by cost because it does not measure the claim.",
 
@@ -26,7 +26,7 @@ data admitted_reclaim_charged_by_first_touch: RecurringFailureMode = RecurringFa
 
     "NEXT-RUNG TRIGGER, naming the CAPABILITY: per-claim CPU ceilings consume a reading from which admitted reclaim has already been attributed to the RUN -- the subject `memory_stall_refusal` already names -- sufficient that a first-touch refault cannot inhabit the claim's ceiling. A trigger that names `record_shared_artifact_fill_cpu`, a pre-warm loop, a narrowed scan, or an exemption of the warm 24ms does not discharge this: those are artifacts that would contribute to a different class, and measurement has already retired them here.",
 
-    "UNCERTAINTIES CARRIED RATHER THAN ROUNDED OFF. Two runs on ONE runner (srv3-01). The 'neither' 51% bucket includes ~31ms of unsubtracted instrument clock reads. The answering module sitting last in scope precedence (reported as 437/438, 1093/1094) is an observation 2-of-2 whose mechanism was explicitly retracted as unverified inference; this row does not revive that mechanism.)",
+    "UNCERTAINTIES CARRIED RATHER THAN ROUNDED OFF. Two runs on ONE runner (srv3-01). The 'neither' 51% bucket includes ~31ms of unsubtracted instrument clock reads. The answering module sitting last in scope precedence (reported as 437/438, 1093/1094) is an observation 2-of-2 whose mechanism was explicitly retracted as unverified inference; this row does not revive that mechanism.",
   ],
 
   evidence: [
