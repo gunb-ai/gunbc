@@ -7,7 +7,7 @@ import v2.lens.test_migration_debt {
   discovered_legacy_behavior_ids,
   names_are_duplicate_free,
   list_contains_name,
-  retained_module_identity_prefix,
+  retained_module_has_a_discovered_test_among,
   module_body_has_no_skip_attribute,
   manifest_uses_default_harness,
   no_retained_module_is_skipped,
@@ -71,12 +71,21 @@ test fn clean_fixture_is_admitted() -> Bool {
 }
 
 // A retained row pointing at a module with no discovered #[test] must red.
-// Fixture ids, not the live census: the planted file cannot exist on the tree. The 541 ms
-// reading on 994cab35 was a contended slot (nine thrash refusals that night), not this row's
-// cost; paying discovered_legacy_behavior_ids here is still §2 redundant work.
+// Same split as module_body_has_no_skip_attribute: the production predicate takes the
+// id list, the live path supplies discovered_legacy_behavior_ids, and this control
+// supplies a fixture list that cannot contain the planted module.
 test fn planted_module_without_tests_refuses() -> Bool {
-  let prefix = retained_module_identity_prefix(source_file: "zzz_nonexistent_module_test.rs")
-  return !(["src/v1/tests/src/alpha_test.rs::t"] |> any(id => string_contains(s: id, pattern: prefix)))
+  return !retained_module_has_a_discovered_test_among(
+    source_file: "zzz_nonexistent_module_test.rs",
+    ids: ["src/v1/tests/src/alpha_test.rs::t"]
+  )
+}
+
+test fn planted_module_with_a_test_is_admitted() -> Bool {
+  return retained_module_has_a_discovered_test_among(
+    source_file: "alpha_test.rs",
+    ids: ["src/v1/tests/src/alpha_test.rs::t"]
+  )
 }
 
 // THE EXECUTION-WALL CONTROLS. Each plants the exact route by which a retained
