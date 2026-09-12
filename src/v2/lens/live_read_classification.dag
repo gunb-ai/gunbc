@@ -22,12 +22,12 @@ import v2.std.fn_index {
   tail_decls
 }
 import v2.lens.module_graph {
-import v2.std.text { string_eq }
   dependency_closure,
   dependency_resolution_facts_live,
   module_declaration_facts_live,
   path_matches_touched
 }
+import v2.std.text { string_eq }
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
 data no_declared_pool_files: List<String> = []
