@@ -69,6 +69,8 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation {
   mtcollins1_host_capture_observed_at,
   mtcollins1_media_attach_observed_at,
   mtcollins1_consumption_frontier,
+  artifact_identity_frontier,
+  boot_delivery_frontier,
   mtcollins1_media_redirection_samples,
   mtcollins1_edac_topology,
   mtcollins1_firmware_channel_bindings,
@@ -324,11 +326,53 @@ test fn the_redirection_samples_are_a_time_series_containing_a_transition() -> B
 // ── the declared frontier ──────────────────────────────────────────────────────────────────────
 
 // DESIGN section 3c admits a declaration whose consumer lands in a named later change ONLY with the
-// trigger stated beside it. That makes the frontier rows themselves a claim that can rot: a row
-// naming no consumer, or no trigger, is back to a dangling declaration wearing a label. This folds
-// them and refuses an empty one, so the admission has to keep being earned.
-fn frontier_row_is_complete(f: MtCollins1ConsumptionFrontier) -> Bool {
-  !(f.awaited_consumer == "") && !(f.trigger_capability == "") && !(f.declaration.decl_name == "")
+// trigger stated beside it. That makes the frontier rows themselves a claim that can rot.
+//
+// THE PREVIOUS VERSION OF THIS CHECK WAS A DECORATION AND REVIEW 64253 WAS RIGHT TO REJECT IT. It
+// folded !(awaited_consumer == "") && !(trigger_capability == "") && !(decl_name == "") over rows
+// whose awaited_consumer and trigger_capability are declared NonEmptyStr and whose decl_name
+// reaches a NonEmptyStr field of DeclarationRef. No RED was authorable anywhere that check could
+// run, so it was permanently green by construction while being cited as the executed evidence for
+// an admission that licenses eleven otherwise-dangling rows. DESIGN section 4b names exactly this:
+// "ask whether the check's RED is authorable before writing the check ... worse than absent because
+// it will be cited as coverage."
+//
+// WHAT IS AUTHORABLE-RED, AND WHAT SECTION 3C ACTUALLY REQUIRES, is three properties the string
+// emptiness test never touched. Each is reachable by an edit a future author can plausibly make.
+//
+// FIRST: a row must be what its own constructor mints for its own declaration name. The frontier is
+// built by calling artifact_identity_frontier or boot_delivery_frontier, and each mints a fixed
+// awaited-consumer and trigger for its KIND. A row hand-authored as a bare
+// MtCollins1ConsumptionFrontier literal -- the way a future author adds "just one more" admission
+// with a bespoke trigger -- satisfies every type and fails this.
+fn frontier_row_is_constructor_minted(f: MtCollins1ConsumptionFrontier) -> Bool {
+  (f.awaited_consumer == artifact_identity_frontier(decl_name: f.declaration.decl_name).awaited_consumer
+     && f.trigger_capability == artifact_identity_frontier(decl_name: f.declaration.decl_name).trigger_capability)
+  || (f.awaited_consumer == boot_delivery_frontier(decl_name: f.declaration.decl_name).awaited_consumer
+     && f.trigger_capability == boot_delivery_frontier(decl_name: f.declaration.decl_name).trigger_capability)
+}
+
+// SECOND: the two kinds must mint DIFFERENT triggers. If they ever converge -- by a copy-paste edit
+// to either constructor -- then the classification above stops carrying information and the check
+// above degenerates into the decoration it replaced. This is the positive control that keeps the
+// first property discriminating, and it goes red on a one-line edit to either constructor.
+fn the_two_frontier_kinds_mint_distinct_triggers() -> Bool {
+  !(artifact_identity_frontier(decl_name: "probe").trigger_capability
+      == boot_delivery_frontier(decl_name: "probe").trigger_capability)
+    && !(artifact_identity_frontier(decl_name: "probe").awaited_consumer
+      == boot_delivery_frontier(decl_name: "probe").awaited_consumer)
+}
+
+// THIRD: one declaration may hold at most ONE admission. Two frontier rows naming the same
+// declaration is two answers to "who consumes this", which is the section 3 fork the frontier
+// exists to avoid, and it is the single most likely edit to introduce -- a duplicated line while
+// adding a neighbour. Counted as an identity join over the rows rather than against any literal.
+fn rows_naming(rows: List<MtCollins1ConsumptionFrontier>, name: String) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) { if r.declaration.decl_name == name { acc + 1 } else { acc } })
+}
+
+fn every_declaration_admitted_at_most_once(rows: List<MtCollins1ConsumptionFrontier>) -> Bool {
+  fold(rows, init: true, f: fn(acc, r) { acc && rows_naming(rows: rows, name: r.declaration.decl_name) == 1 })
 }
 
 // NO ROW-COUNT LITERAL HERE, and the omission is deliberate rather than lazy. An earlier version
@@ -340,7 +384,9 @@ fn frontier_row_is_complete(f: MtCollins1ConsumptionFrontier) -> Bool {
 // admission, which is a property of the rows rather than of how many there are.
 test fn the_declared_frontier_names_a_consumer_and_a_trigger() -> Bool {
   list_length(items: mtcollins1_consumption_frontier) > 0
-    && fold(mtcollins1_consumption_frontier, init: true, f: fn(acc, r) { acc && frontier_row_is_complete(f: r) })
+    && the_two_frontier_kinds_mint_distinct_triggers()
+    && every_declaration_admitted_at_most_once(rows: mtcollins1_consumption_frontier)
+    && fold(mtcollins1_consumption_frontier, init: true, f: fn(acc, r) { acc && frontier_row_is_constructor_minted(f: r) })
 }
 
 

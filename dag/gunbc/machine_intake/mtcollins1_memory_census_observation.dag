@@ -508,7 +508,7 @@ data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulat
 // and the defect is instructive: the contradiction was introduced by fixing the model in layers
 // and not re-reading the prose around the edit. Review 64092 found it.
 //
-// WHAT THE AUTHORITY NOW SETTLES, via mtcollins1_same_channel_verdict: same-channel rank, x4/x8
+// WHAT THE AUTHORITY NOW SETTLES, via mtcollins1_same_channel_lookup: same-channel rank, x4/x8
 // width and density all read MixingNotSupported, so each empty partner's rank, width and density
 // are FIXED by the module already in its channel. The width term the earlier probe closed by
 // reading it off the installed modules turns out to be closed by the specification -- which makes
