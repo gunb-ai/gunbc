@@ -13,6 +13,8 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostRatchetGateEnrolled,
   SelfHostCorpusEmitsCleanly,
   SelfHostCargoPhaseEnrolled,
+  SelfHostNativeRouteRequiredLane,
+  SelfHostSeedRetirement,
   NamespaceWaveAdmissionEnrolled,
   NamespaceBaselineObservationComplete,
   NamespaceFixForwardComplete,
@@ -61,6 +63,9 @@ import gunbc.namespace_cut_subject_roster {
   probe_render,
 }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
+import gunbc.rung_drop { RungDrop, Standing, Retired, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
 import v2.workflow.legacy_baseline_capture {
   CaptureAvailable,
   CaptureBlocked,
@@ -69,6 +74,7 @@ import v2.workflow.legacy_baseline_capture {
 }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import gunbc.compiler_frontend_program_status {
+  native_route_required_lane_outstanding,
   MilestoneStanding,
   Clear,
   Outstanding,
@@ -308,6 +314,59 @@ test fn the_ratchet_observation_fold_answers_both_ways() -> Bool {
     && count(ratchet_observation_outstanding(cadence: NoConsumer)) == 1
 }
 
+// THE NATIVE-FLOOR MILESTONE IS WIRED TO ITS DROP ROW. The assertion is a relation, so it does not
+// go red when the drop retires.
+test fn the_native_route_milestone_is_wired_to_its_drop_row() -> Bool {
+  standing_agrees_with_population(
+    s: milestone_status(m: SelfHostNativeRouteRequiredLane),
+    expected: native_route_required_lane_outstanding(drop: v2_native_route_off_the_merge_path))
+}
+
+// AND THE FOLD IS NOT CONSTANT. Both drop standings are authored as fixtures: a standing drop names
+// exactly its identity, and a retired drop is empty.
+test fn the_native_route_fold_answers_both_ways() -> Bool {
+  let retired = RungDrop {
+    identity: "fixture_native_route_drop" as NonEmptyStr,
+    subject: "fixture",
+    declared: "2026-09-12",
+    standing: Retired { trigger_fired: "fixture" as NonEmptyStr },
+    declaration: TypedDeclaration {
+      previous: MechanicallyPreventable,
+      temporary: Mitigatable,
+      reason: DeletedWithoutReplacement,
+      population: ["fixture"],
+      restoration_trigger: "fixture",
+    },
+  }
+  let standing = RungDrop {
+    identity: retired.identity,
+    subject: retired.subject,
+    declared: retired.declared,
+    standing: Standing,
+    declaration: retired.declaration,
+  }
+  let open = native_route_required_lane_outstanding(drop: standing)
+  count(native_route_required_lane_outstanding(drop: retired)) == 0
+    && count(open) == 1
+    && any(open, o => o == "fixture_native_route_drop")
+}
+
+fn milestone_in(ms: List<ProgramMilestone>, want: ProgramMilestone) -> Bool {
+  any(ms, m => (milestone_label(m: m) as String) == (milestone_label(m: want) as String))
+}
+
+// THE ORDER THE TWO RULINGS ADOPT, stated as edges. Grammar deletion runs last (2026-08-25), after
+// v1 is deleted on the native floor (2026-09-12). Seed retirement must not wait on grammar
+// retirement, and both the cutover and grammar retirement wait on the native floor. On main before
+// this change the first and third clauses are red: the interlock carried the edge that, combined
+// with the adopted order, forms the cycle.
+test fn the_namespace_cutover_runs_on_the_native_floor_after_the_seed() -> Bool {
+  !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceGrammarRetired)
+    && milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: SelfHostNativeRouteRequiredLane)
+    && milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostNativeRouteRequiredLane)
+    && milestone_in(ms: milestone_prerequisites(m: NamespaceGrammarRetired), want: SelfHostNativeRouteRequiredLane)
+}
+
 // STARTABILITY IS CHECKED AS A WIRING RELATION OVER EVERY MILESTONE, replacing two arms that each
 // pinned today's graph. The first asserted that NamespaceFirstSemanticWave's startability is
 // unanswerable -- true today, red the day its prerequisites become answerable, which is the whole
@@ -321,7 +380,7 @@ test fn the_ratchet_observation_fold_answers_both_ways() -> Bool {
 // that milestone_startability's answer for each milestone follows from its direct prerequisites'
 // standings. Stated over the WHOLE roster and derived independently by folding
 // milestone_prerequisites and classifying each one, it holds as the program moves, covers all
-// fourteen instead of four, and reds if the classifier stops consulting the graph.
+// every milestone instead of four, and reds if the classifier stops consulting the graph.
 //
 // The re-derivation deliberately walks milestone_prerequisites + standing_class rather than calling
 // prerequisite_names_by_class, so a defect inside the carrier's own partition helper is visible
