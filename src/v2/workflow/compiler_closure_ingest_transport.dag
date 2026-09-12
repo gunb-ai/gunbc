@@ -94,7 +94,7 @@ fn run_closure_boundary_overlay_claims(
   }
 }
 
-func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
+fn run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
     let pre_overlay = run_gunbc_claims(
       source_roots: witness_layer_roots,
       claims: [
@@ -144,7 +144,7 @@ func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
     }
 }
 
-func run_compiler_closure_ingest_gate() -> Bool {
+fn run_compiler_closure_ingest_gate() -> Bool {
   let root = git.Inspect.Toplevel()
   let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
   match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {

@@ -463,7 +463,7 @@ fn spark_managed_access_apply_with_resolved_credentials(
 
 // Administrator password and fleet SSH private key material resolve inside this boundary via
 // Secret Manager — never as argv parameters on gunbc run.
-func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessExit
+fn spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -520,7 +520,7 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> Proces
 // narrow grants -- the five acts a fresh Spark needs before any converge can reach it.
 data spark_bootstrap_ci_attempt_raw: String = "spark-bootstrap-ci"
 
-func spark_managed_access_bootstrap_ci_wet() -> ProcessExit
+fn spark_managed_access_bootstrap_ci_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

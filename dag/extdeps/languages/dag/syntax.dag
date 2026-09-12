@@ -31,10 +31,7 @@ data dag_item_forms: List<ItemForm> = [
     has_uses: false, body_kind: TypeBody },
   ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
     has_return_type: true, return_required: true,
-    has_uses: false, body_kind: ExprBody },
-  ItemForm { kind: FuncForm, keyword: "func", has_type_params: false, has_params: true,
-    has_return_type: true, return_required: false,
-    has_uses: true, body_kind: BlockBody },
+    has_uses: true, body_kind: ExprBody },
   ItemForm { kind: OtherForm, keyword: "resource", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: ResourceBody },
@@ -60,7 +57,7 @@ data dag_keyword_literals: Map<String, LiteralValue> = {
 }
 
 data dag_keyword_set: Map<String, Bool> = {
-  "module": true, "import": true, "alias": true, "type": true, "fn": true, "func": true,
+  "module": true, "import": true, "alias": true, "type": true, "fn": true,
   "resource": true, "service": true, "data": true,
   "interface": true, "pipeline": true, "profile": true, "pattern": true,
   "let": true, "return": true, "match": true, "if": true, "then": true, "else": true,

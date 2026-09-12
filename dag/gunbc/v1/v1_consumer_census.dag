@@ -2031,7 +2031,7 @@ fn v1_blocking_consumer_count() -> V1BlockingCount {
 // count is rendered into the reason of a deliberate ExitFailure -- the run is a report, not a
 // verdict, and a report that exited 0 would read as "nothing blocks". An unmeasured population
 // renders as its reason, never as a number.
-func v1_blocking_consumer_count_report() -> ProcessExit {
+fn v1_blocking_consumer_count_report() -> ProcessExit {
   let head = v1_current_head_rust_sources()
   let join = v1_minted_manifest_join_over(observation: v1_seed_link_sites_over(sources: head))
   let population = v1_consumer_population_with(observation: v1_rust_references_over(sources: head), join: join)

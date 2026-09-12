@@ -654,7 +654,7 @@ fn cutover_text(c: CanaryCutover) -> String {
 // image digest, the weights and every flag are identical on both sides; what changes is that the
 // container becomes one this model started and can restart, instead of one a person started by hand and
 // nothing owns.
-func glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement: ServeAgreement) -> CanaryCutover
+fn glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement: ServeAgreement) -> CanaryCutover
   uses net: Network
 {
   match agreement {
@@ -741,7 +741,7 @@ fn glm_canary_health_wait(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollb
 // different act with a different blast radius -- roughly twelve minutes of this arm serving nothing --
 // so it is a different entry point that an operator names deliberately. Folding it into convergence
 // would mean every future scheduled run carried the authority to restart a server.
-func glm_canary_cutover_wet() -> ProcessExit
+fn glm_canary_cutover_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -997,7 +997,7 @@ fn glm_canary_converged(v: GlmCanaryConvergence) -> Bool {
   }
 }
 
-func glm_canary_converge_wet() -> ProcessExit
+fn glm_canary_converge_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

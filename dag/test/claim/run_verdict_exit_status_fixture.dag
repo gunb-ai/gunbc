@@ -18,20 +18,20 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 // generated-artifact drift gate, the floor, every witness invocation — would have reported success
 // regardless of content. These three entries are the enrolled evidence the boundary holds.
 
-func verdict_failure() -> ProcessExit {
+fn verdict_failure() -> ProcessExit {
   ExitFailure {
     code: 3,
     reason: "run_verdict_exit_status_fixture: deliberate failure verdict"
   }
 }
 
-func verdict_success() -> ProcessExit {
+fn verdict_success() -> ProcessExit {
   ExitSuccess
 }
 
 // NOT a ProcessExit. The driver must REFUSE this rather than print it and exit 0 — a value
 // carrying no verdict cannot yield one, and defaulting to success is the same fabrication one type
 // over.
-func verdict_not_process_exit() -> Bool {
+fn verdict_not_process_exit() -> Bool {
   true
 }

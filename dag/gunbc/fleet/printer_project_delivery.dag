@@ -160,7 +160,7 @@ fn identification_refusal(
   }
 }
 
-func identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentification {
+fn identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentification {
   let created = shell.Mktemp.Dir()
   if created.success == false {
     PayloadIdentificationRefused {
@@ -637,7 +637,7 @@ fn refused_delivery(printer: PhysicalAssetIdentity, stderr: String, cleaned: Boo
   }
 }
 
-func deliver_project_to_printer(
+fn deliver_project_to_printer(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
   token_source: AccessTokenSource,

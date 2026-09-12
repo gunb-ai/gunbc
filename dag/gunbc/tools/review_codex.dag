@@ -108,7 +108,7 @@ fn format_review_header(
   "<!-- [codex-review] sha:{sha} -->\n`{backend}` · `{model}` · `{sha}`\n\n{body}"
 }
 
-func review_pr(
+fn review_pr(
   pr_owner: String = owner,
   pr_repo: String = repo,
   pr_number: Int,
@@ -173,7 +173,7 @@ func review_pr(
   return { reviewed: true }
 }
 
-func review_cycle(
+fn review_cycle(
   cycle_owner: String = owner,
   cycle_repo: String = repo
 ) -> { reviewed_count: Int } {

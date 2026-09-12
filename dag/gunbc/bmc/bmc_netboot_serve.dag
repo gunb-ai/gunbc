@@ -167,7 +167,7 @@ data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_d
 // argv could be hand-spelled -- and it was: its mkdir caller below built one inline. With
 // ArgvCommand as the parameter the words must already have come from a builder, so this function
 // forwards a constructed command instead of laundering a list into one.
-func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, command: ArgvCommand) -> ProcessExit
+fn bmc_netboot_run_bmc(plan: BmcNetbootServePlan, command: ArgvCommand) -> ProcessExit
   uses net: Network
 {
   run_shell_command(command: command, transport: bmc_transport(plan: plan))
@@ -181,7 +181,7 @@ fn bmc_staged_file_basename(remote_path: NonEmptyStr) -> String {
   )
 }
 
-func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_path: NonEmptyStr) -> ProcessExit
+fn bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_path: NonEmptyStr) -> ProcessExit
   uses net: Network
 {
   let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr
@@ -189,7 +189,7 @@ func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_
   run_shell_command(command: cmd, transport: LocalExec)
 }
 
-func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> ProcessExit
+fn bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> ProcessExit
   uses net: Network
 {
   match file.content {
@@ -201,7 +201,7 @@ func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> P
   }
 }
 
-func bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: NonEmptyStr, content: String) -> ProcessExit
+fn bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: NonEmptyStr, content: String) -> ProcessExit
   uses net: Network
 {
   let local = join(["/tmp/gunbc-bmc-", bmc_staged_file_basename(remote_path: remote_path)], "") as NonEmptyStr
@@ -217,7 +217,7 @@ data bmc_path_resolved_mkdir_applet: NonEmptyStr = "mkdir"
 // The BMC's mkdir is a PATH-resolved BusyBox applet, deliberately not an absolute path: this
 // repository has never read that image's filesystem (extdeps.tools.mkdir mkdir_parents_command_at,
 // extdeps.exec.command program_spelling_is_an_observation_claim).
-func bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
+fn bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
   uses net: Network
 {
   let mk = bmc_netboot_run_bmc(
@@ -242,7 +242,7 @@ func bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
   serve
 }
 
-func srv4_bmc_netboot_provision() -> ProcessExit
+fn srv4_bmc_netboot_provision() -> ProcessExit
   uses net: Network
 {
   bmc_netboot_provision(plan: srv4_bmc_netboot_serve_plan)

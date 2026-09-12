@@ -112,11 +112,11 @@ fn reason_names_all(exit: ProcessExit, markers: List<String>) -> Bool {
   reason != "" && all(markers, m => string_contains(s: reason, pattern: m))
 }
 
-func seed_runner_loudness_probe_passes() -> Bool {
+fn seed_runner_loudness_probe_passes() -> Bool {
   false
 }
 
-func seed_runner_loudness_probe_failure_receipt() -> String {
+fn seed_runner_loudness_probe_failure_receipt() -> String {
   scope_placement_failure_reason(
     exit: scope_placement_membership_verdict(
       observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }

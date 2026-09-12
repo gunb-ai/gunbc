@@ -43,7 +43,7 @@ test fn the_same_model_is_readable_through_the_public_boundary() -> Bool {
   }
 }
 
-func predictive_construction_probe() -> ProcessExit {
+fn predictive_construction_probe() -> ProcessExit {
   if predictive_model_cannot_be_forged_or_have_its_receipts_erased()
     && a_started_test_cannot_be_forged_without_ordering_admission()
     && the_internal_append_cannot_bypass_registration_admission()

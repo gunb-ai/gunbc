@@ -385,7 +385,7 @@ fn fleet_desired_advance_input_wet(
   }
 }
 
-func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
+fn admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
   match workflow_run_event_from_event_path(path: fleet_desired_admission_event_payload_path) {
     WorkflowRunEventObserved { event: event } =>
       match fleet_desired_accepted_from_event(

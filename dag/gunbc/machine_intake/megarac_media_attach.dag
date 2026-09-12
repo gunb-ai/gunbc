@@ -186,7 +186,7 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 // by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
 // rather than inventing a second CloseSession shape. A refused or uncertain close remains
 // SessionReleaseRefused, never NotAttempted.
-func megarac_attach_remote_image(
+fn megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password: NonEmptyStr,
@@ -234,7 +234,7 @@ func megarac_attach_remote_image(
   }
 }
 
-func megarac_release_unreadable_session(
+fn megarac_release_unreadable_session(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   session_body: String,
@@ -255,7 +255,7 @@ func megarac_release_unreadable_session(
 // THE RELEASE RUNS ON EVERY PATH THROUGH THE ATTACH, which is why the attach outcome is computed
 // first and the close follows it unconditionally rather than sitting inside a success arm. A
 // refusal allocated the same session a success does.
-func megarac_attach_then_release(
+fn megarac_attach_then_release(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
@@ -290,7 +290,7 @@ func megarac_attach_then_release(
 // JSON parse failure or a non-array document to false, then walked the available-images list
 // and could StartMedia over a controller whose current attachment was unreadable. That is the
 // absorbing-fallback DESIGN §5 forbids: ignorance rendered as the empty case.
-func megarac_attach_with_token(
+fn megarac_attach_with_token(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
@@ -422,7 +422,7 @@ fn presented_media_standing(body: String, image_name: NonEmptyStr) -> PresentedM
 // carried. A missing confirmation after any start response is pending (Unconfirmed). StartRefused
 // is reserved for a start that failed AND whose configurations document is itself unreadable
 // as JSON — that is, when we cannot even ask the read-back.
-func megarac_start_and_confirm(
+fn megarac_start_and_confirm(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,

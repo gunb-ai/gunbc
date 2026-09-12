@@ -366,7 +366,7 @@ type ImageLegOutcome
 //
 // So the docker legs bind to gunbc.spark.model_snapshot_materialize spark_remote_run, the one route
 // the corpus models for that daemon, and this leg keeps the git work, which needs no root.
-func vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome
+fn vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome
   uses net: Network
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
@@ -439,7 +439,7 @@ fn vllm_image_run_steps(target: SshTarget, context: FleetSshExecutionContext, st
     })
 }
 
-func vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) -> VllmSourceState?
+fn vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) -> VllmSourceState?
   uses net: Network
 {
   match vllm_image_leg(target: target, context: context, step: "source-clean" as NonEmptyStr, command: git_status_porcelain_command(repository_dir: vllm_source_dir() as String)) {
@@ -457,7 +457,7 @@ func vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext
   }
 }
 
-func converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
+fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
   uses net: Network
 {
   match vllm_source_head(target: target, context: context) {
@@ -546,7 +546,7 @@ type VllmImageBuild
   = VllmImageBuilt { identity: VllmImageIdentity, already_present: Bool }
   | VllmImageBuildRefused { step: NonEmptyStr, cause: String }
 
-func converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
+fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
   uses net: Network
 {
   let tag = vllm_image_tag(r: r)
@@ -614,7 +614,7 @@ fn vllm_image_build_succeeded(b: VllmImageBuild) -> Bool {
   }
 }
 
-func converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
+fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
   uses net: Network
 {
   if !vllm_recipe_arch_is_buildable(r: r) {
@@ -651,7 +651,7 @@ func converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCo
 // decision, not this lane's), or this entry is executed against a warm context and its receipt lands
 // here. Until then the fallback build is correct by reading on this transport and executed only on the
 // other one, and this row is what keeps that from being read the other way round.
-func vllm_runtime_image_build_ci_wet() -> ProcessExit
+fn vllm_runtime_image_build_ci_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -764,7 +764,7 @@ fn vllm_source_acquired(s: VllmSourceState) -> Bool {
   }
 }
 
-func vllm_source_acquire_wet(host: String) -> ProcessExit
+fn vllm_source_acquire_wet(host: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -881,7 +881,7 @@ fn classify_reported_hostname(host: HostIdentity, endpoint: NonEmptyStr, reporte
   }
 }
 
-func probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
+fn probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
   uses net: Network
 {
   match spark_reach_endpoint(host: host, path: ReachManagementLan) {
@@ -937,7 +937,7 @@ data spark_reachability_receipt_path: String = "target/spark-build-host-reachabi
 // The diagnostics were typed and located and then discarded by the exit path, which is §5's failure
 // arm widening into silence. It now succeeds only when every admissible host answered AND its answer
 // joined to the identity it was asked about.
-func spark_build_host_reachability_wet() -> ProcessExit
+fn spark_build_host_reachability_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

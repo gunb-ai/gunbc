@@ -7,7 +7,7 @@ type DriBetaNet {
 
 data dri_model: String = "dri-beta-model"
 
-func dri_beta_run(beta_model: String = dri_model) -> String
+fn dri_beta_run(beta_model: String = dri_model) -> String
   uses net: DriBetaNet
 {
   beta_model

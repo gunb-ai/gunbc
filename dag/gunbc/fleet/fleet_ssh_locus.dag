@@ -120,7 +120,7 @@ fn fleet_ssh_agent_socket() -> NonEmptyStr? {
 // Each step here is observed and each refusal is typed and located. On any refusal the caller holds
 // no context, and since `fleet_locus_transport` is the only way to a transport and it
 // requires one, zero SSH legs execute -- a property of the types rather than a discipline.
-func prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPreparation
+fn prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPreparation
   uses net: Network
 {
   match fleet_ssh_attempt_identity(raw: attempt_raw) {
@@ -174,7 +174,7 @@ func prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPrep
 // The anchor half, entered only with a verified credential. Deliberately last: materializing a
 // known-hosts file is cheap and harmless, but the ORDER states the priority -- the credential is
 // established before anything about reaching a host is prepared.
-func fleet_ssh_context_from_verified_binding(
+fn fleet_ssh_context_from_verified_binding(
   attempt: FleetSshAttemptIdentity,
   binding: FleetSshCredentialBinding,
 ) -> FleetSshContextPreparation

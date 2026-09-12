@@ -56,7 +56,7 @@ type GitHubAuthTokenRead
   = GitHubAuthTokenObserved { token: GitHubAuthToken }
   | GitHubAuthTokenUnavailable { variable: NonEmptyStr }
 
-func github_token() -> GitHubAuthTokenRead
+fn github_token() -> GitHubAuthTokenRead
 {
   cred = match default_github_auth_source.credential_source {
     EnvVar { name } => env_credential(env_var: name as NonEmptyStr)

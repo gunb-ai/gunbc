@@ -84,7 +84,7 @@ fn build_user_message(
   "PR #{pr_number}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
 }
 
-func review_pr(
+fn review_pr(
   owner: String,
   repo: String,
   pr_number: Int,
@@ -162,7 +162,7 @@ func review_pr(
 // caller that appears must import gunbc.repository, or pass owner and repo explicitly (the better
 // habit).
 
-func review_cycle(
+fn review_cycle(
   owner: String = gunbc_repository.owner,
   repo: String = gunbc_repository.name
 ) -> { reviewed_count: Int } {

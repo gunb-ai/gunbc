@@ -508,7 +508,7 @@ type RunnerHostPrivilegeStanding
   = AdministratorPrivilegeAvailable
   | AdministratorPrivilegeRefused { reason: String }
 
-func observe_runner_host_administrator_privilege(
+fn observe_runner_host_administrator_privilege(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
 ) -> RunnerHostPrivilegeStanding
@@ -527,7 +527,7 @@ func observe_runner_host_administrator_privilege(
   }
 }
 
-func observe_runner_host_paths(
+fn observe_runner_host_paths(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   paths: List<String>,
@@ -558,7 +558,7 @@ fn runner_host_file_standing_of_report(report: RemoteFileComparisonReport) -> Ru
 // typed_remote_file_write's own far-side `cmp -s -` with the declared bytes on stdin, classified by
 // its own exit vocabulary, so an observation cannot call a file converged that the write's read-back
 // would call different.
-func observe_runner_host_file_content(
+fn observe_runner_host_file_content(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
@@ -592,7 +592,7 @@ func observe_runner_host_file_content(
   }
 }
 
-func observe_runner_host_file(
+fn observe_runner_host_file(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
@@ -612,7 +612,7 @@ func observe_runner_host_file(
   }
 }
 
-func observe_runner_slot_population(
+fn observe_runner_slot_population(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
 ) -> RunnerSlotPopulation
@@ -659,7 +659,7 @@ type RunnerHostFileResult {
 // A write is converged only when its bytes read back AND the published file is root-only. The byte
 // read-back is typed_remote_file_write's; the ownership read-back is here, because that carrier
 // deliberately claims nothing about metadata it never reads.
-func apply_runner_host_file(
+fn apply_runner_host_file(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   planned: RunnerHostFilePlanned,
@@ -715,7 +715,7 @@ type RunnerHostManagerReload
   | ManagerReloadRefused { reason: String }
   | ManagerReloadOwedNotAttempted { reason: String }
 
-func reload_runner_host_manager(
+fn reload_runner_host_manager(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
 ) -> RunnerHostManagerReload
@@ -759,7 +759,7 @@ type RunnerHostFileRun {
   slots: RunnerSlotPopulation
 }
 
-func plan_runner_host_file(
+fn plan_runner_host_file(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
@@ -773,7 +773,7 @@ func plan_runner_host_file(
 // The reload decision reads the manager AFTER the writes, so it covers this run's writes and any
 // earlier run's write whose reload never happened; the slots are then read again, and that second
 // reading is the one the terminal is judged on.
-func runner_host_manager_reload_step(
+fn runner_host_manager_reload_step(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   mode: RunnerHostFileConvergeMode,
@@ -801,7 +801,7 @@ func runner_host_manager_reload_step(
 // where the declared administrator cannot sudo reports that by name. Observation does not need
 // privilege and still runs, so an observe-only dispatch against such a host still says what WOULD be
 // written and what the slots hold.
-func run_runner_host_files(
+fn run_runner_host_files(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   files: List<RunnerHostFileDesired>,
@@ -938,7 +938,7 @@ data runner_host_file_converge_receipt_path: String = "target/runner-host-file-c
 // ONE HOST PER RUN, NAMED BY THE DISPATCH. The fleet-converge workflow already carries the operator's
 // chosen host in FLEET_CONVERGE_EXPECTED_HOST; an unset host refuses rather than fanning a root-file
 // write across the fleet from an empty variable.
-func runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
+fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
   uses net: Network
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
@@ -975,13 +975,13 @@ func runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
   }
 }
 
-func runner_host_file_observe_ci_wet() -> ProcessExit
+fn runner_host_file_observe_ci_wet() -> ProcessExit
   uses net: Network
 {
   runner_host_file_ci_wet(mode: RunnerHostFilesObserveOnly)
 }
 
-func runner_host_file_converge_ci_wet() -> ProcessExit
+fn runner_host_file_converge_ci_wet() -> ProcessExit
   uses net: Network
 {
   runner_host_file_ci_wet(mode: RunnerHostFilesApply)

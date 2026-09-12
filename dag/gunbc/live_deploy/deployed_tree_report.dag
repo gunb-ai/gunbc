@@ -97,7 +97,7 @@ data deployed_tree_report_receipt_path: String = "target/deployed-tree-standing-
 // THE RECEIPT IS WRITTEN ON EVERY ARM, INCLUDING THE ONES THAT EXIT NONZERO. A report that only
 // persists its good news leaves the failing run with nothing to read afterwards, which is the state
 // that makes a red look like an infrastructure flake instead of a finding.
-func deployed_tree_report_emit(
+fn deployed_tree_report_emit(
   context_receipt: String,
   standing: DeployedTreeStanding,
 ) -> ProcessExit {
@@ -116,7 +116,7 @@ func deployed_tree_report_emit(
   }
 }
 
-func deployed_tree_report_for_context(
+fn deployed_tree_report_for_context(
   context: FleetSshExecutionContext,
   context_receipt: String,
 ) -> ProcessExit
@@ -146,7 +146,7 @@ func deployed_tree_report_for_context(
   }
 }
 
-func deployed_tree_report_ci_wet() -> ProcessExit
+fn deployed_tree_report_ci_wet() -> ProcessExit
   uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: deployed_tree_report_attempt_raw) {

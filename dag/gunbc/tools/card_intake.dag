@@ -93,7 +93,7 @@ fn count_flagged(
   })
 }
 
-func recognize_binder_photo(
+fn recognize_binder_photo(
   photo_path: std.types.FilePath,
   model: String = default_recognition_model
 ) -> { card_name: String } {
@@ -119,7 +119,7 @@ func recognize_binder_photo(
   return { card_name: response.content }
 }
 
-func intake_binder_photo(
+fn intake_binder_photo(
   photo_path: std.types.FilePath,
   bearer_token: Secret,
   category_id: Int,
@@ -158,7 +158,7 @@ func intake_binder_photo(
   }
 }
 
-func intake_binder(
+fn intake_binder(
   photo_paths: List<std.types.FilePath>,
   client_id: String,
   client_secret: Secret,
@@ -183,7 +183,7 @@ func intake_binder(
   return { total: count(results), flagged: count_flagged(rs: results) }
 }
 
-func list_card_sku(
+fn list_card_sku(
   client_id: String,
   client_secret: Secret,
   store_key: NonEmptyStr,

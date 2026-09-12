@@ -334,7 +334,7 @@ fn fabric_cell_path_kind_observation(
   }
 }
 
-func fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
+fn fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
   let t = stat.File.FileType(path: path)
   match fabric_cell_path_kind_observation(success: t.success, output: t.file_type) {
     PathKindRead { kind: k } => PathKindObserved { kind: k }
@@ -346,7 +346,7 @@ func fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
 // what the containing directory already established -- absent if the parent listed and did not hold
 // this entry, unreadable in every other case, including the case where the parent itself was never
 // observed. Nothing here turns a failed read into an absence on its own authority.
-func fabric_cell_observe_directory(
+fn fabric_cell_observe_directory(
   path: String,
   parent: FabricCellParentStanding,
 ) -> FabricCellDirectoryObservation {
@@ -383,7 +383,7 @@ fn fabric_cell_unread_path_observation(
   }
 }
 
-func fabric_cell_list_directory(path: String) -> FabricCellDirectoryObservation {
+fn fabric_cell_list_directory(path: String) -> FabricCellDirectoryObservation {
   let listed = Filesystem.List(path: path)
   if listed.success {
     DirectoryListed { entries: fabric_cell_listing_entries(text: listed.entries) }
@@ -439,7 +439,7 @@ fn fabric_cell_boundary_property_observation(
   }
 }
 
-func fabric_cell_read_boundary_property(
+fn fabric_cell_read_boundary_property(
   unit: NonEmptyStr,
   property: SystemdUnitProperty,
 ) -> FabricCellPropertyObservation {
@@ -451,7 +451,7 @@ func fabric_cell_read_boundary_property(
   )
 }
 
-func fabric_cell_read_boundary(slot: RunnerSlotIdentity) -> FabricCellBoundaryReading {
+fn fabric_cell_read_boundary(slot: RunnerSlotIdentity) -> FabricCellBoundaryReading {
   let unit = fabric_cell_slice_name(slot: slot) as NonEmptyStr
   match fabric_cell_read_boundary_property(unit: unit, property: MemoryMax) {
     PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
@@ -487,7 +487,7 @@ func fabric_cell_read_boundary(slot: RunnerSlotIdentity) -> FabricCellBoundaryRe
   }
 }
 
-func fabric_cell_read_cpu_quota_per_sec(unit: NonEmptyStr) -> FabricCellQuotaPropertyObservation {
+fn fabric_cell_read_cpu_quota_per_sec(unit: NonEmptyStr) -> FabricCellQuotaPropertyObservation {
   let shown = systemd.Systemctl.ShowProperty(unit: unit, property: CPUQuotaPerSecUSec)
   let word = systemd_unit_property_wire(property: CPUQuotaPerSecUSec) as String
   if !shown.success {
@@ -504,7 +504,7 @@ func fabric_cell_read_cpu_quota_per_sec(unit: NonEmptyStr) -> FabricCellQuotaPro
 // desired would be invisible -- the same defect the runner-slot observer records for directory
 // enumeration. `list-units --type=slice` over the family's own prefix is the enumeration, and its
 // first field is the unit name.
-func fabric_cell_observe_slice_namespace() -> FabricCellNamespaceProbe {
+fn fabric_cell_observe_slice_namespace() -> FabricCellNamespaceProbe {
   let listed = systemd.Systemctl.ListUnits(
     pattern: fabric_cell_slice_unit_pattern,
     unit_type: "slice",
@@ -557,7 +557,7 @@ fn fabric_cell_probe_reading_boundaries(reading: FabricCellProbeReading) -> List
 // The receipt retains the same boundary readings used to construct the probe. Consumers needing
 // raw values must project this value; independently re-reading the five properties would combine
 // two host instants into one purported observation.
-func fabric_cell_probe_reading_wet(host: HostIdentity) -> FabricCellProbeReading {
+fn fabric_cell_probe_reading_wet(host: HostIdentity) -> FabricCellProbeReading {
   let root = fabric_cell_observe_cells_root()
   let slices = fabric_cell_observe_slice_namespace()
   let acquired = map(
@@ -587,7 +587,7 @@ func fabric_cell_probe_reading_wet(host: HostIdentity) -> FabricCellProbeReading
   }
 }
 
-func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
+fn fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
   fabric_cell_probe_reading_probe(reading: fabric_cell_probe_reading_wet(host: host))
 }
 
@@ -611,7 +611,7 @@ type FabricCellSlotAcquisition {
   boundary_reading: FabricCellBoundaryReading
 }
 
-func fabric_cell_acquire_slot(
+fn fabric_cell_acquire_slot(
   slot: RunnerSlotIdentity,
   cells_root: FabricCellDirectoryObservation,
   slices: FabricCellNamespaceProbe,
@@ -690,7 +690,7 @@ data fabric_cell_attempt_root_entry_name: String = "attempts"
 // parent of the parent is not asked in turn: `/opt` on a Linux host is part of the filesystem
 // hierarchy standard rather than something this family provisions, so an unobservable `/opt` is a
 // refusal and not a recursion.
-func fabric_cell_observe_cells_root() -> FabricCellDirectoryObservation {
+fn fabric_cell_observe_cells_root() -> FabricCellDirectoryObservation {
   let parent = fabric_cell_list_directory(path: fabric_cell_base_dir_parent)
   fabric_cell_observe_directory(
     path: fabric_cell_base_dir,
@@ -698,7 +698,7 @@ func fabric_cell_observe_cells_root() -> FabricCellDirectoryObservation {
   )
 }
 
-func fabric_cell_observe_cell_root(
+fn fabric_cell_observe_cell_root(
   slot: RunnerSlotIdentity,
   cells_root: FabricCellDirectoryObservation,
 ) -> FabricCellDirectoryObservation {
@@ -751,7 +751,7 @@ fn fabric_cell_boundary_standing(
   }
 }
 
-func fabric_cell_boundary_address_entries(
+fn fabric_cell_boundary_address_entries(
   slot: RunnerSlotIdentity,
   slices: FabricCellNamespaceProbe,
   reading: FabricCellBoundaryReading,

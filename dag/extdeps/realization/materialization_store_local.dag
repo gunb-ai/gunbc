@@ -197,17 +197,17 @@ fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: Filesyst
   }
 }
 
-func local_store_read(path: String) -> FilesystemExactRead {
+fn local_store_read(path: String) -> FilesystemExactRead {
   let r = Filesystem.Read(path: path)
   filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind)
 }
 
-func local_store_create_new(path: String, content: String) -> FilesystemCreateNew {
+fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew {
   let w = Filesystem.WriteCreateNew(path: path, content: content)
   filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind)
 }
 
-func local_store_open(root: MaterializationStoreRoot) -> LocalStoreOpening {
+fn local_store_open(root: MaterializationStoreRoot) -> LocalStoreOpening {
   let root_path = materialization_store_root_path(root: root)
   match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
@@ -230,7 +230,7 @@ type LocalStoreInitialization
 // Initialization publishes the marker create-new and then OPENS the store it created, so the
 // returned opening is the same observation every later open makes -- a marker written by a
 // concurrent initializer with a different label opens as THAT store, never as ours.
-func local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmptyStr) -> LocalStoreInitialization {
+fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmptyStr) -> LocalStoreInitialization {
   let root_path = materialization_store_root_path(root: root)
   match materialization_store_admissible(root: root, verb: Write) {
     Deny { refusal: _ } =>
@@ -254,7 +254,7 @@ func local_store_initialize(root: MaterializationStoreRoot, instance_label: NonE
 // ---------------------------------------------------------------------------------------------
 // Lookup and commit over an opened store.
 
-func local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializationStore, req: ArtifactRequest) -> StoreLookup {
+fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializationStore, req: ArtifactRequest) -> StoreLookup {
   let root_path = materialization_store_root_path(root: root)
   match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
@@ -271,7 +271,7 @@ func local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializa
   }
 }
 
-func local_store_commit(
+fn local_store_commit(
   root: MaterializationStoreRoot,
   store: OpenedMaterializationStore,
   req: ArtifactRequest,
@@ -308,7 +308,7 @@ type LocalStoreBatchLookup
   = LocalStoreBatchLooked { store: OpenedMaterializationStore, lookups: List<StoreLookup> }
   | LocalStoreBatchUnavailable { root_path: String, cause: LocalStoreUnavailableCause }
 
-func local_store_lookup_batch(root: MaterializationStoreRoot, reqs: List<ArtifactRequest>) -> LocalStoreBatchLookup {
+fn local_store_lookup_batch(root: MaterializationStoreRoot, reqs: List<ArtifactRequest>) -> LocalStoreBatchLookup {
   match local_store_open(root: root) {
     LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreBatchUnavailable { root_path: p, cause: c }
     LocalStoreOpened { root: r, store: s, durability: _ } =>

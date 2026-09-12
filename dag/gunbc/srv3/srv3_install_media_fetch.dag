@@ -120,7 +120,7 @@ fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow)
   ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
 }
 
-func srv3_install_media_fetch() -> ProcessExit
+fn srv3_install_media_fetch() -> ProcessExit
   uses net: Network
 {
   srv3_apply_to_process_exit(

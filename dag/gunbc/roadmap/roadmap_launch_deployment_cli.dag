@@ -240,7 +240,7 @@ fn active_instance_text_routed(base: String?) -> String {
   }
 }
 
-func window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardInstance, routed_base: String?) -> WindowSnapshot
+fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardInstance, routed_base: String?) -> WindowSnapshot
   uses net: Network
 {
   let tree = observe_deployed_tree(locus: deployed_tree_locus(
@@ -272,7 +272,7 @@ fn receipt_digest_at(path: String) -> String? {
   }
 }
 
-func persist_receipt(instance: HostDashboardInstance, document: String) -> ReceiptPersistence
+fn persist_receipt(instance: HostDashboardInstance, document: String) -> ReceiptPersistence
   uses net: Network
 {
   match run_shell_commands(commands: [mkdir_parents_command(path: rlm_receipt_staging_dir)], transport: LocalExec) {
@@ -360,7 +360,7 @@ fn tick_fact(instance: HostDashboardInstance, dashboard: DashboardReceiptFact, n
   }
 }
 
-func unit_standing_fact(revision: String) -> LaunchUnitStanding
+fn unit_standing_fact(revision: String) -> LaunchUnitStanding
   uses net: Network
 {
   let spec = deployment_spec_srv1()
@@ -381,7 +381,7 @@ func unit_standing_fact(revision: String) -> LaunchUnitStanding
 }
 
 // ---------------------------------------------------------------- the entry
-func rlm_launch_deployment_receipt_wet() -> ProcessExit
+fn rlm_launch_deployment_receipt_wet() -> ProcessExit
   uses net: Network
 {
   match observe_actions_run_binding() {
@@ -449,7 +449,7 @@ fn rlm_routed_base_url() -> String? {
 
 // One predecessor run record, read back from the workflow-runs API by run id (review 5061891290
 // P1-4). A missing conclusion (run not completed) or missing path refuses as its own wire text.
-func rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
+fn rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
   uses net: Network
 {
   let got = github.WorkflowRuns.GetRun(
@@ -469,7 +469,7 @@ func rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
   }
 }
 
-func rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_run_id: String, dashboard_run_id: String) -> RunProvenanceFact
+fn rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_run_id: String, dashboard_run_id: String) -> RunProvenanceFact
   uses net: Network
 {
   RunProvenanceObserved {
@@ -481,7 +481,7 @@ func rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_
   }
 }
 
-func rlm_launch_deployment_receipt_bound(
+fn rlm_launch_deployment_receipt_bound(
   run: ActionsRunBinding,
   revision: String,
   candidate_tree: String,

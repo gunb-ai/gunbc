@@ -51,13 +51,13 @@ fn class_b_observe_with_overlay(
   )
 }
 
-func class_b_declared_import_closure_lists_rust_import() -> Bool {
+fn class_b_declared_import_closure_lists_rust_import() -> Bool {
   binding_source_is_listed_import(
     obs: class_b_observe_with_overlay(pool_roots: class_b_declared_import_pool_roots)
   )
 }
 
-func class_b_ambient_pool_provider_preserves_listed_import() -> Bool {
+fn class_b_ambient_pool_provider_preserves_listed_import() -> Bool {
   let baseline = class_b_observe_with_overlay(pool_roots: class_b_declared_import_pool_roots)
   let perturbed = class_b_observe_with_overlay(
     pool_roots: concat([class_b_perturbation_overlay_rel], class_b_declared_import_pool_roots)

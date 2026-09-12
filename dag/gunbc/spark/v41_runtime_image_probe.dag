@@ -621,7 +621,7 @@ fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
 // PULL, READ THE DIGEST BACK, THEN ASK INSIDE IT. The readback is what makes the reading's subject
 // the bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
 // content per architecture, and what the probe must name is the image the daemon actually holds.
-func v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
+fn v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
   uses net: Network
 {
   match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
@@ -694,7 +694,7 @@ fn v41_probe_ci_body(at: String, host: NonEmptyStr, reference: NonEmptyStr, outc
   ], "")
 }
 
-func v41_published_image_probe_ci_wet() -> ProcessExit
+fn v41_published_image_probe_ci_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

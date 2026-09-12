@@ -258,7 +258,7 @@ type R2MintBootstrapStanding
     }
   | R2MintBootstrapRefused { cause: NonEmptyStr }
 
-func r2_mint_bootstrap(profile: R2OriginTokenProfile) -> R2MintBootstrapStanding uses net: Network {
+fn r2_mint_bootstrap(profile: R2OriginTokenProfile) -> R2MintBootstrapStanding uses net: Network {
   match classify_r2_mint(
     profile: profile,
     account: fleet_cloudflare_account_standing(),
@@ -315,7 +315,7 @@ type R2AccountTokenListing
   = R2AccountTokensListed { tokens: List<AccountTokenListRow> }
   | R2AccountTokenListRefused { cause: NonEmptyStr }
 
-func list_account_tokens(
+fn list_account_tokens(
   bootstrap: Secret,
   account_id: CloudflareAccountId,
 ) -> R2AccountTokenListing uses net: Network {
@@ -383,7 +383,7 @@ type R2TokenMintOutcome
   | R2TokenMintRefused { cause: NonEmptyStr }
   | R2TokenMintOutcomeUnknown { cause: NonEmptyStr }
 
-func mint_r2_origin_token(
+fn mint_r2_origin_token(
   account_id: CloudflareAccountId,
   request: CreateAccountTokenRequest,
   bootstrap: Secret,
@@ -466,7 +466,7 @@ type R2CredentialStored
   = R2CredentialStoredAt { version_resource: String }
   | R2CredentialStoreRefused { cause: NonEmptyStr }
 
-func store_minted_token(
+fn store_minted_token(
   token: CreatedAccountToken,
   locus: SecretRef,
   gcp_token: Secret,
@@ -529,7 +529,7 @@ func store_minted_token(
 // consumer class as run(); they are not a second mint path. /tmp is the non-secret readback
 // channel run() also uses. They dissolve when a modeled artifact store replaces that write.
 
-func list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
+fn list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
   match r2_mint_bootstrap(profile: R2OriginObjectRead) {
     R2MintBootstrapRefused { cause: cause } =>
       exit_failure(reason: cause as String)
@@ -559,7 +559,7 @@ func list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
   }
 }
 
-func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
+fn revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
   match r2_mint_bootstrap(profile: R2OriginObjectRead) {
     R2MintBootstrapRefused { cause: cause } =>
       exit_failure(reason: cause as String)
@@ -661,11 +661,11 @@ func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
 // The write entry will refuse the same way once its own pin lands. This is the origin_read_pin
 // check revoke_unheld_object_read_token already performs, applied at the mint rather than only at
 // the revoke.
-func run() -> ProcessExit uses net: Network {
+fn run() -> ProcessExit uses net: Network {
   mint_origin_token_and_store(profile: R2OriginObjectRead)
 }
 
-func run_object_write() -> ProcessExit uses net: Network {
+fn run_object_write() -> ProcessExit uses net: Network {
   mint_origin_token_and_store(profile: R2OriginObjectWrite)
 }
 
@@ -677,7 +677,7 @@ fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: Durab
   }
 }
 
-func mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit uses net: Network {
+fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit uses net: Network {
   if origin_credential_already_pinned(profile: profile, origin: fabric_durable_origin_standing()) {
     exit_failure(reason: concat(
       "THE ORIGIN ALREADY PINS THIS CREDENTIAL TO AN EXACT VERSION, NOTHING CREATED: a second mint would leave a token on the account that no declaration names; rotate by editing the pin in gunbc.cloudflare.r2_origin first -- ",

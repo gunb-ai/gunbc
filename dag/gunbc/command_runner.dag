@@ -127,7 +127,7 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 // THE LocalExec ARM'S SHAPE BELOW IS THIS COLLAPSE'S OWN, not a preserved inheritance. Nothing
 // about #8593's earlier LocalExec-only cut constrained what this run site had to look like once
 // SshExec joined it through the same seam.
-func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
+fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
   match command_over_transport(command: command, transport: transport) {
@@ -229,7 +229,7 @@ func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Pro
 // So this returns the triple and lets the caller decide, rather than widening ProcessOutcome for
 // every consumer in the fleet. Two different questions, two functions; the classifier is untouched
 // and no existing caller changes.
-func run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) -> ProcessObservation
+fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) -> ProcessObservation
   uses net: Network
 {
   match command_over_transport(command: command, transport: transport) {
@@ -252,7 +252,7 @@ func run_shell_command_observe(command: ArgvCommand, transport: CommandTransport
   }
 }
 
-func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
+fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
   uses net: Network
 {
   classify_process_observation(
@@ -295,7 +295,7 @@ fn stat_owner_name_capture(path: String) -> ProcessOutcome {
   )
 }
 
-func run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit
+fn run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit
   uses net: Network
 {
   fold(
