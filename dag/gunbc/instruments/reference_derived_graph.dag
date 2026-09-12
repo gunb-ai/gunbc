@@ -34,6 +34,8 @@ data consumer_import_only_path: String = "dag/test/fixture/reference_derived_gra
 
 data consumer_both_path: String = "dag/test/fixture/reference_derived_graph/consumer_both.dag"
 
+data consumer_call_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
+
 type ReferenceImportEdgeDiff
   = SharedEdge { path: String, target_module: String }
   | ReferenceOnlyEdge { path: String, target_module: String }
